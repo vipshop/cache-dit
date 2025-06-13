@@ -14,7 +14,7 @@
 
 ⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of `Cache Blocks` (such as F8B8) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
 
-|Algo|Baseline(w/o Cache)|DBCache F1B0(0.08)|DBCache F1B0(0.20)|DBCache F12B12(0.20)|DBCache F16B16(0.20)|DBCache F16B16(0.08)|
+|CacheType|Baseline(w/o Cache)|DBCache F1B0(0.08)|DBCache F1B0(0.20)|DBCache F12B12(0.20)|DBCache F16B16(0.20)|DBCache F16B16(0.08)|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |Latency(s)|24.8|15.5|8.5|15.1|17.7|20.5|
 |Image|![](./assets/NONE_R0.08_S0.png)|![](./assets/DBCACHE_F1B0S1_R0.08_S11.png)|![](./assets/DBCACHE_F1B0S1_R0.2_S19.png)|![](./assets/DBCACHE_F12B12S4_R0.2_S16.png)|![](./assets/DBCACHE_F16B16S4_R0.2_S13.png)|![](./assets/DBCACHE_F12B16S4_R0.08_S6.png)
