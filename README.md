@@ -32,10 +32,6 @@
 
 This case study demonstrates that even with a relatively high threshold—such as 0.2 (where the cached steps amount to 18)—under the DBCache **F8B16** configuration, the detailed texture of the kitten's fur and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
 
-## 💡 Notes
-
-The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! This project is still in its early development stages and currently provides some documentation and examples for reference. More features will be added in the future.
-
 ## ©️Citations
 
 ```BibTeX
@@ -47,6 +43,10 @@ The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](htt
   year={2025}
 }
 ```
+
+## 💡Notes
+
+The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! This project is still in its early development stages and currently provides some documentation and examples for reference. More features will be added in the future.
 
 ## 📖Contents 
 
