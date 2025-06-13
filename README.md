@@ -16,11 +16,11 @@
 
 |CacheType|Baseline(w/o Cache)|FBCache(0.08)|FBCache(0.20)|
 |:---:|:---:|:---:|:---:|
-|Cached Steps|0|11|19|
+|Cached|0 steps|11 steps|19 steps|
 |Latency(s)|24.8|15.5|8.5|
 |Image|![](./assets/NONE_R0.08_S0.png)|![](./assets/FBCACHE_R0.08_S11.png)|![](./assets/FBCACHE_R0.2_S19.png)|
 |CacheType|DBCache F8B8(0.08)|DBCache F8B8(0.12)|DBCache F8B12(0.20)|DBCache F8B16(0.20)|  
-|Cached Steps|9|12|18|
+|Cached|9 steps|12 steps|18 steps|
 |Latency(s)|19.2|17.3|14.6|
 |Image|![](./assets/DBCACHE_F8B8S1_R0.08_S9.png)|![](./assets/DBCACHE_F8B8S1_R0.12_S12.png)|![](./assets/DBCACHE_F8B12S1_R0.2_S18.png)|
 
