@@ -50,7 +50,8 @@ The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](htt
 - [⚙️Installation](#️installation)  
 - [⚡️Dual Block Cache](#dbcache)
 - [🎉First Block Cache](#fbcache)
-- [⚡️Context Parallelism](#context-parallelism)  
+- [⚡️Dynamic Block Prune](#dbprune)
+- [🎉Context Parallelism](#context-parallelism)  
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
@@ -138,7 +139,30 @@ cache_options = {
 apply_cache_on_pipe(pipe, **cache_options)
 ```
 
-## ⚡️Context Parallelism
+## ⚡️DBPrune: Dynamic Block Prune
+
+<div id="dbprune"></div>  
+
+
+We have also support **Dynamic Block Prune** with Residual Cache for Diffusion Transformers, namely, **DBPrune**. (Experimental, stay tuned for update~)
+
+```python
+from diffusers import FluxPipeline
+from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+# Using DBPrune
+cache_options = CacheType.default_options(CacheType.DBPrune)
+
+apply_cache_on_pipe(pipe, **cache_options)
+```
+
+
+## 🎉Context Parallelism
 
 <div id="context-parallelism"></div>  
 

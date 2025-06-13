@@ -73,7 +73,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "Fn_compute_blocks": args.Fn_compute_blocks,
             "Bn_compute_blocks": args.Bn_compute_blocks,
             "warmup_steps": args.warmup_steps,
-            "max_pruned_steps": -1,  # -1 means no limit
+            "max_pruned_steps": args.max_cached_steps,  # -1 means no limit
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
         }
