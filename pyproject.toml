@@ -1,0 +1,21 @@
+[project]
+
+name = "cache_dit"
+dynamic = ["version", "dependencies", "optional-dependencies"]
+requires-python = ">=3.8"
+authors = [{name = "vipshop.com"}]
+description = "DBCache: Dual Block Cache for Diffusion Transformers"
+
+[project.urls]
+
+Repository = "https://github.com/vipshop/DBCache"
+
+[build-system]
+
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+# build-backend = "setuptools.build_meta"
+
+[tool.black]
+
+line-length = 80
+target-version = ["py38"]

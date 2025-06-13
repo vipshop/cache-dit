@@ -1,0 +1,6 @@
+include MANIFEST.in
+include LICENSE
+include requirements.txt
+recursive-include tests *
+prune */__pycache__
+global-exclude *.o *.so *.dylib *.a .git *.pyc *.swp
