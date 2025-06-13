@@ -15,7 +15,7 @@ def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("--steps", type=int, default=28)
-    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--l1-diff", action="store_true", default=False)

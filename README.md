@@ -14,15 +14,10 @@
 
 ⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of `Cache Blocks` (such as F8B8) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
 
-|CacheType|Baseline(w/o Cache)|FBCache(0.08)|FBCache(0.20)|
-|:---:|:---:|:---:|:---:|
-|Cached|0 steps|11 steps|19 steps|
-|Latency(s)|24.8|15.5|8.5|
-|Image|![](./assets/NONE_R0.08_S0.png)|![](./assets/FBCACHE_R0.08_S11.png)|![](./assets/FBCACHE_R0.2_S19.png)|
-|CacheType|DBCache F8B8(0.08)|DBCache F8B8(0.12)|DBCache F8B12(0.20)|DBCache F8B16(0.20)|  
-|Cached|9 steps|12 steps|18 steps|
-|Latency(s)|19.2|17.3|14.6|
-|Image|![](./assets/DBCACHE_F8B8S1_R0.08_S9.png)|![](./assets/DBCACHE_F8B8S1_R0.12_S12.png)|![](./assets/DBCACHE_F8B12S1_R0.2_S18.png)|
+|CacheType|Baseline(w/o Cache)|DBCache F1B0(0.08)|DBCache F1B0(0.20)|DBCache F12B12(0.20)|DBCache F16B16(0.20)|DBCache F16B16(0.08)|
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|Latency(s)|24.8|15.5|8.5|15.1|17.7|20.5|
+|Image|![](./assets/NONE_R0.08_S0.png)|![](./assets/DBCACHE_F1B0S1_R0.08_S11.png)|![](./assets/DBCACHE_F1B0S1_R0.2_S19.png)|![](./assets/DBCACHE_F12B12S4_R0.2_S16.png)|![](./assets/DBCACHE_F16B16S4_R0.2_S13.png)|![](./assets/DBCACHE_F12B16S4_R0.08_S6.png)
 
 <div align="center">
   <p align="center">
@@ -30,7 +25,7 @@
   </p>
 </div>
 
-This case study demonstrates that even with a relatively high threshold—such as 0.2 (where the cached steps amount to 18)—under the DBCache **F8B12** configuration, the detailed texture of the kitten's fur and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
+This case study demonstrates that even with a relatively high threshold—such as 0.2 under the DBCache **F12B12** configuration, the detailed texture of the kitten's fur and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
 
 ## ©️Citations
 
