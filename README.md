@@ -28,11 +28,9 @@
   <p align="center">
     NVIDIA L20, Steps: 28, Prompt: "A cat holding a sign that says hello world with complex background"
   </p>
-  <p align="center">
-    The case shows that even at a large threshold, such as 0.2 (cached steps is 18), under the DBCache <b>F8B16</b> configuration, the style of the kitten's textured fur and text can still be maintained.
-  </p>
 </div>
 
+The case shows that even at a large threshold, such as 0.2 (cached steps is 18), under the DBCache <b>F8B16</b> configuration, the style of the kitten's textured fur and text can still be maintained. Thus, users can use DBCache to strike a balance between performance and precision!   
 
 💡 NOTE: The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! This project is still in its early development stages and currently provides some documentation and examples for reference. More features will be added in the future.
 
