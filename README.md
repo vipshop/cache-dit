@@ -130,7 +130,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="fbcache"></div>
 
-![image](https://github.com/user-attachments/assets/748a64fb-fc3d-4280-b664-29a4c7b6c685)
+![image](https://github.com/user-attachments/assets/0fb66656-b711-457a-92a7-a830f134272d)
 
 **DBCache** is a more general algorithm than **FBCache**. When Fn=1 and Bn=0, **DBCache** behaves identically to **FBCache**. Therefore, you can either use the original **FBCache** implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
