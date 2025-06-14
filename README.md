@@ -116,6 +116,8 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="fbcache"></div>
 
+![image](https://github.com/user-attachments/assets/5d63b542-76cb-4859-987e-34f267ab627e)
+
 DBCache a more general algorithm than FBCache, When Fn=1, Bn=0, DBCache is the same as FBCache. Thus, you can use the original FBCache directly or use DBCache with F1B0 configuration.
 
 ```python
