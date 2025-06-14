@@ -20,7 +20,7 @@
   </p>
 </div>
 
-|DBCache|Baseline(w/o Cache)|F1B0(0.08)|F1B0(0.20)| F12B12(0.20)|F16B16(0.20)|
+|DBCache(L20x1)|Baseline(L20x1)|F1B0(0.08)|F1B0(0.20)| F12B12(0.20)|F16B16(0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |Latency(s)|24.85|15.59|8.58|15.11|17.74|
 |Image|<img src=./assets/NONE_R0.08_S0.png width=100px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=100px> |<img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=100px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=100px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=100px>|
