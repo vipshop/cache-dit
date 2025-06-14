@@ -25,7 +25,7 @@
   </p>
 </div>
 
-|DBCache|Baseline(w/o Cache, L20x1)|F1B0(0.08)|F8B8(0.12)| F8B12(0.20)|F8B16(0.20)|
+|DBCache(L20x4)|Baseline(L20x1)|F1B0(0.08)|F8B8(0.12)| F8B12(0.20)|F8B16(0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |Latency(s)|27.85|6.04|5.88|5.77|6.01|
 |Image|<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=100px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=100px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=100px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=100px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=100px>|
