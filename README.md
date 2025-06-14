@@ -44,7 +44,7 @@
   </p>
 </div>
 
-These cases study demonstrates that even with a relatively high threshold (such as 0.12, 0.15, 0.2, etc) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur & color cloth and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
+These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
 
 ## ©️Citations
 
