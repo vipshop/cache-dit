@@ -181,7 +181,6 @@ cache_options = CacheType.default_options(CacheType.DBPrune)
 apply_cache_on_pipe(pipe, **cache_options)
 ```
 
-
 ## 🎉Context Parallelism
 
 <div id="context-parallelism"></div>  
