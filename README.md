@@ -50,7 +50,7 @@ These cases study demonstrates that even with a relatively high threshold (such 
 
 ## 💡Notes
 
-The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! **DBCache** is still in its early development stages and currently provides some documentation and examples for reference.
+The codebase of [DBCache](./src/cache_dit/) was adapted from [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! **DBCache** is still in its early dev stages and currently provides some documentation and examples for reference.
 
 ## 📖Contents 
 
