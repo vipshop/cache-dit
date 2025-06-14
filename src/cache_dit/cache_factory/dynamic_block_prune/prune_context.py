@@ -24,6 +24,13 @@ class DBPPruneContext:
     residual_diff_threshold: Union[torch.Tensor, float] = 0.0
     l1_hidden_states_diff_threshold: float = None
     important_condition_threshold: float = 0.0
+    # Compute the dynamic prune threshold based on the mean of the
+    # residual diffs of the previous computed or pruned blocks.
+    # But, also limit mean_diff to be at least 2x the residual_diff_threshold
+    # to avoid too aggressive pruning.
+    enable_dynamic_prune_threshold: bool = False
+    max_dynamic_prune_threshold: float = None
+    dynamic_prune_threshold_relax_ratio: float = 1.25
 
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -38,6 +45,8 @@ class DBPPruneContext:
     # Statistics
     executed_steps: int = 0
     pruned_blocks: List[int] = dataclasses.field(default_factory=list)
+    actual_blocks: List[int] = dataclasses.field(default_factory=list)
+    # Residual diffs for each step, [step: list[float]]
     residual_diffs: Dict[str, List[float]] = dataclasses.field(
         default_factory=lambda: defaultdict(list),
     )
@@ -49,6 +58,38 @@ class DBPPruneContext:
             residual_diff_threshold = self.l1_hidden_states_diff_threshold
         if isinstance(residual_diff_threshold, torch.Tensor):
             residual_diff_threshold = residual_diff_threshold.item()
+        if self.enable_dynamic_prune_threshold:
+            # Compute the dynamic prune threshold based on the mean of the
+            # residual diffs of the previous computed or pruned blocks.
+            step = self.get_current_step()
+            if step >= 0 and step in self.residual_diffs:
+                diffs = self.residual_diffs[step]
+                if diffs:
+                    mean_diff = sum(diffs) / len(diffs)
+                    relaxed_diff = (
+                        mean_diff * self.dynamic_prune_threshold_relax_ratio
+                    )
+                    if self.max_dynamic_prune_threshold is None:
+                        max_dynamic_prune_threshold = (
+                            2 * residual_diff_threshold
+                        )
+                    else:
+                        max_dynamic_prune_threshold = (
+                            self.max_dynamic_prune_threshold
+                        )
+                    if relaxed_diff < max_dynamic_prune_threshold:
+                        # If the mean diff is less than twice the threshold,
+                        # we can use it as the dynamic prune threshold.
+                        residual_diff_threshold = (
+                            relaxed_diff
+                            if relaxed_diff > residual_diff_threshold
+                            else residual_diff_threshold
+                        )
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            f"Dynamic prune threshold for step {step}: "
+                            f"{residual_diff_threshold:.6f}"
+                        )
         return residual_diff_threshold
 
     def get_buffer(self, name):
@@ -154,6 +195,23 @@ def get_pruned_blocks():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
     return prune_context.pruned_blocks
+
+
+@torch.compiler.disable
+def add_actual_block(num_blocks):
+    assert (
+        isinstance(num_blocks, int) and num_blocks >= 0
+    ), "num_blocks must be a non-negative integer"
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    prune_context.actual_blocks.append(num_blocks)
+
+
+@torch.compiler.disable
+def get_actual_blocks():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.actual_blocks
 
 
 @torch.compiler.disable
@@ -469,6 +527,14 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         torch._dynamo.graph_break()
 
         add_pruned_block(self.pruned_blocks_step)
+        add_actual_block(
+            len(self.transformer_blocks)
+            + (
+                len(self.single_transformer_blocks)
+                if self.single_transformer_blocks is not None
+                else 0
+            )
+        )
         patch_pruned_stats(self.transformer)
 
         return (
@@ -604,14 +670,13 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         # Helper function for `call_transformer_blocks`
         # block_id: global block index in the transformer blocks +
         # single_transformer_blocks
-        can_use_prune = (
-            get_can_use_prune(
+        can_use_prune = False
+        if block_id not in self._non_prune_blocks_ids():
+            can_use_prune = get_can_use_prune(
                 hidden_states,  # curr step
                 parallelized=self._is_parallelized(),
                 name=f"{block_id}_single_original",  # prev step
             )
-            and block_id not in self._non_prune_blocks_ids()
-        )
         self.pruned_blocks_step += int(can_use_prune)
 
         # Prune steps: Reuse the cached residuals.
@@ -661,6 +726,8 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             )
 
             # Save original_hidden_states for diff calculation.
+            # NOTE: May not be necessary to update the hidden
+            # states and residuals each step?
             set_buffer(
                 f"{block_id}_single_original", single_original_hidden_states
             )
@@ -697,14 +764,13 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
 
         # block_id: global block index in the transformer blocks +
         # single_transformer_blocks
-        can_use_prune = (
-            get_can_use_prune(
+        can_use_prune = False
+        if block_id not in self._non_prune_blocks_ids():
+            can_use_prune = get_can_use_prune(
                 hidden_states,  # curr step
                 parallelized=self._is_parallelized(),
                 name=f"{block_id}_original",  # prev step
             )
-            and block_id not in self._non_prune_blocks_ids()
-        )
         self.pruned_blocks_step += int(can_use_prune)
 
         # Prune steps: Reuse the cached residuals.
@@ -840,3 +906,4 @@ def patch_pruned_stats(
     transformer._pruned_blocks = get_pruned_blocks()
     transformer._pruned_steps = get_pruned_steps()
     transformer._residual_diffs = get_residual_diffs()
+    transformer._actual_blocks = get_actual_blocks()

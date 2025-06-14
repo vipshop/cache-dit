@@ -77,6 +77,9 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "max_pruned_steps": args.max_cached_steps,  # -1 means no limit
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
+            "enable_dynamic_prune_threshold": True,
+            "max_dynamic_prune_threshold": 2 * args.rdt,
+            "dynamic_prune_threshold_relax_ratio": 1.25,
         }
     else:
         cache_options = {
@@ -115,8 +118,10 @@ def main():
 
     all_times = []
     cached_stepes = 0
-    pruned_blocks = 0
+    pruned_blocks = []
+    actual_blocks = []
     pruned_steps = 0
+    pruned_ratio = 0.0
     for i in range(args.repeats):
         start = time.time()
         image = pipe(
@@ -129,25 +134,41 @@ def main():
         if hasattr(pipe.transformer, "_cached_steps"):
             cached_stepes = len(pipe.transformer._cached_steps)
         if hasattr(pipe.transformer, "_pruned_blocks"):
-            pruned_blocks = sum(pipe.transformer._pruned_blocks)
+            pruned_blocks = pipe.transformer._pruned_blocks
+        if hasattr(pipe.transformer, "_actual_blocks"):
+            actual_blocks = pipe.transformer._actual_blocks
         if hasattr(pipe.transformer, "_pruned_steps"):
             pruned_steps = pipe.transformer._pruned_steps
+
+        pruned_ratio = (
+            sum(pruned_blocks) / sum(actual_blocks) if actual_blocks else 0
+        ) * 100
         logger.info(
             f"Run {i + 1}/{args.repeats}, "
             f"Time: {all_times[-1]:.2f}s, "
             f"Cached Steps: {cached_stepes}, "
-            f"Pruned Blocks: {pruned_blocks}, "
+            f"Pruned Blocks: {sum(pruned_blocks)}({pruned_ratio:.2f})%, "
             f"Pruned Steps: {pruned_steps}"
         )
+        if len(actual_blocks) > 0:
+            logger.info(
+                f"Actual Blocks: {actual_blocks}\n"
+                f"Pruned Blocks: {pruned_blocks}"
+            )
 
     all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)
     logger.info(
         f"Mean Time: {mean_time:.2f}s, "
         f"Cached Steps: {cached_stepes}, "
-        f"Pruned Blocks: {pruned_blocks}, "
+        f"Pruned Blocks: {sum(pruned_blocks)}({pruned_ratio:.2f})%, "
         f"Pruned Steps: {pruned_steps}"
     )
+    if len(actual_blocks) > 0:
+        logger.info(
+            f"Actual Blocks: {actual_blocks}\n"
+            f"Pruned Blocks: {pruned_blocks}"
+        )
     save_name = f"{cache_type}_R{args.rdt}_S{cached_stepes}.png"
     image.save(save_name)
     logger.info(f"Image saved as {save_name}")
