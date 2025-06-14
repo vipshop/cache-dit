@@ -22,7 +22,7 @@
 
 |DBCache|Baseline(w/o Cache)|F1B0(0.08)|F1B0(0.20)| F12B12(0.20)|F16B16(0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|Latency(s)|24.8|15.5|8.5|15.1|17.7|
+|Latency(s)|24.85|15.59|8.51|15.13|17.76|
 |Image|<img src=./assets/NONE_R0.08_S0.png width=100px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=100px> |<img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=100px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=100px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=100px>|
 |**DBCache**|**Baseline(L20x1)**|**F1B0(0.08)**|**F8B8(0.12)**|**F8B12(0.20)**|**F8B16(0.20)**|
 |Latency(s)|27.85|6.04|5.88|5.77|6.01|
