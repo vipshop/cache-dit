@@ -36,30 +36,7 @@
   </p>
 </div>
 
-These cases study demonstrates that even with a relatively high threshold—such as 0.2 under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur & color cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
-
-<!--
-|CacheType|Baseline(w/o Cache)|DBCache F1B0(0.08)|DBCache F1B0(0.20)|DBCache F12B12(0.20)|DBCache F16B16(0.20)|DBCache F16B16(0.08)|
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|Latency(s)|24.8|15.5|8.5|15.1|17.7|20.5|
-|Image|<img src=./assets/NONE_R0.08_S0.png width=100px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=100px> |<img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=100px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=100px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=100px>|<img src=./assets/DBCACHE_F12B16S4_R0.08_S6.png width=100px>|
-
-![Baseline](https://github.com/user-attachments/assets/4f40e1a8-37eb-4a6e-b05a-467b33a944d4)
-![image](https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6)
-
-![F1B0(0.08)](https://github.com/user-attachments/assets/d1bc097a-5f88-4873-a83c-16a5ef43ea3b)
-![image](https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0)
-
-![F8B8(0.12)](https://github.com/user-attachments/assets/7ac4a224-7502-4fbc-970c-4a91af6bd84b)
-![image](https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e)
-
-![F8B12(0.20)](https://github.com/user-attachments/assets/3182009f-988a-4f3c-8e45-211977513d3d)
-![image](https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d)
-
-![F8B16(0.20)](https://github.com/user-attachments/assets/ec54a270-c76c-4d34-a080-8aad6d3aa821)
-![image](https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f)
-
--->
+These cases study demonstrates that even with a relatively high threshold (such as 0.2) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur & color cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
 
 ## ©️Citations
 
