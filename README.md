@@ -88,8 +88,8 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
-- **warmup_steps** (default: 0): DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
-- **max_cached_steps** (default: -1): DBCache disables the caching strategy when the running steps exceed this value to prevent precision degradation.
+- **warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+- **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the running steps exceed this value to prevent precision degradation.
 
 
 ```python
@@ -155,7 +155,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="dbprune"></div>  
 
-![image](https://github.com/user-attachments/assets/0c7185f8-a902-45dc-a375-1adfe9084727)
+![image](https://github.com/user-attachments/assets/eb81c8e7-8d49-4f3a-982c-59ebf5b0c2eb)
 
 We have further implemented a new **Dynamic Block Prune** algorithm with Residual Cache for Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.)
 
