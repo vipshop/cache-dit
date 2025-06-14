@@ -31,8 +31,8 @@ class DBPPruneContext:
     # Other settings
     downsample_factor: int = 1
     num_inference_steps: int = -1
-    warmup_steps: int = 0  # DON'T Cache in warmup steps
-    # DON'T Cache if the number of cached steps >= max_cached_steps
+    warmup_steps: int = 0  # DON'T pruned in warmup steps
+    # DON'T prune if the number of pruned steps >= max_pruned_steps
     max_pruned_steps: int = -1
 
     # Statistics
