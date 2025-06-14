@@ -84,7 +84,7 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 ![image](https://github.com/user-attachments/assets/a508d4a2-b3ac-43c4-bd3f-36e52f657e14)
 
-**Fn**: means that DBCache will fit the information of t step using the **first n** layers and calculate a more stable releative L1 diff. **Bn**: The approximate information is further fused in the **last n** layers for higher precision. **warmup_steps**: default is 0, DBCache don't apply caching stragety while running steps is less or equal than warmup_steps. **max_cached_steps**: default is -1, DBCache don't apply caching stragety while running steps is greater than max_cached_steps to avoid precision downgrade.
+**Fn**: means that DBCache will fit the information of t step using the **first n** blocks and calculate a more stable releative L1 diff. **Bn**: The approximate information is further fused in the **last n** blocks for higher precision. **warmup_steps**: default is 0, DBCache don't apply caching stragety while running steps is less or equal than warmup_steps. **max_cached_steps**: default is -1, DBCache don't apply caching stragety while running steps is greater than max_cached_steps to avoid precision downgrade.
 
 
 ```python
