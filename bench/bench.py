@@ -25,6 +25,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Bn-steps", "--BnS", type=int, default=1)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
+    parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
 
 
@@ -114,25 +115,39 @@ def main():
 
     all_times = []
     cached_stepes = 0
+    pruned_blocks = 0
+    pruned_steps = 0
     for i in range(args.repeats):
         start = time.time()
         image = pipe(
             "A cat holding a sign that says hello world with complex background",
             num_inference_steps=args.steps,
-            generator=torch.Generator("cuda").manual_seed(0),
+            generator=torch.Generator("cuda").manual_seed(args.seed),
         ).images[0]
         end = time.time()
         all_times.append(end - start)
         if hasattr(pipe.transformer, "_cached_steps"):
             cached_stepes = len(pipe.transformer._cached_steps)
+        if hasattr(pipe.transformer, "_pruned_blocks"):
+            pruned_blocks = sum(pipe.transformer._pruned_blocks)
+        if hasattr(pipe.transformer, "_pruned_steps"):
+            pruned_steps = pipe.transformer._pruned_steps
         logger.info(
-            f"Run {i + 1}/{args.repeats}, Time: {all_times[-1]:.2f}s, "
-            f"Cached Steps: {cached_stepes}"
+            f"Run {i + 1}/{args.repeats}, "
+            f"Time: {all_times[-1]:.2f}s, "
+            f"Cached Steps: {cached_stepes}, "
+            f"Pruned Blocks: {pruned_blocks}, "
+            f"Pruned Steps: {pruned_steps}"
         )
 
     all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)
-    logger.info(f"Mean Time: {mean_time:.2f}s, Cached Steps: {cached_stepes}")
+    logger.info(
+        f"Mean Time: {mean_time:.2f}s, "
+        f"Cached Steps: {cached_stepes}, "
+        f"Pruned Blocks: {pruned_blocks}, "
+        f"Pruned Steps: {pruned_steps}"
+    )
     save_name = f"{cache_type}_R{args.rdt}_S{cached_stepes}.png"
     image.save(save_name)
     logger.info(f"Image saved as {save_name}")
