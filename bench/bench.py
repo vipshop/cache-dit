@@ -77,8 +77,8 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "max_pruned_steps": args.max_cached_steps,  # -1 means no limit
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
-            "enable_dynamic_prune_threshold": True,
-            "max_dynamic_prune_threshold": min(3 * args.rdt, 0.3),
+            "enable_dynamic_prune_threshold": False,
+            "max_dynamic_prune_threshold": 2 * args.rdt,
             "dynamic_prune_threshold_relax_ratio": 1.25,
             "residual_cache_update_interval": 1,
         }
