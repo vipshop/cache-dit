@@ -15,6 +15,10 @@ Repository = "https://github.com/vipshop/DBCache"
 requires = ["setuptools>=64", "setuptools_scm>=8"]
 # build-backend = "setuptools.build_meta"
 
+[tool.setuptools_scm]
+version_scheme = "python-simplified-semver"
+local_scheme = "no-local-version"
+
 [tool.black]
 
 line-length = 80
