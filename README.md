@@ -157,7 +157,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 ![image](https://github.com/user-attachments/assets/0c7185f8-a902-45dc-a375-1adfe9084727)
 
-We have further implemented the support for **Dynamic Block Prune** with Residual Cache in Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.)
+We have further implemented a new **Dynamic Block Prune** algorithm with Residual Cache for Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.)
 
 ```python
 from diffusers import FluxPipeline
