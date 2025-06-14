@@ -84,10 +84,10 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 ![image](https://github.com/user-attachments/assets/c2a382b9-0ccd-46f4-aacc-87857b4a4de8)
 
-Parameters for DBCache configuration:
+**DBCache** provides configurable parameters for custom optimization, enabling a balanced trade-off between performance and precision:
 
-- **Fn**: Specifies that DBCache uses the first n Transformer blocks to fit the information at time step t, enabling the calculation of a more stable relative L1 difference.
-- **Bn**: Further fuses approximate information in the last n blocks to enhance prediction accuracy.
+- **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable relative L1 difference.
+- **Bn**: Further fuses approximate information in the **last n** blocks to enhance prediction accuracy.
 - **warmup_steps** (default: 0): DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
 - **max_cached_steps** (default: -1): DBCache disables the caching strategy when the running steps exceed this value to prevent precision degradation.
 
