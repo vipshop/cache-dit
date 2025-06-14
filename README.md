@@ -82,6 +82,10 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 <div id="dbcache"></div>
 
+![image](https://github.com/user-attachments/assets/a508d4a2-b3ac-43c4-bd3f-36e52f657e14)
+
+**Fn**: means that DBCache will fit the information of t step using the **first n** layers and calculate a more stable releative L1 diff. **Bn**: The approximate information is further fused in the **last n** layers for higher precision. **warmup_steps**: default is 0, DBCache don't apply caching stragety while running steps is less or equal than warmup_steps. **max_cached_steps**: default is -1, DBCache don't apply caching stragety while running steps is greater than max_cached_steps to avoid precision downgrade.
+
 
 ```python
 from diffusers import FluxPipeline
@@ -112,6 +116,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="fbcache"></div>
 
+DBCache a more general algorithm than FBCache, When Fn=1, Bn=0, DBCache is the same as FBCache. Thus, you can use the original FBCache directly or use DBCache with F1B0 configuration.
 
 ```python
 from diffusers import FluxPipeline
