@@ -89,7 +89,7 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 <div id="dbcache"></div>
 
-![image](https://github.com/user-attachments/assets/c2a382b9-0ccd-46f4-aacc-87857b4a4de8)
+![](https://github.com/user-attachments/assets/c2a382b9-0ccd-46f4-aacc-87857b4a4de8)
 
 **DBCache** provides configurable parameters for custom optimization, enabling a balanced trade-off between performance and precision:
 
@@ -128,7 +128,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="fbcache"></div>
 
-![image](https://github.com/user-attachments/assets/0fb66656-b711-457a-92a7-a830f134272d)
+![](https://github.com/user-attachments/assets/0fb66656-b711-457a-92a7-a830f134272d)
 
 **DBCache** is a more general algorithm than **FBCache**. When Fn=1 and Bn=0, **DBCache** behaves identically to **FBCache**. Therefore, you can either use the original **FBCache** implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
@@ -162,7 +162,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="dbprune"></div>  
 
-![image](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
+![](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
 
 We have further implemented a new **Dynamic Block Prune** algorithm with Residual Cache for Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates~)
 

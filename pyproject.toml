@@ -2,13 +2,13 @@
 
 name = "cache_dit"
 dynamic = ["version", "dependencies", "optional-dependencies"]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [{name = "vipshop.com"}]
 description = "DBCache: Dual Block Cache for Diffusion Transformers"
 
 [project.urls]
 
-Repository = "https://github.com/vipshop/DBCache"
+Repository = "https://github.com/vipshop/DBCache.git"
 
 [build-system]
 
@@ -22,4 +22,4 @@ local_scheme = "no-local-version"
 [tool.black]
 
 line-length = 80
-target-version = ["py38"]
+target-version = ["py310"]

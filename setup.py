@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-# Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/setup.py
-
 import importlib.util
 
 if importlib.util.find_spec("setuptools_scm") is None:
@@ -58,7 +56,7 @@ setup(
         "": "src",
     },
     packages=find_packages(where="src"),
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     install_requires=fetch_requirements(),
     extras_require={
         # optional dependencies, required by some features
