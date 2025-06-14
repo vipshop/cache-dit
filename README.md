@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h2>⚡️ DBCache: Dual Block Cache for Diffusion Transformers.</h2>
+    <h2>⚡️ DBCache: Dual Block Cache for Diffusion Transformers </h2>
   </p>
    <img src=./assets/dbcache.png >
   <div align='center'>
