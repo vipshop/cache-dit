@@ -14,25 +14,23 @@
 
 ⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B8**) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
 
+<div align="center">
+  <p align="center">
+    NVIDIA L20, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
 |DBCache|Baseline(w/o Cache)|F1B0(0.08)|F1B0(0.20)| F12B12(0.20)|F16B16(0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |Latency(s)|24.8|15.5|8.5|15.1|17.7|
 |Image|<img src=./assets/NONE_R0.08_S0.png width=100px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=100px> |<img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=100px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=100px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=100px>|
-
-<div align="center">
-  <p align="center">
-    NVIDIA L20, Steps: 28, Prompt: "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
-
-|DBCache|Baseline(w/o Cache)|F1B0(0.08)|F8B8(0.12)| F8B12(0.20)|F8B16(0.20)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
+|**DBCache**|**Baseline(L20x1)**|**F1B0(0.08)**|**F8B8(0.12)**|**F8B12(0.20)**|**F8B16(0.20)**|
 |Latency(s)|27.85|6.04|5.88|5.77|6.01|
 |Image|<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=100px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=100px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=100px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=100px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=100px>|
 
 <div align="center">
   <p align="center">
-    DBCache: NVIDIA L20x4, Steps: 20, case to show the texture recovery ability of DBCache.
+    DBCache: NVIDIA L20x4, Steps: 20, case to show the texture recovery ability of DBCache
   </p>
 </div>
 
