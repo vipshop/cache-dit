@@ -78,7 +78,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
             "enable_dynamic_prune_threshold": True,
-            "max_dynamic_prune_threshold": 2 * args.rdt,
+            "max_dynamic_prune_threshold": max(2 * args.rdt, 0.3),
             "dynamic_prune_threshold_relax_ratio": 1.25,
             "residual_cache_update_interval": 1,
         }
