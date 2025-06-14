@@ -31,6 +31,8 @@ class DBPPruneContext:
     enable_dynamic_prune_threshold: bool = False
     max_dynamic_prune_threshold: float = None
     dynamic_prune_threshold_relax_ratio: float = 1.25
+    # Residual cache update interval, in steps.
+    residual_cache_update_interval: int = 1
 
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -63,7 +65,8 @@ class DBPPruneContext:
             # residual diffs of the previous computed or pruned blocks.
             step = self.get_current_step()
             if step >= 0 and step in self.residual_diffs:
-                diffs = self.residual_diffs[step]
+                # TODO: Should we only use the last 5 diffs
+                diffs = self.residual_diffs[step][:]
                 if diffs:
                     mean_diff = sum(diffs) / len(diffs)
                     relaxed_diff = (
@@ -260,6 +263,13 @@ def get_important_condition_threshold():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
     return prune_context.important_condition_threshold
+
+
+@torch.compiler.disable
+def residual_cache_update_interval():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.residual_cache_update_interval
 
 
 @torch.compiler.disable
@@ -712,39 +722,42 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
                 **kwargs,
             )
 
-            # Cache residuals for the non-compute Bn blocks for
-            # subsequent prune steps.
-            single_hidden_states = hidden_states
-            (
-                single_hidden_states_residual,
-                single_encoder_hidden_states_residual,
-            ) = self._compute_single_hidden_states_residual(
-                single_hidden_states,
-                single_original_hidden_states,
-                original_single_hidden_states,
-                original_single_encoder_hidden_states,
-            )
-
             # Save original_hidden_states for diff calculation.
-            # NOTE: May not be necessary to update the hidden
+            # May not be necessary to update the hidden
             # states and residuals each step?
-            set_buffer(
-                f"{block_id}_single_original", single_original_hidden_states
-            )
+            # TODO: set torch.compiler.disable
+            if get_current_step() % residual_cache_update_interval() == 0:
+                # Cache residuals for the non-compute Bn blocks for
+                # subsequent prune steps.
+                single_hidden_states = hidden_states
+                (
+                    single_hidden_states_residual,
+                    single_encoder_hidden_states_residual,
+                ) = self._compute_single_hidden_states_residual(
+                    single_hidden_states,
+                    single_original_hidden_states,
+                    original_single_hidden_states,
+                    original_single_encoder_hidden_states,
+                )
 
-            set_buffer(
-                f"{block_id}_single_residual",
-                single_hidden_states_residual,
-            )
-            set_buffer(
-                f"{block_id}_single_encoder_residual",
-                single_encoder_hidden_states_residual,
-            )
+                set_buffer(
+                    f"{block_id}_single_original", single_original_hidden_states
+                )
 
-            del single_hidden_states
+                set_buffer(
+                    f"{block_id}_single_residual",
+                    single_hidden_states_residual,
+                )
+                set_buffer(
+                    f"{block_id}_single_encoder_residual",
+                    single_encoder_hidden_states_residual,
+                )
+
+                del single_hidden_states
+                del single_hidden_states_residual
+                del single_encoder_hidden_states_residual
+
             del single_original_hidden_states
-            del single_hidden_states_residual
-            del single_encoder_hidden_states_residual
 
         return hidden_states
 
@@ -796,31 +809,36 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
                         encoder_hidden_states,
                         hidden_states,
                     )
-            # Cache residuals for the non-compute Bn blocks for
-            # subsequent prune steps.
-            hidden_states_residual = hidden_states - original_hidden_states
-            encoder_hidden_states_residual = (
-                encoder_hidden_states - original_encoder_hidden_states
-            )
 
             # Save original_hidden_states for diff calculation.
-            set_buffer(
-                f"{block_id}_original",
-                original_hidden_states,
-            )
+            # May not be necessary to update the hidden
+            # states and residuals each step?
+            # TODO: set torch.compiler.disable
+            if get_current_step() % residual_cache_update_interval() == 0:
+                # Cache residuals for the non-compute Bn blocks for
+                # subsequent prune steps.
+                hidden_states_residual = hidden_states - original_hidden_states
+                encoder_hidden_states_residual = (
+                    encoder_hidden_states - original_encoder_hidden_states
+                )
+                set_buffer(
+                    f"{block_id}_original",
+                    original_hidden_states,
+                )
 
-            set_buffer(
-                f"{block_id}_residual",
-                hidden_states_residual,
-            )
-            set_buffer(
-                f"{block_id}_encoder_residual",
-                encoder_hidden_states_residual,
-            )
-            del hidden_states_residual
-            del encoder_hidden_states_residual
-            del original_hidden_states
-            del original_encoder_hidden_states
+                set_buffer(
+                    f"{block_id}_residual",
+                    hidden_states_residual,
+                )
+                set_buffer(
+                    f"{block_id}_encoder_residual",
+                    encoder_hidden_states_residual,
+                )
+                del hidden_states_residual
+                del encoder_hidden_states_residual
+
+        del original_hidden_states
+        del original_encoder_hidden_states
 
         return hidden_states, encoder_hidden_states
 
