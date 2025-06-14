@@ -664,6 +664,11 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         )
         return single_hidden_states, single_encoder_hidden_states
 
+    @torch.compiler.disable
+    def _should_update_residuals(self):
+        # Check if the current step is a multiple of the residual cache update interval.
+        return get_current_step() % residual_cache_update_interval() == 0
+
     def _compute_or_prune_single_transformer_block(
         self,
         block_id: int,  # Block index in the transformer blocks
@@ -725,8 +730,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             # Save original_hidden_states for diff calculation.
             # May not be necessary to update the hidden
             # states and residuals each step?
-            # TODO: set torch.compiler.disable
-            if get_current_step() % residual_cache_update_interval() == 0:
+            if self._should_update_residuals():
                 # Cache residuals for the non-compute Bn blocks for
                 # subsequent prune steps.
                 single_hidden_states = hidden_states
@@ -741,7 +745,8 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
                 )
 
                 set_buffer(
-                    f"{block_id}_single_original", single_original_hidden_states
+                    f"{block_id}_single_original",
+                    single_original_hidden_states,
                 )
 
                 set_buffer(
@@ -813,8 +818,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             # Save original_hidden_states for diff calculation.
             # May not be necessary to update the hidden
             # states and residuals each step?
-            # TODO: set torch.compiler.disable
-            if get_current_step() % residual_cache_update_interval() == 0:
+            if self._should_update_residuals():
                 # Cache residuals for the non-compute Bn blocks for
                 # subsequent prune steps.
                 hidden_states_residual = hidden_states - original_hidden_states

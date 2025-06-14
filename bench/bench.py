@@ -80,7 +80,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "enable_dynamic_prune_threshold": True,
             "max_dynamic_prune_threshold": 2 * args.rdt,
             "dynamic_prune_threshold_relax_ratio": 1.25,
-            "residual_cache_update_interval": 2,
+            "residual_cache_update_interval": 1,
         }
     else:
         cache_options = {
