@@ -82,9 +82,14 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 <div id="dbcache"></div>
 
-![image](https://github.com/user-attachments/assets/a508d4a2-b3ac-43c4-bd3f-36e52f657e14)
+![image](https://github.com/user-attachments/assets/c2a382b9-0ccd-46f4-aacc-87857b4a4de8)
 
-**Fn**: means that DBCache will fit the information of t step using the **first n** blocks and calculate a more stable releative L1 diff. **Bn**: The approximate information is further fused in the **last n** blocks for higher precision. **warmup_steps**: default is 0, DBCache don't apply caching stragety while running steps is less or equal than warmup_steps. **max_cached_steps**: default is -1, DBCache don't apply caching stragety while running steps is greater than max_cached_steps to avoid precision downgrade.
+Parameters for DBCache configuration:
+
+- **Fn**: Specifies that DBCache uses the first n Transformer blocks to fit the information at time step t, enabling the calculation of a more stable relative L1 difference.
+- **Bn**: Further fuses approximate information in the last n blocks to enhance prediction accuracy.
+- **warmup_steps** (default: 0): DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+- **max_cached_steps** (default: -1): DBCache disables the caching strategy when the running steps exceed this value to prevent precision degradation.
 
 
 ```python
@@ -116,9 +121,9 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="fbcache"></div>
 
-![image](https://github.com/user-attachments/assets/1a3a2d49-1149-437c-9bf7-9a42a9abf439)
+![image](https://github.com/user-attachments/assets/748a64fb-fc3d-4280-b664-29a4c7b6c685)
 
-DBCache a more general algorithm than FBCache, When Fn=1, Bn=0, DBCache is the same as FBCache. Thus, you can use the original FBCache directly or use DBCache with F1B0 configuration.
+**DBCache** is a more general algorithm than **FBCache**. When Fn=1 and Bn=0, **DBCache** behaves identically to **FBCache**. Therefore, you can either use the original **FBCache** implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
 ```python
 from diffusers import FluxPipeline
@@ -150,8 +155,9 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="dbprune"></div>  
 
+![image](https://github.com/user-attachments/assets/0c7185f8-a902-45dc-a375-1adfe9084727)
 
-We have also support **Dynamic Block Prune** with Residual Cache for Diffusion Transformers, namely, **DBPrune**. (Experimental, stay tuned for update~)
+We have further implemented the support for **Dynamic Block Prune** with Residual Cache in Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.)
 
 ```python
 from diffusers import FluxPipeline
