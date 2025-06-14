@@ -79,8 +79,7 @@ pip3 install cache-dit
 or just install it from sources:
 
 ```bash
-git clone https://github.com/vipshop/DBCache.git
-cd DBCache && git submodule update --init --recursive
+git clone https://github.com/vipshop/DBCache.git && cd DBCache
 pip3 install 'torch==2.7.0' 'setuptools>=64' 'setuptools_scm>=8'
 
 pip3 install -e '.[dev]' --no-build-isolation # build editable package
