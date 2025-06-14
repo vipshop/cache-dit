@@ -12,7 +12,7 @@
  </div>
 </div>
 
-⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of `Cache Blocks` (such as F8B8) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
+⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute Blocks (such as **F8B8**) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
 
 |CacheType|Baseline(w/o Cache)|DBCache F1B0(0.08)|DBCache F1B0(0.20)|DBCache F12B12(0.20)|DBCache F16B16(0.20)|DBCache F16B16(0.08)|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
