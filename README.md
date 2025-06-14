@@ -12,7 +12,7 @@
  </div>
 </div>
 
-⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B8**) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
+⚡️ **DBCache**: Dual Block Cache for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely `training-free`. DBCache can strike a `perfect balance` between performance and precision! Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with `ParaAttention`. Users can easily tap into its **Context Parallel** features for distributed inference.
 
 <div align="center">
   <p align="center">
@@ -22,7 +22,7 @@
 
 |DBCache|Baseline(w/o Cache)|F1B0(0.08)|F1B0(0.20)| F12B12(0.20)|F16B16(0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|Latency(s)|24.85|15.59|8.51|15.13|17.76|
+|Latency(s)|24.85|15.59|8.58|15.11|17.74|
 |Image|<img src=./assets/NONE_R0.08_S0.png width=100px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=100px> |<img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=100px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=100px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=100px>|
 |**DBCache**|**Baseline(L20x1)**|**F1B0(0.08)**|**F8B8(0.12)**|**F8B12(0.20)**|**F8B16(0.20)**|
 |Latency(s)|27.85|6.04|5.88|5.77|6.01|
@@ -34,7 +34,7 @@
   </p>
 </div>
 
-These cases study demonstrates that even with a relatively high threshold (such as 0.2) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur & color cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
+These cases study demonstrates that even with a relatively high threshold (such as 0.12, 0.2, etc) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur & color cloth and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows!
 
 ## ©️Citations
 
@@ -166,7 +166,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 ![image](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
 
-We have further implemented a new **Dynamic Block Prune** algorithm with Residual Cache for Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.)
+We have further implemented a new **Dynamic Block Prune** algorithm with Residual Cache for Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates~)
 
 ```python
 from diffusers import FluxPipeline
