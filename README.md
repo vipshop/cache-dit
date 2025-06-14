@@ -17,7 +17,7 @@
 |CacheType|Baseline(w/o Cache)|DBCache F1B0(0.08)|DBCache F1B0(0.20)|DBCache F12B12(0.20)|DBCache F16B16(0.20)|DBCache F16B16(0.08)|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |Latency(s)|24.8|15.5|8.5|15.1|17.7|20.5|
-|Image|![](./assets/NONE_R0.08_S0.png)|![](./assets/DBCACHE_F1B0S1_R0.08_S11.png)|![](./assets/DBCACHE_F1B0S1_R0.2_S19.png)|![](./assets/DBCACHE_F12B12S4_R0.2_S16.png)|![](./assets/DBCACHE_F16B16S4_R0.2_S13.png)|![](./assets/DBCACHE_F12B16S4_R0.08_S6.png)
+|Image|<img src=./assets/NONE_R0.08_S0.png width=100px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=100px> |<img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=100px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=100px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=100px>|<img src=./assets/DBCACHE_F12B16S4_R0.08_S6.png width=100px>|
 
 <div align="center">
   <p align="center">
