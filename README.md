@@ -155,7 +155,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="dbprune"></div>  
 
-![image](https://github.com/user-attachments/assets/eb81c8e7-8d49-4f3a-982c-59ebf5b0c2eb)
+![image](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
 
 We have further implemented a new **Dynamic Block Prune** algorithm with Residual Cache for Diffusion Transformers, which is referred to as **DBPrune**. (Note: DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.)
 
