@@ -28,16 +28,6 @@
 |27.85s|6.04s|5.88s|5.77s|6.01s|6.20s|
 |<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=105px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=105px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=105px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=105px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=105px>|<img src=https://github.com/user-attachments/assets/aede466f-61ed-4256-8df0-fecf8020c5ca width=105px>|
 
-<!--
-|DBCache|Baseline|F1B0(0.08)|F1B0(0.20)|F8B8(0.15)|F12B12(0.20)|F16B16(0.20)|
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|Latency(s)|24.85|15.59|8.58|15.41|15.11|17.74|
-|Image|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=./assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
-|**DBCache**|**Baseline**|**F1B0(0.08)**|**F8B8(0.12)**|**F8B12(0.20)**|**F8B16(0.20)**|**F8B20(0.20)**|
-|Latency(s)|27.85|6.04|5.88|5.77|6.01|6.20|
-|Image|<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=105px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=105px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=105px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=105px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=105px>|<img src=https://github.com/user-attachments/assets/aede466f-61ed-4256-8df0-fecf8020c5ca width=105px>|
--->
-
 <div align="center">
   <p align="center">
     NVIDIA <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
