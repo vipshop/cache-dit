@@ -1,3 +1,4 @@
+# Adapted from: https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache/context.py
 import logging
 import contextlib
 import dataclasses
