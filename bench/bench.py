@@ -175,7 +175,7 @@ def main():
         )
     if len(actual_blocks) > 0:
         save_name = (
-            f"{cache_type}_R{args.rdt}_P{pruned_ratio}%_"
+            f"{cache_type}_R{args.rdt}_P{pruned_ratio:.1f}%_"
             f"T{mean_time:.2f}s.png"
         )
     else:
