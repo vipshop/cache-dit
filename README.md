@@ -1,8 +1,11 @@
 <div align="center">
   <p align="center">
-    <h3>⚡️DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers</h3>
+    <h2>⚡️DBCache: Dual Block Cache</h2>
   </p>
    <img src=./assets/dbcache.png >
+  <p align="center">
+    <h3>A Training-free UNet-style Cache Acceleration for Diffusion Transformers</h3>
+  </p>
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
