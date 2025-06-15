@@ -181,10 +181,10 @@ cache_options = CacheType.default_options(CacheType.DBPrune)
 apply_cache_on_pipe(pipe, **cache_options)
 ```
 
-|Baseline(L20x1)|Pruned (24.1%)|Pruned (34.6%)|Pruned (38.3%)|Pruned (45.2%)|Pruned (52.3%)|
+|Baseline(L20x1)|Pruned (24.1%)|Pruned (34.6%)|Pruned (38.3%)|Pruned (45.2%)|Pruned (59.5%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|19.43s|16.82s|14.24s|15.11s|12.53s|
-|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=./assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.07_P52.3_T12.53s.png width=105px>|
+|24.85s|19.43s|16.82s|14.24s|15.11s|10.66s|
+|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=./assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 ## 🎉Context Parallelism
 
