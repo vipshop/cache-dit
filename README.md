@@ -101,6 +101,7 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 - **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
 
 For a good balance between performance and precision, DBCache is configured by default with F8B8, 8 warmup steps, and unlimited cached steps.
+
 ```python
 from diffusers import FluxPipeline
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
