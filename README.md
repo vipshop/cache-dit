@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h2>⚡️DBCache: An UNet style Cache Toolbox for Diffusion Transformers</h2>
+    <h2>⚡️DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers</h2>
   </p>
    <img src=./assets/dbcache.png >
   <div align='center'>
@@ -40,7 +40,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 ```BibTeX
 @misc{DBCache@2025,
-  title={DBCache: An UNet style Cache Toolbox for Diffusion Transformers},
+  title={DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers},
   url={https://github.com/vipshop/DBCache.git},
   note={Open-source software available at https://github.com/vipshop/DBCache.git},
   author={vipshop.com},
