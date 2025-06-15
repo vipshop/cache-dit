@@ -233,7 +233,7 @@ apply_cache_on_pipe(
 
 <div id="compile"></div>  
 
-Both **DBCache** and **DBPrune** are compatible with `torch.compile`. However, users intending to use **DBCache** and **DBPrune** for models with dynamic input shapes should consider increasing the `recompile_limit` of `torch._dynamo` to achieve better performance. Otherwise, the recompile_limit error may be triggered, causing the specific module to fall back to eager execution mode. For example:
+Both **DBCache** and **DBPrune** are compatible with `torch.compile`. However, users intending to use **DBCache** and **DBPrune** for models with dynamic input shapes should consider increasing the `recompile_limit` config of `torch._dynamo` to achieve better performance. Otherwise, the recompile_limit error may be triggered, causing the specific module to fall back to eager execution mode. For example:
 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
