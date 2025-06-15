@@ -40,7 +40,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 ```BibTeX
 @misc{DBCache@2025,
-  title={DBCache: Dual Block Cache for Diffusion Transformers},
+  title={DBCache: An UNet style Cache Toolbox for Diffusion Transformers},
   url={https://github.com/vipshop/DBCache.git},
   note={Open-source software available at https://github.com/vipshop/DBCache.git},
   author={vipshop.com},
