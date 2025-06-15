@@ -138,7 +138,16 @@ def apply_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
     if hasattr(pipe, "_is_pruned") and pipe._is_pruned:
         return pipe
 
-    cache_type = CacheType.type(kwargs.pop("cache_type", None))
+    cache_type = kwargs.pop("cache_type", None)
+    if cache_type is None:
+        logger.warning(
+            "No cache type specified, we will use DBCache by default. "
+            "Please specify the cache_type explicitly if you want to "
+            "use a different cache type."
+        )
+        cache_type = CacheType.DBCache
+
+    cache_type = CacheType.type(cache_type)
 
     if cache_type == CacheType.FBCache:
         return apply_fb_cache_on_pipe(pipe, *args, **kwargs)

@@ -26,6 +26,11 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default=False,
+    )
     return parser.parse_args()
 
 
@@ -120,7 +125,17 @@ def main():
     logger.info(f"Cache Type: {cache_type}")
     logger.info(f"Cache Options: {cache_options}")
 
+    # Apply cache to the pipeline
     apply_cache_on_pipe(pipe, **cache_options)
+
+    if args.compile:
+        # Increase recompile limit for DBCache and DBPrune while
+        # using dynamic input shape.
+        torch._dynamo.config.recompile_limit = 96  # default is 8
+        torch._dynamo.config.accumulated_recompile_limit = (
+            2048  # default is 256
+        )
+        pipe.transformer = torch.compile(pipe.transformer, mode="default")
 
     all_times = []
     cached_stepes = 0
