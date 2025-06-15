@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import importlib.util
 
 if importlib.util.find_spec("setuptools_scm") is None:
@@ -59,18 +57,16 @@ setup(
     python_requires=">=3.10",
     install_requires=fetch_requirements(),
     extras_require={
-        # optional dependencies, required by some features
         "all": [],
-        # dev dependencies. Install them by `pip3 install 'para-attn[dev]'`
+        # dev dependencies. Install them by `pip3 install 'cache-dit[dev]'`
         "dev": [
             "pre-commit",
-            "pytest>=7.0.0,<8.0.0",  # https://github.com/pytest-dev/pytest/issues/12273
+            "pytest>=7.0.0,<8.0.0",
             "pytest-html",
             "expecttest",
-            "hypothesis",  # Fail to import hypothesis in common_utils, tests are not derandomized
-            #
+            "hypothesis",
             "transformers",
-            "diffusers @ git+https://github.com/huggingface/diffusers",  # wan currently requires installing from source
+            "diffusers", 
             "accelerate",
             "peft",
             "protobuf",
