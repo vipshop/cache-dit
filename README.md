@@ -98,7 +98,7 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
 - **warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
 - **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the running steps exceed this value to prevent precision degradation.
-
+- **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
 
 ```python
 from diffusers import FluxPipeline
