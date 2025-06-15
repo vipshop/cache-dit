@@ -62,6 +62,7 @@ Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with [
 - [🎉Context Parallelism](#context-parallelism)  
 - [⚡️Torch Compile](#compile)
 - [👋Contribute](#contribute)
+- [📚Reference](#reference)
 - [©️License](#license)
 
 
@@ -257,6 +258,8 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
 ## 📚Reference
+
+<div id="reference"></div>
 
 The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache) at [ParaAttention](https://github.com/chengzeyi/ParaAttention). Many thanks! 
 
