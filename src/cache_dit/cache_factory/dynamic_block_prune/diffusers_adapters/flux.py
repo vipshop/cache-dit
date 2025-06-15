@@ -33,14 +33,17 @@ def apply_db_prune_on_transformer(
         *args,
         **kwargs,
     ):
-        with unittest.mock.patch.object(
-            self,
-            "transformer_blocks",
-            cached_transformer_blocks,
-        ), unittest.mock.patch.object(
-            self,
-            "single_transformer_blocks",
-            dummy_single_transformer_blocks,
+        with (
+            unittest.mock.patch.object(
+                self,
+                "transformer_blocks",
+                cached_transformer_blocks,
+            ),
+            unittest.mock.patch.object(
+                self,
+                "single_transformer_blocks",
+                dummy_single_transformer_blocks,
+            ),
         ):
             return original_forward(
                 *args,

@@ -66,7 +66,7 @@ setup(
             "expecttest",
             "hypothesis",
             "transformers",
-            "diffusers", 
+            "diffusers",
             "accelerate",
             "peft",
             "protobuf",

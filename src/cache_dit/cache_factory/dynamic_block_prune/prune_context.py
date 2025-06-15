@@ -715,7 +715,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             )
         self.pruned_blocks_step += int(can_use_prune)
 
-        # Prune steps: Prune current block and reuse the cached 
+        # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
         if can_use_prune:
             single_original_hidden_states = hidden_states
@@ -813,7 +813,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             )
         self.pruned_blocks_step += int(can_use_prune)
 
-        # Prune steps: Prune current block and reuse the cached 
+        # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
         if can_use_prune:
             hidden_states, encoder_hidden_states = apply_hidden_states_residual(
