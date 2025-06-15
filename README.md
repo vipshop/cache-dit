@@ -136,7 +136,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 ![](https://github.com/user-attachments/assets/0fb66656-b711-457a-92a7-a830f134272d)
 
-**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, **DBCache** behaves identically to **FBCache**. Therefore, you can either use the original **FBCache** implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
+**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can either use the original FBCache implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
 ```python
 from diffusers import FluxPipeline
