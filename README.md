@@ -61,7 +61,7 @@ The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://g
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
-- [🛠Torch Compile](#compile)
+- [⚡️Torch Compile](#compile)
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
@@ -229,7 +229,7 @@ apply_cache_on_pipe(
 )
 ```
 
-## 🛠Torch Compile
+## ⚡️Torch Compile
 
 <div id="compile"></div>  
 
@@ -238,7 +238,6 @@ Both **DBCache** and **DBPrune** are designed to work compatibly with `torch.com
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
-
 pipe.transformer = torch.compile(pipe.transformer)
 ```
 
