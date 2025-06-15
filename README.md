@@ -51,10 +51,6 @@ Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with [
 }
 ```
 
-## 👋Reference
-
-The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! **DBCache** is still in its early dev stages and currently provides some documentation and examples for reference.
-
 ## 📖Contents 
 
 <div id="contents"></div>  
@@ -260,6 +256,9 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 
 How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
+## 👋Reference
+
+The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! **DBCache** is still in its early dev stages and currently provides some documentation and examples for reference.
 
 ## ©️License   
 
