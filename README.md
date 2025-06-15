@@ -233,7 +233,7 @@ apply_cache_on_pipe(
 
 <div id="compile"></div>  
 
-**DBCache** and **DBPrune** are designed to work compatibly with `torch.compile`. For example: 
+**DBCache** and **DBPrune** are designed to work compatibly with `torch.compile`. 
 
 ```python
 apply_cache_on_pipe(
