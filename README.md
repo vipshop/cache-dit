@@ -181,6 +181,12 @@ cache_options = CacheType.default_options(CacheType.DBPrune)
 apply_cache_on_pipe(pipe, **cache_options)
 ```
 
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
