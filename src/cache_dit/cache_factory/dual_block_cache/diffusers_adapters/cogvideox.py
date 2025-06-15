@@ -1,5 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache/cogvideox.py
-
 import functools
 import unittest
 
