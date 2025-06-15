@@ -80,7 +80,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "enable_dynamic_prune_threshold": True,
             "max_dynamic_prune_threshold": 2 * args.rdt,
             "dynamic_prune_threshold_relax_ratio": 1.25,
-            "residual_cache_update_interval": 2,
+            "residual_cache_update_interval": 1,
             # You can set non-prune blocks to avoid ageressive pruning.
             # FLUX.1 has 19 + 38 blocks, so we can set it to 0, 2, 4, ..., etc.
             "non_prune_blocks_ids": CacheType.range(0, 19 + 38, 4),
