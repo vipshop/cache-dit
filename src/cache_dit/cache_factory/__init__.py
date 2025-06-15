@@ -145,7 +145,11 @@ def apply_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
             "Please specify the cache_type explicitly if you want to "
             "use a different cache type."
         )
-        cache_type = CacheType.DBCache
+        # Force to use DBCache with default cache options
+        return apply_db_cache_on_pipe(
+            pipe,
+            **CacheType.default_options(CacheType.DBCache),
+        )
 
     cache_type = CacheType.type(cache_type)
 
