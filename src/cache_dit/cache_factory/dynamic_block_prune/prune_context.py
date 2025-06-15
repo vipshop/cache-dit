@@ -319,39 +319,39 @@ def set_current_prune_context(prune_context=None):
 
 
 def collect_prune_kwargs(default_attrs: dict, **kwargs):
-    # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
+    # NOTE: This API will split kwargs into prune_kwargs and other_kwargs
     # default_attrs: specific settings for different pipelines
-    cache_attrs = dataclasses.fields(DBPPruneContext)
-    cache_attrs = [
+    prune_attrs = dataclasses.fields(DBPPruneContext)
+    prune_attrs = [
         attr
-        for attr in cache_attrs
+        for attr in prune_attrs
         if hasattr(
             DBPPruneContext,
             attr.name,
         )
     ]
-    cache_kwargs = {
+    prune_kwargs = {
         attr.name: kwargs.pop(
             attr.name,
             getattr(DBPPruneContext, attr.name),
         )
-        for attr in cache_attrs
+        for attr in prune_attrs
     }
     # Manually set sequence fields, such as non_prune_blocks_ids
-    cache_kwargs["non_prune_blocks_ids"] = kwargs.pop(
+    prune_kwargs["non_prune_blocks_ids"] = kwargs.pop(
         "non_prune_blocks_ids",
         [],
     )
 
     assert default_attrs is not None, "default_attrs must be set before"
-    for attr in cache_attrs:
+    for attr in prune_attrs:
         if attr.name in default_attrs:
-            cache_kwargs[attr.name] = default_attrs[attr.name]
+            prune_kwargs[attr.name] = default_attrs[attr.name]
 
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"Collected DBPrune kwargs: {cache_kwargs}")
+        logger.debug(f"Collected DBPrune kwargs: {prune_kwargs}")
 
-    return cache_kwargs, kwargs
+    return prune_kwargs, kwargs
 
 
 @contextlib.contextmanager
@@ -538,8 +538,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         mark_step_begin()
         self.pruned_blocks_step = 0
         original_hidden_states = hidden_states
-        # Call first `n` blocks to process the hidden states for
-        # more stable diff calculation.
+
         torch._dynamo.graph_break()
         hidden_states, encoder_hidden_states = self.call_transformer_blocks(
             hidden_states,
@@ -716,7 +715,8 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             )
         self.pruned_blocks_step += int(can_use_prune)
 
-        # Prune steps: Reuse the cached residuals.
+        # Prune steps: Prune current block and reuse the cached 
+        # residuals for hidden states approximate.
         if can_use_prune:
             single_original_hidden_states = hidden_states
             (
@@ -813,7 +813,8 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             )
         self.pruned_blocks_step += int(can_use_prune)
 
-        # Prune steps: Reuse the cached residuals.
+        # Prune steps: Prune current block and reuse the cached 
+        # residuals for hidden states approximate.
         if can_use_prune:
             hidden_states, encoder_hidden_states = apply_hidden_states_residual(
                 hidden_states,
@@ -935,18 +936,18 @@ def patch_pruned_stats(
     if transformer is None:
         return
 
-    cached_transformer_blocks = getattr(transformer, "transformer_blocks", None)
-    if cached_transformer_blocks is None:
+    pruned_transformer_blocks = getattr(transformer, "transformer_blocks", None)
+    if pruned_transformer_blocks is None:
         return
 
-    if isinstance(cached_transformer_blocks, torch.nn.ModuleList):
-        cached_transformer_blocks = cached_transformer_blocks[0]
+    if isinstance(pruned_transformer_blocks, torch.nn.ModuleList):
+        pruned_transformer_blocks = pruned_transformer_blocks[0]
     if not isinstance(
-        cached_transformer_blocks, DBPrunedTransformerBlocks
+        pruned_transformer_blocks, DBPrunedTransformerBlocks
     ) or not isinstance(transformer, torch.nn.Module):
         return
 
-    # TODO: Patch more cached stats to the transformer
+    # TODO: Patch more pruned stats to the transformer
     transformer._pruned_blocks = get_pruned_blocks()
     transformer._pruned_steps = get_pruned_steps()
     transformer._residual_diffs = get_residual_diffs()
