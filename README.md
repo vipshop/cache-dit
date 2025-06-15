@@ -242,13 +242,12 @@ apply_cache_on_pipe(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use these features for models with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance.
+However, users intending to use these features for models with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. Otherwise, the recompile_limit error may be triggered, causing the specific module to fall back to eager mode.
 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error of torch._dynamo may be triggered, causing the specific module to fall back to eager execution mode.
 
 ## 👋Contribute 
 <div id="contribute"></div>
