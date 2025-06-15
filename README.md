@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h1>⚡️DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers</h1>
+    <h3>⚡️DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers</h3>
   </p>
    <img src=./assets/dbcache.png >
   <div align='center'>
