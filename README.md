@@ -256,9 +256,9 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 
 How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
-## 👋Reference
+## 📚Reference
 
-The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! **DBCache** is still in its early dev stages and currently provides some documentation and examples for reference.
+The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache) at [ParaAttention](https://github.com/chengzeyi/ParaAttention). Many thanks! 
 
 ## ©️License   
 
