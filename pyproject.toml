@@ -3,12 +3,14 @@
 name = "cache_dit"
 dynamic = ["version", "dependencies", "optional-dependencies"]
 requires-python = ">=3.10"
-authors = [{name = "vipshop.com"}]
+authors = [{name = "DefTruth, vipshop.com, etc."}]
 description = "⚡️DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers"
+maintainers = [{name="DefTruth, vipshop.com, etc"}] 
 
 [project.urls]
 
 Repository = "https://github.com/vipshop/DBCache.git"
+Homepage = "https://github.com/vipshop/DBCache.git" 
 
 [build-system]
 
