@@ -690,6 +690,24 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         # Check if the current step is a multiple of the residual cache update interval.
         return get_current_step() % residual_cache_update_interval() == 0
 
+    @torch.compiler.disable
+    def _get_can_use_prune(
+        self,
+        block_id: int,  # Block index in the transformer blocks
+        hidden_states: torch.Tensor,  # hidden_states or residual
+        name: str = "Bn_original",  # prev step name for single blocks
+    ):
+        # Wrap `get_can_use_prune` as non compiled mode.
+        can_use_prune = False
+        if block_id not in self._non_prune_blocks_ids():
+            can_use_prune = get_can_use_prune(
+                hidden_states,  # curr step
+                parallelized=self._is_parallelized(),
+                name=name,  # prev step
+            )
+        self.pruned_blocks_step += int(can_use_prune)
+        return can_use_prune
+
     def _compute_or_prune_single_transformer_block(
         self,
         block_id: int,  # Block index in the transformer blocks
@@ -706,14 +724,11 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         # Helper function for `call_transformer_blocks`
         # block_id: global block index in the transformer blocks +
         # single_transformer_blocks
-        can_use_prune = False
-        if block_id not in self._non_prune_blocks_ids():
-            can_use_prune = get_can_use_prune(
-                hidden_states,  # curr step
-                parallelized=self._is_parallelized(),
-                name=f"{block_id}_single_original",  # prev step
-            )
-        self.pruned_blocks_step += int(can_use_prune)
+        can_use_prune = self._get_can_use_prune(
+            block_id,
+            hidden_states,  # hidden_states or residual
+            name=f"{block_id}_single_original",  # prev step
+        )
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
@@ -804,14 +819,11 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
 
         # block_id: global block index in the transformer blocks +
         # single_transformer_blocks
-        can_use_prune = False
-        if block_id not in self._non_prune_blocks_ids():
-            can_use_prune = get_can_use_prune(
-                hidden_states,  # curr step
-                parallelized=self._is_parallelized(),
-                name=f"{block_id}_original",  # prev step
-            )
-        self.pruned_blocks_step += int(can_use_prune)
+        can_use_prune = self._get_can_use_prune(
+            block_id,
+            hidden_states,  # hidden_states or residual
+            name=f"{block_id}_original",  # prev step
+        )
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
