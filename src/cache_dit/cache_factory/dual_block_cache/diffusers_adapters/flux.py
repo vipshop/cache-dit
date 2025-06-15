@@ -1,5 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/src/para_attn/first_block_cache/flux.py
-
 import functools
 import unittest
 
