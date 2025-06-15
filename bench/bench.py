@@ -77,13 +77,15 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "max_pruned_steps": args.max_cached_steps,  # -1 means no limit
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
-            "enable_dynamic_prune_threshold": False,
+            "enable_dynamic_prune_threshold": (
+                True if args.rdt <= 0.12 else False
+            ),
             "max_dynamic_prune_threshold": 2 * args.rdt,
             "dynamic_prune_threshold_relax_ratio": 1.25,
             "residual_cache_update_interval": 1,
             # You can set non-prune blocks to avoid ageressive pruning.
             # FLUX.1 has 19 + 38 blocks, so we can set it to 0, 2, 4, ..., etc.
-            "non_prune_blocks_ids": CacheType.range(0, 19 + 38, 4),
+            "non_prune_blocks_ids": [],
         }
     else:
         cache_options = {
@@ -175,12 +177,12 @@ def main():
         )
     if len(actual_blocks) > 0:
         save_name = (
-            f"{cache_type}_R{args.rdt}_P{pruned_ratio:.1f}%_"
+            f"{cache_type}_R{args.rdt}_P{pruned_ratio:.1f}_"
             f"T{mean_time:.2f}s.png"
         )
     else:
         save_name = (
-            f"{cache_type}_R{args.rdt}_S{cached_stepes}%_"
+            f"{cache_type}_R{args.rdt}_S{cached_stepes}_"
             f"T{mean_time:.2f}s.png"
         )
     image.save(save_name)
