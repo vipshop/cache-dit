@@ -1,5 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/src/para_attn/first_block_cache/__init__.py
-
 import importlib
 
 from diffusers import DiffusionPipeline
