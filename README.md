@@ -254,7 +254,7 @@ apply_cache_on_pipe(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use these features for models with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
+However, users intending to use DBCache and DBPrune for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
