@@ -13,7 +13,7 @@
 </div>
 
 ## 🤗 Introduction 
-**DBCache**: **Dual Block Cache** for Diffusion Transformers. We have enhanced `FBCache` into a more general algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely **training**-**free**. DBCache can strike a `perfect balance` between performance and precision! 
+**DBCache**: **Dual Block Cache** for Diffusion Transformers. We have enhanced `FBCache` into a more general cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision! 
 
 <div align="center">
   <p align="center">
