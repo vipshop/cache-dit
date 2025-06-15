@@ -687,7 +687,9 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
 
     @torch.compiler.disable
     def _should_update_residuals(self):
-        # Check if the current step is a multiple of the residual cache update interval.
+        # Wrap for non compiled mode.
+        # Check if the current step is a multiple of
+        # the residual cache update interval.
         return get_current_step() % residual_cache_update_interval() == 0
 
     @torch.compiler.disable
@@ -697,7 +699,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         hidden_states: torch.Tensor,  # hidden_states or residual
         name: str = "Bn_original",  # prev step name for single blocks
     ):
-        # Wrap `get_can_use_prune` as non compiled mode.
+        # Wrap for non compiled mode.
         can_use_prune = False
         if block_id not in self._non_prune_blocks_ids():
             can_use_prune = get_can_use_prune(

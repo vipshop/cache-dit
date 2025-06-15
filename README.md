@@ -61,6 +61,7 @@ The codebase of [DBCache](./src/cache_dit/) was adapted from [FBCache](https://g
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
+- [✅Torch Compile](#compile)
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
@@ -227,6 +228,20 @@ apply_cache_on_pipe(
     pipe, **CacheType.default_options(CacheType.DBCache)
 )
 ```
+
+## ✅Torch Compile
+
+<div id="compile"></div>  
+
+Both **DBCache** and **DBPrune** are compatible with `torch.compile`. However, users intending to use **DBCache** and **DBPrune** for models with dynamic input shapes should consider increasing the `recompile_limit` of `torch._dynamo` to achieve better performance. Otherwise, the recompile_limit error may be triggered, causing the specific module to fall back to eager execution mode. For example:
+
+```python
+torch._dynamo.config.recompile_limit = 96  # default is 8
+torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
+
+pipe.transformer = torch.compile(pipe.transformer)
+```
+
 
 ## 👋Contribute 
 <div id="contribute"></div>
