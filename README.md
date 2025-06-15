@@ -10,9 +10,13 @@
         <img src=https://img.shields.io/badge/python-3.10|3.11|3.12-skyblue.svg >
         <img src=https://img.shields.io/badge/Release-v0.1.0-brightgreen.svg >
  </div>
+  <p align="center">
+    DeepCache is for UNet, but DiT has no U-shape so it can't use it. Most DiT cache speedups are complex and not training-free—need to train extra modules, hard to apply. DBCache   fixes this: builds on FBCache to make a UNet-style, training-free cache for DiT.
+  </p>
 </div>
 
 ## 🤗 Introduction 
+
 **DBCache**: **Dual Block Cache** for Diffusion Transformers. We have enhanced `FBCache` into a more general cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision! 
 
 <div align="center">
