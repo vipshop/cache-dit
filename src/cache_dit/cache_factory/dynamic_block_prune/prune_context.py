@@ -69,7 +69,7 @@ class DBPPruneContext:
             if step >= 0 and step in self.residual_diffs:
                 # TODO: Should we only use the last 5 diffs
                 diffs = self.residual_diffs[step][:]
-                diffs = [d for d in diffs if d >= 0.0]
+                diffs = [d for d in diffs if d > 0.0]
                 if diffs:
                     mean_diff = sum(diffs) / len(diffs)
                     relaxed_diff = (
