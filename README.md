@@ -80,10 +80,10 @@ The **DBCache** codebase was adapted from FBCache's implementation at the [ParaA
 
 <div id="installation"></div>
 
-You can install `DBCache` from PyPI:
+You can install `DBCache` from Git:
 
 ```bash
-pip3 install 'torch==2.7.0' && pip3 install cache-dit
+pip3 install git+https://github.com/vipshop/DBCache.git
 ```
 
 or just install it from sources:
