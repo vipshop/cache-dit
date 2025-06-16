@@ -65,7 +65,8 @@ Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with [
 
 <div id="contents"></div>  
 
-- [⚙️Installation](#️installation)  
+- [⚙️Installation](#️installation)
+- [🎉Supported Matrix](#supported)
 - [⚡️Dual Block Cache](#dbcache)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
@@ -94,6 +95,17 @@ pip3 install 'torch==2.7.0' 'setuptools>=64' 'setuptools_scm>=8'
 pip3 install -e '.[dev]' --no-build-isolation # build editable package
 python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and then install it.
 ```
+
+## 🎉Supported Matrix  
+
+<div id="supported"></div>
+
+| Model | DBCache: Dual Block Cache | DBPrune: Dynamic Block Prune | FBCache: First Block Cache | 
+|:---:|:---:|:---:|:---:|  
+|FLUX.1|✔️|✔️|✔️|
+|CogVideoX|✔️|✔️|✔️|
+|Mochi|✔️|✔️|✔️|
+|Wan2.1|⚠️|⚠️|✔️|
 
 ## ⚡️DBCache: Dual Block Cache  
 
