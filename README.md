@@ -2,7 +2,7 @@
   <p align="center">
     <h3>⚡️DBCache: A Training-free UNet-style Cache Acceleration for <br>Diffusion Transformers</h2>
   </p>
-   <img src=./assets/dbcache.png >
+   <img src=./assets/DBCache.png >
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
