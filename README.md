@@ -6,8 +6,8 @@
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
-        <img src=https://img.shields.io/badge/pypi-pass-brightgreen.svg >
-        <img src=https://img.shields.io/badge/python-3.10|3.11|3.12-skyblue.svg >
+        <img src=https://img.shields.io/badge/Build-pass-brightgreen.svg >
+        <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
         <img src=https://img.shields.io/badge/Release-v0.1.0-brightgreen.svg >
  </div>
   <p align="center">
