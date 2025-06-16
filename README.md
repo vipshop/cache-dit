@@ -136,6 +136,23 @@ cache_options = {
 
 apply_cache_on_pipe(pipe, **cache_options)
 ```
+Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming to maintain good performance can specify **Bn_compute_blocks_ids** to work with Bn. DBCache will only compute the specified blocks, with the remaining estimated using the previous step's residual cache.
+
+```python
+# Custom options, F8B16, higher precision with good performance.
+cache_options = {
+    "cache_type": CacheType.DBCache,
+    "warmup_steps": 8,
+    "max_cached_steps": 8,    # -1 means no limit
+    "Fn_compute_blocks": 8,   # Fn, F8, etc.
+    "Bn_compute_blocks": 16,  # Bn, B16, etc.
+    "residual_diff_threshold": 0.12,
+    # 0, 2, 4, ..., 14, 15, etc. [0,16)
+    "Bn_compute_blocks_ids": CacheType.range(
+        0, 16, 2
+    ),
+}
+```
 
 ## 🎉FBCache: First Block Cache  
 
