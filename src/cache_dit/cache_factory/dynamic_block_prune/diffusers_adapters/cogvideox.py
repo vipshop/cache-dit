@@ -56,7 +56,7 @@ def apply_db_prune_on_pipe(
     residual_diff_threshold=0.04,
     downsample_factor=1,
     warmup_steps=0,
-    max_cached_steps=-1,
+    max_pruned_steps=-1,
     **kwargs,
 ):
     cache_kwargs, kwargs = prune_context.collect_prune_kwargs(
@@ -64,7 +64,7 @@ def apply_db_prune_on_pipe(
             "residual_diff_threshold": residual_diff_threshold,
             "downsample_factor": downsample_factor,
             "warmup_steps": warmup_steps,
-            "max_cached_steps": max_cached_steps,
+            "max_pruned_steps": max_pruned_steps,
         },
         **kwargs,
     )
