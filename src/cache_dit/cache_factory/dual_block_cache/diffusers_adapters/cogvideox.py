@@ -49,7 +49,7 @@ def apply_db_cache_on_transformer(
     return transformer
 
 
-def apply_cache_on_pipe(
+def apply_db_cache_on_pipe(
     pipe: DiffusionPipeline,
     *,
     shallow_patch: bool = False,
