@@ -141,16 +141,11 @@ Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming 
 ```python
 # Custom options, F8B16, higher precision with good performance.
 cache_options = {
-    "cache_type": CacheType.DBCache,
-    "warmup_steps": 8,
-    "max_cached_steps": 8,    # -1 means no limit
-    "Fn_compute_blocks": 8,   # Fn, F8, etc.
-    "Bn_compute_blocks": 16,  # Bn, B16, etc.
-    "residual_diff_threshold": 0.12,
     # 0, 2, 4, ..., 14, 15, etc. [0,16)
-    "Bn_compute_blocks_ids": CacheType.range(
-        0, 16, 2
-    ),
+    "Bn_compute_blocks_ids": CacheType.range(0, 16, 2),
+    # Skip Bn blocks (1, 3, 5 ,..., etc.) only if the L1 diff 
+    # lower than this value, otherwise, compute it.
+    "non_compute_blocks_diff_threshold": 0.08,
 }
 ```
 
