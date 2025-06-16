@@ -59,8 +59,7 @@ Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with [
 
 <div id="reference"></div>
 
-The **DBCache** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Many thanks! **DBCache** is still in its early dev stages and now provides some docs and benchmarks for reference.
-
+**DBCache** is built upon **FBCache**. The **DBCache** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work!
 
 ## 📖Contents 
 
