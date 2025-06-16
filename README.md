@@ -53,7 +53,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
   </p>
 </div> 
 
-**DBPrune**: Dynamic Block Prune algorithm with Residual Caching. We have further implemented a new Dynamic Block Prune algorithm based on residual caching for Diffusion Transformers, referred to as DBPrune. DBPrune caches each block's hidden states and residuals, then **dynamically prunes** blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals, eliminating redundant computations. 
+**DBPrune**: We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, referred to as DBPrune. DBPrune caches each block's hidden states and residuals, then **dynamically prunes** blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals, eliminating redundant computations. 
 
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
