@@ -317,4 +317,4 @@ How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 <div id="license"></div>
 
 
-We have followed the original License from [ParaAttention](https://github.com/chengzeyi/ParaAttention), please check [LICENSE](./LICENSE) for more details🚀.
+We have followed the original License from [ParaAttention](https://github.com/chengzeyi/ParaAttention), please check [LICENSE](./LICENSE) for more details.
