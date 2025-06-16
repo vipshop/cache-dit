@@ -66,12 +66,12 @@ Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with [
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
-- [🎉Supported Matrix](#supported)
 - [⚡️Dual Block Cache](#dbcache)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
 - [⚡️Torch Compile](#compile)
+- [🎉Supported Models](#supported)
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
@@ -95,17 +95,6 @@ pip3 install 'torch==2.7.0' 'setuptools>=64' 'setuptools_scm>=8'
 pip3 install -e '.[dev]' --no-build-isolation # build editable package
 python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and then install it.
 ```
-
-## 🎉Supported Matrix  
-
-<div id="supported"></div>
-
-| Model | DBCache: Dual Block Cache | DBPrune: Dynamic Block Prune | FBCache: First Block Cache | 
-|:---:|:---:|:---:|:---:|  
-|FLUX.1|✔️|✔️|✔️|
-|CogVideoX|✔️|✔️|✔️|
-|Mochi|✔️|✔️|✔️|
-|Wan2.1|⚠️|⚠️|✔️|
 
 ## ⚡️DBCache: Dual Block Cache  
 
@@ -285,6 +274,14 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode.
 
+## 🎉Supported Models  
+
+<div id="supported"></div>
+
+- [🚀FLUX.1](./src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀CogVideoX](./src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀Mochi](./src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+
 ## 👋Contribute 
 <div id="contribute"></div>
 
@@ -295,4 +292,4 @@ How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 <div id="license"></div>
 
 
-We have followed the original License from [ParaAttention](https://github.com/chengzeyi/ParaAttention), please check [LICENSE](./LICENSE) for more details.
+We have followed the original License from [ParaAttention](https://github.com/chengzeyi/ParaAttention), please check [LICENSE](./LICENSE) for more details🚀.
