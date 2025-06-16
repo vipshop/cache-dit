@@ -11,7 +11,7 @@
         <img src=https://img.shields.io/badge/Release-v0.1.0-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache acceleration methods are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT. DBCache is a more general and customizable cache algorithm than FBCache. 
+    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache acceleration methods are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT.
   </p>
 </div>
 
@@ -23,7 +23,7 @@
   </p>
 </div> 
 
-**DBCache**: **Dual Block Cache** for Diffusion Transformers. We have enhanced `FBCache` into a more general cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision!
+**DBCache**: **Dual Block Cache** for Diffusion Transformers. We have enhanced `FBCache` into a more general and customizable cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision!
 
 <div align="center">
   <p align="center">
