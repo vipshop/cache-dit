@@ -11,7 +11,7 @@
         <img src=https://img.shields.io/badge/Release-v0.1.0-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache speedups are complex and not training-free. DBCache builds on FBCache to make a UNet-style, Training-free Cache Acceleration for DiT.
+    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache acceleration methods are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT. DBCache is a more general and customizable cache algorithm than FBCache. Moreover, we have further implemented a new Dynamic Block Prune algorithm based on residual caching for diffusion transformers, referred to as DBPrune.
   </p>
 </div>
 
