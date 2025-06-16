@@ -115,15 +115,26 @@ class DBPPruneContext:
         self.executed_steps += 1
         if self.get_current_step() == 0:
             self.pruned_blocks.clear()
+            self.actual_blocks.clear()
+            self.residual_diffs.clear()
 
     def add_pruned_block(self, num_blocks):
         self.pruned_blocks.append(num_blocks)
+
+    def add_actual_block(self, num_blocks):
+        self.actual_blocks.append(num_blocks)
 
     def add_residual_diff(self, diff):
         if isinstance(diff, torch.Tensor):
             diff = diff.item()
         step = self.get_current_step()
         self.residual_diffs[step].append(diff)
+        max_num_block_diffs = 1000
+        # Avoid memory leak, keep only the last 1000 diffs
+        if len(self.residual_diffs[step]) > max_num_block_diffs:
+            self.residual_diffs[step] = self.residual_diffs[step][
+                -max_num_block_diffs:
+            ]
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Step {step}, block: {len(self.residual_diffs[step])}, "
@@ -200,7 +211,7 @@ def add_pruned_block(num_blocks):
 def get_pruned_blocks():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
-    return prune_context.pruned_blocks
+    return prune_context.pruned_blocks.copy()
 
 
 @torch.compiler.disable
@@ -210,14 +221,14 @@ def add_actual_block(num_blocks):
     ), "num_blocks must be a non-negative integer"
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
-    prune_context.actual_blocks.append(num_blocks)
+    prune_context.add_actual_block(num_blocks)
 
 
 @torch.compiler.disable
 def get_actual_blocks():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
-    return prune_context.actual_blocks
+    return prune_context.actual_blocks.copy()
 
 
 @torch.compiler.disable
