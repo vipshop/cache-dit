@@ -1,3 +1,5 @@
+# Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/src/para_attn/first_block_cache/diffusers_adapters/flux.py
+
 import functools
 import unittest
 
