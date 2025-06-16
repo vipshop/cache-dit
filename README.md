@@ -13,18 +13,21 @@
   <p align="center">
     DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache acceleration methods are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT. DBCache is a more general and customizable cache algorithm than FBCache. 
   </p>
-  <p align="center">
-    Moreover, we have further implemented a new Dynamic Block Prune algorithm based on residual caching for diffusion transformers, referred to as DBPrune.
-  </p>
 </div>
 
 ## 🤗 Introduction 
+
+<div align="center">
+  <p align="center">
+    <h3>DBCache: Dual Block Cache for Diffusion Transformers</h3>
+  </p>
+</div> 
 
 **DBCache**: **Dual Block Cache** for Diffusion Transformers. We have enhanced `FBCache` into a more general cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (such as **F8B12**) can be customized in DBCache and it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision!
 
 <div align="center">
   <p align="center">
-    NVIDIA <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+    DBCache, NVIDIA <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
   </p>
 </div>
 
@@ -38,13 +41,32 @@
 
 <div align="center">
   <p align="center">
-    NVIDIA <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
+     DBCache, NVIDIA <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
   </p>
 </div>
 
 These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
 
-Moreover, DBCache is a **plug-and-play** solution that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallel** features for distributed inference.
+<div align="center">
+  <p align="center">
+    <h3>DBPrune: Dynamic Block Prune with Residual Caching</h3>
+  </p>
+</div> 
+
+**DBPrune**: Dynamic Block Prune algorithm with Residual Caching. We have further implemented a new Dynamic Block Prune algorithm based on residual caching for diffusion transformers, referred to as DBPrune. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
+
+|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
+|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=./assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+Moreover, both DBCache and DBPrune are **plug-and-play** solution that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallel** features for distributed inference.
 
 ## ©️Citations
 
