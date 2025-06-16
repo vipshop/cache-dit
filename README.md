@@ -100,7 +100,7 @@ python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and
 
 <div id="supported"></div>
 
-| Model | DBCache: Dual Block Cache | DBPrune: Dynamic Block Prune | FBCache | 
+| Model | DBCache: Dual Block Cache | DBPrune: Dynamic Block Prune | FBCache: First Block Cache | 
 |:---:|:---:|:---:|:---:|  
 |FLUX.1|✔️|✔️|✔️|
 |CogVideoX|✔️|✔️|✔️|
