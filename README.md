@@ -27,7 +27,7 @@
 
 <div align="center">
   <p align="center">
-    DBCache, NVIDIA <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
   </p>
 </div>
 
@@ -41,7 +41,7 @@
 
 <div align="center">
   <p align="center">
-     DBCache, NVIDIA <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
+     DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
   </p>
 </div>
 
