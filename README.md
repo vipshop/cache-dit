@@ -11,7 +11,7 @@
         <img src=https://img.shields.io/badge/Release-v0.1.0-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache is for UNet, but DiT has no U-shape so it can't use it. Most DiT cache speedups are complex and not training-free. DBCache builds on FBCache to make a UNet-style, Training-free Cache Acceleration for DiT.
+    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache speedups are complex and not training-free. DBCache builds on FBCache to make a UNet-style, Training-free Cache Acceleration for DiT.
   </p>
 </div>
 
