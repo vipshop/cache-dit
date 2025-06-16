@@ -246,7 +246,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="context-parallelism"></div>  
 
-DBCache and DBPrune are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. For example, firstly, install `para-attn` from PyPI:
+DBCache and DBPrune are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. Firstly, install `para-attn` from PyPI:
 
 ```bash
 pip3 install para-attn  # or install `para-attn` from sources.
