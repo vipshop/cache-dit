@@ -80,7 +80,7 @@ The **DBCache** codebase was adapted from FBCache's implementation at the [ParaA
 
 <div id="installation"></div>
 
-You can install `DBCache` from Git:
+You can install `DBCache` from GitHub:
 
 ```bash
 pip3 install git+https://github.com/vipshop/DBCache.git
