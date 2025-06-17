@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 authors = [{name = "DefTruth, vipshop.com, etc."}]
 description = "⚡️DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers"
 maintainers = [{name="DefTruth, vipshop.com, etc"}] 
+readme = "README.md" 
 
 [project.urls]
 

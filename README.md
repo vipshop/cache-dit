@@ -2,7 +2,7 @@
   <p align="center">
     <h3>⚡️DBCache: A Training-free UNet-style Cache Acceleration for <br>Diffusion Transformers</h2>
   </p>
-   <img src=./assets/DBCache.png >
+   <img src=https://github.com/vipshop/DBCache/blob/main/assets/DBCache.png >
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
@@ -34,7 +34,7 @@
 |Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
-|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=./assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=./assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=./assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=./assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
+|<img src=https://github.com/vipshop/DBCache/blob/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/DBCache/blob/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 |**Baseline(L20x1)**|**F1B0 (0.08)**|**F8B8 (0.12)**|**F8B12 (0.20)**|**F8B16 (0.20)**|**F8B20 (0.20)**|
 |27.85s|6.04s|5.88s|5.77s|6.01s|6.20s|
 |<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=105px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=105px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=105px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=105px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=105px>|<img src=https://github.com/user-attachments/assets/aede466f-61ed-4256-8df0-fecf8020c5ca width=105px>|
@@ -58,7 +58,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=./assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+|<img src=https://github.com/vipshop/DBCache/blob/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 <div align="center">
   <p align="center">
@@ -105,20 +105,15 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 
 <div id="installation"></div>
 
-You can install `DBCache` from GitHub:
+You can install the stable release of `DBCache` from PyPI:
+
+```bash
+pip3 install cache-dit
+```
+Or you can install the latest develop version from GitHub:
 
 ```bash
 pip3 install git+https://github.com/vipshop/DBCache.git
-```
-
-or just install it from sources:
-
-```bash
-git clone https://github.com/vipshop/DBCache.git && cd DBCache
-pip3 install 'torch==2.7.0' 'setuptools>=64' 'setuptools_scm>=8'
-
-pip3 install -e '.[dev]' --no-build-isolation # build editable package
-python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and then install it.
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
@@ -240,7 +235,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|<img src=./assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=./assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=./assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+|<img src=https://github.com/vipshop/DBCache/blob/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/DBCache/blob/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 ## 🎉Context Parallelism
 
@@ -303,9 +298,9 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 
 <div id="supported"></div>
 
-- [🚀FLUX.1](./src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀CogVideoX](./src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀Mochi](./src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀FLUX.1](https://github.com/vipshop/DBCache/blob/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀CogVideoX](https://github.com/vipshop/DBCache/blob/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀Mochi](https://github.com/vipshop/DBCache/blob/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
 
 ## 👋Contribute 
 <div id="contribute"></div>
