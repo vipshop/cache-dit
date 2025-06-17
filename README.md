@@ -1,9 +1,11 @@
 <div align="center">
   <p align="center">
     <h3>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
-    ♥️ Please consider to leave a ⭐️ Star to support us~ ♥️
   </p>
    <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCache.png >
+  <p align="center">
+    ♥️ Please consider to leave a ⭐️ Star to support us~ ♥️
+  </p>
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
@@ -11,6 +13,7 @@
         <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
         <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
  </div>
+
   <p align="center">
     DeepCache needs UNet’s U-shape, but DiT lacks it. Most DiT cache speedups are complex <br>and not training-free. CacheDiT provides a series of training-free, UNet-style cache <br>accelerators for DiT, such as DBCache, DBPrune, FBCache, etc.
   </p>
