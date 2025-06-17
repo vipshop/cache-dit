@@ -105,19 +105,15 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 
 <div id="installation"></div>
 
-You can install `DBCache` from PyPI:
+You can install the stable release of `DBCache` from PyPI:
 
 ```bash
 pip3 install cache-dit
 ```
-or just install it from sources:
+Or you can install the latest develop version from GitHub:
 
 ```bash
-git clone https://github.com/vipshop/DBCache.git && cd DBCache
-pip3 install 'torch==2.7.0' 'setuptools>=64' 'setuptools_scm>=8'
-
-pip3 install -e '.[dev]' --no-build-isolation # build editable package
-python3 -m build && pip3 install ./dist/cache_dit-*.whl # or build whl first and then install it.
+pip3 install git+https://github.com/vipshop/DBCache.git
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
