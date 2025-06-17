@@ -104,13 +104,11 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 ## ⚙️Installation  
 
 <div id="installation"></div>
-
-You can install `DBCache` from GitHub:
+You can install `DBCache` from PyPI:
 
 ```bash
-pip3 install git+https://github.com/vipshop/DBCache.git
+pip3 install cache-dit
 ```
-
 or just install it from sources:
 
 ```bash
