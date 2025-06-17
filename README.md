@@ -1,17 +1,17 @@
 <div align="center">
   <p align="center">
-    <h3>⚡️DBCache: A Training-free UNet-style Cache Acceleration for <br>Diffusion Transformers</h2>
+    <h3>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
   </p>
-   <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCache.png >
+  <img src=https://github.com/vipshop/cache-dit/raw/dev/assets/cache-dit.png >
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
         <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
         <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-        <img src=https://img.shields.io/badge/Release-v0.1.1-brightgreen.svg >
+        <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache accelerators are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT.
+    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT provides <br>a series of training-free, UNet-style cache accelerators for DiT: DBCache, DBPrune, FBCache, etc.
   </p>
 </div>
 
@@ -34,7 +34,7 @@
 |Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
-|<img src=https://github.com/vipshop/DBCache/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 |**Baseline(L20x1)**|**F1B0 (0.08)**|**F8B8 (0.12)**|**F8B12 (0.20)**|**F8B16 (0.20)**|**F8B20 (0.20)**|
 |27.85s|6.04s|5.88s|5.77s|6.01s|6.20s|
 |<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=105px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=105px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=105px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=105px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=105px>|<img src=https://github.com/user-attachments/assets/aede466f-61ed-4256-8df0-fecf8020c5ca width=105px>|
@@ -58,7 +58,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|<img src=https://github.com/vipshop/DBCache/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 <div align="center">
   <p align="center">
@@ -68,13 +68,17 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
 
+<p align="center">
+  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+</p>
+
 ## ©️Citations
 
 ```BibTeX
-@misc{DBCache@2025,
-  title={DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers},
-  url={https://github.com/vipshop/DBCache.git},
-  note={Open-source software available at https://github.com/vipshop/DBCache.git},
+@misc{CacheDiT@2025,
+  title={CacheDiT: A Training-free and Easy-to-use cache acceleration Toolbox for Diffusion Transformers},
+  url={https://github.com/vipshop/cache-dit.git},
+  note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={vipshop.com},
   year={2025}
 }
@@ -84,7 +88,7 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 
 <div id="reference"></div>
 
-**DBCache** is built upon **FBCache**. The **DBCache** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work!
+The **CacheDiT** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work!
 
 ## 📖Contents 
 
@@ -105,7 +109,7 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 
 <div id="installation"></div>
 
-You can install the stable release of `DBCache` from PyPI:
+You can install the stable release of `cache-dit` from PyPI:
 
 ```bash
 pip3 install cache-dit
@@ -113,7 +117,7 @@ pip3 install cache-dit
 Or you can install the latest develop version from GitHub:
 
 ```bash
-pip3 install git+https://github.com/vipshop/DBCache.git
+pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
@@ -235,13 +239,13 @@ apply_cache_on_pipe(pipe, **cache_options)
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|<img src=https://github.com/vipshop/DBCache/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/DBCache/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 ## 🎉Context Parallelism
 
 <div id="context-parallelism"></div>  
 
-DBCache and DBPrune are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. Firstly, install `para-attn` from PyPI:
+**CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. Firstly, install `para-attn` from PyPI:
 
 ```bash
 pip3 install para-attn  # or install `para-attn` from sources.
@@ -277,7 +281,7 @@ apply_cache_on_pipe(
 
 <div id="compile"></div>  
 
-**DBCache** and **DBPrune** are designed to work compatibly with `torch.compile`. For example:
+**CacheDiT** are designed to work compatibly with `torch.compile`. For example:
 
 ```python
 apply_cache_on_pipe(
@@ -286,7 +290,7 @@ apply_cache_on_pipe(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use DBCache and DBPrune for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
+However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
@@ -298,9 +302,9 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 
 <div id="supported"></div>
 
-- [🚀FLUX.1](https://github.com/vipshop/DBCache/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀CogVideoX](https://github.com/vipshop/DBCache/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀Mochi](https://github.com/vipshop/DBCache/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
 
 ## 👋Contribute 
 <div id="contribute"></div>
