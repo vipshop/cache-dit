@@ -9,7 +9,7 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
+      <img src=https://img.shields.io/badge/Release-v0.1.3-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT provides <br>a series of training-free, UNet-style cache accelerators for DiT: DBCache, DBPrune, FBCache, etc.
@@ -168,8 +168,9 @@ Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming 
 cache_options = {
     # 0, 2, 4, ..., 14, 15, etc. [0,16)
     "Bn_compute_blocks_ids": CacheType.range(0, 16, 2),
-    # Skip Bn blocks (1, 3, 5 ,..., etc.) only if the L1 diff 
-    # lower than this value, otherwise, compute it.
+    # If the L1 difference is below this threshold, skip Bn blocks 
+    # not in `Bn_compute_blocks_ids`(1, 3,..., etc), Otherwise, 
+    # compute these blocks.
     "non_compute_blocks_diff_threshold": 0.08,
 }
 ```
