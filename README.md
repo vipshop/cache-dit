@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h3>🤗CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
+    <h3>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
   </p>
    <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCache.png >
   <div align='center'>
