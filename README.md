@@ -6,8 +6,8 @@
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
-      <a href=https://pypi.org/project/cache-dit> <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg > </a>
-      <a href=https://pepy.tech/projects/cache-dit> <img src=https://static.pepy.tech/badge/cache-dit > </a>
+      <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
+      <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
  </div>
