@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h3>⚡️DBCache: A Training-free UNet-style Cache Acceleration for <br>Diffusion Transformers</h2>
+    <h3>⚡️CacheDiT: A Training-free UNet-style Cache Acceleration <br> Toolbox for Diffusion Transformers</h2>
   </p>
    <img src=https://github.com/vipshop/DBCache/raw/main/assets/DBCache.png >
   <div align='center'>
@@ -11,7 +11,7 @@
         <img src=https://img.shields.io/badge/Release-v0.1.1-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache accelerators are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT.
+    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache accelerators are complex and not training-free. CacheDiT provides a series training-free, UNet-style cache accelerators for DiT.
   </p>
 </div>
 
@@ -71,8 +71,8 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 ## ©️Citations
 
 ```BibTeX
-@misc{DBCache@2025,
-  title={DBCache: A Training-free UNet-style Cache Acceleration for Diffusion Transformers},
+@misc{CacheDiT@2025,
+  title={CacheDiT: A Training-free UNet-style Cache Acceleration Toolbox for Diffusion Transformers},
   url={https://github.com/vipshop/DBCache.git},
   note={Open-source software available at https://github.com/vipshop/DBCache.git},
   author={vipshop.com},
