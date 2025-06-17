@@ -160,7 +160,9 @@ def apply_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
     elif cache_type == CacheType.DBPrune:
         return apply_db_prune_on_pipe(pipe, *args, **kwargs)
     elif cache_type == CacheType.NONE:
-        logger.warning("Cache type is NONE, no caching will be applied.")
+        logger.warning(
+            f"Cache type is {cache_type}, no caching will be applied."
+        )
         return pipe
     else:
         raise ValueError(f"Unknown cache type: {cache_type}")
