@@ -11,7 +11,7 @@
         <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache accelerators are complex and <br> not training-free. CacheDiT provides a series training-free, UNet-style cache accelerators for DiT, <br>such as DBCache, DBPrune, FBCache, AlterCache, etc.
+    DeepCache needs UNet’s U-shape, but DiT lacks it. Most DiT cache speedups are complex and <br> may not training-free. CacheDiT provides a series of training-free, UNet-style cache accelerators for DiT, <br>such as DBCache, DBPrune, FBCache, AlterCache, etc.
   </p>
 </div>
 
