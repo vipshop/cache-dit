@@ -84,7 +84,7 @@ Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works ha
 
 <div id="reference"></div>
 
-**cache-dit** is built upon **FBCache**. The **cache-dit** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work!
+**CacheDiT** is built upon **FBCache**. The **CacheDiT** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work!
 
 ## 📖Contents 
 
@@ -241,7 +241,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="context-parallelism"></div>  
 
-**cache-dit** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. Firstly, install `para-attn` from PyPI:
+**CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. Firstly, install `para-attn` from PyPI:
 
 ```bash
 pip3 install para-attn  # or install `para-attn` from sources.
@@ -277,7 +277,7 @@ apply_cache_on_pipe(
 
 <div id="compile"></div>  
 
-**cache-dit** are designed to work compatibly with `torch.compile`. For example:
+**CacheDiT** are designed to work compatibly with `torch.compile`. For example:
 
 ```python
 apply_cache_on_pipe(
@@ -286,7 +286,7 @@ apply_cache_on_pipe(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use **cache-dit** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
+However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
