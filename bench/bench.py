@@ -25,6 +25,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Bn-steps", "--BnS", type=int, default=1)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
+    parser.add_argument("--max-pruned-steps", type=int, default=-1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--compile",
@@ -79,7 +80,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "Fn_compute_blocks": args.Fn_compute_blocks,
             "Bn_compute_blocks": args.Bn_compute_blocks,
             "warmup_steps": args.warmup_steps,
-            "max_pruned_steps": args.max_cached_steps,  # -1 means no limit
+            "max_pruned_steps": args.max_pruned_steps,  # -1 means no limit
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
             "enable_dynamic_prune_threshold": (
