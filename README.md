@@ -8,7 +8,7 @@
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
         <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
         <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-        <img src=https://img.shields.io/badge/Release-v0.1.1-brightgreen.svg >
+        <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache accelerators are complex and <br> not training-free. CacheDiT provides a series training-free, UNet-style cache accelerators for DiT, <br>such as DBCache, DBPrune, FBCache, AlterCache, etc.
