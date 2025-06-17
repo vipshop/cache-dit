@@ -6,9 +6,9 @@
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
-        <img src=https://img.shields.io/badge/Build-pass-brightgreen.svg >
+        <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
         <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-        <img src=https://img.shields.io/badge/Release-v0.1.0-brightgreen.svg >
+        <img src=https://img.shields.io/badge/Release-v0.1.1-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache requires UNet’s U-shape, but DiT lacks it. Most DiT cache accelerators are complex and not training-free. DBCache builds on FBCache to create a training-free, UNet-style cache accelerator for DiT.
