@@ -4,7 +4,7 @@ name = "cache_dit"
 dynamic = ["version", "dependencies", "optional-dependencies"]
 requires-python = ">=3.10"
 authors = [{name = "DefTruth, vipshop.com, etc."}]
-description = "🤗CacheDiT: A Training-free and Easy-to-use Cache Acceleration Toolbox for Diffusion Transformers"
+description = "🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration Toolbox for Diffusion Transformers"
 maintainers = [{name="DefTruth, vipshop.com, etc"}] 
 readme = "README.md" 
 
