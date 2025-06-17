@@ -2,11 +2,12 @@
   <p align="center">
     <h3>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
   </p>
-  <img src=https://github.com/vipshop/cache-dit/raw/dev/assets/cache-dit.png >
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit.png >
   <div align='center'>
         <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
         <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
-        <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
+        <a href=https://pypi.org/project/cache-dit> <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg > </a>
+        <a href=https://static.pepy.tech/badge/cache-dit> <img src=https://static.pepy.tech/badge/cache-dit > </a>
         <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
         <img src=https://img.shields.io/badge/Release-v0.1.2-brightgreen.svg >
  </div>
