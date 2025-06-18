@@ -229,6 +229,11 @@ pipe = FluxPipeline.from_pretrained(
 # Using DBPrune with default options
 cache_options = CacheType.default_options(CacheType.DBPrune)
 
+apply_cache_on_pipe(pipe, **cache_options)
+```
+We have also bring the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specific the values of `Fn` and `Bn` for higher precision, or setup th non-prune blocks list `non_prune_blocks_ids` to avoid ageressive pruning. For example:
+
+```python
 # Custom options for DBPrune
 cache_options = {
     "cache_type": CacheType.DBPrune,
