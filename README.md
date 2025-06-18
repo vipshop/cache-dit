@@ -20,7 +20,7 @@
 
 <div align="center">
   <p align="center">
-    <h3>DBCache: Dual Block Caching for Diffusion Transformers</h3>
+    <h3>🔥 DBCache: Dual Block Caching for Diffusion Transformers</h3>
   </p>
 </div> 
 
@@ -42,7 +42,7 @@
 
 <div align="center">
   <p align="center">
-     DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
+    DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
   </p>
 </div>
 
@@ -50,7 +50,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 <div align="center">
   <p align="center">
-    <h3>DBPrune: Dynamic Block Prune with Residual Caching</h3>
+    <h3>🔥 DBPrune: Dynamic Block Prune with Residual Caching</h3>
   </p>
 </div> 
 
