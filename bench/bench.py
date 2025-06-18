@@ -29,9 +29,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
-    # In order to minimize precision difference of the generated image. 
-    # You may need to set generator device to "cpu" if you are running 
-    # with torch.compile 
     parser.add_argument("--gen-device", type=str, default="cuda")
     return parser.parse_args()
 
