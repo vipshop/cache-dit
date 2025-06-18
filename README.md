@@ -367,13 +367,7 @@ However, users intending to use **CacheDiT** for DiT with **dynamic input shapes
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. Here is the case of **DBPrune + torch.compile**.
-
-<div align="center">
-  <p align="center">
-    DBPrune + compile, Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
+Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode.
 
 ## 🎉Supported Models  
 
