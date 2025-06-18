@@ -177,7 +177,7 @@ def main():
         image = pipe(
             "A cat holding a sign that says hello world with complex background",
             num_inference_steps=args.steps,
-            generator=torch.Generator("cuda").manual_seed(args.seed),
+            generator=torch.Generator("cpu").manual_seed(args.seed),
         ).images[0]
         end = time.time()
         all_times.append(end - start)
