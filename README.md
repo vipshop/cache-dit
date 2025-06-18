@@ -100,7 +100,7 @@ The **CacheDiT** codebase was adapted from FBCache's implementation at the [Para
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
-- [⚡️Torch Compile](#compile)
+- [🔥Torch Compile](#compile)
 - [🎉Supported Models](#supported)
 - [👋Contribute](#contribute)
 - [©️License](#license)
@@ -174,6 +174,17 @@ cache_options = {
     "non_compute_blocks_diff_threshold": 0.08,
 }
 ```
+
+<div align="center">
+  <p align="center">
+    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
 ## 🎉FBCache: First Block Cache  
 
@@ -288,13 +299,18 @@ apply_cache_on_pipe(pipe, **cache_options)
 pip3 install para-attn  # or install `para-attn` from sources.
 ```
 
-Then, you can run **DBCache** with **Context Parallelism** on 4 GPUs:
+Then, you can run **DBCache** or **DBPrune** with **Context Parallelism** on 4 GPUs:
 
 ```python
+import torch.distributed as dist
 from diffusers import FluxPipeline
 from para_attn.context_parallel import init_context_parallel_mesh
 from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
+
+ # Init distributed process group
+dist.init_process_group()
+torch.cuda.set_device(dist.get_rank())
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -308,13 +324,31 @@ parallelize_pipe(
     )
 )
 
-# DBCache with F8B8 from this library
+# DBPrune with default options from this library
 apply_cache_on_pipe(
-    pipe, **CacheType.default_options(CacheType.DBCache)
+    pipe, **CacheType.default_options(CacheType.DBPrune)
 )
+
+dist.destroy_process_group()
+```
+Then, run the python test script with `torchrun`:
+```bash
+torchrun --nproc_per_node=4 parallel_cache.py
 ```
 
-## ⚡️Torch Compile
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x4 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
+|8.54s (L20x4)|7.20s (L20x4)|6.61s (L20x4)|6.09s (L20x4)|5.54s (L20x4)|4.22s (L20x4)|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+
+## 🔥Torch Compile
 
 <div id="compile"></div>  
 
@@ -333,7 +367,13 @@ However, users intending to use **CacheDiT** for DiT with **dynamic input shapes
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. Here is the case of DBPrune + torch.compile on NVIDIA L20x1.
+Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. Here is the case of **DBPrune + torch.compile**.
+
+<div align="center">
+  <p align="center">
+    DBPrune + compile, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
 
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
@@ -353,7 +393,7 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 ## 👋Contribute 
 <div id="contribute"></div>
 
-How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
+How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
 ## ©️License   
 
