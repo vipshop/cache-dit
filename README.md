@@ -12,7 +12,7 @@
       <img src=https://img.shields.io/badge/Release-v0.1.5-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>provides a series of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
+    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT provides <br>a series of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
 </div>
 
