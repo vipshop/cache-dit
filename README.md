@@ -261,6 +261,41 @@ cache_options = {
 apply_cache_on_pipe(pipe, **cache_options)
 ```
 
+We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_blocks_ids** to avoid aggressive pruning. For example:
+
+```python
+# Custom options for DBPrune
+cache_options = {
+    "cache_type": CacheType.DBPrune,
+    "residual_diff_threshold": 0.05,
+    # Never prune the first `Fn` and last `Bn` blocks.
+    "Fn_compute_blocks": 8,  # default 1
+    "Bn_compute_blocks": 8,  # default 0
+    "warmup_steps": 8,  # default -1
+    # Disables the pruning strategy when the previous 
+    # pruned steps greater than this value.
+    "max_pruned_steps": 12,  # default, -1 means no limit
+    # Enable dynamic prune threshold within step, higher 
+    # `max_dynamic_prune_threshold` value may introduce a more 
+    # ageressive pruning strategy.
+    "enable_dynamic_prune_threshold": True,
+    "max_dynamic_prune_threshold": 2 * 0.05,
+    # (New thresh) = mean(previous_block_diffs_within_step) * 1.25
+    # (New thresh) = ((New thresh) if (New thresh) <
+    # max_dynamic_prune_threshold else residual_diff_threshold)
+    "dynamic_prune_threshold_relax_ratio": 1.25,
+    # The step interval to update residual cache. For example, 
+    # 2: means the update steps will be [0, 2, 4, ...].
+    "residual_cache_update_interval": 1,
+    # You can set non-prune blocks to avoid ageressive pruning. 
+    # For example, FLUX.1 has 19 + 38 blocks, so we can set it 
+    # to 0, 2, 4, ..., 56, etc.
+    "non_prune_blocks_ids": [],
+}
+
+apply_cache_on_pipe(pipe, **cache_options)
+```
+
 <div align="center">
   <p align="center">
     DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
