@@ -322,7 +322,7 @@ apply_cache_on_pipe(
 
 ```python
 apply_cache_on_pipe(
-    pipe, **CacheType.default_options(CacheType.DBCache)
+    pipe, **CacheType.default_options(CacheType.DBPrune)
 )
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
@@ -333,7 +333,14 @@ However, users intending to use **CacheDiT** for DiT with **dynamic input shapes
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode.
+Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. Here is the case of DBPrune + torch.compile on NVIDIA L20x1.
+
+|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|Add commentMore actions
+|20.42s (+compile)|16.42s (+compile)|14.39s (+compile)|12.95s (+compile)|12.21s (+compile)|9.18s (+compile)|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+
 
 ## 🎉Supported Models  
 
