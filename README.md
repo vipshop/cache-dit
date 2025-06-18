@@ -324,6 +324,13 @@ Then, run the python test script with `torchrun`:
 ```bash
 torchrun --nproc_per_node=4 parallel_cache.py
 ```
+
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x4 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
@@ -350,6 +357,12 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. Here is the case of **DBPrune + torch.compile**.
+
+<div align="center">
+  <p align="center">
+    DBPrune + compile, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
 
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
