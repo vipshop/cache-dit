@@ -16,6 +16,7 @@ def get_args() -> argparse.ArgumentParser:
     # General arguments
     parser.add_argument("--steps", type=int, default=28)
     parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--l1-diff", action="store_true", default=False)
@@ -26,12 +27,8 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--compile",
-        action="store_true",
-        default=False,
-    )
+    parser.add_argument("--ulysses", type=int, default=None)
+    parser.add_argument("--compile", action="store_true", default=False)
     return parser.parse_args()
 
 
@@ -116,10 +113,41 @@ def main():
     args = get_args()
     logger.info(f"Arguments: {args}")
 
-    pipe = FluxPipeline.from_pretrained(
-        os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
-        torch_dtype=torch.bfloat16,
-    ).to("cuda")
+    # Context Parallel from ParaAttention
+    if args.ulysses is not None:
+        try:
+            import torch.distributed as dist
+            from para_attn.context_parallel import init_context_parallel_mesh
+            from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
+
+            # Initialize distributed process group
+            dist.init_process_group()
+            torch.cuda.set_device(dist.get_rank())
+
+            logger.info(f"Ulysses: {args.ulysses}")
+
+            pipe = FluxPipeline.from_pretrained(
+                os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+                torch_dtype=torch.bfloat16,
+            ).to("cuda")
+
+            parallelize_pipe(
+                pipe, mesh=init_context_parallel_mesh(
+                    pipe.device.type, max_ulysses_dim_size=4
+                )
+            )
+        except ImportError as e:
+            logger.error(
+                "para-attn is not installed, please install it "
+                "with `pip install para-attn.`"
+            )
+            args.ulysses = None
+            raise e
+    else:
+        pipe = FluxPipeline.from_pretrained(
+            os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+            torch_dtype=torch.bfloat16,
+        ).to("cuda") 
 
     cache_options, cache_type = get_cache_options(args.cache, args)
 
@@ -191,14 +219,17 @@ def main():
             f"Actual Blocks: {actual_blocks}\n"
             f"Pruned Blocks: {pruned_blocks}"
         )
+    ulysses = 0 if args.ulysses is None else args.ulysses
     if len(actual_blocks) > 0:
         save_name = (
-            f"{cache_type}_R{args.rdt}_P{pruned_ratio:.1f}_"
+            f"U{ulysses}_C{int(args.compile)}_{cache_type}_"
+            f"R{args.rdt}_P{pruned_ratio:.1f}_"
             f"T{mean_time:.2f}s.png"
         )
     else:
         save_name = (
-            f"{cache_type}_R{args.rdt}_S{cached_stepes}_"
+            f"U{ulysses}_C{int(args.compile)}_{cache_type}_"
+            f"R{args.rdt}_S{cached_stepes}_"
             f"T{mean_time:.2f}s.png"
         )
     image.save(save_name)

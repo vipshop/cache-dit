@@ -313,6 +313,10 @@ apply_cache_on_pipe(
     pipe, **CacheType.default_options(CacheType.DBCache)
 )
 ```
+Then, run the python test script with `torchrun`:
+```bash
+torchrun --nproc_per_node=4 test.py
+```
 
 ## ⚡️Torch Compile
 
