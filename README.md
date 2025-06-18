@@ -16,10 +16,6 @@
   </p>
 </div>
 
-<p align="center">
-    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
-</p>
-
 ## 🤗 Introduction 
 
 <div align="center">
@@ -71,7 +67,11 @@ These case studies demonstrate that even with relatively high thresholds (such a
   </p>
 </div>
 
-Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
+Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
+
+<p align="center">
+    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+</p>
 
 ## ©️Citations
 
