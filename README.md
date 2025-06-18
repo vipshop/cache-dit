@@ -393,7 +393,7 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
 ## 👋Contribute 
 <div id="contribute"></div>
 
-How to contribute? Star this repo or check [CONTRIBUTE.md](./CONTRIBUTE.md).
+How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
 ## ©️License   
 
