@@ -226,8 +226,33 @@ pipe = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
-# Using DBPrune
+# Using DBPrune with default options
 cache_options = CacheType.default_options(CacheType.DBPrune)
+
+# Custom options for DBPrune
+cache_options = {
+    "cache_type": CacheType.DBPrune,
+    "residual_diff_threshold": 0.05,
+    # Never prune the first `Fn` and last `Bn` blocks.
+    "Fn_compute_blocks": 8,  # default 1
+    "Bn_compute_blocks": 8,  # default 0
+    "warmup_steps": 8,  # default -1
+    # Disables the pruning strategy when previous 
+    # pruned steps greater than this value.
+    "max_pruned_steps": 12,  # default, -1 means no limit
+    # Enable dynamic prune threshold within step, higher 
+    # `max_dynamic_prune_threshold` value may introduce a more 
+    # ageressive pruning strategy.
+    "enable_dynamic_prune_threshold": True,
+    "max_dynamic_prune_threshold": 2 * 0.05,
+    "dynamic_prune_threshold_relax_ratio": 1.25,
+    # The interval to update residual cache.
+    "residual_cache_update_interval": 1,
+    # You can set non-prune blocks to avoid ageressive pruning. 
+    # For example, FLUX.1 has 19 + 38 blocks, so we can set it 
+    # to 0, 2, 4, ..., 56, etc.
+    "non_prune_blocks_ids": [],
+}
 
 apply_cache_on_pipe(pipe, **cache_options)
 ```
