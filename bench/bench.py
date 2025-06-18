@@ -133,7 +133,7 @@ def main():
 
             parallelize_pipe(
                 pipe, mesh=init_context_parallel_mesh(
-                    pipe.device.type, max_ulysses_dim_size=4
+                    pipe.device.type, max_ulysses_dim_size=args.ulysses
                 )
             )
         except ImportError as e:
@@ -234,6 +234,11 @@ def main():
         )
     image.save(save_name)
     logger.info(f"Image saved as {save_name}")
+
+    if args.ulysses is not None:
+        import torch.distributed as dist
+        dist.destroy_process_group()
+        logger.info("Distributed process group destroyed.")
 
 
 if __name__ == "__main__":
