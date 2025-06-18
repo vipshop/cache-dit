@@ -12,14 +12,9 @@
       <img src=https://img.shields.io/badge/Release-v0.1.5-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT provides <br>a series of training-free, UNet-style cache accelerators for DiT: DBCache, DBPrune, FBCache, etc.
+    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
 </div>
-
-<p align="center">
-  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
-</p>
-
 
 ## 🤗 Introduction 
 
@@ -72,7 +67,11 @@ These case studies demonstrate that even with relatively high thresholds (such a
   </p>
 </div>
 
-Moreover, both DBCache and DBPrune are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
+Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
+
+<p align="center">
+    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+</p>
 
 ## ©️Citations
 
