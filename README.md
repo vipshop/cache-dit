@@ -9,7 +9,7 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.1.5-brightgreen.svg >
+      <img src=https://img.shields.io/badge/Release-v0.1.6-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
@@ -374,13 +374,6 @@ Otherwise, the recompile_limit error may be triggered, causing the module to fal
     DBPrune + compile, Steps: 28, "A cat holding a sign that says hello world with complex background"
   </p>
 </div>
-
-|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|Add commentMore actions
-|20.42s (+compile)|16.42s (+compile)|14.39s (+compile)|12.95s (+compile)|12.21s (+compile)|9.18s (+compile)|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
-
 
 ## 🎉Supported Models  
 
