@@ -237,7 +237,7 @@ cache_options = {
     "Fn_compute_blocks": 8,  # default 1
     "Bn_compute_blocks": 8,  # default 0
     "warmup_steps": 8,  # default -1
-    # Disables the pruning strategy when previous 
+    # Disables the pruning strategy when the previous 
     # pruned steps greater than this value.
     "max_pruned_steps": 12,  # default, -1 means no limit
     # Enable dynamic prune threshold within step, higher 
@@ -245,8 +245,12 @@ cache_options = {
     # ageressive pruning strategy.
     "enable_dynamic_prune_threshold": True,
     "max_dynamic_prune_threshold": 2 * 0.05,
+    # (New thresh) = mean(previous_block_diffs_within_step) * 1.25
+    # (New thresh) = ((New thresh) if (New thresh) <
+    # max_dynamic_prune_threshold else residual_diff_threshold)
     "dynamic_prune_threshold_relax_ratio": 1.25,
-    # The interval to update residual cache.
+    # The step interval to update residual cache. For example, 
+    # 2: means the update steps will be [0, 2, 4, ...].
     "residual_cache_update_interval": 1,
     # You can set non-prune blocks to avoid ageressive pruning. 
     # For example, FLUX.1 has 19 + 38 blocks, so we can set it 
