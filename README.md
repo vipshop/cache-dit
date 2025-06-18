@@ -313,7 +313,7 @@ parallelize_pipe(
     )
 )
 
-# DBPrune with F8B8 from this library
+# DBPrune with default options from this library
 apply_cache_on_pipe(
     pipe, **CacheType.default_options(CacheType.DBPrune)
 )
