@@ -562,7 +562,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         torch._dynamo.graph_break()
 
         add_pruned_block(self.pruned_blocks_step)
-        add_actual_block(self._num_transformer_blocks)
+        add_actual_block(self.num_transformer_blocks)
         patch_pruned_stats(self.transformer)
 
         return (
@@ -577,7 +577,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
 
     @property
     @torch.compiler.disable
-    def _num_transformer_blocks(self):
+    def num_transformer_blocks(self):
         # Total number of transformer blocks, including single transformer blocks.
         num_blocks = len(self.transformer_blocks)
         if self.single_transformer_blocks is not None:
@@ -597,7 +597,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
     @torch.compiler.disable
     def _non_prune_blocks_ids(self):
         # Never prune the first `Fn` and last `Bn` blocks.
-        num_blocks = self._num_transformer_blocks
+        num_blocks = self.num_transformer_blocks
         Fn_compute_blocks_ = (
             Fn_compute_blocks()
             if Fn_compute_blocks() < num_blocks
@@ -627,6 +627,10 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         ]
         return sorted(non_prune_blocks_ids)
 
+    # @torch.compile(dynamic=True)
+    # mark this function as compile with dynamic=True will 
+    # cause precision degradate, so, we choose to disable it
+    # now, until we find a better solution or fixed the bug.
     @torch.compiler.disable
     def _compute_single_hidden_states_residual(
         self,
@@ -663,6 +667,10 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             single_encoder_hidden_states_residual,
         )
 
+    # @torch.compile(dynamic=True)
+    # mark this function as compile with dynamic=True will 
+    # cause precision degradate, so, we choose to disable it
+    # now, until we find a better solution or fixed the bug.
     @torch.compiler.disable
     def _split_single_hidden_states(
         self,
