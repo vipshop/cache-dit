@@ -29,6 +29,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--gen-device", type=str, default="cuda")
     return parser.parse_args()
 
 
@@ -177,7 +178,7 @@ def main():
         image = pipe(
             "A cat holding a sign that says hello world with complex background",
             num_inference_steps=args.steps,
-            generator=torch.Generator("cuda").manual_seed(args.seed),
+            generator=torch.Generator(args.gen_device).manual_seed(args.seed),
         ).images[0]
         end = time.time()
         all_times.append(end - start)
