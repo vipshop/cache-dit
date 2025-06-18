@@ -9,7 +9,7 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.1.6-brightgreen.svg >
+      <img src=https://img.shields.io/badge/Release-v0.1.7-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
@@ -367,13 +367,7 @@ However, users intending to use **CacheDiT** for DiT with **dynamic input shapes
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. Here is the case of **DBPrune + torch.compile**.
-
-<div align="center">
-  <p align="center">
-    DBPrune + compile, Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
+Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
 
 ## 🎉Supported Models  
 
