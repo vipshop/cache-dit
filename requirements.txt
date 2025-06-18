@@ -1,6 +1,6 @@
 # Example requirement, can be anything that pip knows
 # install with `pip install -r requirements.txt`, and make sure that CI does the same
 packaging
-torch
-transformers
-diffusers
+torch>=2.5.1 # torch 2.7.0 is preferred, but 2.5.1 is the minimum required version
+transformers>=4.51.3
+diffusers>=0.33.1
