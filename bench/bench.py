@@ -168,12 +168,13 @@ def main():
         )
         if isinstance(pipe.transformer, FluxTransformer2DModel):
             logger.warning(
-                "Only compile nn.Module, not the whole model for "
-                "FluxTransformer2DModel to keep higher precision."
+                "Only compile transformer blocks, not the whole model "
+                "for FluxTransformer2DModel to keep higher precision."
             )
-            # Only compile nn.Module, not the whole model.
-            for module in pipe.transformer.modules():
-                module.compile(mode="default")
+            for module in pipe.transformer.transformer_blocks:
+                module.compile()
+            for module in pipe.transformer.single_transformer_blocks:
+                module.compile()
         else:
             logger.info(
                 "Compiling the transformer with default mode."
