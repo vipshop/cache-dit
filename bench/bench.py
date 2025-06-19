@@ -3,7 +3,7 @@ import argparse
 import torch
 import time
 
-from diffusers import FluxPipeline
+from diffusers import FluxPipeline, FluxTransformer2DModel
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 from cache_dit.logger import init_logger
 
@@ -110,6 +110,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
     return cache_options, cache_type_str
 
 
+@torch.no_grad()
 def main():
     args = get_args()
     logger.info(f"Arguments: {args}")
@@ -165,8 +166,42 @@ def main():
         torch._dynamo.config.accumulated_recompile_limit = (
             2048  # default is 256
         )
-        pipe.transformer = torch.compile(pipe.transformer, mode="default")
-
+        if isinstance(pipe.transformer, FluxTransformer2DModel):
+            from diffusers.models.transformers.transformer_flux import (
+                FluxTransformerBlock, FluxSingleTransformerBlock)
+            assert isinstance(pipe.transformer, FluxTransformer2DModel), (
+                "The transformer must be a FluxTransformer2DModel"
+            )
+            compile_names = (
+                "single_transformer_blocks",
+                "transformer_blocks",
+            )
+            logger.warning(
+                "Only compile transformer_blocks and single_transformer_blocks "
+                "to keep higher precision for FluxTransformer2DModel with "
+                "`default` compile mode."
+            )
+            for name, module in pipe.transformer.named_modules():
+                if not isinstance(
+                    module, (FluxTransformerBlock, FluxSingleTransformerBlock)
+                ):
+                    disable_compile = True
+                    for sub_name in compile_names:
+                        if sub_name in name:
+                            disable_compile = False
+                            break
+                    if disable_compile:
+                        logger.info(f"Skipping compilation for {name}")
+                    else:
+                        module.compile()
+                else:
+                    module.compile()
+        else:
+            logger.info(
+                "Compiling the transformer with default mode."
+            )
+            pipe.transformer = torch.compile(pipe.transformer, mode="default")
+                
     all_times = []
     cached_stepes = 0
     pruned_blocks = []
