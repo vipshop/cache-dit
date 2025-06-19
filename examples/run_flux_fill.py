@@ -14,10 +14,6 @@ cache_options = CacheType.default_options(CacheType.DBCache)
 
 apply_cache_on_pipe(pipe, **cache_options)
 
-# Load image
-cup_image = load_image("./data/cup.png")
-cup_mask = load_image("./data/cup_mask.png")
-
 image = pipe(
     prompt="a white paper cup",
     image=load_image("./data/cup.png"),
