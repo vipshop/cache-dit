@@ -167,35 +167,13 @@ def main():
             2048  # default is 256
         )
         if isinstance(pipe.transformer, FluxTransformer2DModel):
-            from diffusers.models.transformers.transformer_flux import (
-                FluxTransformerBlock, FluxSingleTransformerBlock)
-            assert isinstance(pipe.transformer, FluxTransformer2DModel), (
-                "The transformer must be a FluxTransformer2DModel"
-            )
-            compile_names = (
-                "single_transformer_blocks",
-                "transformer_blocks",
-            )
             logger.warning(
-                "Only compile transformer_blocks and single_transformer_blocks "
-                "to keep higher precision for FluxTransformer2DModel with "
-                "`default` compile mode."
+                "Only compile nn.Module, not the whole model for "
+                "FluxTransformer2DModel to keep higher precision."
             )
-            for name, module in pipe.transformer.named_modules():
-                if not isinstance(
-                    module, (FluxTransformerBlock, FluxSingleTransformerBlock)
-                ):
-                    disable_compile = True
-                    for sub_name in compile_names:
-                        if sub_name in name:
-                            disable_compile = False
-                            break
-                    if disable_compile:
-                        logger.info(f"Skipping compilation for {name}")
-                    else:
-                        module.compile()
-                else:
-                    module.compile()
+            # Only compile nn.Module, not the whole model.
+            for module in pipe.transformer.modules():
+                module.compile(mode="default")
         else:
             logger.info(
                 "Compiling the transformer with default mode."
