@@ -3,7 +3,7 @@ import argparse
 import torch
 import time
 
-from diffusers import FluxPipeline
+from diffusers import FluxPipeline, FluxTransformer2DModel
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 from cache_dit.logger import init_logger
 
@@ -110,6 +110,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
     return cache_options, cache_type_str
 
 
+@torch.no_grad()
 def main():
     args = get_args()
     logger.info(f"Arguments: {args}")
@@ -165,8 +166,21 @@ def main():
         torch._dynamo.config.accumulated_recompile_limit = (
             2048  # default is 256
         )
-        pipe.transformer = torch.compile(pipe.transformer, mode="default")
-
+        if isinstance(pipe.transformer, FluxTransformer2DModel):
+            logger.warning(
+                "Only compile transformer blocks, not the whole model "
+                "for FluxTransformer2DModel to keep higher precision."
+            )
+            for module in pipe.transformer.transformer_blocks:
+                module.compile()
+            for module in pipe.transformer.single_transformer_blocks:
+                module.compile()
+        else:
+            logger.info(
+                "Compiling the transformer with default mode."
+            )
+            pipe.transformer = torch.compile(pipe.transformer, mode="default")
+                
     all_times = []
     cached_stepes = 0
     pruned_blocks = []
