@@ -16,13 +16,12 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 image = pipe(
     prompt="a white paper cup",
-    image=load_image("./data/cup.png"),
-    mask_image=load_image("./data/cup_mask.png"),
+    image=load_image("data/cup.png"),
+    mask_image=load_image("data/cup_mask.png"),
     guidance_scale=30,
     num_inference_steps=28,
     max_sequence_length=512,
     generator=torch.Generator("cuda").manual_seed(0),
-    output_type="pil",
 ).images[0]
 
 print("Saving image to flux-fill.png")
