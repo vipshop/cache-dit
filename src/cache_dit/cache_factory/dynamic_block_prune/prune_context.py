@@ -628,7 +628,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         return sorted(non_prune_blocks_ids)
 
     # @torch.compile(dynamic=True)
-    # mark this function as compile with dynamic=True will 
+    # mark this function as compile with dynamic=True will
     # cause precision degradate, so, we choose to disable it
     # now, until we find a better solution or fixed the bug.
     @torch.compiler.disable
@@ -668,7 +668,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         )
 
     # @torch.compile(dynamic=True)
-    # mark this function as compile with dynamic=True will 
+    # mark this function as compile with dynamic=True will
     # cause precision degradate, so, we choose to disable it
     # now, until we find a better solution or fixed the bug.
     @torch.compiler.disable

@@ -120,7 +120,9 @@ def main():
         try:
             import torch.distributed as dist
             from para_attn.context_parallel import init_context_parallel_mesh
-            from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
+            from para_attn.context_parallel.diffusers_adapters import (
+                parallelize_pipe,
+            )
 
             # Initialize distributed process group
             dist.init_process_group()
@@ -134,9 +136,10 @@ def main():
             ).to("cuda")
 
             parallelize_pipe(
-                pipe, mesh=init_context_parallel_mesh(
+                pipe,
+                mesh=init_context_parallel_mesh(
                     pipe.device.type, max_ulysses_dim_size=args.ulysses
-                )
+                ),
             )
         except ImportError as e:
             logger.error(
@@ -149,7 +152,7 @@ def main():
         pipe = FluxPipeline.from_pretrained(
             os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
             torch_dtype=torch.bfloat16,
-        ).to("cuda") 
+        ).to("cuda")
 
     cache_options, cache_type = get_cache_options(args.cache, args)
 
@@ -176,11 +179,9 @@ def main():
             for module in pipe.transformer.single_transformer_blocks:
                 module.compile()
         else:
-            logger.info(
-                "Compiling the transformer with default mode."
-            )
+            logger.info("Compiling the transformer with default mode.")
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
-                
+
     all_times = []
     cached_stepes = 0
     pruned_blocks = []
@@ -252,6 +253,7 @@ def main():
 
     if args.ulysses is not None:
         import torch.distributed as dist
+
         dist.destroy_process_group()
         logger.info("Distributed process group destroyed.")
 
