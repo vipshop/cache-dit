@@ -66,7 +66,7 @@ setup(
             "expecttest",
             "hypothesis",
             "transformers",
-            "diffusers",
+            "diffusers @ git+https://github.com/huggingface/diffusers",  # wan currently requires installing from source
             "accelerate",
             "peft",
             "protobuf",

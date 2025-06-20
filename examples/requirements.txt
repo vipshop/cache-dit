@@ -1,0 +1,4 @@
+imageio-ffmpeg
+# wan currently requires installing from source
+diffusers @ git+https://github.com/huggingface/diffusers
+ftfy

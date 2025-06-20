@@ -1,6 +1,6 @@
 import os
 import torch
-from diffusers import WanPipeline
+from diffusers import WanPipeline, AutoencoderKLWan
 from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
@@ -31,7 +31,11 @@ apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.FBCache))
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+
+# Wan currently requires installing diffusers from source
+assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
+pipe.vae.enable_tiling()
+pipe.vae.enable_slicing()
 
 video = pipe(
     prompt=(
