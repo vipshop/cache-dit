@@ -1,10 +1,14 @@
+import os
 import torch
 from diffusers import FluxFillPipeline
 from diffusers.utils import load_image
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
 pipe = FluxFillPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-Fill-dev",
+    os.environ.get(
+        "FLUX_FILL_DIR",
+        "black-forest-labs/FLUX.1-Fill-dev",
+    ),
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
