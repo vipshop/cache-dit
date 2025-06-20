@@ -124,12 +124,14 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
+<!--
 - [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples)
+-->
 
-|Model| DBCache(Dual Block Cache) | DBPrune(Dynamic Block Prune) | FBCache | Torch Compile |
+|Model| DBCache | DBPrune | FBCache | Torch Compile |
 |:---|:---:|:---:|:---:|:---:|
 |[🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
 |[🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
