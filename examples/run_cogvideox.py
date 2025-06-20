@@ -4,6 +4,7 @@ from diffusers import CogVideoXPipeline, AutoencoderKLCogVideoX
 from diffusers.utils import export_to_video
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
+
 model_id = os.environ.get(
     "COGVIDEOX_DIR",
     "THUDM/CogVideoX-5b",
