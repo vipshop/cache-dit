@@ -391,7 +391,7 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |20.43s (+compile)|16.25s (+compile)|14.12s (+compile)|13.41s (+compile)|12.00s (+compile)|8.86s (+compile)|
 |<img src=./assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=./assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.2_P59.5_T8.86s.png width=105px>|
-|7.75s (+L20x4)|6.63s (+L20x4)|6.06s (+L20x4)|5.81s (+L20x4)|5.27s (+L20x4)|3.95s (+L20x4)|
+|7.75s(+L20x4)|6.63s(+L20x4)|6.06s(+L20x4)|5.81s(+L20x4)|5.27s(+L20x4)|3.95s(+L20x4)|
 
 ## 👋Contribute 
 <div id="contribute"></div>
