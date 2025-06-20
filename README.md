@@ -26,6 +26,13 @@
   </p>
 </div>
 
+## 👋Reference
+
+<div id="reference"></div>
+
+The **CacheDiT** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work! Please note that the **FBCache** support here for Mochi, FLUX.1, CogVideoX, Wan2.1, and HunyuanVideo was directly adapted from the original [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache).
+
+
 ## 🤗 Introduction 
 
 <div align="center">
@@ -108,12 +115,6 @@ Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand w
   year={2025}
 }
 ```
-
-## 👋Reference
-
-<div id="reference"></div>
-
-The **CacheDiT** codebase was adapted from FBCache's implementation at the [ParaAttention](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). We would like to express our sincere gratitude for this excellent work!
 
 ## 📖Contents 
 
