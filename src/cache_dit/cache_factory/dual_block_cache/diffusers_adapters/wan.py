@@ -6,10 +6,10 @@ import unittest
 import torch
 from diffusers import DiffusionPipeline, WanTransformer3DModel
 
-from cache_dit.cache_factory.first_block_cache import cache_context
+from cache_dit.cache_factory.dual_block_cache import cache_context
 
 
-def apply_cache_on_transformer(
+def apply_db_cache_on_transformer(
     transformer: WanTransformer3DModel,
 ):
     if getattr(transformer, "_is_cached", False):
@@ -17,7 +17,7 @@ def apply_cache_on_transformer(
 
     blocks = torch.nn.ModuleList(
         [
-            cache_context.CachedTransformerBlocks(
+            cache_context.DBCachedTransformerBlocks(
                 transformer.blocks,
                 transformer=transformer,
                 return_hidden_states_only=True,
@@ -50,15 +50,16 @@ def apply_cache_on_transformer(
     return transformer
 
 
-def apply_cache_on_pipe(
+def apply_db_cache_on_pipe(
     pipe: DiffusionPipeline,
     *,
     shallow_patch: bool = False,
     residual_diff_threshold=0.03,
     downsample_factor=1,
-    slg_layers=None,
-    slg_start: float = 0.0,
-    slg_end: float = 0.1,
+    # SLG is not supported in WAN with DBCache yet
+    # slg_layers=None,
+    # slg_start: float = 0.0,
+    # slg_end: float = 0.1,
     warmup_steps=0,
     max_cached_steps=-1,
     **kwargs,
@@ -67,10 +68,10 @@ def apply_cache_on_pipe(
         default_attrs={
             "residual_diff_threshold": residual_diff_threshold,
             "downsample_factor": downsample_factor,
-            "enable_alter_cache": True,
-            "slg_layers": slg_layers,
-            "slg_start": slg_start,
-            "slg_end": slg_end,
+            # "enable_alter_cache": True,
+            # "slg_layers": slg_layers,
+            # "slg_start": slg_start,
+            # "slg_end": slg_end,
             "num_inference_steps": kwargs.get("num_inference_steps", 50),
             "warmup_steps": warmup_steps,
             "max_cached_steps": max_cached_steps,
@@ -93,6 +94,6 @@ def apply_cache_on_pipe(
         pipe.__class__._is_cached = True
 
     if not shallow_patch:
-        apply_cache_on_transformer(pipe.transformer, **kwargs)
+        apply_db_cache_on_transformer(pipe.transformer, **kwargs)
 
     return pipe

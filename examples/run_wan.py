@@ -27,7 +27,8 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 pipe.to("cuda")
 
-apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.FBCache))
+# Default options, F8B8, good balance between performance and precision
+apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.DBCache))
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
