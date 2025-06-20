@@ -16,10 +16,10 @@
   </p>
   <p align="center">
   <h4> 🔥Supported Models🔥</h4>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀FLUX.1: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
   ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
   </p>
 
