@@ -125,18 +125,18 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 <div id="supported"></div>
 
 <!--
-- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples)
--->
-
 |Model| DBCache | DBPrune | FBCache | Torch Compile |
 |:---|:---:|:---:|:---:|:---:|
 |[🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
 |[🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
 |[🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
 |[🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples)|⚠️|⚠️|✔️|✔️|
+-->
+
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples): ✔️DBCache, ✔️DBPrune, ✔️FBCache
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples): ✔️DBCache, ✔️DBPrune, ✔️FBCache
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples): ✔️DBCache, ✔️DBPrune, ✔️FBCache
+- [🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples): ⚠️DBCache, ⚠️DBPrune, ✔️FBCache
 
 
 ## ⚡️DBCache: Dual Block Cache  
