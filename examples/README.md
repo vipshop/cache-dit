@@ -37,3 +37,9 @@ python3 run_wan.py
 ```bash
 python3 run_mochi.py
 ```
+
+- HunyuanVideo
+
+```bash
+python3 run_hunyuan_video.py
+```
