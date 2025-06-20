@@ -355,17 +355,17 @@ torchrun --nproc_per_node=4 parallel_cache.py
   </p>
 </div>
 
-|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|Baseline|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|8.54s (L20x4)|7.20s (L20x4)|6.61s (L20x4)|6.09s (L20x4)|5.54s (L20x4)|4.22s (L20x4)|
+|+L20x1:24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
+|+L20x4:8.54s|7.20s|6.61s|6.09s|5.54s|4.22s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 ## 🔥Torch Compile
 
 <div id="compile"></div>  
 
-**CacheDiT** are designed to work compatibly with `torch.compile`. For example:
+**CacheDiT** are designed to work compatibly with `torch.compile`. You can easily use CacheDiT with torch.compile to further achieve a better performance. For example:
 
 ```python
 apply_cache_on_pipe(
@@ -374,13 +374,24 @@ apply_cache_on_pipe(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
-
+However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo`. Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
+
+<div align="center">
+  <p align="center">
+  DBPrune + <b>torch.compile</b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|+L20x1:24.8s|19.4s|16.8s|15.9s|14.2s|10.6s|
+|+compile:20.4s|16.5s|14.1s|13.4s|12s|8.8s|
+|+L20x4:7.7s|6.6s|6.0s|5.8s|5.2s|3.9s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U4_C1_DBPRUNE_F1B0_R0.2_P59.5_T3.95s.png width=105px>|
 
 ## 👋Contribute 
 <div id="contribute"></div>
