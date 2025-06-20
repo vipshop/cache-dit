@@ -75,6 +75,12 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 **DBPrune**: We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, referred to as DBPrune. DBPrune caches each block's hidden states and residuals, then **dynamically prunes** blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals.
 
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
@@ -82,11 +88,11 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 <div align="center">
   <p align="center">
-    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+    <h3>🔥 Context Parallelism and Torch Compile</h3>
   </p>
-</div>
+</div> 
 
-**CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference. Moreover, **CacheDiT** are designed to work compatibly with `torch.compile`. You can easily use CacheDiT with torch.compile to further achieve a better performance.
+Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference. By the way, CacheDiT is designed to work compatibly with **torch.compile.** You can easily use CacheDiT with torch.compile to further achieve a better performance.
 
 <div align="center">
   <p align="center">
@@ -96,7 +102,6 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 |Baseline|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|+L20x1:24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |+compile:20.43s|16.25s|14.12s|13.41s|12s|8.86s|
 |+L20x4:7.75s|6.62s|6.03s|5.81s|5.24s|3.93s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.2_P59.5_T8.86s.png width=105px>|
@@ -380,7 +385,7 @@ torchrun --nproc_per_node=4 parallel_cache.py
 
 <div id="compile"></div>  
 
-**CacheDiT** are designed to work compatibly with `torch.compile`. You can easily use CacheDiT with torch.compile to further achieve a better performance. For example:
+By the way, **CacheDiT** is designed to work compatibly with **torch.compile.** You can easily use CacheDiT with torch.compile to further achieve a better performance. For example:
 
 ```python
 apply_cache_on_pipe(
