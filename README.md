@@ -16,12 +16,12 @@
   </p>
 
   <p align="center">
-  <h2> 🔥Supported Models🔥</h3>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀FLUX.1: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
-  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+  <h2> 🔥Supported Models🔥</h2>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀FLUX.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Mochi</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Wan2.1</b>: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
+  ♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️
   </p>
 </div>
 
