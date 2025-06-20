@@ -105,14 +105,6 @@ The **CacheDiT** codebase was adapted from FBCache's implementation at the [Para
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
-## 🎉Supported Models  
-
-<div id="supported"></div>
-
-- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-
 ## ⚙️Installation  
 
 <div id="installation"></div>
@@ -127,6 +119,15 @@ Or you can install the latest develop version from GitHub:
 ```bash
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
+
+## 🎉Supported Models  
+
+<div id="supported"></div>
+
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)
+
 
 ## ⚡️DBCache: Dual Block Cache  
 
