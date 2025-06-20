@@ -16,7 +16,7 @@
   </p>
 
   <p align="center">
-  <h3> 🔥Supported Models🔥</h3>
+  <h2> 🔥Supported Models🔥</h3>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀FLUX.1: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
