@@ -61,7 +61,10 @@ video = pipe(
     num_videos_per_prompt=1,
     num_inference_steps=50,
     num_frames=(
-        18 if (is_cogvideox_1_5() and get_gpu_memory_in_gib() < 48) else 49
+        # Avoid OOM for CogVideoX1.5 model on 48GB GPU
+        18
+        if (is_cogvideox_1_5() and get_gpu_memory_in_gib() < 48)
+        else 49
     ),
     guidance_scale=6,
     generator=torch.Generator("cuda").manual_seed(0),
