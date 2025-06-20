@@ -20,7 +20,7 @@
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
    <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
-  <h4> ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️ </h4>
+  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
   </p>
 
 </div>
