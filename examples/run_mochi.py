@@ -1,10 +1,14 @@
+import os
 import torch
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
 pipe = MochiPipeline.from_pretrained(
-    "genmo/mochi-1-preview",
+    os.environ.get(
+        "MOCHI_DIR",
+        "genmo/mochi-1-preview",
+    ),
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
@@ -15,7 +19,10 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 pipe.enable_vae_tiling()
 
-prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
+prompt = (
+    "Close-up of a chameleon's eye, with its scaly skin "
+    "changing color. Ultra high resolution 4k."
+)
 video = pipe(
     prompt,
     num_frames=84,

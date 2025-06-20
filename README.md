@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h3>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
+    <h2>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h2>
   </p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit.png >
   <div align='center'>
@@ -14,7 +14,27 @@
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
+
+  <p align="center">
+  <h3> 🔥Supported Models🔥</h2>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀FLUX.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Mochi</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Wan2.1</b>: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
+  <b>♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️</b>
+  </p>
 </div>
+
+
+<!--
+## 🎉Supported Models  
+<div id="supported"></div>
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples): *✔️DBCache, ✔️DBPrune, ✔️FBCache*
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples): *✔️DBCache, ✔️DBPrune, ✔️FBCache*
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples): *✔️DBCache, ✔️DBPrune, ✔️FBCache*
+- [🚀Wan2.1**](https://github.com/vipshop/cache-dit/raw/main/examples): *🔜DBCache, 🔜DBPrune, ✔️FBCache*
+-->
+
 
 ## 🤗 Introduction 
 
@@ -69,10 +89,6 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
 
-<p align="center">
-    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
-</p>
-
 ## ©️Citations
 
 ```BibTeX
@@ -101,10 +117,8 @@ The **CacheDiT** codebase was adapted from FBCache's implementation at the [Para
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
 - [🔥Torch Compile](#compile)
-- [🎉Supported Models](#supported)
 - [👋Contribute](#contribute)
 - [©️License](#license)
-
 
 ## ⚙️Installation  
 
@@ -368,14 +382,6 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
-
-## 🎉Supported Models  
-
-<div id="supported"></div>
-
-- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
 
 ## 👋Contribute 
 <div id="contribute"></div>
