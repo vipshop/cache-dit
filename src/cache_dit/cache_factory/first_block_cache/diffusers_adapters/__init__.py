@@ -16,6 +16,8 @@ def apply_fb_cache_on_transformer(transformer, *args, **kwargs):
         adapter_name = "cogvideox"
     elif transformer_cls_name.startswith("Wan"):
         adapter_name = "wan"
+    elif transformer_cls_name.startswith("HunyuanVideo"):
+        adapter_name = "hunyuan_video"
     else:
         raise ValueError(
             f"Unknown transformer class name: {transformer_cls_name}"
@@ -40,6 +42,8 @@ def apply_fb_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
         adapter_name = "cogvideox"
     elif pipe_cls_name.startswith("Wan"):
         adapter_name = "wan"
+    elif pipe_cls_name.startswith("HunyuanVideo"):
+        adapter_name = "hunyuan_video"
     else:
         raise ValueError(f"Unknown pipeline class name: {pipe_cls_name}")
 
