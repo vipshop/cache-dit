@@ -164,3 +164,4 @@ _version.py
 report*.html
 
 .DS_Store
+*.png

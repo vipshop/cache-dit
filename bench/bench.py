@@ -171,7 +171,7 @@ def main():
         )
         if isinstance(pipe.transformer, FluxTransformer2DModel):
             logger.warning(
-                "Only compile transformer blocks, not the whole model "
+                "Only compile transformer blocks not the whole model "
                 "for FluxTransformer2DModel to keep higher precision."
             )
             for module in pipe.transformer.transformer_blocks:

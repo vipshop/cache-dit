@@ -365,7 +365,7 @@ torchrun --nproc_per_node=4 parallel_cache.py
 
 <div id="compile"></div>  
 
-**CacheDiT** are designed to work compatibly with `torch.compile`. You can easily use CacheDiT with torch.compile to achieve better performance. For example:
+**CacheDiT** are designed to work compatibly with `torch.compile`. You can easily use CacheDiT with torch.compile to further achieve a better performance. For example:
 
 ```python
 apply_cache_on_pipe(
@@ -379,6 +379,18 @@ However, users intending to use **CacheDiT** for DiT with **dynamic input shapes
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
+
+<div align="center">
+  <p align="center">
+    DBPrune + <b>torch.compile<b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
+|20.43s (+compile)|16.25s (+compile)|14.12s (+compile)|13.41s (+compile)|12.00s (+compile)|8.86s (+compile)|
+|<img src=./assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=./assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.2_P59.5_T8.86s.png width=105px>|
 
 ## 👋Contribute 
 <div id="contribute"></div>
