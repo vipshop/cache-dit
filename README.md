@@ -14,7 +14,25 @@
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀FLUX.1: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
+  <p align="center">
+    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+  </p>
 </div>
+
+
+<!--
+## 🎉Supported Models  
+<div id="supported"></div>
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples): *✔️DBCache, ✔️DBPrune, ✔️FBCache*
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples): *✔️DBCache, ✔️DBPrune, ✔️FBCache*
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples): *✔️DBCache, ✔️DBPrune, ✔️FBCache*
+- [🚀Wan2.1**](https://github.com/vipshop/cache-dit/raw/main/examples): *🔜DBCache, 🔜DBPrune, ✔️FBCache*
+-->
+
 
 ## 🤗 Introduction 
 
@@ -69,10 +87,6 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can easily tap into its **Context Parallelism** features for distributed inference.
 
-<p align="center">
-    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
-</p>
-
 ## ©️Citations
 
 ```BibTeX
@@ -96,7 +110,6 @@ The **CacheDiT** codebase was adapted from FBCache's implementation at the [Para
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
-- [🎉Supported Models](#supported)
 - [⚡️Dual Block Cache](#dbcache)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
@@ -119,25 +132,6 @@ Or you can install the latest develop version from GitHub:
 ```bash
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
-
-## 🎉Supported Models  
-
-<div id="supported"></div>
-
-<!--
-|Model| DBCache | DBPrune | FBCache | Torch Compile |
-|:---|:---:|:---:|:---:|:---:|
-|[🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
-|[🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
-|[🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)|✔️|✔️|✔️|✔️|
-|[🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples)|⚠️|⚠️|✔️|✔️|
--->
-
-- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples): **✔️DBCache, ✔️DBPrune, ✔️FBCache**
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples): **✔️DBCache, ✔️DBPrune, ✔️FBCache**
-- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples): **✔️DBCache, ✔️DBPrune, ✔️FBCache**
-- [🚀Wan2.1**](https://github.com/vipshop/cache-dit/raw/main/examples): **🔜DBCache, 🔜DBPrune, ✔️FBCache**
-
 
 ## ⚡️DBCache: Dual Block Cache  
 
