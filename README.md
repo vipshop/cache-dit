@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h3>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h3>
+    <h2>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h2>
   </p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit.png >
   <div align='center'>
@@ -14,15 +14,15 @@
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
+  
   <p align="center">
-  <h4> 🔥Supported Models🔥</h4>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
+  <h2> 🔥Supported Models🔥</h2>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Mochi: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
   <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀FLUX.1: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀CogVideoX: ✔️DBCache, ✔️DBPrune, ✔️FBCache</a> <br>
-  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> 🚀Wan2.1: 🔜DBCache, 🔜DBPrune, ✔️FBCache</a> <br>
+  <h4> ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️ </h4>
   </p>
-
 </div>
 
 
