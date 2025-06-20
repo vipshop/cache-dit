@@ -31,7 +31,7 @@ apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.FBCache))
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+
 
 video = pipe(
     prompt=(
