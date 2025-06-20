@@ -43,8 +43,8 @@ video = pipe(
         "flying past in the background, hyperrealistic"
     ),
     negative_prompt="",
-    height=480,
-    width=832,
+    height=height,
+    width=width,
     num_frames=81,
     num_inference_steps=30,
 ).frames[0]
