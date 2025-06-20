@@ -40,7 +40,8 @@ pipe = HunyuanVideoPipeline.from_pretrained(
 ).to("cuda")
 
 
-apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.FBCache))
+# Default options, F8B8, good balance between performance and precision
+apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.DBCache))
 
 assert isinstance(
     pipe.vae, AutoencoderKLHunyuanVideo
