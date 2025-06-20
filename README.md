@@ -388,10 +388,10 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
-|24.8s|19.4s|16.8s|15.9s|14.2s|10.6s|
-|20.4s(+compile)|16.5s(+compile)|14.1s(+compile)|13.4s(+compile)|12s(+compile)|8.8s(+compile)|
+|base:24.8s|19.4s|16.8s|15.9s|14.2s|10.6s|
+|+compile:20.4s|16.5s|14.1s|13.4s|12s|8.8s|
+|+L20x4:7.7s|6.6s|6.0s|5.8s|5.2s|3.9s|
 |<img src=./assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=./assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=./assets/U0_C1_DBPRUNE_F1B0_R0.2_P59.5_T8.86s.png width=105px>|
-|7.7s(+L20x4)|6.6s(+L20x4)|6.0s(+L20x4)|5.8s(+L20x4)|5.2s(+L20x4)|3.9s(+L20x4)|
 
 ## 👋Contribute 
 <div id="contribute"></div>
