@@ -63,7 +63,7 @@ video = pipe(
     num_inference_steps=50,
     num_frames=(
         # Avoid OOM for CogVideoX1.5 model on 48GB GPU
-        18
+        16
         if (is_cogvideox_1_5() and get_gpu_memory_in_gib() < 48)
         else 49
     ),
