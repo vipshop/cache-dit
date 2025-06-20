@@ -8,13 +8,13 @@ pip3 install -r requirements.txt
 
 ## Run examples  
 
-- FLUX.1-DEV 
+- FLUX.1-dev 
 
 ```bash
 python3 run_flux.py
 ```
 
-- FLUX.1-Fill-DEV 
+- FLUX.1-Fill-dev 
 
 ```bash
 python3 run_flux_fill.py
