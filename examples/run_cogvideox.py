@@ -1,7 +1,7 @@
 import os
 import torch
-from diffusers import CogVideoXPipeline, AutoencoderKLCogVideoX
 from diffusers.utils import export_to_video
+from diffusers import CogVideoXPipeline, AutoencoderKLCogVideoX
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
 
