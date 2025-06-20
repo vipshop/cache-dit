@@ -96,15 +96,22 @@ The **CacheDiT** codebase was adapted from FBCache's implementation at the [Para
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
+- [🎉Supported Models](#supported)
 - [⚡️Dual Block Cache](#dbcache)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
 - [🔥Torch Compile](#compile)
-- [🎉Supported Models](#supported)
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
+## 🎉Supported Models  
+
+<div id="supported"></div>
+
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
 
 ## ⚙️Installation  
 
@@ -368,14 +375,6 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
-
-## 🎉Supported Models  
-
-<div id="supported"></div>
-
-- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
-- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/dual_block_cache/diffusers_adapters)
 
 ## 👋Contribute 
 <div id="contribute"></div>
