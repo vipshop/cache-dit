@@ -365,7 +365,7 @@ torchrun --nproc_per_node=4 parallel_cache.py
 
 <div id="compile"></div>  
 
-**CacheDiT** are designed to work compatibly with `torch.compile`. For example:
+**CacheDiT** are designed to work compatibly with `torch.compile`. However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. For example:
 
 ```python
 apply_cache_on_pipe(
@@ -374,13 +374,10 @@ apply_cache_on_pipe(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo` to achieve better performance. 
-
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
-Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
 
 ## 👋Contribute 
 <div id="contribute"></div>
