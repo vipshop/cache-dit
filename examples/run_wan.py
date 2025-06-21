@@ -1,5 +1,6 @@
 import os
 import torch
+import diffusers
 from diffusers import WanPipeline, AutoencoderKLWan
 from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
@@ -35,8 +36,16 @@ pipe.enable_model_cpu_offload()
 
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
-pipe.vae.enable_tiling()
-pipe.vae.enable_slicing()
+if diffusers.__version__ >= "0.34.0.dev0":
+    pipe.vae.enable_tiling()
+    pipe.vae.enable_slicing()
+else:
+    print(
+        "Wan pipeline requires diffusers version >= 0.34.0.dev0 "
+        "for vae tiling and slicing, please install diffusers "
+        "from source."
+    )
+
 
 video = pipe(
     prompt=(

@@ -9,7 +9,7 @@ from diffusers import (
 )
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
-model_id = os.environ.get("HUNYAN_DIR", "tencent/HunyuanVideo")
+model_id = os.environ.get("HUNYUAN_DIR", "tencent/HunyuanVideo")
 
 
 def get_gpu_memory_in_gib():

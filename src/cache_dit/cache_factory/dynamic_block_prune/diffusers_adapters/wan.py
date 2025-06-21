@@ -56,7 +56,7 @@ def apply_cache_on_pipe(
     shallow_patch: bool = False,
     residual_diff_threshold=0.03,
     downsample_factor=1,
-    # SLG is not supported in WAN with DBCache yet
+    # SLG is not supported in WAN with DBPrune yet
     # slg_layers=None,
     # slg_start: float = 0.0,
     # slg_end: float = 0.1,
