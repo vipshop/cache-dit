@@ -306,7 +306,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 ```
 
 > [!Important]
-> Please note that for GPUs with lower memory, DBPrune may not be suitable for use on video DiT models, as it caches the hidden states and residuals of each block by default, leading to higher GPU memory requirements. In such cases, please use DBCache, which only caches the hidden states and residuals of 2 blocks.
+> Please note that for GPUs with lower memory, DBPrune may not be suitable for use on video DiTs, as it caches the hidden states and residuals of each block by default, leading to higher GPU memory requirements. In such cases, please use DBCache, which only caches the hidden states and residuals of 2 blocks.
 
 <div align="center">
   <p align="center">
