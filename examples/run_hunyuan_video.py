@@ -30,13 +30,13 @@ transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     model_id,
     subfolder="transformer",
     torch_dtype=torch.bfloat16,
-    # revision="refs/pr/18",
+    revision="refs/pr/18",
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
     transformer=transformer,
     torch_dtype=torch.float16,
-    # revision="refs/pr/18",
+    revision="refs/pr/18",
 ).to("cuda")
 
 
