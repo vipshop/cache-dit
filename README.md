@@ -14,15 +14,6 @@
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
-  <p align="center">
-  <h4> 🔥Supported Models🔥</h4>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀FLUX.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Mochi</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX1.5</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Wan2.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀HunyuanVideo</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  </p>
 </div>
 
 ## 👋 Highlight
@@ -125,6 +116,7 @@ Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand w
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
+- [🔥Supported Models](#supported)
 - [⚡️Dual Block Cache](#dbcache)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
@@ -147,6 +139,30 @@ Or you can install the latest develop version from GitHub:
 ```bash
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
+
+## 🔥Supported Models  
+
+<div id="supported"></div>
+
+- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+
+
+<!--
+<p align="center">
+  <h4> 🔥Supported Models🔥</h4>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀FLUX.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Mochi</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX1.5</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Wan2.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
+  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀HunyuanVideo</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
+</p>
+-->
 
 ## ⚡️DBCache: Dual Block Cache  
 
