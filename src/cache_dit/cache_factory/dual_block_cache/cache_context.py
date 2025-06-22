@@ -9,6 +9,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union
 import torch
 
 import cache_dit.primitives as DP
+from cache_dit.cache_factory.taylorseer import TaylorSeer
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -60,6 +61,18 @@ class DBCacheContext:
     residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    # TODO: Support TaylorSeers and SLG in Dual Block Cache
+    # TaylorSeers: 
+    # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
+    # Url: https://arxiv.org/pdf/2503.06923
+    taylorseer: Optional[TaylorSeer] = None
+    alter_taylorseer: Optional[TaylorSeer] = None
+
+    # Skip Layer Guidance, SLG
+    # https://github.com/huggingface/candle/issues/2588
+    slg_layers: Optional[List[int]] = None
+    slg_start: float = 0.0
+    slg_end: float = 0.1
 
     def get_incremental_name(self, name=None):
         if name is None:
@@ -700,7 +713,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 encoder_hidden_states,
                 hidden_states_residual,
                 encoder_hidden_states_residual,
-            ) = self.call_MN2n_transformer_blocks(  # middle
+            ) = self.call_Mn_transformer_blocks(  # middle
                 hidden_states,
                 encoder_hidden_states,
                 *args,
@@ -772,32 +785,32 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         return selected_Fn_transformer_blocks
 
     @torch.compiler.disable
-    def _MN2n_single_transformer_blocks(self):  # middle
+    def _Mn_single_transformer_blocks(self):  # middle blocks
         # M(N-2n): transformer_blocks [n,...] + single_transformer_blocks [0,...,N-n]
-        selected_MN2n_single_transformer_blocks = []
+        selected_Mn_single_transformer_blocks = []
         if self.single_transformer_blocks is not None:
             if Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
-                selected_MN2n_single_transformer_blocks = (
+                selected_Mn_single_transformer_blocks = (
                     self.single_transformer_blocks
                 )
             else:
-                selected_MN2n_single_transformer_blocks = (
+                selected_Mn_single_transformer_blocks = (
                     self.single_transformer_blocks[: -Bn_compute_blocks()]
                 )
-        return selected_MN2n_single_transformer_blocks
+        return selected_Mn_single_transformer_blocks
 
     @torch.compiler.disable
-    def _MN2n_transformer_blocks(self):
+    def _Mn_transformer_blocks(self): # middle blocks
         # M(N-2n): only transformer_blocks [n,...,N-n], middle
         if Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
-            selected_MN2n_transformer_blocks = self.transformer_blocks[
+            selected_Mn_transformer_blocks = self.transformer_blocks[
                 Fn_compute_blocks() :
             ]
         else:
-            selected_MN2n_transformer_blocks = self.transformer_blocks[
+            selected_Mn_transformer_blocks = self.transformer_blocks[
                 Fn_compute_blocks() : -Bn_compute_blocks()
             ]
-        return selected_MN2n_transformer_blocks
+        return selected_Mn_transformer_blocks
 
     @torch.compiler.disable
     def _Bn_single_transformer_blocks(self):
@@ -845,7 +858,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         return hidden_states, encoder_hidden_states
 
-    def call_MN2n_transformer_blocks(
+    def call_Mn_transformer_blocks(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
@@ -873,7 +886,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             hidden_states = torch.cat(
                 [encoder_hidden_states, hidden_states], dim=1
             )
-            for block in self._MN2n_single_transformer_blocks():
+            for block in self._Mn_single_transformer_blocks():
                 hidden_states = block(
                     hidden_states,
                     *args,
@@ -887,7 +900,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 dim=1,
             )
         else:
-            for block in self._MN2n_transformer_blocks():
+            for block in self._Mn_transformer_blocks():
                 hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
@@ -1016,7 +1029,9 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
     def _compute_and_cache_single_transformer_block(
         self,
-        i: int,  # Block index in the transformer blocks
+        # Block index in the transformer blocks
+        # Bn: 8, block_id should be in [0, 8)
+        block_id: int,
         # Helper inputs for hidden states split and reshape
         original_hidden_states: torch.Tensor,
         original_encoder_hidden_states: torch.Tensor,
@@ -1042,7 +1057,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             )
             # Cache residuals for the non-compute Bn blocks for
             # subsequent cache steps.
-            if i not in Bn_compute_blocks_ids():
+            if block_id not in Bn_compute_blocks_ids():
                 Bn_i_hidden_states = hidden_states
                 (
                     Bn_i_hidden_states_residual,
@@ -1057,16 +1072,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 # Save original_hidden_states for diff calculation.
                 set_Bn_buffer(
                     Bn_i_original_hidden_states,
-                    prefix=f"Bn_{i}_single_original",
+                    prefix=f"Bn_{block_id}_single_original",
                 )
 
                 set_Bn_buffer(
                     Bn_i_hidden_states_residual,
-                    prefix=f"Bn_{i}_single_residual",
+                    prefix=f"Bn_{block_id}_single_residual",
                 )
                 set_Bn_encoder_buffer(
                     Bn_i_encoder_hidden_states_residual,
-                    prefix=f"Bn_{i}_single_residual",
+                    prefix=f"Bn_{block_id}_single_residual",
                 )
                 del Bn_i_hidden_states
                 del Bn_i_hidden_states_residual
@@ -1077,7 +1092,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         else:
             # Cache steps: Reuse the cached residuals.
             # Check if the block is in the Bn_compute_blocks_ids.
-            if i in Bn_compute_blocks_ids():
+            if block_id in Bn_compute_blocks_ids():
                 hidden_states = block(
                     hidden_states,
                     *args,
@@ -1091,7 +1106,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     hidden_states,  # curr step
                     parallelized=self._is_parallelized(),
                     threshold=non_compute_blocks_diff_threshold(),
-                    prefix=f"Bn_{i}_single_original",  # prev step
+                    prefix=f"Bn_{block_id}_single_original",  # prev step
                 ):
                     Bn_i_original_hidden_states = hidden_states
                     (
@@ -1106,7 +1121,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         apply_hidden_states_residual(
                             Bn_i_original_hidden_states,
                             Bn_i_original_encoder_hidden_states,
-                            prefix=f"Bn_{i}_single_residual",
+                            prefix=f"Bn_{block_id}_single_residual",
                         )
                     )
                     hidden_states = torch.cat(
@@ -1125,7 +1140,9 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
     def _compute_and_cache_transformer_block(
         self,
-        i: int,  # Block index in the transformer blocks
+        # Block index in the transformer blocks
+        # Bn: 8, block_id should be in [0, 8)
+        block_id: int,  
         # Below are the inputs to the block
         block,  # The transformer block to be executed
         hidden_states: torch.Tensor,
@@ -1158,7 +1175,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     )
             # Cache residuals for the non-compute Bn blocks for
             # subsequent cache steps.
-            if i not in Bn_compute_blocks_ids():
+            if block_id not in Bn_compute_blocks_ids():
                 Bn_i_hidden_states_residual = (
                     hidden_states - Bn_i_original_hidden_states
                 )
@@ -1169,16 +1186,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 # Save original_hidden_states for diff calculation.
                 set_Bn_buffer(
                     Bn_i_original_hidden_states,
-                    prefix=f"Bn_{i}_original",
+                    prefix=f"Bn_{block_id}_original",
                 )
 
                 set_Bn_buffer(
                     Bn_i_hidden_states_residual,
-                    prefix=f"Bn_{i}_residual",
+                    prefix=f"Bn_{block_id}_residual",
                 )
                 set_Bn_encoder_buffer(
                     Bn_i_encoder_hidden_states_residual,
-                    prefix=f"Bn_{i}_residual",
+                    prefix=f"Bn_{block_id}_residual",
                 )
                 del Bn_i_hidden_states_residual
                 del Bn_i_encoder_hidden_states_residual
@@ -1189,7 +1206,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         else:
             # Cache steps: Reuse the cached residuals.
             # Check if the block is in the Bn_compute_blocks_ids.
-            if i in Bn_compute_blocks_ids():
+            if block_id in Bn_compute_blocks_ids():
                 hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
@@ -1211,13 +1228,13 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     hidden_states,  # curr step
                     parallelized=self._is_parallelized(),
                     threshold=non_compute_blocks_diff_threshold(),
-                    prefix=f"Bn_{i}_original",  # prev step
+                    prefix=f"Bn_{block_id}_original",  # prev step
                 ):
                     hidden_states, encoder_hidden_states = (
                         apply_hidden_states_residual(
                             hidden_states,
                             encoder_hidden_states,
-                            prefix=f"Bn_{i}_residual",
+                            prefix=f"Bn_{block_id}_residual",
                         )
                     )
                 else:
