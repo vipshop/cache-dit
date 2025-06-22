@@ -785,7 +785,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         return selected_Fn_transformer_blocks
 
     @torch.compiler.disable
-    def _Mn_single_transformer_blocks(self):  # middle
+    def _Mn_single_transformer_blocks(self):  # middle blocks
         # M(N-2n): transformer_blocks [n,...] + single_transformer_blocks [0,...,N-n]
         selected_Mn_single_transformer_blocks = []
         if self.single_transformer_blocks is not None:
@@ -800,17 +800,17 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         return selected_Mn_single_transformer_blocks
 
     @torch.compiler.disable
-    def _MN2n_transformer_blocks(self):
+    def _Mn_transformer_blocks(self): # middle blocks
         # M(N-2n): only transformer_blocks [n,...,N-n], middle
         if Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
-            selected_MN2n_transformer_blocks = self.transformer_blocks[
+            selected_Mn_transformer_blocks = self.transformer_blocks[
                 Fn_compute_blocks() :
             ]
         else:
-            selected_MN2n_transformer_blocks = self.transformer_blocks[
+            selected_Mn_transformer_blocks = self.transformer_blocks[
                 Fn_compute_blocks() : -Bn_compute_blocks()
             ]
-        return selected_MN2n_transformer_blocks
+        return selected_Mn_transformer_blocks
 
     @torch.compiler.disable
     def _Bn_single_transformer_blocks(self):
@@ -900,7 +900,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 dim=1,
             )
         else:
-            for block in self._MN2n_transformer_blocks():
+            for block in self._Mn_transformer_blocks():
                 hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
