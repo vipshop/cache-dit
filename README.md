@@ -20,7 +20,7 @@
 
 <div align="center">
   <p align="center">
-    <h3>🔥 DBCache: Dual Block Caching for Diffusion Transformers</h3>
+    <h3>🔥DBCache: Dual Block Caching for Diffusion Transformers</h3>
   </p>
 </div> 
 
@@ -50,7 +50,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 <div align="center">
   <p align="center">
-    <h3>🔥 DBPrune: Dynamic Block Prune with Residual Caching</h3>
+    <h3>🔥DBPrune: Dynamic Block Prune with Residual Caching</h3>
   </p>
 </div> 
 
@@ -69,7 +69,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 <div align="center">
   <p align="center">
-    <h3>🔥 Context Parallelism and Torch Compile</h3>
+    <h3>🔥Context Parallelism and Torch Compile</h3>
   </p>
 </div> 
 
@@ -105,13 +105,13 @@ Moreover, **CacheDiT** are **plug-and-play** solutions that works hand-in-hand w
 }
 ```
 
-## 👋 Reference
+## 👋Reference
 
 <div id="reference"></div>
 
 The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Special thanks to their excellent work! 
 
-## 📖 Contents 
+## 📖Contents 
 
 <div id="contents"></div>  
 
@@ -125,7 +125,7 @@ The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
-## ⚙️ Installation  
+## ⚙️Installation  
 
 <div id="installation"></div>
 
@@ -140,7 +140,7 @@ Or you can install the latest develop version from GitHub:
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
-## 🔥 Supported Models  
+## 🔥Supported Models  
 
 <div id="supported"></div>
 
@@ -164,7 +164,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 </p>
 -->
 
-## ⚡️ DBCache: Dual Block Cache  
+## ⚡️DBCache: Dual Block Cache  
 
 <div id="dbcache"></div>
 
@@ -229,7 +229,7 @@ cache_options = {
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
-## 🎉 FBCache: First Block Cache  
+## 🎉FBCache: First Block Cache  
 
 <div id="fbcache"></div>
 
@@ -263,7 +263,7 @@ cache_options = {
 apply_cache_on_pipe(pipe, **cache_options)
 ```
 
-## ⚡️ DBPrune: Dynamic Block Prune
+## ⚡️DBPrune: Dynamic Block Prune
 
 <div id="dbprune"></div>  
 
@@ -382,7 +382,7 @@ Then, run the python test script with `torchrun`:
 torchrun --nproc_per_node=4 parallel_cache.py
 ```
 
-## 🔥 Torch Compile
+## 🔥Torch Compile
 
 <div id="compile"></div>  
 
@@ -401,12 +401,12 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
-## 👋 Contribute 
+## 👋Contribute 
 <div id="contribute"></div>
 
 How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
-## ©️ License   
+## ©️License   
 
 <div id="license"></div>
 
