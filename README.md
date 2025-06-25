@@ -2,7 +2,7 @@
   <p align="center">
     <h2>🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration <br>Toolbox for Diffusion Transformers</h2>
   </p>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit.png >
+  <img src=assets/cache-dit-v1.png >
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
@@ -15,6 +15,7 @@
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
   </p>
 </div>
+
 
 ## 🤗 Introduction 
 
@@ -168,12 +169,16 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="dbcache"></div>
 
-![](https://github.com/user-attachments/assets/c2a382b9-0ccd-46f4-aacc-87857b4a4de8)
+
+![](./assets/dbcache-v1.png)
 
 **DBCache** provides configurable parameters for custom optimization, enabling a balanced trade-off between performance and precision:
 
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
+
+![](./assets/dbcache-fnbn-v1.png)
+
 - **warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
 - **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
 - **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
@@ -233,7 +238,11 @@ cache_options = {
 
 <div id="fbcache"></div>
 
+<!--
 ![](https://github.com/user-attachments/assets/0fb66656-b711-457a-92a7-a830f134272d)
+-->
+
+![](./assets/fbcache-v1.png)
 
 **DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can either use the original FBCache implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
@@ -267,7 +276,11 @@ apply_cache_on_pipe(pipe, **cache_options)
 
 <div id="dbprune"></div>  
 
+<!--
 ![](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
+-->
+
+![](./assets/dbprune-v1.png)
 
 We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
 
