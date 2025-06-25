@@ -61,13 +61,13 @@ class DBCacheContext:
     residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
-    # TODO: Support TaylorSeers and SLG in Dual Block Cache
-    # TaylorSeers: 
+    # TODO: Support TaylorSeers in Dual Block Cache
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
     taylorseer: Optional[TaylorSeer] = None
     alter_taylorseer: Optional[TaylorSeer] = None
 
+    # TODO: Support SLG in Dual Block Cache
     # Skip Layer Guidance, SLG
     # https://github.com/huggingface/candle/issues/2588
     slg_layers: Optional[List[int]] = None
