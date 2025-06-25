@@ -169,7 +169,6 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="dbcache"></div>
 
-
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
 **DBCache** provides configurable parameters for custom optimization, enabling a balanced trade-off between performance and precision:
