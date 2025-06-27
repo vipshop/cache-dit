@@ -772,16 +772,6 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         selected_Fn_transformer_blocks = self.transformer_blocks[
             : Fn_compute_blocks()
         ]
-        # Skip the blocks if they are not in the Fn_compute_blocks_ids.
-        # WARN: DON'T set len(Fn_compute_blocks_ids) > 0 NOW, still have
-        # some precision issues. We don't know whether a step should be
-        # cached or not before the first Fn blocks are processed.
-        if len(Fn_compute_blocks_ids()) > 0:
-            selected_Fn_transformer_blocks = [
-                selected_Fn_transformer_blocks[i]
-                for i in Fn_compute_blocks_ids()
-                if i < len(selected_Fn_transformer_blocks)
-            ]
         return selected_Fn_transformer_blocks
 
     @torch.compiler.disable
