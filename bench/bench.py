@@ -20,6 +20,9 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument(
+        "--encoder-taylorseer", action="store_true", default=False
+    )
     parser.add_argument("--l1-diff", action="store_true", default=False)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
@@ -42,6 +45,8 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "warmup_steps": args.warmup_steps,
             "max_cached_steps": args.max_cached_steps,
             "residual_diff_threshold": args.rdt,
+            # TaylorSeer options
+            "enable_taylorseer": args.taylorseer,
         }
     elif cache_type == CacheType.DBCache:
         cache_options = {
@@ -70,10 +75,13 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "important_condition_threshold": 0.00,
             # TaylorSeer options
             "enable_taylorseer": args.taylorseer,
+            "enable_encoder_taylorseer": args.encoder_taylorseer,
+            # NOTE: use residual cache for taylorseer may incur precision loss
+            "taylorseer_cache_type": "hidden_states",
         }
     elif cache_type == CacheType.DBPrune:
         assert (
-            args.taylorseer is False
+            args.taylorseer is False and args.encoder_taylorseer is False
         ), "DBPrune does not support TaylorSeer yet."
         cache_options = {
             "cache_type": CacheType.DBPrune,
@@ -105,11 +113,16 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
             f"W{args.warmup_steps}T{int(args.taylorseer)}"
+            f"ET{int(args.encoder_taylorseer)}"
         )
     elif cache_type == CacheType.DBPrune:
         cache_type_str = (
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+        )
+    elif cache_type == CacheType.FBCache:
+        cache_type_str = (
+            f"{cache_type_str}_W{args.warmup_steps}" f"T{int(args.taylorseer)}"
         )
     return cache_options, cache_type_str
 

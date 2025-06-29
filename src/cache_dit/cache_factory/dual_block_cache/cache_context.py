@@ -65,6 +65,9 @@ class DBCacheContext:
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
     enable_taylorseer: bool = False
+    enable_encoder_taylorseer: bool = False
+    # NOTE: use residual cache for taylorseer may incur precision loss
+    taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
@@ -84,11 +87,15 @@ class DBCacheContext:
                 # If warmup_steps is not set in taylorseer_kwargs,
                 # set the same as warmup_steps for DBCache
                 self.taylorseer_kwargs["warmup_steps"] = self.warmup_steps
+
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
-            self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
             if self.enable_alter_cache:
                 self.alter_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+
+        if self.enable_encoder_taylorseer:
+            self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
+            if self.enable_alter_cache:
                 self.alter_encoder_taylorseer = TaylorSeer(
                     **self.taylorseer_kwargs
                 )
@@ -144,8 +151,10 @@ class DBCacheContext:
 
         if self.enable_taylorseer:
             taylorseer, encoder_taylorseer = self.get_taylorseers()
-            taylorseer.mark_step_begin()
-            encoder_taylorseer.mark_step_begin()
+            if taylorseer is not None:
+                taylorseer.mark_step_begin()
+            if encoder_taylorseer is not None:
+                encoder_taylorseer.mark_step_begin()
 
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
@@ -266,10 +275,40 @@ def is_taylorseer_enabled():
 
 
 @torch.compiler.disable
+def is_encoder_taylorseer_enabled():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.enable_encoder_taylorseer
+
+
+@torch.compiler.disable
 def get_taylorseers():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_taylorseers()
+
+
+@torch.compiler.disable
+def is_taylorseer_cache_residual():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.taylorseer_cache_type == "residual"
+
+
+@torch.compiler.disable
+def is_cache_residual():
+    if is_taylorseer_enabled():
+        # residual or hidden_states
+        return is_taylorseer_cache_residual()
+    return True
+
+
+@torch.compiler.disable
+def is_encoder_cache_residual():
+    if is_encoder_taylorseer_enabled():
+        # residual or hidden_states
+        return is_taylorseer_cache_residual()
+    return True
 
 
 @torch.compiler.disable
@@ -567,10 +606,11 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
             # Use TaylorSeer to update the buffer
             taylorseer.update(buffer)
         else:
-            logger.warning(
-                "TaylorSeer is enabled but not set in the cache context. "
-                "Falling back to default buffer setting."
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
             set_buffer(f"{prefix}_buffer", buffer)
     else:
         set_buffer(f"{prefix}_buffer", buffer)
@@ -583,10 +623,11 @@ def get_Bn_buffer(prefix: str = "Bn"):
         if taylorseer is not None:
             return taylorseer.approximate_value()
         else:
-            logger.warning(
-                "TaylorSeer is enabled but not set in the cache context. "
-                "Falling back to default buffer retrieval."
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
             # Fallback to default buffer retrieval
             return get_buffer(f"{prefix}_buffer")
     else:
@@ -596,17 +637,18 @@ def get_Bn_buffer(prefix: str = "Bn"):
 @torch.compiler.disable
 def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # This buffer is use for encoder hidden states approximation.
-    if is_taylorseer_enabled():
+    if is_encoder_taylorseer_enabled():
         # taylorseer, encoder_taylorseer
         _, encoder_taylorseer = get_taylorseers()
         if encoder_taylorseer is not None:
             # Use TaylorSeer to update the buffer
             encoder_taylorseer.update(buffer)
         else:
-            logger.warning(
-                "TaylorSeer is enabled but not set in the cache context. "
-                "Falling back to default buffer setting."
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
             set_buffer(f"{prefix}_encoder_buffer", buffer)
     else:
         set_buffer(f"{prefix}_encoder_buffer", buffer)
@@ -614,16 +656,17 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
 
 @torch.compiler.disable
 def get_Bn_encoder_buffer(prefix: str = "Bn"):
-    if is_taylorseer_enabled():
+    if is_encoder_taylorseer_enabled():
         _, encoder_taylorseer = get_taylorseers()
         if encoder_taylorseer is not None:
             # Use TaylorSeer to approximate the value
             return encoder_taylorseer.approximate_value()
         else:
-            logger.warning(
-                "TaylorSeer is enabled but not set in the cache context. "
-                "Falling back to default buffer retrieval."
-            )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
             # Fallback to default buffer retrieval
             return get_buffer(f"{prefix}_encoder_buffer")
     else:
@@ -635,6 +678,7 @@ def apply_hidden_states_residual(
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     prefix: str = "Bn",
+    encoder_prefix: str = "Bn_encoder",
 ):
     # Allow Bn and Fn prefix to be used for residual cache.
     if "Bn" in prefix:
@@ -647,10 +691,10 @@ def apply_hidden_states_residual(
     ), f"{prefix}_buffer must be set before"
     hidden_states = hidden_states_residual + hidden_states
 
-    if "Bn" in prefix:
-        encoder_hidden_states_residual = get_Bn_encoder_buffer(prefix)
+    if "Bn" in encoder_prefix:
+        encoder_hidden_states_residual = get_Bn_encoder_buffer(encoder_prefix)
     else:
-        encoder_hidden_states_residual = get_Fn_encoder_buffer(prefix)
+        encoder_hidden_states_residual = get_Fn_encoder_buffer(encoder_prefix)
 
     assert (
         encoder_hidden_states_residual is not None
@@ -792,7 +836,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             add_cached_step()
             del Fn_hidden_states_residual
             hidden_states, encoder_hidden_states = apply_hidden_states_residual(
-                hidden_states, encoder_hidden_states, prefix="Bn_residual"
+                hidden_states,
+                encoder_hidden_states,
+                prefix=(
+                    "Bn_residual" if is_cache_residual() else "Bn_hidden_states"
+                ),
+                encoder_prefix=(
+                    "Bn_residual"
+                    if is_encoder_cache_residual()
+                    else "Bn_hidden_states"
+                ),
             )
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
@@ -821,10 +874,28 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            set_Bn_buffer(hidden_states_residual, prefix="Bn_residual")
-            set_Bn_encoder_buffer(
-                encoder_hidden_states_residual, prefix="Bn_residual"
-            )
+            if is_cache_residual():
+                set_Bn_buffer(
+                    hidden_states_residual,
+                    prefix="Bn_residual",
+                )
+            else:
+                # TaylorSeer
+                set_Bn_buffer(
+                    hidden_states,
+                    prefix="Bn_hidden_states",
+                )
+            if is_encoder_cache_residual():
+                set_Bn_encoder_buffer(
+                    encoder_hidden_states_residual,
+                    prefix="Bn_residual",
+                )
+            else:
+                # TaylorSeer
+                set_Bn_encoder_buffer(
+                    encoder_hidden_states,
+                    prefix="Bn_hidden_states",
+                )
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
             hidden_states, encoder_hidden_states = (
@@ -1166,6 +1237,10 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     Bn_i_original_hidden_states,
                     prefix=f"Bn_{block_id}_single_original",
                 )
+                set_Bn_encoder_buffer(
+                    Bn_i_original_hidden_states,
+                    prefix=f"Bn_{block_id}_single_original",
+                )
 
                 set_Bn_buffer(
                     Bn_i_hidden_states_residual,
@@ -1213,7 +1288,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         apply_hidden_states_residual(
                             Bn_i_original_hidden_states,
                             Bn_i_original_encoder_hidden_states,
-                            prefix=f"Bn_{block_id}_single_residual",
+                            prefix=(
+                                f"Bn_{block_id}_single_residual"
+                                if is_cache_residual()
+                                else f"Bn_{block_id}_single_original"
+                            ),
+                            encoder_prefix=(
+                                f"Bn_{block_id}_single_residual"
+                                if is_encoder_cache_residual()
+                                else f"Bn_{block_id}_single_original"
+                            ),
                         )
                     )
                     hidden_states = torch.cat(
@@ -1280,6 +1364,10 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     Bn_i_original_hidden_states,
                     prefix=f"Bn_{block_id}_original",
                 )
+                set_Bn_encoder_buffer(
+                    Bn_i_original_encoder_hidden_states,
+                    prefix=f"Bn_{block_id}_original",
+                )
 
                 set_Bn_buffer(
                     Bn_i_hidden_states_residual,
@@ -1326,7 +1414,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         apply_hidden_states_residual(
                             hidden_states,
                             encoder_hidden_states,
-                            prefix=f"Bn_{block_id}_residual",
+                            prefix=(
+                                f"Bn_{block_id}_residual"
+                                if is_cache_residual()
+                                else f"Bn_{block_id}_original"
+                            ),
+                            encoder_prefix=(
+                                f"Bn_{block_id}_residual"
+                                if is_encoder_cache_residual()
+                                else f"Bn_{block_id}_original"
+                            ),
                         )
                     )
                 else:
