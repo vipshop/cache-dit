@@ -392,7 +392,7 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
-Please check [bench.py](https://github.com/vipshop/cache-dit/raw/main/bench/bench.py) for more details.
+Please check [bench.py](./bench/bench.py) for more details.
 
 ## 👋Contribute 
 <div id="contribute"></div>
