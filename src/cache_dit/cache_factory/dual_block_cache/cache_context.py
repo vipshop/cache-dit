@@ -64,15 +64,34 @@ class DBCacheContext:
     # TODO: Support TaylorSeers in Dual Block Cache
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
+    enable_taylorseer: bool = False
+    taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
+    encoder_tarlorseer: Optional[TaylorSeer] = None
     alter_taylorseer: Optional[TaylorSeer] = None
-
+    alter_encoder_taylorseer: Optional[TaylorSeer] = None
+    
     # TODO: Support SLG in Dual Block Cache
     # Skip Layer Guidance, SLG
     # https://github.com/huggingface/candle/issues/2588
     slg_layers: Optional[List[int]] = None
     slg_start: float = 0.0
     slg_end: float = 0.1
+
+    def __post_init__(self):
+
+        if self.warmup_steps > 0:
+            if "warmup_steps" not in self.taylorseer_kwargs:
+                # If warmup_steps is not set in taylorseer_kwargs, 
+                # set the same as warmup_steps for DBCache
+                self.taylorseer_kwargs["warmup_steps"] = self.warmup_steps
+
+        if self.enable_taylorseer:
+            self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+            self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
+            if self.enable_alter_cache:
+                self.alter_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+                self.alter_encoder_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
 
     def get_incremental_name(self, name=None):
         if name is None:
@@ -123,12 +142,22 @@ class DBCacheContext:
             # 0 F 1 T 2 F 3 T 4 F 5 T ...
             self.is_alter_cache = not self.is_alter_cache
 
+        if self.enable_taylorseer:
+            taylorseer, encoder_taylorseer = self.get_taylorseers()
+            taylorseer.mark_step_begin()
+            encoder_taylorseer.mark_step_begin()
+
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
         if self.get_current_step() == 0:
             self.cached_steps.clear()
             self.residual_diffs.clear()
             self.reset_incremental_names()
+    
+    def get_taylorseers(self):
+        if self.enable_alter_cache and self.is_alter_cache:
+            return self.alter_taylorseer, self.alter_encoder_taylorseer
+        return self.taylorseer, self.encoder_tarlorseer
 
     def add_residual_diff(self, diff):
         step = str(self.get_current_step())
@@ -227,6 +256,20 @@ def get_residual_diffs():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_residual_diffs()
+
+
+@torch.compiler.disable
+def is_taylorseer_enabled():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.enable_taylorseer
+
+
+@torch.compiler.disable
+def get_taylorseers():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.get_taylorseers()
 
 
 @torch.compiler.disable
@@ -380,16 +423,21 @@ def collect_cache_kwargs(default_attrs: dict, **kwargs):
         for attr in cache_attrs
     }
 
+    def _safe_set_sequence_field(
+        field_name: str,      
+        default_value: Any = None,  
+    ):
+        if field_name not in cache_kwargs:
+            cache_kwargs[field_name] = kwargs.pop(
+                field_name,
+                default_value,
+            )
+    
     # Manually set sequence fields, namely, Fn_compute_blocks_ids
     # and Bn_compute_blocks_ids, which are lists or sets.
-    cache_kwargs["Fn_compute_blocks_ids"] = kwargs.pop(
-        "Fn_compute_blocks_ids",
-        [],
-    )
-    cache_kwargs["Bn_compute_blocks_ids"] = kwargs.pop(
-        "Bn_compute_blocks_ids",
-        [],
-    )
+    _safe_set_sequence_field("Fn_compute_blocks_ids", [])
+    _safe_set_sequence_field("Bn_compute_blocks_ids", [])
+    _safe_set_sequence_field("taylorseer_kwargs", {})
 
     assert default_attrs is not None, "default_attrs must be set before"
     for attr in cache_attrs:
@@ -484,6 +532,7 @@ def are_two_tensors_similar(
 @torch.compiler.disable
 def set_Fn_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
     # Set hidden_states or residual for Fn blocks.
+    # This buffer is only use for L1 diff calculation.
     downsample_factor = get_downsample_factor()
     if downsample_factor > 1:
         buffer = buffer[..., ::downsample_factor]
@@ -510,23 +559,76 @@ def get_Fn_encoder_buffer(prefix: str = "Fn"):
 @torch.compiler.disable
 def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # Set hidden_states or residual for Bn blocks.
-    set_buffer(f"{prefix}_buffer", buffer)
+    # This buffer is use for hidden states approximation.
+    if is_taylorseer_enabled():
+        # taylorseer, encoder_taylorseer
+        taylorseer, _ = get_taylorseers()
+        if taylorseer is not None:
+            # Use TaylorSeer to update the buffer
+            taylorseer.update(buffer)
+        else:
+            logger.warning(
+                "TaylorSeer is enabled but not set in the cache context. "
+                "Falling back to default buffer setting."
+            )
+            set_buffer(f"{prefix}_buffer", buffer)
+    else:
+        set_buffer(f"{prefix}_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Bn_buffer(prefix: str = "Bn"):
-    return get_buffer(f"{prefix}_buffer")
+    if is_taylorseer_enabled():
+        taylorseer, _ = get_taylorseers()
+        if taylorseer is not None:
+            return taylorseer.approximate_value()
+        else:
+            logger.warning(
+                "TaylorSeer is enabled but not set in the cache context. "
+                "Falling back to default buffer retrieval."
+            )
+            # Fallback to default buffer retrieval
+            return get_buffer(f"{prefix}_buffer")
+    else:
+        return get_buffer(f"{prefix}_buffer")
 
 
 @torch.compiler.disable
 def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
-    set_buffer(f"{prefix}_encoder_buffer", buffer)
+    # This buffer is use for encoder hidden states approximation.
+    if is_taylorseer_enabled():
+        # taylorseer, encoder_taylorseer
+        _, encoder_taylorseer = get_taylorseers()
+        if encoder_taylorseer is not None:
+            # Use TaylorSeer to update the buffer
+            encoder_taylorseer.update(buffer)
+        else:
+            logger.warning(
+                "TaylorSeer is enabled but not set in the cache context. "
+                "Falling back to default buffer setting."
+            )
+            set_buffer(f"{prefix}_encoder_buffer", buffer)
+    else:
+        set_buffer(f"{prefix}_encoder_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Bn_encoder_buffer(prefix: str = "Bn"):
-    return get_buffer(f"{prefix}_encoder_buffer")
-
+    if is_taylorseer_enabled():
+        _, encoder_taylorseer = get_taylorseers()
+        if encoder_taylorseer is not None:
+            # Use TaylorSeer to approximate the value
+            return encoder_taylorseer.approximate_value()
+        else:
+            logger.warning(
+                "TaylorSeer is enabled but not set in the cache context. "
+                "Falling back to default buffer retrieval."
+            )
+            # Fallback to default buffer retrieval
+            return get_buffer(f"{prefix}_encoder_buffer")
+    else:
+        return get_buffer(f"{prefix}_encoder_buffer")
+    
 
 @torch.compiler.disable
 def apply_hidden_states_residual(
