@@ -243,7 +243,7 @@ cache_options = {
   </p>
 </div>
 
-|Baseline(L20x1)|F1B0(0.12)| TaylorSeer(0.12)|F1B0(0.15)|TaylorSeer(0.15)| compile | 
+|Baseline(L20x1)|F1B0(0.12)|+Taylor(0.12)|F1B0(0.15)|+Taylor(0.15)|+compile| 
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|12.85s|12.86s|10.27s|10.28s|8.48s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=105px>|<img src=./assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=105px>|
