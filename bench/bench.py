@@ -51,7 +51,12 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
     elif cache_type == CacheType.DBCache:
         cache_options = {
             "cache_type": CacheType.DBCache,
-            "warmup_steps": args.warmup_steps,
+            "warmup_steps": (
+                # TaylorSeer needs at least 2 warmup steps
+                max(args.warmup_steps, 2)
+                if (args.taylorseer or args.encoder_taylorseer)
+                else args.warmup_steps
+            ),
             "max_cached_steps": args.max_cached_steps,  # -1 means no limit
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.

@@ -82,11 +82,19 @@ class DBCacheContext:
     slg_end: float = 0.1
 
     def __post_init__(self):
-        if self.warmup_steps > 0:
-            if "warmup_steps" not in self.taylorseer_kwargs:
-                # If warmup_steps is not set in taylorseer_kwargs,
-                # set the same as warmup_steps for DBCache
-                self.taylorseer_kwargs["warmup_steps"] = self.warmup_steps
+
+        if "warmup_steps" not in self.taylorseer_kwargs:
+            # If warmup_steps is not set in taylorseer_kwargs,
+            # set the same as warmup_steps for DBCache
+            self.taylorseer_kwargs["warmup_steps"] = (
+                self.warmup_steps if self.warmup_steps > 0 else 1
+            )
+
+        # Only set n_derivatives as 2 or 3, which is enough for most cases.
+        if "n_derivatives" not in self.taylorseer_kwargs:
+            self.taylorseer_kwargs["n_derivatives"] = max(
+                2, min(3, self.taylorseer_kwargs["warmup_steps"])
+            )
 
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
@@ -149,19 +157,28 @@ class DBCacheContext:
             # 0 F 1 T 2 F 3 T 4 F 5 T ...
             self.is_alter_cache = not self.is_alter_cache
 
-        if self.enable_taylorseer:
-            taylorseer, encoder_taylorseer = self.get_taylorseers()
-            if taylorseer is not None:
-                taylorseer.mark_step_begin()
-            if encoder_taylorseer is not None:
-                encoder_taylorseer.mark_step_begin()
-
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
         if self.get_current_step() == 0:
             self.cached_steps.clear()
             self.residual_diffs.clear()
             self.reset_incremental_names()
+            # Reset the TaylorSeers cache at the beginning of each inference.
+            # reset_cache will set the current step to -1 for TaylorSeer,
+            if self.enable_taylorseer or self.enable_encoder_taylorseer:
+                taylorseer, encoder_taylorseer = self.get_taylorseers()
+                if taylorseer is not None:
+                    taylorseer.reset_cache()
+                if encoder_taylorseer is not None:
+                    encoder_taylorseer.reset_cache()
+
+        # mark_step_begin of TaylorSeer must be called after the cache is reset.
+        if self.enable_taylorseer or self.enable_encoder_taylorseer:
+            taylorseer, encoder_taylorseer = self.get_taylorseers()
+            if taylorseer is not None:
+                taylorseer.mark_step_begin()
+            if encoder_taylorseer is not None:
+                encoder_taylorseer.mark_step_begin()
 
     def get_taylorseers(self):
         if self.enable_alter_cache and self.is_alter_cache:

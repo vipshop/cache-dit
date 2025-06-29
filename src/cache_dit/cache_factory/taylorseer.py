@@ -39,6 +39,7 @@ class TaylorSeer:
     def approximate_derivative(self, Y):
         # n-th order Taylor expansion:
         # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2! + ... + d^nY(0)/dt^n * t^n / n!
+        # reference: https://github.com/Shenyi-Z/TaylorSeer/blob/main/TaylorSeer-FLUX/src/flux/taylor_utils/__init__.py
         dY_current = [None] * self.ORDER
         dY_current[0] = Y
         window = self.current_step - self.last_non_approximated_step
@@ -67,6 +68,17 @@ class TaylorSeer:
     def update(self, Y):
         # Directly call this method will ingnore the warmup
         # policy and force full computation.
+        # Assume warmup steps is 3, and n_derivatives is 3.
+        # step 0: dY_prev    = [None, None,   None,    None   ]
+        #         dY_current = [Y0,   None,   None,    None   ]
+        # step 1: dY_prev    = [Y0,   None,   None,    None   ]
+        #         dY_current = [Y1,   dY1,    None,    None   ]
+        # step 2: dY_prev    = [Y1,   dY1,    None,    None   ]
+        #         dY_current = [Y2,   dY2/Y1, dY2/dY1, None   ]
+        # step 3: dY_prev    = [Y2,   dY2/Y1, dY2/dY1, None   ],
+        #         dY_current = [Y3,   dY3/Y2, dY3/dY2, dY3/dY1]
+        # step 4: dY_prev    = [Y3,   dY3/Y2, dY3/dY2, dY3/dY1]
+        #         dY_current = [Y4,   dY4/Y3, dY4/dY3, dY4/dY2]
         self.state["dY_prev"] = self.state["dY_current"]
         self.state["dY_current"] = self.approximate_derivative(Y)
         self.last_non_approximated_step = self.current_step
