@@ -9,7 +9,7 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.2.1-brightgreen.svg >
+      <img src=https://img.shields.io/badge/Release-v0.2.2-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
@@ -45,10 +45,6 @@
 |**Baseline(L20x1)**|**F1B0 (0.08)**|**F8B8 (0.12)**|**F8B12 (0.12)**|**F8B16 (0.20)**|**F8B20 (0.20)**|
 |27.85s|6.04s|5.88s|5.77s|6.01s|6.20s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_NONE_R0.08.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F1B0_R0.08.png width=105px> |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B8_R0.12.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B12_R0.12.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B16_R0.2.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B20_R0.2.png width=105px>|
-
-<!--
-|<img src=https://github.com/user-attachments/assets/70ea57f4-d8f2-415b-8a96-d8315974a5e6 width=105px>|<img src=https://github.com/user-attachments/assets/fc0e1a67-19cc-44aa-bf50-04696e7978a0 width=105px> |<img src=https://github.com/user-attachments/assets/d1434896-628c-436b-95ad-43c085a8629e width=105px>|<img src=https://github.com/user-attachments/assets/aaa42cd2-57de-4c4e-8bfb-913018a8251d width=105px>|<img src=https://github.com/user-attachments/assets/dc0ba2a4-ef7c-436d-8a39-67055deab92f width=105px>|<img src=https://github.com/user-attachments/assets/aede466f-61ed-4256-8df0-fecf8020c5ca width=105px>|
--->
 
 <div align="center">
   <p align="center">
@@ -156,18 +152,6 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 
-<!--
-<p align="center">
-  <h4> 🔥Supported Models🔥</h4>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀FLUX.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Mochi</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀CogVideoX1.5</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀Wan2.1</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-  <a href=https://github.com/vipshop/cache-dit/raw/main/examples> <b>🚀HunyuanVideo</b>: ✔️DBCache, ✔️DBPrune, ✔️FBCache🔥</a> <br>
-</p>
--->
-
 ## ⚡️DBCache: Dual Block Cache  
 
 <div id="dbcache"></div>
@@ -240,10 +224,6 @@ cache_options = {
 
 <div id="fbcache"></div>
 
-<!--
-![](https://github.com/user-attachments/assets/0fb66656-b711-457a-92a7-a830f134272d)
--->
-
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/fbcache-v1.png)
 
 **DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can either use the original FBCache implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
@@ -277,10 +257,6 @@ apply_cache_on_pipe(pipe, **cache_options)
 ## ⚡️DBPrune: Dynamic Block Prune
 
 <div id="dbprune"></div>  
-
-<!--
-![](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
--->
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbprune-v1.png)
 
@@ -369,7 +345,7 @@ from para_attn.context_parallel import init_context_parallel_mesh
 from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
- # Init distributed process group
+# Init distributed process group
 dist.init_process_group()
 torch.cuda.set_device(dist.get_rank())
 
@@ -415,6 +391,8 @@ However, users intending to use **CacheDiT** for DiT with **dynamic input shapes
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
+
+Please check [bench.py](https://github.com/vipshop/cache-dit/raw/main/bench/bench.py) for more details.
 
 ## 👋Contribute 
 <div id="contribute"></div>
