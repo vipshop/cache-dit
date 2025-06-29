@@ -19,6 +19,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
+    parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--l1-diff", action="store_true", default=False)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
@@ -70,6 +71,8 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             ),
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
+            # TaylorSeer options
+            "enable_taylorseer": args.taylorseer,
         }
     elif cache_type == CacheType.DBPrune:
         cache_options = {

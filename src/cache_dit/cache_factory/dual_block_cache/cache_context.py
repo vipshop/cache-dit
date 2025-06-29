@@ -79,13 +79,13 @@ class DBCacheContext:
     slg_end: float = 0.1
 
     def __post_init__(self):
-
         if self.warmup_steps > 0:
             if "warmup_steps" not in self.taylorseer_kwargs:
                 # If warmup_steps is not set in taylorseer_kwargs, 
                 # set the same as warmup_steps for DBCache
-                self.taylorseer_kwargs["warmup_steps"] = self.warmup_steps
-
+                self.taylorseer_kwargs["warmup_steps"] = (
+                    self.warmup_steps
+                )
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
             self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
