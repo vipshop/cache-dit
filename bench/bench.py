@@ -20,6 +20,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
     parser.add_argument(
         "--encoder-taylorseer", action="store_true", default=False
     )
