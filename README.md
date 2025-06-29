@@ -237,6 +237,16 @@ cache_options = {
     "residual_diff_threshold": 0.12,
 }
 ```
+<div align="center">
+  <p align="center">
+    <b>DBCache F1B0 + TaylorSeer</b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|F1B0 (0.12)| w/ TaylorSeer (0.12)|F1B0 (0.15)| w/ TaylorSeer (0.15)|
+|:---:|:---:|:---:|:---:|:---:|
+|24.85s|12.85s|12.86s|10.27s|10.28s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=105px>|<img src=./assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=105px>|
 
 ## 🎉FBCache: First Block Cache  
 

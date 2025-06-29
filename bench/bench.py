@@ -76,8 +76,8 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             # TaylorSeer options
             "enable_taylorseer": args.taylorseer,
             "enable_encoder_taylorseer": args.encoder_taylorseer,
-            # NOTE: use residual cache for taylorseer may incur precision loss
-            "taylorseer_cache_type": "hidden_states",
+            # Taylorseer cache type cache be hidden_states or residual
+            "taylorseer_cache_type": "residual",
         }
     elif cache_type == CacheType.DBPrune:
         assert (
