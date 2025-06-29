@@ -1,4 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/src/para_attn/first_block_cache/diffusers_adapters/hunyuan_video.py
 import functools
 import unittest
 from typing import Any, Dict, Optional, Union
