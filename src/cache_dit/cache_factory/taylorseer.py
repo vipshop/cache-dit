@@ -1,5 +1,6 @@
 # Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/src/para_attn/first_block_cache/taylorseer.py
 import math
+import torch
 
 
 class TaylorSeer:
@@ -17,6 +18,7 @@ class TaylorSeer:
         self.compute_step_map = compute_step_map
         self.reset_cache()
 
+    @torch.compiler.disable
     def reset_cache(self):
         self.state = {
             "dY_prev": [None] * self.ORDER,
@@ -25,6 +27,7 @@ class TaylorSeer:
         self.current_step = -1
         self.last_non_approximated_step = -1
 
+    @torch.compiler.disable
     def should_compute_full(self, step=None):
         step = self.current_step if step is None else step
         if self.compute_step_map is not None:
@@ -36,6 +39,7 @@ class TaylorSeer:
             return True
         return False
 
+    @torch.compiler.disable
     def approximate_derivative(self, Y):
         # n-th order Taylor expansion:
         # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2!
@@ -56,6 +60,7 @@ class TaylorSeer:
                 break
         return dY_current
 
+    @torch.compiler.disable
     def approximate_value(self):
         # TODO: Custom Triton/CUDA kernel for better performance,
         # especially for large n_derivatives.
@@ -68,9 +73,11 @@ class TaylorSeer:
                 break
         return output
 
+    @torch.compiler.disable
     def mark_step_begin(self):
         self.current_step += 1
 
+    @torch.compiler.disable
     def update(self, Y):
         # Directly call this method will ingnore the warmup
         # policy and force full computation.
@@ -89,6 +96,7 @@ class TaylorSeer:
         self.state["dY_current"] = self.approximate_derivative(Y)
         self.last_non_approximated_step = self.current_step
 
+    @torch.compiler.disable
     def step(self, Y):
         self.mark_step_begin()
         if self.should_compute_full():

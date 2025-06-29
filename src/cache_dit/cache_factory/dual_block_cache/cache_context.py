@@ -109,6 +109,7 @@ class DBCacheContext:
                     **self.taylorseer_kwargs
                 )
 
+    @torch.compiler.disable
     def get_incremental_name(self, name=None):
         if name is None:
             name = "default"
@@ -116,9 +117,11 @@ class DBCacheContext:
         self.incremental_name_counters[name] += 1
         return f"{name}_{idx}"
 
+    @torch.compiler.disable
     def reset_incremental_names(self):
         self.incremental_name_counters.clear()
 
+    @torch.compiler.disable
     def get_residual_diff_threshold(self):
         if self.enable_alter_cache:
             residual_diff_threshold = self.alter_residual_diff_threshold
@@ -131,25 +134,30 @@ class DBCacheContext:
             residual_diff_threshold = residual_diff_threshold.item()
         return residual_diff_threshold
 
+    @torch.compiler.disable
     def get_buffer(self, name):
         if self.enable_alter_cache and self.is_alter_cache:
             name = f"{name}_alter"
         return self.buffers.get(name)
 
+    @torch.compiler.disable
     def set_buffer(self, name, buffer):
         if self.enable_alter_cache and self.is_alter_cache:
             name = f"{name}_alter"
         self.buffers[name] = buffer
 
+    @torch.compiler.disable
     def remove_buffer(self, name):
         if self.enable_alter_cache and self.is_alter_cache:
             name = f"{name}_alter"
         if name in self.buffers:
             del self.buffers[name]
 
+    @torch.compiler.disable
     def clear_buffers(self):
         self.buffers.clear()
 
+    @torch.compiler.disable
     def mark_step_begin(self):
         if not self.enable_alter_cache:
             self.executed_steps += 1
@@ -181,29 +189,36 @@ class DBCacheContext:
             if encoder_taylorseer is not None:
                 encoder_taylorseer.mark_step_begin()
 
+    @torch.compiler.disable
     def get_taylorseers(self):
         if self.enable_alter_cache and self.is_alter_cache:
             return self.alter_taylorseer, self.alter_encoder_taylorseer
         return self.taylorseer, self.encoder_tarlorseer
 
+    @torch.compiler.disable
     def add_residual_diff(self, diff):
         step = str(self.get_current_step())
         if step not in self.residual_diffs:
             # Only add the diff if it is not already recorded for this step
             self.residual_diffs[step] = diff
 
+    @torch.compiler.disable
     def get_residual_diffs(self):
         return self.residual_diffs.copy()
 
+    @torch.compiler.disable
     def add_cached_step(self):
         self.cached_steps.append(self.get_current_step())
 
+    @torch.compiler.disable
     def get_cached_steps(self):
         return self.cached_steps.copy()
 
+    @torch.compiler.disable
     def get_current_step(self):
         return self.executed_steps - 1
 
+    @torch.compiler.disable
     def is_in_warmup(self):
         return self.get_current_step() < self.warmup_steps
 
@@ -859,6 +874,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         torch._dynamo.graph_break()
         if can_use_cache:
+            torch._dynamo.graph_break()
             add_cached_step()
             del Fn_hidden_states_residual
             hidden_states, encoder_hidden_states = apply_hidden_states_residual(
@@ -873,6 +889,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     else "Bn_hidden_states"
                 ),
             )
+            torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
             hidden_states, encoder_hidden_states = (
@@ -884,11 +901,13 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 )
             )
         else:
+            torch._dynamo.graph_break()
             set_Fn_buffer(Fn_hidden_states_residual, prefix="Fn_residual")
             if is_l1_diff_enabled():
                 # for hidden states L1 diff
                 set_Fn_buffer(hidden_states, "Fn_hidden_states")
             del Fn_hidden_states_residual
+            torch._dynamo.graph_break()
             (
                 hidden_states,
                 encoder_hidden_states,
@@ -900,6 +919,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 *args,
                 **kwargs,
             )
+            torch._dynamo.graph_break()
             if is_cache_residual():
                 set_Bn_buffer(
                     hidden_states_residual,
@@ -922,6 +942,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     encoder_hidden_states,
                     prefix="Bn_hidden_states",
                 )
+            torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
             hidden_states, encoder_hidden_states = (
