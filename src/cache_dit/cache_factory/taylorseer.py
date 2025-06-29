@@ -38,8 +38,12 @@ class TaylorSeer:
 
     def approximate_derivative(self, Y):
         # n-th order Taylor expansion:
-        # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2! + ... + d^nY(0)/dt^n * t^n / n!
-        # reference: https://github.com/Shenyi-Z/TaylorSeer/blob/main/TaylorSeer-FLUX/src/flux/taylor_utils/__init__.py
+        # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2!
+        #        + ... + d^nY(0)/dt^n * t^n / n!
+        # reference: https://github.com/Shenyi-Z/TaylorSeer
+        # TaylorSeer-FLUX/src/flux/taylor_utils/__init__.py
+        # TODO: Custom Triton/CUDA kernel for better performance,
+        # especially for large n_derivatives.
         dY_current = [None] * self.ORDER
         dY_current[0] = Y
         window = self.current_step - self.last_non_approximated_step
@@ -53,6 +57,8 @@ class TaylorSeer:
         return dY_current
 
     def approximate_value(self):
+        # TODO: Custom Triton/CUDA kernel for better performance,
+        # especially for large n_derivatives.
         elapsed = self.current_step - self.last_non_approximated_step
         output = 0
         for i, derivative in enumerate(self.state["dY_current"]):
