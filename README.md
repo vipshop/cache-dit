@@ -12,7 +12,7 @@
       <img src=https://img.shields.io/badge/Release-v0.2.2-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, FBCache, etc🔥
+    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT <br>offers a set of training-free cache accelerators for DiT: 🔥DBCache, DBPrune, TaylorSeer, FBCache, etc🔥
   </p>
 </div>
 
@@ -118,6 +118,7 @@ The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi
 - [⚙️Installation](#️installation)
 - [🔥Supported Models](#supported)
 - [⚡️Dual Block Cache](#dbcache)
+- [🔥Hybrid TaylorSeer](#taylorseer)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
@@ -219,6 +220,23 @@ cache_options = {
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
+
+## 🔥Hybrid TaylorSeer
+
+<div id="taylorseer"></div>
+
+We have supported the [TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers](https://arxiv.org/pdf/2503.06923) algorithm to further improve the precision of DBCache in cases where the cached steps are large, namely, **Hybrid TaylorSeer + DBCache**. 
+
+```python
+cache_options = {
+    # TaylorSeer options
+    "enable_taylorseer": True,
+    "enable_encoder_taylorseer": True,
+    # Taylorseer cache type cache be hidden_states or residual
+    "taylorseer_cache_type": "hidden_states",
+    "residual_diff_threshold": 0.12,
+}
+```
 
 ## 🎉FBCache: First Block Cache  
 

@@ -682,26 +682,34 @@ def apply_hidden_states_residual(
 ):
     # Allow Bn and Fn prefix to be used for residual cache.
     if "Bn" in prefix:
-        hidden_states_residual = get_Bn_buffer(prefix)
+        hidden_states_prev = get_Bn_buffer(prefix)
     else:
-        hidden_states_residual = get_Fn_buffer(prefix)
+        hidden_states_prev = get_Fn_buffer(prefix)
 
-    assert (
-        hidden_states_residual is not None
-    ), f"{prefix}_buffer must be set before"
-    hidden_states = hidden_states_residual + hidden_states
+    assert hidden_states_prev is not None, f"{prefix}_buffer must be set before"
+
+    if is_cache_residual():
+        hidden_states = hidden_states_prev + hidden_states
+    else:
+        # If cache is not residual, we use the hidden states directly
+        hidden_states = hidden_states_prev
 
     if "Bn" in encoder_prefix:
-        encoder_hidden_states_residual = get_Bn_encoder_buffer(encoder_prefix)
+        encoder_hidden_states_prev = get_Bn_encoder_buffer(encoder_prefix)
     else:
-        encoder_hidden_states_residual = get_Fn_encoder_buffer(encoder_prefix)
+        encoder_hidden_states_prev = get_Fn_encoder_buffer(encoder_prefix)
 
     assert (
-        encoder_hidden_states_residual is not None
+        encoder_hidden_states_prev is not None
     ), f"{prefix}_encoder_buffer must be set before"
-    encoder_hidden_states = (
-        encoder_hidden_states_residual + encoder_hidden_states
-    )
+
+    if is_encoder_cache_residual():
+        encoder_hidden_states = (
+            encoder_hidden_states_prev + encoder_hidden_states
+        )
+    else:
+        # If encoder cache is not residual, we use the encoder hidden states directly
+        encoder_hidden_states = encoder_hidden_states_prev
 
     hidden_states = hidden_states.contiguous()
     encoder_hidden_states = encoder_hidden_states.contiguous()
