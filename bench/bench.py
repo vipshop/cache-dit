@@ -20,6 +20,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
     parser.add_argument(
         "--encoder-taylorseer", action="store_true", default=False
     )
@@ -51,7 +52,12 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
     elif cache_type == CacheType.DBCache:
         cache_options = {
             "cache_type": CacheType.DBCache,
-            "warmup_steps": args.warmup_steps,
+            "warmup_steps": (
+                # TaylorSeer needs at least order + 1 warmup steps
+                max(args.warmup_steps, args.taylorseer_order + 1)
+                if (args.taylorseer or args.encoder_taylorseer)
+                else args.warmup_steps
+            ),
             "max_cached_steps": args.max_cached_steps,  # -1 means no limit
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
@@ -78,6 +84,9 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "enable_encoder_taylorseer": args.encoder_taylorseer,
             # Taylorseer cache type cache be hidden_states or residual
             "taylorseer_cache_type": "residual",
+            "taylorseer_kwargs": {
+                "n_derivatives": args.taylorseer_order,
+            },
         }
     elif cache_type == CacheType.DBPrune:
         assert (
@@ -114,6 +123,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
             f"W{args.warmup_steps}T{int(args.taylorseer)}"
             f"ET{int(args.encoder_taylorseer)}"
+            f"O{args.taylorseer_order}"
         )
     elif cache_type == CacheType.DBPrune:
         cache_type_str = (
@@ -191,8 +201,20 @@ def main():
                 "Only compile transformer blocks not the whole model "
                 "for FluxTransformer2DModel to keep higher precision."
             )
-            for module in pipe.transformer.transformer_blocks:
-                module.compile()
+            if args.taylorseer_order <= 2 or (
+                not args.taylorseer and not args.encoder_taylorseer
+            ):
+                # NOTE: Seems like compiling the whole transformer
+                # will cause precision issues while using TaylorSeer
+                # with order > 2.
+                for module in pipe.transformer.transformer_blocks:
+                    module.compile()
+            else:
+                logger.warning(
+                    "Compiling the whole transformer model with TaylorSeer "
+                    "order > 2 may cause precision issues. Skipping "
+                    "transformer_blocks."
+                )
             for module in pipe.transformer.single_transformer_blocks:
                 module.compile()
         else:

@@ -238,8 +238,14 @@ cache_options = {
     # TaylorSeer options
     "enable_taylorseer": True,
     "enable_encoder_taylorseer": True,
-    # Taylorseer cache type cache be hidden_states or residual
+    # Taylorseer cache type cache be hidden_states or residual.
     "taylorseer_cache_type": "residual",
+    # Higher values of n_derivatives will lead to longer 
+    # computation time but may improve precision significantly.
+    "taylorseer_kwargs": {
+        "n_derivatives": 2, # default is 2.
+    },
+    "warmup_steps": 3, # n_derivatives + 1
     "residual_diff_threshold": 0.12,
 }
 ```
