@@ -201,8 +201,20 @@ def main():
                 "Only compile transformer blocks not the whole model "
                 "for FluxTransformer2DModel to keep higher precision."
             )
-            for module in pipe.transformer.transformer_blocks:
-                module.compile()
+            if args.taylorseer_order < 2 or (
+                not args.taylorseer and not args.encoder_taylorseer
+            ):
+                # NOTE: Seems like compiling the whole transformer
+                # will cause precision issues while using TaylorSeer
+                # with order > 2.
+                for module in pipe.transformer.transformer_blocks:
+                    module.compile()
+            else:
+                logger.warning(
+                    "Compiling the whole transformer model with TaylorSeer "
+                    "order >= 2 may cause precision issues. Skipping "
+                    "transformer_blocks."
+                )
             for module in pipe.transformer.single_transformer_blocks:
                 module.compile()
         else:
