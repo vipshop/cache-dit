@@ -503,7 +503,6 @@ def collect_cache_kwargs(default_attrs: dict, **kwargs):
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Collected DBCache kwargs: {cache_kwargs}")
 
-    logger.info(f"Collected DBCache kwargs: {cache_kwargs}")
     return cache_kwargs, kwargs
 
 
