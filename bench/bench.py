@@ -104,11 +104,12 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         cache_type_str = (
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
+            f"W{args.warmup_steps}T{int(args.taylorseer)}"
         )
     elif cache_type == CacheType.DBPrune:
         cache_type_str = (
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}"
+            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
         )
     return cache_options, cache_type_str
 
