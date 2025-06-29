@@ -61,11 +61,18 @@ class DBCacheContext:
     residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
-    # TODO: Support TaylorSeers in Dual Block Cache
+    # Support TaylorSeers in Dual Block Cache
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
+    enable_taylorseer: bool = False
+    enable_encoder_taylorseer: bool = False
+    # NOTE: use residual cache for taylorseer may incur precision loss
+    taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
+    taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
+    encoder_tarlorseer: Optional[TaylorSeer] = None
     alter_taylorseer: Optional[TaylorSeer] = None
+    alter_encoder_taylorseer: Optional[TaylorSeer] = None
 
     # TODO: Support SLG in Dual Block Cache
     # Skip Layer Guidance, SLG
@@ -73,6 +80,25 @@ class DBCacheContext:
     slg_layers: Optional[List[int]] = None
     slg_start: float = 0.0
     slg_end: float = 0.1
+
+    def __post_init__(self):
+        if self.warmup_steps > 0:
+            if "warmup_steps" not in self.taylorseer_kwargs:
+                # If warmup_steps is not set in taylorseer_kwargs,
+                # set the same as warmup_steps for DBCache
+                self.taylorseer_kwargs["warmup_steps"] = self.warmup_steps
+
+        if self.enable_taylorseer:
+            self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+            if self.enable_alter_cache:
+                self.alter_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+
+        if self.enable_encoder_taylorseer:
+            self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
+            if self.enable_alter_cache:
+                self.alter_encoder_taylorseer = TaylorSeer(
+                    **self.taylorseer_kwargs
+                )
 
     def get_incremental_name(self, name=None):
         if name is None:
@@ -123,12 +149,24 @@ class DBCacheContext:
             # 0 F 1 T 2 F 3 T 4 F 5 T ...
             self.is_alter_cache = not self.is_alter_cache
 
+        if self.enable_taylorseer:
+            taylorseer, encoder_taylorseer = self.get_taylorseers()
+            if taylorseer is not None:
+                taylorseer.mark_step_begin()
+            if encoder_taylorseer is not None:
+                encoder_taylorseer.mark_step_begin()
+
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
         if self.get_current_step() == 0:
             self.cached_steps.clear()
             self.residual_diffs.clear()
             self.reset_incremental_names()
+
+    def get_taylorseers(self):
+        if self.enable_alter_cache and self.is_alter_cache:
+            return self.alter_taylorseer, self.alter_encoder_taylorseer
+        return self.taylorseer, self.encoder_tarlorseer
 
     def add_residual_diff(self, diff):
         step = str(self.get_current_step())
@@ -227,6 +265,50 @@ def get_residual_diffs():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_residual_diffs()
+
+
+@torch.compiler.disable
+def is_taylorseer_enabled():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.enable_taylorseer
+
+
+@torch.compiler.disable
+def is_encoder_taylorseer_enabled():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.enable_encoder_taylorseer
+
+
+@torch.compiler.disable
+def get_taylorseers():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.get_taylorseers()
+
+
+@torch.compiler.disable
+def is_taylorseer_cache_residual():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.taylorseer_cache_type == "residual"
+
+
+@torch.compiler.disable
+def is_cache_residual():
+    if is_taylorseer_enabled():
+        # residual or hidden_states
+        return is_taylorseer_cache_residual()
+    return True
+
+
+@torch.compiler.disable
+def is_encoder_cache_residual():
+    if is_encoder_taylorseer_enabled():
+        # residual or hidden_states
+        return is_taylorseer_cache_residual()
+    return True
 
 
 @torch.compiler.disable
@@ -380,16 +462,21 @@ def collect_cache_kwargs(default_attrs: dict, **kwargs):
         for attr in cache_attrs
     }
 
+    def _safe_set_sequence_field(
+        field_name: str,
+        default_value: Any = None,
+    ):
+        if field_name not in cache_kwargs:
+            cache_kwargs[field_name] = kwargs.pop(
+                field_name,
+                default_value,
+            )
+
     # Manually set sequence fields, namely, Fn_compute_blocks_ids
     # and Bn_compute_blocks_ids, which are lists or sets.
-    cache_kwargs["Fn_compute_blocks_ids"] = kwargs.pop(
-        "Fn_compute_blocks_ids",
-        [],
-    )
-    cache_kwargs["Bn_compute_blocks_ids"] = kwargs.pop(
-        "Bn_compute_blocks_ids",
-        [],
-    )
+    _safe_set_sequence_field("Fn_compute_blocks_ids", [])
+    _safe_set_sequence_field("Bn_compute_blocks_ids", [])
+    _safe_set_sequence_field("taylorseer_kwargs", {})
 
     assert default_attrs is not None, "default_attrs must be set before"
     for attr in cache_attrs:
@@ -484,6 +571,7 @@ def are_two_tensors_similar(
 @torch.compiler.disable
 def set_Fn_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
     # Set hidden_states or residual for Fn blocks.
+    # This buffer is only use for L1 diff calculation.
     downsample_factor = get_downsample_factor()
     if downsample_factor > 1:
         buffer = buffer[..., ::downsample_factor]
@@ -510,22 +598,79 @@ def get_Fn_encoder_buffer(prefix: str = "Fn"):
 @torch.compiler.disable
 def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # Set hidden_states or residual for Bn blocks.
-    set_buffer(f"{prefix}_buffer", buffer)
+    # This buffer is use for hidden states approximation.
+    if is_taylorseer_enabled():
+        # taylorseer, encoder_taylorseer
+        taylorseer, _ = get_taylorseers()
+        if taylorseer is not None:
+            # Use TaylorSeer to update the buffer
+            taylorseer.update(buffer)
+        else:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
+            set_buffer(f"{prefix}_buffer", buffer)
+    else:
+        set_buffer(f"{prefix}_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Bn_buffer(prefix: str = "Bn"):
-    return get_buffer(f"{prefix}_buffer")
+    if is_taylorseer_enabled():
+        taylorseer, _ = get_taylorseers()
+        if taylorseer is not None:
+            return taylorseer.approximate_value()
+        else:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
+            # Fallback to default buffer retrieval
+            return get_buffer(f"{prefix}_buffer")
+    else:
+        return get_buffer(f"{prefix}_buffer")
 
 
 @torch.compiler.disable
 def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
-    set_buffer(f"{prefix}_encoder_buffer", buffer)
+    # This buffer is use for encoder hidden states approximation.
+    if is_encoder_taylorseer_enabled():
+        # taylorseer, encoder_taylorseer
+        _, encoder_taylorseer = get_taylorseers()
+        if encoder_taylorseer is not None:
+            # Use TaylorSeer to update the buffer
+            encoder_taylorseer.update(buffer)
+        else:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
+            set_buffer(f"{prefix}_encoder_buffer", buffer)
+    else:
+        set_buffer(f"{prefix}_encoder_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Bn_encoder_buffer(prefix: str = "Bn"):
-    return get_buffer(f"{prefix}_encoder_buffer")
+    if is_encoder_taylorseer_enabled():
+        _, encoder_taylorseer = get_taylorseers()
+        if encoder_taylorseer is not None:
+            # Use TaylorSeer to approximate the value
+            return encoder_taylorseer.approximate_value()
+        else:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "TaylorSeer is enabled but not set in the cache context. "
+                    "Falling back to default buffer retrieval."
+                )
+            # Fallback to default buffer retrieval
+            return get_buffer(f"{prefix}_encoder_buffer")
+    else:
+        return get_buffer(f"{prefix}_encoder_buffer")
 
 
 @torch.compiler.disable
@@ -533,29 +678,38 @@ def apply_hidden_states_residual(
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     prefix: str = "Bn",
+    encoder_prefix: str = "Bn_encoder",
 ):
     # Allow Bn and Fn prefix to be used for residual cache.
     if "Bn" in prefix:
-        hidden_states_residual = get_Bn_buffer(prefix)
+        hidden_states_prev = get_Bn_buffer(prefix)
     else:
-        hidden_states_residual = get_Fn_buffer(prefix)
+        hidden_states_prev = get_Fn_buffer(prefix)
+
+    assert hidden_states_prev is not None, f"{prefix}_buffer must be set before"
+
+    if is_cache_residual():
+        hidden_states = hidden_states_prev + hidden_states
+    else:
+        # If cache is not residual, we use the hidden states directly
+        hidden_states = hidden_states_prev
+
+    if "Bn" in encoder_prefix:
+        encoder_hidden_states_prev = get_Bn_encoder_buffer(encoder_prefix)
+    else:
+        encoder_hidden_states_prev = get_Fn_encoder_buffer(encoder_prefix)
 
     assert (
-        hidden_states_residual is not None
-    ), f"{prefix}_buffer must be set before"
-    hidden_states = hidden_states_residual + hidden_states
-
-    if "Bn" in prefix:
-        encoder_hidden_states_residual = get_Bn_encoder_buffer(prefix)
-    else:
-        encoder_hidden_states_residual = get_Fn_encoder_buffer(prefix)
-
-    assert (
-        encoder_hidden_states_residual is not None
+        encoder_hidden_states_prev is not None
     ), f"{prefix}_encoder_buffer must be set before"
-    encoder_hidden_states = (
-        encoder_hidden_states_residual + encoder_hidden_states
-    )
+
+    if is_encoder_cache_residual():
+        encoder_hidden_states = (
+            encoder_hidden_states_prev + encoder_hidden_states
+        )
+    else:
+        # If encoder cache is not residual, we use the encoder hidden states directly
+        encoder_hidden_states = encoder_hidden_states_prev
 
     hidden_states = hidden_states.contiguous()
     encoder_hidden_states = encoder_hidden_states.contiguous()
@@ -690,7 +844,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             add_cached_step()
             del Fn_hidden_states_residual
             hidden_states, encoder_hidden_states = apply_hidden_states_residual(
-                hidden_states, encoder_hidden_states, prefix="Bn_residual"
+                hidden_states,
+                encoder_hidden_states,
+                prefix=(
+                    "Bn_residual" if is_cache_residual() else "Bn_hidden_states"
+                ),
+                encoder_prefix=(
+                    "Bn_residual"
+                    if is_encoder_cache_residual()
+                    else "Bn_hidden_states"
+                ),
             )
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
@@ -719,10 +882,28 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            set_Bn_buffer(hidden_states_residual, prefix="Bn_residual")
-            set_Bn_encoder_buffer(
-                encoder_hidden_states_residual, prefix="Bn_residual"
-            )
+            if is_cache_residual():
+                set_Bn_buffer(
+                    hidden_states_residual,
+                    prefix="Bn_residual",
+                )
+            else:
+                # TaylorSeer
+                set_Bn_buffer(
+                    hidden_states,
+                    prefix="Bn_hidden_states",
+                )
+            if is_encoder_cache_residual():
+                set_Bn_encoder_buffer(
+                    encoder_hidden_states_residual,
+                    prefix="Bn_residual",
+                )
+            else:
+                # TaylorSeer
+                set_Bn_encoder_buffer(
+                    encoder_hidden_states,
+                    prefix="Bn_hidden_states",
+                )
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
             hidden_states, encoder_hidden_states = (
@@ -790,7 +971,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         return selected_Mn_single_transformer_blocks
 
     @torch.compiler.disable
-    def _Mn_transformer_blocks(self): # middle blocks
+    def _Mn_transformer_blocks(self):  # middle blocks
         # M(N-2n): only transformer_blocks [n,...,N-n], middle
         if Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
             selected_Mn_transformer_blocks = self.transformer_blocks[
@@ -1064,6 +1245,10 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     Bn_i_original_hidden_states,
                     prefix=f"Bn_{block_id}_single_original",
                 )
+                set_Bn_encoder_buffer(
+                    Bn_i_original_hidden_states,
+                    prefix=f"Bn_{block_id}_single_original",
+                )
 
                 set_Bn_buffer(
                     Bn_i_hidden_states_residual,
@@ -1111,7 +1296,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         apply_hidden_states_residual(
                             Bn_i_original_hidden_states,
                             Bn_i_original_encoder_hidden_states,
-                            prefix=f"Bn_{block_id}_single_residual",
+                            prefix=(
+                                f"Bn_{block_id}_single_residual"
+                                if is_cache_residual()
+                                else f"Bn_{block_id}_single_original"
+                            ),
+                            encoder_prefix=(
+                                f"Bn_{block_id}_single_residual"
+                                if is_encoder_cache_residual()
+                                else f"Bn_{block_id}_single_original"
+                            ),
                         )
                     )
                     hidden_states = torch.cat(
@@ -1132,7 +1326,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         self,
         # Block index in the transformer blocks
         # Bn: 8, block_id should be in [0, 8)
-        block_id: int,  
+        block_id: int,
         # Below are the inputs to the block
         block,  # The transformer block to be executed
         hidden_states: torch.Tensor,
@@ -1176,6 +1370,10 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 # Save original_hidden_states for diff calculation.
                 set_Bn_buffer(
                     Bn_i_original_hidden_states,
+                    prefix=f"Bn_{block_id}_original",
+                )
+                set_Bn_encoder_buffer(
+                    Bn_i_original_encoder_hidden_states,
                     prefix=f"Bn_{block_id}_original",
                 )
 
@@ -1224,7 +1422,16 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         apply_hidden_states_residual(
                             hidden_states,
                             encoder_hidden_states,
-                            prefix=f"Bn_{block_id}_residual",
+                            prefix=(
+                                f"Bn_{block_id}_residual"
+                                if is_cache_residual()
+                                else f"Bn_{block_id}_original"
+                            ),
+                            encoder_prefix=(
+                                f"Bn_{block_id}_residual"
+                                if is_encoder_cache_residual()
+                                else f"Bn_{block_id}_original"
+                            ),
                         )
                     )
                 else:

@@ -370,6 +370,9 @@ def apply_prev_hidden_states_residual(
         hidden_states = hidden_states_residual + hidden_states
 
         hidden_states = hidden_states.contiguous()
+        # NOTE: We should also support taylorseer for 
+        # encoder_hidden_states approximation. Please 
+        # use DBCache instead.
     else:
         hidden_states_residual = get_hidden_states_residual()
         assert (

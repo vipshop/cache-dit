@@ -37,6 +37,8 @@ class TaylorSeer:
         return False
 
     def approximate_derivative(self, Y):
+        # n-th order Taylor expansion:
+        # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2! + ... + d^nY(0)/dt^n * t^n / n!
         dY_current = [None] * self.ORDER
         dY_current[0] = Y
         window = self.current_step - self.last_non_approximated_step
@@ -63,6 +65,8 @@ class TaylorSeer:
         self.current_step += 1
 
     def update(self, Y):
+        # Directly call this method will ingnore the warmup
+        # policy and force full computation.
         self.state["dY_prev"] = self.state["dY_current"]
         self.state["dY_current"] = self.approximate_derivative(Y)
         self.last_non_approximated_step = self.current_step

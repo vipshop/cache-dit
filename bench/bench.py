@@ -19,6 +19,10 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
+    parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument(
+        "--encoder-taylorseer", action="store_true", default=False
+    )
     parser.add_argument("--l1-diff", action="store_true", default=False)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
@@ -41,6 +45,8 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "warmup_steps": args.warmup_steps,
             "max_cached_steps": args.max_cached_steps,
             "residual_diff_threshold": args.rdt,
+            # TaylorSeer options
+            "enable_taylorseer": args.taylorseer,
         }
     elif cache_type == CacheType.DBCache:
         cache_options = {
@@ -52,10 +58,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
             "max_Fn_compute_blocks": 19,
             "max_Bn_compute_blocks": 38,
-            # WARN: DON'T set len(Fn_compute_blocks_ids) > 0 NOW, still have
-            # some precision issues. 0, 1, 2, ..., 7, etc.
-            "Fn_compute_blocks_ids": [],
-            # NOTE: Only skip the specific Bn blocks in cache steps.
+            # Skip the specific Bn blocks in cache steps.
             # 0, 2, 4, ..., 14, 15, etc.
             "Bn_compute_blocks_ids": CacheType.range(
                 0, args.Bn_compute_blocks, args.Bn_steps
@@ -70,8 +73,16 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             ),
             # releative token diff threshold, default is 0.0
             "important_condition_threshold": 0.00,
+            # TaylorSeer options
+            "enable_taylorseer": args.taylorseer,
+            "enable_encoder_taylorseer": args.encoder_taylorseer,
+            # Taylorseer cache type cache be hidden_states or residual
+            "taylorseer_cache_type": "residual",
         }
     elif cache_type == CacheType.DBPrune:
+        assert (
+            args.taylorseer is False and args.encoder_taylorseer is False
+        ), "DBPrune does not support TaylorSeer yet."
         cache_options = {
             "cache_type": CacheType.DBPrune,
             "residual_diff_threshold": args.rdt,
@@ -101,11 +112,17 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         cache_type_str = (
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
+            f"W{args.warmup_steps}T{int(args.taylorseer)}"
+            f"ET{int(args.encoder_taylorseer)}"
         )
     elif cache_type == CacheType.DBPrune:
         cache_type_str = (
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}"
+            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+        )
+    elif cache_type == CacheType.FBCache:
+        cache_type_str = (
+            f"{cache_type_str}_W{args.warmup_steps}" f"T{int(args.taylorseer)}"
         )
     return cache_options, cache_type_str
 
