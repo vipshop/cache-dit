@@ -81,6 +81,7 @@ class DBCacheContext:
     slg_start: float = 0.0
     slg_end: float = 0.1
 
+    @torch.compiler.disable
     def __post_init__(self):
 
         if "warmup_steps" not in self.taylorseer_kwargs:
