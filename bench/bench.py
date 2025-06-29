@@ -53,10 +53,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
             "max_Fn_compute_blocks": 19,
             "max_Bn_compute_blocks": 38,
-            # WARN: DON'T set len(Fn_compute_blocks_ids) > 0 NOW, still have
-            # some precision issues. 0, 1, 2, ..., 7, etc.
-            "Fn_compute_blocks_ids": [],
-            # NOTE: Only skip the specific Bn blocks in cache steps.
+            # Skip the specific Bn blocks in cache steps.
             # 0, 2, 4, ..., 14, 15, etc.
             "Bn_compute_blocks_ids": CacheType.range(
                 0, args.Bn_compute_blocks, args.Bn_steps
@@ -75,6 +72,9 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "enable_taylorseer": args.taylorseer,
         }
     elif cache_type == CacheType.DBPrune:
+        assert (
+            args.taylorseer is False
+        ), "DBPrune does not support TaylorSeer yet."
         cache_options = {
             "cache_type": CacheType.DBPrune,
             "residual_diff_threshold": args.rdt,

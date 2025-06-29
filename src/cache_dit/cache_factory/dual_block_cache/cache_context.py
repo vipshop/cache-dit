@@ -61,7 +61,7 @@ class DBCacheContext:
     residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
-    # TODO: Support TaylorSeers in Dual Block Cache
+    # Support TaylorSeers in Dual Block Cache
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
     enable_taylorseer: bool = False
@@ -70,7 +70,7 @@ class DBCacheContext:
     encoder_tarlorseer: Optional[TaylorSeer] = None
     alter_taylorseer: Optional[TaylorSeer] = None
     alter_encoder_taylorseer: Optional[TaylorSeer] = None
-    
+
     # TODO: Support SLG in Dual Block Cache
     # Skip Layer Guidance, SLG
     # https://github.com/huggingface/candle/issues/2588
@@ -81,17 +81,17 @@ class DBCacheContext:
     def __post_init__(self):
         if self.warmup_steps > 0:
             if "warmup_steps" not in self.taylorseer_kwargs:
-                # If warmup_steps is not set in taylorseer_kwargs, 
+                # If warmup_steps is not set in taylorseer_kwargs,
                 # set the same as warmup_steps for DBCache
-                self.taylorseer_kwargs["warmup_steps"] = (
-                    self.warmup_steps
-                )
+                self.taylorseer_kwargs["warmup_steps"] = self.warmup_steps
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
             self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
             if self.enable_alter_cache:
                 self.alter_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
-                self.alter_encoder_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+                self.alter_encoder_taylorseer = TaylorSeer(
+                    **self.taylorseer_kwargs
+                )
 
     def get_incremental_name(self, name=None):
         if name is None:
@@ -153,7 +153,7 @@ class DBCacheContext:
             self.cached_steps.clear()
             self.residual_diffs.clear()
             self.reset_incremental_names()
-    
+
     def get_taylorseers(self):
         if self.enable_alter_cache and self.is_alter_cache:
             return self.alter_taylorseer, self.alter_encoder_taylorseer
@@ -424,15 +424,15 @@ def collect_cache_kwargs(default_attrs: dict, **kwargs):
     }
 
     def _safe_set_sequence_field(
-        field_name: str,      
-        default_value: Any = None,  
+        field_name: str,
+        default_value: Any = None,
     ):
         if field_name not in cache_kwargs:
             cache_kwargs[field_name] = kwargs.pop(
                 field_name,
                 default_value,
             )
-    
+
     # Manually set sequence fields, namely, Fn_compute_blocks_ids
     # and Bn_compute_blocks_ids, which are lists or sets.
     _safe_set_sequence_field("Fn_compute_blocks_ids", [])
@@ -628,7 +628,7 @@ def get_Bn_encoder_buffer(prefix: str = "Bn"):
             return get_buffer(f"{prefix}_encoder_buffer")
     else:
         return get_buffer(f"{prefix}_encoder_buffer")
-    
+
 
 @torch.compiler.disable
 def apply_hidden_states_residual(
@@ -892,7 +892,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         return selected_Mn_single_transformer_blocks
 
     @torch.compiler.disable
-    def _Mn_transformer_blocks(self): # middle blocks
+    def _Mn_transformer_blocks(self):  # middle blocks
         # M(N-2n): only transformer_blocks [n,...,N-n], middle
         if Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
             selected_Mn_transformer_blocks = self.transformer_blocks[
@@ -1234,7 +1234,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         self,
         # Block index in the transformer blocks
         # Bn: 8, block_id should be in [0, 8)
-        block_id: int,  
+        block_id: int,
         # Below are the inputs to the block
         block,  # The transformer block to be executed
         hidden_states: torch.Tensor,
