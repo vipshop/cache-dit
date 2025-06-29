@@ -53,8 +53,8 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         cache_options = {
             "cache_type": CacheType.DBCache,
             "warmup_steps": (
-                # TaylorSeer needs at least 2 warmup steps
-                max(args.warmup_steps, 2)
+                # TaylorSeer needs at least order + 1 warmup steps
+                max(args.warmup_steps, args.taylorseer_order + 1)
                 if (args.taylorseer or args.encoder_taylorseer)
                 else args.warmup_steps
             ),
@@ -84,6 +84,9 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "enable_encoder_taylorseer": args.encoder_taylorseer,
             # Taylorseer cache type cache be hidden_states or residual
             "taylorseer_cache_type": "residual",
+            "taylorseer_kwargs": {
+                "n_derivatives": args.taylorseer_order,
+            },
         }
     elif cache_type == CacheType.DBPrune:
         assert (
@@ -120,6 +123,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
             f"W{args.warmup_steps}T{int(args.taylorseer)}"
             f"ET{int(args.encoder_taylorseer)}"
+            f"O{args.taylorseer_order}"
         )
     elif cache_type == CacheType.DBPrune:
         cache_type_str = (
