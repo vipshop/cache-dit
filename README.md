@@ -251,7 +251,7 @@ cache_options = {
 ``` 
 
 > [!Important]
-> Please note that if you have used TaylorSeer as the calibrator for approximate output, the Bn parameter of DBCache can be set to 0. In essence, DBCache's Bn is also act as a calibrator, so you can choose either TaylorSeer or Bn. We recommend the configuration scheme of **TaylorSeer + DBCache FnB0** for better performance.
+> Please note that if you have used TaylorSeer as the calibrator for approximate hidden states, the **Bn** parameter of DBCache can be set to **0**. In essence, DBCache's Bn is also act as a calibrator, so you can choose either TaylorSeer or Bn > 0. We recommend the configuration scheme of **TaylorSeer + DBCache FnB0** for better performance.
 
 <div align="center">
   <p align="center">
