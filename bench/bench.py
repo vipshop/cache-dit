@@ -58,7 +58,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "warmup_steps": (
                 # TaylorSeer needs at least order + 1 warmup steps
                 max(args.warmup_steps, args.taylorseer_order + 1)
-                if (args.taylorseer or args.encoder_taylorseer)
+                if args.taylorseer
                 else args.warmup_steps
             ),
             "max_cached_steps": args.max_cached_steps,  # -1 means no limit
