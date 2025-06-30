@@ -138,7 +138,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         )
     elif cache_type == CacheType.FBCache:
         cache_type_str = (
-            f"{cache_type_str}_W{args.warmup_steps}" f"T{int(args.taylorseer)}"
+            f"{cache_type_str}_W{args.warmup_steps}T{int(args.taylorseer)}"
         )
     return cache_options, cache_type_str
 
