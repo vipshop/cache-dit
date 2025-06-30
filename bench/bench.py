@@ -29,6 +29,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
+    parser.add_argument("--gen-device", type=str, default="cuda")
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument(
@@ -37,7 +38,6 @@ def get_args() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
     )
-    parser.add_argument("--gen-device", type=str, default="cuda")
     return parser.parse_args()
 
 
@@ -55,12 +55,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
     elif cache_type == CacheType.DBCache:
         cache_options = {
             "cache_type": CacheType.DBCache,
-            "warmup_steps": (
-                # TaylorSeer needs at least order + 1 warmup steps
-                max(args.warmup_steps, args.taylorseer_order + 1)
-                if args.taylorseer
-                else args.warmup_steps
-            ),
+            "warmup_steps": args.warmup_steps,
             "max_cached_steps": args.max_cached_steps,  # -1 means no limit
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
