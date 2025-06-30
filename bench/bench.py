@@ -128,7 +128,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
             f"W{args.warmup_steps}T{int(args.taylorseer)}"
-            f"ET{int(args.encoder_taylorseer)}"
+            f"{int(args.encoder_taylorseer)}"
             f"O{args.taylorseer_order}"
         )
     elif cache_type == CacheType.DBPrune:
