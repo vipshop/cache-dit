@@ -248,7 +248,11 @@ cache_options = {
     "warmup_steps": 3, # n_derivatives + 1
     "residual_diff_threshold": 0.12,
 }
-```
+``` 
+
+> [!Important]
+> Please note that if you have used TaylorSeer as the calibrator for approximate output, the Bn parameter of DBCache can be set to 0. In essence, DBCache's Bn is also act as a calibrator, so you can choose either TaylorSeer or Bn. We recommend the configuration scheme of **TaylorSeer + DBCache FnB0** for better performance.
+
 <div align="center">
   <p align="center">
     <b>DBCache F1B0 + TaylorSeer</b>, L20x1, Steps: 28, <br>"A cat holding a sign that says hello world with complex background"
