@@ -34,6 +34,12 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument(
+        "--force-compile-all",
+        "--compile-all",
+        action="store_true",
+        default=False,
+    )
     parser.add_argument("--gen-device", type=str, default="cuda")
     return parser.parse_args()
 
@@ -201,8 +207,10 @@ def main():
                 "Only compile transformer blocks not the whole model "
                 "for FluxTransformer2DModel to keep higher precision."
             )
-            if args.taylorseer_order <= 2 or (
-                not args.taylorseer and not args.encoder_taylorseer
+            if (
+                args.taylorseer_order <= 2
+                or (not args.taylorseer and not args.encoder_taylorseer)
+                or args.force_compile_all
             ):
                 # NOTE: Seems like compiling the whole transformer
                 # will cause precision issues while using TaylorSeer
