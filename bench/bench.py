@@ -21,9 +21,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
-    parser.add_argument(
-        "--encoder-taylorseer", action="store_true", default=False
-    )
     parser.add_argument("--l1-diff", action="store_true", default=False)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
@@ -87,7 +84,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "important_condition_threshold": 0.00,
             # TaylorSeer options
             "enable_taylorseer": args.taylorseer,
-            "enable_encoder_taylorseer": args.encoder_taylorseer,
+            "enable_encoder_taylorseer": args.taylorseer,
             # Taylorseer cache type cache be hidden_states or residual
             "taylorseer_cache_type": "residual",
             "taylorseer_kwargs": {
@@ -96,7 +93,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         }
     elif cache_type == CacheType.DBPrune:
         assert (
-            args.taylorseer is False and args.encoder_taylorseer is False
+            args.taylorseer is False
         ), "DBPrune does not support TaylorSeer yet."
         cache_options = {
             "cache_type": CacheType.DBPrune,
@@ -128,7 +125,6 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
             f"W{args.warmup_steps}T{int(args.taylorseer)}"
-            f"{int(args.encoder_taylorseer)}"
             f"O{args.taylorseer_order}"
         )
     elif cache_type == CacheType.DBPrune:
@@ -209,7 +205,7 @@ def main():
             )
             if (
                 args.taylorseer_order <= 2
-                or (not args.taylorseer and not args.encoder_taylorseer)
+                or not args.taylorseer
                 or args.force_compile_all
             ):
                 # NOTE: Seems like compiling the whole transformer
