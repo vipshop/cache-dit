@@ -21,9 +21,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
-    parser.add_argument(
-        "--encoder-taylorseer", action="store_true", default=False
-    )
     parser.add_argument("--l1-diff", action="store_true", default=False)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
@@ -32,9 +29,15 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
+    parser.add_argument("--gen-device", type=str, default="cuda")
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--gen-device", type=str, default="cuda")
+    parser.add_argument(
+        "--force-compile-all",
+        "--compile-all",
+        action="store_true",
+        default=False,
+    )
     return parser.parse_args()
 
 
@@ -52,12 +55,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
     elif cache_type == CacheType.DBCache:
         cache_options = {
             "cache_type": CacheType.DBCache,
-            "warmup_steps": (
-                # TaylorSeer needs at least order + 1 warmup steps
-                max(args.warmup_steps, args.taylorseer_order + 1)
-                if (args.taylorseer or args.encoder_taylorseer)
-                else args.warmup_steps
-            ),
+            "warmup_steps": args.warmup_steps,
             "max_cached_steps": args.max_cached_steps,  # -1 means no limit
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
@@ -81,7 +79,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             "important_condition_threshold": 0.00,
             # TaylorSeer options
             "enable_taylorseer": args.taylorseer,
-            "enable_encoder_taylorseer": args.encoder_taylorseer,
+            "enable_encoder_taylorseer": args.taylorseer,
             # Taylorseer cache type cache be hidden_states or residual
             "taylorseer_cache_type": "residual",
             "taylorseer_kwargs": {
@@ -90,7 +88,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         }
     elif cache_type == CacheType.DBPrune:
         assert (
-            args.taylorseer is False and args.encoder_taylorseer is False
+            args.taylorseer is False
         ), "DBPrune does not support TaylorSeer yet."
         cache_options = {
             "cache_type": CacheType.DBPrune,
@@ -122,7 +120,6 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
             f"W{args.warmup_steps}T{int(args.taylorseer)}"
-            f"ET{int(args.encoder_taylorseer)}"
             f"O{args.taylorseer_order}"
         )
     elif cache_type == CacheType.DBPrune:
@@ -132,7 +129,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
         )
     elif cache_type == CacheType.FBCache:
         cache_type_str = (
-            f"{cache_type_str}_W{args.warmup_steps}" f"T{int(args.taylorseer)}"
+            f"{cache_type_str}_W{args.warmup_steps}T{int(args.taylorseer)}"
         )
     return cache_options, cache_type_str
 
@@ -201,8 +198,10 @@ def main():
                 "Only compile transformer blocks not the whole model "
                 "for FluxTransformer2DModel to keep higher precision."
             )
-            if args.taylorseer_order <= 2 or (
-                not args.taylorseer and not args.encoder_taylorseer
+            if (
+                args.taylorseer_order <= 2
+                or not args.taylorseer
+                or args.force_compile_all
             ):
                 # NOTE: Seems like compiling the whole transformer
                 # will cause precision issues while using TaylorSeer
