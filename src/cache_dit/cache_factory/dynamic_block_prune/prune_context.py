@@ -55,6 +55,7 @@ class DBPPruneContext:
         default_factory=lambda: defaultdict(list),
     )
 
+    @torch.compiler.disable
     def get_residual_diff_threshold(self):
         residual_diff_threshold = self.residual_diff_threshold
         if self.l1_hidden_states_diff_threshold is not None:
@@ -98,19 +99,24 @@ class DBPPruneContext:
                         )
         return residual_diff_threshold
 
+    @torch.compiler.disable
     def get_buffer(self, name):
         return self.buffers.get(name)
 
+    @torch.compiler.disable
     def set_buffer(self, name, buffer):
         self.buffers[name] = buffer
 
+    @torch.compiler.disable
     def remove_buffer(self, name):
         if name in self.buffers:
             del self.buffers[name]
 
+    @torch.compiler.disable
     def clear_buffers(self):
         self.buffers.clear()
 
+    @torch.compiler.disable
     def mark_step_begin(self):
         self.executed_steps += 1
         if self.get_current_step() == 0:
@@ -118,12 +124,15 @@ class DBPPruneContext:
             self.actual_blocks.clear()
             self.residual_diffs.clear()
 
+    @torch.compiler.disable
     def add_pruned_block(self, num_blocks):
         self.pruned_blocks.append(num_blocks)
 
+    @torch.compiler.disable
     def add_actual_block(self, num_blocks):
         self.actual_blocks.append(num_blocks)
 
+    @torch.compiler.disable
     def add_residual_diff(self, diff):
         if isinstance(diff, torch.Tensor):
             diff = diff.item()
@@ -141,9 +150,11 @@ class DBPPruneContext:
                 f"residual diff: {diff:.6f}"
             )
 
+    @torch.compiler.disable
     def get_current_step(self):
         return self.executed_steps - 1
 
+    @torch.compiler.disable
     def is_in_warmup(self):
         return self.get_current_step() < self.warmup_steps
 
@@ -348,11 +359,19 @@ def collect_prune_kwargs(default_attrs: dict, **kwargs):
         )
         for attr in prune_attrs
     }
+
     # Manually set sequence fields, such as non_prune_blocks_ids
-    prune_kwargs["non_prune_blocks_ids"] = kwargs.pop(
-        "non_prune_blocks_ids",
-        [],
-    )
+    def _safe_set_sequence_field(
+        field_name: str,
+        default_value: Any = None,
+    ):
+        if field_name not in prune_kwargs:
+            prune_kwargs[field_name] = kwargs.pop(
+                field_name,
+                default_value,
+            )
+
+    _safe_set_sequence_field("non_prune_blocks_ids", [])
 
     assert default_attrs is not None, "default_attrs must be set before"
     for attr in prune_attrs:
@@ -627,11 +646,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         ]
         return sorted(non_prune_blocks_ids)
 
-    # @torch.compile(dynamic=True)
-    # mark this function as compile with dynamic=True will
-    # cause precision degradate, so, we choose to disable it
-    # now, until we find a better solution or fixed the bug.
-    @torch.compiler.disable
+    @torch.compile(dynamic=True)
     def _compute_single_hidden_states_residual(
         self,
         single_hidden_states: torch.Tensor,
@@ -667,11 +682,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             single_encoder_hidden_states_residual,
         )
 
-    # @torch.compile(dynamic=True)
-    # mark this function as compile with dynamic=True will
-    # cause precision degradate, so, we choose to disable it
-    # now, until we find a better solution or fixed the bug.
-    @torch.compiler.disable
+    @torch.compile(dynamic=True)
     def _split_single_hidden_states(
         self,
         single_hidden_states: torch.Tensor,
