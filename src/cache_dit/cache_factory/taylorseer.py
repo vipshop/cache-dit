@@ -1,4 +1,5 @@
 # Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/src/para_attn/first_block_cache/taylorseer.py
+# Reference: https://github.com/Shenyi-Z/TaylorSeer/TaylorSeer-FLUX/src/flux/taylor_utils/__init__.py
 import math
 import torch
 
@@ -44,8 +45,6 @@ class TaylorSeer:
         # n-th order Taylor expansion:
         # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2!
         #        + ... + d^nY(0)/dt^n * t^n / n!
-        # reference: https://github.com/Shenyi-Z/TaylorSeer
-        # TaylorSeer-FLUX/src/flux/taylor_utils/__init__.py
         # TODO: Custom Triton/CUDA kernel for better performance,
         # especially for large n_derivatives.
         dY_current = [None] * self.ORDER
