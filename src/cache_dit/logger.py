@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import torch.distributed as dist
 
 _FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
@@ -95,3 +96,30 @@ def init_logger(name: str):
             logger.addHandler(_inference_log_file_handler[pid])
     logger.propagate = False
     return logger
+
+
+def logging_rank_0(
+    logger: logging.Logger, message: str, level: int = logging.INFO
+):
+    if not isinstance(logger, logging.Logger):
+        raise TypeError("logger must be an instance of logging.Logger")
+    if not isinstance(message, str):
+        raise TypeError("message must be a string")
+    if not isinstance(level, int):
+        raise TypeError("level must be an integer representing a logging level")
+
+    def _logging_msg():
+        if level == logging.DEBUG:
+            logger.debug(message)
+        elif level == logging.WARNING:
+            logger.warning(message)
+        elif level == logging.ERROR:
+            logger.error(message)
+        else:
+            logger.info(message)
+
+    if dist.is_initialized():
+        if dist.get_rank() == 0:
+            _logging_msg()
+    else:
+        _logging_msg()
