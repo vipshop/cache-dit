@@ -980,17 +980,6 @@ def patch_pruned_stats(
     if transformer is None:
         return
 
-    pruned_transformer_blocks = getattr(transformer, "transformer_blocks", None)
-    if pruned_transformer_blocks is None:
-        return
-
-    if isinstance(pruned_transformer_blocks, torch.nn.ModuleList):
-        pruned_transformer_blocks = pruned_transformer_blocks[0]
-    if not isinstance(
-        pruned_transformer_blocks, DBPrunedTransformerBlocks
-    ) or not isinstance(transformer, torch.nn.Module):
-        return
-
     # TODO: Patch more pruned stats to the transformer
     transformer._pruned_blocks = get_pruned_blocks()
     transformer._pruned_steps = get_pruned_steps()
