@@ -954,7 +954,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 )
             )
 
-        patch_cached_stats(self.transformer)
+        patch_cached_stats(self.transformer, self.transformer_blocks)
         torch._dynamo.graph_break()
 
         return (
@@ -1592,13 +1592,13 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 @torch.compiler.disable
 def patch_cached_stats(
     transformer,
+    cached_transformer_blocks,
 ):
     # Patch the cached stats to the transformer, the cached stats
     # will be reset for each calling of pipe.__call__(**kwargs).
     if transformer is None:
         return
 
-    cached_transformer_blocks = getattr(transformer, "transformer_blocks", None)
     if cached_transformer_blocks is None:
         return
 
