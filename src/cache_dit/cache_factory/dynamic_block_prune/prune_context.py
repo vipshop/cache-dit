@@ -646,7 +646,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         ]
         return sorted(non_prune_blocks_ids)
 
-    @torch.compile(dynamic=True)
+    @torch.compiler.disable
     def _compute_single_hidden_states_residual(
         self,
         single_hidden_states: torch.Tensor,
@@ -682,7 +682,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             single_encoder_hidden_states_residual,
         )
 
-    @torch.compile(dynamic=True)
+    @torch.compiler.disable
     def _split_single_hidden_states(
         self,
         single_hidden_states: torch.Tensor,
