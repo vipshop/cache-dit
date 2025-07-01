@@ -6,7 +6,7 @@ from cache_dit.logger import init_logger, logging_rank_0
 logger = init_logger(__name__)
 
 
-def epilogue_prologue_fusion_enbaled(**kwargs) -> bool:
+def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
     mode = kwargs.get("epilogue_prologue_fusion", False)
     CACHE_DIT_EPILOGUE_PROLOGUE_FUSION = bool(
         int(os.environ.get("CACHE_DIT_EPILOGUE_PROLOGUE_FUSION", "0"))
@@ -72,7 +72,7 @@ def set_custom_compile_configs(
     torch._inductor.config.epilogue_fusion = False
 
     # Enable epilogue and prologue fusion
-    if epilogue_prologue_fusion_enbaled(**kwargs):
+    if epilogue_prologue_fusion_enabled(**kwargs):
         torch._inductor.config.epilogue_fusion = True
         torch._inductor.config.prologue_fusion = True
         torch._inductor.config.epilogue_fusion_first = True
