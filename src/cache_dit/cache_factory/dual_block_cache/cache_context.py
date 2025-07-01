@@ -1598,17 +1598,6 @@ def patch_cached_stats(
     if transformer is None:
         return
 
-    cached_transformer_blocks = getattr(transformer, "transformer_blocks", None)
-    if cached_transformer_blocks is None:
-        return
-
-    if isinstance(cached_transformer_blocks, torch.nn.ModuleList):
-        cached_transformer_blocks = cached_transformer_blocks[0]
-    if not isinstance(
-        cached_transformer_blocks, DBCachedTransformerBlocks
-    ) or not isinstance(transformer, torch.nn.Module):
-        return
-
     # TODO: Patch more cached stats to the transformer
     transformer._cached_steps = get_cached_steps()
     transformer._residual_diffs = get_residual_diffs()
