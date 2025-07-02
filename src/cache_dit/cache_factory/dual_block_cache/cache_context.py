@@ -56,9 +56,12 @@ class DBCacheContext:
 
     # Statistics for botch alter cache and non-alter cache
     # Record the steps that have been cached, both alter cache and non-alter cache
-    executed_steps: int = 0  # cache + non-cache steps
+    executed_steps: int = 0  # cache + non-cache steps pippeline
+    # steps for transformer, for CFG, transformer_executed_steps will
+    # be double of executed_steps.
+    transformer_executed_steps: int = 0
     cached_steps: List[int] = dataclasses.field(default_factory=list)
-    residual_diffs: DefaultDict[str, float] = dataclasses.field(
+    residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
     # Support TaylorSeers in Dual Block Cache
@@ -71,8 +74,10 @@ class DBCacheContext:
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
-    alter_taylorseer: Optional[TaylorSeer] = None
-    alter_encoder_taylorseer: Optional[TaylorSeer] = None
+    # Support do_classifier_free_guidance, such as Wan 2.1
+    do_classifier_free_guidance: bool = False
+    cfg_taylorseer: Optional[TaylorSeer] = None
+    cfg_encoder_taylorseer: Optional[TaylorSeer] = None
 
     # TODO: Support SLG in Dual Block Cache
     # Skip Layer Guidance, SLG
@@ -83,6 +88,8 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def __post_init__(self):
+        if self.do_classifier_free_guidance:
+            assert self.enable_alter_cache is False
 
         if "warmup_steps" not in self.taylorseer_kwargs:
             # If warmup_steps is not set in taylorseer_kwargs,
@@ -99,13 +106,13 @@ class DBCacheContext:
 
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
-            if self.enable_alter_cache:
-                self.alter_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+            if self.do_classifier_free_guidance:
+                self.cfg_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
 
         if self.enable_encoder_taylorseer:
             self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
-            if self.enable_alter_cache:
-                self.alter_encoder_taylorseer = TaylorSeer(
+            if self.do_classifier_free_guidance:
+                self.cfg_encoder_taylorseer = TaylorSeer(
                     **self.taylorseer_kwargs
                 )
 
@@ -159,16 +166,20 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def mark_step_begin(self):
-        if not self.enable_alter_cache:
-            self.executed_steps += 1
+        self.transformer_executed_steps += 1
+        if not self.do_classifier_free_guidance:
+            self.executed_steps = self.transformer_executed_steps
         else:
-            self.executed_steps += 1
+            # 0,1 -> 0, 2,3 -> 1, ...
+            self.executed_steps = self.transformer_executed_steps // 2
+
+        if not self.enable_alter_cache:
             # 0 F 1 T 2 F 3 T 4 F 5 T ...
             self.is_alter_cache = not self.is_alter_cache
 
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
-        if self.get_current_step() == 0:
+        if self.get_current_transformer_step() == 0:
             self.cached_steps.clear()
             self.residual_diffs.clear()
             self.reset_incremental_names()
@@ -180,20 +191,46 @@ class DBCacheContext:
                     taylorseer.reset_cache()
                 if encoder_taylorseer is not None:
                     encoder_taylorseer.reset_cache()
+                cfg_taylorseer, cfg_encoder_taylorseer = (
+                    self.get_cfg_taylorseers()
+                )
+                if cfg_taylorseer is not None:
+                    cfg_taylorseer.reset_cache()
+                if cfg_encoder_taylorseer is not None:
+                    cfg_encoder_taylorseer.reset_cache()
 
         # mark_step_begin of TaylorSeer must be called after the cache is reset.
         if self.enable_taylorseer or self.enable_encoder_taylorseer:
-            taylorseer, encoder_taylorseer = self.get_taylorseers()
-            if taylorseer is not None:
-                taylorseer.mark_step_begin()
-            if encoder_taylorseer is not None:
-                encoder_taylorseer.mark_step_begin()
+            if self.do_classifier_free_guidance:
+                # Assume non-CFG steps: 0, 2, 4, 6, ...
+                if self.transformer_executed_steps % 2 == 0:
+                    taylorseer, encoder_taylorseer = self.get_taylorseers()
+                    if taylorseer is not None:
+                        taylorseer.mark_step_begin()
+                    if encoder_taylorseer is not None:
+                        encoder_taylorseer.mark_step_begin()
+                else:
+                    cfg_taylorseer, cfg_encoder_taylorseer = (
+                        self.get_cfg_taylorseers()
+                    )
+                    if cfg_taylorseer is not None:
+                        cfg_taylorseer.mark_step_begin()
+                    if cfg_encoder_taylorseer is not None:
+                        cfg_encoder_taylorseer.mark_step_begin()
+            else:
+                taylorseer, encoder_taylorseer = self.get_taylorseers()
+                if taylorseer is not None:
+                    taylorseer.mark_step_begin()
+                if encoder_taylorseer is not None:
+                    encoder_taylorseer.mark_step_begin()
 
     @torch.compiler.disable
     def get_taylorseers(self):
-        if self.enable_alter_cache and self.is_alter_cache:
-            return self.alter_taylorseer, self.alter_encoder_taylorseer
         return self.taylorseer, self.encoder_tarlorseer
+
+    @torch.compiler.disable
+    def get_cfg_taylorseers(self):
+        return self.cfg_taylorseer, self.cfg_encoder_taylorseer
 
     @torch.compiler.disable
     def add_residual_diff(self, diff):
@@ -201,6 +238,11 @@ class DBCacheContext:
         if step not in self.residual_diffs:
             # Only add the diff if it is not already recorded for this step
             self.residual_diffs[step] = diff
+        else:
+            if not isinstance(self.residual_diffs[step], list):
+                self.residual_diffs[step] = [self.residual_diffs[step]] + [diff]
+            else:
+                self.residual_diffs[step].append(diff)
 
     @torch.compiler.disable
     def get_residual_diffs(self):
@@ -217,6 +259,10 @@ class DBCacheContext:
     @torch.compiler.disable
     def get_current_step(self):
         return self.executed_steps - 1
+
+    @torch.compiler.disable
+    def get_current_transformer_step(self):
+        return self.transformer_executed_steps - 1
 
     @torch.compiler.disable
     def is_in_warmup(self):
@@ -319,6 +365,13 @@ def get_taylorseers():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_taylorseers()
+
+
+@torch.compiler.disable
+def get_cfg_taylorseers():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.get_cfg_taylorseers()
 
 
 @torch.compiler.disable
@@ -457,6 +510,13 @@ def Bn_compute_blocks_ids():
         f"{len(cache_context.Bn_compute_blocks_ids)}"
     )
     return cache_context.Bn_compute_blocks_ids
+
+
+@torch.compiler.disable
+def do_classifier_free_guidance():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.do_classifier_free_guidance
 
 
 _current_cache_context: DBCacheContext = None

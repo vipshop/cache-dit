@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import diffusers
 from diffusers import WanPipeline, AutoencoderKLWan
@@ -28,8 +29,30 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 pipe.to("cuda")
 
+cache_options = {
+    "cache_type": CacheType.DBCache,
+    "warmup_steps": 0,
+    "max_cached_steps": -1,  # -1 means no limit
+    # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+    "Fn_compute_blocks": 8,  # Fn, F8, etc.
+    "Bn_compute_blocks": 8,  # Bn, B16, etc.
+    "non_compute_blocks_diff_threshold": 0.08,
+    "residual_diff_threshold": 0.08,
+    "enable_alter_cache": False,
+    # releative token diff threshold, default is 0.0
+    "important_condition_threshold": 0.00,
+    # TaylorSeer options
+    "enable_taylorseer": False,
+    "enable_encoder_taylorseer": False,
+    # Taylorseer cache type cache be hidden_states or residual
+    "taylorseer_cache_type": "residual",
+    "taylorseer_kwargs": {
+        "n_derivatives": 2,
+    },
+}
+
 # Default options, F8B8, good balance between performance and precision
-apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.DBCache))
+apply_cache_on_pipe(pipe, **cache_options)
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
@@ -46,7 +69,7 @@ else:
         "from source."
     )
 
-
+start = time.time()
 video = pipe(
     prompt=(
         "An astronaut dancing vigorously on the moon with earth "
@@ -55,9 +78,16 @@ video = pipe(
     negative_prompt="",
     height=height,
     width=width,
-    num_frames=81,
-    num_inference_steps=30,
+    num_frames=49,
+    num_inference_steps=35,
 ).frames[0]
+end = time.time()
 
+if hasattr(pipe.transformer, "_cached_steps"):
+    cached_steps = pipe.transformer._cached_steps
+    print(f"Cache steps: {len(cached_steps)}, {cached_steps} ")
+
+time_cost = end - start
+print(f"Time cost: {time_cost:.2f}s")
 print("Saving video to wan.mp4")
-export_to_video(video, "wan.mp4", fps=15)
+export_to_video(video, "wan.0.mp4", fps=16)

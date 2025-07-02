@@ -70,7 +70,7 @@ def apply_db_cache_on_pipe(
             # "slg_layers": slg_layers,
             # "slg_start": slg_start,
             # "slg_end": slg_end,
-            "num_inference_steps": kwargs.get("num_inference_steps", 50),
+            # "num_inference_steps": kwargs.get("num_inference_steps", 50),
             "warmup_steps": warmup_steps,
             "max_cached_steps": max_cached_steps,
         },
