@@ -38,9 +38,11 @@ cache_options = {
     "Bn_compute_blocks": 8,  # Bn, B16, etc.
     "non_compute_blocks_diff_threshold": 0.08,
     "residual_diff_threshold": 0.08,
-    "enable_alter_cache": False,
     # releative token diff threshold, default is 0.0
     "important_condition_threshold": 0.00,
+    # CFG: classifier free guidance or not
+    "do_classifier_free_guidance": True,
+    "cfg_compute_first": False,
     # TaylorSeer options
     "enable_taylorseer": False,
     "enable_encoder_taylorseer": False,

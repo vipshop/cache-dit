@@ -76,6 +76,7 @@ class DBCacheContext:
     encoder_tarlorseer: Optional[TaylorSeer] = None
     # Support do_classifier_free_guidance, such as Wan 2.1
     do_classifier_free_guidance: bool = False
+    cfg_compute_first: bool = False
     cfg_taylorseer: Optional[TaylorSeer] = None
     cfg_encoder_taylorseer: Optional[TaylorSeer] = None
 
@@ -89,7 +90,10 @@ class DBCacheContext:
     @torch.compiler.disable
     def __post_init__(self):
         if self.do_classifier_free_guidance:
-            assert self.enable_alter_cache is False
+            assert self.enable_alter_cache is False, (
+                "enable_alter_cache must set as False if "
+                "do_classifier_free_guidance is enabled."
+            )
 
         if "warmup_steps" not in self.taylorseer_kwargs:
             # If warmup_steps is not set in taylorseer_kwargs,
@@ -166,6 +170,9 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def mark_step_begin(self):
+        # Always increase transformer executed steps
+        # incr    step: prev 0 -> 1; prev 1 -> 2
+        # current step: incr step - 1
         self.transformer_executed_steps += 1
         if not self.do_classifier_free_guidance:
             self.executed_steps = self.transformer_executed_steps
@@ -203,7 +210,7 @@ class DBCacheContext:
         if self.enable_taylorseer or self.enable_encoder_taylorseer:
             if self.do_classifier_free_guidance:
                 # Assume non-CFG steps: 0, 2, 4, 6, ...
-                if self.transformer_executed_steps % 2 == 0:
+                if not self.is_classifier_free_guidance_step():
                     taylorseer, encoder_taylorseer = self.get_taylorseers()
                     if taylorseer is not None:
                         taylorseer.mark_step_begin()
@@ -265,6 +272,16 @@ class DBCacheContext:
         return self.transformer_executed_steps - 1
 
     @torch.compiler.disable
+    def is_classifier_free_guidance_step(self):
+        if not self.do_classifier_free_guidance:
+            return False
+        if self.cfg_compute_first:
+            # CFG steps: 0, 2, 4, 6, ...
+            return self.get_current_transformer_step() % 2
+        # CFG steps: 1, 3, 5, 7, ...
+        return not self.get_current_transformer_step() % 2
+
+    @torch.compiler.disable
     def is_in_warmup(self):
         return self.get_current_step() < self.warmup_steps
 
@@ -309,6 +326,13 @@ def get_current_step():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_current_step()
+
+
+@torch.compiler.disable
+def get_current_transformer_step():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.get_current_transformer_step()
 
 
 @torch.compiler.disable
@@ -519,6 +543,13 @@ def do_classifier_free_guidance():
     return cache_context.do_classifier_free_guidance
 
 
+@torch.compiler.disable
+def is_classifier_free_guidance_step():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.is_classifier_free_guidance_step()
+
+
 _current_cache_context: DBCacheContext = None
 
 
@@ -669,21 +700,31 @@ def set_Fn_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
     if downsample_factor > 1:
         buffer = buffer[..., ::downsample_factor]
         buffer = buffer.contiguous()
-    set_buffer(f"{prefix}_buffer", buffer)
+    if is_classifier_free_guidance_step():
+        set_buffer(f"{prefix}_buffer_cfg", buffer)
+    else:
+        set_buffer(f"{prefix}_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Fn_buffer(prefix: str = "Fn"):
+    if is_classifier_free_guidance_step():
+        return get_buffer(f"{prefix}_buffer_cfg")
     return get_buffer(f"{prefix}_buffer")
 
 
 @torch.compiler.disable
 def set_Fn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
-    set_buffer(f"{prefix}_encoder_buffer", buffer)
+    if is_classifier_free_guidance_step():
+        set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
+    else:
+        set_buffer(f"{prefix}_encoder_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Fn_encoder_buffer(prefix: str = "Fn"):
+    if is_classifier_free_guidance_step():
+        return get_buffer(f"{prefix}_encoder_buffer_cfg")
     return get_buffer(f"{prefix}_encoder_buffer")
 
 
@@ -694,7 +735,11 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # This buffer is use for hidden states approximation.
     if is_taylorseer_enabled():
         # taylorseer, encoder_taylorseer
-        taylorseer, _ = get_taylorseers()
+        if is_classifier_free_guidance_step():
+            taylorseer, _ = get_cfg_taylorseers()
+        else:
+            taylorseer, _ = get_taylorseers()
+
         if taylorseer is not None:
             # Use TaylorSeer to update the buffer
             taylorseer.update(buffer)
@@ -704,15 +749,26 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
                     "TaylorSeer is enabled but not set in the cache context. "
                     "Falling back to default buffer retrieval."
                 )
-            set_buffer(f"{prefix}_buffer", buffer)
+            if is_classifier_free_guidance_step():
+                set_buffer(f"{prefix}_buffer_cfg", buffer)
+            else:
+                set_buffer(f"{prefix}_buffer", buffer)
     else:
-        set_buffer(f"{prefix}_buffer", buffer)
+        if is_classifier_free_guidance_step():
+            set_buffer(f"{prefix}_buffer_cfg", buffer)
+        else:
+            set_buffer(f"{prefix}_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Bn_buffer(prefix: str = "Bn"):
     if is_taylorseer_enabled():
-        taylorseer, _ = get_taylorseers()
+        # taylorseer, encoder_taylorseer
+        if is_classifier_free_guidance_step():
+            taylorseer, _ = get_cfg_taylorseers()
+        else:
+            taylorseer, _ = get_taylorseers()
+
         if taylorseer is not None:
             return taylorseer.approximate_value()
         else:
@@ -722,8 +778,12 @@ def get_Bn_buffer(prefix: str = "Bn"):
                     "Falling back to default buffer retrieval."
                 )
             # Fallback to default buffer retrieval
+            if is_classifier_free_guidance_step():
+                return get_buffer(f"{prefix}_buffer_cfg")
             return get_buffer(f"{prefix}_buffer")
     else:
+        if is_classifier_free_guidance_step():
+            return get_buffer(f"{prefix}_buffer_cfg")
         return get_buffer(f"{prefix}_buffer")
 
 
@@ -732,7 +792,11 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # This buffer is use for encoder hidden states approximation.
     if is_encoder_taylorseer_enabled():
         # taylorseer, encoder_taylorseer
-        _, encoder_taylorseer = get_taylorseers()
+        if is_classifier_free_guidance_step():
+            _, encoder_taylorseer = get_cfg_taylorseers()
+        else:
+            _, encoder_taylorseer = get_taylorseers()
+
         if encoder_taylorseer is not None:
             # Use TaylorSeer to update the buffer
             encoder_taylorseer.update(buffer)
@@ -742,15 +806,25 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
                     "TaylorSeer is enabled but not set in the cache context. "
                     "Falling back to default buffer retrieval."
                 )
-            set_buffer(f"{prefix}_encoder_buffer", buffer)
+            if is_classifier_free_guidance_step():
+                set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
+            else:
+                set_buffer(f"{prefix}_encoder_buffer", buffer)
     else:
-        set_buffer(f"{prefix}_encoder_buffer", buffer)
+        if is_classifier_free_guidance_step():
+            set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
+        else:
+            set_buffer(f"{prefix}_encoder_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Bn_encoder_buffer(prefix: str = "Bn"):
     if is_encoder_taylorseer_enabled():
-        _, encoder_taylorseer = get_taylorseers()
+        if is_classifier_free_guidance_step():
+            _, encoder_taylorseer = get_cfg_taylorseers()
+        else:
+            _, encoder_taylorseer = get_taylorseers()
+
         if encoder_taylorseer is not None:
             # Use TaylorSeer to approximate the value
             return encoder_taylorseer.approximate_value()
@@ -761,8 +835,12 @@ def get_Bn_encoder_buffer(prefix: str = "Bn"):
                     "Falling back to default buffer retrieval."
                 )
             # Fallback to default buffer retrieval
+            if is_classifier_free_guidance_step():
+                return get_buffer(f"{prefix}_encoder_buffer_cfg")
             return get_buffer(f"{prefix}_encoder_buffer")
     else:
+        if is_classifier_free_guidance_step():
+            return get_buffer(f"{prefix}_encoder_buffer_cfg")
         return get_buffer(f"{prefix}_encoder_buffer")
 
 
