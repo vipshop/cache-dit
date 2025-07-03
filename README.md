@@ -134,7 +134,7 @@ The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi
 You can install the stable release of `cache-dit` from PyPI:
 
 ```bash
-pip3 install cache-dit
+pip3 install -U cache-dit
 ```
 Or you can install the latest develop version from GitHub:
 
