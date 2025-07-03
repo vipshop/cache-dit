@@ -9,7 +9,7 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.2.2-brightgreen.svg >
+      <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
   <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT offers <br>a set of training-free cache accelerators for DiT: <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">TaylorSeer</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
@@ -269,10 +269,12 @@ cache_options = {
 
 <div id="cfg"></div>
 
-CacheDiT supports caching for CFG (classifier-free guidance). For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to False. Otherwise, set it to True. Wan 2.1: True. FLUX.1, HunyunVideo, CogVideoX, Mochi: False. 
+CacheDiT supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
 cache_options = {
+    # Wan 2.1: True
+    # FLUX.1, HunyunVideo, CogVideoX, Mochi: False. 
     "do_separate_classifier_free_guidance": True,  # Wan 2.1
     "cfg_compute_first": False,
 }
