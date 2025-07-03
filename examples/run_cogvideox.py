@@ -61,7 +61,7 @@ if args.cache:
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
         # CFG: classifier free guidance or not
-        # CogVideoX fuse CFG and non-CFG into single forward step
+        # CogVideoX fused CFG and non-CFG into single forward step
         # so, we set do_separate_classifier_free_guidance as False.
         "do_separate_classifier_free_guidance": False,
         "cfg_compute_first": False,
