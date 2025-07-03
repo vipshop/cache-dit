@@ -106,6 +106,7 @@ video = pipe(
     width=width,
     num_frames=49,
     num_inference_steps=35,
+    generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
 
