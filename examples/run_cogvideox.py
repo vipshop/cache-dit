@@ -60,6 +60,8 @@ if args.cache:
         "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
+        # releative token diff threshold, default is 0.0
+        "important_condition_threshold": 0.05,
         # CFG: classifier free guidance or not
         # CogVideoX fused CFG and non-CFG into single forward step
         # so, we set do_separate_classifier_free_guidance as False.
@@ -119,6 +121,19 @@ video = pipe(
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
+
+if hasattr(pipe.transformer, "_cached_steps"):
+    cached_steps = pipe.transformer._cached_steps
+    residual_diffs = pipe.transformer._residual_diffs
+    print(f"Cache Steps: {len(cached_steps)}, {cached_steps}")
+    print(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}")
+if hasattr(pipe.transformer, "_cfg_cached_steps"):
+    cfg_cached_steps = pipe.transformer._cfg_cached_steps
+    cfg_residual_diffs = pipe.transformer._cfg_residual_diffs
+    print(f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps} ")
+    print(
+        f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}"
+    )
 
 time_cost = end - start
 save_path = f"cogvideox.{cache_type_str}.mp4"
