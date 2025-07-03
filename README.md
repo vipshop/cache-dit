@@ -274,7 +274,7 @@ CacheDiT supports caching for **CFG (classifier-free guidance)**. For models tha
 ```python
 cache_options = {
     # Wan 2.1: True
-    # FLUX.1, HunyunVideo, CogVideoX, Mochi: False. 
+    # FLUX.1, HunyuanVideo, CogVideoX, Mochi: False. 
     "do_separate_classifier_free_guidance": True,  # Wan 2.1
     "cfg_compute_first": False,
 }
