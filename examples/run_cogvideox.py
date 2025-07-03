@@ -70,7 +70,7 @@ if args.cache:
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,
         # Taylorseer cache type cache be hidden_states or residual
-        "taylorseer_cache_type": "residual",
+        "taylorseer_cache_type": "hidden_states",
         "taylorseer_kwargs": {
             "n_derivatives": args.taylorseer_order,
         },
