@@ -74,7 +74,7 @@ class DBCacheContext:
     # Support do_separate_classifier_free_guidance, such as Wan 2.1
     # For model that fused CFG and non-CFG into single forward step,
     # should set do_separate_classifier_free_guidance as False. For
-    # example: CogVideoX
+    # example: CogVideoX, HunyuanVideo, Mochi.
     do_separate_classifier_free_guidance: bool = False
     cfg_compute_first: bool = False
     cfg_taylorseer: Optional[TaylorSeer] = None
