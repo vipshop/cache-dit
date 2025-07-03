@@ -74,6 +74,7 @@ if args.cache:
         f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
         f"T{int(args.taylorseer)}O{args.taylorseer_order}"
     )
+    print(f"cache options:\n{cache_options}")
 
     apply_cache_on_pipe(pipe, **cache_options)
 else:
