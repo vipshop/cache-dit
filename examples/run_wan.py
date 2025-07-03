@@ -1,5 +1,7 @@
 import os
+import time
 import torch
+import argparse
 import diffusers
 from diffusers import WanPipeline, AutoencoderKLWan
 from diffusers.utils import export_to_video
@@ -8,11 +10,29 @@ from diffusers.schedulers.scheduling_unipc_multistep import (
 )
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
+
+def get_args() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    # General arguments
+    parser.add_argument("--cache", action="store_true", default=False)
+    parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
+    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
+    parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
+    parser.add_argument("--rdt", type=float, default=0.08)
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    return parser.parse_args()
+
+
+args = get_args()
+print(args)
+
+
 height, width = 480, 832
 pipe = WanPipeline.from_pretrained(
     os.environ.get(
         "WAN_DIR",
-        "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+        "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",  # "num_layers": 30,
     ),
     torch_dtype=torch.bfloat16,
 )
@@ -28,8 +48,39 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 pipe.to("cuda")
 
-# Default options, F8B8, good balance between performance and precision
-apply_cache_on_pipe(pipe, **CacheType.default_options(CacheType.DBCache))
+if args.cache:
+    cache_options = {
+        "cache_type": CacheType.DBCache,
+        "warmup_steps": args.warmup_steps,
+        "max_cached_steps": -1,  # -1 means no limit
+        # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+        "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
+        "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
+        "residual_diff_threshold": args.rdt,
+        # CFG: classifier free guidance or not
+        # For model that fused CFG and non-CFG into single forward step,
+        # should set do_separate_classifier_free_guidance as False.
+        "do_separate_classifier_free_guidance": True,
+        "cfg_compute_first": False,
+        "enable_taylorseer": args.taylorseer,
+        "enable_encoder_taylorseer": args.taylorseer,
+        # Taylorseer cache type cache be hidden_states or residual
+        "taylorseer_cache_type": "residual",
+        "taylorseer_kwargs": {
+            "n_derivatives": args.taylorseer_order,
+        },
+    }
+    cache_type_str = "DBCACHE"
+    cache_type_str = (
+        f"{cache_type_str}_F{args.Fn_compute_blocks}"
+        f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+        f"T{int(args.taylorseer)}O{args.taylorseer_order}"
+    )
+    print(f"cache options:\n{cache_options}")
+
+    apply_cache_on_pipe(pipe, **cache_options)
+else:
+    cache_type_str = "NONE"
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
@@ -46,7 +97,7 @@ else:
         "from source."
     )
 
-
+start = time.time()
 video = pipe(
     prompt=(
         "An astronaut dancing vigorously on the moon with earth "
@@ -55,9 +106,27 @@ video = pipe(
     negative_prompt="",
     height=height,
     width=width,
-    num_frames=81,
-    num_inference_steps=30,
+    num_frames=49,
+    num_inference_steps=35,
+    generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
+end = time.time()
 
-print("Saving video to wan.mp4")
-export_to_video(video, "wan.mp4", fps=15)
+if hasattr(pipe.transformer, "_cached_steps"):
+    cached_steps = pipe.transformer._cached_steps
+    residual_diffs = pipe.transformer._residual_diffs
+    print(f"Cache Steps: {len(cached_steps)}, {cached_steps}")
+    print(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}")
+if hasattr(pipe.transformer, "_cfg_cached_steps"):
+    cfg_cached_steps = pipe.transformer._cfg_cached_steps
+    cfg_residual_diffs = pipe.transformer._cfg_residual_diffs
+    print(f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps} ")
+    print(
+        f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}"
+    )
+
+time_cost = end - start
+save_path = f"wan.{cache_type_str}.mp4"
+print(f"Time cost: {time_cost:.2f}s")
+print(f"Saving video to {save_path}")
+export_to_video(video, save_path, fps=16)
