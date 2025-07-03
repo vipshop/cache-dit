@@ -47,6 +47,20 @@ class DBCacheContext:
         default_factory=lambda: defaultdict(int),
     )
 
+    # Other settings
+    downsample_factor: int = 1
+    num_inference_steps: int = -1  # un-used now
+    warmup_steps: int = 0  # DON'T Cache in warmup steps
+    # DON'T Cache if the number of cached steps >= max_cached_steps
+    max_cached_steps: int = -1  # for both CFG and non-CFG
+
+    # Statistics for botch alter cache and non-alter cache
+    # Record the steps that have been cached, both alter cache and non-alter cache
+    executed_steps: int = 0  # cache + non-cache steps pippeline
+    # steps for transformer, for CFG, transformer_executed_steps will
+    # be double of executed_steps.
+    transformer_executed_steps: int = 0
+
     # Support TaylorSeers in Dual Block Cache
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
@@ -63,27 +77,6 @@ class DBCacheContext:
     cfg_taylorseer: Optional[TaylorSeer] = None
     cfg_encoder_taylorseer: Optional[TaylorSeer] = None
 
-    # TODO: Support SLG in Dual Block Cache
-    # Skip Layer Guidance, SLG
-    # https://github.com/huggingface/candle/issues/2588
-    slg_layers: Optional[List[int]] = None
-    slg_start: float = 0.0
-    slg_end: float = 0.1
-
-    # Other settings
-    downsample_factor: int = 1
-    num_inference_steps: int = -1  # un-used now
-    warmup_steps: int = 0  # DON'T Cache in warmup steps
-    # DON'T Cache if the number of cached steps >= max_cached_steps
-    max_cached_steps: int = -1  # for both CFG and non-CFG
-
-    # Statistics for botch alter cache and non-alter cache
-    # Record the steps that have been cached, both alter cache and non-alter cache
-    executed_steps: int = 0  # cache + non-cache steps pippeline
-    # steps for transformer, for CFG, transformer_executed_steps will
-    # be double of executed_steps.
-    transformer_executed_steps: int = 0
-
     # CFG & non-CFG cached steps
     cached_steps: List[int] = dataclasses.field(default_factory=list)
     residual_diffs: DefaultDict[str, float] = dataclasses.field(
@@ -93,6 +86,13 @@ class DBCacheContext:
     cfg_residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+
+    # TODO: Support SLG in Dual Block Cache
+    # Skip Layer Guidance, SLG
+    # https://github.com/huggingface/candle/issues/2588
+    slg_layers: Optional[List[int]] = None
+    slg_start: float = 0.0
+    slg_end: float = 0.1
 
     @torch.compiler.disable
     def __post_init__(self):
@@ -1781,3 +1781,5 @@ def patch_cached_stats(
     # TODO: Patch more cached stats to the transformer
     transformer._cached_steps = get_cached_steps()
     transformer._residual_diffs = get_residual_diffs()
+    transformer._cfg_cached_steps = get_cfg_cached_steps()
+    transformer._cfg_residual_diffs = get_cfg_residual_diffs()
