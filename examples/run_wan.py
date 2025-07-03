@@ -58,7 +58,9 @@ if args.cache:
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
         # CFG: classifier free guidance or not
-        "do_classifier_free_guidance": True,
+        # For model that fused CFG and non-CFG into single forward step,
+        # should set do_separate_classifier_free_guidance as False.
+        "do_separate_classifier_free_guidance": True,
         "cfg_compute_first": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,
