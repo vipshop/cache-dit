@@ -1,7 +1,27 @@
 import os
+import time
 import torch
+import argparse
 from diffusers import FluxPipeline
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
+
+
+def get_args() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    # General arguments
+    parser.add_argument("--cache", action="store_true", default=False)
+    parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
+    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
+    parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
+    parser.add_argument("--rdt", type=float, default=0.08)
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    return parser.parse_args()
+
+
+args = get_args()
+print(args)
+
 
 pipe = FluxPipeline.from_pretrained(
     os.environ.get(
@@ -12,16 +32,52 @@ pipe = FluxPipeline.from_pretrained(
 ).to("cuda")
 
 
-# Default options, F8B8, good balance between performance and precision
-cache_options = CacheType.default_options(CacheType.DBCache)
+if args.cache:
+    cache_options = {
+        "cache_type": CacheType.DBCache,
+        "warmup_steps": args.warmup_steps,
+        "max_cached_steps": -1,  # -1 means no limit
+        # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+        "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
+        "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
+        "residual_diff_threshold": args.rdt,
+        # CFG: classifier free guidance or not
+        # FLUX.1 dev don not have CFG, so, we set
+        # do_separate_classifier_free_guidance as False.
+        "do_separate_classifier_free_guidance": False,
+        "cfg_compute_first": False,
+        "enable_taylorseer": args.taylorseer,
+        "enable_encoder_taylorseer": args.taylorseer,
+        # Taylorseer cache type cache be hidden_states or residual
+        "taylorseer_cache_type": "residual",
+        "taylorseer_kwargs": {
+            "n_derivatives": args.taylorseer_order,
+        },
+    }
+    cache_type_str = "DBCACHE"
+    cache_type_str = (
+        f"{cache_type_str}_F{args.Fn_compute_blocks}"
+        f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+        f"T{int(args.taylorseer)}O{args.taylorseer_order}"
+    )
+    print(f"cache options:\n{cache_options}")
 
-apply_cache_on_pipe(pipe, **cache_options)
+    apply_cache_on_pipe(pipe, **cache_options)
+else:
+    cache_type_str = "NONE"
 
+
+start = time.time()
 image = pipe(
     "A cat holding a sign that says hello world",
     num_inference_steps=28,
-    generator=torch.Generator("cuda").manual_seed(0),
+    generator=torch.Generator("cpu").manual_seed(0),
 ).images[0]
 
-print("Saving image to flux.png")
-image.save("flux.png")
+end = time.time()
+
+time_cost = end - start
+save_path = f"flux.{cache_type_str}.png"
+print(f"Time cost: {time_cost:.2f}s")
+print(f"Saving image to {save_path}")
+image.save(save_path)
