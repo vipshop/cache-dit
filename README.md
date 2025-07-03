@@ -269,7 +269,7 @@ cache_options = {
 
 <div id="cfg"></div>
 
-CacheDiT supports caching for CFG (classifier-free guidance). For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to False. Otherwise, set it to True.
+CacheDiT supports caching for CFG (classifier-free guidance). For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to False. Otherwise, set it to True. Wan 2.1: True. FLUX.1, HunyunVideo, CogVideoX, Mochi: False. 
 
 ```python
 cache_options = {
