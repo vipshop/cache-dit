@@ -47,23 +47,6 @@ class DBCacheContext:
         default_factory=lambda: defaultdict(int),
     )
 
-    # Other settings
-    downsample_factor: int = 1
-    num_inference_steps: int = -1
-    warmup_steps: int = 0  # DON'T Cache in warmup steps
-    # DON'T Cache if the number of cached steps >= max_cached_steps
-    max_cached_steps: int = -1
-
-    # Statistics for botch alter cache and non-alter cache
-    # Record the steps that have been cached, both alter cache and non-alter cache
-    executed_steps: int = 0  # cache + non-cache steps pippeline
-    # steps for transformer, for CFG, transformer_executed_steps will
-    # be double of executed_steps.
-    transformer_executed_steps: int = 0
-    cached_steps: List[int] = dataclasses.field(default_factory=list)
-    residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
-        default_factory=lambda: defaultdict(float),
-    )
     # Support TaylorSeers in Dual Block Cache
     # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # Url: https://arxiv.org/pdf/2503.06923
@@ -86,6 +69,30 @@ class DBCacheContext:
     slg_layers: Optional[List[int]] = None
     slg_start: float = 0.0
     slg_end: float = 0.1
+
+    # Other settings
+    downsample_factor: int = 1
+    num_inference_steps: int = -1  # un-used now
+    warmup_steps: int = 0  # DON'T Cache in warmup steps
+    # DON'T Cache if the number of cached steps >= max_cached_steps
+    max_cached_steps: int = -1  # for both CFG and non-CFG
+
+    # Statistics for botch alter cache and non-alter cache
+    # Record the steps that have been cached, both alter cache and non-alter cache
+    executed_steps: int = 0  # cache + non-cache steps pippeline
+    # steps for transformer, for CFG, transformer_executed_steps will
+    # be double of executed_steps.
+    transformer_executed_steps: int = 0
+
+    # CFG & non-CFG cached steps
+    cached_steps: List[int] = dataclasses.field(default_factory=list)
+    residual_diffs: DefaultDict[str, float] = dataclasses.field(
+        default_factory=lambda: defaultdict(float),
+    )
+    cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
+    cfg_residual_diffs: DefaultDict[str, float] = dataclasses.field(
+        default_factory=lambda: defaultdict(float),
+    )
 
     @torch.compiler.disable
     def __post_init__(self):
@@ -189,6 +196,8 @@ class DBCacheContext:
         if self.get_current_transformer_step() == 0:
             self.cached_steps.clear()
             self.residual_diffs.clear()
+            self.cfg_cached_steps.clear()
+            self.cfg_residual_diffs.clear()
             self.reset_incremental_names()
             # Reset the TaylorSeers cache at the beginning of each inference.
             # reset_cache will set the current step to -1 for TaylorSeer,
@@ -242,26 +251,36 @@ class DBCacheContext:
     @torch.compiler.disable
     def add_residual_diff(self, diff):
         step = str(self.get_current_step())
-        if step not in self.residual_diffs:
-            # Only add the diff if it is not already recorded for this step
-            self.residual_diffs[step] = diff
+        # Only add the diff if it is not already recorded for this step
+        if not self.is_classifier_free_guidance_step():
+            if step not in self.residual_diffs:
+                self.residual_diffs[step] = diff
         else:
-            if not isinstance(self.residual_diffs[step], list):
-                self.residual_diffs[step] = [self.residual_diffs[step]] + [diff]
-            else:
-                self.residual_diffs[step].append(diff)
+            if step not in self.cfg_residual_diffs:
+                self.cfg_residual_diffs[step] = diff
 
     @torch.compiler.disable
     def get_residual_diffs(self):
         return self.residual_diffs.copy()
 
     @torch.compiler.disable
+    def get_cfg_residual_diffs(self):
+        return self.cfg_residual_diffs.copy()
+
+    @torch.compiler.disable
     def add_cached_step(self):
-        self.cached_steps.append(self.get_current_step())
+        if not self.is_classifier_free_guidance_step():
+            self.cached_steps.append(self.get_current_step())
+        else:
+            self.cfg_cached_steps.append(self.get_current_step())
 
     @torch.compiler.disable
     def get_cached_steps(self):
         return self.cached_steps.copy()
+
+    @torch.compiler.disable
+    def get_cfg_cached_steps(self):
+        return self.cfg_cached_steps.copy()
 
     @torch.compiler.disable
     def get_current_step(self):
@@ -343,6 +362,13 @@ def get_cached_steps():
 
 
 @torch.compiler.disable
+def get_cfg_cached_steps():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.get_cfg_cached_steps()
+
+
+@torch.compiler.disable
 def get_max_cached_steps():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
@@ -368,6 +394,13 @@ def get_residual_diffs():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_residual_diffs()
+
+
+@torch.compiler.disable
+def get_cfg_residual_diffs():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.get_cfg_residual_diffs()
 
 
 @torch.compiler.disable
@@ -904,8 +937,13 @@ def get_can_use_cache(
 ):
     if is_in_warmup():
         return False
-    cached_steps = get_cached_steps()
+
     max_cached_steps = get_max_cached_steps()
+    if not is_classifier_free_guidance_step():
+        cached_steps = get_cached_steps()
+    else:
+        cached_steps = get_cfg_cached_steps()
+
     if max_cached_steps >= 0 and (len(cached_steps) >= max_cached_steps):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -913,10 +951,12 @@ def get_can_use_cache(
                 "cannot use cache."
             )
         return False
+
     if threshold is None or threshold <= 0.0:
         threshold = get_residual_diff_threshold()
     if threshold <= 0.0:
         return False
+
     downsample_factor = get_downsample_factor()
     if downsample_factor > 1 and "Bn" not in prefix:
         states_tensor = states_tensor[..., ::downsample_factor]
@@ -1120,7 +1160,9 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         # Check if the current step is in cache steps.
         # If so, we can skip some Bn blocks and directly
         # use the cached values.
-        return get_current_step() in get_cached_steps()
+        return (get_current_step() in get_cached_steps()) or (
+            get_current_step() in get_cfg_cached_steps()
+        )
 
     @torch.compiler.disable
     def _Fn_transformer_blocks(self):
