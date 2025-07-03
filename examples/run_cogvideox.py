@@ -60,6 +60,8 @@ if args.cache:
         "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
+        # releative token diff threshold, default is 0.0
+        "important_condition_threshold": 0.05,
         # CFG: classifier free guidance or not
         # CogVideoX fused CFG and non-CFG into single forward step
         # so, we set do_separate_classifier_free_guidance as False.
