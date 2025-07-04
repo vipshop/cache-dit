@@ -1,8 +1,9 @@
-import argparse
+import os
 import time
-
-import numpy as np
 import torch
+import diffusers
+import argparse
+import numpy as np
 import torchvision.transforms.functional as TF
 from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
@@ -107,7 +108,10 @@ def main():
     args = get_args()
     print(args)
 
-    model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers"
+    model_id = os.environ.get(
+        "WAN_FLF2V_DIR",
+        "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers",
+    )
     image_encoder = CLIPVisionModel.from_pretrained(
         model_id, subfolder="image_encoder", torch_dtype=torch.float32
     )
@@ -124,12 +128,8 @@ def main():
 
     cache_type_str, pipe = prepare_pipeline(pipe, args)
 
-    first_frame = load_image(
-        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
-    )
-    last_frame = load_image(
-        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
-    )
+    first_frame = load_image("data/flf2v_input_first_frame.png")
+    last_frame = load_image("data/flf2v_input_last_frame.png")
 
     first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
     if last_frame.size != first_frame.size:
@@ -152,6 +152,7 @@ def main():
         guidance_scale=5.5,
         num_frames=49,
         num_inference_steps=35,
+        generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     end = time.time()
 
@@ -169,7 +170,7 @@ def main():
         )
 
     time_cost = end - start
-    save_path = f"wan.{cache_type_str}.mp4"
+    save_path = f"wan.flf2v.{cache_type_str}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving video to {save_path}")
     export_to_video(output, save_path, fps=16)
