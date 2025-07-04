@@ -32,7 +32,7 @@ python3 run_cogvideox.py --cache --Fn 8 --Bn 8
 python3 run_cogvideox.py --cache --Fn 8 --Bn 0 --taylorseer
 ```
 
-- Wan2.1 
+- Wan2.1 T2V
 
 ```bash
 python3 run_wan.py # baseline
@@ -40,7 +40,15 @@ python3 run_wan.py --cache --Fn 8 --Bn 8
 python3 run_wan.py --cache --Fn 8 --Bn 0 --taylorseer
 ```
 
-- Mochi
+- Wan2.1 FLF2V
+
+```bash
+python3 run_wan_flf2v.py # baseline
+python3 run_wan_flf2v.py --cache --Fn 8 --Bn 8
+python3 run_wan_flf2v.py --cache --Fn 8 --Bn 0 --taylorseer
+```
+
+- mochi-1-preview
 
 ```bash
 python3 run_mochi.py # baseline

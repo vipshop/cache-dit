@@ -1,8 +1,9 @@
-import argparse
+import os
 import time
-
-import numpy as np
 import torch
+import diffusers
+import argparse
+import numpy as np
 import torchvision.transforms.functional as TF
 from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
@@ -19,6 +20,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
+    parser.add_argument("--downsample-factor", "--df", type=int, default=4)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--warmup-steps", type=int, default=0)
     return parser.parse_args()
@@ -26,7 +28,9 @@ def get_args() -> argparse.ArgumentParser:
 
 def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
     aspect_ratio = image.height / image.width
-    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    mod_value = (
+        pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    )
     height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
     width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
     image = image.resize((width, height))
@@ -46,12 +50,16 @@ def center_crop_resize(image, height, width):
     return image, height, width
 
 
-def prepare_pipeline(pipe, args):
+def prepare_pipeline(
+    pipe: WanImageToVideoPipeline,
+    args: argparse.ArgumentParser,
+):
     if args.cache:
         cache_options = {
             "cache_type": CacheType.DBCache,
             "warmup_steps": args.warmup_steps,
             "max_cached_steps": -1,  # -1 means no limit
+            "downsample_factor": args.downsample_factor,
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
             "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
@@ -88,12 +96,12 @@ def prepare_pipeline(pipe, args):
 
     # Wan currently requires installing diffusers from source
     assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
-    if diffusers.__version__ >= "0.34.0.dev0":
+    if diffusers.__version__ >= "0.34.0":
         pipe.vae.enable_tiling()
         pipe.vae.enable_slicing()
     else:
         print(
-            "Wan pipeline requires diffusers version >= 0.34.0.dev0 "
+            "Wan pipeline requires diffusers version >= 0.34.0 "
             "for vae tiling and slicing, please install diffusers "
             "from source."
         )
@@ -105,27 +113,39 @@ def main():
     args = get_args()
     print(args)
 
-    model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers"
-    image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-    vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+    model_id = os.environ.get(
+        "WAN_FLF2V_DIR",
+        "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers",
+    )
+    image_encoder = CLIPVisionModel.from_pretrained(
+        model_id, subfolder="image_encoder", torch_dtype=torch.float32
+    )
+    vae = AutoencoderKLWan.from_pretrained(
+        model_id, subfolder="vae", torch_dtype=torch.float32
+    )
     pipe = WanImageToVideoPipeline.from_pretrained(
-        model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+        model_id,
+        vae=vae,
+        image_encoder=image_encoder,
+        torch_dtype=torch.bfloat16,
     )
     pipe.to("cuda")
 
     cache_type_str, pipe = prepare_pipeline(pipe, args)
 
-    first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
-    last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
+    first_frame = load_image("data/flf2v_input_first_frame.png")
+    last_frame = load_image("data/flf2v_input_last_frame.png")
 
     first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
     if last_frame.size != first_frame.size:
         last_frame, _, _ = center_crop_resize(last_frame, height, width)
 
-    prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. " +\
-        "The bird's feathers are delicate, with a unique pattern on its chest. The background shows " +\
-        "a blue sky with white clouds under bright sunshine. The camera follows the bird upward, " +\
-        "capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+    prompt = (
+        "CG animation style, a small blue bird takes off from the ground, flapping its wings. "
+        + "The bird's feathers are delicate, with a unique pattern on its chest. The background shows "
+        + "a blue sky with white clouds under bright sunshine. The camera follows the bird upward, "
+        + "capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+    )
 
     start = time.time()
     output = pipe(
@@ -137,6 +157,7 @@ def main():
         guidance_scale=5.5,
         num_frames=49,
         num_inference_steps=35,
+        generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     end = time.time()
 
@@ -154,7 +175,7 @@ def main():
         )
 
     time_cost = end - start
-    save_path = f"wan.{cache_type_str}.mp4"
+    save_path = f"wan.flf2v.{cache_type_str}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving video to {save_path}")
     export_to_video(output, save_path, fps=16)
