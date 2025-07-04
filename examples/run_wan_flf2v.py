@@ -20,6 +20,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
+    parser.add_argument("--downsample-factor", "--df", type=int, default=4)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--warmup-steps", type=int, default=0)
     return parser.parse_args()
@@ -58,7 +59,7 @@ def prepare_pipeline(
             "cache_type": CacheType.DBCache,
             "warmup_steps": args.warmup_steps,
             "max_cached_steps": -1,  # -1 means no limit
-            "downsample_factor": 4,
+            "downsample_factor": args.downsample_factor,
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
             "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
