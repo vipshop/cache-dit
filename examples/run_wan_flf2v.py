@@ -26,7 +26,9 @@ def get_args() -> argparse.ArgumentParser:
 
 def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
     aspect_ratio = image.height / image.width
-    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    mod_value = (
+        pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    )
     height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
     width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
     image = image.resize((width, height))
@@ -106,26 +108,39 @@ def main():
     print(args)
 
     model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers"
-    image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-    vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+    image_encoder = CLIPVisionModel.from_pretrained(
+        model_id, subfolder="image_encoder", torch_dtype=torch.float32
+    )
+    vae = AutoencoderKLWan.from_pretrained(
+        model_id, subfolder="vae", torch_dtype=torch.float32
+    )
     pipe = WanImageToVideoPipeline.from_pretrained(
-        model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+        model_id,
+        vae=vae,
+        image_encoder=image_encoder,
+        torch_dtype=torch.bfloat16,
     )
     pipe.to("cuda")
 
     cache_type_str, pipe = prepare_pipeline(pipe, args)
 
-    first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
-    last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
+    first_frame = load_image(
+        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
+    )
+    last_frame = load_image(
+        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
+    )
 
     first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
     if last_frame.size != first_frame.size:
         last_frame, _, _ = center_crop_resize(last_frame, height, width)
 
-    prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. " +\
-        "The bird's feathers are delicate, with a unique pattern on its chest. The background shows " +\
-        "a blue sky with white clouds under bright sunshine. The camera follows the bird upward, " +\
-        "capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+    prompt = (
+        "CG animation style, a small blue bird takes off from the ground, flapping its wings. "
+        + "The bird's feathers are delicate, with a unique pattern on its chest. The background shows "
+        + "a blue sky with white clouds under bright sunshine. The camera follows the bird upward, "
+        + "capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+    )
 
     start = time.time()
     output = pipe(
