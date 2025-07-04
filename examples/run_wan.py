@@ -89,12 +89,12 @@ pipe.enable_model_cpu_offload()
 
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
-if diffusers.__version__ >= "0.34.0.dev0":
+if diffusers.__version__ >= "0.34.0":
     pipe.vae.enable_tiling()
     pipe.vae.enable_slicing()
 else:
     print(
-        "Wan pipeline requires diffusers version >= 0.34.0.dev0 "
+        "Wan pipeline requires diffusers version >= 0.34.0 "
         "for vae tiling and slicing, please install diffusers "
         "from source."
     )

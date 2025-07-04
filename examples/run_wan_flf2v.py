@@ -49,7 +49,10 @@ def center_crop_resize(image, height, width):
     return image, height, width
 
 
-def prepare_pipeline(pipe, args):
+def prepare_pipeline(
+    pipe: WanImageToVideoPipeline,
+    args: argparse.ArgumentParser,
+):
     if args.cache:
         cache_options = {
             "cache_type": CacheType.DBCache,
@@ -91,12 +94,12 @@ def prepare_pipeline(pipe, args):
 
     # Wan currently requires installing diffusers from source
     assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
-    if diffusers.__version__ >= "0.34.0.dev0":
+    if diffusers.__version__ >= "0.34.0":
         pipe.vae.enable_tiling()
         pipe.vae.enable_slicing()
     else:
         print(
-            "Wan pipeline requires diffusers version >= 0.34.0.dev0 "
+            "Wan pipeline requires diffusers version >= 0.34.0 "
             "for vae tiling and slicing, please install diffusers "
             "from source."
         )
