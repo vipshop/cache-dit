@@ -77,6 +77,10 @@ class DBCacheContext:
     # example: CogVideoX, HunyuanVideo, Mochi.
     do_separate_classifier_free_guidance: bool = False
     cfg_compute_first: bool = False
+    # TODO: Support cfg_diff_compute_separate mode, default True.
+    # Use the computed diff from current non-CFG transformer step
+    # if cfg_diff_compute_separate is set as False.
+    cfg_diff_compute_separate: bool = True
     cfg_taylorseer: Optional[TaylorSeer] = None
     cfg_encoder_taylorseer: Optional[TaylorSeer] = None
 
