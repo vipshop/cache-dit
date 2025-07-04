@@ -146,11 +146,13 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
-- [🚀FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Mochi](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.1](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 
