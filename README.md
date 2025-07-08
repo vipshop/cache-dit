@@ -287,7 +287,7 @@ cache_options = {
     # Compute spearate diff values for CFG and non-CFG step, 
     # default True. If False, we will use the computed diff from 
     # current non-CFG transformer step for current CFG step.
-    "cfg_diff_compute_separate": False,
+    "cfg_diff_compute_separate": True,
 }
 ```
 
