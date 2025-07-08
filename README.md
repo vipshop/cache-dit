@@ -248,7 +248,7 @@ cache_options = {
     "taylorseer_kwargs": {
         "n_derivatives": 2, # default is 2.
     },
-    "warmup_steps": 3, # n_derivatives + 1
+    "warmup_steps": 3, # prefer: >= n_derivatives + 1
     "residual_diff_threshold": 0.12,
 }
 ``` 
@@ -275,10 +275,19 @@ CacheDiT supports caching for **CFG (classifier-free guidance)**. For models tha
 
 ```python
 cache_options = {
-    # Wan 2.1: True
-    # FLUX.1, HunyuanVideo, CogVideoX, Mochi: False. 
+    # CFG: classifier free guidance or not
+    # For model that fused CFG and non-CFG into single forward step,
+    # should set do_separate_classifier_free_guidance as False.
+    # For example, set it as True for Wan 2.1 and set it as False 
+    # for FLUX.1, HunyuanVideo, CogVideoX, Mochi.
     "do_separate_classifier_free_guidance": True,  # Wan 2.1
+    # Compute cfg forward first or not, default False, namely, 
+    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     "cfg_compute_first": False,
+    # Compute spearate diff values for CFG and non-CFG step, 
+    # default True. If False, we will use the computed diff from 
+    # current non-CFG transformer step for current CFG step.
+    "cfg_diff_compute_separate": True,
 }
 ```
 

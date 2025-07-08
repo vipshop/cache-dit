@@ -70,7 +70,13 @@ def prepare_pipeline(
             # For model that fused CFG and non-CFG into single forward step,
             # should set do_separate_classifier_free_guidance as False.
             "do_separate_classifier_free_guidance": True,
+            # Compute cfg forward first or not, default False, namely,
+            # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
             "cfg_compute_first": False,
+            # Compute spearate diff values for CFG and non-CFG step,
+            # default True. If False, we will use the computed diff from
+            # current non-CFG transformer step for current CFG step.
+            "cfg_diff_compute_separate": True,
             "enable_taylorseer": args.taylorseer,
             "enable_encoder_taylorseer": args.taylorseer,
             # Taylorseer cache type cache be hidden_states or residual
