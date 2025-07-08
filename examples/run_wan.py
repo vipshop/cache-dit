@@ -21,6 +21,12 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument(
+        "--disable-cfg-diff-compute-separate",
+        "--disable-cfg-ddiff",
+        action="store_false",
+        default=False,
+    )
     return parser.parse_args()
 
 
@@ -69,7 +75,7 @@ if args.cache:
         # Compute spearate diff values for CFG and non-CFG step,
         # default True. If False, we will use the computed diff from
         # current non-CFG transformer step for current CFG step.
-        "cfg_diff_compute_separate": False,
+        "cfg_diff_compute_separate": not args.disable_cfg_diff_compute_separate,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,
         # Taylorseer cache type cache be hidden_states or residual

@@ -198,10 +198,17 @@ class DBCacheContext:
         # current step: incr step - 1
         self.transformer_executed_steps += 1
         if not self.do_separate_classifier_free_guidance:
-            self.executed_steps = self.transformer_executed_steps
+            self.executed_steps += 1
         else:
-            # 0,1 -> 0, 2,3 -> 1, ...
-            self.executed_steps = self.transformer_executed_steps // 2
+            # 0,1 -> 0 + 1, 2,3 -> 1 + 1, ...
+            if not self.cfg_compute_first:
+                if not self.is_separate_classifier_free_guidance_step():
+                    # transformer step: 0,2,4,...
+                    self.executed_steps += 1
+            else:
+                if self.is_separate_classifier_free_guidance_step():
+                    # transformer step: 0,2,4,...
+                    self.executed_steps += 1
 
         if not self.enable_alter_cache:
             # 0 F 1 T 2 F 3 T 4 F 5 T ...
@@ -313,9 +320,9 @@ class DBCacheContext:
             return False
         if self.cfg_compute_first:
             # CFG steps: 0, 2, 4, 6, ...
-            return self.get_current_transformer_step() % 2
+            return self.get_current_transformer_step() % 2 == 0
         # CFG steps: 1, 3, 5, 7, ...
-        return not self.get_current_transformer_step() % 2
+        return self.get_current_transformer_step() % 2 != 0
 
     @torch.compiler.disable
     def is_in_warmup(self):
@@ -791,30 +798,78 @@ def set_Fn_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
         buffer = buffer[..., ::downsample_factor]
         buffer = buffer.contiguous()
     if is_separate_classifier_free_guidance_step():
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"set {prefix}_buffer_cfg, "
+                f"transformer step: {get_current_transformer_step()}, "
+                f"executed step: {get_current_step()}"
+            )
         set_buffer(f"{prefix}_buffer_cfg", buffer)
     else:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"set {prefix}_buffer, "
+                f"transformer step: {get_current_transformer_step()}, "
+                f"executed step: {get_current_step()}"
+            )
         set_buffer(f"{prefix}_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Fn_buffer(prefix: str = "Fn"):
     if is_separate_classifier_free_guidance_step():
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"get {prefix}_buffer_cfg, "
+                f"transformer step: {get_current_transformer_step()}, "
+                f"executed step: {get_current_step()}"
+            )
         return get_buffer(f"{prefix}_buffer_cfg")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"get {prefix}_buffer, "
+            f"transformer step: {get_current_transformer_step()}, "
+            f"executed step: {get_current_step()}"
+        )
     return get_buffer(f"{prefix}_buffer")
 
 
 @torch.compiler.disable
 def set_Fn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
     if is_separate_classifier_free_guidance_step():
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"set {prefix}_encoder_buffer_cfg, "
+                f"transformer step: {get_current_transformer_step()}, "
+                f"executed step: {get_current_step()}"
+            )
         set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
     else:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"set {prefix}_encoder_buffer, "
+                f"transformer step: {get_current_transformer_step()}, "
+                f"executed step: {get_current_step()}"
+            )
         set_buffer(f"{prefix}_encoder_buffer", buffer)
 
 
 @torch.compiler.disable
 def get_Fn_encoder_buffer(prefix: str = "Fn"):
     if is_separate_classifier_free_guidance_step():
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"get {prefix}_encoder_buffer_cfg, "
+                f"transformer step: {get_current_transformer_step()}, "
+                f"executed step: {get_current_step()}"
+            )
         return get_buffer(f"{prefix}_encoder_buffer_cfg")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"get {prefix}_encoder_buffer, "
+            f"transformer step: {get_current_transformer_step()}, "
+            f"executed step: {get_current_step()}"
+        )
     return get_buffer(f"{prefix}_encoder_buffer")
 
 
