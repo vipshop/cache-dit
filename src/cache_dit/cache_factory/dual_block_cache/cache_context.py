@@ -71,15 +71,18 @@ class DBCacheContext:
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
+
     # Support do_separate_classifier_free_guidance, such as Wan 2.1
     # For model that fused CFG and non-CFG into single forward step,
     # should set do_separate_classifier_free_guidance as False. For
     # example: CogVideoX, HunyuanVideo, Mochi.
     do_separate_classifier_free_guidance: bool = False
+    # Compute cfg forward first or not, default False, namely,
+    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first: bool = False
-    # TODO: Support cfg_diff_compute_separate mode, default True.
-    # Use the computed diff from current non-CFG transformer step
-    # if cfg_diff_compute_separate is set as False.
+    # Compute spearate diff values for CFG and non-CFG step,
+    # default True. If False, we will use the computed diff from
+    # current non-CFG transformer step for current CFG step.
     cfg_diff_compute_separate: bool = True
     cfg_taylorseer: Optional[TaylorSeer] = None
     cfg_encoder_taylorseer: Optional[TaylorSeer] = None
@@ -103,11 +106,17 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def __post_init__(self):
+        # Some checks for settings
         if self.do_separate_classifier_free_guidance:
             assert self.enable_alter_cache is False, (
                 "enable_alter_cache must set as False if "
                 "do_separate_classifier_free_guidance is enabled."
             )
+            if self.cfg_diff_compute_separate:
+                assert self.cfg_compute_first is False, (
+                    "cfg_compute_first must set as False if "
+                    "cfg_diff_compute_separate is enabled."
+                )
 
         if "warmup_steps" not in self.taylorseer_kwargs:
             # If warmup_steps is not set in taylorseer_kwargs,
@@ -257,6 +266,7 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def add_residual_diff(self, diff):
+        # step: executed_steps - 1, not transformer_steps - 1
         step = str(self.get_current_step())
         # Only add the diff if it is not already recorded for this step
         if not self.is_separate_classifier_free_guidance_step():
@@ -352,6 +362,28 @@ def get_current_step():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_current_step()
+
+
+@torch.compiler.disable
+def get_current_step_residual_diff():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    step = str(get_current_step())
+    residual_diffs = get_residual_diffs()
+    if step in residual_diffs:
+        return residual_diffs[step]
+    return None
+
+
+@torch.compiler.disable
+def get_current_step_cfg_residual_diff():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    step = str(get_current_step())
+    cfg_residual_diffs = get_cfg_residual_diffs()
+    if step in cfg_residual_diffs:
+        return cfg_residual_diffs[step]
+    return None
 
 
 @torch.compiler.disable
@@ -590,6 +622,13 @@ def is_separate_classifier_free_guidance_step():
     return cache_context.is_separate_classifier_free_guidance_step()
 
 
+@torch.compiler.disable
+def cfg_diff_compute_separate():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.cfg_diff_compute_separate
+
+
 _current_cache_context: DBCacheContext = None
 
 
@@ -690,38 +729,49 @@ def are_two_tensors_similar(
         add_residual_diff(-2.0)
         return False
 
-    # Find the most significant token through t1 and t2, and
-    # consider the diff of the significant token. The more significant,
-    # the more important.
-    condition_thresh = get_important_condition_threshold()
-    if condition_thresh > 0.0:
-        raw_diff = (t1 - t2).abs()  # [B, seq_len, d]
-        token_m_df = raw_diff.mean(dim=-1)  # [B, seq_len]
-        token_m_t1 = t1.abs().mean(dim=-1)  # [B, seq_len]
-        # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
-        token_diff = token_m_df / token_m_t1  # [B, seq_len]
-        condition = token_diff > condition_thresh  # [B, seq_len]
-        if condition.sum() > 0:
-            condition = condition.unsqueeze(-1)  # [B, seq_len, 1]
-            condition = condition.expand_as(raw_diff)  # [B, seq_len, d]
-            mean_diff = raw_diff[condition].mean()
-            mean_t1 = t1[condition].abs().mean()
+    if all(
+        (
+            do_separate_classifier_free_guidance(),
+            is_separate_classifier_free_guidance_step(),
+            not cfg_diff_compute_separate(),
+            get_current_step_residual_diff() is not None,
+        )
+    ):
+        # Reuse computed diff value from non-CFG step
+        diff = get_current_step_residual_diff()
+    else:
+        # Find the most significant token through t1 and t2, and
+        # consider the diff of the significant token. The more significant,
+        # the more important.
+        condition_thresh = get_important_condition_threshold()
+        if condition_thresh > 0.0:
+            raw_diff = (t1 - t2).abs()  # [B, seq_len, d]
+            token_m_df = raw_diff.mean(dim=-1)  # [B, seq_len]
+            token_m_t1 = t1.abs().mean(dim=-1)  # [B, seq_len]
+            # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
+            token_diff = token_m_df / token_m_t1  # [B, seq_len]
+            condition = token_diff > condition_thresh  # [B, seq_len]
+            if condition.sum() > 0:
+                condition = condition.unsqueeze(-1)  # [B, seq_len, 1]
+                condition = condition.expand_as(raw_diff)  # [B, seq_len, d]
+                mean_diff = raw_diff[condition].mean()
+                mean_t1 = t1[condition].abs().mean()
+            else:
+                mean_diff = (t1 - t2).abs().mean()
+                mean_t1 = t1.abs().mean()
         else:
+            # Use the mean of the absolute difference of the tensors
             mean_diff = (t1 - t2).abs().mean()
             mean_t1 = t1.abs().mean()
-    else:
-        # Use the mean of the absolute difference of the tensors
-        mean_diff = (t1 - t2).abs().mean()
-        mean_t1 = t1.abs().mean()
 
-    if parallelized:
-        mean_diff = DP.all_reduce_sync(mean_diff, "avg")
-        mean_t1 = DP.all_reduce_sync(mean_t1, "avg")
+        if parallelized:
+            mean_diff = DP.all_reduce_sync(mean_diff, "avg")
+            mean_t1 = DP.all_reduce_sync(mean_t1, "avg")
 
-    # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
-    # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
-    # H(t-1,n) ~ H(t  ,n), which means the hidden states are similar.
-    diff = (mean_diff / mean_t1).item()
+        # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
+        # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
+        # H(t-1,n) ~ H(t  ,n), which means the hidden states are similar.
+        diff = (mean_diff / mean_t1).item()
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"{prefix}, diff: {diff:.6f}, threshold: {threshold:.6f}")
