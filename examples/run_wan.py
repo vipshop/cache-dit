@@ -69,7 +69,7 @@ if args.cache:
         # Compute spearate diff values for CFG and non-CFG step,
         # default True. If False, we will use the computed diff from
         # current non-CFG transformer step for current CFG step.
-        "cfg_diff_compute_separate": True,
+        "cfg_diff_compute_separate": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,
         # Taylorseer cache type cache be hidden_states or residual
