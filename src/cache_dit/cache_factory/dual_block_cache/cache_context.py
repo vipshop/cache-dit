@@ -849,7 +849,7 @@ def get_Fn_encoder_buffer(prefix: str = "Fn"):
     if is_separate_classifier_free_guidance_step():
         _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
         return get_buffer(f"{prefix}_encoder_buffer_cfg")
-    _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
+    _debugging_get_buffer(f"{prefix}_encoder_buffer")
     return get_buffer(f"{prefix}_encoder_buffer")
 
 
@@ -875,13 +875,17 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
                     "Falling back to default buffer retrieval."
                 )
             if is_separate_classifier_free_guidance_step():
+                _debugging_set_buffer(f"{prefix}_buffer_cfg")
                 set_buffer(f"{prefix}_buffer_cfg", buffer)
             else:
+                _debugging_set_buffer(f"{prefix}_buffer")
                 set_buffer(f"{prefix}_buffer", buffer)
     else:
         if is_separate_classifier_free_guidance_step():
+            _debugging_set_buffer(f"{prefix}_buffer_cfg")
             set_buffer(f"{prefix}_buffer_cfg", buffer)
         else:
+            _debugging_set_buffer(f"{prefix}_buffer")
             set_buffer(f"{prefix}_buffer", buffer)
 
 
@@ -904,11 +908,15 @@ def get_Bn_buffer(prefix: str = "Bn"):
                 )
             # Fallback to default buffer retrieval
             if is_separate_classifier_free_guidance_step():
+                _debugging_get_buffer(f"{prefix}_buffer_cfg")
                 return get_buffer(f"{prefix}_buffer_cfg")
+            _debugging_get_buffer(f"{prefix}_buffer")
             return get_buffer(f"{prefix}_buffer")
     else:
         if is_separate_classifier_free_guidance_step():
+            _debugging_get_buffer(f"{prefix}_buffer_cfg")
             return get_buffer(f"{prefix}_buffer_cfg")
+        _debugging_get_buffer(f"{prefix}_buffer")
         return get_buffer(f"{prefix}_buffer")
 
 
@@ -932,13 +940,17 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
                     "Falling back to default buffer retrieval."
                 )
             if is_separate_classifier_free_guidance_step():
+                _debugging_set_buffer(f"{prefix}_encoder_buffer_cfg")
                 set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
             else:
+                _debugging_set_buffer(f"{prefix}_encoder_buffer")
                 set_buffer(f"{prefix}_encoder_buffer", buffer)
     else:
         if is_separate_classifier_free_guidance_step():
+            _debugging_set_buffer(f"{prefix}_encoder_buffer_cfg")
             set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
         else:
+            _debugging_set_buffer(f"{prefix}_encoder_buffer")
             set_buffer(f"{prefix}_encoder_buffer", buffer)
 
 
@@ -961,11 +973,15 @@ def get_Bn_encoder_buffer(prefix: str = "Bn"):
                 )
             # Fallback to default buffer retrieval
             if is_separate_classifier_free_guidance_step():
+                _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
                 return get_buffer(f"{prefix}_encoder_buffer_cfg")
+            _debugging_get_buffer(f"{prefix}_encoder_buffer")
             return get_buffer(f"{prefix}_encoder_buffer")
     else:
         if is_separate_classifier_free_guidance_step():
+            _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
             return get_buffer(f"{prefix}_encoder_buffer_cfg")
+        _debugging_get_buffer(f"{prefix}_encoder_buffer")
         return get_buffer(f"{prefix}_encoder_buffer")
 
 
