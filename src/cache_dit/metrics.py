@@ -29,7 +29,10 @@ def compute_psnr(
     )
 
 
-def compare_videos_psnr(video_path1: str, video_path2: str) -> float:
+def compare_videos_psnr(
+    video_path1: str,
+    video_path2: str,
+) -> float:
     """
     Compare the PSNR values of two videos.
 
