@@ -121,9 +121,9 @@ def compute_dir_metric(
     logger.debug(f"image_test_files: {image_test_files}")
     assert len(image_true_files) == len(image_test_files)
     for image_true, image_test in zip(image_true_files, image_test_files):
-        assert (
-            image_true == image_test
-        ), f"image_true:{image_true} != image_test: {image_true}"
+        assert os.path.basename(image_true) == os.path.basename(
+            image_test
+        ), f"image_true:{image_true} != image_test: {image_test}"
 
     total_metric = 0.0
     valid_files = 0

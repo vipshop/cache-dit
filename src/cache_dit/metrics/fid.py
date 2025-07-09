@@ -303,9 +303,9 @@ class FrechetInceptionDistance:
                 for image_true, image_test in zip(
                     image_true_files, image_test_files
                 ):
-                    assert (
-                        image_true == image_test
-                    ), f"image_true:{image_true} != image_test: {image_true}"
+                    assert os.path.basename(image_true) == os.path.basename(
+                        image_test
+                    ), f"image_true:{image_true} != image_test: {image_test}"
         else:
             image_true_files = [image_true]
             image_test_files = [image_test]
