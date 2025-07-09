@@ -349,7 +349,7 @@ class FrechetInceptionDistance:
 
         if not cap1.isOpened() or not cap2.isOpened():
             logger.error("Could not open video files")
-            return None
+            return None, None
 
         frame_count = min(
             int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
