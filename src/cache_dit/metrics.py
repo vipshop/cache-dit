@@ -127,11 +127,13 @@ class FrechetInceptionDistance:
         device="cuda" if torch.cuda.is_available() else "cpu",
         dims: int = 2048,
         num_workers: int = 1,
+        batch_size: int = 1,
     ):
         # https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
         self.dims = dims
         self.device = device
         self.num_workers = num_workers
+        self.batch_size = batch_size
         self.block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[self.dims]
         self.model = InceptionV3([self.block_idx]).to(self.device)
         self.model = self.model.eval()
@@ -173,6 +175,55 @@ class FrechetInceptionDistance:
             [image_test],
             self.model,
             1,
+            self.dims,
+            self.device,
+            self.num_workers,
+        )
+        fid_value = calculate_frechet_distance(
+            m1,
+            s1,
+            m2,
+            s2,
+        )
+
+        return fid_value
+
+    def compute_batch_fid(
+        self,
+        images_true: list[str],
+        images_test: list[str],
+    ):
+        IMAGE_EXTENSIONS = {
+            "bmp",
+            "jpg",
+            "jpeg",
+            "pgm",
+            "png",
+            "ppm",
+            "tif",
+            "tiff",
+            "webp",
+        }
+        assert len(images_true) == len(images_test)
+        for image_true, image_test in zip(images_true, images_test):
+            assert os.path.exists(image_true)
+            assert os.path.exists(image_test)
+            assert image_true.split(".")[-1] in IMAGE_EXTENSIONS
+            assert image_test.split(".")[-1] in IMAGE_EXTENSIONS
+
+        batch_size = min(self.batch_size, len(images_true))
+        m1, s1 = calculate_activation_statistics(
+            images_true,
+            self.model,
+            batch_size,
+            self.dims,
+            self.device,
+            self.num_workers,
+        )
+        m2, s2 = calculate_activation_statistics(
+            images_test,
+            self.model,
+            batch_size,
             self.dims,
             self.device,
             self.num_workers,
