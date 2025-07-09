@@ -73,4 +73,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # python3 test_metrics.py --img-true gt.png --img-test pred.png
+    # python3 test_metrics.py --img-true true.png --img-test test.png

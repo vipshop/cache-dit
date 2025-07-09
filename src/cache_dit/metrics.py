@@ -1,13 +1,15 @@
+import os
 import cv2
 import torch
 import numpy as np
-from torch import Tensor
-from typing import Iterable
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
-from torch.nn.functional import adaptive_avg_pool2d
 from pytorch_fid.inception import InceptionV3
+from pytorch_fid.fid_score import (
+    calculate_frechet_distance,
+    calculate_activation_statistics,
+)
 from cache_dit.logger import init_logger
 
 
@@ -119,163 +121,67 @@ def compute_ssim(
     )
 
 
-# Adapted from: https://github.com/mseitzer/pytorch-fid/issues/116
 class FrechetInceptionDistance:
     def __init__(
         self,
         device="cuda" if torch.cuda.is_available() else "cpu",
+        dims: int = 2048,
+        num_workers: int = 1,
     ):
-        self.model = self.init_model().to(device)
-        self.model = self.model.eval()
+        # https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
+        self.dims = dims
         self.device = device
+        self.num_workers = num_workers
+        self.block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[self.dims]
+        self.model = InceptionV3([self.block_idx]).to(self.device)
+        self.model = self.model.eval()
 
     def compute_fid(
         self,
-        image_true: np.ndarray | str,
-        image_test: np.ndarray | str,
-        *args,
-        **kwargs,
-    ) -> float:
-        """
+        image_true: str,
+        image_test: str,
+    ):
+        """Calculates the FID of two file paths
         FID = FrechetInceptionDistance()
-        img_true = cv2.imread(img_true_file)
-        img_test = cv2.imread(img_test_file)
-        fid = FID.compute_fid(img_true, img_test)
+        fid = FID.compute_fid("img_true.png", "img_test.png")
         """
-        if isinstance(image_true, str):
-            image_true = cv2.imread(image_true)
-        if isinstance(image_test, str):
-            image_test = cv2.imread(image_test)
-        image_true_tensors = [torch.from_numpy(image_true).to(self.device)]
-        image_test_tensors = [torch.from_numpy(image_test).to(self.device)]
-        fid_value = (
-            self._compute_batch_fid(
-                image_true_tensors,
-                image_test_tensors,
-                *args,
-                **kwargs,
-            )
-            .detach()
-            .cpu()
-            .numpy()[0]
+        IMAGE_EXTENSIONS = {
+            "bmp",
+            "jpg",
+            "jpeg",
+            "pgm",
+            "png",
+            "ppm",
+            "tif",
+            "tiff",
+            "webp",
+        }
+        assert os.path.exists(image_true)
+        assert os.path.exists(image_test)
+        assert image_true.split(".")[-1] in IMAGE_EXTENSIONS
+        assert image_test.split(".")[-1] in IMAGE_EXTENSIONS
+
+        m1, s1 = calculate_activation_statistics(
+            [image_true],
+            self.model,
+            1,
+            self.dims,
+            self.device,
+            self.num_workers,
         )
+        m2, s2 = calculate_activation_statistics(
+            [image_test],
+            self.model,
+            1,
+            self.dims,
+            self.device,
+            self.num_workers,
+        )
+        fid_value = calculate_frechet_distance(
+            m1,
+            s1,
+            m2,
+            s2,
+        )
+
         return fid_value
-
-    def compute_batch_fid(
-        self,
-        images_true: Iterable[np.ndarray],
-        images_test: Iterable[np.ndarray],
-        *args,
-        **kwargs,
-    ) -> np.ndarray:
-        images_true_tensors = [
-            torch.from_numpy(x).to(self.device) for x in images_true
-        ]
-        images_test_tensors = [
-            torch.from_numpy(x).to(self.device) for x in images_test
-        ]
-        fid_values = (
-            self._compute_batch_fid(
-                images_true_tensors,
-                images_test_tensors,
-                *args,
-                **kwargs,
-            )
-            .detach()
-            .cpu()
-            .numpy()
-        )
-        return fid_values
-
-    def _compute_batch_fid(
-        self,
-        batches_true: Iterable[Tensor],
-        batches_pred: Iterable[Tensor],
-        *args,
-        **kwargs,
-    ) -> Tensor:
-        act_true = self.get_activations(
-            self.model,
-            batches_true,
-            self.device,
-            *args,
-            **kwargs,
-        )
-        mu_true, sigma_true = self.activation_statistics(act_true)
-
-        act_pred = self.get_activations(
-            self.model,
-            batches_pred,
-            self.device,
-            *args,
-            **kwargs,
-        )
-        mu_pred, sigma_pred = self.activation_statistics(act_pred)
-
-        fid_values = self.frechet_distance(
-            mu_true,
-            sigma_true,
-            mu_pred,
-            sigma_pred,
-        )
-        fid_values[fid_values < 0] = 0
-
-        return fid_values
-
-    def init_model(
-        self,
-        dims: int = 2048,
-    ) -> torch.nn.Module:
-        """
-        Inspired by: https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
-        """
-        block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
-        return InceptionV3([block_idx])
-
-    def get_activations(
-        model: torch.nn.Module,
-        batches: Iterable[Tensor],
-        device: torch.device,
-    ) -> Tensor:
-        """
-        Inspired by: https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
-        """
-        with torch.no_grad():
-            activations: list[Tensor] = []
-
-            for batch in batches:
-                batch = batch.to(device)
-                pred = model(batch)[0]
-                if pred.size(2) != 1 or pred.size(3) != 1:
-                    pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
-                activations.append(pred.cpu().data.reshape(pred.size(0), -1))
-
-        return torch.cat(activations, dim=0)
-
-    def activation_statistics(
-        self,
-        activations: Tensor,
-    ) -> tuple[Tensor, Tensor]:
-        """
-        Inspired by: https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
-        """
-        mu = activations.mean(dim=0)
-        sigma = activations.t().cov()
-        return mu, sigma
-
-    def frechet_distance(
-        self,
-        mu_x: Tensor,
-        sigma_x: Tensor,
-        mu_y: Tensor,
-        sigma_y: Tensor,
-    ) -> Tensor:
-        """
-        Inspired by: https://www.reddit.com/r/MachineLearning/comments/12hv2u6/d_a_better_way_to_compute_the_fr%C3%A9chet_inception/
-        Issues: https://github.com/mseitzer/pytorch-fid/issues/95
-        """
-        a = (mu_x - mu_y).square().sum(dim=-1)
-        b = sigma_x.trace() + sigma_y.trace()
-        c = torch.linalg.eigvals(sigma_x @ sigma_y).sqrt().real.sum(dim=-1)
-
-        return a + b - 2 * c
