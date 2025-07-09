@@ -30,11 +30,16 @@ def compute_psnr(
 
 
 def compare_video_psnr(
-    video_path1: str,
-    video_path2: str,
+    video_true: str,
+    video_test: str,
 ) -> float:
-    cap1 = cv2.VideoCapture(video_path1)
-    cap2 = cv2.VideoCapture(video_path2)
+    """
+    video_true = "video_true.mp4"
+    video_test = "video_test.mp4"
+    PSNR = compare_video_psnr(video_true, video_test)
+    """
+    cap1 = cv2.VideoCapture(video_true)
+    cap2 = cv2.VideoCapture(video_test)
 
     if not cap1.isOpened() or not cap2.isOpened():
         logger.error("Could not open video files")
