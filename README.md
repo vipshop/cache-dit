@@ -480,7 +480,7 @@ from cache_dit.metrics import FrechetInceptionDistance  # FID
 
 FID = FrechetInceptionDistance()
 image_psnr, n = compute_psnr("true.png", "test.png") # Num: n
-image_fid,  n = FID.compute_fid("true.png", "test.png")
+image_fid,  n = FID.compute_fid("true_dir", "test_dir")
 video_psnr, n = compute_video_psnr("true.mp4", "test.mp4")
 ```
 
