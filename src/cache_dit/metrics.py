@@ -3,6 +3,7 @@ import cv2
 import torch
 import argparse
 import numpy as np
+from functools import partial
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
@@ -34,60 +35,6 @@ def compute_psnr(
         image_true,
         image_test,
     )
-
-
-def compute_video_psnr(
-    video_true: str,
-    video_test: str,
-) -> float:
-    """
-    video_true = "video_true.mp4"
-    video_test = "video_test.mp4"
-    PSNR = compute_video_psnr(video_true, video_test)
-    """
-    cap1 = cv2.VideoCapture(video_true)
-    cap2 = cv2.VideoCapture(video_test)
-
-    if not cap1.isOpened() or not cap2.isOpened():
-        logger.error("Could not open video files")
-        return None
-
-    frame_count = min(
-        int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
-        int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
-    )
-
-    total_psnr = 0.0
-    valid_frames = 0
-
-    logger.debug(f"Total frames: {frame_count}")
-
-    while True:
-        ret1, frame1 = cap1.read()
-        ret2, frame2 = cap2.read()
-
-        if not ret1 or not ret2:
-            break
-
-        psnr = compute_psnr(frame1, frame2)
-
-        if psnr != float("inf"):
-            total_psnr += psnr
-            valid_frames += 1
-
-        if valid_frames % 10 == 0:
-            logger.debug(f"Processed {valid_frames}/{frame_count} frames")
-
-    cap1.release()
-    cap2.release()
-
-    if valid_frames > 0:
-        average_psnr = total_psnr / valid_frames
-        logger.debug(f"Average PSNR: {average_psnr:.2f}")
-        return average_psnr
-    else:
-        logger.debug("No valid frames to compare")
-        return None
 
 
 def compute_mse(
@@ -128,6 +75,75 @@ def compute_ssim(
         multichannel=True,
         channel_axis=2,
     )
+
+
+def compute_video_metric(
+    video_true: str,
+    video_test: str,
+    compute_frame_func: callable = compute_psnr,
+) -> float:
+    """
+    video_true = "video_true.mp4"
+    video_test = "video_test.mp4"
+    PSNR = compute_video_psnr(video_true, video_test)
+    """
+    cap1 = cv2.VideoCapture(video_true)
+    cap2 = cv2.VideoCapture(video_test)
+
+    if not cap1.isOpened() or not cap2.isOpened():
+        logger.error("Could not open video files")
+        return None
+
+    frame_count = min(
+        int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
+        int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
+    )
+
+    total_metric = 0.0
+    valid_frames = 0
+
+    logger.debug(f"Total frames: {frame_count}")
+
+    while True:
+        ret1, frame1 = cap1.read()
+        ret2, frame2 = cap2.read()
+
+        if not ret1 or not ret2:
+            break
+
+        metric = compute_frame_func(frame1, frame2)
+
+        if metric != float("inf"):
+            total_metric += metric
+            valid_frames += 1
+
+        if valid_frames % 10 == 0:
+            logger.debug(f"Processed {valid_frames}/{frame_count} frames")
+
+    cap1.release()
+    cap2.release()
+
+    if valid_frames > 0:
+        average_metric = total_metric / valid_frames
+        logger.debug(f"Average: {average_metric:.2f}")
+        return average_metric
+    else:
+        logger.debug("No valid frames to compare")
+        return None
+
+
+compute_video_psnr = partial(
+    compute_video_metric,
+    compute_frame_func=compute_psnr,
+)
+compute_video_ssim = partial(
+    compute_video_metric,
+    compute_frame_func=compute_ssim,
+)
+compute_video_mse = partial(
+    compute_video_metric,
+    compute_frame_func=compute_mse,
+)
 
 
 class FrechetInceptionDistance:
@@ -243,6 +259,20 @@ def get_args():
         description="CacheDiT's Metrics CLI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    METRICS_CHOICES = [
+        "psnr",
+        "ssim",
+        "mse",
+        "fid",
+        "all",
+    ]
+    parser.add_argument(
+        "metric",
+        type=str,
+        default="psnr",
+        choices=METRICS_CHOICES,
+        help=f"Metric choice: {METRICS_CHOICES}",
+    )
     parser.add_argument(
         "--img-true",
         type=str,
@@ -267,14 +297,6 @@ def get_args():
         default=None,
         help="Path to predicted video",
     )
-    parser.add_argument(
-        "--compute-fid",
-        "--fid",
-        action="store_true",
-        default=False,
-        help="Compute FID for image",
-    )
-
     return parser.parse_args()
 
 
@@ -290,9 +312,16 @@ def main():
             )
         ):
             return
-        img_psnr = compute_psnr(args.img_true, args.img_test)
-        logger.info(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
-        if args.compute_fid:
+        if args.metric == "psnr" or args.metric == "all":
+            img_psnr = compute_psnr(args.img_true, args.img_test)
+            logger.info(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
+        if args.metric == "ssim" or args.metric == "all":
+            img_ssim = compute_ssim(args.img_true, args.img_test)
+            logger.info(f"{args.img_true} vs {args.img_test}, SSIM: {img_ssim}")
+        if args.metric == "mse" or args.metric == "all":
+            img_mse = compute_mse(args.img_true, args.img_test)
+            logger.info(f"{args.img_true} vs {args.img_test}, MSE: {img_mse}")
+        if args.metric == "fid" or args.metric == "all":
             FID = FrechetInceptionDistance()
             img_fid = FID.compute_fid(args.img_true, args.img_test)
             logger.info(f"{args.img_true} vs {args.img_test}, FID: {img_fid}")
@@ -304,10 +333,23 @@ def main():
             )
         ):
             return
-        video_psnr = compute_video_psnr(args.video_true, args.video_test)
-        logger.info(
-            f"{args.video_true} vs {args.video_test}, PSNR: {video_psnr}"
-        )
+        if args.metric == "psnr" or args.metric == "all":
+            video_psnr = compute_video_psnr(args.video_true, args.video_test)
+            logger.info(
+                f"{args.video_true} vs {args.video_test}, PSNR: {video_psnr}"
+            )
+        if args.metric == "ssim" or args.metric == "all":
+            video_ssim = compute_video_ssim(args.video_true, args.video_test)
+            logger.info(
+                f"{args.video_true} vs {args.video_test}, SSIM: {video_ssim}"
+            )
+        if args.metric == "mse" or args.metric == "all":
+            video_mse = compute_video_mse(args.video_true, args.video_test)
+            logger.info(
+                f"{args.video_true} vs {args.video_test}, MSE: {video_mse}"
+            )
+        if args.metric == "fid" or args.metric == "all":
+            logger.warning("Not support FID for video now, SKIP!")
 
 
 if __name__ == "__main__":
