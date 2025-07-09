@@ -1,5 +1,6 @@
 import os
 import cv2
+import pathlib
 import argparse
 import numpy as np
 from PIL import Image
@@ -495,23 +496,32 @@ class FIDInceptionE_2(torchvision.models.inception.InceptionE):
 
 
 class ImagePathDataset(torch.utils.data.Dataset):
-    def __init__(self, files, transforms=None):
-        self.files = files
+    def __init__(self, files_or_imgs, transforms=None):
+        self.files_or_imgs = files_or_imgs
         self.transforms = transforms
 
     def __len__(self):
-        return len(self.files)
+        return len(self.files_or_imgs)
 
     def __getitem__(self, i):
-        path = self.files[i]
-        img = Image.open(path).convert("RGB")
+        file_or_img = self.files_or_imgs[i]
+        if isinstance(file_or_img, str):
+            img = Image.open(file_or_img).convert("RGB")
+        elif isinstance(file_or_img, np.ndarray):
+            # Assume the img is a standard OpenCV image.
+            img = cv2.cvtColor(file_or_img, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(img)
+        else:
+            raise ValueError(
+                "file_or_img must be a file path or an OpenCV image."
+            )
         if self.transforms is not None:
             img = self.transforms(img)
         return img
 
 
 def get_activations(
-    files,
+    files_or_imgs,
     model,
     batch_size=50,
     dims=2048,
@@ -522,16 +532,16 @@ def get_activations(
     """Calculates the activations of the pool_3 layer for all images.
 
     Params:
-    -- files       : List of image files paths
-    -- model       : Instance of inception model
-    -- batch_size  : Batch size of images for the model to process at once.
-                     Make sure that the number of samples is a multiple of
-                     the batch size, otherwise some samples are ignored. This
-                     behavior is retained to match the original FID score
-                     implementation.
-    -- dims        : Dimensionality of features returned by Inception
-    -- device      : Device to run calculations
-    -- num_workers : Number of parallel dataloader workers
+    -- files_or_imgs : List of image files paths or OpenCV image
+    -- model         : Instance of inception model
+    -- batch_size    : Batch size of images for the model to process at once.
+                       Make sure that the number of samples is a multiple of
+                       the batch size, otherwise some samples are ignored. This
+                       behavior is retained to match the original FID score
+                       implementation.
+    -- dims          : Dimensionality of features returned by Inception
+    -- device        : Device to run calculations
+    -- num_workers   : Number of parallel dataloader workers
 
     Returns:
     -- A numpy array of dimension (num images, dims) that contains the
@@ -540,16 +550,16 @@ def get_activations(
     """
     model.eval()
 
-    if batch_size > len(files):
-        print(
+    if batch_size > len(files_or_imgs):
+        logger.info(
             (
                 "Warning: batch size is bigger than the data size. "
                 "Setting batch size to data size"
             )
         )
-        batch_size = len(files)
+        batch_size = len(files_or_imgs)
 
-    dataset = ImagePathDataset(files, transforms=TF.ToTensor())
+    dataset = ImagePathDataset(files_or_imgs, transforms=TF.ToTensor())
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
@@ -558,7 +568,7 @@ def get_activations(
         num_workers=num_workers,
     )
 
-    pred_arr = np.empty((len(files), dims))
+    pred_arr = np.empty((len(files_or_imgs), dims))
 
     start_idx = 0
 
@@ -649,7 +659,7 @@ def calculate_frechet_distance(
 
 
 def calculate_activation_statistics(
-    files,
+    files_or_imgs,
     model,
     batch_size=50,
     dims=2048,
@@ -659,14 +669,16 @@ def calculate_activation_statistics(
 ):
     """Calculation of the statistics used by the FID.
     Params:
-    -- files       : List of image files paths
-    -- model       : Instance of inception model
-    -- batch_size  : The images numpy array is split into batches with
-                     batch size batch_size. A reasonable batch size
-                     depends on the hardware.
-    -- dims        : Dimensionality of features returned by Inception
-    -- device      : Device to run calculations
-    -- num_workers : Number of parallel dataloader workers
+    -- files_or_imgs : List of image files paths or OpenCV image
+    -- model         : Instance of inception model
+    -- batch_size    : Batch size of images for the model to process at once.
+                       Make sure that the number of samples is a multiple of
+                       the batch size, otherwise some samples are ignored. This
+                       behavior is retained to match the original FID score
+                       implementation.
+    -- dims          : Dimensionality of features returned by Inception
+    -- device        : Device to run calculations
+    -- num_workers   : Number of parallel dataloader workers
 
     Returns:
     -- mu    : The mean over samples of the activations of the pool_3 layer of
@@ -675,7 +687,7 @@ def calculate_activation_statistics(
                the inception model.
     """
     act = get_activations(
-        files,
+        files_or_imgs,
         model,
         batch_size,
         dims,
@@ -721,31 +733,61 @@ class FrechetInceptionDistance:
 
     def compute_fid(
         self,
-        image_true: str,
-        image_test: str,
+        image_true: np.ndarray | str,
+        image_test: np.ndarray | str,
     ):
         """Calculates the FID of two file paths
         FID = FrechetInceptionDistance()
-        fid = FID.compute_fid("img_true.png", "img_test.png")
+        img_fid = FID.compute_fid("img_true.png", "img_test.png")
+        img_dir_fid = FID.compute_fid("img_true_dir", "img_test_dir")
         """
-        assert os.path.exists(image_true)
-        assert os.path.exists(image_test)
-        assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
-        assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
+        if isinstance(image_true, str) or isinstance(image_test, str):
+            if os.path.isfile(image_true) or os.path.isfile(image_test):
+                assert os.path.exists(image_true)
+                assert os.path.exists(image_test)
+                assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
+                assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
+                image_true_files = [image_true]
+                image_test_files = [image_test]
+            else:
+                # glob image files from dir
+                assert os.path.isdir(image_true)
+                assert os.path.isdir(image_test)
+                image_true_dir = pathlib.Path(image_true)
+                image_true_files = sorted(
+                    [
+                        file
+                        for ext in self.IMAGE_EXTENSIONS
+                        for file in image_true_dir.glob("*.{}".format(ext))
+                    ]
+                )
+                image_test_dir = pathlib.Path(image_test)
+                image_test_files = sorted(
+                    [
+                        file
+                        for ext in self.IMAGE_EXTENSIONS
+                        for file in image_test_dir.glob("*.{}".format(ext))
+                    ]
+                )
+        else:
+            image_true_files = [image_true]
+            image_test_files = [image_test]
 
+        batch_size = min(16, self.batch_size)
+        batch_size = min(batch_size, len(image_test_files))
         m1, s1 = calculate_activation_statistics(
-            [image_true],
+            image_true_files,
             self.model,
-            1,
+            batch_size,
             self.dims,
             self.device,
             self.num_workers,
             self.disable_tqdm,
         )
         m2, s2 = calculate_activation_statistics(
-            [image_test],
+            image_test_files,
             self.model,
-            1,
+            batch_size,
             self.dims,
             self.device,
             self.num_workers,
@@ -760,21 +802,50 @@ class FrechetInceptionDistance:
 
         return fid_value
 
-    def compute_batch_fid(
+    def compute_video_fid(
         self,
-        images_true: list[str],
-        images_test: list[str],
+        video_true: str,
+        video_test: str,
     ):
-        assert len(images_true) == len(images_test)
-        for image_true, image_test in zip(images_true, images_test):
-            assert os.path.exists(image_true)
-            assert os.path.exists(image_test)
-            assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
-            assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
+        cap1 = cv2.VideoCapture(video_true)
+        cap2 = cv2.VideoCapture(video_test)
 
-        batch_size = min(self.batch_size, len(images_true))
+        if not cap1.isOpened() or not cap2.isOpened():
+            logger.error("Could not open video files")
+            return None
+
+        frame_count = min(
+            int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
+            int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
+        )
+
+        valid_frames = 0
+        video_true_frames = []
+        video_test_frames = []
+
+        logger.debug(f"Total frames: {frame_count}")
+
+        while True:
+            ret1, frame1 = cap1.read()
+            ret2, frame2 = cap2.read()
+
+            if not ret1 or not ret2:
+                break
+
+            video_true_frames.append(frame1)
+            video_test_frames.append(frame2)
+
+            valid_frames += 1
+
+        cap1.release()
+        cap2.release()
+
+        if valid_frames <= 0:
+            return None
+
+        batch_size = min(16, self.batch_size)
         m1, s1 = calculate_activation_statistics(
-            images_true,
+            video_true_frames,
             self.model,
             batch_size,
             self.dims,
@@ -783,7 +854,7 @@ class FrechetInceptionDistance:
             self.disable_tqdm,
         )
         m2, s2 = calculate_activation_statistics(
-            images_test,
+            video_test_frames,
             self.model,
             batch_size,
             self.dims,
@@ -825,13 +896,13 @@ def get_args():
         "--img-true",
         type=str,
         default=None,
-        help="Path to ground truth image",
+        help="Path to ground truth image or Dir to ground truth images (FID)",
     )
     parser.add_argument(
         "--img-test",
         type=str,
         default=None,
-        help="Path to predicted image",
+        help="Path to predicted image or Dir to predicted images (FID)",
     )
     parser.add_argument(
         "--video-true",
@@ -900,7 +971,11 @@ def main():
                 f"{args.video_true} vs {args.video_test},  MSE: {video_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
-            logger.info("Not support FID for video now, SKIP!")
+            FID = FrechetInceptionDistance()
+            video_fid = FID.compute_video_fid(args.video_true, args.video_test)
+            logger.info(
+                f"{args.video_true} vs {args.video_test},  FID: {video_fid}"
+            )
 
 
 if __name__ == "__main__":
