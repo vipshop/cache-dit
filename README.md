@@ -476,8 +476,11 @@ You can utilize the APIs provided by CacheDiT to quickly evaluate the accuracy l
 ```python
 from cache_dit.metrics import compute_psnr
 from cache_dit.metrics import compute_video_psnr
+from cache_dit.metrics import FrechetInceptionDistance  # FID
 
+FID = FrechetInceptionDistance()
 image_psnr = compute_psnr("true.png", "test.png")
+image_fid  = FID.compute_fid("true.png", "test.png")
 video_psnr = compute_video_psnr("true.mp4", "test.mp4")
 ```
 
