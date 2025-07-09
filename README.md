@@ -499,8 +499,6 @@ INFO 07-09 21:00:45 [metrics.py:305] BASELINE vs OPTIMIZED, Num: 1000,  MSE: 12.
 INFO 07-09 21:01:04 [metrics.py:311] BASELINE vs OPTIMIZED, Num: 1000,  FID: 5.983550108647762
 ```
 
-
-
 ## 👋Contribute 
 <div id="contribute"></div>
 
