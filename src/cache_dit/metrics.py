@@ -871,11 +871,11 @@ def main():
             logger.info(f"{args.img_true} vs {args.img_test}, SSIM: {img_ssim}")
         if args.metric == "mse" or args.metric == "all":
             img_mse = compute_mse(args.img_true, args.img_test)
-            logger.info(f"{args.img_true} vs {args.img_test}, MSE: {img_mse}")
+            logger.info(f"{args.img_true} vs {args.img_test},  MSE: {img_mse}")
         if args.metric == "fid" or args.metric == "all":
             FID = FrechetInceptionDistance()
             img_fid = FID.compute_fid(args.img_true, args.img_test)
-            logger.info(f"{args.img_true} vs {args.img_test}, FID: {img_fid}")
+            logger.info(f"{args.img_true} vs {args.img_test},  FID: {img_fid}")
     if args.video_true is not None and args.video_test is not None:
         if any(
             (
@@ -897,7 +897,7 @@ def main():
         if args.metric == "mse" or args.metric == "all":
             video_mse = compute_video_mse(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, MSE: {video_mse}"
+                f"{args.video_true} vs {args.video_test},  MSE: {video_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
             logger.info("Not support FID for video now, SKIP!")
