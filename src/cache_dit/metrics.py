@@ -894,24 +894,28 @@ def get_args():
     )
     parser.add_argument(
         "--img-true",
+        "-i1",
         type=str,
         default=None,
         help="Path to ground truth image or Dir to ground truth images (FID)",
     )
     parser.add_argument(
         "--img-test",
+        "-i2",
         type=str,
         default=None,
         help="Path to predicted image or Dir to predicted images (FID)",
     )
     parser.add_argument(
         "--video-true",
+        "-v1",
         type=str,
         default=None,
         help="Path to ground truth video",
     )
     parser.add_argument(
         "--video-test",
+        "-v2",
         type=str,
         default=None,
         help="Path to predicted video",
@@ -935,15 +939,22 @@ def main():
         ):
             return
         if args.metric == "psnr" or args.metric == "all":
+            assert not os.path.isdir(args.img_true)
+            assert not os.path.isdir(args.img_test)
             img_psnr = compute_psnr(args.img_true, args.img_test)
             logger.info(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
         if args.metric == "ssim" or args.metric == "all":
+            assert not os.path.isdir(args.img_true)
+            assert not os.path.isdir(args.img_test)
             img_ssim = compute_ssim(args.img_true, args.img_test)
             logger.info(f"{args.img_true} vs {args.img_test}, SSIM: {img_ssim}")
         if args.metric == "mse" or args.metric == "all":
+            assert not os.path.isdir(args.img_true)
+            assert not os.path.isdir(args.img_test)
             img_mse = compute_mse(args.img_true, args.img_test)
             logger.info(f"{args.img_true} vs {args.img_test},  MSE: {img_mse}")
         if args.metric == "fid" or args.metric == "all":
+            # img_true can be file or dir
             FID = FrechetInceptionDistance()
             img_fid = FID.compute_fid(args.img_true, args.img_test)
             logger.info(f"{args.img_true} vs {args.img_test},  FID: {img_fid}")
@@ -956,21 +967,29 @@ def main():
         ):
             return
         if args.metric == "psnr" or args.metric == "all":
+            assert not os.path.isdir(args.video_true)
+            assert not os.path.isdir(args.video_test)
             video_psnr = compute_video_psnr(args.video_true, args.video_test)
             logger.info(
                 f"{args.video_true} vs {args.video_test}, PSNR: {video_psnr}"
             )
         if args.metric == "ssim" or args.metric == "all":
+            assert not os.path.isdir(args.video_true)
+            assert not os.path.isdir(args.video_test)
             video_ssim = compute_video_ssim(args.video_true, args.video_test)
             logger.info(
                 f"{args.video_true} vs {args.video_test}, SSIM: {video_ssim}"
             )
         if args.metric == "mse" or args.metric == "all":
+            assert not os.path.isdir(args.video_true)
+            assert not os.path.isdir(args.video_test)
             video_mse = compute_video_mse(args.video_true, args.video_test)
             logger.info(
                 f"{args.video_true} vs {args.video_test},  MSE: {video_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
+            assert not os.path.isdir(args.video_true)
+            assert not os.path.isdir(args.video_test)
             FID = FrechetInceptionDistance()
             video_fid = FID.compute_video_fid(args.video_true, args.video_test)
             logger.info(
