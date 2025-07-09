@@ -484,7 +484,7 @@ image_fid,  n = FID.compute_fid("true.png", "test.png")
 video_psnr, n = compute_video_psnr("true.mp4", "test.mp4")
 ```
 
-Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool:  
+Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool. For example: 
 
 ```bash
 cache-dit-metrics-cli -h
@@ -493,23 +493,11 @@ cache-dit-metrics-cli all -i1 true.png -i2 test.png # compare image
 cache-dit-metrics-cli all -i1 true_dir -i2 test_dir # compare image dir
 ```
 ```bash
-usage: cache-dit-metrics-cli [-h] [--img-true IMG_TRUE] [--img-test IMG_TEST] [--video-true VIDEO_TRUE] [--video-test VIDEO_TEST] {psnr,ssim,mse,fid,all}
-CacheDiT's Metrics CLI
-
-positional arguments:
-  {psnr,ssim,mse,fid,all}
-                        Metric choices: ['psnr', 'ssim', 'mse', 'fid', 'all']
-
-options:
-  -h, --help            show this help message and exit
-  --img-true IMG_TRUE, -i1 IMG_TRUE
-                        Path to ground truth image or Dir to ground truth images (default: None)
-  --img-test IMG_TEST, -i2 IMG_TEST
-                        Path to predicted image or Dir to predicted images (default: None)
-  --video-true VIDEO_TRUE, -v1 VIDEO_TRUE
-                        Path to ground truth video (default: None)
-  --video-test VIDEO_TEST, -v2 VIDEO_TEST
-                        Path to predicted video (default: None)
+cache-dit-metrics-cli all -i1 BASELINE -i2 OPTIMIZED
+INFO 07-09 20:59:40 [metrics.py:295] BASELINE vs OPTIMIZED, Num: 1000, PSNR: 38.742413478199005
+INFO 07-09 21:00:32 [metrics.py:300] BASELINE vs OPTIMIZED, Num: 1000, SSIM: 0.9863484896791567
+INFO 07-09 21:00:45 [metrics.py:305] BASELINE vs OPTIMIZED, Num: 1000,  MSE: 12.287594770695606
+INFO 07-09 21:01:04 [metrics.py:311] BASELINE vs OPTIMIZED, Num: 1000,  FID: 5.983550108647762
 ```
 
 
