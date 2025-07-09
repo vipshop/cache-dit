@@ -90,14 +90,18 @@ def compute_video_psnr(
 
 
 def compute_mse(
-    image_true: np.ndarray,
-    image_test: np.ndarray,
+    image_true: np.ndarray | str,
+    image_test: np.ndarray | str,
 ) -> float:
     """
     img_true = cv2.imread(img_true_file)
     img_test = cv2.imread(img_test_file)
     MSE = compute_mse(img_true, img_test)
     """
+    if isinstance(image_true, str):
+        image_true = cv2.imread(image_true)
+    if isinstance(image_test, str):
+        image_test = cv2.imread(image_test)
     return mean_squared_error(
         image_true,
         image_test,
@@ -105,14 +109,18 @@ def compute_mse(
 
 
 def compute_ssim(
-    image_true: np.ndarray,
-    image_test: np.ndarray,
+    image_true: np.ndarray | str,
+    image_test: np.ndarray | str,
 ) -> float:
     """
     img_true = cv2.imread(img_true_file)
     img_test = cv2.imread(img_test_file)
     SSIM = compute_ssim(img_true, img_test)
     """
+    if isinstance(image_true, str):
+        image_true = cv2.imread(image_true)
+    if isinstance(image_test, str):
+        image_test = cv2.imread(image_test)
     return structural_similarity(
         image_true,
         image_test,
