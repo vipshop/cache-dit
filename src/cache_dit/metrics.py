@@ -50,6 +50,7 @@ def compute_ssim(
     )
 
 
+# Adapted from: https://github.com/mseitzer/pytorch-fid/issues/116
 class FrechetInceptionDistance:
     def __init__(
         self,
