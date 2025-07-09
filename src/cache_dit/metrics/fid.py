@@ -24,7 +24,7 @@ class ImagePathDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         file_or_img = self.files_or_imgs[i]
-        if isinstance(file_or_img, str):
+        if isinstance(file_or_img, (str, pathlib.Path)):
             img = Image.open(file_or_img).convert("RGB")
         elif isinstance(file_or_img, np.ndarray):
             # Assume the img is a standard OpenCV image.
@@ -291,7 +291,21 @@ class FrechetInceptionDistance:
                         for file in image_test_dir.glob("*.{}".format(ext))
                     ]
                 )
+                image_true_files = [
+                    file.as_posix() for file in image_true_files
+                ]
+                image_test_files = [
+                    file.as_posix() for file in image_test_files
+                ]
+                logger.debug(f"image_true_files: {image_true_files}")
+                logger.debug(f"image_test_files: {image_test_files}")
                 assert len(image_true_files) == len(image_test_files)
+                for image_true, image_test in zip(
+                    image_true_files, image_test_files
+                ):
+                    assert (
+                        image_true == image_test
+                    ), f"image_true:{image_true} != image_test: {image_true}"
         else:
             image_true_files = [image_true]
             image_test_files = [image_test]

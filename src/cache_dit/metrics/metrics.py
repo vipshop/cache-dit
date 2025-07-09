@@ -115,7 +115,15 @@ def compute_dir_metric(
             for file in image_test_dir.glob("*.{}".format(ext))
         ]
     )
+    image_true_files = [file.as_posix() for file in image_true_files]
+    image_test_files = [file.as_posix() for file in image_test_files]
+    logger.debug(f"image_true_files: {image_true_files}")
+    logger.debug(f"image_test_files: {image_test_files}")
     assert len(image_true_files) == len(image_test_files)
+    for image_true, image_test in zip(image_true_files, image_test_files):
+        assert (
+            image_true == image_test
+        ), f"image_true:{image_true} != image_test: {image_true}"
 
     total_metric = 0.0
     valid_files = 0
