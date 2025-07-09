@@ -474,19 +474,13 @@ Please check [bench.py](./bench/bench.py) for more details.
 You can utilize the APIs provided by CacheDiT to quickly evaluate the accuracy losses caused by different cache configurations. For example:
 
 ```python
-import cv2
 from cache_dit.metrics import compute_psnr
 from cache_dit.metrics import compute_video_psnr
-from cache_dit.metrics import FrechetInceptionDistance  # FID
 
-FID = FrechetInceptionDistance()
-img_psnr = compute_psnr(cv2.imread("img_true.png"), cv2.imread("img_test.png"))
-img_fid = FID.compute_fid(cv2.imread("img_true.png"), cv2.imread("img_test.png"))
-print(f"Image, PSNR: {img_psnr}, FID: {img_fid}")
-
-video_psnr = compute_video_psnr("video_true.mp4", "video_test.mp4")
-print(f"Video, PSNR: {video_psnr}")
+image_psnr = compute_psnr("true.png", "test.png")
+video_psnr = compute_video_psnr("true.mp4", "test.mp4")
 ```
+
 Please check [test_metrics.py](./tests/test_metrics.py) for more details.
 
 

@@ -15,14 +15,18 @@ logger = init_logger(__name__)
 
 
 def compute_psnr(
-    image_true: np.ndarray,
-    image_test: np.ndarray,
+    image_true: np.ndarray | str,
+    image_test: np.ndarray | str,
 ) -> float:
     """
     img_true = cv2.imread(img_true_file)
     img_test = cv2.imread(img_test_file)
     PSNR = compute_psnr(img_true, img_test)
     """
+    if isinstance(image_true, str):
+        image_true = cv2.imread(image_true)
+    if isinstance(image_test, str):
+        image_test = cv2.imread(image_test)
     return peak_signal_noise_ratio(
         image_true,
         image_test,
@@ -127,8 +131,8 @@ class FrechetInceptionDistance:
 
     def compute_fid(
         self,
-        image_true: np.ndarray,
-        image_test: np.ndarray,
+        image_true: np.ndarray | str,
+        image_test: np.ndarray | str,
         *args,
         **kwargs,
     ) -> float:
@@ -138,6 +142,10 @@ class FrechetInceptionDistance:
         img_test = cv2.imread(img_test_file)
         fid = FID.compute_fid(img_true, img_test)
         """
+        if isinstance(image_true, str):
+            image_true = cv2.imread(image_true)
+        if isinstance(image_test, str):
+            image_test = cv2.imread(image_test)
         image_true_tensors = [torch.from_numpy(image_true).to(self.device)]
         image_test_tensors = [torch.from_numpy(image_test).to(self.device)]
         fid_value = (
