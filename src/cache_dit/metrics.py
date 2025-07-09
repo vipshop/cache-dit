@@ -21,7 +21,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-def compute_psnr(
+def compute_psnr_file(
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
 ) -> float:
@@ -40,7 +40,7 @@ def compute_psnr(
     )
 
 
-def compute_mse(
+def compute_mse_file(
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
 ) -> float:
@@ -59,7 +59,7 @@ def compute_mse(
     )
 
 
-def compute_ssim(
+def compute_ssim_file(
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
 ) -> float:
@@ -80,10 +80,72 @@ def compute_ssim(
     )
 
 
+_IMAGE_EXTENSIONS = {
+    "bmp",
+    "jpg",
+    "jpeg",
+    "pgm",
+    "png",
+    "ppm",
+    "tif",
+    "tiff",
+    "webp",
+}
+
+
+def compute_dir_metric(
+    image_true_dir: np.ndarray | str,
+    image_test_dir: np.ndarray | str,
+    compute_file_func: callable = compute_psnr_file,
+) -> float:
+    # Image
+    if isinstance(image_true_dir, np.ndarray) or isinstance(
+        image_test_dir, np.ndarray
+    ):
+        return compute_file_func(image_true_dir, image_test_dir)
+    # File
+    if not os.path.isdir(image_true_dir) or not os.path.isdir(image_test_dir):
+        return compute_file_func(image_true_dir, image_test_dir)
+    # Dir
+    image_true_dir: pathlib.Path = pathlib.Path(image_true_dir)
+    image_true_files = sorted(
+        [
+            file
+            for ext in _IMAGE_EXTENSIONS
+            for file in image_true_dir.glob("*.{}".format(ext))
+        ]
+    )
+    image_test_dir: pathlib.Path = pathlib.Path(image_test_dir)
+    image_test_files = sorted(
+        [
+            file
+            for ext in _IMAGE_EXTENSIONS
+            for file in image_test_dir.glob("*.{}".format(ext))
+        ]
+    )
+    assert len(image_true_files) == len(image_test_files)
+
+    total_metric = 0.0
+    valid_files = 0
+    for image_true, image_test in zip(image_true_files, image_test_files):
+        metric = compute_file_func(image_true, image_test)
+        if metric != float("inf"):
+            total_metric += metric
+            valid_files += 1
+
+    if valid_files > 0:
+        average_metric = total_metric / valid_files
+        logger.debug(f"Average: {average_metric:.2f}")
+        return average_metric
+    else:
+        logger.debug("No valid frames to compare")
+        return None
+
+
 def compute_video_metric(
     video_true: str,
     video_test: str,
-    compute_frame_func: callable = compute_psnr,
+    compute_frame_func: callable = compute_psnr_file,
 ) -> float:
     """
     video_true = "video_true.mp4"
@@ -135,17 +197,32 @@ def compute_video_metric(
         return None
 
 
+compute_psnr = partial(
+    compute_dir_metric,
+    compute_file_func=compute_psnr_file,
+)
+
+compute_ssim = partial(
+    compute_dir_metric,
+    compute_file_func=compute_ssim_file,
+)
+
+compute_mse = partial(
+    compute_dir_metric,
+    compute_file_func=compute_mse_file,
+)
+
 compute_video_psnr = partial(
     compute_video_metric,
-    compute_frame_func=compute_psnr,
+    compute_frame_func=compute_psnr_file,
 )
 compute_video_ssim = partial(
     compute_video_metric,
-    compute_frame_func=compute_ssim,
+    compute_frame_func=compute_ssim_file,
 )
 compute_video_mse = partial(
     compute_video_metric,
-    compute_frame_func=compute_mse,
+    compute_frame_func=compute_mse_file,
 )
 
 
@@ -701,17 +778,7 @@ def calculate_activation_statistics(
 
 
 class FrechetInceptionDistance:
-    IMAGE_EXTENSIONS = {
-        "bmp",
-        "jpg",
-        "jpeg",
-        "pgm",
-        "png",
-        "ppm",
-        "tif",
-        "tiff",
-        "webp",
-    }
+    IMAGE_EXTENSIONS = _IMAGE_EXTENSIONS
 
     def __init__(
         self,
@@ -769,6 +836,7 @@ class FrechetInceptionDistance:
                         for file in image_test_dir.glob("*.{}".format(ext))
                     ]
                 )
+                assert len(image_true_files) == len(image_test_files)
         else:
             image_true_files = [image_true]
             image_test_files = [image_test]
