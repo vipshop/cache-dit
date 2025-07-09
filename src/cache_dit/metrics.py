@@ -31,7 +31,7 @@ def compute_mse(
     """
     img_true = cv2.imread(img_true_file)
     img_test = cv2.imread(img_test_file)
-    MSE = mean_squared_error(img_true, img_test)
+    MSE = compute_mse(img_true, img_test)
     """
     return mean_squared_error(
         image_true,
