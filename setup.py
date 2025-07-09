@@ -74,6 +74,8 @@ setup(
             "sentencepiece",
             "opencv-python-headless",
             "ftfy",
+            "scikit-image",
+            "pytorch-fid",
         ],
     },
 )
