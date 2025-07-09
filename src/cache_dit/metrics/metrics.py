@@ -191,10 +191,10 @@ def compute_video_metric(
     if valid_frames > 0:
         average_metric = total_metric / valid_frames
         logger.debug(f"Average: {average_metric:.2f}")
-        return average_metric
+        return average_metric, valid_frames
     else:
         logger.debug("No valid frames to compare")
-        return None
+        return None, None
 
 
 compute_psnr = partial(

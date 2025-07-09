@@ -124,7 +124,7 @@ The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
 - [🔥Torch Compile](#compile)
-- [📖Compare Metrics](#metrics)
+- [⚙️Metrics CLI](#metrics)
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
@@ -467,7 +467,7 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 Please check [bench.py](./bench/bench.py) for more details.
 
 
-## 📖Compare Metrics
+## ⚙️Metrics CLI
 
 <div id="metrics"></div>    
 
@@ -479,12 +479,39 @@ from cache_dit.metrics import compute_video_psnr
 from cache_dit.metrics import FrechetInceptionDistance  # FID
 
 FID = FrechetInceptionDistance()
-image_psnr = compute_psnr("true.png", "test.png")
-image_fid  = FID.compute_fid("true.png", "test.png")
-video_psnr = compute_video_psnr("true.mp4", "test.mp4")
+image_psnr, n = compute_psnr("true.png", "test.png") # Num: n
+image_fid,  n = FID.compute_fid("true.png", "test.png")
+video_psnr, n = compute_video_psnr("true.mp4", "test.mp4")
 ```
 
-Please check [test_metrics.py](./tests/test_metrics.py) for more details.
+Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool:  
+
+```bash
+cache-dit-metrics-cli -h
+cache-dit-metrics-cli all -v1 true.mp4 -v2 test.mp4 # compare video
+cache-dit-metrics-cli all -i1 true.png -i2 test.png # compare image
+cache-dit-metrics-cli all -i1 true_dir -i2 test_dir # compare image dir
+```
+```bash
+usage: cache-dit-metrics-cli [-h] [--img-true IMG_TRUE] [--img-test IMG_TEST] [--video-true VIDEO_TRUE] [--video-test VIDEO_TEST] {psnr,ssim,mse,fid,all}
+CacheDiT's Metrics CLI
+
+positional arguments:
+  {psnr,ssim,mse,fid,all}
+                        Metric choices: ['psnr', 'ssim', 'mse', 'fid', 'all']
+
+options:
+  -h, --help            show this help message and exit
+  --img-true IMG_TRUE, -i1 IMG_TRUE
+                        Path to ground truth image or Dir to ground truth images (default: None)
+  --img-test IMG_TEST, -i2 IMG_TEST
+                        Path to predicted image or Dir to predicted images (default: None)
+  --video-true VIDEO_TRUE, -v1 VIDEO_TRUE
+                        Path to ground truth video (default: None)
+  --video-test VIDEO_TEST, -v2 VIDEO_TEST
+                        Path to predicted video (default: None)
+```
+
 
 
 ## 👋Contribute 
