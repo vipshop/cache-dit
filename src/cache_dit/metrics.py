@@ -68,10 +68,10 @@ class FrechetInceptionDistance:
         **kwargs,
     ) -> float:
         """
-        fid_computer = FrechetInceptionDistance()
+        FID = FrechetInceptionDistance()
         img_true = cv2.imread(img_true_file)
         img_test = cv2.imread(img_test_file)
-        fid = fid_computer.compute_fid(img_true, img_test)
+        fid = FID.compute_fid(img_true, img_test)
         """
         image_true_tensors = [torch.from_numpy(image_true).to(self.device)]
         image_test_tensors = [torch.from_numpy(image_test).to(self.device)]
