@@ -492,7 +492,7 @@ cache-dit-metrics-cli all -v1 true.mp4 -v2 test.mp4 # compare video
 cache-dit-metrics-cli all -i1 true.png -i2 test.png # compare image
 cache-dit-metrics-cli all -i1 true_dir -i2 test_dir # compare image dir
 ```
-```bash
+```shell
 cache-dit-metrics-cli all -i1 BASELINE -i2 OPTIMIZED
 INFO 07-09 20:59:40 [metrics.py:295] BASELINE vs OPTIMIZED, Num: 1000, PSNR: 38.742413478199005
 INFO 07-09 21:00:32 [metrics.py:300] BASELINE vs OPTIMIZED, Num: 1000, SSIM: 0.9863484896791567
