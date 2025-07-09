@@ -18,7 +18,10 @@ def compute_psnr(
     img_test = cv2.imread(img_test_file)
     PSNR = compute_psnr(img_true, img_test)
     """
-    return peak_signal_noise_ratio(image_true, image_test)
+    return peak_signal_noise_ratio(
+        image_true,
+        image_test,
+    )
 
 
 def compute_mse(
@@ -30,7 +33,10 @@ def compute_mse(
     img_test = cv2.imread(img_test_file)
     MSE = mean_squared_error(img_true, img_test)
     """
-    return mean_squared_error(image_true, image_test)
+    return mean_squared_error(
+        image_true,
+        image_test,
+    )
 
 
 def compute_ssim(
@@ -152,7 +158,7 @@ class FrechetInceptionDistance:
     def init_model(
         self,
         dims: int = 2048,
-    ):
+    ) -> torch.nn.Module:
         """
         Inspired by: https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
         """
@@ -163,7 +169,7 @@ class FrechetInceptionDistance:
         model: torch.nn.Module,
         batches: Iterable[Tensor],
         device: torch.device,
-    ):
+    ) -> Tensor:
         """
         Inspired by: https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
         """
@@ -182,7 +188,7 @@ class FrechetInceptionDistance:
     def activation_statistics(
         self,
         activations: Tensor,
-    ):
+    ) -> tuple[Tensor, Tensor]:
         """
         Inspired by: https://github.com/mseitzer/pytorch-fid/src/pytorch_fid/fid_score.py
         """
