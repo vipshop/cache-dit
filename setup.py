@@ -55,6 +55,11 @@ setup(
     },
     packages=find_packages(where="src"),
     python_requires=">=3.10",
+    entry_points={
+        "console_scripts": [
+            "cache-dit-metrics-cli = cache_dit.metrics:main",
+        ],
+    },
     install_requires=fetch_requirements(),
     extras_require={
         "all": [],

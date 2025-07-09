@@ -5,4 +5,4 @@ torch>=2.5.1 # torch 2.7.0 is preferred, but 2.5.1 is the minimum required versi
 transformers>=4.51.3
 diffusers>=0.33.1
 scikit-image
-pytorch-fid
+scipy

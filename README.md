@@ -124,7 +124,7 @@ The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Context Parallelism](#context-parallelism)  
 - [🔥Torch Compile](#compile)
-- [📖Compare Metrics](#metrics)
+- [⚙️Metrics CLI](#metrics)
 - [👋Contribute](#contribute)
 - [©️License](#license)
 
@@ -467,7 +467,7 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 Please check [bench.py](./bench/bench.py) for more details.
 
 
-## 📖Compare Metrics
+## ⚙️Metrics CLI
 
 <div id="metrics"></div>    
 
@@ -479,13 +479,25 @@ from cache_dit.metrics import compute_video_psnr
 from cache_dit.metrics import FrechetInceptionDistance  # FID
 
 FID = FrechetInceptionDistance()
-image_psnr = compute_psnr("true.png", "test.png")
-image_fid  = FID.compute_fid("true.png", "test.png")
-video_psnr = compute_video_psnr("true.mp4", "test.mp4")
+image_psnr, n = compute_psnr("true.png", "test.png") # Num: n
+image_fid,  n = FID.compute_fid("true.png", "test.png")
+video_psnr, n = compute_video_psnr("true.mp4", "test.mp4")
 ```
 
-Please check [test_metrics.py](./tests/test_metrics.py) for more details.
+Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool. For examples: 
 
+```bash
+cache-dit-metrics-cli -h  # show usage
+cache-dit-metrics-cli all -v1 true.mp4 -v2 test.mp4  # compare video
+cache-dit-metrics-cli all -i1 true.png -i2 test.png  # compare image
+cache-dit-metrics-cli all -i1 true_dir -i2 test_dir  # compare image dir
+cache-dit-metrics-cli all -i1 BASELINE -i2 OPTIMIZED # compare image dir
+
+INFO 07-09 20:59:40 [metrics.py:295] BASELINE vs OPTIMIZED, Num: 1000, PSNR: 38.742413478199005
+INFO 07-09 21:00:32 [metrics.py:300] BASELINE vs OPTIMIZED, Num: 1000, SSIM: 0.9863484896791567
+INFO 07-09 21:00:45 [metrics.py:305] BASELINE vs OPTIMIZED, Num: 1000,  MSE: 12.287594770695606
+INFO 07-09 21:01:04 [metrics.py:311] BASELINE vs OPTIMIZED, Num: 1000,  FID: 5.983550108647762
+```
 
 ## 👋Contribute 
 <div id="contribute"></div>
