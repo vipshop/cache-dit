@@ -43,7 +43,7 @@ def compare_video_psnr(
 
     if not cap1.isOpened() or not cap2.isOpened():
         logger.error("Could not open video files")
-        return -1
+        return None
 
     frame_count = min(
         int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
@@ -80,7 +80,7 @@ def compare_video_psnr(
         return average_psnr
     else:
         logger.debug("No valid frames to compare")
-        return -1
+        return None
 
 
 def compute_mse(
