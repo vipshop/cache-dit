@@ -14,6 +14,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+# Adapted from: https://github.com/mseitzer/pytorch-fid/blob/master/src/pytorch_fid/fid_score.py
 class ImagePathDataset(torch.utils.data.Dataset):
     def __init__(self, files_or_imgs, transforms=None):
         self.files_or_imgs = files_or_imgs
