@@ -56,7 +56,7 @@ class FrechetInceptionDistance:
         self,
         device="cuda" if torch.cuda.is_available() else "cpu",
     ):
-        self.model = self.get_inception_model().to(device)
+        self.model = self.init_model().to(device)
         self.model = self.model.eval()
         self.device = device
 
@@ -128,7 +128,7 @@ class FrechetInceptionDistance:
             *args,
             **kwargs,
         )
-        mu_true, sigma_true = self.calculate_activation_statistics(act_true)
+        mu_true, sigma_true = self.activation_statistics(act_true)
 
         act_pred = self.get_activations(
             self.model,
@@ -137,7 +137,7 @@ class FrechetInceptionDistance:
             *args,
             **kwargs,
         )
-        mu_pred, sigma_pred = self.calculate_activation_statistics(act_pred)
+        mu_pred, sigma_pred = self.activation_statistics(act_pred)
 
         fid_values = self.frechet_distance(
             mu_true,
@@ -149,7 +149,7 @@ class FrechetInceptionDistance:
 
         return fid_values
 
-    def get_inception_model(
+    def init_model(
         self,
         dims: int = 2048,
     ):
@@ -179,7 +179,7 @@ class FrechetInceptionDistance:
 
         return torch.cat(activations, dim=0)
 
-    def calculate_activation_statistics(
+    def activation_statistics(
         self,
         activations: Tensor,
     ):
