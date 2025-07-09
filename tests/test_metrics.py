@@ -1,5 +1,4 @@
 import os
-import cv2
 import argparse
 from cache_dit.metrics import compute_psnr
 from cache_dit.metrics import compute_video_psnr
@@ -50,12 +49,10 @@ def main():
             )
         ):
             return
-        img_true = cv2.imread(args.img_true)
-        img_test = cv2.imread(args.img_test)
-        img_psnr = compute_psnr(img_true, img_test)
+        img_psnr = compute_psnr(args.img_true, args.img_test)
         print(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
         FID = FrechetInceptionDistance()
-        img_fid = FID.compute_fid(img_true, img_test)
+        img_fid = FID.compute_fid(args.img_true, args.img_test)
         print(f"{args.img_true} vs {args.img_test}, FID: {img_fid}")
     if args.video_true is not None and args.video_test is not None:
         if any(
@@ -65,9 +62,7 @@ def main():
             )
         ):
             return
-        video_true = args.video_true
-        video_test = args.video_test
-        video_psnr = compute_video_psnr(video_true, video_test)
+        video_psnr = compute_video_psnr(args.video_true, args.video_test)
         print(f"{args.video_true} vs {args.video_test}, PSNR: {video_psnr}")
 
 
