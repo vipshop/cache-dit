@@ -280,7 +280,7 @@ class FrechetInceptionDistance:
                     [
                         file
                         for ext in self.IMAGE_EXTENSIONS
-                        for file in image_true_dir.glob("*.{}".format(ext))
+                        for file in image_true_dir.rglob("*.{}".format(ext))
                     ]
                 )
                 image_test_dir = pathlib.Path(image_test)
@@ -288,7 +288,7 @@ class FrechetInceptionDistance:
                     [
                         file
                         for ext in self.IMAGE_EXTENSIONS
-                        for file in image_test_dir.glob("*.{}".format(ext))
+                        for file in image_test_dir.rglob("*.{}".format(ext))
                     ]
                 )
                 image_true_files = [
@@ -337,7 +337,7 @@ class FrechetInceptionDistance:
             s2,
         )
 
-        return fid_value
+        return fid_value, len(image_true_files)
 
     def compute_video_fid(
         self,
@@ -378,7 +378,7 @@ class FrechetInceptionDistance:
         cap2.release()
 
         if valid_frames <= 0:
-            return None
+            return None, None
 
         batch_size = min(16, self.batch_size)
         m1, s1 = calculate_activation_statistics(
@@ -406,4 +406,4 @@ class FrechetInceptionDistance:
             s2,
         )
 
-        return fid_value
+        return fid_value, valid_frames

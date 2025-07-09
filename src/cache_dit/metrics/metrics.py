@@ -94,17 +94,17 @@ def compute_dir_metric(
     if isinstance(image_true_dir, np.ndarray) or isinstance(
         image_test_dir, np.ndarray
     ):
-        return compute_file_func(image_true_dir, image_test_dir)
+        return compute_file_func(image_true_dir, image_test_dir), 1
     # File
     if not os.path.isdir(image_true_dir) or not os.path.isdir(image_test_dir):
-        return compute_file_func(image_true_dir, image_test_dir)
+        return compute_file_func(image_true_dir, image_test_dir), 1
     # Dir
     image_true_dir: pathlib.Path = pathlib.Path(image_true_dir)
     image_true_files = sorted(
         [
             file
             for ext in _IMAGE_EXTENSIONS
-            for file in image_true_dir.glob("*.{}".format(ext))
+            for file in image_true_dir.rglob("*.{}".format(ext))
         ]
     )
     image_test_dir: pathlib.Path = pathlib.Path(image_test_dir)
@@ -112,7 +112,7 @@ def compute_dir_metric(
         [
             file
             for ext in _IMAGE_EXTENSIONS
-            for file in image_test_dir.glob("*.{}".format(ext))
+            for file in image_test_dir.rglob("*.{}".format(ext))
         ]
     )
     image_true_files = [file.as_posix() for file in image_true_files]
@@ -136,10 +136,10 @@ def compute_dir_metric(
     if valid_files > 0:
         average_metric = total_metric / valid_files
         logger.debug(f"Average: {average_metric:.2f}")
-        return average_metric
+        return average_metric, valid_files
     else:
-        logger.debug("No valid frames to compare")
-        return None
+        logger.debug("No valid files to compare")
+        return None, None
 
 
 def compute_video_metric(
@@ -291,18 +291,26 @@ def entrypoint():
             return
         # img_true and img_test can be files or dirs
         if args.metric == "psnr" or args.metric == "all":
-            img_psnr = compute_psnr(args.img_true, args.img_test)
-            logger.info(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
+            img_psnr, n = compute_psnr(args.img_true, args.img_test)
+            logger.info(
+                f"{args.img_true} vs {args.img_test}, Num: {n}, PSNR: {img_psnr}"
+            )
         if args.metric == "ssim" or args.metric == "all":
-            img_ssim = compute_ssim(args.img_true, args.img_test)
-            logger.info(f"{args.img_true} vs {args.img_test}, SSIM: {img_ssim}")
+            img_ssim, n = compute_ssim(args.img_true, args.img_test)
+            logger.info(
+                f"{args.img_true} vs {args.img_test}, Num: {n}, SSIM: {img_ssim}"
+            )
         if args.metric == "mse" or args.metric == "all":
-            img_mse = compute_mse(args.img_true, args.img_test)
-            logger.info(f"{args.img_true} vs {args.img_test},  MSE: {img_mse}")
+            img_mse, n = compute_mse(args.img_true, args.img_test)
+            logger.info(
+                f"{args.img_true} vs {args.img_test}, Num: {n},  MSE: {img_mse}"
+            )
         if args.metric == "fid" or args.metric == "all":
             FID = FrechetInceptionDistance()
-            img_fid = FID.compute_fid(args.img_true, args.img_test)
-            logger.info(f"{args.img_true} vs {args.img_test},  FID: {img_fid}")
+            img_fid, n = FID.compute_fid(args.img_true, args.img_test)
+            logger.info(
+                f"{args.img_true} vs {args.img_test}, Num: {n},  FID: {img_fid}"
+            )
     if args.video_true is not None and args.video_test is not None:
         if any(
             (
@@ -314,31 +322,33 @@ def entrypoint():
         if args.metric == "psnr" or args.metric == "all":
             assert not os.path.isdir(args.video_true)
             assert not os.path.isdir(args.video_test)
-            video_psnr = compute_video_psnr(args.video_true, args.video_test)
+            video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, PSNR: {video_psnr}"
+                f"{args.video_true} vs {args.video_test}, Num: {n}, PSNR: {video_psnr}"
             )
         if args.metric == "ssim" or args.metric == "all":
             assert not os.path.isdir(args.video_true)
             assert not os.path.isdir(args.video_test)
-            video_ssim = compute_video_ssim(args.video_true, args.video_test)
+            video_ssim, n = compute_video_ssim(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, SSIM: {video_ssim}"
+                f"{args.video_true} vs {args.video_test}, Num: {n}, SSIM: {video_ssim}"
             )
         if args.metric == "mse" or args.metric == "all":
             assert not os.path.isdir(args.video_true)
             assert not os.path.isdir(args.video_test)
-            video_mse = compute_video_mse(args.video_true, args.video_test)
+            video_mse, n = compute_video_mse(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test},  MSE: {video_mse}"
+                f"{args.video_true} vs {args.video_test}, Num: {n},  MSE: {video_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
             assert not os.path.isdir(args.video_true)
             assert not os.path.isdir(args.video_test)
             FID = FrechetInceptionDistance()
-            video_fid = FID.compute_video_fid(args.video_true, args.video_test)
+            video_fid, n = FID.compute_video_fid(
+                args.video_true, args.video_test
+            )
             logger.info(
-                f"{args.video_true} vs {args.video_test},  FID: {video_fid}"
+                f"{args.video_true} vs {args.video_test}, Num: {n},  FID: {video_fid}"
             )
 
 

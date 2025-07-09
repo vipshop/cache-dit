@@ -57,12 +57,14 @@ def main():
             )
         ):
             return
-        img_psnr = compute_psnr(args.img_true, args.img_test)
-        print(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
+        img_psnr, n = compute_psnr(args.img_true, args.img_test)
+        print(f"{args.img_true} vs {args.img_test}, Num: {n}, PSNR: {img_psnr}")
         if args.compute_fid:
             FID = FrechetInceptionDistance()
-            img_fid = FID.compute_fid(args.img_true, args.img_test)
-            print(f"{args.img_true} vs {args.img_test}, FID: {img_fid}")
+            img_fid, n = FID.compute_fid(args.img_true, args.img_test)
+            print(
+                f"{args.img_true} vs {args.img_test}, Num: {n}, FID: {img_fid}"
+            )
     if args.video_true is not None and args.video_test is not None:
         if any(
             (
@@ -71,8 +73,10 @@ def main():
             )
         ):
             return
-        video_psnr = compute_video_psnr(args.video_true, args.video_test)
-        print(f"{args.video_true} vs {args.video_test}, PSNR: {video_psnr}")
+        video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
+        print(
+            f"{args.video_true} vs {args.video_test}, Num: {n}, PSNR: {video_psnr}"
+        )
 
 
 if __name__ == "__main__":
