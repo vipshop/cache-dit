@@ -926,9 +926,6 @@ def get_args():
 def main():
     args = get_args()
     logger.debug(args)
-    import tqdm
-
-    tqdm.tqdm.disable = True
 
     if args.img_true is not None and args.img_test is not None:
         if any(
