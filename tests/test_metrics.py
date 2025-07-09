@@ -7,13 +7,14 @@ from cache_dit.metrics import FrechetInceptionDistance  # FID
 
 def get_args():
     parser = argparse.ArgumentParser(
-        description="Test TaylorSeer approximation."
+        description="CacheDiT's Metrics CLI",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--img-true",
         type=str,
         default=None,
-        help="Path to groud true image",
+        help="Path to ground truth image",
     )
     parser.add_argument(
         "--img-test",
@@ -25,13 +26,20 @@ def get_args():
         "--video-true",
         type=str,
         default=None,
-        help="Path to groud true video",
+        help="Path to ground truth video",
     )
     parser.add_argument(
         "--video-test",
         type=str,
         default=None,
         help="Path to predicted video",
+    )
+    parser.add_argument(
+        "--compute-fid",
+        "--fid",
+        action="store_true",
+        default=False,
+        help="Compute FID for image",
     )
 
     return parser.parse_args()
@@ -51,9 +59,10 @@ def main():
             return
         img_psnr = compute_psnr(args.img_true, args.img_test)
         print(f"{args.img_true} vs {args.img_test}, PSNR: {img_psnr}")
-        FID = FrechetInceptionDistance()
-        img_fid = FID.compute_fid(args.img_true, args.img_test)
-        print(f"{args.img_true} vs {args.img_test}, FID: {img_fid}")
+        if args.compute_fid:
+            FID = FrechetInceptionDistance()
+            img_fid = FID.compute_fid(args.img_true, args.img_test)
+            print(f"{args.img_true} vs {args.img_test}, FID: {img_fid}")
     if args.video_true is not None and args.video_test is not None:
         if any(
             (

@@ -240,13 +240,14 @@ class FrechetInceptionDistance:
 # Entrypoints
 def get_args():
     parser = argparse.ArgumentParser(
-        description="Test TaylorSeer approximation."
+        description="CacheDiT's Metrics CLI",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--img-true",
         type=str,
         default=None,
-        help="Path to groud true image",
+        help="Path to ground truth image",
     )
     parser.add_argument(
         "--img-test",
@@ -258,7 +259,7 @@ def get_args():
         "--video-true",
         type=str,
         default=None,
-        help="Path to groud true video",
+        help="Path to ground truth video",
     )
     parser.add_argument(
         "--video-test",
@@ -271,6 +272,7 @@ def get_args():
         "--fid",
         action="store_true",
         default=False,
+        help="Compute FID for image",
     )
 
     return parser.parse_args()
