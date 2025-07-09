@@ -1,3 +1,4 @@
+import cv2
 import torch
 import numpy as np
 from torch import Tensor
@@ -7,6 +8,10 @@ from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
 from torch.nn.functional import adaptive_avg_pool2d
 from pytorch_fid.inception import InceptionV3
+from cache_dit.logger import init_logger
+
+
+logger = init_logger(__name__)
 
 
 def compute_psnr(
@@ -22,6 +27,71 @@ def compute_psnr(
         image_true,
         image_test,
     )
+
+
+def compare_videos_psnr(video_path1: str, video_path2: str) -> float:
+    """
+    Compare the PSNR values of two videos.
+
+    Args:
+    video_path1: Path to the first video
+    video_path2: Path to the second video
+
+    Returns:
+    Average PSNR value
+    """
+    # Open video files
+    cap1 = cv2.VideoCapture(video_path1)
+    cap2 = cv2.VideoCapture(video_path2)
+
+    # Check if videos opened successfully
+    if not cap1.isOpened() or not cap2.isOpened():
+        logger.error("Error: Could not open video files")
+        return -1
+
+    # Get frame count (using the minimum of the two videos)
+    frame_count = min(
+        int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
+        int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
+    )
+
+    total_psnr = 0.0
+    valid_frames = 0
+
+    logger.debug(f"Starting video comparison, total frames: {frame_count}")
+
+    while True:
+        ret1, frame1 = cap1.read()
+        ret2, frame2 = cap2.read()
+
+        # Stop comparison if either video ends
+        if not ret1 or not ret2:
+            break
+
+        # Calculate PSNR for current frame
+        psnr = compute_psnr(frame1, frame2)
+
+        # Accumulate PSNR values (excluding infinite values for identical frames)
+        if psnr != float("inf"):
+            total_psnr += psnr
+            valid_frames += 1
+
+        # Display progress
+        if valid_frames % 100 == 0:
+            logger.debug(f"Processed {valid_frames}/{frame_count} frames")
+
+    # Release resources
+    cap1.release()
+    cap2.release()
+
+    # Calculate average PSNR
+    if valid_frames > 0:
+        average_psnr = total_psnr / valid_frames
+        logger.debug(f"Processing complete, average PSNR: {average_psnr:.2f}")
+        return average_psnr
+    else:
+        logger.debug("No valid frames to compare")
+        return -1
 
 
 def compute_mse(
