@@ -122,6 +122,18 @@ def compute_ssim(
 
 
 class FrechetInceptionDistance:
+    IMAGE_EXTENSIONS = {
+        "bmp",
+        "jpg",
+        "jpeg",
+        "pgm",
+        "png",
+        "ppm",
+        "tif",
+        "tiff",
+        "webp",
+    }
+
     def __init__(
         self,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -147,21 +159,10 @@ class FrechetInceptionDistance:
         FID = FrechetInceptionDistance()
         fid = FID.compute_fid("img_true.png", "img_test.png")
         """
-        IMAGE_EXTENSIONS = {
-            "bmp",
-            "jpg",
-            "jpeg",
-            "pgm",
-            "png",
-            "ppm",
-            "tif",
-            "tiff",
-            "webp",
-        }
         assert os.path.exists(image_true)
         assert os.path.exists(image_test)
-        assert image_true.split(".")[-1] in IMAGE_EXTENSIONS
-        assert image_test.split(".")[-1] in IMAGE_EXTENSIONS
+        assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
+        assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
 
         m1, s1 = calculate_activation_statistics(
             [image_true],
@@ -193,23 +194,12 @@ class FrechetInceptionDistance:
         images_true: list[str],
         images_test: list[str],
     ):
-        IMAGE_EXTENSIONS = {
-            "bmp",
-            "jpg",
-            "jpeg",
-            "pgm",
-            "png",
-            "ppm",
-            "tif",
-            "tiff",
-            "webp",
-        }
         assert len(images_true) == len(images_test)
         for image_true, image_test in zip(images_true, images_test):
             assert os.path.exists(image_true)
             assert os.path.exists(image_test)
-            assert image_true.split(".")[-1] in IMAGE_EXTENSIONS
-            assert image_test.split(".")[-1] in IMAGE_EXTENSIONS
+            assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
+            assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
 
         batch_size = min(self.batch_size, len(images_true))
         m1, s1 = calculate_activation_statistics(
