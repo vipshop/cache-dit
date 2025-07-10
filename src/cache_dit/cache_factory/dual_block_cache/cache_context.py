@@ -1026,7 +1026,7 @@ def apply_hidden_states_residual(
             # If encoder cache is not residual, we use the encoder hidden states directly
             encoder_hidden_states = encoder_hidden_states_prev
 
-    encoder_hidden_states = encoder_hidden_states.contiguous()
+        encoder_hidden_states = encoder_hidden_states.contiguous()
 
     return hidden_states, encoder_hidden_states
 
