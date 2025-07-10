@@ -481,7 +481,7 @@ from cache_dit.metrics import FrechetInceptionDistance  # FID
 FID = FrechetInceptionDistance()
 image_psnr, n = compute_psnr("true.png", "test.png") # Num: n
 image_fid,  n = FID.compute_fid("true_dir", "test_dir")
-video_psnr, n = compute_video_psnr("true.mp4", "test.mp4")
+video_psnr, n = compute_video_psnr("true.mp4", "test.mp4") # Frames: n
 ```
 
 Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool. For examples: 
@@ -489,11 +489,12 @@ Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, yo
 ```bash
 cache-dit-metrics-cli -h  # show usage
 # all: PSNR, FID, SSIM, MSE, ..., etc.
-cache-dit-metrics-cli all  -v1 true.mp4 -v2 test.mp4  # video
 cache-dit-metrics-cli all  -i1 true.png -i2 test.png  # image
 cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
-cache-dit-metrics-cli fid  -i1 true_dir -i2 test_dir  # image dir FID
-cache-dit-metrics-cli psnr -i1 true_dir -i2 test_dir  # image dir PSNR
+cache-dit-metrics-cli all  -v1 true.mp4 -v2 test.mp4  # video
+cache-dit-metrics-cli all  -v1 true_dir -v2 test_dir  # video dir
+cache-dit-metrics-cli fid  -i1 true_dir -i2 test_dir  # FID
+cache-dit-metrics-cli psnr -i1 true_dir -i2 test_dir  # PSNR
 ```
 
 ## 👋Contribute 
