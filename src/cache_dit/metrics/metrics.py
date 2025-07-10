@@ -388,14 +388,14 @@ def get_args():
         "-v1",
         type=str,
         default=None,
-        help="Path to ground truth video",
+        help="Path to ground truth video or Dir to ground truth videos",
     )
     parser.add_argument(
         "--video-test",
         "-v2",
         type=str,
         default=None,
-        help="Path to predicted video",
+        help="Path to predicted video or Dir to predicted videos",
     )
     parser.add_argument(
         "--enable-verbose",
@@ -454,36 +454,29 @@ def entrypoint():
             )
         ):
             return
+        # video_true and video_test can be files or dirs
         if args.metric == "psnr" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n}, PSNR: {video_psnr}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}"
             )
         if args.metric == "ssim" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             video_ssim, n = compute_video_ssim(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n}, SSIM: {video_ssim}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n}, SSIM: {video_ssim}"
             )
         if args.metric == "mse" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             video_mse, n = compute_video_mse(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n},  MSE: {video_mse}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n},  MSE: {video_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
             video_fid, n = FID.compute_video_fid(
                 args.video_true, args.video_test
             )
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n},  FID: {video_fid}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n},  FID: {video_fid}"
             )
 
 
