@@ -3,14 +3,22 @@ import cv2
 import pathlib
 import argparse
 import numpy as np
+from tqdm import tqdm
 from functools import partial
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
 from cache_dit.metrics.fid import FrechetInceptionDistance
+from cache_dit.metrics.config import set_metrics_verbose
+from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.metrics.config import _IMAGE_EXTENSIONS
+from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
+
+
+DISABLE_VERBOSE = not get_metrics_verbose()
 
 
 def compute_psnr_file(
@@ -72,19 +80,6 @@ def compute_ssim_file(
     )
 
 
-_IMAGE_EXTENSIONS = {
-    "bmp",
-    "jpg",
-    "jpeg",
-    "pgm",
-    "png",
-    "ppm",
-    "tif",
-    "tiff",
-    "webp",
-}
-
-
 def compute_dir_metric(
     image_true_dir: np.ndarray | str,
     image_test_dir: np.ndarray | str,
@@ -117,17 +112,38 @@ def compute_dir_metric(
     )
     image_true_files = [file.as_posix() for file in image_true_files]
     image_test_files = [file.as_posix() for file in image_test_files]
+
+    # select valid files
+    image_true_files_selected = []
+    image_test_files_selected = []
+    for i in range(min(len(image_true_files), len(image_test_files))):
+        selected_image_true = image_true_files[i]
+        selected_image_test = image_test_files[i]
+        # Image pair must have the same basename
+        if os.path.basename(selected_image_test) == os.path.basename(
+            selected_image_true
+        ):
+            image_true_files_selected.append(selected_image_true)
+            image_test_files_selected.append(selected_image_test)
+    image_true_files = image_true_files_selected.copy()
+    image_test_files = image_test_files_selected.copy()
+    if len(image_true_files) == 0:
+        logger.error(
+            "No valid Image pairs, please note that Image "
+            "pairs must have the same basename."
+        )
+        return None, None
+
     logger.debug(f"image_true_files: {image_true_files}")
     logger.debug(f"image_test_files: {image_test_files}")
-    assert len(image_true_files) == len(image_test_files)
-    for image_true, image_test in zip(image_true_files, image_test_files):
-        assert os.path.basename(image_true) == os.path.basename(
-            image_test
-        ), f"image_true:{image_true} != image_test: {image_test}"
 
     total_metric = 0.0
     valid_files = 0
-    for image_true, image_test in zip(image_true_files, image_test_files):
+    for image_true, image_test in tqdm(
+        zip(image_true_files, image_test_files),
+        total=len(image_true_files),
+        disable=DISABLE_VERBOSE,
+    ):
         metric = compute_file_func(image_true, image_test)
         if metric != float("inf"):
             total_metric += metric
@@ -142,30 +158,25 @@ def compute_dir_metric(
         return None, None
 
 
-def compute_video_metric(
+def _fetch_video_frames(
     video_true: str,
     video_test: str,
-    compute_frame_func: callable = compute_psnr_file,
-) -> float:
-    """
-    video_true = "video_true.mp4"
-    video_test = "video_test.mp4"
-    PSNR = compute_video_psnr(video_true, video_test)
-    """
+):
     cap1 = cv2.VideoCapture(video_true)
     cap2 = cv2.VideoCapture(video_test)
 
     if not cap1.isOpened() or not cap2.isOpened():
         logger.error("Could not open video files")
-        return None
+        return [], [], 0
 
     frame_count = min(
         int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
         int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
     )
 
-    total_metric = 0.0
     valid_frames = 0
+    video_true_frames = []
+    video_test_frames = []
 
     logger.debug(f"Total frames: {frame_count}")
 
@@ -176,17 +187,114 @@ def compute_video_metric(
         if not ret1 or not ret2:
             break
 
-        metric = compute_frame_func(frame1, frame2)
+        video_true_frames.append(frame1)
+        video_test_frames.append(frame2)
 
-        if metric != float("inf"):
-            total_metric += metric
-            valid_frames += 1
-
-        if valid_frames % 10 == 0:
-            logger.debug(f"Processed {valid_frames}/{frame_count} frames")
+        valid_frames += 1
 
     cap1.release()
     cap2.release()
+
+    if valid_frames <= 0:
+        return [], [], 0
+
+    return video_true_frames, video_test_frames, valid_frames
+
+
+def compute_video_metric(
+    video_true: str,
+    video_test: str,
+    compute_frame_func: callable = compute_psnr_file,
+) -> float:
+    """
+    video_true = "video_true.mp4"
+    video_test = "video_test.mp4"
+    PSNR = compute_video_psnr(video_true, video_test)
+    """
+    if os.path.isfile(video_true) and os.path.isfile(video_test):
+        video_true_frames, video_test_frames, valid_frames = (
+            _fetch_video_frames(
+                video_true=video_true,
+                video_test=video_test,
+            )
+        )
+    elif os.path.isdir(video_true) and os.path.isdir(video_test):
+        # Glob videos
+        video_true_dir: pathlib.Path = pathlib.Path(video_true)
+        video_true_files = sorted(
+            [
+                file
+                for ext in _VIDEO_EXTENSIONS
+                for file in video_true_dir.rglob("*.{}".format(ext))
+            ]
+        )
+        video_test_dir: pathlib.Path = pathlib.Path(video_test)
+        video_test_files = sorted(
+            [
+                file
+                for ext in _VIDEO_EXTENSIONS
+                for file in video_test_dir.rglob("*.{}".format(ext))
+            ]
+        )
+        video_true_files = [file.as_posix() for file in video_true_files]
+        video_test_files = [file.as_posix() for file in video_test_files]
+
+        # select valid video files
+        video_true_files_selected = []
+        video_test_files_selected = []
+        for i in range(min(len(video_true_files), len(video_test_files))):
+            selected_video_true = video_true_files[i]
+            selected_video_test = video_test_files[i]
+            # Video pair must have the same basename
+            if os.path.basename(selected_video_test) == os.path.basename(
+                selected_video_true
+            ):
+                video_true_files_selected.append(selected_video_true)
+                video_test_files_selected.append(selected_video_test)
+
+        video_true_files = video_true_files_selected.copy()
+        video_test_files = video_test_files_selected.copy()
+        if len(video_true_files) == 0:
+            logger.error(
+                "No valid Video pairs, please note that Video "
+                "pairs must have the same basename."
+            )
+            return None, None
+        logger.debug(f"video_true_files: {video_true_files}")
+        logger.debug(f"video_test_files: {video_test_files}")
+
+        # Fetch all frames
+        video_true_frames = []
+        video_test_frames = []
+        valid_frames = 0
+
+        for video_true_, video_test_ in zip(video_true_files, video_test_files):
+            video_true_frames_, video_test_frames_, valid_frames_ = (
+                _fetch_video_frames(
+                    video_true=video_true_, video_test=video_test_
+                )
+            )
+            video_true_frames.extend(video_true_frames_)
+            video_test_frames.extend(video_test_frames_)
+            valid_frames += valid_frames_
+    else:
+        raise ValueError("video_true and video_test must be files or dirs.")
+
+    if valid_frames <= 0:
+        logger.debug("No valid frames to compare")
+        return None, None
+
+    total_metric = 0.0
+    valid_frames = 0  # reset
+    for frame1, frame2 in tqdm(
+        zip(video_true_frames, video_test_frames),
+        total=len(video_true_frames),
+        disable=DISABLE_VERBOSE,
+    ):
+        metric = compute_frame_func(frame1, frame2)
+        if metric != float("inf"):
+            total_metric += metric
+            valid_frames += 1
 
     if valid_frames > 0:
         average_metric = total_metric / valid_frames
@@ -265,14 +373,21 @@ def get_args():
         "-v1",
         type=str,
         default=None,
-        help="Path to ground truth video",
+        help="Path to ground truth video or Dir to ground truth videos",
     )
     parser.add_argument(
         "--video-test",
         "-v2",
         type=str,
         default=None,
-        help="Path to predicted video",
+        help="Path to predicted video or Dir to predicted videos",
+    )
+    parser.add_argument(
+        "--enable-verbose",
+        "-verbose",
+        action="store_true",
+        default=False,
+        help="Show metrics progress verbose",
     )
     return parser.parse_args()
 
@@ -280,6 +395,11 @@ def get_args():
 def entrypoint():
     args = get_args()
     logger.debug(args)
+
+    if args.enable_verbose:
+        global DISABLE_VERBOSE
+        set_metrics_verbose(True)
+        DISABLE_VERBOSE = not get_metrics_verbose()
 
     if args.img_true is not None and args.img_test is not None:
         if any(
@@ -306,7 +426,7 @@ def entrypoint():
                 f"{args.img_true} vs {args.img_test}, Num: {n},  MSE: {img_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
-            FID = FrechetInceptionDistance()
+            FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
             img_fid, n = FID.compute_fid(args.img_true, args.img_test)
             logger.info(
                 f"{args.img_true} vs {args.img_test}, Num: {n},  FID: {img_fid}"
@@ -319,36 +439,29 @@ def entrypoint():
             )
         ):
             return
+        # video_true and video_test can be files or dirs
         if args.metric == "psnr" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n}, PSNR: {video_psnr}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}"
             )
         if args.metric == "ssim" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             video_ssim, n = compute_video_ssim(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n}, SSIM: {video_ssim}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n}, SSIM: {video_ssim}"
             )
         if args.metric == "mse" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
             video_mse, n = compute_video_mse(args.video_true, args.video_test)
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n},  MSE: {video_mse}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n},  MSE: {video_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
-            assert not os.path.isdir(args.video_true)
-            assert not os.path.isdir(args.video_test)
-            FID = FrechetInceptionDistance()
+            FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
             video_fid, n = FID.compute_video_fid(
                 args.video_true, args.video_test
             )
             logger.info(
-                f"{args.video_true} vs {args.video_test}, Num: {n},  FID: {video_fid}"
+                f"{args.video_true} vs {args.video_test}, Frames: {n},  FID: {video_fid}"
             )
 
 

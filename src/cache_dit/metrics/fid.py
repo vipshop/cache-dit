@@ -9,6 +9,8 @@ import torch
 import torchvision.transforms as TF
 from torch.nn.functional import adaptive_avg_pool2d
 from cache_dit.metrics.inception import InceptionV3
+from cache_dit.metrics.config import _IMAGE_EXTENSIONS
+from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -220,22 +222,7 @@ def calculate_activation_statistics(
     return mu, sigma
 
 
-_IMAGE_EXTENSIONS = {
-    "bmp",
-    "jpg",
-    "jpeg",
-    "pgm",
-    "png",
-    "ppm",
-    "tif",
-    "tiff",
-    "webp",
-}
-
-
 class FrechetInceptionDistance:
-    IMAGE_EXTENSIONS = _IMAGE_EXTENSIONS
-
     def __init__(
         self,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -259,7 +246,8 @@ class FrechetInceptionDistance:
         image_true: np.ndarray | str,
         image_test: np.ndarray | str,
     ):
-        """Calculates the FID of two file paths
+        """
+        Calculates the FID of two file paths
         FID = FrechetInceptionDistance()
         img_fid = FID.compute_fid("img_true.png", "img_test.png")
         img_dir_fid = FID.compute_fid("img_true_dir", "img_test_dir")
@@ -268,8 +256,8 @@ class FrechetInceptionDistance:
             if os.path.isfile(image_true) or os.path.isfile(image_test):
                 assert os.path.exists(image_true)
                 assert os.path.exists(image_test)
-                assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
-                assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
+                assert image_true.split(".")[-1] in _IMAGE_EXTENSIONS
+                assert image_test.split(".")[-1] in _IMAGE_EXTENSIONS
                 image_true_files = [image_true]
                 image_test_files = [image_test]
             else:
@@ -280,7 +268,7 @@ class FrechetInceptionDistance:
                 image_true_files = sorted(
                     [
                         file
-                        for ext in self.IMAGE_EXTENSIONS
+                        for ext in _IMAGE_EXTENSIONS
                         for file in image_true_dir.rglob("*.{}".format(ext))
                     ]
                 )
@@ -288,7 +276,7 @@ class FrechetInceptionDistance:
                 image_test_files = sorted(
                     [
                         file
-                        for ext in self.IMAGE_EXTENSIONS
+                        for ext in _IMAGE_EXTENSIONS
                         for file in image_test_dir.rglob("*.{}".format(ext))
                     ]
                 )
@@ -298,15 +286,32 @@ class FrechetInceptionDistance:
                 image_test_files = [
                     file.as_posix() for file in image_test_files
                 ]
+
+                # select valid files
+                image_true_files_selected = []
+                image_test_files_selected = []
+                for i in range(
+                    min(len(image_true_files), len(image_test_files))
+                ):
+                    selected_image_true = image_true_files[i]
+                    selected_image_test = image_test_files[i]
+                    # Image pair must have the same basename
+                    if os.path.basename(
+                        selected_image_test
+                    ) == os.path.basename(selected_image_true):
+                        image_true_files_selected.append(selected_image_true)
+                        image_test_files_selected.append(selected_image_test)
+                image_true_files = image_true_files_selected.copy()
+                image_test_files = image_test_files_selected.copy()
+                if len(image_true_files) == 0:
+                    logger.error(
+                        "No valid Image pairs, please note that Image "
+                        "pairs must have the same basename."
+                    )
+                    return None, None
+
                 logger.debug(f"image_true_files: {image_true_files}")
                 logger.debug(f"image_test_files: {image_test_files}")
-                assert len(image_true_files) == len(image_test_files)
-                for image_true, image_test in zip(
-                    image_true_files, image_test_files
-                ):
-                    assert os.path.basename(image_true) == os.path.basename(
-                        image_test
-                    ), f"image_true:{image_true} != image_test: {image_test}"
         else:
             image_true_files = [image_true]
             image_test_files = [image_test]
@@ -342,43 +347,83 @@ class FrechetInceptionDistance:
 
     def compute_video_fid(
         self,
+        # file or dir
         video_true: str,
         video_test: str,
     ):
-        cap1 = cv2.VideoCapture(video_true)
-        cap2 = cv2.VideoCapture(video_test)
+        if os.path.isfile(video_true) and os.path.isfile(video_test):
+            video_true_frames, video_test_frames, valid_frames = (
+                self._fetch_video_frames(
+                    video_true=video_true,
+                    video_test=video_test,
+                )
+            )
+        elif os.path.isdir(video_true) and os.path.isdir(video_test):
+            # Glob videos
+            video_true_dir: pathlib.Path = pathlib.Path(video_true)
+            video_true_files = sorted(
+                [
+                    file
+                    for ext in _VIDEO_EXTENSIONS
+                    for file in video_true_dir.rglob("*.{}".format(ext))
+                ]
+            )
+            video_test_dir: pathlib.Path = pathlib.Path(video_test)
+            video_test_files = sorted(
+                [
+                    file
+                    for ext in _VIDEO_EXTENSIONS
+                    for file in video_test_dir.rglob("*.{}".format(ext))
+                ]
+            )
+            video_true_files = [file.as_posix() for file in video_true_files]
+            video_test_files = [file.as_posix() for file in video_test_files]
 
-        if not cap1.isOpened() or not cap2.isOpened():
-            logger.error("Could not open video files")
-            return None, None
+            # select valid video files
+            video_true_files_selected = []
+            video_test_files_selected = []
+            for i in range(min(len(video_true_files), len(video_test_files))):
+                selected_video_true = video_true_files[i]
+                selected_video_test = video_test_files[i]
+                # Video pair must have the same basename
+                if os.path.basename(selected_video_test) == os.path.basename(
+                    selected_video_true
+                ):
+                    video_true_files_selected.append(selected_video_true)
+                    video_test_files_selected.append(selected_video_test)
 
-        frame_count = min(
-            int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
-            int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
-        )
+            video_true_files = video_true_files_selected.copy()
+            video_test_files = video_test_files_selected.copy()
+            if len(video_true_files) == 0:
+                logger.error(
+                    "No valid Video pairs, please note that Video "
+                    "pairs must have the same basename."
+                )
+                return None, None
+            logger.debug(f"video_true_files: {video_true_files}")
+            logger.debug(f"video_test_files: {video_test_files}")
 
-        valid_frames = 0
-        video_true_frames = []
-        video_test_frames = []
+            # Fetch all frames
+            video_true_frames = []
+            video_test_frames = []
+            valid_frames = 0
 
-        logger.debug(f"Total frames: {frame_count}")
-
-        while True:
-            ret1, frame1 = cap1.read()
-            ret2, frame2 = cap2.read()
-
-            if not ret1 or not ret2:
-                break
-
-            video_true_frames.append(frame1)
-            video_test_frames.append(frame2)
-
-            valid_frames += 1
-
-        cap1.release()
-        cap2.release()
+            for video_true_, video_test_ in zip(
+                video_true_files, video_test_files
+            ):
+                video_true_frames_, video_test_frames_, valid_frames_ = (
+                    self._fetch_video_frames(
+                        video_true=video_true_, video_test=video_test_
+                    )
+                )
+                video_true_frames.extend(video_true_frames_)
+                video_test_frames.extend(video_test_frames_)
+                valid_frames += valid_frames_
+        else:
+            raise ValueError("video_true and video_test must be files or dirs.")
 
         if valid_frames <= 0:
+            logger.debug("No valid frames to compare")
             return None, None
 
         batch_size = min(16, self.batch_size)
@@ -408,3 +453,46 @@ class FrechetInceptionDistance:
         )
 
         return fid_value, valid_frames
+
+    def _fetch_video_frames(
+        self,
+        video_true: str,
+        video_test: str,
+    ):
+        cap1 = cv2.VideoCapture(video_true)
+        cap2 = cv2.VideoCapture(video_test)
+
+        if not cap1.isOpened() or not cap2.isOpened():
+            logger.error("Could not open video files")
+            return [], [], 0
+
+        frame_count = min(
+            int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
+            int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
+        )
+
+        valid_frames = 0
+        video_true_frames = []
+        video_test_frames = []
+
+        logger.debug(f"Total frames: {frame_count}")
+
+        while True:
+            ret1, frame1 = cap1.read()
+            ret2, frame2 = cap2.read()
+
+            if not ret1 or not ret2:
+                break
+
+            video_true_frames.append(frame1)
+            video_test_frames.append(frame2)
+
+            valid_frames += 1
+
+        cap1.release()
+        cap2.release()
+
+        if valid_frames <= 0:
+            return [], [], 0
+
+        return video_true_frames, video_test_frames, valid_frames

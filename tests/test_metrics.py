@@ -75,7 +75,7 @@ def main():
             return
         video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
         print(
-            f"{args.video_true} vs {args.video_test}, Num: {n}, PSNR: {video_psnr}"
+            f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}"
         )
 
 
