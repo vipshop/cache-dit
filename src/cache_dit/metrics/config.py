@@ -15,3 +15,20 @@ def set_metrics_verbose(verbose: bool):
 def get_metrics_verbose() -> bool:
     global _metrics_progress_verbose
     return _metrics_progress_verbose
+
+
+_IMAGE_EXTENSIONS = [
+    "bmp",
+    "jpg",
+    "jpeg",
+    "pgm",
+    "png",
+    "ppm",
+    "tif",
+    "tiff",
+    "webp",
+]
+
+_VIDEO_EXTENSIONS = [
+    "mp4",
+]

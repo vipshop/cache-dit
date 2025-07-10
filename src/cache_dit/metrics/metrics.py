@@ -11,6 +11,8 @@ from skimage.metrics import structural_similarity
 from cache_dit.metrics.fid import FrechetInceptionDistance
 from cache_dit.metrics.config import set_metrics_verbose
 from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.metrics.config import _IMAGE_EXTENSIONS
+from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -76,23 +78,6 @@ def compute_ssim_file(
         multichannel=True,
         channel_axis=2,
     )
-
-
-_IMAGE_EXTENSIONS = [
-    "bmp",
-    "jpg",
-    "jpeg",
-    "pgm",
-    "png",
-    "ppm",
-    "tif",
-    "tiff",
-    "webp",
-]
-
-_VIDEO_EXTENSIONS = [
-    "mp4",
-]
 
 
 def compute_dir_metric(

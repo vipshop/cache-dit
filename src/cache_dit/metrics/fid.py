@@ -9,6 +9,8 @@ import torch
 import torchvision.transforms as TF
 from torch.nn.functional import adaptive_avg_pool2d
 from cache_dit.metrics.inception import InceptionV3
+from cache_dit.metrics.config import _IMAGE_EXTENSIONS
+from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -220,27 +222,7 @@ def calculate_activation_statistics(
     return mu, sigma
 
 
-_IMAGE_EXTENSIONS = [
-    "bmp",
-    "jpg",
-    "jpeg",
-    "pgm",
-    "png",
-    "ppm",
-    "tif",
-    "tiff",
-    "webp",
-]
-
-_VIDEO_EXTENSIONS = [
-    "mp4",
-]
-
-
 class FrechetInceptionDistance:
-    IMAGE_EXTENSIONS = _IMAGE_EXTENSIONS
-    VIDEO_EXTENSIONS = _VIDEO_EXTENSIONS
-
     def __init__(
         self,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -274,8 +256,8 @@ class FrechetInceptionDistance:
             if os.path.isfile(image_true) or os.path.isfile(image_test):
                 assert os.path.exists(image_true)
                 assert os.path.exists(image_test)
-                assert image_true.split(".")[-1] in self.IMAGE_EXTENSIONS
-                assert image_test.split(".")[-1] in self.IMAGE_EXTENSIONS
+                assert image_true.split(".")[-1] in _IMAGE_EXTENSIONS
+                assert image_test.split(".")[-1] in _IMAGE_EXTENSIONS
                 image_true_files = [image_true]
                 image_test_files = [image_test]
             else:
@@ -286,7 +268,7 @@ class FrechetInceptionDistance:
                 image_true_files = sorted(
                     [
                         file
-                        for ext in self.IMAGE_EXTENSIONS
+                        for ext in _IMAGE_EXTENSIONS
                         for file in image_true_dir.rglob("*.{}".format(ext))
                     ]
                 )
@@ -294,7 +276,7 @@ class FrechetInceptionDistance:
                 image_test_files = sorted(
                     [
                         file
-                        for ext in self.IMAGE_EXTENSIONS
+                        for ext in _IMAGE_EXTENSIONS
                         for file in image_test_dir.rglob("*.{}".format(ext))
                     ]
                 )
@@ -382,7 +364,7 @@ class FrechetInceptionDistance:
             video_true_files = sorted(
                 [
                     file
-                    for ext in self.VIDEO_EXTENSIONS
+                    for ext in _VIDEO_EXTENSIONS
                     for file in video_true_dir.rglob("*.{}".format(ext))
                 ]
             )
@@ -390,7 +372,7 @@ class FrechetInceptionDistance:
             video_test_files = sorted(
                 [
                     file
-                    for ext in self.VIDEO_EXTENSIONS
+                    for ext in _VIDEO_EXTENSIONS
                     for file in video_test_dir.rglob("*.{}".format(ext))
                 ]
             )
