@@ -488,11 +488,12 @@ Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, yo
 
 ```bash
 cache-dit-metrics-cli -h  # show usage
-cache-dit-metrics-cli all -v1 true.mp4 -v2 test.mp4  # compare video
-cache-dit-metrics-cli all -i1 true.png -i2 test.png  # compare image
-cache-dit-metrics-cli all -i1 true_dir -i2 test_dir  # compare image dir
-cache-dit-metrics-cli psnr -i1 true_dir -i2 test_dir # PSNR
-cache-dit-metrics-cli fid -i1 true_dir -i2 test_dir  # FID
+# all: PSNR, FID, SSIM, MSE, ..., etc.
+cache-dit-metrics-cli all -v1 true.mp4 -v2 test.mp4  # video
+cache-dit-metrics-cli all -i1 true.png -i2 test.png  # image
+cache-dit-metrics-cli all -i1 true_dir -i2 test_dir  # image dir
+cache-dit-metrics-cli psnr -i1 true_dir -i2 test_dir # image dir PSNR
+cache-dit-metrics-cli fid -i1 true_dir -i2 test_dir  # image dir FID
 ```
 
 ## 👋Contribute 
