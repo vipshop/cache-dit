@@ -3,14 +3,18 @@ import cv2
 import pathlib
 import argparse
 import numpy as np
+from tqdm import tqdm
 from functools import partial
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
 from cache_dit.metrics.fid import FrechetInceptionDistance
+from cache_dit.metrics.config import set_metrics_progress_verbose
+from cache_dit.metrics.config import get_metrics_progress_verbose
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
+disable_verbose = not get_metrics_progress_verbose()
 
 
 def compute_psnr_file(
@@ -127,7 +131,11 @@ def compute_dir_metric(
 
     total_metric = 0.0
     valid_files = 0
-    for image_true, image_test in zip(image_true_files, image_test_files):
+    for image_true, image_test in tqdm(
+        zip(image_true_files, image_test_files),
+        total=len(image_true_files),
+        disable=disable_verbose,
+    ):
         metric = compute_file_func(image_true, image_test)
         if metric != float("inf"):
             total_metric += metric
@@ -169,6 +177,8 @@ def compute_video_metric(
 
     logger.debug(f"Total frames: {frame_count}")
 
+    video_true_frames = []
+    video_test_frames = []
     while True:
         ret1, frame1 = cap1.read()
         ret2, frame2 = cap2.read()
@@ -176,14 +186,18 @@ def compute_video_metric(
         if not ret1 or not ret2:
             break
 
-        metric = compute_frame_func(frame1, frame2)
+        video_true_frames.append(frame1)
+        video_test_frames.append(frame2)
 
+    for frame1, frame2 in tqdm(
+        zip(video_true_frames, video_test_frames),
+        total=len(video_true_frames),
+        disable=disable_verbose,
+    ):
+        metric = compute_frame_func(frame1, frame2)
         if metric != float("inf"):
             total_metric += metric
             valid_frames += 1
-
-        if valid_frames % 10 == 0:
-            logger.debug(f"Processed {valid_frames}/{frame_count} frames")
 
     cap1.release()
     cap2.release()
@@ -274,12 +288,24 @@ def get_args():
         default=None,
         help="Path to predicted video",
     )
+    parser.add_argument(
+        "--enable-verbose",
+        "-verbose",
+        action="store_true",
+        default=False,
+        help="Show metrics progress verbose",
+    )
     return parser.parse_args()
 
 
 def entrypoint():
     args = get_args()
     logger.debug(args)
+
+    if args.enable_verbose:
+        set_metrics_progress_verbose(True)
+        global disable_verbose
+        disable_verbose = not get_metrics_progress_verbose()
 
     if args.img_true is not None and args.img_test is not None:
         if any(
@@ -306,7 +332,7 @@ def entrypoint():
                 f"{args.img_true} vs {args.img_test}, Num: {n},  MSE: {img_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
-            FID = FrechetInceptionDistance()
+            FID = FrechetInceptionDistance(disable_tqdm=disable_verbose)
             img_fid, n = FID.compute_fid(args.img_true, args.img_test)
             logger.info(
                 f"{args.img_true} vs {args.img_test}, Num: {n},  FID: {img_fid}"
@@ -343,7 +369,7 @@ def entrypoint():
         if args.metric == "fid" or args.metric == "all":
             assert not os.path.isdir(args.video_true)
             assert not os.path.isdir(args.video_test)
-            FID = FrechetInceptionDistance()
+            FID = FrechetInceptionDistance(disable_tqdm=disable_verbose)
             video_fid, n = FID.compute_video_fid(
                 args.video_true, args.video_test
             )
