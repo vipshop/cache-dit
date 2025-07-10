@@ -988,7 +988,7 @@ def get_Bn_encoder_buffer(prefix: str = "Bn"):
 @torch.compiler.disable
 def apply_hidden_states_residual(
     hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor = None,
     prefix: str = "Bn",
     encoder_prefix: str = "Bn_encoder",
 ):
@@ -1006,24 +1006,26 @@ def apply_hidden_states_residual(
         # If cache is not residual, we use the hidden states directly
         hidden_states = hidden_states_prev
 
-    if "Bn" in encoder_prefix:
-        encoder_hidden_states_prev = get_Bn_encoder_buffer(encoder_prefix)
-    else:
-        encoder_hidden_states_prev = get_Fn_encoder_buffer(encoder_prefix)
-
-    assert (
-        encoder_hidden_states_prev is not None
-    ), f"{prefix}_encoder_buffer must be set before"
-
-    if is_encoder_cache_residual():
-        encoder_hidden_states = (
-            encoder_hidden_states_prev + encoder_hidden_states
-        )
-    else:
-        # If encoder cache is not residual, we use the encoder hidden states directly
-        encoder_hidden_states = encoder_hidden_states_prev
-
     hidden_states = hidden_states.contiguous()
+
+    if encoder_hidden_states is not None:
+        if "Bn" in encoder_prefix:
+            encoder_hidden_states_prev = get_Bn_encoder_buffer(encoder_prefix)
+        else:
+            encoder_hidden_states_prev = get_Fn_encoder_buffer(encoder_prefix)
+
+        assert (
+            encoder_hidden_states_prev is not None
+        ), f"{prefix}_encoder_buffer must be set before"
+
+        if is_encoder_cache_residual():
+            encoder_hidden_states = (
+                encoder_hidden_states_prev + encoder_hidden_states
+            )
+        else:
+            # If encoder cache is not residual, we use the encoder hidden states directly
+            encoder_hidden_states = encoder_hidden_states_prev
+
     encoder_hidden_states = encoder_hidden_states.contiguous()
 
     return hidden_states, encoder_hidden_states
