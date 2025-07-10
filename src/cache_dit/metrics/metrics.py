@@ -9,14 +9,14 @@ from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
 from cache_dit.metrics.fid import FrechetInceptionDistance
-from cache_dit.metrics.config import set_metrics_progress_verbose
-from cache_dit.metrics.config import get_metrics_progress_verbose
+from cache_dit.metrics.config import set_metrics_verbose
+from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-DISABLE_VERBOSE = not get_metrics_progress_verbose()
+DISABLE_VERBOSE = not get_metrics_verbose()
 
 
 def compute_psnr_file(
@@ -78,7 +78,7 @@ def compute_ssim_file(
     )
 
 
-_IMAGE_EXTENSIONS = {
+_IMAGE_EXTENSIONS = [
     "bmp",
     "jpg",
     "jpeg",
@@ -88,7 +88,11 @@ _IMAGE_EXTENSIONS = {
     "tif",
     "tiff",
     "webp",
-}
+]
+
+_VIDEO_EXTENSIONS = [
+    "mp4",
+]
 
 
 def compute_dir_metric(
@@ -169,35 +173,28 @@ def compute_dir_metric(
         return None, None
 
 
-def compute_video_metric(
+def _fetch_video_frames(
     video_true: str,
     video_test: str,
-    compute_frame_func: callable = compute_psnr_file,
-) -> float:
-    """
-    video_true = "video_true.mp4"
-    video_test = "video_test.mp4"
-    PSNR = compute_video_psnr(video_true, video_test)
-    """
+):
     cap1 = cv2.VideoCapture(video_true)
     cap2 = cv2.VideoCapture(video_test)
 
     if not cap1.isOpened() or not cap2.isOpened():
         logger.error("Could not open video files")
-        return None
+        return [], [], 0
 
     frame_count = min(
         int(cap1.get(cv2.CAP_PROP_FRAME_COUNT)),
         int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)),
     )
 
-    total_metric = 0.0
     valid_frames = 0
+    video_true_frames = []
+    video_test_frames = []
 
     logger.debug(f"Total frames: {frame_count}")
 
-    video_true_frames = []
-    video_test_frames = []
     while True:
         ret1, frame1 = cap1.read()
         ret2, frame2 = cap2.read()
@@ -208,6 +205,102 @@ def compute_video_metric(
         video_true_frames.append(frame1)
         video_test_frames.append(frame2)
 
+        valid_frames += 1
+
+    cap1.release()
+    cap2.release()
+
+    if valid_frames <= 0:
+        return [], [], 0
+
+    return video_true_frames, video_test_frames, valid_frames
+
+
+def compute_video_metric(
+    video_true: str,
+    video_test: str,
+    compute_frame_func: callable = compute_psnr_file,
+) -> float:
+    """
+    video_true = "video_true.mp4"
+    video_test = "video_test.mp4"
+    PSNR = compute_video_psnr(video_true, video_test)
+    """
+    if os.path.isfile(video_true) and os.path.isfile(video_test):
+        video_true_frames, video_test_frames, valid_frames = (
+            _fetch_video_frames(
+                video_true=video_true,
+                video_test=video_test,
+            )
+        )
+    elif os.path.isdir(video_true) and os.path.isdir(video_test):
+        # Glob videos
+        video_true_dir: pathlib.Path = pathlib.Path(video_true)
+        video_true_files = sorted(
+            [
+                file
+                for ext in _VIDEO_EXTENSIONS
+                for file in video_true_dir.rglob("*.{}".format(ext))
+            ]
+        )
+        video_test_dir: pathlib.Path = pathlib.Path(video_test)
+        video_test_files = sorted(
+            [
+                file
+                for ext in _VIDEO_EXTENSIONS
+                for file in video_test_dir.rglob("*.{}".format(ext))
+            ]
+        )
+        video_true_files = [file.as_posix() for file in video_true_files]
+        video_test_files = [file.as_posix() for file in video_test_files]
+
+        # select valid video files
+        video_true_files_selected = []
+        video_test_files_selected = []
+        for i in range(min(len(video_true_files), len(video_test_files))):
+            selected_video_true = video_true_files[i]
+            selected_video_test = video_test_files[i]
+            # Video pair must have the same basename
+            if os.path.basename(selected_video_test) == os.path.basename(
+                selected_video_true
+            ):
+                video_true_files_selected.append(selected_video_true)
+                video_test_files_selected.append(selected_video_test)
+
+        video_true_files = video_true_files_selected.copy()
+        video_test_files = video_test_files_selected.copy()
+        if len(video_true_files) == 0:
+            logger.error(
+                "No valid Video pairs, please note that Video "
+                "pairs must have the same basename."
+            )
+            return None, None
+        logger.debug(f"video_true_files: {video_true_files}")
+        logger.debug(f"video_test_files: {video_test_files}")
+
+        # Fetch all frames
+        video_true_frames = []
+        video_test_frames = []
+        valid_frames = 0
+
+        for video_true_, video_test_ in zip(video_true_files, video_test_files):
+            video_true_frames_, video_test_frames_, valid_frames_ = (
+                _fetch_video_frames(
+                    video_true=video_true_, video_test=video_test_
+                )
+            )
+            video_true_frames.extend(video_true_frames_)
+            video_test_frames.extend(video_test_frames_)
+            valid_frames += valid_frames_
+    else:
+        raise ValueError("video_true and video_test must be files or dirs.")
+
+    if valid_frames <= 0:
+        logger.debug("No valid frames to compare")
+        return None, None
+
+    total_metric = 0.0
+    valid_frames = 0  # reset
     for frame1, frame2 in tqdm(
         zip(video_true_frames, video_test_frames),
         total=len(video_true_frames),
@@ -217,9 +310,6 @@ def compute_video_metric(
         if metric != float("inf"):
             total_metric += metric
             valid_frames += 1
-
-    cap1.release()
-    cap2.release()
 
     if valid_frames > 0:
         average_metric = total_metric / valid_frames
@@ -323,8 +413,8 @@ def entrypoint():
 
     if args.enable_verbose:
         global DISABLE_VERBOSE
-        set_metrics_progress_verbose(True)
-        DISABLE_VERBOSE = not get_metrics_progress_verbose()
+        set_metrics_verbose(True)
+        DISABLE_VERBOSE = not get_metrics_verbose()
 
     if args.img_true is not None and args.img_test is not None:
         if any(

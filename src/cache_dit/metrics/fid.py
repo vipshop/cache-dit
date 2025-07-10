@@ -441,6 +441,7 @@ class FrechetInceptionDistance:
             raise ValueError("video_true and video_test must be files or dirs.")
 
         if valid_frames <= 0:
+            logger.debug("No valid frames to compare")
             return None, None
 
         batch_size = min(16, self.batch_size)
