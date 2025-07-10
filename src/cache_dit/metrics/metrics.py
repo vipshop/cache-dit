@@ -14,7 +14,9 @@ from cache_dit.metrics.config import get_metrics_progress_verbose
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
-disable_verbose = not get_metrics_progress_verbose()
+
+
+DISABLE_VERBOSE = not get_metrics_progress_verbose()
 
 
 def compute_psnr_file(
@@ -134,7 +136,7 @@ def compute_dir_metric(
     for image_true, image_test in tqdm(
         zip(image_true_files, image_test_files),
         total=len(image_true_files),
-        disable=disable_verbose,
+        disable=DISABLE_VERBOSE,
     ):
         metric = compute_file_func(image_true, image_test)
         if metric != float("inf"):
@@ -192,7 +194,7 @@ def compute_video_metric(
     for frame1, frame2 in tqdm(
         zip(video_true_frames, video_test_frames),
         total=len(video_true_frames),
-        disable=disable_verbose,
+        disable=DISABLE_VERBOSE,
     ):
         metric = compute_frame_func(frame1, frame2)
         if metric != float("inf"):
@@ -303,9 +305,9 @@ def entrypoint():
     logger.debug(args)
 
     if args.enable_verbose:
+        global DISABLE_VERBOSE
         set_metrics_progress_verbose(True)
-        global disable_verbose
-        disable_verbose = not get_metrics_progress_verbose()
+        DISABLE_VERBOSE = not get_metrics_progress_verbose()
 
     if args.img_true is not None and args.img_test is not None:
         if any(
@@ -332,7 +334,7 @@ def entrypoint():
                 f"{args.img_true} vs {args.img_test}, Num: {n},  MSE: {img_mse}"
             )
         if args.metric == "fid" or args.metric == "all":
-            FID = FrechetInceptionDistance(disable_tqdm=disable_verbose)
+            FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
             img_fid, n = FID.compute_fid(args.img_true, args.img_test)
             logger.info(
                 f"{args.img_true} vs {args.img_test}, Num: {n},  FID: {img_fid}"
@@ -369,7 +371,7 @@ def entrypoint():
         if args.metric == "fid" or args.metric == "all":
             assert not os.path.isdir(args.video_true)
             assert not os.path.isdir(args.video_test)
-            FID = FrechetInceptionDistance(disable_tqdm=disable_verbose)
+            FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
             video_fid, n = FID.compute_video_fid(
                 args.video_true, args.video_test
             )
