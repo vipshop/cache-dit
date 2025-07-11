@@ -4,11 +4,9 @@ import torch
 import random
 import time
 import functools
-import cache_dit
 
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
-import cache_dit.compile
 from cache_dit.logger import init_logger
 
 
@@ -231,6 +229,8 @@ def main():
         # Increase recompile limit for DBCache and DBPrune while
         # using dynamic input shape.
         if args.inductor_flags:
+            import cache_dit.compile
+
             cache_dit.compile.set_custom_compile_configs()
         else:
             torch._dynamo.config.recompile_limit = 96  # default is 8
