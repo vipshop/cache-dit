@@ -34,6 +34,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--gen-device", type=str, default="cpu")
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--flag-gems", action="store_true", default=False)
     parser.add_argument(
         "--force-compile-all",
@@ -227,10 +228,15 @@ def main():
     if args.compile:
         # Increase recompile limit for DBCache and DBPrune while
         # using dynamic input shape.
-        torch._dynamo.config.recompile_limit = 96  # default is 8
-        torch._dynamo.config.accumulated_recompile_limit = (
-            2048  # default is 256
-        )
+        if args.inductor_flags:
+            import cache_dit.compile
+
+            cache_dit.compile.set_custom_compile_configs()
+        else:
+            torch._dynamo.config.recompile_limit = 96  # default is 8
+            torch._dynamo.config.accumulated_recompile_limit = (
+                2048  # default is 256
+            )
         if isinstance(pipe.transformer, FluxTransformer2DModel):
             logger.warning(
                 "Only compile transformer blocks not the whole model "
