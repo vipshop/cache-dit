@@ -3,6 +3,7 @@ import argparse
 import torch
 import random
 import time
+import functools
 
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
@@ -33,6 +34,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--gen-device", type=str, default="cpu")
     parser.add_argument("--ulysses", type=int, default=None)
     parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--flag-gems", action="store_true", default=False)
     parser.add_argument(
         "--force-compile-all",
         "--compile-all",
@@ -184,6 +186,35 @@ def main():
             os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
             torch_dtype=torch.bfloat16,
         ).to("cuda")
+
+    if args.flag_gems:
+        try:
+            import flag_gems
+
+            assert isinstance(pipe.transformer, FluxTransformer2DModel)
+            transformer = pipe.transformer  # reference
+            original_forward = transformer.forward
+
+            @functools.wraps(original_forward)
+            def new_forward(
+                self,
+                *args,
+                **kwargs,
+            ):
+                # Only apply flag_gems to transformer
+                with flag_gems.use_gems():
+                    return original_forward(
+                        *args,
+                        **kwargs,
+                    )
+
+            transformer.forward = new_forward.__get__(transformer)
+            transformer._is_flag_gems = True
+            pipe.transformer = transformer
+
+        except ImportError:
+            logger.error("flag-gems is not installed, please install it. ")
+            pass
 
     cache_options, cache_type = get_cache_options(args.cache, args)
 
