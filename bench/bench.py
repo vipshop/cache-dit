@@ -1,6 +1,7 @@
 import os
 import argparse
 import torch
+import random
 import time
 
 from diffusers import FluxPipeline, FluxTransformer2DModel
@@ -39,6 +40,11 @@ def get_args() -> argparse.ArgumentParser:
         default=False,
     )
     return parser.parse_args()
+
+
+def set_rand_seeds(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
@@ -138,6 +144,7 @@ def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
 def main():
     args = get_args()
     logger.info(f"Arguments: {args}")
+    set_rand_seeds(args.seed)
 
     # Context Parallel from ParaAttention
     if args.ulysses is not None:
@@ -229,7 +236,7 @@ def main():
     for i in range(args.repeats):
         start = time.time()
         image = pipe(
-            "A cat holding a sign that says hello world with complex background",
+            "A cat holding a sign that says hello world",
             num_inference_steps=args.steps,
             generator=torch.Generator(args.gen_device).manual_seed(args.seed),
         ).images[0]

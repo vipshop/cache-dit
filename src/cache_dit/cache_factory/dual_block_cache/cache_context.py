@@ -1162,7 +1162,6 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         torch._dynamo.graph_break()
         if can_use_cache:
-            torch._dynamo.graph_break()
             add_cached_step()
             del Fn_hidden_states_residual
             hidden_states, encoder_hidden_states = apply_hidden_states_residual(
@@ -1189,7 +1188,6 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 )
             )
         else:
-            torch._dynamo.graph_break()
             set_Fn_buffer(Fn_hidden_states_residual, prefix="Fn_residual")
             if is_l1_diff_enabled():
                 # for hidden states L1 diff
@@ -1797,7 +1795,6 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 f"the number of single transformer blocks {len(self.single_transformer_blocks)}"
             )
 
-            torch._dynamo.graph_break()
             hidden_states = torch.cat(
                 [encoder_hidden_states, hidden_states], dim=1
             )
@@ -1829,13 +1826,11 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 ],
                 dim=1,
             )
-            torch._dynamo.graph_break()
         else:
             assert Bn_compute_blocks() <= len(self.transformer_blocks), (
                 f"Bn_compute_blocks {Bn_compute_blocks()} must be less than "
                 f"the number of transformer blocks {len(self.transformer_blocks)}"
             )
-            torch._dynamo.graph_break()
             if len(Bn_compute_blocks_ids()) > 0:
                 for i, block in enumerate(self._Bn_transformer_blocks()):
                     hidden_states, encoder_hidden_states = (
@@ -1864,7 +1859,6 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                                 encoder_hidden_states,
                                 hidden_states,
                             )
-            torch._dynamo.graph_break()
 
         hidden_states = (
             hidden_states.reshape(-1)
