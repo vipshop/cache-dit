@@ -22,6 +22,11 @@
   </p>
 </div> 
 
+## 🔥News🔥
+
+- [2025-07-13] An end2end speedup example for FLUX using cache-dit is released! **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)**: A forked version of [huggingface/flux-fast](https://github.com/huggingface/flux-fast) that **makes flux-fast even faster** with **[cache-dit](https://github.com/vipshop/cache-dit)**, **3.3x** speedup on NVIDIA L20 while still maintaining **high precision**.
+  
+
 ## 🤗 Introduction 
 
 <div align="center">
