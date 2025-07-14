@@ -348,8 +348,9 @@ def get_args():
         "all",
     ]
     parser.add_argument(
-        "metric",
+        "metrics",
         type=str,
+        nargs="+",
         default="psnr",
         choices=METRICS_CHOICES,
         help=f"Metric choices: {METRICS_CHOICES}",
@@ -401,68 +402,82 @@ def entrypoint():
         set_metrics_verbose(True)
         DISABLE_VERBOSE = not get_metrics_verbose()
 
-    if args.img_true is not None and args.img_test is not None:
-        if any(
-            (
-                not os.path.exists(args.img_true),
-                not os.path.exists(args.img_test),
-            )
-        ):
-            return
-        # img_true and img_test can be files or dirs
-        if args.metric == "psnr" or args.metric == "all":
-            img_psnr, n = compute_psnr(args.img_true, args.img_test)
-            logger.info(
-                f"{args.img_true} vs {args.img_test}, Num: {n}, PSNR: {img_psnr}"
-            )
-        if args.metric == "ssim" or args.metric == "all":
-            img_ssim, n = compute_ssim(args.img_true, args.img_test)
-            logger.info(
-                f"{args.img_true} vs {args.img_test}, Num: {n}, SSIM: {img_ssim}"
-            )
-        if args.metric == "mse" or args.metric == "all":
-            img_mse, n = compute_mse(args.img_true, args.img_test)
-            logger.info(
-                f"{args.img_true} vs {args.img_test}, Num: {n},  MSE: {img_mse}"
-            )
-        if args.metric == "fid" or args.metric == "all":
-            FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
-            img_fid, n = FID.compute_fid(args.img_true, args.img_test)
-            logger.info(
-                f"{args.img_true} vs {args.img_test}, Num: {n},  FID: {img_fid}"
-            )
-    if args.video_true is not None and args.video_test is not None:
-        if any(
-            (
-                not os.path.exists(args.video_true),
-                not os.path.exists(args.video_test),
-            )
-        ):
-            return
-        # video_true and video_test can be files or dirs
-        if args.metric == "psnr" or args.metric == "all":
-            video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
-            logger.info(
-                f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}"
-            )
-        if args.metric == "ssim" or args.metric == "all":
-            video_ssim, n = compute_video_ssim(args.video_true, args.video_test)
-            logger.info(
-                f"{args.video_true} vs {args.video_test}, Frames: {n}, SSIM: {video_ssim}"
-            )
-        if args.metric == "mse" or args.metric == "all":
-            video_mse, n = compute_video_mse(args.video_true, args.video_test)
-            logger.info(
-                f"{args.video_true} vs {args.video_test}, Frames: {n},  MSE: {video_mse}"
-            )
-        if args.metric == "fid" or args.metric == "all":
-            FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
-            video_fid, n = FID.compute_video_fid(
-                args.video_true, args.video_test
-            )
-            logger.info(
-                f"{args.video_true} vs {args.video_test}, Frames: {n},  FID: {video_fid}"
-            )
+    # run one metric
+    def _run_metric(mertric_type: str) -> None:
+        mertric_type = mertric_type.lower()
+        if args.img_true is not None and args.img_test is not None:
+            if any(
+                (
+                    not os.path.exists(args.img_true),
+                    not os.path.exists(args.img_test),
+                )
+            ):
+                return
+            # img_true and img_test can be files or dirs
+            if mertric_type == "psnr" or mertric_type == "all":
+                img_psnr, n = compute_psnr(args.img_true, args.img_test)
+                logger.info(
+                    f"{args.img_true} vs {args.img_test}, Num: {n}, PSNR: {img_psnr}"
+                )
+            if mertric_type == "ssim" or mertric_type == "all":
+                img_ssim, n = compute_ssim(args.img_true, args.img_test)
+                logger.info(
+                    f"{args.img_true} vs {args.img_test}, Num: {n}, SSIM: {img_ssim}"
+                )
+            if mertric_type == "mse" or mertric_type == "all":
+                img_mse, n = compute_mse(args.img_true, args.img_test)
+                logger.info(
+                    f"{args.img_true} vs {args.img_test}, Num: {n},  MSE: {img_mse}"
+                )
+            if mertric_type == "fid" or mertric_type == "all":
+                FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
+                img_fid, n = FID.compute_fid(args.img_true, args.img_test)
+                logger.info(
+                    f"{args.img_true} vs {args.img_test}, Num: {n},  FID: {img_fid}"
+                )
+        if args.video_true is not None and args.video_test is not None:
+            if any(
+                (
+                    not os.path.exists(args.video_true),
+                    not os.path.exists(args.video_test),
+                )
+            ):
+                return
+            # video_true and video_test can be files or dirs
+            if mertric_type == "psnr" or mertric_type == "all":
+                video_psnr, n = compute_video_psnr(
+                    args.video_true, args.video_test
+                )
+                logger.info(
+                    f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}"
+                )
+            if mertric_type == "ssim" or mertric_type == "all":
+                video_ssim, n = compute_video_ssim(
+                    args.video_true, args.video_test
+                )
+                logger.info(
+                    f"{args.video_true} vs {args.video_test}, Frames: {n}, SSIM: {video_ssim}"
+                )
+            if mertric_type == "mse" or mertric_type == "all":
+                video_mse, n = compute_video_mse(
+                    args.video_true, args.video_test
+                )
+                logger.info(
+                    f"{args.video_true} vs {args.video_test}, Frames: {n},  MSE: {video_mse}"
+                )
+            if mertric_type == "fid" or mertric_type == "all":
+                FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
+                video_fid, n = FID.compute_video_fid(
+                    args.video_true, args.video_test
+                )
+                logger.info(
+                    f"{args.video_true} vs {args.video_test}, Frames: {n},  FID: {video_fid}"
+                )
+
+    # run selected metrics
+    logger.info(f"Selected metrics: {args.metrics}")
+    for metric in args.metrics:
+        _run_metric(mertric_type=metric)
 
 
 if __name__ == "__main__":
