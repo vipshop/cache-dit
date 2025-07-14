@@ -407,7 +407,7 @@ def get_args():
         help="Path to ref dir that contains ground truth images",
     )
 
-    # Image 1 vs N pattern
+    # Video 1 vs N pattern
     parser.add_argument(
         "--video-source-dir",
         "-vd",
