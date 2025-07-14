@@ -406,6 +406,15 @@ def get_args():
         default=None,
         help="Path to ref dir that contains ground truth images",
     )
+
+    # FID batch size
+    parser.add_argument(
+        "--fid-batch-size",
+        "-b",
+        type=int,
+        default=16,
+        help="Batch size for FID compute",
+    )
     return parser.parse_args()
 
 
@@ -419,7 +428,10 @@ def entrypoint():
         DISABLE_VERBOSE = not get_metrics_verbose()
 
     if "all" in args.metrics or "fid" in args.metrics:
-        FID = FrechetInceptionDistance(disable_tqdm=DISABLE_VERBOSE)
+        FID = FrechetInceptionDistance(
+            disable_tqdm=DISABLE_VERBOSE,
+            batch_size=args.fid_batch_size,
+        )
 
     # run one metric
     def _run_metric(
