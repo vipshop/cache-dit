@@ -412,7 +412,7 @@ def get_args():
         "--fid-batch-size",
         "-b",
         type=int,
-        default=16,
+        default=1,
         help="Batch size for FID compute",
     )
     return parser.parse_args()
