@@ -391,7 +391,7 @@ def get_args():
         help="Show metrics progress verbose",
     )
 
-    # img 1 vs N pattern
+    # Image 1 vs N pattern
     parser.add_argument(
         "--img-source-dir",
         "-d",
@@ -405,6 +405,22 @@ def get_args():
         type=str,
         default=None,
         help="Path to ref dir that contains ground truth images",
+    )
+
+    # Video 1 vs N pattern
+    parser.add_argument(
+        "--video-source-dir",
+        "-vd",
+        type=str,
+        default=None,
+        help="Path to dir that contains many videos",
+    )
+    parser.add_argument(
+        "--ref-video",
+        "-rv",
+        type=str,
+        default=None,
+        help="Path to ground truth video",
     )
 
     # FID batch size
@@ -517,24 +533,25 @@ def entrypoint():
     # run selected metrics
     if not DISABLE_VERBOSE:
         logger.info(f"Selected metrics: {args.metrics}")
-    if args.img_source_dir is None or args.ref_img_dir is None:
-        for metric in args.metrics:
-            _run_metric(
-                mertric=metric,
-                img_true=args.img_true,
-                img_test=args.img_test,
-                video_true=args.video_true,
-                video_test=args.video_test,
-            )
-    else:
+
+    def _is_image_1vsN_pattern() -> bool:
+        return args.img_source_dir is not None and args.ref_img_dir is not None
+
+    def _is_video_1vsN_pattern() -> bool:
+        return args.video_source_dir is not None and args.ref_video is not None
+
+    assert not all((_is_image_1vsN_pattern(), _is_video_1vsN_pattern()))
+
+    if _is_image_1vsN_pattern():
         # Glob Image dirs
-        directories = []
         if not os.path.exists(args.img_source_dir):
             logger.error(f"{args.img_source_dir} not exist!")
             return
         if not os.path.exists(args.ref_img_dir):
             logger.error(f"{args.ref_img_dir} not exist!")
             return
+
+        directories = []
         for item in os.listdir(args.img_source_dir):
             item_path = os.path.join(args.img_source_dir, item)
             if os.path.isdir(item_path):
@@ -561,6 +578,61 @@ def entrypoint():
                     img_true=args.ref_img_dir,
                     img_test=img_test_dir,
                 )
+
+    elif _is_video_1vsN_pattern():
+        # Glob videos
+        if not os.path.exists(args.video_source_dir):
+            logger.error(f"{args.video_source_dir} not exist!")
+            return
+        if not os.path.exists(args.ref_video):
+            logger.error(f"{args.ref_video} not exist!")
+            return
+
+        video_source_dir: pathlib.Path = pathlib.Path(args.video_source_dir)
+        video_source_files = sorted(
+            [
+                file
+                for ext in _VIDEO_EXTENSIONS
+                for file in video_source_dir.rglob("*.{}".format(ext))
+            ]
+        )
+        video_source_files = [file.as_posix() for file in video_source_files]
+
+        video_source_selected = []
+        for video_source_file in video_source_files:
+            if os.path.basename(video_source_file) == os.path.basename(
+                args.ref_video
+            ):
+                continue
+            video_source_selected.append(video_source_file)
+
+        if len(video_source_selected) == 0:
+            return
+
+        video_source_selected = sorted(video_source_selected)
+        if not DISABLE_VERBOSE:
+            logger.info(
+                f"Compare {args.ref_video} vs {video_source_selected}, "
+                f"Num compares: {len(video_source_selected)}"
+            )
+
+        for metric in args.metrics:
+            for video_test in video_source_selected:
+                _run_metric(
+                    mertric=metric,
+                    video_true=args.ref_video,
+                    video_test=video_test,
+                )
+
+    else:
+        for metric in args.metrics:
+            _run_metric(
+                mertric=metric,
+                img_true=args.img_true,
+                img_test=args.img_test,
+                video_true=args.video_true,
+                video_test=args.video_test,
+            )
 
 
 if __name__ == "__main__":
