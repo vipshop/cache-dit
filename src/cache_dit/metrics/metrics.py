@@ -515,7 +515,8 @@ def entrypoint():
                 )
 
     # run selected metrics
-    logger.info(f"Selected metrics: {args.metrics}")
+    if not DISABLE_VERBOSE:
+        logger.info(f"Selected metrics: {args.metrics}")
     if args.img_source_dir is None or args.ref_img_dir is None:
         for metric in args.metrics:
             _run_metric(
@@ -547,10 +548,11 @@ def entrypoint():
             return
 
         directories = sorted(directories)
-        logger.info(
-            f"Compare {args.ref_img_dir} vs {directories}, "
-            f"Num compares: {len(directories)}"
-        )
+        if not DISABLE_VERBOSE:
+            logger.info(
+                f"Compare {args.ref_img_dir} vs {directories}, "
+                f"Num compares: {len(directories)}"
+            )
 
         for metric in args.metrics:
             for img_test_dir in directories:
