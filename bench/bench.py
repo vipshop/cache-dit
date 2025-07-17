@@ -56,6 +56,7 @@ def get_cache_options(
 ):
     assert args is not None
     if args.cache_config is not None:
+        assert os.path.exists(args.cache_config)
         from cache_dit.cache_factory import load_cache_options_from_yaml
 
         cache_options = load_cache_options_from_yaml(args.cache_config)
@@ -64,7 +65,7 @@ def get_cache_options(
             f"\n{cache_options}"
         )
         if cache_type is None:
-            cache_type = cache_type["cache_type"]
+            cache_type = cache_options["cache_type"]
     else:
         cache_type = CacheType.type(cache_type)
         if cache_type == CacheType.FBCache:
