@@ -20,6 +20,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cache", type=str, default=None)
+    parser.add_argument("--cache-config", type=str, default=None)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
@@ -50,78 +51,92 @@ def set_rand_seeds(seed):
     torch.manual_seed(seed)
 
 
-def get_cache_options(cache_type: CacheType, args: argparse.Namespace):
-    cache_type = CacheType.type(cache_type)
-    if cache_type == CacheType.FBCache:
-        cache_options = {
-            "cache_type": CacheType.FBCache,
-            "warmup_steps": args.warmup_steps,
-            "max_cached_steps": args.max_cached_steps,
-            "residual_diff_threshold": args.rdt,
-            # TaylorSeer options
-            "enable_taylorseer": args.taylorseer,
-        }
-    elif cache_type == CacheType.DBCache:
-        cache_options = {
-            "cache_type": CacheType.DBCache,
-            "warmup_steps": args.warmup_steps,
-            "max_cached_steps": args.max_cached_steps,  # -1 means no limit
-            # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
-            "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
-            "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
-            "max_Fn_compute_blocks": 19,
-            "max_Bn_compute_blocks": 38,
-            # Skip the specific Bn blocks in cache steps.
-            # 0, 2, 4, ..., 14, 15, etc.
-            "Bn_compute_blocks_ids": CacheType.range(
-                0, args.Bn_compute_blocks, args.Bn_steps
-            ),
-            "non_compute_blocks_diff_threshold": 0.08,
-            "residual_diff_threshold": args.rdt,
-            # Alter cache pattern: 0 F 1 T 2 F 3 T 4 F 5 T ...
-            "enable_alter_cache": args.alter,
-            "alter_residual_diff_threshold": args.rdt,
-            "l1_hidden_states_diff_threshold": (
-                None if not args.l1_diff else args.rdt
-            ),
-            # releative token diff threshold, default is 0.0
-            "important_condition_threshold": 0.00,
-            # TaylorSeer options
-            "enable_taylorseer": args.taylorseer,
-            "enable_encoder_taylorseer": args.taylorseer,
-            # Taylorseer cache type cache be hidden_states or residual
-            "taylorseer_cache_type": "residual",
-            "taylorseer_kwargs": {
-                "n_derivatives": args.taylorseer_order,
-            },
-        }
-    elif cache_type == CacheType.DBPrune:
-        assert (
-            args.taylorseer is False
-        ), "DBPrune does not support TaylorSeer yet."
-        cache_options = {
-            "cache_type": CacheType.DBPrune,
-            "residual_diff_threshold": args.rdt,
-            "Fn_compute_blocks": args.Fn_compute_blocks,
-            "Bn_compute_blocks": args.Bn_compute_blocks,
-            "warmup_steps": args.warmup_steps,
-            "max_pruned_steps": args.max_pruned_steps,  # -1 means no limit
-            # releative token diff threshold, default is 0.0
-            "important_condition_threshold": 0.00,
-            "enable_dynamic_prune_threshold": (
-                True if args.rdt <= 0.15 else False
-            ),
-            "max_dynamic_prune_threshold": 2 * args.rdt,
-            "dynamic_prune_threshold_relax_ratio": 1.25,
-            "residual_cache_update_interval": 1,
-            # You can set non-prune blocks to avoid ageressive pruning.
-            # FLUX.1 has 19 + 38 blocks, so we can set it to 0, 2, 4, ..., etc.
-            "non_prune_blocks_ids": [],
-        }
+def get_cache_options(
+    cache_type: CacheType = None, args: argparse.Namespace = None
+):
+    assert args is not None
+    if args.cache_config is not None:
+        from cache_dit.cache_factory import load_cache_options_from_yaml
+
+        cache_options = load_cache_options_from_yaml(args.cache_config)
+        logger.info(
+            f"Loaded cache options from file: {args.cache_config}, "
+            f"\n{cache_options}"
+        )
+        if cache_type is None:
+            cache_type = cache_type["cache_type"]
     else:
-        cache_options = {
-            "cache_type": CacheType.NONE,
-        }
+        cache_type = CacheType.type(cache_type)
+        if cache_type == CacheType.FBCache:
+            cache_options = {
+                "cache_type": CacheType.FBCache,
+                "warmup_steps": args.warmup_steps,
+                "max_cached_steps": args.max_cached_steps,
+                "residual_diff_threshold": args.rdt,
+                # TaylorSeer options
+                "enable_taylorseer": args.taylorseer,
+            }
+        elif cache_type == CacheType.DBCache:
+            cache_options = {
+                "cache_type": CacheType.DBCache,
+                "warmup_steps": args.warmup_steps,
+                "max_cached_steps": args.max_cached_steps,  # -1 means no limit
+                # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+                "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
+                "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
+                "max_Fn_compute_blocks": 19,
+                "max_Bn_compute_blocks": 38,
+                # Skip the specific Bn blocks in cache steps.
+                # 0, 2, 4, ..., 14, 15, etc.
+                "Bn_compute_blocks_ids": CacheType.range(
+                    0, args.Bn_compute_blocks, args.Bn_steps
+                ),
+                "non_compute_blocks_diff_threshold": 0.08,
+                "residual_diff_threshold": args.rdt,
+                # Alter cache pattern: 0 F 1 T 2 F 3 T 4 F 5 T ...
+                "enable_alter_cache": args.alter,
+                "alter_residual_diff_threshold": args.rdt,
+                "l1_hidden_states_diff_threshold": (
+                    None if not args.l1_diff else args.rdt
+                ),
+                # releative token diff threshold, default is 0.0
+                "important_condition_threshold": 0.00,
+                # TaylorSeer options
+                "enable_taylorseer": args.taylorseer,
+                "enable_encoder_taylorseer": args.taylorseer,
+                # Taylorseer cache type cache be hidden_states or residual
+                "taylorseer_cache_type": "residual",
+                "taylorseer_kwargs": {
+                    "n_derivatives": args.taylorseer_order,
+                },
+            }
+        elif cache_type == CacheType.DBPrune:
+            assert (
+                args.taylorseer is False
+            ), "DBPrune does not support TaylorSeer yet."
+            cache_options = {
+                "cache_type": CacheType.DBPrune,
+                "residual_diff_threshold": args.rdt,
+                "Fn_compute_blocks": args.Fn_compute_blocks,
+                "Bn_compute_blocks": args.Bn_compute_blocks,
+                "warmup_steps": args.warmup_steps,
+                "max_pruned_steps": args.max_pruned_steps,  # -1 means no limit
+                # releative token diff threshold, default is 0.0
+                "important_condition_threshold": 0.00,
+                "enable_dynamic_prune_threshold": (
+                    True if args.rdt <= 0.15 else False
+                ),
+                "max_dynamic_prune_threshold": 2 * args.rdt,
+                "dynamic_prune_threshold_relax_ratio": 1.25,
+                "residual_cache_update_interval": 1,
+                # You can set non-prune blocks to avoid ageressive pruning.
+                # FLUX.1 has 19 + 38 blocks, so we can set it to 0, 2, 4, ..., etc.
+                "non_prune_blocks_ids": [],
+            }
+        else:
+            cache_options = {
+                "cache_type": CacheType.NONE,
+            }
     # Reset cache_type for result saving
     cache_type_str = str(cache_type).removeprefix("CacheType.").upper()
     if cache_type == CacheType.DBCache:
