@@ -649,21 +649,30 @@ def entrypoint():
             )
 
     if args.sort_output:
-        sorted_items = sorted(
-            METRICS_META.items(), key=lambda x: x[1], reverse=True
-        )
-        max_key_len = max(len(key) for key in METRICS_META.keys())
 
-        format_len = int(max_key_len * 1.15)
-        res_len = format_len - len(f"Summary: {args.metrics}")
-        left_len = res_len // 2
-        right_len = res_len - left_len
-        print("-" * format_len)
-        print(" " * left_len + f"Summary: {args.metrics}" + " " * right_len)
-        print("-" * format_len)
-        for key, value in sorted_items:
-            print(f"{key:<{max_key_len}}: {value:<.4f}")
-        print("-" * format_len)
+        for metric in args.metrics:
+            selected_items = {}
+            for key in METRICS_META.keys():
+                if metric.upper() in key or metric.lower() in key:
+                    selected_items[key] = METRICS_META[key]
+
+            sorted_items = sorted(
+                selected_items.items(), key=lambda x: x[1], reverse=True
+            )
+            max_key_len = max(len(key) for key in selected_items.keys())
+
+            format_len = int(max_key_len * 1.15)
+            res_len = format_len - len(f"Summary: {metric.upper()}")
+            left_len = res_len // 2
+            right_len = res_len - left_len
+            print("-" * format_len)
+            print(
+                " " * left_len + f"Summary: {metric.upper()}" + " " * right_len
+            )
+            print("-" * format_len)
+            for key, value in sorted_items:
+                print(f"{key:<{max_key_len}}: {value:<.4f}")
+            print("-" * format_len)
 
 
 if __name__ == "__main__":
