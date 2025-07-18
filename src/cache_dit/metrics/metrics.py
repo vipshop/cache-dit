@@ -383,13 +383,6 @@ def get_args():
         default=None,
         help="Path to predicted video or Dir to predicted videos",
     )
-    parser.add_argument(
-        "--enable-verbose",
-        "-verbose",
-        action="store_true",
-        default=False,
-        help="Show metrics progress verbose",
-    )
 
     # Image 1 vs N pattern
     parser.add_argument(
@@ -431,6 +424,24 @@ def get_args():
         default=1,
         help="Batch size for FID compute",
     )
+
+    # Verbose
+    parser.add_argument(
+        "--enable-verbose",
+        "-verbose",
+        action="store_true",
+        default=False,
+        help="Show metrics progress verbose",
+    )
+
+    # Format output
+    parser.add_argument(
+        "--sort-output",
+        "-sort",
+        action="store_true",
+        default=False,
+        help="Sort the outupt metrics results",
+    )
     return parser.parse_args()
 
 
@@ -449,16 +460,19 @@ def entrypoint():
             batch_size=args.fid_batch_size,
         )
 
+    METRICS_META: dict[str, float] = {}
+
     # run one metric
     def _run_metric(
-        mertric: str,
+        metric: str,
         img_true: str = None,
         img_test: str = None,
         video_true: str = None,
         video_test: str = None,
     ) -> None:
         nonlocal FID
-        mertric = mertric.lower()
+        nonlocal METRICS_META
+        metric = metric.lower()
         if img_true is not None and img_test is not None:
             if any(
                 (
@@ -470,30 +484,30 @@ def entrypoint():
             # img_true and img_test can be files or dirs
             img_true_info = os.path.basename(img_true)
             img_test_info = os.path.basename(img_test)
-            if mertric == "psnr" or mertric == "all":
+
+            def _logging_msg(value: float, n: int):
+                if value is None or n is None:
+                    return
+                msg = (
+                    f"{img_true_info} vs {img_test_info}, "
+                    f"Num: {n}, {metric.upper()}: {value:.5f}"
+                )
+                METRICS_META[msg] = value
+                logger.info(msg)
+
+            if metric == "psnr" or metric == "all":
                 img_psnr, n = compute_psnr(img_true, img_test)
-                logger.info(
-                    f"{img_true_info} vs {img_test_info}, "
-                    f"Num: {n}, PSNR: {img_psnr}"
-                )
-            if mertric == "ssim" or mertric == "all":
+                _logging_msg(img_psnr, n)
+            if metric == "ssim" or metric == "all":
                 img_ssim, n = compute_ssim(img_true, img_test)
-                logger.info(
-                    f"{img_true_info} vs {img_test_info}, "
-                    f"Num: {n}, SSIM: {img_ssim}"
-                )
-            if mertric == "mse" or mertric == "all":
+                _logging_msg(img_ssim, n)
+            if metric == "mse" or metric == "all":
                 img_mse, n = compute_mse(img_true, img_test)
-                logger.info(
-                    f"{img_true_info} vs {img_test_info}, "
-                    f"Num: {n},  MSE: {img_mse}"
-                )
-            if mertric == "fid" or mertric == "all":
+                _logging_msg(img_mse, n)
+            if metric == "fid" or metric == "all":
                 img_fid, n = FID.compute_fid(img_true, img_test)
-                logger.info(
-                    f"{img_true_info} vs {img_test_info}, "
-                    f"Num: {n},  FID: {img_fid}"
-                )
+                _logging_msg(img_fid, n)
+
         if video_true is not None and video_test is not None:
             if any(
                 (
@@ -502,33 +516,33 @@ def entrypoint():
                 )
             ):
                 return
+
             # video_true and video_test can be files or dirs
             video_true_info = os.path.basename(video_true)
             video_test_info = os.path.basename(video_test)
-            if mertric == "psnr" or mertric == "all":
+
+            def _logging_msg(value: float, n: int):
+                if value is None or n is None:
+                    return
+                msg = (
+                    f"{video_true_info} vs {video_test_info}, "
+                    f"Frames: {n}, {metric.upper()}: {value:.5f}"
+                )
+                METRICS_META[msg] = value
+                logger.info(msg)
+
+            if metric == "psnr" or metric == "all":
                 video_psnr, n = compute_video_psnr(video_true, video_test)
-                logger.info(
-                    f"{video_true_info} vs {video_test_info}, "
-                    f"Frames: {n}, PSNR: {video_psnr}"
-                )
-            if mertric == "ssim" or mertric == "all":
+                _logging_msg(video_psnr, n)
+            if metric == "ssim" or metric == "all":
                 video_ssim, n = compute_video_ssim(video_true, video_test)
-                logger.info(
-                    f"{video_true_info} vs {video_test_info}, "
-                    f"Frames: {n}, SSIM: {video_ssim}"
-                )
-            if mertric == "mse" or mertric == "all":
+                _logging_msg(video_ssim, n)
+            if metric == "mse" or metric == "all":
                 video_mse, n = compute_video_mse(video_true, video_test)
-                logger.info(
-                    f"{video_true_info} vs {video_test_info}, "
-                    f"Frames: {n},  MSE: {video_mse}"
-                )
-            if mertric == "fid" or mertric == "all":
+                _logging_msg(video_mse, n)
+            if metric == "fid" or metric == "all":
                 video_fid, n = FID.compute_video_fid(video_true, video_test)
-                logger.info(
-                    f"{video_true_info} vs {video_test_info}, "
-                    f"Frames: {n},  FID: {video_fid}"
-                )
+                _logging_msg(video_fid, n)
 
     # run selected metrics
     if not DISABLE_VERBOSE:
@@ -574,7 +588,7 @@ def entrypoint():
         for metric in args.metrics:
             for img_test_dir in directories:
                 _run_metric(
-                    mertric=metric,
+                    metric=metric,
                     img_true=args.ref_img_dir,
                     img_test=img_test_dir,
                 )
@@ -619,7 +633,7 @@ def entrypoint():
         for metric in args.metrics:
             for video_test in video_source_selected:
                 _run_metric(
-                    mertric=metric,
+                    metric=metric,
                     video_true=args.ref_video,
                     video_test=video_test,
                 )
@@ -627,12 +641,39 @@ def entrypoint():
     else:
         for metric in args.metrics:
             _run_metric(
-                mertric=metric,
+                metric=metric,
                 img_true=args.img_true,
                 img_test=args.img_test,
                 video_true=args.video_true,
                 video_test=args.video_test,
             )
+
+    if args.sort_output:
+
+        for metric in args.metrics:
+            selected_items = {}
+            for key in METRICS_META.keys():
+                if metric.upper() in key or metric.lower() in key:
+                    selected_items[key] = METRICS_META[key]
+
+            reverse = True if metric.lower() in ["psnr", "ssim"] else False
+            sorted_items = sorted(
+                selected_items.items(), key=lambda x: x[1], reverse=reverse
+            )
+            max_key_len = max(len(key) for key in selected_items.keys())
+
+            format_len = int(max_key_len * 1.15)
+            res_len = format_len - len(f"Summary: {metric.upper()}")
+            left_len = res_len // 2
+            right_len = res_len - left_len
+            print("-" * format_len)
+            print(
+                " " * left_len + f"Summary: {metric.upper()}" + " " * right_len
+            )
+            print("-" * format_len)
+            for key, value in sorted_items:
+                print(f"{key:<{max_key_len}}: {value:<.4f}")
+            print("-" * format_len)
 
 
 if __name__ == "__main__":
