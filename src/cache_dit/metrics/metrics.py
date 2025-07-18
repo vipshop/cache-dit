@@ -654,10 +654,10 @@ def entrypoint():
         )
         max_key_len = max(len(key) for key in METRICS_META.keys())
 
-        print("-" * int(max_key_len * 1.5))
+        print("-" * int(max_key_len * 1.3))
         for key, value in sorted_items:
             print(f"{key:<{max_key_len}}: {value:<.4f}")
-        print("-" * int(max_key_len * 1.5))
+        print("-" * int(max_key_len * 1.3))
 
 
 if __name__ == "__main__":
