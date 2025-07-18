@@ -650,16 +650,14 @@ def entrypoint():
 
     if args.sort_output:
         sorted_items = sorted(
-            METRICS_META.items(),
-            key=lambda x: x[1],
-            reverse=True,
+            METRICS_META.items(), key=lambda x: x[1], reverse=True
         )
         max_key_len = max(len(key) for key in METRICS_META.keys())
 
-        print("-" * (max_key_len * 1.5))
+        print("-" * int(max_key_len * 1.5))
         for key, value in sorted_items:
             print(f"{key:<{max_key_len}}: {value:<.4f}")
-        print("-" * (max_key_len * 1.5))
+        print("-" * int(max_key_len * 1.5))
 
 
 if __name__ == "__main__":
