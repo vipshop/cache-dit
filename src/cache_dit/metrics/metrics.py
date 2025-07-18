@@ -656,8 +656,9 @@ def entrypoint():
                 if metric.upper() in key or metric.lower() in key:
                     selected_items[key] = METRICS_META[key]
 
+            reverse = True if metric.lower() in ["psnr", "ssim"] else False
             sorted_items = sorted(
-                selected_items.items(), key=lambda x: x[1], reverse=True
+                selected_items.items(), key=lambda x: x[1], reverse=reverse
             )
             max_key_len = max(len(key) for key in selected_items.keys())
 
