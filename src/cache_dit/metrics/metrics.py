@@ -654,7 +654,10 @@ def entrypoint():
 
     if args.sort_output:
 
-        def _parse_value(text: str, tag: str = "Num") -> float:
+        def _parse_value(
+            text: str,
+            tag: str = "Num",
+        ) -> float:
             import re
 
             pattern = re.compile(
@@ -670,17 +673,24 @@ def entrypoint():
                 return float(match.group(1))
             return int(match.group(1))
 
-        def _format_item(key: str, metric: str, value: float, max_key_len: int):
+        def _format_item(
+            key: str,
+            metric: str,
+            value: float,
+            max_key_len: int,
+        ):
             # U1-Q0-C0-NONE vs U4-Q1-C1-NONE
             header = key.split(",")[0].strip()
             # Num / Frames
             if n := _parse_value(key, "Num"):
                 print(
-                    f"{header:<{max_key_len}}  Num: {n}  {metric.upper()}: {value:<.4f}"
+                    f"{header:<{max_key_len}}  Num: {n}  "
+                    f"{metric.upper()}: {value:<.4f}"
                 )
             elif n := _parse_value(key, "Frames"):
                 print(
-                    f"{header:<{max_key_len}}  Frames: {n}  {metric.upper()}: {value:<.4f}"
+                    f"{header:<{max_key_len}}  Frames: {n}  "
+                    f"{metric.upper()}: {value:<.4f}"
                 )
             else:
                 raise ValueError("Num or Frames can not be NoneType.")
