@@ -334,19 +334,22 @@ compute_video_mse = partial(
 )
 
 
+METRICS_CHOICES = [
+    "psnr",
+    "ssim",
+    "mse",
+    "fid",
+    "all",
+]
+
+
 # Entrypoints
 def get_args():
+    global METRICS_CHOICES
     parser = argparse.ArgumentParser(
         description="CacheDiT's Metrics CLI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    METRICS_CHOICES = [
-        "psnr",
-        "ssim",
-        "mse",
-        "fid",
-        "all",
-    ]
     parser.add_argument(
         "metrics",
         type=str,
@@ -446,6 +449,7 @@ def get_args():
 
 
 def entrypoint():
+    global METRICS_CHOICES
     args = get_args()
     logger.debug(args)
 
@@ -650,6 +654,47 @@ def entrypoint():
 
     if args.sort_output:
 
+        def _parse_value(
+            text: str,
+            tag: str = "Num",
+        ) -> float:
+            import re
+
+            pattern = re.compile(
+                rf"{re.escape(tag)}:\s*(\d+\.?\d*)", re.IGNORECASE
+            )
+
+            match = pattern.search(text)
+
+            if not match:
+                return None
+
+            if tag.lower() in METRICS_CHOICES:
+                return float(match.group(1))
+            return int(match.group(1))
+
+        def _format_item(
+            key: str,
+            metric: str,
+            value: float,
+            max_key_len: int,
+        ):
+            # U1-Q0-C0-NONE vs U4-Q1-C1-NONE
+            header = key.split(",")[0].strip()
+            # Num / Frames
+            if n := _parse_value(key, "Num"):
+                print(
+                    f"{header:<{max_key_len}}  Num: {n}  "
+                    f"{metric.upper()}: {value:<.4f}"
+                )
+            elif n := _parse_value(key, "Frames"):
+                print(
+                    f"{header:<{max_key_len}}  Frames: {n}  "
+                    f"{metric.upper()}: {value:<.4f}"
+                )
+            else:
+                raise ValueError("Num or Frames can not be NoneType.")
+
         for metric in args.metrics:
             selected_items = {}
             for key in METRICS_META.keys():
@@ -660,9 +705,12 @@ def entrypoint():
             sorted_items = sorted(
                 selected_items.items(), key=lambda x: x[1], reverse=reverse
             )
-            max_key_len = max(len(key) for key in selected_items.keys())
+            selected_keys = [
+                key.split(",")[0].strip() for key in selected_items.keys()
+            ]
+            max_key_len = max(len(key) for key in selected_keys)
 
-            format_len = int(max_key_len * 1.15)
+            format_len = int(max_key_len * 1.5)
             res_len = format_len - len(f"Summary: {metric.upper()}")
             left_len = res_len // 2
             right_len = res_len - left_len
@@ -672,7 +720,7 @@ def entrypoint():
             )
             print("-" * format_len)
             for key, value in sorted_items:
-                print(f"{key:<{max_key_len}}: {value:<.4f}")
+                _format_item(key, metric, value, max_key_len)
             print("-" * format_len)
 
 
