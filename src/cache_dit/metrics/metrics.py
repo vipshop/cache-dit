@@ -676,11 +676,11 @@ def entrypoint():
             # Num / Frames
             if n := _parse_value(key, "Num"):
                 print(
-                    f"{header:<{max_key_len}} Num: {n} {metric.upper()}:{value:<.4f}"
+                    f"{header:<{max_key_len}}  Num: {n}  {metric.upper()}: {value:<.4f}"
                 )
             elif n := _parse_value(key, "Frames"):
                 print(
-                    f"{header:<{max_key_len}} Frames: {n} {metric.upper()}:{value:<.4f}"
+                    f"{header:<{max_key_len}}  Frames: {n}  {metric.upper()}: {value:<.4f}"
                 )
             else:
                 raise ValueError("Num or Frames can not be NoneType.")
@@ -700,7 +700,7 @@ def entrypoint():
             ]
             max_key_len = max(len(key) for key in selected_keys)
 
-            format_len = int(max_key_len * 1.15)
+            format_len = int(max_key_len * 1.5)
             res_len = format_len - len(f"Summary: {metric.upper()}")
             left_len = res_len // 2
             right_len = res_len - left_len
