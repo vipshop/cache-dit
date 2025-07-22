@@ -439,11 +439,11 @@ def get_args():
 
     # Format output
     parser.add_argument(
-        "--sort-output",
-        "-sort",
+        "--summary",
+        "-s",
         action="store_true",
         default=False,
-        help="Sort the outupt metrics results",
+        help="Summary the outupt metrics results",
     )
 
     # Addtional perf log
@@ -675,7 +675,7 @@ def entrypoint():
                 video_test=args.video_test,
             )
 
-    if args.sort_output:
+    if args.summary:
 
         def _fetch_perf():
             if args.perf_log is None or args.perf_tag is None:
