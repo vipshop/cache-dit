@@ -677,7 +677,7 @@ def entrypoint():
 
     if args.sort_output:
 
-        def _fetch_perf_texts():
+        def _fetch_perf():
             if args.perf_log is None or args.perf_tag is None:
                 return []
             if not os.path.exists(args.perf_log):
@@ -700,26 +700,7 @@ def entrypoint():
                                 perf_texts.append(line)
             return perf_texts
 
-        PERF_TEXTS = _fetch_perf_texts()
-
-        # def _parse_value(
-        #     text: str,
-        #     tag: str = "Num",
-        # ) -> float:
-        #     import re
-
-        #     pattern = re.compile(
-        #         rf"{re.escape(tag)}:\s*(\d+\.?\d*)", re.IGNORECASE
-        #     )
-
-        #     match = pattern.search(text)
-
-        #     if not match:
-        #         return None
-
-        #     if tag.lower() in METRICS_CHOICES:
-        #         return float(match.group(1))
-        #     return int(match.group(1))
+        PERF_TEXTS: list[str] = _fetch_perf()
 
         def _parse_value(
             text: str,
