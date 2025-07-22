@@ -445,6 +445,29 @@ def get_args():
         default=False,
         help="Sort the outupt metrics results",
     )
+
+    # Addtional perf log
+    parser.add_argument(
+        "--perf-log",
+        "-plog",
+        type=str,
+        default=None,
+        help="Path to addtional perf log",
+    )
+    parser.add_argument(
+        "--perf-tag",
+        "-ptag",
+        type=str,
+        default=None,
+        help="Tag to parse perf time from perf log",
+    )
+    parser.add_argument(
+        "--extra-perf-tags",
+        "-extra-ptags",
+        nargs="+",
+        default=[],
+        help="Extra tags to parse perf time from perf log",
+    )
     return parser.parse_args()
 
 
@@ -654,14 +677,61 @@ def entrypoint():
 
     if args.sort_output:
 
+        def _fetch_perf_texts():
+            if args.perf_log is None or args.perf_tag is None:
+                return []
+            if not os.path.exists(args.perf_log):
+                return []
+            perf_texts = []
+            with open(args.perf_log, "r") as file:
+                perf_lines = file.readlines()
+                for line in perf_lines:
+                    line = line.strip()
+                    if args.perf_tag.lower() in line.lower():
+                        if len(args.extra_perf_tags) == 0:
+                            perf_texts.append(line)
+                        else:
+                            has_all_extra_tag = True
+                            for ext_tag in args.extra_perf_tags:
+                                if ext_tag.lower() not in line.lower():
+                                    has_all_extra_tag = False
+                                    break
+                            if has_all_extra_tag:
+                                perf_texts.append(line)
+            return perf_texts
+
+        PERF_TEXTS = _fetch_perf_texts()
+
+        # def _parse_value(
+        #     text: str,
+        #     tag: str = "Num",
+        # ) -> float:
+        #     import re
+
+        #     pattern = re.compile(
+        #         rf"{re.escape(tag)}:\s*(\d+\.?\d*)", re.IGNORECASE
+        #     )
+
+        #     match = pattern.search(text)
+
+        #     if not match:
+        #         return None
+
+        #     if tag.lower() in METRICS_CHOICES:
+        #         return float(match.group(1))
+        #     return int(match.group(1))
+
         def _parse_value(
             text: str,
             tag: str = "Num",
-        ) -> float:
+        ) -> float | None:
             import re
 
+            escaped_tag = re.escape(tag)
+            processed_tag = escaped_tag.replace(r"\ ", r"\s+")
+
             pattern = re.compile(
-                rf"{re.escape(tag)}:\s*(\d+\.?\d*)", re.IGNORECASE
+                rf"{processed_tag}:\s*(\d+\.?\d*)\D*", re.IGNORECASE
             )
 
             match = pattern.search(text)
@@ -669,9 +739,30 @@ def entrypoint():
             if not match:
                 return None
 
-            if tag.lower() in METRICS_CHOICES:
-                return float(match.group(1))
-            return int(match.group(1))
+            value_str = match.group(1)
+            try:
+                if tag.lower() in METRICS_CHOICES:
+                    return float(value_str)
+                if args.perf_tag is not None:
+                    if tag.lower() == args.perf_tag.lower():
+                        return float(value_str)
+                return int(value_str)
+            except ValueError:
+                return None
+
+        def _parse_perf(
+            compare_tag: str,
+        ) -> float | None:
+            nonlocal PERF_TEXTS
+            perf_times = []
+            for line in PERF_TEXTS:
+                if compare_tag in line:
+                    perf_time = _parse_value(line, args.perf_tag)
+                    if perf_time is not None:
+                        perf_times.append(perf_time)
+            if len(perf_times) == 0:
+                return None
+            return sum(perf_times) / len(perf_times)
 
         def _format_item(
             key: str,
@@ -679,21 +770,45 @@ def entrypoint():
             value: float,
             max_key_len: int,
         ):
+            nonlocal PERF_TEXTS
             # U1-Q0-C0-NONE vs U4-Q1-C1-NONE
             header = key.split(",")[0].strip()
+            compare_tag = header.split("vs")[1].strip()  # U4-Q1-C1-NONE
+            has_perf_texts = len(PERF_TEXTS) > 0
+            format_str = ""
             # Num / Frames
             if n := _parse_value(key, "Num"):
-                print(
-                    f"{header:<{max_key_len}}  Num: {n}  "
-                    f"{metric.upper()}: {value:<.4f}"
-                )
+                if not has_perf_texts:
+                    format_str = (
+                        f"{header:<{max_key_len}}  Num: {n}  "
+                        f"{metric.upper()}: {value:<.4f}"
+                    )
+                else:
+                    perf_time = _parse_perf(compare_tag)
+                    perf_time = f"{perf_time:<.2f}" if perf_time else None
+                    format_str = (
+                        f"{header:<{max_key_len}}  Num: {n}  "
+                        f"{metric.upper()}: {value:<.4f}  "
+                        f"Perf: {perf_time}"
+                    )
             elif n := _parse_value(key, "Frames"):
-                print(
-                    f"{header:<{max_key_len}}  Frames: {n}  "
-                    f"{metric.upper()}: {value:<.4f}"
-                )
+                if not has_perf_texts:
+                    format_str = (
+                        f"{header:<{max_key_len}}  Frames: {n}  "
+                        f"{metric.upper()}: {value:<.4f}"
+                    )
+                else:
+                    perf_time = _parse_perf(compare_tag)
+                    perf_time = f"{perf_time:<.2f}" if perf_time else None
+                    format_str = (
+                        f"{header:<{max_key_len}}  Frames: {n}  "
+                        f"{metric.upper()}: {value:<.4f}  "
+                        f"Perf: {perf_time}"
+                    )
             else:
                 raise ValueError("Num or Frames can not be NoneType.")
+
+            return format_str
 
         for metric in args.metrics:
             selected_items = {}
@@ -710,7 +825,14 @@ def entrypoint():
             ]
             max_key_len = max(len(key) for key in selected_keys)
 
-            format_len = int(max_key_len * 1.5)
+            format_strs = []
+            for key, value in sorted_items:
+                format_strs.append(
+                    _format_item(key, metric, value, max_key_len)
+                )
+
+            format_len = max(len(format_str) for format_str in format_strs)
+
             res_len = format_len - len(f"Summary: {metric.upper()}")
             left_len = res_len // 2
             right_len = res_len - left_len
@@ -719,8 +841,8 @@ def entrypoint():
                 " " * left_len + f"Summary: {metric.upper()}" + " " * right_len
             )
             print("-" * format_len)
-            for key, value in sorted_items:
-                _format_item(key, metric, value, max_key_len)
+            for format_str in format_strs:
+                print(format_str)
             print("-" * format_len)
 
 
