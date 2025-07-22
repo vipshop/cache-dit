@@ -762,28 +762,28 @@ def entrypoint():
                 if not has_perf_texts:
                     format_str = (
                         f"{header:<{max_key_len}}  Num: {n}  "
-                        f"{metric.upper()}: {value:<.4f}"
+                        f"{metric.upper()}: {value:<7.4f}"
                     )
                 else:
                     perf_time = _parse_perf(compare_tag)
                     perf_time = f"{perf_time:<.2f}" if perf_time else None
                     format_str = (
                         f"{header:<{max_key_len}}  Num: {n}  "
-                        f"{metric.upper()}: {value:<.4f}  "
+                        f"{metric.upper()}: {value:<7.4f}  "
                         f"Perf: {perf_time}"
                     )
             elif n := _parse_value(key, "Frames"):
                 if not has_perf_texts:
                     format_str = (
                         f"{header:<{max_key_len}}  Frames: {n}  "
-                        f"{metric.upper()}: {value:<.4f}"
+                        f"{metric.upper()}: {value:<7.4f}"
                     )
                 else:
                     perf_time = _parse_perf(compare_tag)
                     perf_time = f"{perf_time:<.2f}" if perf_time else None
                     format_str = (
                         f"{header:<{max_key_len}}  Frames: {n}  "
-                        f"{metric.upper()}: {value:<.4f}  "
+                        f"{metric.upper()}: {value:<7.4f}  "
                         f"Perf: {perf_time}"
                     )
             else:
