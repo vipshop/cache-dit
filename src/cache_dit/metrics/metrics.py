@@ -512,28 +512,28 @@ def entrypoint():
             img_true_info = os.path.basename(img_true)
             img_test_info = os.path.basename(img_test)
 
-            def _logging_msg(value: float, n: int):
+            def _logging_msg(value: float, name, n: int):
                 if value is None or n is None:
                     return
                 msg = (
                     f"{img_true_info} vs {img_test_info}, "
-                    f"Num: {n}, {metric.upper()}: {value:.5f}"
+                    f"Num: {n}, {name.upper()}: {value:.5f}"
                 )
                 METRICS_META[msg] = value
                 logger.info(msg)
 
             if metric == "psnr" or metric == "all":
                 img_psnr, n = compute_psnr(img_true, img_test)
-                _logging_msg(img_psnr, n)
+                _logging_msg(img_psnr, "psnr", n)
             if metric == "ssim" or metric == "all":
                 img_ssim, n = compute_ssim(img_true, img_test)
-                _logging_msg(img_ssim, n)
+                _logging_msg(img_ssim, "ssim", n)
             if metric == "mse" or metric == "all":
                 img_mse, n = compute_mse(img_true, img_test)
-                _logging_msg(img_mse, n)
+                _logging_msg(img_mse, "mse", n)
             if metric == "fid" or metric == "all":
                 img_fid, n = FID.compute_fid(img_true, img_test)
-                _logging_msg(img_fid, n)
+                _logging_msg(img_fid, "fid", n)
 
         if video_true is not None and video_test is not None:
             if any(
@@ -548,28 +548,28 @@ def entrypoint():
             video_true_info = os.path.basename(video_true)
             video_test_info = os.path.basename(video_test)
 
-            def _logging_msg(value: float, n: int):
+            def _logging_msg(value: float, name, n: int):
                 if value is None or n is None:
                     return
                 msg = (
                     f"{video_true_info} vs {video_test_info}, "
-                    f"Frames: {n}, {metric.upper()}: {value:.5f}"
+                    f"Frames: {n}, {name.upper()}: {value:.5f}"
                 )
                 METRICS_META[msg] = value
                 logger.info(msg)
 
             if metric == "psnr" or metric == "all":
                 video_psnr, n = compute_video_psnr(video_true, video_test)
-                _logging_msg(video_psnr, n)
+                _logging_msg(video_psnr, "psnr", n)
             if metric == "ssim" or metric == "all":
                 video_ssim, n = compute_video_ssim(video_true, video_test)
-                _logging_msg(video_ssim, n)
+                _logging_msg(video_ssim, "ssim", n)
             if metric == "mse" or metric == "all":
                 video_mse, n = compute_video_mse(video_true, video_test)
-                _logging_msg(video_mse, n)
+                _logging_msg(video_mse, "mse", n)
             if metric == "fid" or metric == "all":
                 video_fid, n = FID.compute_video_fid(video_true, video_test)
-                _logging_msg(video_fid, n)
+                _logging_msg(video_fid, "fid", n)
 
     # run selected metrics
     if not DISABLE_VERBOSE:
