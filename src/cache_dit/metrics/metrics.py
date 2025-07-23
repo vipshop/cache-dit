@@ -791,7 +791,12 @@ def entrypoint():
 
             return format_str
 
-        for metric in args.metrics:
+        selected_metrics = args.metrics
+        if "all" in selected_metrics:
+            selected_metrics = METRICS_CHOICES.copy()
+            selected_metrics.remove("all")
+
+        for metric in selected_metrics:
             selected_items = {}
             for key in METRICS_META.keys():
                 if metric.upper() in key or metric.lower() in key:
