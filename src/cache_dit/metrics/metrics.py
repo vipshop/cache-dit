@@ -21,6 +21,32 @@ logger = init_logger(__name__)
 DISABLE_VERBOSE = not get_metrics_verbose()
 
 
+def compute_lpips_file(
+    image_true: np.ndarray | str,
+    image_test: np.ndarray | str,
+) -> float:
+    import torch
+    from PIL import Image
+    from torchvision.transforms.v2.functional import (convert_image_dtype,
+                                                      normalize, pil_to_tensor)
+
+    def load_img_as_tensor(path):
+        pil = Image.open(path)
+        img = pil_to_tensor(pil)
+        img = convert_image_dtype(img, dtype=torch.float32)
+        img = normalize(img, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        return img
+
+    if isinstance(image_true, str):
+        image_true = load_img_as_tensor(image_true)
+    if isinstance(image_test, str):
+        image_test = load_img_as_tensor(image_test)
+    return compute_lpips_file(
+        image_true,
+        image_test,
+    )
+
+
 def compute_psnr_file(
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
@@ -305,6 +331,11 @@ def compute_video_metric(
         return None, None
 
 
+compute_lpips = partial(
+    compute_dir_metric,
+    compute_file_func=compute_lpips_file,
+)
+
 compute_psnr = partial(
     compute_dir_metric,
     compute_file_func=compute_psnr_file,
@@ -320,6 +351,10 @@ compute_mse = partial(
     compute_file_func=compute_mse_file,
 )
 
+compute_video_lpips = partial(
+    compute_video_metric,
+    compute_frame_func=compute_lpips_file,
+)
 compute_video_psnr = partial(
     compute_video_metric,
     compute_frame_func=compute_psnr_file,
@@ -522,6 +557,9 @@ def entrypoint():
                 METRICS_META[msg] = value
                 logger.info(msg)
 
+            if metric == "lpips" or metric == "all":
+                img_lpips, n = compute_lpips_file(img_true, img_test)
+                _logging_msg(img_lpips, "lpips", n)
             if metric == "psnr" or metric == "all":
                 img_psnr, n = compute_psnr(img_true, img_test)
                 _logging_msg(img_psnr, "psnr", n)
@@ -558,6 +596,9 @@ def entrypoint():
                 METRICS_META[msg] = value
                 logger.info(msg)
 
+            if metric == "lpips" or metric == "all":
+                video_lpips, n = compute_video_lpips(video_true, video_test)
+                _logging_msg(video_lpips, "lpips", n)
             if metric == "psnr" or metric == "all":
                 video_psnr, n = compute_video_psnr(video_true, video_test)
                 _logging_msg(video_psnr, "psnr", n)

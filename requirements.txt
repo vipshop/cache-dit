@@ -7,3 +7,4 @@ transformers>=4.51.3
 diffusers>=0.33.1
 scikit-image
 scipy
+lpips==0.1.4
