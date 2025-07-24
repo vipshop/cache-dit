@@ -14,6 +14,7 @@ from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
+from cache_dit.metrics.lpips import compute_lpips_img
 
 logger = init_logger(__name__)
 
@@ -27,8 +28,11 @@ def compute_lpips_file(
 ) -> float:
     import torch
     from PIL import Image
-    from torchvision.transforms.v2.functional import (convert_image_dtype,
-                                                      normalize, pil_to_tensor)
+    from torchvision.transforms.v2.functional import (
+        convert_image_dtype,
+        normalize,
+        pil_to_tensor,
+    )
 
     def load_img_as_tensor(path):
         pil = Image.open(path)
@@ -41,7 +45,7 @@ def compute_lpips_file(
         image_true = load_img_as_tensor(image_true)
     if isinstance(image_test, str):
         image_test = load_img_as_tensor(image_test)
-    return compute_lpips_file(
+    return compute_lpips_img(
         image_true,
         image_test,
     )
@@ -370,6 +374,7 @@ compute_video_mse = partial(
 
 
 METRICS_CHOICES = [
+    "lpips",
     "psnr",
     "ssim",
     "mse",
@@ -558,7 +563,7 @@ def entrypoint():
                 logger.info(msg)
 
             if metric == "lpips" or metric == "all":
-                img_lpips, n = compute_lpips_file(img_true, img_test)
+                img_lpips, n = compute_lpips(img_true, img_test)
                 _logging_msg(img_lpips, "lpips", n)
             if metric == "psnr" or metric == "all":
                 img_psnr, n = compute_psnr(img_true, img_test)
