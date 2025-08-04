@@ -7,7 +7,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union
 
 import torch
 
-import cache_dit.primitives as DP
+import cache_dit.primitives as primitives
 from cache_dit.cache_factory.taylorseer import TaylorSeer
 from cache_dit.logger import init_logger
 
@@ -348,8 +348,8 @@ def are_two_tensors_similar(
     mean_diff = (t1 - t2).abs().mean()
     mean_t1 = t1.abs().mean()
     if parallelized:
-        mean_diff = DP.all_reduce_sync(mean_diff, "avg")
-        mean_t1 = DP.all_reduce_sync(mean_t1, "avg")
+        mean_diff = primitives.all_reduce_sync(mean_diff, "avg")
+        mean_t1 = primitives.all_reduce_sync(mean_t1, "avg")
     diff = (mean_diff / mean_t1).item()
 
     add_residual_diff(diff)

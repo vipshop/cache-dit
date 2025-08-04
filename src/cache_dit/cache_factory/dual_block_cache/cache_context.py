@@ -8,8 +8,9 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union
 
 import torch
 
-import cache_dit.primitives as DP
+import cache_dit.primitives as primitives
 from cache_dit.cache_factory.taylorseer import TaylorSeer
+from cache_dit.utils import is_diffusers_at_least_0_3_5
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -772,8 +773,8 @@ def are_two_tensors_similar(
             mean_t1 = t1.abs().mean()
 
         if parallelized:
-            mean_diff = DP.all_reduce_sync(mean_diff, "avg")
-            mean_t1 = DP.all_reduce_sync(mean_t1, "avg")
+            mean_diff = primitives.all_reduce_sync(mean_diff, "avg")
+            mean_t1 = primitives.all_reduce_sync(mean_t1, "avg")
 
         # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
         # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
@@ -1365,6 +1366,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
     ):
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
+        # This condition branch is mainly for FLUX series.
         if self.single_transformer_blocks is not None:
             for block in self.transformer_blocks[Fn_compute_blocks() :]:
                 hidden_states = block(
@@ -1381,22 +1383,32 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                             hidden_states,
                         )
 
-            hidden_states = torch.cat(
-                [encoder_hidden_states, hidden_states], dim=1
-            )
-            for block in self._Mn_single_transformer_blocks():
-                hidden_states = block(
-                    hidden_states,
-                    *args,
-                    **kwargs,
+            # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
+            if is_diffusers_at_least_0_3_5():
+                for block in self._Mn_single_transformer_blocks():
+                    encoder_hidden_states, hidden_states = block(
+                        hidden_states,
+                        encoder_hidden_states,
+                        *args,
+                        **kwargs,
+                    )
+            else:
+                hidden_states = torch.cat(
+                    [encoder_hidden_states, hidden_states], dim=1
                 )
-            encoder_hidden_states, hidden_states = hidden_states.split(
-                [
-                    encoder_hidden_states.shape[1],
-                    hidden_states.shape[1] - encoder_hidden_states.shape[1],
-                ],
-                dim=1,
-            )
+                for block in self._Mn_single_transformer_blocks():
+                    hidden_states = block(
+                        hidden_states,
+                        *args,
+                        **kwargs,
+                    )
+                encoder_hidden_states, hidden_states = hidden_states.split(
+                    [
+                        encoder_hidden_states.shape[1],
+                        hidden_states.shape[1] - encoder_hidden_states.shape[1],
+                    ],
+                    dim=1,
+                )
         else:
             for block in self._Mn_transformer_blocks():
                 hidden_states = block(
@@ -1789,43 +1801,71 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
+        # This condition branch is mainly for FLUX series.
         if self.single_transformer_blocks is not None:
             assert Bn_compute_blocks() <= len(self.single_transformer_blocks), (
                 f"Bn_compute_blocks {Bn_compute_blocks()} must be less than "
                 f"the number of single transformer blocks {len(self.single_transformer_blocks)}"
             )
-
-            hidden_states = torch.cat(
-                [encoder_hidden_states, hidden_states], dim=1
-            )
-            if len(Bn_compute_blocks_ids()) > 0:
-                for i, block in enumerate(self._Bn_single_transformer_blocks()):
-                    hidden_states = (
-                        self._compute_and_cache_single_transformer_block(
-                            i,
-                            original_hidden_states,
-                            original_encoder_hidden_states,
-                            block,
+            if is_diffusers_at_least_0_3_5():
+                if len(Bn_compute_blocks_ids()) > 0:
+                    # NOTE: Reuse _compute_and_cache_transformer_block here.
+                    for i, block in enumerate(
+                        self._Bn_single_transformer_blocks()
+                    ):
+                        hidden_states, encoder_hidden_states = (
+                            self._compute_and_cache_transformer_block(
+                                i,
+                                block,
+                                hidden_states,
+                                encoder_hidden_states,
+                                *args,
+                                **kwargs,
+                            )
+                        )
+                else:
+                    # Compute all Bn blocks if no specific Bn compute blocks ids are set.
+                    for block in self._Bn_single_transformer_blocks():
+                        encoder_hidden_states, hidden_states = block(
+                            hidden_states,
+                            encoder_hidden_states,
+                            *args,
+                            **kwargs,
+                        )
+            else:
+                hidden_states = torch.cat(
+                    [encoder_hidden_states, hidden_states], dim=1
+                )
+                if len(Bn_compute_blocks_ids()) > 0:
+                    for i, block in enumerate(
+                        self._Bn_single_transformer_blocks()
+                    ):
+                        hidden_states = (
+                            self._compute_and_cache_single_transformer_block(
+                                i,
+                                original_hidden_states,
+                                original_encoder_hidden_states,
+                                block,
+                                hidden_states,
+                                *args,
+                                **kwargs,
+                            )
+                        )
+                else:
+                    # Compute all Bn blocks if no specific Bn compute blocks ids are set.
+                    for block in self._Bn_single_transformer_blocks():
+                        hidden_states = block(
                             hidden_states,
                             *args,
                             **kwargs,
                         )
-                    )
-            else:
-                # Compute all Bn blocks if no specific Bn compute blocks ids are set.
-                for block in self._Bn_single_transformer_blocks():
-                    hidden_states = block(
-                        hidden_states,
-                        *args,
-                        **kwargs,
-                    )
-            encoder_hidden_states, hidden_states = hidden_states.split(
-                [
-                    encoder_hidden_states.shape[1],
-                    hidden_states.shape[1] - encoder_hidden_states.shape[1],
-                ],
-                dim=1,
-            )
+                encoder_hidden_states, hidden_states = hidden_states.split(
+                    [
+                        encoder_hidden_states.shape[1],
+                        hidden_states.shape[1] - encoder_hidden_states.shape[1],
+                    ],
+                    dim=1,
+                )
         else:
             assert Bn_compute_blocks() <= len(self.transformer_blocks), (
                 f"Bn_compute_blocks {Bn_compute_blocks()} must be less than "
