@@ -12,7 +12,7 @@
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
   <p align="center">
-    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT offers <br>a set of training-free cache accelerators for DiT: <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">TaylorSeer</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
+    DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. CacheDiT offers <br>a set of training-free cache accelerators for DiT: <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">Hybrid TaylorSeer</a>, <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
   </p>
 </div>
 
@@ -75,13 +75,6 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 ## ⚡️DBCache: Dual Block Cache  
 
 <div id="dbcache"></div>
-
-
-<div align="center">
-  <p align="center">
-    <h3>🔥DBCache: Dual Block Caching for Diffusion Transformers</h3>
-  </p>
-</div> 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
@@ -161,17 +154,6 @@ cache_options = {
     "non_compute_blocks_diff_threshold": 0.08,
 }
 ```
-
-<div align="center">
-  <p align="center">
-    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
-
-|Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
 ## 🔥Hybrid TaylorSeer
 
@@ -277,12 +259,6 @@ apply_cache_on_pipe(pipe, **cache_options)
 ## ⚡️DBPrune: Dynamic Block Prune
 
 <div id="dbprune"></div>  
-
-<div align="center">
-  <p align="center">
-    <h3>🔥DBPrune: Dynamic Block Prune with Residual Caching</h3>
-  </p>
-</div> 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbprune-v1.png)
 
