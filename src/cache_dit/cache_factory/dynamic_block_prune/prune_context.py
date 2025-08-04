@@ -7,7 +7,8 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 
-import cache_dit.primitives as DP
+import cache_dit.primitives as primitives
+from cache_dit.utils import is_diffusers_at_least_0_3_5
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -446,8 +447,8 @@ def are_two_tensors_similar(
         mean_t1 = t1.abs().mean()
 
     if parallelized:
-        mean_diff = DP.all_reduce_sync(mean_diff, "avg")
-        mean_t1 = DP.all_reduce_sync(mean_t1, "avg")
+        mean_diff = primitives.all_reduce_sync(mean_diff, "avg")
+        mean_t1 = primitives.all_reduce_sync(mean_t1, "avg")
 
     # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
     # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
@@ -936,27 +937,44 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             )
 
         if self.single_transformer_blocks is not None:
-            hidden_states = torch.cat(
-                [encoder_hidden_states, hidden_states], dim=1
-            )
-            for j, block in enumerate(self.single_transformer_blocks):
-                hidden_states = self._compute_or_prune_single_transformer_block(
-                    j + len(self.transformer_blocks),
-                    original_hidden_states,
-                    original_encoder_hidden_states,
-                    block,
-                    hidden_states,
-                    *args,
-                    **kwargs,
+            # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
+            if is_diffusers_at_least_0_3_5():
+                for j, block in enumerate(self.single_transformer_blocks):
+                    # NOTE: Reuse _compute_or_prune_transformer_block here.
+                    hidden_states, encoder_hidden_states = (
+                        self._compute_or_prune_transformer_block(
+                            j + len(self.transformer_blocks),
+                            block,
+                            hidden_states,
+                            encoder_hidden_states,
+                            *args,
+                            **kwargs,
+                        )
+                    )
+            else:
+                hidden_states = torch.cat(
+                    [encoder_hidden_states, hidden_states], dim=1
                 )
+                for j, block in enumerate(self.single_transformer_blocks):
+                    hidden_states = (
+                        self._compute_or_prune_single_transformer_block(
+                            j + len(self.transformer_blocks),
+                            original_hidden_states,
+                            original_encoder_hidden_states,
+                            block,
+                            hidden_states,
+                            *args,
+                            **kwargs,
+                        )
+                    )
 
-            encoder_hidden_states, hidden_states = hidden_states.split(
-                [
-                    encoder_hidden_states.shape[1],
-                    hidden_states.shape[1] - encoder_hidden_states.shape[1],
-                ],
-                dim=1,
-            )
+                encoder_hidden_states, hidden_states = hidden_states.split(
+                    [
+                        encoder_hidden_states.shape[1],
+                        hidden_states.shape[1] - encoder_hidden_states.shape[1],
+                    ],
+                    dim=1,
+                )
 
         hidden_states = (
             hidden_states.reshape(-1)
