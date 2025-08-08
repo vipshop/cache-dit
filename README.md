@@ -11,23 +11,25 @@
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
+   <b>🔥<a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>🔥
 </div>
 
 <!--
 <p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. <br> CacheDiT offers a set of training-free cache accelerators for Diffusion Transformers: <br> <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">Hybrid TaylorSeer</a>, <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
   </p>
+  <div align="center">
+  <p align="center">
+    <b>♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️</b>
+  </p>
+</div> 
 -->
 
 ## 🤗Introduction
 
 DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. **CacheDiT** offers a set of training-free cache accelerators for Diffusion Transformers: <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">Hybrid TaylorSeer</a>, <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
 
-<div align="center">
-  <p align="center">
-    <b>♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️</b>
-  </p>
-</div> 
+
 
 ## 🔥News
 - [2025-07-18] 🎉First caching mechanism in **[🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast)** with **[cache-dit](https://github.com/vipshop/cache-dit)**, also check the **[PR](https://github.com/huggingface/flux-fast/pull/13)**. 
