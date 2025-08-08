@@ -23,9 +23,10 @@
     <b>♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️</b>
   </p>
 </div> 
+🤗Introduction
 -->
 
-## 🤗Introduction
+## 
 
 DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. **CacheDiT** offers a set of training-free cache accelerators for Diffusion Transformers: <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">Hybrid TaylorSeer</a>, <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
 
