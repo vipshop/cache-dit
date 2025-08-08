@@ -11,10 +11,17 @@
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
-  <p align="center">
+</div>
+
+<!--
+<p align="center">
     DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. <br> CacheDiT offers a set of training-free cache accelerators for Diffusion Transformers: <br> <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">Hybrid TaylorSeer</a>, <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
   </p>
-</div>
+-->
+
+## 🤗Introduction
+
+DeepCache is for UNet not DiT. Most DiT cache speedups are complex and not training-free. **CacheDiT** offers a set of training-free cache accelerators for Diffusion Transformers: <b>🔥<a href="#dbcache">DBCache</a>, <a href="#dbprune">DBPrune</a>, <a href="#taylorseer">Hybrid TaylorSeer</a>, <a href="#cfg">Hybrid Cache CFG</a>, <a href="#fbcache">FBCache</a></b>, etc🔥
 
 <div align="center">
   <p align="center">
