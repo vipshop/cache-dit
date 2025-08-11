@@ -465,14 +465,14 @@ def is_encoder_taylorseer_enabled():
 
 
 @torch.compiler.disable
-def get_taylorseers():
+def get_taylorseers() -> Tuple[TaylorSeer, TaylorSeer]:
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_taylorseers()
 
 
 @torch.compiler.disable
-def get_cfg_taylorseers():
+def get_cfg_taylorseers() -> Tuple[TaylorSeer, TaylorSeer]:
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_cfg_taylorseers()
