@@ -46,7 +46,6 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
         flow_shift=flow_shift,
     )
 
-pipe.to("cuda")
 
 if args.cache:
     cache_options = {

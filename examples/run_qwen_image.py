@@ -33,7 +33,6 @@ pipe = QwenImagePipeline.from_pretrained(
 # Enable memory savings
 pipe.enable_model_cpu_offload()
 
-assert not args.cache, "cache is not support now!"
 if args.cache:
     cache_options = {
         "cache_type": CacheType.DBCache,
@@ -44,7 +43,7 @@ if args.cache:
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
         # CFG: classifier free guidance or not
-        "do_separate_classifier_free_guidance": False,
+        "do_separate_classifier_free_guidance": True,
         "cfg_compute_first": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,
@@ -95,6 +94,7 @@ width, height = aspect_ratios["16:9"]
 
 start = time.time()
 
+# do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
 image = pipe(
     prompt=prompt + positive_magic["en"],
     negative_prompt=negative_prompt,
