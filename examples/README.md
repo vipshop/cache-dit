@@ -4,6 +4,7 @@
 
 <div id="supported"></div>
 
+- [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
@@ -21,6 +22,14 @@ pip3 install -r requirements.txt
 ```
 
 ## 🚀Run Examples  
+
+- Qwen-Image
+
+```bash
+python3 run_qwen_image.py # baseline
+python3 run_qwen_image.py --cache --Fn 8 --Bn 8
+python3 run_qwen_image.py --cache --Fn 8 --Bn 0 --taylorseer
+```
 
 - FLUX.1-dev 
 
