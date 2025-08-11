@@ -23,7 +23,10 @@ args = get_args()
 print(args)
 
 pipe = QwenImagePipeline.from_pretrained(
-    os.environ.get("QWEN_IMAGE_DIR", "Qwen/Qwen-Image"),
+    os.environ.get(
+        "QWEN_IMAGE_DIR",
+        "Qwen/Qwen-Image",
+    ),
     torch_dtype=torch.bfloat16,
 )
 
