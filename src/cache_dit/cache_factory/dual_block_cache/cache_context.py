@@ -264,11 +264,9 @@ class DBCacheContext:
                 if encoder_taylorseer is not None:
                     encoder_taylorseer.mark_step_begin()
 
-    @torch.compiler.disable
     def get_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
         return self.taylorseer, self.encoder_tarlorseer
 
-    @torch.compiler.disable
     def get_cfg_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
         return self.cfg_taylorseer, self.cfg_encoder_taylorseer
 
@@ -464,14 +462,12 @@ def is_encoder_taylorseer_enabled():
     return cache_context.enable_encoder_taylorseer
 
 
-@torch.compiler.disable
 def get_taylorseers() -> Tuple[TaylorSeer, TaylorSeer]:
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_taylorseers()
 
 
-@torch.compiler.disable
 def get_cfg_taylorseers() -> Tuple[TaylorSeer, TaylorSeer]:
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
