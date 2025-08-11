@@ -4,7 +4,7 @@ import logging
 import contextlib
 import dataclasses
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Optional, Union
+from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 
 import torch
 
@@ -265,11 +265,11 @@ class DBCacheContext:
                     encoder_taylorseer.mark_step_begin()
 
     @torch.compiler.disable
-    def get_taylorseers(self):
+    def get_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
         return self.taylorseer, self.encoder_tarlorseer
 
     @torch.compiler.disable
-    def get_cfg_taylorseers(self):
+    def get_cfg_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
         return self.cfg_taylorseer, self.cfg_encoder_taylorseer
 
     @torch.compiler.disable
