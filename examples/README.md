@@ -1,12 +1,26 @@
 # Examples for CacheDiT  
 
-## Install requirements  
+## 🔥Supported Models  
+
+<div id="supported"></div>
+
+- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+
+## ⚙️Install Requirements  
 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-## Run examples  
+## 🚀Run Examples  
 
 - FLUX.1-dev 
 
@@ -22,6 +36,14 @@ python3 run_flux.py --cache --Fn 8 --Bn 0 --taylorseer
 python3 run_flux_fill.py # baseline
 python3 run_flux_fill.py --cache --Fn 8 --Bn 8
 python3 run_flux_fill.py --cache --Fn 8 --Bn 0 --taylorseer
+```
+
+- FLUX.1-Kontext-dev 
+
+```bash
+python3 run_flux_kontext.py # baseline
+python3 run_flux_kontext.py --cache --Fn 8 --Bn 8
+python3 run_flux_kontext.py --cache --Fn 8 --Bn 0 --taylorseer
 ```
 
 - CogVideoX 
