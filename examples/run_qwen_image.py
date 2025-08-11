@@ -54,7 +54,8 @@ if args.cache:
     cache_type_str = (
         f"{cache_type_str}_F{args.Fn_compute_blocks}"
         f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
-        f"T{int(args.taylorseer)}O{args.taylorseer_order}"
+        f"T{int(args.taylorseer)}O{args.taylorseer_order}_"
+        f"R{args.rdt}"
     )
     print(f"cache options:\n{cache_options}")
 
