@@ -33,8 +33,6 @@ pipe = QwenImagePipeline.from_pretrained(
 # Enable memory savings
 pipe.enable_model_cpu_offload()
 
-pipe.to("cuda")
-
 assert not args.cache, "cache is not support now!"
 if args.cache:
     cache_options = {
