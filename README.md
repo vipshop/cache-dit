@@ -17,7 +17,7 @@
 ## 🔥News
 - [2025-08-11] 🔥[FLUX.1-Kontext-dev](./examples/run_flux_kontext.py) is supported! Please check [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, also check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
-- [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! A forked version of [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) that **makes flux-fast even faster** with **[cache-dit](https://github.com/vipshop/cache-dit)**, **3.3x** speedup on NVIDIA L20.
+- [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with `cache-dit`.
 
 ## 📖Contents 
 
