@@ -18,7 +18,7 @@ def apply_db_cache_on_transformer(
             cache_context.DBCachedTransformerBlocks(
                 transformer.transformer_blocks,
                 transformer=transformer,
-                return_hidden_states_only=False,
+                return_hidden_states_first=False,
             )
         ]
     )

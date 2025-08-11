@@ -30,9 +30,6 @@ pipe = QwenImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-# Enable memory savings
-pipe.enable_model_cpu_offload()
-
 if args.cache:
     cache_options = {
         "cache_type": CacheType.DBCache,
@@ -64,6 +61,10 @@ if args.cache:
     apply_cache_on_pipe(pipe, **cache_options)
 else:
     cache_type_str = "NONE"
+
+
+# Enable memory savings
+pipe.enable_model_cpu_offload()
 
 
 positive_magic = {
