@@ -11,10 +11,10 @@ def get_args() -> argparse.ArgumentParser:
     # General arguments
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
-    parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
-    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=4)
+    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
-    parser.add_argument("--rdt", type=float, default=0.08)
+    parser.add_argument("--rdt", type=float, default=0.12)
     parser.add_argument("--warmup-steps", type=int, default=0)
     return parser.parse_args()
 
@@ -28,7 +28,10 @@ pipe = QwenImagePipeline.from_pretrained(
         "Qwen/Qwen-Image",
     ),
     torch_dtype=torch.bfloat16,
+    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
+    device_map="balanced" if torch.cuda.device_count() > 1 else None,
 )
+
 
 if args.cache:
     cache_options = {
@@ -64,8 +67,9 @@ else:
     cache_type_str = "NONE"
 
 
-# Enable memory savings
-pipe.enable_model_cpu_offload()
+if torch.cuda.device_count() <= 1:
+    # Enable memory savings
+    pipe.enable_model_cpu_offload()
 
 
 positive_magic = {
