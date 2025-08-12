@@ -70,6 +70,7 @@ else:
 if torch.cuda.device_count() <= 1:
     # Enable memory savings
     pipe.enable_model_cpu_offload()
+    pipe.enable_sequential_cpu_offload()
 
 
 positive_magic = {
