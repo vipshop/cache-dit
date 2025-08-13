@@ -4,6 +4,7 @@ import torch
 import argparse
 from diffusers import QwenImagePipeline
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
+from utils import GiB
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -15,12 +16,13 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.12)
-    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--warmup-steps", type=int, default=8)
     return parser.parse_args()
 
 
 args = get_args()
 print(args)
+
 
 pipe = QwenImagePipeline.from_pretrained(
     os.environ.get(
@@ -29,7 +31,9 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map="balanced" if torch.cuda.device_count() > 1 else None,
+    device_map=(
+        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
+    ),
 )
 
 

@@ -5,6 +5,7 @@ import argparse
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
+from utils import GiB
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -23,14 +24,17 @@ def get_args() -> argparse.ArgumentParser:
 args = get_args()
 print(args)
 
-
 pipe = MochiPipeline.from_pretrained(
     os.environ.get(
         "MOCHI_DIR",
         "genmo/mochi-1-preview",
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
+    device_map=(
+        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
+    ),
+)
 
 if args.cache:
     cache_options = {
