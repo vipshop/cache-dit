@@ -16,7 +16,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.12)
-    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--warmup-steps", type=int, default=8)
     return parser.parse_args()
 
 
