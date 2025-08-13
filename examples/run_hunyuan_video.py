@@ -10,6 +10,7 @@ from diffusers import (
     AutoencoderKLHunyuanVideo,
 )
 from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
+from utils import GiB
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -27,20 +28,6 @@ def get_args() -> argparse.ArgumentParser:
 
 args = get_args()
 print(args)
-
-
-def get_gpu_memory_in_gib():
-    if not torch.cuda.is_available():
-        return 0
-
-    try:
-        total_memory_bytes = torch.cuda.get_device_properties(
-            torch.cuda.current_device(),
-        ).total_memory
-        total_memory_gib = total_memory_bytes / (1024**3)
-        return int(total_memory_gib)
-    except Exception:
-        return 0
 
 
 model_id = os.environ.get("HUNYUAN_DIR", "tencent/HunyuanVideo")
@@ -100,7 +87,7 @@ assert isinstance(
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-if get_gpu_memory_in_gib() <= 48:
+if GiB() <= 48:
     pipe.vae.enable_tiling(
         # Make it runnable on GPUs with 48GB memory
         tile_sample_min_height=128,
