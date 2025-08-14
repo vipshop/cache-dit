@@ -185,6 +185,14 @@ def main():
                 torch_dtype=torch.bfloat16,
             ).to("cuda")
 
+            cache_options, cache_type = get_cache_options(args.cache, args)
+
+            logger.info(f"Cache Type: {cache_type}")
+            logger.info(f"Cache Options: {cache_options}")
+
+            # Apply cache to the pipeline
+            apply_cache_on_pipe(pipe, **cache_options)
+
             parallelize_pipe(
                 pipe,
                 mesh=init_context_parallel_mesh(
@@ -203,6 +211,14 @@ def main():
             os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
             torch_dtype=torch.bfloat16,
         ).to("cuda")
+
+        cache_options, cache_type = get_cache_options(args.cache, args)
+
+        logger.info(f"Cache Type: {cache_type}")
+        logger.info(f"Cache Options: {cache_options}")
+
+        # Apply cache to the pipeline
+        apply_cache_on_pipe(pipe, **cache_options)
 
     if args.flag_gems:
         try:
@@ -232,14 +248,6 @@ def main():
         except ImportError:
             logger.error("flag-gems is not installed, please install it. ")
             pass
-
-    cache_options, cache_type = get_cache_options(args.cache, args)
-
-    logger.info(f"Cache Type: {cache_type}")
-    logger.info(f"Cache Options: {cache_options}")
-
-    # Apply cache to the pipeline
-    apply_cache_on_pipe(pipe, **cache_options)
 
     if args.compile:
         # Increase recompile limit for DBCache and DBPrune while
