@@ -4,7 +4,15 @@ import unittest
 import torch
 from diffusers import DiffusionPipeline, FluxTransformer2DModel
 
-from cache_dit.cache_factory.dual_block_cache import cache_context
+from cache_dit.cache_factory.patch.flux import maybe_patch_flux_transformer
+from cache_dit.cache_factory.dual_block_cache import (
+    cache_context,
+    DBCachedTransformerBlocks,
+)
+
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
 
 
 def apply_db_cache_on_transformer(
@@ -13,11 +21,13 @@ def apply_db_cache_on_transformer(
     if getattr(transformer, "_is_cached", False):
         return transformer
 
+    transformer = maybe_patch_flux_transformer(transformer)
+
     cached_transformer_blocks = torch.nn.ModuleList(
         [
-            cache_context.DBCachedTransformerBlocks(
-                transformer.transformer_blocks,
-                transformer.single_transformer_blocks,
+            DBCachedTransformerBlocks(
+                transformer.transformer_blocks
+                + transformer.single_transformer_blocks,
                 transformer=transformer,
                 return_hidden_states_first=False,
             )
