@@ -14,6 +14,12 @@
    <b>🔥<a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a> | <a href="#fbcache">FBCache</a></b>🔥
 </div>
 
+<div align="center">
+  <p align="center">
+    <b>♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️</b>
+  </p>
+</div> 
+
 ## 🔥News  
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) is supported now! Please check [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
