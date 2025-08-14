@@ -1115,6 +1115,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         self.transformer = transformer
         self.transformer_blocks = transformer_blocks
+        # NOTE: single_transformer_blocks is only for FLUX series models
         self.single_transformer_blocks = single_transformer_blocks
         self.return_hidden_states_first = return_hidden_states_first
         self.return_hidden_states_only = return_hidden_states_only
