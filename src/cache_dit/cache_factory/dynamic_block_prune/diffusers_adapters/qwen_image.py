@@ -10,7 +10,7 @@ from cache_dit.cache_factory.dynamic_block_prune import (
 )
 
 
-def apply_db_cache_on_transformer(
+def apply_db_prune_on_transformer(
     transformer: QwenImageTransformer2DModel,
 ):
     if getattr(transformer, "_is_pruned", False):
@@ -51,7 +51,7 @@ def apply_db_cache_on_transformer(
     return transformer
 
 
-def apply_db_cache_on_pipe(
+def apply_db_prune_on_pipe(
     pipe: QwenImagePipeline,
     *,
     shallow_patch: bool = False,
@@ -86,6 +86,6 @@ def apply_db_cache_on_pipe(
         pipe.__class__._is_pruned = True
 
     if not shallow_patch:
-        apply_db_cache_on_transformer(pipe.transformer)
+        apply_db_prune_on_transformer(pipe.transformer)
 
     return pipe
