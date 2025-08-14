@@ -16,7 +16,7 @@
 
 <div align="center">
   <p align="center">
-    <b>♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️</b>
+    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
   </p>
 </div> 
 
@@ -38,7 +38,6 @@
 - [⚡️Hybrid Cache CFG](#cfg)
 - [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
-- [🎉Context Parallelism](#context-parallelism)  
 - [🔥Torch Compile](#compile)
 - [⚙️Metrics CLI](#metrics)
 - [👋Contribute](#contribute)
@@ -119,7 +118,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 - **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
 - **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
 
-For a good balance between performance and precision, DBCache is configured by default with **F8B8**, 8 warmup steps, and unlimited cached steps.
+For a good balance between performance and precision, DBCache is configured by default with **F8B0**, 8 warmup steps, and unlimited cached steps.
 
 ```python
 from diffusers import FluxPipeline
@@ -130,16 +129,16 @@ pipe = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
-# Default options, F8B8, good balance between performance and precision
+# Default options, F8B0, good balance between performance and precision
 cache_options = CacheType.default_options(CacheType.DBCache)
 
-# Custom options, F8B16, higher precision
+# Custom options, F8B0, higher precision
 cache_options = {
     "cache_type": CacheType.DBCache,
     "warmup_steps": 8,
-    "max_cached_steps": 8,    # -1 means no limit
-    "Fn_compute_blocks": 8,   # Fn, F8, etc.
-    "Bn_compute_blocks": 16,  # Bn, B16, etc.
+    "max_cached_steps": -1, # -1 means no limit
+    "Fn_compute_blocks": 8, # Fn, F8, etc.
+    "Bn_compute_blocks": 0, # Bn, B0, etc.
     "residual_diff_threshold": 0.12,
 }
 
@@ -215,7 +214,7 @@ cache_options = {
     # should set do_separate_classifier_free_guidance as False.
     # For example, set it as True for Wan 2.1 and set it as False 
     # for FLUX.1, HunyuanVideo, CogVideoX, Mochi.
-    "do_separate_classifier_free_guidance": True,  # Wan 2.1
+    "do_separate_classifier_free_guidance": True, # Wan 2.1, Qwen-Image
     # Compute cfg forward first or not, default False, namely, 
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     "cfg_compute_first": False,
@@ -232,7 +231,7 @@ cache_options = {
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/fbcache-v1.png)
 
-**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can either use the original FBCache implementation directly or configure **DBCache** with **F1B0** settings to achieve the same functionality.
+**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can use configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
 ```python
 from diffusers import FluxPipeline
@@ -243,15 +242,12 @@ pipe = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
-# Using FBCache directly
-cache_options = CacheType.default_options(CacheType.FBCache)
-
 # Or using DBCache with F1B0. 
 # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
 cache_options = {
     "cache_type": CacheType.DBCache,
-    "warmup_steps": 8,
-    "max_cached_steps": 8,   # -1 means no limit
+    "warmup_steps": 1,
+    "max_cached_steps": 0,   # -1 means no limit
     "Fn_compute_blocks": 1,  # Fn, F1, etc.
     "Bn_compute_blocks": 0,  # Bn, B0, etc.
     "residual_diff_threshold": 0.12,
@@ -332,6 +328,7 @@ apply_cache_on_pipe(pipe, **cache_options)
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
+<!--
 ## 🎉Context Parallelism
 
 <div id="context-parallelism"></div>  
@@ -390,6 +387,8 @@ torchrun --nproc_per_node=4 parallel_cache.py
 |+compile:20.43s|16.25s|14.12s|13.41s|12.00s|8.86s|
 |+L20x4:7.75s|6.62s|6.03s|5.81s|5.24s|3.93s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.2_P59.5_T8.86s.png width=105px>|
+
+-->
 
 ## 🔥Torch Compile
 
@@ -452,7 +451,7 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 <div id="license"></div>
 
-The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Special thanks to their excellent work! We have followed the original License from [FBCache](https://github.com/chengzeyi/ParaAttention), please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
+The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
 
 ## ©️Citations
 

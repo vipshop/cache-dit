@@ -5,9 +5,7 @@ from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.dual_block_cache.diffusers_adapters import (
     apply_db_cache_on_pipe,
 )
-from cache_dit.cache_factory.first_block_cache.diffusers_adapters import (
-    apply_fb_cache_on_pipe,
-)
+
 from cache_dit.cache_factory.dynamic_block_prune.diffusers_adapters import (
     apply_db_prune_on_pipe,
 )
@@ -93,7 +91,7 @@ class CacheType(Enum):
         }
 
         _Fn_compute_blocks = 8
-        _Bn_compute_blocks = 8
+        _Bn_compute_blocks = 0
 
         _db_options = {
             "cache_type": CacheType.DBCache,
@@ -155,7 +153,9 @@ def apply_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
     cache_type = CacheType.type(cache_type)
 
     if cache_type == CacheType.FBCache:
-        return apply_fb_cache_on_pipe(pipe, *args, **kwargs)
+        raise ValueError(
+            "FBCache is removed from cache-dit, please use DBCache F1B0 instead."
+        )
     elif cache_type == CacheType.DBCache:
         return apply_db_cache_on_pipe(pipe, *args, **kwargs)
     elif cache_type == CacheType.DBPrune:
