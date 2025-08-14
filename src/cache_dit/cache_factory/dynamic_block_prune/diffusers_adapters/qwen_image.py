@@ -2,9 +2,8 @@ import functools
 import unittest
 
 import torch
-from diffusers import DiffusionPipeline, FluxTransformer2DModel
+from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
 
-from cache_dit.cache_factory.patch.flux import maybe_patch_flux_transformer
 from cache_dit.cache_factory.dynamic_block_prune import (
     prune_context,
     DBPrunedTransformerBlocks,
@@ -12,44 +11,33 @@ from cache_dit.cache_factory.dynamic_block_prune import (
 
 
 def apply_db_prune_on_transformer(
-    transformer: FluxTransformer2DModel,
+    transformer: QwenImageTransformer2DModel,
 ):
     if getattr(transformer, "_is_pruned", False):
         return transformer
 
-    transformer = maybe_patch_flux_transformer(transformer)
-
-    cached_transformer_blocks = torch.nn.ModuleList(
+    transformer_blocks = torch.nn.ModuleList(
         [
             DBPrunedTransformerBlocks(
-                transformer.transformer_blocks
-                + transformer.single_transformer_blocks,
+                transformer.transformer_blocks,
                 transformer=transformer,
                 return_hidden_states_first=False,
             )
         ]
     )
-    dummy_single_transformer_blocks = torch.nn.ModuleList()
 
     original_forward = transformer.forward
 
-    @functools.wraps(original_forward)
+    @functools.wraps(transformer.__class__.forward)
     def new_forward(
         self,
         *args,
         **kwargs,
     ):
-        with (
-            unittest.mock.patch.object(
-                self,
-                "transformer_blocks",
-                cached_transformer_blocks,
-            ),
-            unittest.mock.patch.object(
-                self,
-                "single_transformer_blocks",
-                dummy_single_transformer_blocks,
-            ),
+        with unittest.mock.patch.object(
+            self,
+            "transformer_blocks",
+            transformer_blocks,
         ):
             return original_forward(
                 *args,
@@ -64,10 +52,10 @@ def apply_db_prune_on_transformer(
 
 
 def apply_db_prune_on_pipe(
-    pipe: DiffusionPipeline,
+    pipe: QwenImagePipeline,
     *,
     shallow_patch: bool = False,
-    residual_diff_threshold=0.05,
+    residual_diff_threshold=0.06,
     downsample_factor=1,
     warmup_steps=0,
     max_pruned_steps=-1,
@@ -82,7 +70,6 @@ def apply_db_prune_on_pipe(
         },
         **kwargs,
     )
-
     if not getattr(pipe, "_is_pruned", False):
         original_call = pipe.__class__.__call__
 
@@ -99,6 +86,6 @@ def apply_db_prune_on_pipe(
         pipe.__class__._is_pruned = True
 
     if not shallow_patch:
-        apply_db_prune_on_transformer(pipe.transformer, **kwargs)
+        apply_db_prune_on_transformer(pipe.transformer)
 
     return pipe

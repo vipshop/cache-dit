@@ -4,10 +4,12 @@ from diffusers import DiffusionPipeline
 
 from cache_dit.cache_factory.dual_block_cache.diffusers_adapters import (
     apply_db_cache_on_pipe,
+    apply_db_cache_on_transformer,
 )
 
 from cache_dit.cache_factory.dynamic_block_prune.diffusers_adapters import (
     apply_db_prune_on_pipe,
+    apply_db_prune_on_transformer,
 )
 
 from cache_dit.logger import init_logger
@@ -165,5 +167,45 @@ def apply_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
             f"Cache type is {cache_type}, no caching will be applied."
         )
         return pipe
+    else:
+        raise ValueError(f"Unknown cache type: {cache_type}")
+
+
+def apply_cache_on_transformer(transformer, *args, **kwargs):
+
+    if hasattr(transformer, "_is_cached") and transformer._is_cached:
+        return transformer
+
+    if hasattr(transformer, "_is_pruned") and transformer._is_pruned:
+        return transformer
+
+    cache_type = kwargs.pop("cache_type", None)
+    if cache_type is None:
+        logger.warning(
+            "No cache type specified, we will use DBCache by default. "
+            "Please specify the cache_type explicitly if you want to "
+            "use a different cache type."
+        )
+        # Force to use DBCache with default cache options
+        return apply_db_cache_on_transformer(
+            transformer,
+            **CacheType.default_options(CacheType.DBCache),
+        )
+
+    cache_type = CacheType.type(cache_type)
+
+    if cache_type == CacheType.FBCache:
+        raise ValueError(
+            "FBCache is removed from cache-dit, please use DBCache F1B0 instead."
+        )
+    elif cache_type == CacheType.DBCache:
+        return apply_db_cache_on_transformer(transformer, *args, **kwargs)
+    elif cache_type == CacheType.DBPrune:
+        return apply_db_prune_on_transformer(transformer, *args, **kwargs)
+    elif cache_type == CacheType.NONE:
+        logger.warning(
+            f"Cache type is {cache_type}, no caching will be applied."
+        )
+        return transformer
     else:
         raise ValueError(f"Unknown cache type: {cache_type}")
