@@ -165,6 +165,11 @@ def main():
     logger.info(f"Arguments: {args}")
     set_rand_seeds(args.seed)
 
+    cache_options, cache_type = get_cache_options(args.cache, args)
+
+    logger.info(f"Cache Type: {cache_type}")
+    logger.info(f"Cache Options: {cache_options}")
+
     # Context Parallel from ParaAttention
     if args.ulysses is not None:
         try:
@@ -185,12 +190,8 @@ def main():
                 torch_dtype=torch.bfloat16,
             ).to("cuda")
 
-            cache_options, cache_type = get_cache_options(args.cache, args)
-
-            logger.info(f"Cache Type: {cache_type}")
-            logger.info(f"Cache Options: {cache_options}")
-
-            # Apply cache to the pipeline
+            # Apply cache to the pipeline, must apply cache before parallelize
+            # for FLUX while the version of diffusers < 0.35.dev0.
             apply_cache_on_pipe(pipe, **cache_options)
 
             parallelize_pipe(
@@ -211,11 +212,6 @@ def main():
             os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
             torch_dtype=torch.bfloat16,
         ).to("cuda")
-
-        cache_options, cache_type = get_cache_options(args.cache, args)
-
-        logger.info(f"Cache Type: {cache_type}")
-        logger.info(f"Cache Options: {cache_options}")
 
         # Apply cache to the pipeline
         apply_cache_on_pipe(pipe, **cache_options)
