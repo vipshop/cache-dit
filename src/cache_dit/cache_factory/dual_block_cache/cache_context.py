@@ -1,5 +1,4 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache/context.py
-
+import inspect
 import logging
 import contextlib
 import dataclasses
@@ -10,7 +9,6 @@ import torch
 
 import cache_dit.primitives as primitives
 from cache_dit.cache_factory.taylorseer import TaylorSeer
-from cache_dit.utils import is_diffusers_at_least_0_3_5
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -1120,6 +1118,13 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         self.single_transformer_blocks = single_transformer_blocks
         self.return_hidden_states_first = return_hidden_states_first
         self.return_hidden_states_only = return_hidden_states_only
+        self.single_forward_parameters = set()
+        if self.single_transformer_blocks is not None:
+            self.single_forward_parameters = set(
+                inspect.signature(
+                    self.single_transformer_blocks[0].forward
+                ).parameters.keys()
+            )
 
     def forward(
         self,
@@ -1380,7 +1385,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         )
 
             # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
-            if is_diffusers_at_least_0_3_5():
+            if "encoder_hidden_states" in self.single_forward_parameters:
                 for block in self._Mn_single_transformer_blocks():
                     encoder_hidden_states, hidden_states = block(
                         hidden_states,
@@ -1803,7 +1808,8 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 f"Bn_compute_blocks {Bn_compute_blocks()} must be less than "
                 f"the number of single transformer blocks {len(self.single_transformer_blocks)}"
             )
-            if is_diffusers_at_least_0_3_5():
+
+            if "encoder_hidden_states" in self.single_forward_parameters:
                 if len(Bn_compute_blocks_ids()) > 0:
                     # NOTE: Reuse _compute_and_cache_transformer_block here.
                     for i, block in enumerate(
