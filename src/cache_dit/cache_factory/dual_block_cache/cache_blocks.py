@@ -22,9 +22,11 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         self.transformer_blocks = transformer_blocks
         self.return_hidden_states_first = return_hidden_states_first
         self.return_hidden_states_only = return_hidden_states_only
-        self._check_forward_params()
+        self._check_forward_parameters()
 
-    def _check_forward_params(self):
+    def _check_forward_parameters(self):
+        # NOTE: DBCache only support blocks which have the pattern:
+        # IN/OUT: (hidden_states, encoder_hidden_states)
         self.required_parameters = [
             "hidden_states",
             "encoder_hidden_states",
