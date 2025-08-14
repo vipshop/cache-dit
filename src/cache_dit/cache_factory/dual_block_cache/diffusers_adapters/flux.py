@@ -232,7 +232,6 @@ def maybe_patch_transformer(transformer: FluxTransformer2DModel):
         logger.warning("Patch FluxSingleTransformerBlock for DBCache.")
         for block in transformer.single_transformer_blocks:
             block.forward = __patch_single_forward__.__get__(block)
-
         transformer.forward = __patch_transformer_forward__.__get__(transformer)
         transformer._is_patched = True
 
