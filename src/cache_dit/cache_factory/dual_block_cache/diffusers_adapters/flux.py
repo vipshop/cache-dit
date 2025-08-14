@@ -231,8 +231,11 @@ def maybe_patch_transformer(transformer: FluxTransformer2DModel):
     if "encoder_hidden_states" not in single_forward_parameters:
         logger.warning("Patch FluxSingleTransformerBlock for DBCache.")
         for block in transformer.single_transformer_blocks:
-            block.forward = __patch_single_forward__
-        transformer.forward = __patch_transformer_forward__
+            block.forward = __patch_single_forward__.__get__(block)
+
+        transformer.forward = __patch_transformer_forward__.__get__(transformer)
+        transformer._is_patched = True
+
     return transformer
 
 
