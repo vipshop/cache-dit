@@ -11,7 +11,10 @@ from diffusers.utils import (
     USE_PEFT_BACKEND,
 )
 
-from cache_dit.cache_factory.dual_block_cache import cache_context
+from cache_dit.cache_factory.dual_block_cache import (
+    cache_context,
+    DBCachedTransformerBlocks,
+)
 from cache_dit.logger import init_logger
 
 try:
@@ -44,7 +47,7 @@ def apply_db_cache_on_transformer(
 
     cached_transformer_blocks = torch.nn.ModuleList(
         [
-            cache_context.DBCachedTransformerBlocks(
+            DBCachedTransformerBlocks(
                 transformer.transformer_blocks
                 + transformer.single_transformer_blocks,
                 transformer=transformer,

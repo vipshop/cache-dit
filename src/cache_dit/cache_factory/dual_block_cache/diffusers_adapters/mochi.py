@@ -4,7 +4,10 @@ import unittest
 import torch
 from diffusers import DiffusionPipeline, MochiTransformer3DModel
 
-from cache_dit.cache_factory.dual_block_cache import cache_context
+from cache_dit.cache_factory.dual_block_cache import (
+    cache_context,
+    DBCachedTransformerBlocks,
+)
 
 
 def apply_db_cache_on_transformer(
@@ -15,7 +18,7 @@ def apply_db_cache_on_transformer(
 
     cached_transformer_blocks = torch.nn.ModuleList(
         [
-            cache_context.DBCachedTransformerBlocks(
+            DBCachedTransformerBlocks(
                 transformer.transformer_blocks,
                 transformer=transformer,
             )
