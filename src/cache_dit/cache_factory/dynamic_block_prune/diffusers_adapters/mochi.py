@@ -4,7 +4,10 @@ import unittest
 import torch
 from diffusers import DiffusionPipeline, MochiTransformer3DModel
 
-from cache_dit.cache_factory.dynamic_block_prune import prune_context
+from cache_dit.cache_factory.dynamic_block_prune import (
+    prune_context,
+    DBPrunedTransformerBlocks,
+)
 
 
 def apply_db_prune_on_transformer(
@@ -15,7 +18,7 @@ def apply_db_prune_on_transformer(
 
     cached_transformer_blocks = torch.nn.ModuleList(
         [
-            prune_context.DBPrunedTransformerBlocks(
+            DBPrunedTransformerBlocks(
                 transformer.transformer_blocks,
                 transformer=transformer,
             )

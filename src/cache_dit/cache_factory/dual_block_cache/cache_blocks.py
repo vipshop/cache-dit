@@ -22,9 +22,9 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         self.transformer_blocks = transformer_blocks
         self.return_hidden_states_first = return_hidden_states_first
         self.return_hidden_states_only = return_hidden_states_only
-        self._check_forward_parameters()
+        self._check_forward_params()
 
-    def _check_forward_parameters(self):
+    def _check_forward_params(self):
         # NOTE: DBCache only support blocks which have the pattern:
         # IN/OUT: (hidden_states, encoder_hidden_states)
         self.required_parameters = [
@@ -51,7 +51,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
         # more stable diff calculation.
-        hidden_states, encoder_hidden_states = self.call_Fn_transformer_blocks(
+        hidden_states, encoder_hidden_states = self.call_Fn_blocks(
             hidden_states,
             encoder_hidden_states,
             *args,
@@ -100,13 +100,11 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
-            hidden_states, encoder_hidden_states = (
-                self.call_Bn_transformer_blocks(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
+            hidden_states, encoder_hidden_states = self.call_Bn_blocks(
+                hidden_states,
+                encoder_hidden_states,
+                *args,
+                **kwargs,
             )
         else:
             cache_context.set_Fn_buffer(
@@ -122,7 +120,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 encoder_hidden_states,
                 hidden_states_residual,
                 encoder_hidden_states_residual,
-            ) = self.call_Mn_transformer_blocks(  # middle
+            ) = self.call_Mn_blocks(  # middle
                 hidden_states,
                 encoder_hidden_states,
                 *args,
@@ -154,13 +152,11 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
-            hidden_states, encoder_hidden_states = (
-                self.call_Bn_transformer_blocks(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
+            hidden_states, encoder_hidden_states = self.call_Bn_blocks(
+                hidden_states,
+                encoder_hidden_states,
+                *args,
+                **kwargs,
             )
 
         patch_cached_stats(self.transformer)
@@ -199,37 +195,37 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         )
 
     @torch.compiler.disable
-    def _Fn_transformer_blocks(self):
+    def _Fn_blocks(self):
         # Select first `n` blocks to process the hidden states for
         # more stable diff calculation.
         # Fn: [0,...,n-1]
-        selected_Fn_transformer_blocks = self.transformer_blocks[
+        selected_Fn_blocks = self.transformer_blocks[
             : cache_context.Fn_compute_blocks()
         ]
-        return selected_Fn_transformer_blocks
+        return selected_Fn_blocks
 
     @torch.compiler.disable
-    def _Mn_transformer_blocks(self):  # middle blocks
+    def _Mn_blocks(self):  # middle blocks
         # M(N-2n): only transformer_blocks [n,...,N-n], middle
         if cache_context.Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
-            selected_Mn_transformer_blocks = self.transformer_blocks[
+            selected_Mn_blocks = self.transformer_blocks[
                 cache_context.Fn_compute_blocks() :
             ]
         else:
-            selected_Mn_transformer_blocks = self.transformer_blocks[
+            selected_Mn_blocks = self.transformer_blocks[
                 cache_context.Fn_compute_blocks() : -cache_context.Bn_compute_blocks()
             ]
-        return selected_Mn_transformer_blocks
+        return selected_Mn_blocks
 
     @torch.compiler.disable
-    def _Bn_transformer_blocks(self):
+    def _Bn_blocks(self):
         # Bn: transformer_blocks [N-n+1,...,N-1]
-        selected_Bn_transformer_blocks = self.transformer_blocks[
+        selected_Bn_blocks = self.transformer_blocks[
             -cache_context.Bn_compute_blocks() :
         ]
-        return selected_Bn_transformer_blocks
+        return selected_Bn_blocks
 
-    def call_Fn_transformer_blocks(
+    def call_Fn_blocks(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
@@ -242,7 +238,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             f"Fn_compute_blocks {cache_context.Fn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
-        for block in self._Fn_transformer_blocks():
+        for block in self._Fn_blocks():
             hidden_states = block(
                 hidden_states,
                 encoder_hidden_states,
@@ -259,7 +255,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         return hidden_states, encoder_hidden_states
 
-    def call_Mn_transformer_blocks(
+    def call_Mn_blocks(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
@@ -268,7 +264,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
     ):
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
-        for block in self._Mn_transformer_blocks():
+        for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
                 encoder_hidden_states,
@@ -299,7 +295,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             encoder_hidden_states_residual,
         )
 
-    def _compute_and_cache_transformer_block(
+    def _compute_or_cache_block(
         self,
         # Block index in the transformer blocks
         # Bn: 8, block_id should be in [0, 8)
@@ -311,7 +307,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         *args,
         **kwargs,
     ):
-        # Helper function for `call_Bn_transformer_blocks`
+        # Helper function for `call_Bn_blocks`
         # Skip the blocks by reuse residual cache if they are not
         # in the Bn_compute_blocks_ids. NOTE: We should only skip
         # the specific Bn blocks in cache steps. Compute the block
@@ -427,7 +423,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                             )
         return hidden_states, encoder_hidden_states
 
-    def call_Bn_transformer_blocks(
+    def call_Bn_blocks(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
@@ -444,9 +440,9 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
         if len(cache_context.Bn_compute_blocks_ids()) > 0:
-            for i, block in enumerate(self._Bn_transformer_blocks()):
+            for i, block in enumerate(self._Bn_blocks()):
                 hidden_states, encoder_hidden_states = (
-                    self._compute_and_cache_transformer_block(
+                    self._compute_or_cache_block(
                         i,
                         block,
                         hidden_states,
@@ -457,7 +453,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 )
         else:
             # Compute all Bn blocks if no specific Bn compute blocks ids are set.
-            for block in self._Bn_transformer_blocks():
+            for block in self._Bn_blocks():
                 hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,

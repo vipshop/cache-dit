@@ -11,7 +11,10 @@ from diffusers.utils import (
     USE_PEFT_BACKEND,
 )
 
-from cache_dit.cache_factory.dynamic_block_prune import prune_context
+from cache_dit.cache_factory.dynamic_block_prune import (
+    prune_context,
+    DBPrunedTransformerBlocks,
+)
 from cache_dit.logger import init_logger
 
 try:
@@ -44,7 +47,7 @@ def apply_db_prune_on_transformer(
 
     cached_transformer_blocks = torch.nn.ModuleList(
         [
-            prune_context.DBPrunedTransformerBlocks(
+            DBPrunedTransformerBlocks(
                 transformer.transformer_blocks
                 + transformer.single_transformer_blocks,
                 transformer=transformer,
