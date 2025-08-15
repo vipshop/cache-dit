@@ -177,7 +177,6 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
             hidden_states,  # hidden_states or residual
             name=f"{block_id}_original",  # prev step
         )
-
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
         if can_use_prune:
