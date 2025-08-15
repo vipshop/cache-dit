@@ -35,6 +35,11 @@ pipe = QwenImagePipeline.from_pretrained(
     device_map=(
         "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
     ),
+    max_memory=(
+        {i: "48GB" for i in range(torch.cuda.device_count())}
+        if args.cache_type != "dbcache"
+        else None
+    ),
 )
 
 
@@ -95,7 +100,9 @@ else:
     cache_type_str = "NONE"
 
 
-if torch.cuda.device_count() <= 1:
+if torch.cuda.device_count() <= 1 or (
+    args.cache and args.cache_type != "dbcache"
+):
     # Enable memory savings
     pipe.enable_model_cpu_offload()
 
