@@ -34,11 +34,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--gen-device", type=str, default="cpu")
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)
-    parser.add_argument(
-        "--compile-all",
-        action="store_true",
-        default=False,
-    )
+    parser.add_argument("--compile-all", action="store_true", default=False)
     return parser.parse_args()
 
 
