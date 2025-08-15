@@ -262,7 +262,7 @@ def main():
             f"Actual Blocks: {actual_blocks}\n"
             f"Pruned Blocks: {pruned_blocks}"
         )
-    ulysses = 0 if args.ulysses is None else args.ulysses
+    ulysses = 0
     if len(actual_blocks) > 0:
         save_name = (
             f"U{ulysses}_C{int(args.compile)}_{cache_type}_"
