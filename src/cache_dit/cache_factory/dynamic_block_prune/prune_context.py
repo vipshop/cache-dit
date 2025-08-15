@@ -67,19 +67,22 @@ class DBPPruneContext:
     # CFG & non-CFG pruned steps
     pruned_blocks: List[int] = dataclasses.field(default_factory=list)
     actual_blocks: List[int] = dataclasses.field(default_factory=list)
-    residual_diffs: DefaultDict[str, float] = dataclasses.field(
-        default_factory=lambda: defaultdict(float),
+    residual_diffs: DefaultDict[str, list[float]] = dataclasses.field(
+        default_factory=lambda: defaultdict(list),
     )
     cfg_pruned_blocks: List[int] = dataclasses.field(default_factory=list)
     cfg_actual_blocks: List[int] = dataclasses.field(default_factory=list)
-    cfg_residual_diffs: DefaultDict[str, float] = dataclasses.field(
-        default_factory=lambda: defaultdict(float),
+    cfg_residual_diffs: DefaultDict[str, list[float]] = dataclasses.field(
+        default_factory=lambda: defaultdict(list),
     )
 
     @torch.compiler.disable
     def __post_init__(self):
         # Some checks for settings
         if self.do_separate_classifier_free_guidance:
+            assert (
+                self.cfg_diff_compute_separate
+            ), "cfg_diff_compute_separate must be True"
             if self.cfg_diff_compute_separate:
                 assert self.cfg_compute_first is False, (
                     "cfg_compute_first must set as False if "
@@ -197,10 +200,14 @@ class DBPPruneContext:
         # Only add the diff if it is not already recorded for this step
         if not self.is_separate_classifier_free_guidance_step():
             if step not in self.residual_diffs:
-                self.residual_diffs[step] = diff
+                self.residual_diffs[step] = [diff]
+            else:
+                self.residual_diffs[step].append(diff)
         else:
             if step not in self.cfg_residual_diffs:
-                self.cfg_residual_diffs[step] = diff
+                self.cfg_residual_diffs[step] = [diff]
+            else:
+                self.cfg_residual_diffs[step].append(diff)
 
     @torch.compiler.disable
     def get_pruned_blocks(self):
@@ -252,17 +259,6 @@ def get_current_step():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
     return prune_context.get_current_step()
-
-
-@torch.compiler.disable
-def get_current_step_residual_diff():
-    prune_context = get_current_prune_context()
-    assert prune_context is not None, "prune_context must be set before"
-    step = str(get_current_step())
-    residual_diffs = get_residual_diffs()
-    if step in residual_diffs:
-        return residual_diffs[step]
-    return None
 
 
 @torch.compiler.disable
@@ -555,49 +551,38 @@ def are_two_tensors_similar(
         add_residual_diff(-2.0)
         return False
 
-    if all(
-        (
-            do_separate_classifier_free_guidance(),
-            is_separate_classifier_free_guidance_step(),
-            not cfg_diff_compute_separate(),
-            get_current_step_residual_diff() is not None,
-        )
-    ):
-        # Reuse computed diff value from non-CFG step
-        diff = get_current_step_residual_diff()
-    else:
-        # Find the most significant token through t1 and t2, and
-        # consider the diff of the significant token. The more significant,
-        # the more important.
-        condition_thresh = get_important_condition_threshold()
-        if condition_thresh > 0.0:
-            raw_diff = (t1 - t2).abs()  # [B, seq_len, d]
-            token_m_df = raw_diff.mean(dim=-1)  # [B, seq_len]
-            token_m_t1 = t1.abs().mean(dim=-1)  # [B, seq_len]
-            # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
-            token_diff = token_m_df / token_m_t1  # [B, seq_len]
-            condition = token_diff > condition_thresh  # [B, seq_len]
-            if condition.sum() > 0:
-                condition = condition.unsqueeze(-1)  # [B, seq_len, 1]
-                condition = condition.expand_as(raw_diff)  # [B, seq_len, d]
-                mean_diff = raw_diff[condition].mean()
-                mean_t1 = t1[condition].abs().mean()
-            else:
-                mean_diff = (t1 - t2).abs().mean()
-                mean_t1 = t1.abs().mean()
+    # Find the most significant token through t1 and t2, and
+    # consider the diff of the significant token. The more significant,
+    # the more important.
+    condition_thresh = get_important_condition_threshold()
+    if condition_thresh > 0.0:
+        raw_diff = (t1 - t2).abs()  # [B, seq_len, d]
+        token_m_df = raw_diff.mean(dim=-1)  # [B, seq_len]
+        token_m_t1 = t1.abs().mean(dim=-1)  # [B, seq_len]
+        # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
+        token_diff = token_m_df / token_m_t1  # [B, seq_len]
+        condition = token_diff > condition_thresh  # [B, seq_len]
+        if condition.sum() > 0:
+            condition = condition.unsqueeze(-1)  # [B, seq_len, 1]
+            condition = condition.expand_as(raw_diff)  # [B, seq_len, d]
+            mean_diff = raw_diff[condition].mean()
+            mean_t1 = t1[condition].abs().mean()
         else:
-            # Use the mean of the absolute difference of the tensors
             mean_diff = (t1 - t2).abs().mean()
             mean_t1 = t1.abs().mean()
+    else:
+        # Use the mean of the absolute difference of the tensors
+        mean_diff = (t1 - t2).abs().mean()
+        mean_t1 = t1.abs().mean()
 
-        if parallelized:
-            mean_diff = primitives.all_reduce_sync(mean_diff, "avg")
-            mean_t1 = primitives.all_reduce_sync(mean_t1, "avg")
+    if parallelized:
+        mean_diff = primitives.all_reduce_sync(mean_diff, "avg")
+        mean_t1 = primitives.all_reduce_sync(mean_t1, "avg")
 
-        # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
-        # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
-        # H(t-1,n) ~ H(t  ,n), which means the hidden states are similar.
-        diff = (mean_diff / mean_t1).item()
+    # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
+    # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
+    # H(t-1,n) ~ H(t  ,n), which means the hidden states are similar.
+    diff = (mean_diff / mean_t1).item()
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"{name}, diff: {diff:.6f}, threshold: {threshold:.6f}")
