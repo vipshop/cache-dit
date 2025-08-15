@@ -45,8 +45,12 @@ class DBPPruneContext:
     # DON'T prune if the number of pruned steps >= max_pruned_steps
     max_pruned_steps: int = -1
 
-    # Statistics
-    executed_steps: int = 0
+    # Record the steps that have been cached, both cached and non-cache
+    executed_steps: int = 0  # cache + non-cache steps pippeline
+    # steps for transformer, for CFG, transformer_executed_steps will
+    # be double of executed_steps.
+    transformer_executed_steps: int = 0
+
     pruned_blocks: List[int] = dataclasses.field(default_factory=list)
     actual_blocks: List[int] = dataclasses.field(default_factory=list)
     # Residual diffs for each step, [step: list[float]]
