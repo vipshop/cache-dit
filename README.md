@@ -11,7 +11,7 @@
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
-   <b>🔥<a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a> | <a href="#fbcache">FBCache</a></b>🔥
+   🔥<a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a> | <a href="#fbcache">FBCache</a>🔥
 </div>
 
 <div align="center">
@@ -21,6 +21,7 @@
 </div> 
 
 ## 🔥News  
+
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) is supported now! Please check [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
 - [2025-08-10] 🔥[FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please check [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
@@ -246,8 +247,8 @@ pipe = FluxPipeline.from_pretrained(
 # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
 cache_options = {
     "cache_type": CacheType.DBCache,
-    "warmup_steps": 1,
-    "max_cached_steps": 0,   # -1 means no limit
+    "warmup_steps": 8,
+    "max_cached_steps": -1,  # -1 means no limit
     "Fn_compute_blocks": 1,  # Fn, F1, etc.
     "Bn_compute_blocks": 0,  # Bn, B0, etc.
     "residual_diff_threshold": 0.12,
@@ -328,67 +329,6 @@ apply_cache_on_pipe(pipe, **cache_options)
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
-<!--
-## 🎉Context Parallelism
-
-<div id="context-parallelism"></div>  
-
-**CacheDiT** are **plug-and-play** solutions that works hand-in-hand with [ParaAttention](https://github.com/chengzeyi/ParaAttention). Users can **easily tap into** its **Context Parallelism** features for distributed inference. Firstly, install `para-attn` from PyPI:
-
-```bash
-pip3 install para-attn  # or install `para-attn` from sources.
-```
-
-Then, you can run **DBCache** or **DBPrune** with **Context Parallelism** on 4 GPUs:
-
-```python
-import torch.distributed as dist
-from diffusers import FluxPipeline
-from para_attn.context_parallel import init_context_parallel_mesh
-from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
-
-# Init distributed process group
-dist.init_process_group()
-torch.cuda.set_device(dist.get_rank())
-
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
-
-# Context Parallel from ParaAttention
-parallelize_pipe(
-    pipe, mesh=init_context_parallel_mesh(
-        pipe.device.type, max_ulysses_dim_size=4
-    )
-)
-
-# DBPrune with default options from this library
-apply_cache_on_pipe(
-    pipe, **CacheType.default_options(CacheType.DBPrune)
-)
-
-dist.destroy_process_group()
-```
-Then, run the python test script with `torchrun`:
-```bash
-torchrun --nproc_per_node=4 parallel_cache.py
-```
-
-<div align="center">
-  <p align="center">
-  DBPrune + <b>torch.compile + context parallelism</b> <br>Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
-
-|Baseline|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|+compile:20.43s|16.25s|14.12s|13.41s|12.00s|8.86s|
-|+L20x4:7.75s|6.62s|6.03s|5.81s|5.24s|3.93s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_NONE_R0.08_S0_T20.43s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.03_P24.0_T16.25s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.04_P34.6_T14.12s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.045_P38.2_T13.41s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.055_P45.1_T12.00s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBPRUNE_F1B0_R0.2_P59.5_T8.86s.png width=105px>|
-
--->
 
 ## 🔥Torch Compile
 
