@@ -52,8 +52,7 @@ class DBCacheContext:
     # DON'T Cache if the number of cached steps >= max_cached_steps
     max_cached_steps: int = -1  # for both CFG and non-CFG
 
-    # Statistics for botch alter cache and non-alter cache
-    # Record the steps that have been cached, both alter cache and non-alter cache
+    # Record the steps that have been cached, both cached and non-cache
     executed_steps: int = 0  # cache + non-cache steps pippeline
     # steps for transformer, for CFG, transformer_executed_steps will
     # be double of executed_steps.
@@ -70,10 +69,10 @@ class DBCacheContext:
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
 
-    # Support do_separate_classifier_free_guidance, such as Wan 2.1
-    # For model that fused CFG and non-CFG into single forward step,
-    # should set do_separate_classifier_free_guidance as False. For
-    # example: CogVideoX, HunyuanVideo, Mochi.
+    # Support do_separate_classifier_free_guidance, such as Wan 2.1,
+    # Qwen-Image. For model that fused CFG and non-CFG into single
+    # forward step, should set do_separate_classifier_free_guidance
+    # as False. For example: CogVideoX, HunyuanVideo, Mochi.
     do_separate_classifier_free_guidance: bool = False
     # Compute cfg forward first or not, default False, namely,
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
@@ -94,13 +93,6 @@ class DBCacheContext:
     cfg_residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
-
-    # TODO: Support SLG in Dual Block Cache
-    # Skip Layer Guidance, SLG
-    # https://github.com/huggingface/candle/issues/2588
-    slg_layers: Optional[List[int]] = None
-    slg_start: float = 0.0
-    slg_end: float = 0.1
 
     @torch.compiler.disable
     def __post_init__(self):
@@ -140,18 +132,6 @@ class DBCacheContext:
                 self.cfg_encoder_taylorseer = TaylorSeer(
                     **self.taylorseer_kwargs
                 )
-
-    @torch.compiler.disable
-    def get_incremental_name(self, name=None):
-        if name is None:
-            name = "default"
-        idx = self.incremental_name_counters[name]
-        self.incremental_name_counters[name] += 1
-        return f"{name}_{idx}"
-
-    @torch.compiler.disable
-    def reset_incremental_names(self):
-        self.incremental_name_counters.clear()
 
     @torch.compiler.disable
     def get_residual_diff_threshold(self):
@@ -219,7 +199,6 @@ class DBCacheContext:
             self.residual_diffs.clear()
             self.cfg_cached_steps.clear()
             self.cfg_residual_diffs.clear()
-            self.reset_incremental_names()
             # Reset the TaylorSeers cache at the beginning of each inference.
             # reset_cache will set the current step to -1 for TaylorSeer,
             if self.enable_taylorseer or self.enable_encoder_taylorseer:

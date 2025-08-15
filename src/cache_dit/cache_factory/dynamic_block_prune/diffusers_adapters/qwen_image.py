@@ -8,6 +8,9 @@ from cache_dit.cache_factory.dynamic_block_prune import (
     prune_context,
     DBPrunedTransformerBlocks,
 )
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
 
 
 def apply_db_prune_on_transformer(
@@ -61,7 +64,7 @@ def apply_db_prune_on_pipe(
     max_pruned_steps=-1,
     **kwargs,
 ):
-    cache_kwargs, kwargs = prune_context.collect_prune_kwargs(
+    prune_kwargs, kwargs = prune_context.collect_prune_kwargs(
         default_attrs={
             "residual_diff_threshold": residual_diff_threshold,
             "downsample_factor": downsample_factor,
@@ -77,7 +80,7 @@ def apply_db_prune_on_pipe(
         def new_call(self, *args, **kwargs):
             with prune_context.prune_context(
                 prune_context.create_prune_context(
-                    **cache_kwargs,
+                    **prune_kwargs,
                 )
             ):
                 return original_call(self, *args, **kwargs)

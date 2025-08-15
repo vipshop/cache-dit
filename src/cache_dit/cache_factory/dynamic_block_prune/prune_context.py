@@ -2,7 +2,7 @@ import logging
 import contextlib
 import dataclasses
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, DefaultDict
 
 import torch
 
@@ -39,20 +39,55 @@ class DBPPruneContext:
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Other settings
-    downsample_factor: int = 1
+    downsample_factor: int = 1  # un-used
     num_inference_steps: int = -1
     warmup_steps: int = 0  # DON'T pruned in warmup steps
     # DON'T prune if the number of pruned steps >= max_pruned_steps
     max_pruned_steps: int = -1
 
-    # Statistics
-    executed_steps: int = 0
+    # Record the steps that have been cached, both cached and non-cache
+    executed_steps: int = 0  # cache + non-cache steps pippeline
+    # steps for transformer, for CFG, transformer_executed_steps will
+    # be double of executed_steps.
+    transformer_executed_steps: int = 0
+
+    # Support do_separate_classifier_free_guidance, such as Wan 2.1,
+    # Qwen-Image. For model that fused CFG and non-CFG into single
+    # forward step, should set do_separate_classifier_free_guidance
+    # as False. For example: CogVideoX, HunyuanVideo, Mochi.
+    do_separate_classifier_free_guidance: bool = False
+    # Compute cfg forward first or not, default False, namely,
+    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
+    cfg_compute_first: bool = False
+    # Compute spearate diff values for CFG and non-CFG step,
+    # default True. If False, we will use the computed diff from
+    # current non-CFG transformer step for current CFG step.
+    cfg_diff_compute_separate: bool = True
+
+    # CFG & non-CFG pruned steps
     pruned_blocks: List[int] = dataclasses.field(default_factory=list)
     actual_blocks: List[int] = dataclasses.field(default_factory=list)
-    # Residual diffs for each step, [step: list[float]]
-    residual_diffs: Dict[str, List[float]] = dataclasses.field(
+    residual_diffs: DefaultDict[str, list[float]] = dataclasses.field(
         default_factory=lambda: defaultdict(list),
     )
+    cfg_pruned_blocks: List[int] = dataclasses.field(default_factory=list)
+    cfg_actual_blocks: List[int] = dataclasses.field(default_factory=list)
+    cfg_residual_diffs: DefaultDict[str, list[float]] = dataclasses.field(
+        default_factory=lambda: defaultdict(list),
+    )
+
+    @torch.compiler.disable
+    def __post_init__(self):
+        # Some checks for settings
+        if self.do_separate_classifier_free_guidance:
+            assert (
+                self.cfg_diff_compute_separate
+            ), "cfg_diff_compute_separate must be True"
+            if self.cfg_diff_compute_separate:
+                assert self.cfg_compute_first is False, (
+                    "cfg_compute_first must set as False if "
+                    "cfg_diff_compute_separate is enabled."
+                )
 
     @torch.compiler.disable
     def get_residual_diff_threshold(self):
@@ -117,41 +152,88 @@ class DBPPruneContext:
 
     @torch.compiler.disable
     def mark_step_begin(self):
-        self.executed_steps += 1
-        if self.get_current_step() == 0:
+        # Always increase transformer executed steps
+        # incr    step: prev 0 -> 1; prev 1 -> 2
+        # current step: incr step - 1
+        self.transformer_executed_steps += 1
+        if not self.do_separate_classifier_free_guidance:
+            self.executed_steps += 1
+        else:
+            # 0,1 -> 0 + 1, 2,3 -> 1 + 1, ...
+            if not self.cfg_compute_first:
+                if not self.is_separate_classifier_free_guidance_step():
+                    # transformer step: 0,2,4,...
+                    self.executed_steps += 1
+            else:
+                if self.is_separate_classifier_free_guidance_step():
+                    # transformer step: 0,2,4,...
+                    self.executed_steps += 1
+
+        # Reset the cached steps and residual diffs at the beginning
+        # of each inference.
+        if self.get_current_transformer_step() == 0:
             self.pruned_blocks.clear()
             self.actual_blocks.clear()
             self.residual_diffs.clear()
+            self.cfg_pruned_blocks.clear()
+            self.cfg_actual_blocks.clear()
+            self.cfg_residual_diffs.clear()
 
     @torch.compiler.disable
     def add_pruned_block(self, num_blocks):
-        self.pruned_blocks.append(num_blocks)
+        if not self.is_separate_classifier_free_guidance_step():
+            self.pruned_blocks.append(num_blocks)
+        else:
+            self.cfg_pruned_blocks.append(num_blocks)
 
     @torch.compiler.disable
     def add_actual_block(self, num_blocks):
-        self.actual_blocks.append(num_blocks)
+        if not self.is_separate_classifier_free_guidance_step():
+            self.actual_blocks.append(num_blocks)
+        else:
+            self.cfg_actual_blocks.append(num_blocks)
 
     @torch.compiler.disable
     def add_residual_diff(self, diff):
-        if isinstance(diff, torch.Tensor):
-            diff = diff.item()
-        step = self.get_current_step()
-        self.residual_diffs[step].append(diff)
-        max_num_block_diffs = 1000
-        # Avoid memory leak, keep only the last 1000 diffs
-        if len(self.residual_diffs[step]) > max_num_block_diffs:
-            self.residual_diffs[step] = self.residual_diffs[step][
-                -max_num_block_diffs:
-            ]
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"Step {step}, block: {len(self.residual_diffs[step])}, "
-                f"residual diff: {diff:.6f}"
-            )
+        # step: executed_steps - 1, not transformer_steps - 1
+        step = str(self.get_current_step())
+        # Only add the diff if it is not already recorded for this step
+        if not self.is_separate_classifier_free_guidance_step():
+            if step not in self.residual_diffs:
+                self.residual_diffs[step] = [diff]
+            else:
+                self.residual_diffs[step].append(diff)
+        else:
+            if step not in self.cfg_residual_diffs:
+                self.cfg_residual_diffs[step] = [diff]
+            else:
+                self.cfg_residual_diffs[step].append(diff)
+
+    @torch.compiler.disable
+    def get_pruned_blocks(self):
+        return self.pruned_blocks.copy()
+
+    @torch.compiler.disable
+    def get_cfg_pruned_blocks(self):
+        return self.cfg_pruned_blocks.copy()
 
     @torch.compiler.disable
     def get_current_step(self):
         return self.executed_steps - 1
+
+    @torch.compiler.disable
+    def get_current_transformer_step(self):
+        return self.transformer_executed_steps - 1
+
+    @torch.compiler.disable
+    def is_separate_classifier_free_guidance_step(self):
+        if not self.do_separate_classifier_free_guidance:
+            return False
+        if self.cfg_compute_first:
+            # CFG steps: 0, 2, 4, 6, ...
+            return self.get_current_transformer_step() % 2 == 0
+        # CFG steps: 1, 3, 5, 7, ...
+        return self.get_current_transformer_step() % 2 != 0
 
     @torch.compiler.disable
     def is_in_warmup(self):
@@ -166,27 +248,6 @@ def get_residual_diff_threshold():
 
 
 @torch.compiler.disable
-def get_buffer(name):
-    prune_context = get_current_prune_context()
-    assert prune_context is not None, "prune_context must be set before"
-    return prune_context.get_buffer(name)
-
-
-@torch.compiler.disable
-def set_buffer(name, buffer):
-    prune_context = get_current_prune_context()
-    assert prune_context is not None, "prune_context must be set before"
-    prune_context.set_buffer(name, buffer)
-
-
-@torch.compiler.disable
-def remove_buffer(name):
-    prune_context = get_current_prune_context()
-    assert prune_context is not None, "prune_context must be set before"
-    prune_context.remove_buffer(name)
-
-
-@torch.compiler.disable
 def mark_step_begin():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
@@ -198,6 +259,24 @@ def get_current_step():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
     return prune_context.get_current_step()
+
+
+@torch.compiler.disable
+def get_current_step_cfg_residual_diff():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    step = str(get_current_step())
+    cfg_residual_diffs = get_cfg_residual_diffs()
+    if step in cfg_residual_diffs:
+        return cfg_residual_diffs[step]
+    return None
+
+
+@torch.compiler.disable
+def get_current_transformer_step():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.get_current_transformer_step()
 
 
 @torch.compiler.disable
@@ -225,6 +304,13 @@ def get_pruned_blocks():
 
 
 @torch.compiler.disable
+def get_cfg_pruned_blocks():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.cfg_pruned_blocks.copy()
+
+
+@torch.compiler.disable
 def add_actual_block(num_blocks):
     assert (
         isinstance(num_blocks, int) and num_blocks >= 0
@@ -242,12 +328,28 @@ def get_actual_blocks():
 
 
 @torch.compiler.disable
+def get_cfg_actual_blocks():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.cfg_actual_blocks.copy()
+
+
+@torch.compiler.disable
 def get_pruned_steps():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
     pruned_blocks = get_pruned_blocks()
     pruned_blocks = [x for x in pruned_blocks if x > 0]
     return len(pruned_blocks)
+
+
+@torch.compiler.disable
+def get_cfg_pruned_steps():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    cfg_pruned_blocks = get_cfg_pruned_blocks()
+    cfg_pruned_blocks = [x for x in cfg_pruned_blocks if x > 0]
+    return len(cfg_pruned_blocks)
 
 
 @torch.compiler.disable
@@ -280,6 +382,14 @@ def get_residual_diffs():
     assert prune_context is not None, "prune_context must be set before"
     # Return a copy of the residual diffs to avoid modification
     return prune_context.residual_diffs.copy()
+
+
+@torch.compiler.disable
+def get_cfg_residual_diffs():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    # Return a copy of the residual diffs to avoid modification
+    return prune_context.cfg_residual_diffs.copy()
 
 
 @torch.compiler.disable
@@ -321,6 +431,27 @@ def get_non_prune_blocks_ids():
     prune_context = get_current_prune_context()
     assert prune_context is not None, "prune_context must be set before"
     return prune_context.non_prune_blocks_ids
+
+
+@torch.compiler.disable
+def do_separate_classifier_free_guidance():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.do_separate_classifier_free_guidance
+
+
+@torch.compiler.disable
+def is_separate_classifier_free_guidance_step():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.is_separate_classifier_free_guidance_step()
+
+
+@torch.compiler.disable
+def cfg_diff_compute_separate():
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    return prune_context.cfg_diff_compute_separate
 
 
 _current_prune_context: DBPPruneContext = None
@@ -462,6 +593,58 @@ def are_two_tensors_similar(
 
 
 @torch.compiler.disable
+def _debugging_set_buffer(prefix):
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"set {prefix}, "
+            f"transformer step: {get_current_transformer_step()}, "
+            f"executed step: {get_current_step()}"
+        )
+
+
+@torch.compiler.disable
+def _debugging_get_buffer(prefix):
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"get {prefix}, "
+            f"transformer step: {get_current_transformer_step()}, "
+            f"executed step: {get_current_step()}"
+        )
+
+
+@torch.compiler.disable
+def set_buffer(name: str, buffer: torch.Tensor):
+    # Set hidden_states or residual for Fn blocks.
+    # This buffer is only use for L1 diff calculation.
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    if is_separate_classifier_free_guidance_step():
+        _debugging_set_buffer(f"{name}_buffer_cfg")
+        prune_context.set_buffer(f"{name}_buffer_cfg", buffer)
+    else:
+        _debugging_set_buffer(f"{name}_buffer")
+        prune_context.set_buffer(f"{name}_buffer", buffer)
+
+
+@torch.compiler.disable
+def get_buffer(name: str):
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    if is_separate_classifier_free_guidance_step():
+        _debugging_get_buffer(f"{name}_buffer_cfg")
+        return prune_context.get_buffer(f"{name}_buffer_cfg")
+    _debugging_get_buffer(f"{name}_buffer")
+    return prune_context.get_buffer(f"{name}_buffer")
+
+
+@torch.compiler.disable
+def remove_buffer(name: str):
+    prune_context = get_current_prune_context()
+    assert prune_context is not None, "prune_context must be set before"
+    prune_context.remove_buffer(name)
+
+
+@torch.compiler.disable
 def apply_hidden_states_residual(
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
@@ -504,7 +687,11 @@ def get_can_use_prune(
     if is_in_warmup():
         return False
 
-    pruned_steps = get_pruned_steps()
+    if not is_separate_classifier_free_guidance_step():
+        pruned_steps = get_pruned_steps()
+    else:
+        pruned_steps = get_cfg_pruned_steps()
+
     max_pruned_steps = get_max_pruned_steps()
     if max_pruned_steps >= 0 and (pruned_steps >= max_pruned_steps):
         if logger.isEnabledFor(logging.DEBUG):
@@ -519,15 +706,7 @@ def get_can_use_prune(
     if threshold <= 0.0:
         return False
 
-    downsample_factor = get_downsample_factor()
     prev_states_tensor = get_buffer(f"{name}")
-
-    if downsample_factor > 1:
-        states_tensor = states_tensor[..., ::downsample_factor]
-        states_tensor = states_tensor.contiguous()
-        if prev_states_tensor is not None:
-            prev_states_tensor = prev_states_tensor[..., ::downsample_factor]
-            prev_states_tensor = prev_states_tensor.contiguous()
 
     return prev_states_tensor is not None and are_two_tensors_similar(
         prev_states_tensor,
