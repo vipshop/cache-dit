@@ -54,7 +54,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         original_hidden_states = hidden_states
 
         torch._dynamo.graph_break()
-        hidden_states, encoder_hidden_states = self.call_transformer_blocks(
+        hidden_states, encoder_hidden_states = self.call_blocks(
             hidden_states,
             encoder_hidden_states,
             *args,
@@ -166,7 +166,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
         *args,
         **kwargs,
     ):
-        # Helper function for `call_transformer_blocks`
+        # Helper function for `call_blocks`
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
 
@@ -236,7 +236,7 @@ class DBPrunedTransformerBlocks(torch.nn.Module):
 
         return hidden_states, encoder_hidden_states
 
-    def call_transformer_blocks(
+    def call_blocks(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
@@ -270,3 +270,8 @@ def patch_pruned_stats(
     transformer._pruned_steps = prune_context.get_pruned_steps()
     transformer._residual_diffs = prune_context.get_residual_diffs()
     transformer._actual_blocks = prune_context.get_actual_blocks()
+
+    transformer._cfg_pruned_blocks = prune_context.get_cfg_pruned_blocks()
+    transformer._cfg_pruned_steps = prune_context.get_cfg_pruned_steps()
+    transformer._cfg_residual_diffs = prune_context.get_cfg_residual_diffs()
+    transformer._cfg_actual_blocks = prune_context.get_cfg_actual_blocks()

@@ -134,18 +134,6 @@ class DBCacheContext:
                 )
 
     @torch.compiler.disable
-    def get_incremental_name(self, name=None):
-        if name is None:
-            name = "default"
-        idx = self.incremental_name_counters[name]
-        self.incremental_name_counters[name] += 1
-        return f"{name}_{idx}"
-
-    @torch.compiler.disable
-    def reset_incremental_names(self):
-        self.incremental_name_counters.clear()
-
-    @torch.compiler.disable
     def get_residual_diff_threshold(self):
         if self.enable_alter_cache:
             residual_diff_threshold = self.alter_residual_diff_threshold
@@ -211,7 +199,6 @@ class DBCacheContext:
             self.residual_diffs.clear()
             self.cfg_cached_steps.clear()
             self.cfg_residual_diffs.clear()
-            self.reset_incremental_names()
             # Reset the TaylorSeers cache at the beginning of each inference.
             # reset_cache will set the current step to -1 for TaylorSeer,
             if self.enable_taylorseer or self.enable_encoder_taylorseer:

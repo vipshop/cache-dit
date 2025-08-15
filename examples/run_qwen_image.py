@@ -11,6 +11,7 @@ def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("--cache", action="store_true", default=False)
+    parser.add_argument("--cache-type", "--type", type=str, default="dbcache")
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=4)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
@@ -38,32 +39,55 @@ pipe = QwenImagePipeline.from_pretrained(
 
 
 if args.cache:
-    cache_options = {
-        "cache_type": CacheType.DBCache,
-        "warmup_steps": args.warmup_steps,
-        "max_cached_steps": -1,  # -1 means no limit
-        # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
-        "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
-        "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
-        "residual_diff_threshold": args.rdt,
-        # CFG: classifier free guidance or not
-        "do_separate_classifier_free_guidance": True,
-        "cfg_compute_first": False,
-        "enable_taylorseer": args.taylorseer,
-        "enable_encoder_taylorseer": args.taylorseer,
-        # Taylorseer cache type cache be hidden_states or residual
-        "taylorseer_cache_type": "residual",
-        "taylorseer_kwargs": {
-            "n_derivatives": args.taylorseer_order,
-        },
-    }
-    cache_type_str = "DBCACHE"
-    cache_type_str = (
-        f"{cache_type_str}_F{args.Fn_compute_blocks}"
-        f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
-        f"T{int(args.taylorseer)}O{args.taylorseer_order}_"
-        f"R{args.rdt}"
-    )
+    if args.cache_type.lower() == "dbcache":
+        cache_options = {
+            "cache_type": CacheType.DBCache,
+            "warmup_steps": args.warmup_steps,
+            "max_cached_steps": -1,  # -1 means no limit
+            # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+            "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
+            "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
+            "residual_diff_threshold": args.rdt,
+            # CFG: classifier free guidance or not
+            "do_separate_classifier_free_guidance": True,
+            "cfg_compute_first": False,
+            "enable_taylorseer": args.taylorseer,
+            "enable_encoder_taylorseer": args.taylorseer,
+            # Taylorseer cache type cache be hidden_states or residual
+            "taylorseer_cache_type": "residual",
+            "taylorseer_kwargs": {
+                "n_derivatives": args.taylorseer_order,
+            },
+        }
+        cache_type_str = "DBCACHE"
+        cache_type_str = (
+            f"{cache_type_str}_F{args.Fn_compute_blocks}"
+            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+            f"T{int(args.taylorseer)}O{args.taylorseer_order}_"
+            f"R{args.rdt}"
+        )
+    elif args.cache_type.lower() == "dbprune":
+        cache_options = {
+            "cache_type": CacheType.DBPrune,
+            "warmup_steps": args.warmup_steps,
+            "max_pruned_steps": -1,  # -1 means no limit
+            # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+            "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
+            "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
+            "residual_diff_threshold": args.rdt,
+            # CFG: classifier free guidance or not
+            "do_separate_classifier_free_guidance": True,
+            "cfg_compute_first": False,
+        }
+        cache_type_str = "DBPRUNE"
+        cache_type_str = (
+            f"{cache_type_str}_F{args.Fn_compute_blocks}"
+            f"B{args.Bn_compute_blocks}W{args.warmup_steps}_"
+            f"R{args.rdt}"
+        )
+    else:
+        raise ValueError("cache_type error, only support dbcache and dbprune.")
+
     print(f"cache options:\n{cache_options}")
 
     apply_cache_on_pipe(pipe, **cache_options)
@@ -77,16 +101,15 @@ if torch.cuda.device_count() <= 1:
 
 
 positive_magic = {
-    "en": "Ultra HD, 4K, cinematic composition.",  # for english prompt,
-    "zh": "超清，4K，电影级构图",  # for chinese prompt,
+    "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
+    "zh": ", 超清，4K，电影级构图.",  # for chinese prompt
 }
 
 # Generate image
 prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coffee 😊 $2 per cup," with a neon light beside it displaying "通义千问". Next to it hangs a poster showing a beautiful Chinese woman, and beneath the poster is written "π≈3.1415926-53589793-23846264-33832795-02384197". Ultra HD, 4K, cinematic composition"""
 
-negative_prompt = (
-    " "  # using an empty string if you do not have specific concept to remove
-)
+# using an empty string if you do not have specific concept to remove
+negative_prompt = " "
 
 
 # Generate with different aspect ratios
