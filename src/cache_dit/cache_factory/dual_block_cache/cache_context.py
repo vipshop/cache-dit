@@ -94,13 +94,6 @@ class DBCacheContext:
         default_factory=lambda: defaultdict(float),
     )
 
-    # TODO: Support SLG in Dual Block Cache
-    # Skip Layer Guidance, SLG
-    # https://github.com/huggingface/candle/issues/2588
-    slg_layers: Optional[List[int]] = None
-    slg_start: float = 0.0
-    slg_end: float = 0.1
-
     @torch.compiler.disable
     def __post_init__(self):
         # Some checks for settings
