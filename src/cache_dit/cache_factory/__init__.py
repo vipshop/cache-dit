@@ -74,7 +74,7 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
 
 
 def enable_cache(pipe: DiffusionPipeline, *args, **kwargs) -> DiffusionPipeline:
-    if transformer_blocks := kwargs.pop(transformer_blocks, None):
+    if transformer_blocks := kwargs.pop("transformer_blocks", None):
         assert isinstance(transformer_blocks, torch.nn.ModuleList)
         assert make_pattern(transformer_blocks), (
             "No block forward pattern matched, "
