@@ -339,11 +339,11 @@ cache_dit.enable_cache(pipe, **cache_options)
 
 <div id="unified"></div>  
 
-Currently, for any diffusion models with transformer blocks that match the input/output pattern:  
+Currently, for any diffusion models with transformer blocks that match the input/output pattern, we can use the **Unified Cache APIs** from **cache-dit**. 
 ```bash
 (IN: hidden_states, encoder_hidden_states) -> (OUT: hidden_states, encoder_hidden_states)
 ```
-we can use the **Unified Cache APIs** from cache_dit. The **Unified Cache APIs** are currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
+The **Unified Cache APIs** are currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
 
 ```python
 import cache_dit
