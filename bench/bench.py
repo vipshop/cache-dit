@@ -18,6 +18,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--cache-config", type=str, default=None)
+    parser.add_argument("--low-level-api", action="store_true", default=False)
     parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
@@ -143,7 +144,22 @@ def main():
     ).to("cuda")
 
     # Apply cache to the pipeline
-    cache_dit.enable_cache(pipe, **cache_options)
+    if not args.low_level_api:
+        cache_dit.enable_cache(pipe, **cache_options)
+    else:
+        cache_dit.enable_cache(
+            pipe,
+            transformer=pipe.transformers,
+            blocks=(
+                pipe.transformer.transformer_blocks
+                + pipe.transformer.single_transformer_blocks
+            ),
+            blocks_name="transformer_blocks",
+            dummy_blocks_names="single_transformer_blocks",
+            # (encoder_hidden_states, hidden_states)
+            return_hidden_states_first=False,
+            **cache_options,
+        )
 
     if args.compile:
         # Increase recompile limit for DBCache and DBPrune while

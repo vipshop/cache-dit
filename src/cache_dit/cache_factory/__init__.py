@@ -81,16 +81,22 @@ def enable_cache(
     blocks: torch.nn.ModuleList = None,
     blocks_name: str = "transformer_blocks",
     dummy_blocks_names: list[str] = [],
+    # (encoder_hidden_states, hidden_states) or
+    # (hidden_states, encoder_hidden_states)
     return_hidden_states_first: bool = False,
     **cache_options_kwargs,
 ) -> DiffusionPipeline:
-    if isinstance(pipe, DiffusionPipeline):
+    if isinstance(pipe, DiffusionPipeline) and (
+        transformer is None
+        or blocks is None
+        or not isinstance(blocks, torch.nn.ModuleList)
+    ):
         return apply_cache_on_pipe(pipe, **cache_options_kwargs)
     else:
         # raise ValueError("`pipe` must be a valid DiffusionPipeline")
         # support custom cache setting for models that match the supported block forward patterns.
         if (
-            pipe is not None
+            isinstance(pipe, DiffusionPipeline)
             and transformer is not None
             and blocks is not None
             and isinstance(blocks, torch.nn.ModuleList)
@@ -116,7 +122,10 @@ def enable_cache(
                 maybe_patch_flux_transformer,
             )
 
-            transformer = maybe_patch_flux_transformer(transformer)
+            transformer = maybe_patch_flux_transformer(
+                transformer,
+                single_transformer_blocks=blocks,
+            )
 
         # Apply cache on transformer
         cached_blocks = torch.nn.ModuleList(
