@@ -169,7 +169,7 @@ def main():
                 # will cause precision issues while using TaylorSeer
                 # with order > 2.
                 for module in pipe.transformer.transformer_blocks:
-                    module.compile()
+                    module.compile(fullgraph=True)
             else:
                 logger.warning(
                     "Compiling the whole transformer model with TaylorSeer "
@@ -177,7 +177,7 @@ def main():
                     "transformer_blocks."
                 )
             for module in pipe.transformer.single_transformer_blocks:
-                module.compile()
+                module.compile(fullgraph=True)
         else:
             logger.info("Compiling the transformer with default mode.")
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
