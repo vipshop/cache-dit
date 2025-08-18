@@ -347,7 +347,7 @@ The **Unified Cache APIs** are currently in the experimental phase, and we kindl
 
 ```python
 import cache_dit
-from diffusers import QwenImagePipeline
+from diffusers import QwenImagePipeline # Can be [Any] Diffusion Pipeline
 
 pipe = QwenImagePipeline.from_pretrained(
    "Qwen/Qwen-Image",
