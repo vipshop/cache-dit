@@ -66,7 +66,7 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
         else:
             pattern_id = unique_pattern_ids[0]
             logger.info(
-                f"Match cache patern: IN ({supported_patterns[pattern_id]['IN']}),"
+                f"Match cache pattern: IN ({supported_patterns[pattern_id]['IN']}),"
                 f"OUT ({supported_patterns[pattern_id]['OUT']})"
             )
 
