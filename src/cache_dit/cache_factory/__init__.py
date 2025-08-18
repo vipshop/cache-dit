@@ -77,7 +77,7 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
     return pattern_matched
 
 
-def try_find_blocks_name(transformer):
+def find_blocks_name(transformer):
     blocks_name = None
     allow_prefixes = ["transformer", "blocks"]
     for attr_name in dir(transformer):
@@ -185,7 +185,7 @@ def enable_cache(
 
         assert isinstance(dummy_blocks_names, list)
         if blocks_name is None:
-            blocks_name = try_find_blocks_name(transformer)
+            blocks_name = find_blocks_name(transformer)
             assert blocks_name is not None
 
         @functools.wraps(original_forward)
