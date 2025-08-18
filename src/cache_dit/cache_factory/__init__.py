@@ -21,14 +21,6 @@ def supported_patterns():
             ["hidden_states", "encoder_hidden_states"],
         ),
         # TODO: support more cache patterns.
-        # make_pattern(
-        #     ["hidden_states", "encoder_hidden_states"],
-        #     ["hidden_states"],
-        # ),
-        # make_pattern(
-        #     ["hidden_states"],
-        #     ["hidden_states"],
-        # ),
     ]
 
 
