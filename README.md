@@ -124,8 +124,8 @@ These case studies demonstrate that even with relatively high thresholds (such a
 For a good balance between performance and precision, DBCache is configured by default with **F8B0**, 8 warmup steps, and unlimited cached steps.
 
 ```python
+import cache_dit
 from diffusers import FluxPipeline
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -133,19 +133,19 @@ pipe = FluxPipeline.from_pretrained(
 ).to("cuda")
 
 # Default options, F8B0, good balance between performance and precision
-cache_options = CacheType.default_options(CacheType.DBCache)
+cache_options = cache_dit.default_options(cache_dit.DBCache)
 
-# Custom options, F8B0, higher precision
+# Custom options, F8B8, higher precision
 cache_options = {
-    "cache_type": CacheType.DBCache,
+    "cache_type": cache_dit.DBCache,
     "warmup_steps": 8,
     "max_cached_steps": -1, # -1 means no limit
     "Fn_compute_blocks": 8, # Fn, F8, etc.
-    "Bn_compute_blocks": 0, # Bn, B0, etc.
+    "Bn_compute_blocks": 8, # Bn, B8, etc.
     "residual_diff_threshold": 0.12,
 }
 
-apply_cache_on_pipe(pipe, **cache_options)
+cache_dit.enable_cache(pipe, **cache_options)
 ```
 Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming to maintain good performance can specify **Bn_compute_blocks_ids** to work with Bn. DBCache will only compute the specified blocks, with the remaining estimated using the previous step's residual cache.
 
@@ -153,7 +153,7 @@ Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming 
 # Custom options, F8B16, higher precision with good performance.
 cache_options = {
     # 0, 2, 4, ..., 14, 15, etc. [0,16)
-    "Bn_compute_blocks_ids": CacheType.range(0, 16, 2),
+    "Bn_compute_blocks_ids": cache_dit.block_range(0, 16, 2),
     # If the L1 difference is below this threshold, skip Bn blocks 
     # not in `Bn_compute_blocks_ids`(1, 3,..., etc), Otherwise, 
     # compute these blocks.
@@ -237,8 +237,8 @@ cache_options = {
 **DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can use configure **DBCache** with **F1B0** settings to achieve the same functionality.
 
 ```python
+import cache_dit
 from diffusers import FluxPipeline
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -248,7 +248,7 @@ pipe = FluxPipeline.from_pretrained(
 # Or using DBCache with F1B0. 
 # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
 cache_options = {
-    "cache_type": CacheType.DBCache,
+    "cache_type": cache_dit.DBCache,
     "warmup_steps": 8,
     "max_cached_steps": -1,  # -1 means no limit
     "Fn_compute_blocks": 1,  # Fn, F1, etc.
@@ -256,7 +256,7 @@ cache_options = {
     "residual_diff_threshold": 0.12,
 }
 
-apply_cache_on_pipe(pipe, **cache_options)
+cache_dit.enable_cache(pipe, **cache_options)
 ```
 
 ## ⚡️DBPrune: Dynamic Block Prune
@@ -268,8 +268,8 @@ apply_cache_on_pipe(pipe, **cache_options)
 We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
 
 ```python
+import cache_dit
 from diffusers import FluxPipeline
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -277,9 +277,9 @@ pipe = FluxPipeline.from_pretrained(
 ).to("cuda")
 
 # Using DBPrune with default options
-cache_options = CacheType.default_options(CacheType.DBPrune)
-
-apply_cache_on_pipe(pipe, **cache_options)
+cache_dit.enable_cache(
+    pipe, **cache_dit.default_options(cache_dit.DBPrune)
+)
 ```
 
 We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_blocks_ids** to avoid aggressive pruning. For example:
@@ -287,7 +287,7 @@ We have also brought the designs from DBCache to DBPrune to make it a more gener
 ```python
 # Custom options for DBPrune
 cache_options = {
-    "cache_type": CacheType.DBPrune,
+    "cache_type": cache_dit.DBPrune,
     "residual_diff_threshold": 0.05,
     # Never prune the first `Fn` and last `Bn` blocks.
     "Fn_compute_blocks": 8,  # default 1
@@ -314,7 +314,7 @@ cache_options = {
     "non_prune_blocks_ids": [],
 }
 
-apply_cache_on_pipe(pipe, **cache_options)
+cache_dit.enable_cache(pipe, **cache_options)
 ```
 
 > [!Important]
@@ -339,8 +339,8 @@ apply_cache_on_pipe(pipe, **cache_options)
 By the way, **CacheDiT** is designed to work compatibly with **torch.compile.** You can easily use CacheDiT with torch.compile to further achieve a better performance. For example:
 
 ```python
-apply_cache_on_pipe(
-    pipe, **CacheType.default_options(CacheType.DBPrune)
+cache_dit.enable_cache(
+    pipe, **cache_dit.default_options(cache_dit.DBPrune)
 )
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
