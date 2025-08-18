@@ -70,8 +70,8 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
             pattern_id = list(unique_pattern_ids)[0]
             pattern = supported_patterns()[pattern_id]
             logger.info(
-                f"Match cache pattern: IN ({pattern['IN']}),"
-                f"OUT ({pattern['OUT']})"
+                f"Match cache pattern: IN({pattern['IN']}), "
+                f"OUT({pattern['OUT']})"
             )
 
     return pattern_matched
@@ -120,13 +120,17 @@ def enable_cache(
         ), "Custom cache setting if only support for DBCache now!"
 
         # Apply cache on pipeline: wrap cache context
+        cache_kwargs, _ = cache_context.collect_cache_kwargs(
+            default_attrs={},
+            **cache_options_kwargs,
+        )
         original_call = pipe.__class__.__call__
 
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
             with cache_context.cache_context(
                 cache_context.create_cache_context(
-                    **cache_options_kwargs,
+                    **cache_kwargs,
                 )
             ):
                 return original_call(self, *args, **kwargs)
