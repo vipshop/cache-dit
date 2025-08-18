@@ -104,7 +104,7 @@ def enable_cache(
         # support custom cache setting for models that match the
         # supported block forward patterns.
         logger.info(
-            f"Using custom cache setting for pipe: {pipe.__class__.__name__}, "
+            f"Using custom cache setting for: {pipe.__class__.__name__}, "
             f"transfomer: {transformer.__class__.__name__}"
         )
         if getattr(pipe, "_is_cached", False) or getattr(
