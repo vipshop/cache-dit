@@ -42,9 +42,12 @@
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🔥Torch Compile](#compile)
 - [⚙️Metrics CLI](#metrics)
+
+<!--
 - [👋Contribute](#contribute)
 - [©️License](#license)
 - [©️Citations](#citations)
+-->
 
 ## ⚙️Installation  
 
