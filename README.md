@@ -24,9 +24,10 @@
 
 ## 🔥News  
 
+- [2025-08-12] 🎉 Early [Unified Cache APIs](#unified) released! Check [run_qwen_image_uapi](./examples/run_qwen_image_uapi.py) as an example.
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
-- [2025-08-11] 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) is supported now! Please check [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
-- [2025-08-10] 🔥[FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please check [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
+- [2025-08-11] 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) is supported now! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
+- [2025-08-10] 🔥[FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with `cache-dit`.
 
@@ -40,6 +41,7 @@
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [⚡️Dynamic Block Prune](#dbprune)
+- [🎉Unified Cache APIs](#unified)
 - [🔥Torch Compile](#compile)
 - [⚙️Metrics CLI](#metrics)
 
@@ -267,7 +269,7 @@ cache_options = {
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbprune-v1.png)
 
-We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
+We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. 
 
 ```python
 import cache_dit
@@ -332,6 +334,30 @@ cache_dit.enable_cache(pipe, **cache_options)
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+
+## 🎉Unified Cache APIs
+
+<div id="unified"></div>  
+
+Currently, for any diffusion models with transformer blocks that match the input/output pattern (IN/OUT: hidden_states, encoder_hidden_states), we can use the **Unified Cache APIs** from cache_dit. The **Unified Cache APIs** are currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
+
+```python
+import cache_dit
+from diffusers import QwenImagePipeline
+
+pipe = QwenImagePipeline.from_pretrained(
+   "Qwen/Qwen-Image",
+    torch_dtype=torch.bfloat16,
+)
+
+cache_dit.enable_cache(
+    pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    return_hidden_states_first=False,
+    **cache_options,
+)
+```
 
 
 ## 🔥Torch Compile
