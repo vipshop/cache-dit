@@ -3,8 +3,8 @@ import time
 import torch
 import argparse
 from diffusers import QwenImagePipeline
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 from utils import GiB
+import cache_dit
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -46,7 +46,7 @@ pipe = QwenImagePipeline.from_pretrained(
 if args.cache:
     if args.cache_type.lower() == "dbcache":
         cache_options = {
-            "cache_type": CacheType.DBCache,
+            "cache_type": cache_dit.DBCache,
             "warmup_steps": args.warmup_steps,
             "max_cached_steps": -1,  # -1 means no limit
             # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
@@ -73,7 +73,7 @@ if args.cache:
         )
     elif args.cache_type.lower() == "dbprune":
         cache_options = {
-            "cache_type": CacheType.DBPrune,
+            "cache_type": cache_dit.DBPrune,
             "warmup_steps": args.warmup_steps,
             "max_pruned_steps": -1,  # -1 means no limit
             "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
@@ -94,7 +94,7 @@ if args.cache:
 
     print(f"cache options:\n{cache_options}")
 
-    apply_cache_on_pipe(pipe, **cache_options)
+    cache_dit.enable_cache(pipe, **cache_options)
 else:
     cache_type_str = "NONE"
 

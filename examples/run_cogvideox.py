@@ -4,8 +4,8 @@ import torch
 import argparse
 from diffusers.utils import export_to_video
 from diffusers import CogVideoXPipeline, AutoencoderKLCogVideoX
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
 from utils import GiB
+import cache_dit
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -40,7 +40,7 @@ pipe = CogVideoXPipeline.from_pretrained(
 
 if args.cache:
     cache_options = {
-        "cache_type": CacheType.DBCache,
+        "cache_type": cache_dit.DBCache,
         "warmup_steps": args.warmup_steps,
         "max_cached_steps": -1,  # -1 means no limit
         # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
@@ -70,7 +70,7 @@ if args.cache:
     )
     print(f"cache options:\n{cache_options}")
 
-    apply_cache_on_pipe(pipe, **cache_options)
+    cache_dit.enable_cache(pipe, **cache_options)
 else:
     cache_type_str = "NONE"
 
