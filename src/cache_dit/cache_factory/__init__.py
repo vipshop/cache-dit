@@ -31,6 +31,10 @@ def supported_patterns():
             ["hidden_states", "encoder_hidden_states"],
             ["hidden_states", "encoder_hidden_states"],
         ),
+        make_pattern(
+            ["hidden_states", "encoder_hidden_states"],
+            ["hidden_states"],
+        ),
     ]
 
 
@@ -46,16 +50,28 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
         forward_parameters = set(
             inspect.signature(block.forward).parameters.keys()
         )
+        num_outputs = str(
+            inspect.signature(block.forward).return_annotation
+        ).count("torch.Tensor")
 
         matched_pattern_id = None
-        for j, pattern in enumerate(supported_patterns()):
-            param_matched = True
+        param_matched = False
+        for i, pattern in enumerate(supported_patterns()):
+            if param_matched:
+                break
+
+            if num_outputs > 0 and len(pattern["OUT"]) != num_outputs:
+                # output pattern not match
+                break
+
             for required_param in pattern["IN"]:
                 if required_param not in forward_parameters:
-                    param_matched = False
                     break
+
+            param_matched = True
             if param_matched:
-                matched_pattern_id = j  # last pattern
+                matched_pattern_id = i  # first pattern
+
         if matched_pattern_id is not None:
             pattern_ids.append(matched_pattern_id)
         else:
@@ -70,8 +86,7 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
             pattern_id = list(unique_pattern_ids)[0]
             pattern = supported_patterns()[pattern_id]
             logger.info(
-                f"Match cache pattern: IN({pattern['IN']}), "
-                f"OUT({pattern['OUT']})"
+                f"Match cache pattern: IN({pattern['IN']}, OUT({pattern['OUT']}))"
             )
 
     return pattern_matched
