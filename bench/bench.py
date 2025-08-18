@@ -147,6 +147,7 @@ def main():
     if not args.low_level_api:
         cache_dit.enable_cache(pipe, **cache_options)
     else:
+        assert isinstance(pipe.transformer, FluxTransformer2DModel)
         cache_dit.enable_cache(
             pipe,
             transformer=pipe.transformer,
@@ -155,7 +156,7 @@ def main():
                 + pipe.transformer.single_transformer_blocks
             ),
             blocks_name="transformer_blocks",
-            dummy_blocks_names="single_transformer_blocks",
+            dummy_blocks_names=["single_transformer_blocks"],
             # (encoder_hidden_states, hidden_states)
             return_hidden_states_first=False,
             **cache_options,

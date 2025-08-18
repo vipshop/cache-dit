@@ -4,11 +4,13 @@ import functools
 from contextlib import ExitStack
 
 import torch
-from diffusers import DiffusionPipeline, ModelMixin
+from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.adapters import CacheType
 from cache_dit.cache_factory.adapters import apply_cache_on_pipe
-from cache_dit.cache_factory.adapters import apply_cache_on_transformer
 from cache_dit.cache_factory.utils import load_cache_options_from_yaml
+from cache_dit.cache_factory.patch.flux import (
+    maybe_patch_flux_transformer,
+)
 from cache_dit.cache_factory.dual_block_cache import (
     cache_context,
     DBCachedTransformerBlocks,
@@ -23,12 +25,12 @@ def make_pattern(in_params: list, out_params: list) -> dict:
 
 
 def supported_patterns():
+    # TODO: support more cache patterns.
     return [
         make_pattern(
             ["hidden_states", "encoder_hidden_states"],
             ["hidden_states", "encoder_hidden_states"],
         ),
-        # TODO: support more cache patterns.
     ]
 
 
@@ -65,10 +67,11 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
         if len(unique_pattern_ids) > 1:
             pattern_matched = False
         else:
-            pattern_id = unique_pattern_ids[0]
+            pattern_id = list(unique_pattern_ids)[0]
+            pattern = supported_patterns()[pattern_id]
             logger.info(
-                f"Match cache pattern: IN ({supported_patterns[pattern_id]['IN']}),"
-                f"OUT ({supported_patterns[pattern_id]['OUT']})"
+                f"Match cache pattern: IN ({pattern['IN']}),"
+                f"OUT ({pattern['OUT']})"
             )
 
     return pattern_matched
@@ -92,47 +95,58 @@ def enable_cache(
         or not isinstance(blocks, torch.nn.ModuleList)
     ):
         return apply_cache_on_pipe(pipe, **cache_options_kwargs)
-    else:
+    elif (
+        isinstance(pipe, DiffusionPipeline)
+        and transformer is not None
+        and blocks is not None
+        and isinstance(blocks, torch.nn.ModuleList)
+    ):
         # support custom cache setting for models that match the
         # supported block forward patterns.
         logger.info(
             f"Using custom cache setting for pipe: {pipe.__class__.__name__}, "
             f"transfomer: {transformer.__class__.__name__}"
         )
-        if (
-            isinstance(pipe, DiffusionPipeline)
-            and transformer is not None
-            and blocks is not None
-            and isinstance(blocks, torch.nn.ModuleList)
+        if getattr(pipe, "_is_cached", False) or getattr(
+            transformer, "_is_cached", False
         ):
-            if getattr(pipe, "_is_cached", False) or getattr(
-                transformer, "_is_cached", False
-            ):
-                return pipe
+            return pipe
 
-            assert isinstance(blocks, torch.nn.ModuleList)
-            # process some specificial cases
-            if transformer.__class__.__name__.startswith("Flux"):
-                from cache_dit.cache_factory.patch.flux import (
-                    maybe_patch_flux_transformer,
-                )
-
-                transformer = maybe_patch_flux_transformer(
-                    transformer,
-                    blocks=blocks,
-                )
-
-            assert match_pattern(blocks), (
-                "No block forward pattern matched, "
-                f"supported lists: {supported_patterns()}"
-            )
+        assert isinstance(blocks, torch.nn.ModuleList)
 
         assert (
-            cache_options_kwargs.get("cache_type", CacheType.NONE)
+            cache_options_kwargs.pop("cache_type", CacheType.NONE)
             == CacheType.DBCache
         ), "Custom cache setting if only support for DBCache now!"
 
-        # Apply cache on transformer
+        # Apply cache on pipeline: wrap cache context
+        original_call = pipe.__class__.__call__
+
+        @functools.wraps(original_call)
+        def new_call(self, *args, **kwargs):
+            with cache_context.cache_context(
+                cache_context.create_cache_context(
+                    **cache_options_kwargs,
+                )
+            ):
+                return original_call(self, *args, **kwargs)
+
+        pipe.__class__.__call__ = new_call
+        pipe.__class__._is_cached = True
+
+        # Apply cache on transformer: mock cached transformer blocks
+        # process some specificial cases
+        if transformer.__class__.__name__.startswith("Flux"):
+            transformer = maybe_patch_flux_transformer(
+                transformer,
+                blocks=blocks,
+            )
+
+        assert match_pattern(blocks), (
+            "No block forward pattern matched, "
+            f"supported lists: {supported_patterns()}"
+        )
+
         cached_blocks = torch.nn.ModuleList(
             [
                 DBCachedTransformerBlocks(
@@ -145,6 +159,8 @@ def enable_cache(
         dummy_blocks = torch.nn.ModuleList()
 
         original_forward = transformer.forward
+
+        assert isinstance(dummy_blocks_names, list)
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
@@ -169,21 +185,5 @@ def enable_cache(
         transformer.forward = new_forward.__get__(transformer)
 
         transformer._is_cached = True
-
-        # Apply cache on pipeline
-        if not getattr(pipe, "_is_cached", False):
-            original_call = pipe.__class__.__call__
-
-            @functools.wraps(original_call)
-            def new_call(self, *args, **kwargs):
-                with cache_context.cache_context(
-                    cache_context.create_cache_context(
-                        **cache_options_kwargs,
-                    )
-                ):
-                    return original_call(self, *args, **kwargs)
-
-            pipe.__class__.__call__ = new_call
-            pipe.__class__._is_cached = True
 
         return pipe
