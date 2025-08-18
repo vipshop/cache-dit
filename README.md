@@ -11,7 +11,7 @@
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
-  🔥<b><a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
+  🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
 <!--
@@ -24,7 +24,7 @@
 
 ## 🔥News  
 
-- [2025-08-18] 🎉Early [Unified Cache APIs](#unified) released! Check [run_qwen_image_uapi](./examples/run_qwen_image_uapi.py) as an example.
+- [2025-08-18] 🎉Early **[Unified Cache APIs](#unified)** released! Check [run_qwen_image_uapi](./examples/run_qwen_image_uapi.py) as an example.
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) is supported now! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
 - [2025-08-10] 🔥[FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
