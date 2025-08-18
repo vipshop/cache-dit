@@ -85,7 +85,7 @@ def enable_cache(
             "No block forward pattern matched, "
             f"supported lists: {supported_patterns()}"
         )
-    # TODO: support caching for transformer module directly.
+    # Support caching for pipeline and transformer level.
     if isinstance(pipe_or_transformer, DiffusionPipeline):
         return apply_cache_on_pipe(pipe_or_transformer, *args, **kwargs)
     elif isinstance(pipe_or_transformer, ModelMixin):
