@@ -72,7 +72,6 @@ if args.cache:
         pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        # blocks_name="transformer_blocks",
         return_hidden_states_first=False,
         **cache_options,
     )
