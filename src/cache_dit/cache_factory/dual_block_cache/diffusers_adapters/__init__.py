@@ -3,7 +3,12 @@ import importlib
 from diffusers import DiffusionPipeline
 
 
-def apply_db_cache_on_transformer(transformer, *args, **kwargs):
+def apply_db_cache_on_transformer(
+    transformer,
+):
+    if getattr(transformer, "_is_cached", False):
+        return transformer
+
     transformer_cls_name: str = transformer.__class__.__name__
     if transformer_cls_name.startswith("Flux"):
         adapter_name = "flux"
@@ -26,11 +31,19 @@ def apply_db_cache_on_transformer(transformer, *args, **kwargs):
     apply_db_cache_on_transformer_fn = getattr(
         adapter_module, "apply_db_cache_on_transformer"
     )
-    return apply_db_cache_on_transformer_fn(transformer, *args, **kwargs)
+
+    # mock transformer_blocks -> cached_transformer_blocks
+    return apply_db_cache_on_transformer_fn(transformer)
 
 
-def apply_db_cache_on_pipe(pipe: DiffusionPipeline, *args, **kwargs):
+def apply_db_cache_on_pipe(
+    pipe: DiffusionPipeline,
+    *args,
+    **kwargs,
+):
     assert isinstance(pipe, DiffusionPipeline)
+    if getattr(pipe, "_is_cached", False):
+        return pipe
 
     pipe_cls_name: str = pipe.__class__.__name__
     if pipe_cls_name.startswith("Flux"):

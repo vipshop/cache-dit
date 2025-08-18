@@ -3,13 +3,11 @@ import argparse
 import torch
 import random
 import time
-
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from cache_dit.cache_factory import apply_cache_on_pipe, CacheType
-from cache_dit.logger import init_logger
 
+import cache_dit
 
-logger = init_logger(__name__)
+logger = cache_dit.init_logger(__name__)
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -27,7 +25,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
-    parser.add_argument("--Bn-steps", "--BnS", type=int, default=1)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
     parser.add_argument("--max-pruned-steps", type=int, default=-1)
@@ -35,6 +32,9 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--compile-all", action="store_true", default=False)
+    parser.add_argument(
+        "--low-level-api", "--uapi", action="store_true", default=False
+    )
     return parser.parse_args()
 
 
@@ -43,15 +43,12 @@ def set_rand_seeds(seed):
     torch.manual_seed(seed)
 
 
-def get_cache_options(
-    cache_type: CacheType = None, args: argparse.Namespace = None
-):
+def get_cache_options(cache_type, args: argparse.Namespace = None):
     assert args is not None
     if args.cache_config is not None:
         assert os.path.exists(args.cache_config)
-        from cache_dit.cache_factory import load_cache_options_from_yaml
 
-        cache_options = load_cache_options_from_yaml(args.cache_config)
+        cache_options = cache_dit.load_options(args.cache_config)
         logger.info(
             f"Loaded cache options from file: {args.cache_config}, "
             f"\n{cache_options}"
@@ -59,19 +56,10 @@ def get_cache_options(
         if cache_type is None:
             cache_type = cache_options["cache_type"]
     else:
-        cache_type = CacheType.type(cache_type)
-        if cache_type == CacheType.FBCache:
+        cache_type = cache_dit.cache_type(cache_type)
+        if cache_type == cache_dit.DBCache:
             cache_options = {
-                "cache_type": CacheType.FBCache,
-                "warmup_steps": args.warmup_steps,
-                "max_cached_steps": args.max_cached_steps,
-                "residual_diff_threshold": args.rdt,
-                # TaylorSeer options
-                "enable_taylorseer": args.taylorseer,
-            }
-        elif cache_type == CacheType.DBCache:
-            cache_options = {
-                "cache_type": CacheType.DBCache,
+                "cache_type": cache_dit.DBCache,
                 "warmup_steps": args.warmup_steps,
                 "max_cached_steps": args.max_cached_steps,  # -1 means no limit
                 # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
@@ -79,11 +67,6 @@ def get_cache_options(
                 "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
                 "max_Fn_compute_blocks": 19,
                 "max_Bn_compute_blocks": 38,
-                # Skip the specific Bn blocks in cache steps.
-                # 0, 2, 4, ..., 14, 15, etc.
-                "Bn_compute_blocks_ids": CacheType.range(
-                    0, args.Bn_compute_blocks, args.Bn_steps
-                ),
                 "non_compute_blocks_diff_threshold": 0.08,
                 "residual_diff_threshold": args.rdt,
                 # Alter cache pattern: 0 F 1 T 2 F 3 T 4 F 5 T ...
@@ -103,12 +86,12 @@ def get_cache_options(
                     "n_derivatives": args.taylorseer_order,
                 },
             }
-        elif cache_type == CacheType.DBPrune:
+        elif cache_type == cache_dit.DBPrune:
             assert (
                 args.taylorseer is False
             ), "DBPrune does not support TaylorSeer yet."
             cache_options = {
-                "cache_type": CacheType.DBPrune,
+                "cache_type": cache_dit.DBPrune,
                 "residual_diff_threshold": args.rdt,
                 "Fn_compute_blocks": args.Fn_compute_blocks,
                 "Bn_compute_blocks": args.Bn_compute_blocks,
@@ -128,25 +111,20 @@ def get_cache_options(
             }
         else:
             cache_options = {
-                "cache_type": CacheType.NONE,
+                "cache_type": cache_dit.NONE,
             }
     # Reset cache_type for result saving
     cache_type_str = str(cache_type).removeprefix("CacheType.").upper()
-    if cache_type == CacheType.DBCache:
-        cache_type_str = (
-            f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}S{args.Bn_steps}"
-            f"W{args.warmup_steps}T{int(args.taylorseer)}"
-            f"O{args.taylorseer_order}"
-        )
-    elif cache_type == CacheType.DBPrune:
+    if cache_type == cache_dit.DBCache:
         cache_type_str = (
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+            f"T{int(args.taylorseer)}O{args.taylorseer_order}"
         )
-    elif cache_type == CacheType.FBCache:
+    elif cache_type == cache_dit.DBPrune:
         cache_type_str = (
-            f"{cache_type_str}_W{args.warmup_steps}T{int(args.taylorseer)}"
+            f"{cache_type_str}_F{args.Fn_compute_blocks}"
+            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
         )
     return cache_options, cache_type_str
 
@@ -168,15 +146,29 @@ def main():
     ).to("cuda")
 
     # Apply cache to the pipeline
-    apply_cache_on_pipe(pipe, **cache_options)
+    if not args.low_level_api:
+        cache_dit.enable_cache(pipe, **cache_options)
+    else:
+        assert isinstance(pipe.transformer, FluxTransformer2DModel)
+        cache_dit.enable_cache(
+            pipe,
+            transformer=pipe.transformer,
+            blocks=(
+                pipe.transformer.transformer_blocks
+                + pipe.transformer.single_transformer_blocks
+            ),
+            blocks_name="transformer_blocks",
+            dummy_blocks_names=["single_transformer_blocks"],
+            # (encoder_hidden_states, hidden_states)
+            return_hidden_states_first=False,
+            **cache_options,
+        )
 
     if args.compile:
         # Increase recompile limit for DBCache and DBPrune while
         # using dynamic input shape.
         if args.inductor_flags:
-            import cache_dit.compile
-
-            cache_dit.compile.set_custom_compile_configs()
+            cache_dit.set_compile_configs()
         else:
             torch._dynamo.config.recompile_limit = 96  # default is 8
             torch._dynamo.config.accumulated_recompile_limit = (
@@ -196,7 +188,7 @@ def main():
                 # will cause precision issues while using TaylorSeer
                 # with order > 2.
                 for module in pipe.transformer.transformer_blocks:
-                    module.compile()
+                    module.compile(fullgraph=True)
             else:
                 logger.warning(
                     "Compiling the whole transformer model with TaylorSeer "
@@ -204,7 +196,7 @@ def main():
                     "transformer_blocks."
                 )
             for module in pipe.transformer.single_transformer_blocks:
-                module.compile()
+                module.compile(fullgraph=True)
         else:
             logger.info("Compiling the transformer with default mode.")
             pipe.transformer = torch.compile(pipe.transformer, mode="default")

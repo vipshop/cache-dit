@@ -661,9 +661,8 @@ def collect_cache_kwargs(default_attrs: dict, **kwargs):
     _safe_set_sequence_field("Bn_compute_blocks_ids", [])
     _safe_set_sequence_field("taylorseer_kwargs", {})
 
-    assert default_attrs is not None, "default_attrs must be set before"
     for attr in cache_attrs:
-        if attr.name in default_attrs:
+        if attr.name in default_attrs:  # can be empty {}
             cache_kwargs[attr.name] = default_attrs[attr.name]
 
     if logger.isEnabledFor(logging.DEBUG):

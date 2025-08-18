@@ -8,8 +8,7 @@ import torchvision.transforms.functional as TF
 from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
-
-from cache_dit.cache_factory import CacheType, apply_cache_on_pipe
+import cache_dit
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -56,7 +55,7 @@ def prepare_pipeline(
 ):
     if args.cache:
         cache_options = {
-            "cache_type": CacheType.DBCache,
+            "cache_type": cache_dit.DBCache,
             "warmup_steps": args.warmup_steps,
             "max_cached_steps": -1,  # -1 means no limit
             "downsample_factor": args.downsample_factor,
@@ -93,7 +92,7 @@ def prepare_pipeline(
         )
         print(f"cache options:\n{cache_options}")
 
-        apply_cache_on_pipe(pipe, **cache_options)
+        cache_dit.enable_cache(pipe, **cache_options)
     else:
         cache_type_str = "NONE"
 

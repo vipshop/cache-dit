@@ -2,7 +2,7 @@ import os
 import time
 import torch
 import argparse
-from diffusers import QwenImagePipeline
+from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
 from utils import GiB
 import cache_dit
 
@@ -11,7 +11,6 @@ def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("--cache", action="store_true", default=False)
-    parser.add_argument("--cache-type", "--type", type=str, default="dbcache")
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=4)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
@@ -35,71 +34,52 @@ pipe = QwenImagePipeline.from_pretrained(
     device_map=(
         "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
     ),
-    max_memory=(
-        {i: f"{int(GiB() * 0.7)}GB" for i in range(torch.cuda.device_count())}
-        if args.cache_type != "dbcache"
-        else None
-    ),
 )
 
 
 if args.cache:
-    if args.cache_type.lower() == "dbcache":
-        cache_options = {
-            "cache_type": cache_dit.DBCache,
-            "warmup_steps": args.warmup_steps,
-            "max_cached_steps": -1,  # -1 means no limit
-            # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
-            "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
-            "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
-            "residual_diff_threshold": args.rdt,
-            # CFG: classifier free guidance or not
-            "do_separate_classifier_free_guidance": True,
-            "cfg_compute_first": False,
-            "enable_taylorseer": args.taylorseer,
-            "enable_encoder_taylorseer": args.taylorseer,
-            # Taylorseer cache type cache be hidden_states or residual
-            "taylorseer_cache_type": "residual",
-            "taylorseer_kwargs": {
-                "n_derivatives": args.taylorseer_order,
-            },
-        }
-        cache_type_str = "DBCACHE"
-        cache_type_str = (
-            f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
-            f"T{int(args.taylorseer)}O{args.taylorseer_order}_"
-            f"R{args.rdt}"
-        )
-    elif args.cache_type.lower() == "dbprune":
-        cache_options = {
-            "cache_type": cache_dit.DBPrune,
-            "warmup_steps": args.warmup_steps,
-            "max_pruned_steps": -1,  # -1 means no limit
-            "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
-            "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
-            "residual_diff_threshold": args.rdt,
-            # CFG: classifier free guidance or not
-            "do_separate_classifier_free_guidance": True,
-            "cfg_compute_first": False,
-        }
-        cache_type_str = "DBPRUNE"
-        cache_type_str = (
-            f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}W{args.warmup_steps}_"
-            f"R{args.rdt}"
-        )
-    else:
-        raise ValueError("cache_type error, only support dbcache and dbprune.")
+    cache_options = {
+        "cache_type": cache_dit.DBCache,
+        "warmup_steps": args.warmup_steps,
+        "max_cached_steps": -1,  # -1 means no limit
+        # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+        "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
+        "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
+        "residual_diff_threshold": args.rdt,
+        # CFG: classifier free guidance or not
+        "do_separate_classifier_free_guidance": True,
+        "cfg_compute_first": False,
+        "enable_taylorseer": args.taylorseer,
+        "enable_encoder_taylorseer": args.taylorseer,
+        # Taylorseer cache type cache be hidden_states or residual
+        "taylorseer_cache_type": "residual",
+        "taylorseer_kwargs": {
+            "n_derivatives": args.taylorseer_order,
+        },
+    }
+    cache_type_str = "DBCACHE"
+    cache_type_str = (
+        f"{cache_type_str}_F{args.Fn_compute_blocks}"
+        f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
+        f"T{int(args.taylorseer)}O{args.taylorseer_order}_"
+        f"R{args.rdt}"
+    )
 
     print(f"cache options:\n{cache_options}")
 
-    cache_dit.enable_cache(pipe, **cache_options)
+    assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+    cache_dit.enable_cache(
+        pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.transformer_blocks,
+        return_hidden_states_first=False,
+        **cache_options,
+    )
 else:
     cache_type_str = "NONE"
 
 
-if torch.cuda.device_count() <= 1 and args.cache_type == "dbcache":
+if torch.cuda.device_count() <= 1:
     # Enable memory savings
     pipe.enable_model_cpu_offload()
 
@@ -189,7 +169,7 @@ if hasattr(pipe.transformer, "_cfg_pruned_blocks"):
 
 
 time_cost = end - start
-save_path = f"qwen-image.{cache_type_str}.png"
+save_path = f"qwen-image.llapi.{cache_type_str}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

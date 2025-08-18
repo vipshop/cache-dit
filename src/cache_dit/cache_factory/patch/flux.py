@@ -221,15 +221,23 @@ def __patch_transformer_forward__(
 
 def maybe_patch_flux_transformer(
     transformer: FluxTransformer2DModel,
+    blocks: torch.nn.ModuleList = None,
 ) -> FluxTransformer2DModel:
-    single_forward_parameters = inspect.signature(
-        transformer.single_transformer_blocks[0].forward
-    ).parameters.keys()
-    if "encoder_hidden_states" not in single_forward_parameters:
-        logger.warning("Patch FluxSingleTransformerBlock for cache-dit.")
-        for block in transformer.single_transformer_blocks:
-            block.forward = __patch_single_forward__.__get__(block)
+    if blocks is None:
+        blocks = transformer.single_transformer_blocks
 
+    is_patched = False
+    for block in blocks:
+        if isinstance(block, FluxSingleTransformerBlock):
+            forward_parameters = inspect.signature(
+                blocks.forward
+            ).parameters.keys()
+            if "encoder_hidden_states" not in forward_parameters:
+                block.forward = __patch_single_forward__.__get__(block)
+                is_patched = True
+
+    if is_patched:
+        logger.warning("Patched Flux for cache-dit.")
         assert not getattr(transformer, "_is_parallelized", False), (
             "Please call apply_cache_on_pipe before Parallelize, "
             "the __patch_transformer_forward__ will overwrite the "
