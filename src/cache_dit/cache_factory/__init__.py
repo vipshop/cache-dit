@@ -1,8 +1,9 @@
 import inspect
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.cache_factory.adapters import CacheType
 from cache_dit.cache_factory.adapters import apply_cache_on_pipe
+from cache_dit.cache_factory.adapters import apply_cache_on_transformer
 from cache_dit.cache_factory.utils import load_cache_options_from_yaml
 from cache_dit.logger import init_logger
 
@@ -73,7 +74,11 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
     return pattern_matched
 
 
-def enable_cache(pipe: DiffusionPipeline, *args, **kwargs) -> DiffusionPipeline:
+def enable_cache(
+    pipe_or_transformer: DiffusionPipeline,
+    *args,
+    **kwargs,
+) -> DiffusionPipeline | ModelMixin:
     if transformer_blocks := kwargs.pop("transformer_blocks", None):
         assert isinstance(transformer_blocks, torch.nn.ModuleList)
         assert match_pattern(transformer_blocks), (
@@ -81,4 +86,10 @@ def enable_cache(pipe: DiffusionPipeline, *args, **kwargs) -> DiffusionPipeline:
             f"supported lists: {supported_patterns()}"
         )
     # TODO: support caching for transformer module directly.
-    return apply_cache_on_pipe(pipe, *args, **kwargs)
+    if isinstance(pipe_or_transformer, DiffusionPipeline):
+        return apply_cache_on_pipe(pipe_or_transformer, *args, **kwargs)
+    elif isinstance(pipe_or_transformer, ModelMixin):
+        # Assume you have pass a transformer (subclass of ModelMixin)
+        return apply_cache_on_transformer(pipe_or_transformer, *args, **kwargs)
+    else:
+        return pipe_or_transformer  # do not-thing
