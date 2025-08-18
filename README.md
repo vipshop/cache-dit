@@ -11,7 +11,7 @@
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
-  🔥<b><a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a> | <a href="#fbcache">FBCache</a></b>🔥
+  🔥<b><a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
 <!--
@@ -39,7 +39,6 @@
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [🎉First Block Cache](#fbcache)
 - [⚡️Dynamic Block Prune](#dbprune)
 - [🔥Torch Compile](#compile)
 - [⚙️Metrics CLI](#metrics)
@@ -161,6 +160,37 @@ cache_options = {
 }
 ```
 
+<!--
+<div id="fbcache"></div>
+
+![](https://github.com/vipshop/cache-dit/raw/main/assets/fbcache-v1.png)
+
+**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can use configure **DBCache** with **F1B0** settings to achieve the same functionality.
+
+```python
+import cache_dit
+from diffusers import FluxPipeline
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+# Or using DBCache with F1B0. 
+# Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+cache_options = {
+    "cache_type": cache_dit.DBCache,
+    "warmup_steps": 8,
+    "max_cached_steps": -1,  # -1 means no limit
+    "Fn_compute_blocks": 1,  # Fn, F1, etc.
+    "Bn_compute_blocks": 0,  # Bn, B0, etc.
+    "residual_diff_threshold": 0.12,
+}
+
+cache_dit.enable_cache(pipe, **cache_options)
+```
+-->
+
 ## 🔥Hybrid TaylorSeer
 
 <div id="taylorseer"></div>
@@ -226,37 +256,6 @@ cache_options = {
     # current non-CFG transformer step for current CFG step.
     "cfg_diff_compute_separate": True,
 }
-```
-
-## 🎉FBCache: First Block Cache  
-
-<div id="fbcache"></div>
-
-![](https://github.com/vipshop/cache-dit/raw/main/assets/fbcache-v1.png)
-
-**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can use configure **DBCache** with **F1B0** settings to achieve the same functionality.
-
-```python
-import cache_dit
-from diffusers import FluxPipeline
-
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
-
-# Or using DBCache with F1B0. 
-# Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
-cache_options = {
-    "cache_type": cache_dit.DBCache,
-    "warmup_steps": 8,
-    "max_cached_steps": -1,  # -1 means no limit
-    "Fn_compute_blocks": 1,  # Fn, F1, etc.
-    "Bn_compute_blocks": 0,  # Bn, B0, etc.
-    "residual_diff_threshold": 0.12,
-}
-
-cache_dit.enable_cache(pipe, **cache_options)
 ```
 
 ## ⚡️DBPrune: Dynamic Block Prune
