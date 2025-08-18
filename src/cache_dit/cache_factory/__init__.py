@@ -77,12 +77,31 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
     return pattern_matched
 
 
+def try_find_blocks_name(transformer):
+    blocks_name = None
+    allow_prefixes = ["transformer", "blocks"]
+    for attr_name in dir(transformer):
+        if blocks_name is None:
+            for prefix in allow_prefixes:
+                # transformer_blocks, blocks
+                if attr_name.startswith(prefix):
+                    blocks_name = attr_name
+                    logger.info(f"Auto selected blocks name: {blocks_name}")
+                    break
+    if blocks_name is None:
+        logger.warning(
+            "Auto selected blocks name failed, please set it manually."
+        )
+    return blocks_name
+
+
 def enable_cache(
     pipe: DiffusionPipeline,
     *,
     transformer: torch.nn.Module = None,
     blocks: torch.nn.ModuleList = None,
-    blocks_name: str = "transformer_blocks",
+    # transformer_blocks, blocks, etc.
+    blocks_name: str = None,
     dummy_blocks_names: list[str] = [],
     # (encoder_hidden_states, hidden_states) or
     # (hidden_states, encoder_hidden_states)
@@ -105,7 +124,7 @@ def enable_cache(
         # supported block forward patterns.
         logger.info(
             f"Using custom cache setting for: {pipe.__class__.__name__}, "
-            f"transfomer: {transformer.__class__.__name__}"
+            f"{transformer.__class__.__name__}"
         )
         if getattr(pipe, "_is_cached", False) or getattr(
             transformer, "_is_cached", False
@@ -117,7 +136,7 @@ def enable_cache(
         assert (
             cache_options_kwargs.pop("cache_type", CacheType.NONE)
             == CacheType.DBCache
-        ), "Custom cache setting if only support for DBCache now!"
+        ), "Custom cache setting only support for DBCache now!"
 
         # Apply cache on pipeline: wrap cache context
         cache_kwargs, _ = cache_context.collect_cache_kwargs(
@@ -165,6 +184,9 @@ def enable_cache(
         original_forward = transformer.forward
 
         assert isinstance(dummy_blocks_names, list)
+        if blocks_name is None:
+            blocks_name = try_find_blocks_name(transformer)
+            assert blocks_name is not None
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
@@ -191,3 +213,5 @@ def enable_cache(
         transformer._is_cached = True
 
         return pipe
+
+    return pipe  # do nothing
