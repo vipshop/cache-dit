@@ -65,7 +65,6 @@ def apply_db_prune_on_transformer(
 def apply_db_prune_on_pipe(
     pipe: HunyuanVideoPipeline,
     *,
-    shallow_patch: bool = False,
     residual_diff_threshold=0.06,
     downsample_factor=1,
     warmup_steps=0,
@@ -96,7 +95,6 @@ def apply_db_prune_on_pipe(
         pipe.__class__.__call__ = new_call
         pipe.__class__._is_pruned = True
 
-    if not shallow_patch:
-        apply_db_prune_on_transformer(pipe.transformer, **kwargs)
+    apply_db_prune_on_transformer(pipe.transformer)
 
     return pipe

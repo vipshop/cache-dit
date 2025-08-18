@@ -1,4 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/blob/main/first_block_cache_examples/run_hunyuan_video.py
 import os
 import time
 import torch
@@ -39,7 +38,6 @@ transformer = HunyuanVideoTransformer3DModel.from_pretrained(
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
-    transformer=transformer,
     torch_dtype=torch.float16,
     revision="refs/pr/18",
 ).to("cuda")
