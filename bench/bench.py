@@ -166,7 +166,7 @@ def main():
         # Increase recompile limit for DBCache and DBPrune while
         # using dynamic input shape.
         if args.inductor_flags:
-            cache_dit.set_custom_compile_configs()
+            cache_dit.set_compile_configs()
         else:
             torch._dynamo.config.recompile_limit = 96  # default is 8
             torch._dynamo.config.accumulated_recompile_limit = (

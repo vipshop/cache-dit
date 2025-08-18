@@ -10,7 +10,7 @@ from cache_dit.cache_factory import enable_cache
 from cache_dit.cache_factory import supported_patterns
 from cache_dit.cache_factory import match_pattern
 from cache_dit.cache_factory import CacheType
-from cache_dit.compile import set_custom_compile_configs
+from cache_dit.compile import set_compile_configs
 from cache_dit.logger import init_logger
 
 NONE = CacheType.NONE

@@ -23,7 +23,7 @@ def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
     return CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or mode
 
 
-def set_custom_compile_configs(
+def set_compile_configs(
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
     use_fast_math: bool = False,
