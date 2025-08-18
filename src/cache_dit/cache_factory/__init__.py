@@ -1,10 +1,18 @@
 import inspect
+import unittest
+import functools
+from contextlib import ExitStack
+
 import torch
 from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.cache_factory.adapters import CacheType
 from cache_dit.cache_factory.adapters import apply_cache_on_pipe
 from cache_dit.cache_factory.adapters import apply_cache_on_transformer
 from cache_dit.cache_factory.utils import load_cache_options_from_yaml
+from cache_dit.cache_factory.dual_block_cache import (
+    cache_context,
+    DBCachedTransformerBlocks,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -68,16 +76,100 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
 
 def enable_cache(
     pipe: DiffusionPipeline,
-    *args,
-    **kwargs,
+    *,
+    transformer: torch.nn.Module = None,
+    blocks: torch.nn.ModuleList = None,
+    blocks_name: str = "transformer_blocks",
+    dummy_blocks_names: list[str] = [],
+    return_hidden_states_first: bool = False,
+    **cache_options_kwargs,
 ) -> DiffusionPipeline:
-    if transformer_blocks := kwargs.pop("transformer_blocks", None):
-        assert isinstance(transformer_blocks, torch.nn.ModuleList)
-        assert match_pattern(transformer_blocks), (
-            "No block forward pattern matched, "
-            f"supported lists: {supported_patterns()}"
-        )
     if isinstance(pipe, DiffusionPipeline):
-        return apply_cache_on_pipe(pipe, *args, **kwargs)
+        return apply_cache_on_pipe(pipe, **cache_options_kwargs)
     else:
-        raise ValueError("`pipe` must be a valid DiffusionPipeline")
+        # raise ValueError("`pipe` must be a valid DiffusionPipeline")
+        # support custom cache setting for models that match the supported block forward patterns.
+        if (
+            pipe is not None
+            and transformer is not None
+            and blocks is not None
+            and isinstance(blocks, torch.nn.ModuleList)
+        ):
+            if getattr(pipe, "_is_cached", False) or getattr(
+                transformer, "_is_cached", False
+            ):
+                return pipe
+
+            assert isinstance(blocks, torch.nn.ModuleList)
+            assert match_pattern(blocks), (
+                "No block forward pattern matched, "
+                f"supported lists: {supported_patterns()}"
+            )
+        assert (
+            cache_options_kwargs.get("cache_type", CacheType.NONE)
+            == CacheType.DBCache
+        ), "Custom cache setting if only support for DBCache now!"
+
+        # process some specificial cases
+        if transformer.__class__.__name__.startswith("Flux"):
+            from cache_dit.cache_factory.patch.flux import (
+                maybe_patch_flux_transformer,
+            )
+
+            transformer = maybe_patch_flux_transformer(transformer)
+
+        # Apply cache on transformer
+        cached_blocks = torch.nn.ModuleList(
+            [
+                DBCachedTransformerBlocks(
+                    blocks,
+                    transformer=transformer,
+                    return_hidden_states_first=return_hidden_states_first,
+                )
+            ]
+        )
+        dummy_blocks = torch.nn.ModuleList()
+
+        original_forward = transformer.forward
+
+        @functools.wraps(original_forward)
+        def new_forward(self, *args, **kwargs):
+            with ExitStack() as stack:
+                stack.enter_context(
+                    unittest.mock.patch.object(
+                        self,
+                        blocks_name,
+                        cached_blocks,
+                    )
+                )
+                for dummy_name in dummy_blocks_names:
+                    stack.enter_context(
+                        unittest.mock.patch.object(
+                            self,
+                            dummy_name,
+                            dummy_blocks,
+                        )
+                    )
+                return original_forward(*args, **kwargs)
+
+        transformer.forward = new_forward.__get__(transformer)
+
+        transformer._is_cached = True
+
+        # Apply cache on pipeline
+        if not getattr(pipe, "_is_cached", False):
+            original_call = pipe.__class__.__call__
+
+            @functools.wraps(original_call)
+            def new_call(self, *args, **kwargs):
+                with cache_context.cache_context(
+                    cache_context.create_cache_context(
+                        **cache_options_kwargs,
+                    )
+                ):
+                    return original_call(self, *args, **kwargs)
+
+            pipe.__class__.__call__ = new_call
+            pipe.__class__._is_cached = True
+
+        return pipe
