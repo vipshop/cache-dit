@@ -93,8 +93,12 @@ def enable_cache(
     ):
         return apply_cache_on_pipe(pipe, **cache_options_kwargs)
     else:
-        # raise ValueError("`pipe` must be a valid DiffusionPipeline")
-        # support custom cache setting for models that match the supported block forward patterns.
+        # support custom cache setting for models that match the
+        # supported block forward patterns.
+        logger.info(
+            f"Using custom cache setting for pipe: {pipe.__class__.__name__}, "
+            f"transfomer: {transformer.__class__.__name__}"
+        )
         if (
             isinstance(pipe, DiffusionPipeline)
             and transformer is not None
@@ -107,25 +111,26 @@ def enable_cache(
                 return pipe
 
             assert isinstance(blocks, torch.nn.ModuleList)
+            # process some specificial cases
+            if transformer.__class__.__name__.startswith("Flux"):
+                from cache_dit.cache_factory.patch.flux import (
+                    maybe_patch_flux_transformer,
+                )
+
+                transformer = maybe_patch_flux_transformer(
+                    transformer,
+                    blocks=blocks,
+                )
+
             assert match_pattern(blocks), (
                 "No block forward pattern matched, "
                 f"supported lists: {supported_patterns()}"
             )
+
         assert (
             cache_options_kwargs.get("cache_type", CacheType.NONE)
             == CacheType.DBCache
         ), "Custom cache setting if only support for DBCache now!"
-
-        # process some specificial cases
-        if transformer.__class__.__name__.startswith("Flux"):
-            from cache_dit.cache_factory.patch.flux import (
-                maybe_patch_flux_transformer,
-            )
-
-            transformer = maybe_patch_flux_transformer(
-                transformer,
-                single_transformer_blocks=blocks,
-            )
 
         # Apply cache on transformer
         cached_blocks = torch.nn.ModuleList(

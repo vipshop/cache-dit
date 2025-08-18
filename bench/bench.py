@@ -149,7 +149,7 @@ def main():
     else:
         cache_dit.enable_cache(
             pipe,
-            transformer=pipe.transformers,
+            transformer=pipe.transformer,
             blocks=(
                 pipe.transformer.transformer_blocks
                 + pipe.transformer.single_transformer_blocks
