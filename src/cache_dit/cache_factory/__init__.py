@@ -75,21 +75,17 @@ def match_pattern(transformer_blocks: torch.nn.ModuleList) -> bool:
 
 
 def enable_cache(
-    pipe_or_transformer: DiffusionPipeline,
+    pipe: DiffusionPipeline,
     *args,
     **kwargs,
-) -> DiffusionPipeline | ModelMixin:
+) -> DiffusionPipeline:
     if transformer_blocks := kwargs.pop("transformer_blocks", None):
         assert isinstance(transformer_blocks, torch.nn.ModuleList)
         assert match_pattern(transformer_blocks), (
             "No block forward pattern matched, "
             f"supported lists: {supported_patterns()}"
         )
-    # Support caching for pipeline and transformer level.
-    if isinstance(pipe_or_transformer, DiffusionPipeline):
-        return apply_cache_on_pipe(pipe_or_transformer, *args, **kwargs)
-    elif isinstance(pipe_or_transformer, ModelMixin):
-        # Assume you have pass a transformer (subclass of ModelMixin)
-        return apply_cache_on_transformer(pipe_or_transformer, *args, **kwargs)
+    if isinstance(pipe, DiffusionPipeline):
+        return apply_cache_on_pipe(pipe, *args, **kwargs)
     else:
-        return pipe_or_transformer  # do not-thing
+        raise ValueError("`pipe` must be a valid DiffusionPipeline")
