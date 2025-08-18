@@ -102,7 +102,6 @@ def apply_db_cache_on_pipe(
         pipe.__class__.__call__ = new_call
         pipe.__class__._is_cached = True
 
-    if not shallow_patch:
-        apply_db_cache_on_transformer(pipe.transformer)
+    apply_db_cache_on_transformer(pipe.transformer)
 
     return pipe
