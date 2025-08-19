@@ -14,6 +14,12 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
+<div align="center">
+  <p align="center">
+    ♥️ Cache <b>Acceleration</b> with <b>One-line</b> Code ~ ♥️
+  </p>
+</div> 
+
 
 ## 🔥News  
 
@@ -99,14 +105,16 @@ from diffusers import DiffusionPipeline # Can be [Any] Diffusion Pipeline
 
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
+# Just use the one line code with default cache options.
+cache_dit.enable_cache(pipe) 
+
+# Or, enable cache with custom setting according to your models.
 cache_dit.enable_cache(
     pipe, transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
     return_hidden_states_first=False,
     **cache_dit.default_options(),
 )
-
-cache_dit.enable_cache(pipe) # Or, just use the one line code with default cache options.
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
