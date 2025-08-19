@@ -279,10 +279,19 @@ class UnifiedCacheAdapter:
             and isinstance(blocks, torch.nn.ModuleList)
         ):
             assert isinstance(blocks, torch.nn.ModuleList)
-            assert (
-                cache_context_kwargs.pop("cache_type", CacheType.NONE)
-                == CacheType.DBCache
-            ), "Custom cache setting only support for DBCache now!"
+
+            if len(cache_context_kwargs) == 0:
+                logger.warning(
+                    "cache_context_kwargs is empty, use default cache options!"
+                )
+                cache_context_kwargs = CacheType.default_options(
+                    CacheType.DBCache
+                )
+
+            if cache_type := cache_context_kwargs.pop("cache_type", None):
+                assert (
+                    cache_type == CacheType.DBCache
+                ), "Custom cache setting only support for DBCache now!"
 
             # Apply cache on pipeline: wrap cache context
             cls.create_context(pipe, **cache_context_kwargs)
