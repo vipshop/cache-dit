@@ -441,18 +441,21 @@ class UnifiedCacheAdapter:
         pattern_matched = True
         pattern_ids = []
 
-        valid_patterns = cls.supported_patterns()
+        valid_patterns = []
         if return_hidden_states_first:
-            valid_patterns = []
             for pattern in cls.supported_patterns():
-                if pattern["OUT"] == "hidden_states":
+                if pattern["OUT"][0] == "hidden_states":
+                    valid_patterns.append(pattern)
+        else:
+            for pattern in cls.supported_patterns():
+                if pattern["OUT"][0] == "encoder_hidden_states":
                     valid_patterns.append(pattern)
 
         selected_patterns = valid_patterns.copy()
         if return_hidden_states_only:
             selected_patterns = []
             for pattern in valid_patterns:
-                if pattern["OUT"] == 1:
+                if len(pattern["OUT"]) == 1:
                     selected_patterns.append(pattern)
 
         for block in transformer_blocks:
