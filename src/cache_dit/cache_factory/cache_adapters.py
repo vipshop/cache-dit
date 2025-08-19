@@ -314,7 +314,6 @@ class UnifiedCacheAdapter:
                 cache_type == CacheType.DBCache
             ), "Custom cache setting only support for DBCache now!"
 
-
         # Apply cache on pipeline: wrap cache context
         cache_kwargs, _ = cache_context.collect_cache_kwargs(
             default_attrs={},
