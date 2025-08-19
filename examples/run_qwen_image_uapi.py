@@ -169,7 +169,7 @@ if hasattr(pipe.transformer, "_cfg_pruned_blocks"):
 
 
 time_cost = end - start
-save_path = f"qwen-image.llapi.{cache_type_str}.png"
+save_path = f"qwen-image.uapi.{cache_type_str}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
