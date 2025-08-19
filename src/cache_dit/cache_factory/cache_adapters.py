@@ -355,7 +355,11 @@ class UnifiedCacheAdapter:
             )
 
         # Check block forward pattern matching
-        assert cls.match_pattern(blocks), (
+        assert cls.match_pattern(
+            blocks,
+            return_hidden_states_first=return_hidden_states_first,
+            return_hidden_states_only=return_hidden_states_only,
+        ), (
             "No block forward pattern matched, "
             f"supported lists: {cls.supported_patterns()}"
         )
@@ -419,14 +423,38 @@ class UnifiedCacheAdapter:
             ),
             cls.make_pattern(
                 ["hidden_states", "encoder_hidden_states"],
+                ["encoder_hidden_states", "hidden_states"],
+            ),
+            cls.make_pattern(
+                ["hidden_states", "encoder_hidden_states"],
                 ["hidden_states"],
             ),
         ]
 
     @classmethod
-    def match_pattern(cls, transformer_blocks: torch.nn.ModuleList) -> bool:
+    def match_pattern(
+        cls,
+        transformer_blocks: torch.nn.ModuleList,
+        return_hidden_states_first: bool = True,
+        return_hidden_states_only: bool = False,
+    ) -> bool:
         pattern_matched = True
         pattern_ids = []
+
+        valid_patterns = cls.supported_patterns()
+        if return_hidden_states_first:
+            valid_patterns = []
+            for pattern in cls.supported_patterns():
+                if pattern["OUT"] == "hidden_states":
+                    valid_patterns.append(pattern)
+
+        selected_patterns = valid_patterns.copy()
+        if return_hidden_states_only:
+            selected_patterns = []
+            for pattern in valid_patterns:
+                if pattern["OUT"] == 1:
+                    selected_patterns.append(pattern)
+
         for block in transformer_blocks:
             forward_parameters = set(
                 inspect.signature(block.forward).parameters.keys()
@@ -437,7 +465,7 @@ class UnifiedCacheAdapter:
 
             matched_pattern_id = None
             param_matched = False
-            for i, pattern in enumerate(cls.supported_patterns()):
+            for i, pattern in enumerate(selected_patterns):
                 if param_matched:
                     break
 
@@ -465,7 +493,7 @@ class UnifiedCacheAdapter:
                 pattern_matched = False
             else:
                 pattern_id = list(unique_pattern_ids)[0]
-                pattern = cls.supported_patterns()[pattern_id]
+                pattern = selected_patterns[pattern_id]
                 logger.info(
                     f"Match cache pattern: IN({pattern['IN']}, OUT({pattern['OUT']}))"
                 )
