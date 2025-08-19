@@ -322,7 +322,7 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 <div id="license"></div>
 
-The **CacheDiT** codebase is adapted from [FBCache](https://github.com/chengzeyi/ParaAttention/tree/main/src/para_attn/first_block_cache). Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
+The **CacheDiT** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
 
 ## ©️Citations
 
