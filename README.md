@@ -100,12 +100,14 @@ from diffusers import DiffusionPipeline # Can be [Any] Diffusion Pipeline
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
 cache_dit.enable_cache(
-    pipe,
-    transformer=pipe.transformer,
+    pipe, transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
     return_hidden_states_first=False,
     **cache_dit.default_options(),
 )
+
+# Or, just use the one line code with default cache options.
+cache_dit.enable_cache(pipe)
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
