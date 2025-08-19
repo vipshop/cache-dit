@@ -57,7 +57,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
-Currently, **cache-dit** supports **Any** Diffusion models (with **Transformer Blocks** that match the specific **Input and Output patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
+Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
 
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
