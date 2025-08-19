@@ -78,7 +78,15 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="unified"></div>  
 
-Currently, for any diffusion models with transformer blocks that match the specific **Input/Output pattern**, we can use the **Unified Cache APIs** from **cache-dit**. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example. 
+
+Currently, for any diffusion models with transformer blocks that match the specific **Input/Output pattern**, we can use the **Unified Cache APIs** from **cache-dit**. The supported patterns are listed belows:
+
+> [!Important]  
+(**IN**: hidden_states, encoder_hidden_states, ...) -> (**OUT**: hidden_states, encoder_hidden_states)  
+(**IN**: hidden_states, encoder_hidden_states, ...) -> (**OUT**: encoder_hidden_states, hidden_states)  
+(**IN**: hidden_states, encoder_hidden_states, ...) -> (**OUT**: hidden_states)
+
+Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example. The `pipe` parameter can be **Any** Diffusion Pipelines. The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
 
 ```python
 import cache_dit
@@ -94,13 +102,6 @@ cache_dit.enable_cache(
     **cache_dit.default_options(cache_dit.DBCache),
 )
 ```
-
-The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. The supported patterns are listed belows:
-
-> [!Important]  
-(**IN**: hidden_states, encoder_hidden_states, ...) -> (**OUT**: hidden_states, encoder_hidden_states)  
-(**IN**: hidden_states, encoder_hidden_states, ...) -> (**OUT**: encoder_hidden_states, hidden_states)  
-(**IN**: hidden_states, encoder_hidden_states, ...) -> (**OUT**: hidden_states)
 
 ## ⚡️DBCache: Dual Block Cache  
 
