@@ -106,8 +106,7 @@ cache_dit.enable_cache(
     **cache_dit.default_options(),
 )
 
-# Or, just use the one line code with default cache options.
-cache_dit.enable_cache(pipe)
+cache_dit.enable_cache(pipe) # Or, just use the one line code with default cache options.
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
