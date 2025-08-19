@@ -37,7 +37,6 @@ if args.cache:
         "cache_type": cache_dit.DBCache,
         "warmup_steps": args.warmup_steps,
         "max_cached_steps": -1,  # -1 means no limit
-        # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
         "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
