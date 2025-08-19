@@ -80,7 +80,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 Currently, for any diffusion models with transformer blocks that match the specific input/output pattern, we can use the **Unified Cache APIs** from **cache-dit**. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
 
->![Important]  
+> [!Important]  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states，hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
