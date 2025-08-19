@@ -82,7 +82,7 @@ Currently, for any diffusion models with transformer blocks that match the speci
 
 > [!Important]  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states，hidden_states)  
+(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states, hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
 
 The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
