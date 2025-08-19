@@ -279,11 +279,6 @@ class UnifiedCacheAdapter:
             and isinstance(blocks, torch.nn.ModuleList)
         ):
             assert isinstance(blocks, torch.nn.ModuleList)
-            assert (
-                cache_context_kwargs.pop("cache_type", CacheType.NONE)
-                == CacheType.DBCache
-            ), "Custom cache setting only support for DBCache now!"
-
             # Apply cache on pipeline: wrap cache context
             cls.create_context(pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
@@ -306,6 +301,18 @@ class UnifiedCacheAdapter:
     ) -> DiffusionPipeline:
         if getattr(pipe, "_is_cached", False):
             return pipe
+
+        # Check cache_context_kwargs
+        if not cache_context_kwargs:
+            logger.warning(
+                "cache_context_kwargs is empty, use default cache options!"
+            )
+            cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
+
+        if cache_type := cache_context_kwargs.pop("cache_type", None):
+            assert (
+                cache_type == CacheType.DBCache
+            ), "Custom cache setting only support for DBCache now!"
 
         # Apply cache on pipeline: wrap cache context
         cache_kwargs, _ = cache_context.collect_cache_kwargs(
@@ -340,19 +347,20 @@ class UnifiedCacheAdapter:
         if getattr(transformer, "_is_cached", False):
             return transformer
 
-        # Apply cache on transformer: mock cached transformer blocks
-        # process some specificial cases
+        # Firstly, process some specificial cases (TODO: more patches)
         if transformer.__class__.__name__.startswith("Flux"):
             transformer = maybe_patch_flux_transformer(
                 transformer,
                 blocks=blocks,
             )
 
+        # Check block forward pattern matching
         assert cls.match_pattern(blocks), (
             "No block forward pattern matched, "
             f"supported lists: {cls.supported_patterns()}"
         )
 
+        # Apply cache on transformer: mock cached transformer blocks
         cached_blocks = torch.nn.ModuleList(
             [
                 DBCachedTransformerBlocks(
