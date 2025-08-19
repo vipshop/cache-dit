@@ -14,6 +14,12 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
+<div align="center">
+  <p align="center">
+    ♥️ Cache <b>Acceleration</b> with <b>One-line</b> Code ~ ♥️
+  </p>
+</div> 
+
 
 ## 🔥News  
 
@@ -36,7 +42,6 @@
 - [⚡️Hybrid Cache CFG](#cfg)
 - [🔥Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
-
 
 ## ⚙️Installation  
 
@@ -69,7 +74,14 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
-
+- [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Allegro](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogView3Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogView4](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Cosmos](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀EasyAnimate](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀SD3](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 ## 🎉Unified Cache APIs
 
@@ -82,6 +94,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states, hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
+(IN: hidden_states, ...) -> (OUT: hidden_states) # TODO, DiT, Lumina2, etc. 
 ```
 
 Please refer to [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example. The `pipe` parameter can be **Any** Diffusion Pipelines. The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
@@ -92,9 +105,12 @@ from diffusers import DiffusionPipeline # Can be [Any] Diffusion Pipeline
 
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
+# Just use the one line code with default cache options.
+cache_dit.enable_cache(pipe) 
+
+# Or, enable cache with custom setting according to your models.
 cache_dit.enable_cache(
-    pipe,
-    transformer=pipe.transformer,
+    pipe, transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
     return_hidden_states_first=False,
     **cache_dit.default_options(),

@@ -116,6 +116,14 @@ class UnifiedCacheAdapter:
         "Wan",
         "HunyuanVideo",
         "QwenImage",
+        "LTXVideo",
+        "Allegro",
+        "CogView3Plus",
+        "CogView4",
+        "Cosmos",
+        "EasyAnimate",
+        "SkyReelsV2",
+        "SD3",
     ]
 
     def __call__(self, *args, **kwargs):
@@ -175,9 +183,15 @@ class UnifiedCacheAdapter:
                 return_hidden_states_only=False,
             )
         elif pipe_cls_name.startswith("Wan"):
-            from diffusers import WanTransformer3DModel
+            from diffusers import (
+                WanTransformer3DModel,
+                WanVACETransformer3DModel,
+            )
 
-            assert isinstance(pipe.transformer, WanTransformer3DModel)
+            assert isinstance(
+                pipe.transformer,
+                (WanTransformer3DModel, WanVACETransformer3DModel),
+            )
             return UnifiedCacheParams(
                 pipe=pipe,
                 transformer=pipe.transformer,
@@ -206,6 +220,110 @@ class UnifiedCacheAdapter:
             from diffusers import QwenImageTransformer2DModel
 
             assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=False,
+                return_hidden_states_only=False,
+            )
+        elif pipe_cls_name.startswith("LTXVideo"):
+            from diffusers import LTXVideoTransformer3DModel
+
+            assert isinstance(pipe.transformer, LTXVideoTransformer3DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=True,
+            )
+        elif pipe_cls_name.startswith("Allegro"):
+            from diffusers import AllegroTransformer3DModel
+
+            assert isinstance(pipe.transformer, AllegroTransformer3DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=True,
+            )
+        elif pipe_cls_name.startswith("CogView3Plus"):
+            from diffusers import CogView3PlusTransformer2DModel
+
+            assert isinstance(pipe.transformer, CogView3PlusTransformer2DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=False,
+            )
+        elif pipe_cls_name.startswith("CogView4"):
+            from diffusers import CogView4Transformer2DModel
+
+            assert isinstance(pipe.transformer, CogView4Transformer2DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=False,
+            )
+        elif pipe_cls_name.startswith("Cosmos"):
+            from diffusers import CosmosTransformer3DModel
+
+            assert isinstance(pipe.transformer, CosmosTransformer3DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=True,
+            )
+        elif pipe_cls_name.startswith("EasyAnimate"):
+            from diffusers import EasyAnimateTransformer3DModel
+
+            assert isinstance(pipe.transformer, EasyAnimateTransformer3DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.transformer_blocks,
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=False,
+            )
+        elif pipe_cls_name.startswith("SkyReelsV2"):
+            from diffusers import SkyReelsV2Transformer3DModel
+
+            assert isinstance(pipe.transformer, SkyReelsV2Transformer3DModel)
+            return UnifiedCacheParams(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=pipe.transformer.blocks,
+                blocks_name="blocks",
+                dummy_blocks_names=[],
+                return_hidden_states_first=True,
+                return_hidden_states_only=True,
+            )
+        elif pipe_cls_name.startswith("SD3"):
+            from diffusers import SD3Transformer2DModel
+
+            assert isinstance(pipe.transformer, SD3Transformer2DModel)
             return UnifiedCacheParams(
                 pipe=pipe,
                 transformer=pipe.transformer,
@@ -294,6 +412,15 @@ class UnifiedCacheAdapter:
         return pipe
 
     @classmethod
+    def has_separate_cfg(cls, pipe: DiffusionPipeline) -> bool:
+        pipe_cls_name = pipe.__class__.__name__
+        if pipe_cls_name.startswith("QwenImage"):
+            return True
+        elif pipe_cls_name.startswith("Wan"):
+            return True
+        return False
+
+    @classmethod
     def create_context(
         cls,
         pipe: DiffusionPipeline,
@@ -304,10 +431,15 @@ class UnifiedCacheAdapter:
 
         # Check cache_context_kwargs
         if not cache_context_kwargs:
-            logger.warning(
-                "cache_context_kwargs is empty, use default cache options!"
-            )
             cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
+            if cls.has_separate_cfg(pipe):
+                cache_context_kwargs["do_separate_classifier_free_guidance"] = (
+                    True
+                )
+            logger.warning(
+                "cache_context_kwargs is empty, use default "
+                f"cache options: {cache_context_kwargs}"
+            )
 
         if cache_type := cache_context_kwargs.pop("cache_type", None):
             assert (
