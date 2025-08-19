@@ -279,7 +279,6 @@ class UnifiedCacheAdapter:
             and isinstance(blocks, torch.nn.ModuleList)
         ):
             assert isinstance(blocks, torch.nn.ModuleList)
-
             # Apply cache on pipeline: wrap cache context
             cls.create_context(pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
@@ -314,6 +313,7 @@ class UnifiedCacheAdapter:
             assert (
                 cache_type == CacheType.DBCache
             ), "Custom cache setting only support for DBCache now!"
+
 
         # Apply cache on pipeline: wrap cache context
         cache_kwargs, _ = cache_context.collect_cache_kwargs(
