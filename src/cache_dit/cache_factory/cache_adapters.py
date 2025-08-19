@@ -303,6 +303,7 @@ class UnifiedCacheAdapter:
         if getattr(pipe, "_is_cached", False):
             return pipe
 
+        # Check cache_context_kwargs
         if not cache_context_kwargs:
             logger.warning(
                 "cache_context_kwargs is empty, use default cache options!"
