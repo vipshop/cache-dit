@@ -42,7 +42,6 @@ if args.cache:
         "cache_type": cache_dit.DBCache,
         "warmup_steps": args.warmup_steps,
         "max_cached_steps": -1,  # -1 means no limit
-        # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
         "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
@@ -136,37 +135,6 @@ if hasattr(pipe.transformer, "_cfg_cached_steps"):
     print(
         f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}"
     )
-if hasattr(pipe.transformer, "_pruned_blocks"):
-    pruned_steps = pipe.transformer._pruned_steps
-    pruned_blocks = pipe.transformer._pruned_blocks
-    actual_blocks = pipe.transformer._actual_blocks
-    residual_diffs = pipe.transformer._residual_diffs
-    pruned_ratio = (
-        sum(pruned_blocks) / sum(actual_blocks) if actual_blocks else 0
-    ) * 100
-    print(
-        f"Pruned Steps: {pruned_steps}, {pruned_blocks}, "
-        f"Pruned Blocks: {sum(pruned_blocks)}({pruned_ratio:.2f})%"
-    )
-    print(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}")
-if hasattr(pipe.transformer, "_cfg_pruned_blocks"):
-    cfg_pruned_steps = pipe.transformer._cfg_pruned_steps
-    cfg_pruned_blocks = pipe.transformer._cfg_pruned_blocks
-    cfg_actual_blocks = pipe.transformer._cfg_actual_blocks
-    cfg_residual_diffs = pipe.transformer._cfg_residual_diffs
-    cfg_pruned_ratio = (
-        sum(cfg_pruned_blocks) / sum(cfg_actual_blocks)
-        if cfg_actual_blocks
-        else 0
-    ) * 100
-    print(
-        f"CFG Pruned Steps: {cfg_pruned_steps}, {cfg_pruned_blocks}, "
-        f"CFG Pruned Blocks: {sum(cfg_pruned_blocks)}({cfg_pruned_ratio:.2f})%"
-    )
-    print(
-        f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}"
-    )
-
 
 time_cost = end - start
 save_path = f"qwen-image.uapi.{cache_type_str}.png"
