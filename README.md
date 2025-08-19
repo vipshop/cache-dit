@@ -81,8 +81,6 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 Currently, for any diffusion models with transformer blocks that match the specific **Input/Output pattern**, we can use the **Unified Cache APIs** from **cache-dit**. The supported patterns are listed belows:
 
-> [!Important]    
-> 
 ```bash
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states, hidden_states)  
