@@ -27,7 +27,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
-    parser.add_argument("--max-pruned-steps", type=int, default=-1)
     parser.add_argument("--gen-device", type=str, default="cpu")
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)

@@ -19,7 +19,9 @@ def cache_type(type_hint: "CacheType | str") -> CacheType:
     return CacheType.type(cache_type=type_hint)
 
 
-def default_options(cache_type: CacheType) -> Dict:
+def default_options(cache_type: CacheType = None) -> Dict:
+    if cache_type is None:
+        return CacheType.default_options(CacheType.DBCache)
     return CacheType.default_options(cache_type)
 
 

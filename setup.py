@@ -44,7 +44,7 @@ def fetch_requirements():
 
 setup(
     name=PACKAGE_NAME,
-    description="🤗 CacheDiT: A Training-free and Easy-to-use Cache Acceleration Toolbox for Diffusion Transformers",
+    description="🤗 CacheDiT: An Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers",
     author="vipshop.com",
     use_scm_version={
         "write_to": path.join("src", "cache_dit", "_version.py"),
