@@ -17,7 +17,7 @@
 
 ## 🔥News  
 
-- [2025-08-18] 🎉Early **[Unified Cache APIs](#unified)** released! Check [run_qwen_image_uapi](./examples/run_qwen_image_uapi.py) as an example.
+- [2025-08-18] 🎉Early **[Unified Cache APIs](#unified)** released! Check [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example.
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) is supported now! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
 - [2025-08-10] 🔥[FLUX.1-Kontext-dev](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
@@ -37,11 +37,6 @@
 - [🔥Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
 
-<!--
-- [👋Contribute](#contribute)
-- [©️License](#license)
-- [©️Citations](#citations)
--->
 
 ## ⚙️Installation  
 
@@ -62,6 +57,8 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
+Currently, **cache-dit** supports **Any** Diffusion models (with **Transformer Blocks** that match the specific **Input/Output patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
+
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
@@ -79,7 +76,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 <div id="unified"></div>  
 
 
-Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output pattern**, we can use the **Unified Cache APIs** from **cache-dit**. The supported patterns are listed belows:
+Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output pattern**, we can use the **Unified Cache APIs** from **cache-dit**. The supported patterns are listed as follows:
 
 ```bash
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
@@ -87,7 +84,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
 ```
 
-Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example. The `pipe` parameter can be **Any** Diffusion Pipelines. The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
+Please refer to [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example. The `pipe` parameter can be **Any** Diffusion Pipelines. The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
 
 ```python
 import cache_dit
@@ -100,7 +97,7 @@ cache_dit.enable_cache(
     transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
     return_hidden_states_first=False,
-    **cache_dit.default_options(cache_dit.DBCache),
+    **cache_dit.default_options(),
 )
 ```
 
@@ -159,7 +156,7 @@ pipe = FluxPipeline.from_pretrained(
 ).to("cuda")
 
 # Default options, F8B0, good balance between performance and precision
-cache_options = cache_dit.default_options(cache_dit.DBCache)
+cache_options = cache_dit.default_options()
 
 # Custom options, F8B8, higher precision
 cache_options = {
@@ -262,7 +259,7 @@ By the way, **cache-dit** is designed to work compatibly with **torch.compile.**
 
 ```python
 cache_dit.enable_cache(
-    pipe, **cache_dit.default_options(cache_dit.DBCache)
+    pipe, **cache_dit.default_options()
 )
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
@@ -309,13 +306,13 @@ cache-dit-metrics-cli psnr -i1 true_dir -i2 test_dir  # PSNR
 ## 👋Contribute 
 <div id="contribute"></div>
 
-How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/raw/main/CONTRIBUTE.md).
+How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
 ## ©️License   
 
 <div id="license"></div>
 
-The **cache-dit** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
+The **cache-dit** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](./LICENSE) for more details.
 
 ## ©️Citations
 
@@ -323,7 +320,7 @@ The **cache-dit** codebase is adapted from FBCache. Special thanks to their exce
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A Training-free and Easy-to-use cache acceleration Toolbox for Diffusion Transformers},
+  title={cache-dit: An Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={vipshop.com},
