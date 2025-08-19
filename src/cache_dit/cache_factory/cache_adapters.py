@@ -412,6 +412,15 @@ class UnifiedCacheAdapter:
         return pipe
 
     @classmethod
+    def has_separate_cfg(cls, pipe: DiffusionPipeline) -> bool:
+        pipe_cls_name = pipe.__class__.__name__
+        if pipe_cls_name.startswith("QwenImage"):
+            return True
+        elif pipe_cls_name.startswith("Wan"):
+            return True
+        return False
+
+    @classmethod
     def create_context(
         cls,
         pipe: DiffusionPipeline,
@@ -422,10 +431,15 @@ class UnifiedCacheAdapter:
 
         # Check cache_context_kwargs
         if not cache_context_kwargs:
-            logger.warning(
-                "cache_context_kwargs is empty, use default cache options!"
-            )
             cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
+            if cls.has_separate_cfg(pipe):
+                cache_context_kwargs["do_separate_classifier_free_guidance"] = (
+                    True
+                )
+            logger.warning(
+                "cache_context_kwargs is empty, use default "
+                f"cache options: {cache_context_kwargs}"
+            )
 
         if cache_type := cache_context_kwargs.pop("cache_type", None):
             assert (
