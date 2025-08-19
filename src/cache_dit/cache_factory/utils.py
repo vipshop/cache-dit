@@ -1,5 +1,5 @@
 import yaml
-from cache_dit.cache_factory.adapters import CacheType
+from cache_dit.cache_factory.cache_adapters import CacheType
 
 
 def load_cache_options_from_yaml(yaml_file_path):

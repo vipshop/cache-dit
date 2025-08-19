@@ -1,7 +1,7 @@
 import inspect
 import torch
 
-from cache_dit.cache_factory.dual_block_cache import cache_context
+from cache_dit.cache_factory import cache_context
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

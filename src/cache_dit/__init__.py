@@ -15,7 +15,6 @@ from cache_dit.logger import init_logger
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
-DBPrune = CacheType.DBPrune
 
 
 def cache_type(type_hint: "CacheType | str") -> CacheType:
