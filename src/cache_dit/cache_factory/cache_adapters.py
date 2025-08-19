@@ -340,19 +340,20 @@ class UnifiedCacheAdapter:
         if getattr(transformer, "_is_cached", False):
             return transformer
 
-        # Apply cache on transformer: mock cached transformer blocks
-        # process some specificial cases
+        # Firstly, process some specificial cases (TODO: more patches)
         if transformer.__class__.__name__.startswith("Flux"):
             transformer = maybe_patch_flux_transformer(
                 transformer,
                 blocks=blocks,
             )
 
+        # Check block forward pattern matching
         assert cls.match_pattern(blocks), (
             "No block forward pattern matched, "
             f"supported lists: {cls.supported_patterns()}"
         )
 
+        # Apply cache on transformer: mock cached transformer blocks
         cached_blocks = torch.nn.ModuleList(
             [
                 DBCachedTransformerBlocks(
