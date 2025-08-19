@@ -14,13 +14,6 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
-<!--
-<div align="center">
-  <p align="center">
-    ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
-  </p>
-</div> 
--->
 
 ## 🔥News  
 
@@ -174,7 +167,7 @@ $$
 \mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)=\mathcal{F}\left(x_t^l\right)+\sum_{i=1}^m \frac{\Delta^i \mathcal{F}\left(x_t^l\right)}{i!\cdot N^i}(-k)^i
 $$
 
-**TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in CacheDiT supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
+**TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
 cache_options = {
@@ -211,7 +204,7 @@ cache_options = {
 
 <div id="cfg"></div>
 
-CacheDiT supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to **False (default)**. Otherwise, set it to True. For examples:
+cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
 cache_options = {
@@ -238,6 +231,7 @@ cache_options = {
 Currently, for any diffusion models with transformer blocks that match the specific input/output pattern, we can use the **Unified Cache APIs** from **cache-dit**. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
 ```bash
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)
+(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states，hidden_states)
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
 ```
 The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
@@ -265,7 +259,7 @@ cache_dit.enable_cache(
 
 <div id="compile"></div>  
 
-By the way, **CacheDiT** is designed to work compatibly with **torch.compile.** You can easily use CacheDiT with torch.compile to further achieve a better performance. For example:
+By the way, **cache-dit** is designed to work compatibly with **torch.compile.** You can easily use cache-dit with torch.compile to further achieve a better performance. For example:
 
 ```python
 cache_dit.enable_cache(
@@ -274,7 +268,7 @@ cache_dit.enable_cache(
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
-However, users intending to use **CacheDiT** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo`. Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
+However, users intending to use **cache-dit** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo`. Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
 ```python
 torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
@@ -287,7 +281,7 @@ Please check [bench.py](./bench/bench.py) for more details.
 
 <div id="metrics"></div>    
 
-You can utilize the APIs provided by CacheDiT to quickly evaluate the accuracy losses caused by different cache configurations. For example:
+You can utilize the APIs provided by cache-dit to quickly evaluate the accuracy losses caused by different cache configurations. For example:
 
 ```python
 from cache_dit.metrics import compute_psnr
@@ -322,15 +316,15 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 <div id="license"></div>
 
-The **CacheDiT** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
+The **cache-dit** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](https://github.com/vipshop/cache-dit/raw/main/LICENSE) for more details.
 
 ## ©️Citations
 
 <div id="citations"></div>
 
 ```BibTeX
-@misc{CacheDiT@2025,
-  title={CacheDiT: A Training-free and Easy-to-use cache acceleration Toolbox for Diffusion Transformers},
+@misc{cache-dit@2025,
+  title={cache-dit: A Training-free and Easy-to-use cache acceleration Toolbox for Diffusion Transformers},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={vipshop.com},
