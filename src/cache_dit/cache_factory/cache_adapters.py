@@ -280,19 +280,6 @@ class UnifiedCacheAdapter:
         ):
             assert isinstance(blocks, torch.nn.ModuleList)
 
-            if len(cache_context_kwargs) == 0:
-                logger.warning(
-                    "cache_context_kwargs is empty, use default cache options!"
-                )
-                cache_context_kwargs = CacheType.default_options(
-                    CacheType.DBCache
-                )
-
-            if cache_type := cache_context_kwargs.pop("cache_type", None):
-                assert (
-                    cache_type == CacheType.DBCache
-                ), "Custom cache setting only support for DBCache now!"
-
             # Apply cache on pipeline: wrap cache context
             cls.create_context(pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
@@ -315,6 +302,17 @@ class UnifiedCacheAdapter:
     ) -> DiffusionPipeline:
         if getattr(pipe, "_is_cached", False):
             return pipe
+
+        if not cache_context_kwargs:
+            logger.warning(
+                "cache_context_kwargs is empty, use default cache options!"
+            )
+            cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
+
+        if cache_type := cache_context_kwargs.pop("cache_type", None):
+            assert (
+                cache_type == CacheType.DBCache
+            ), "Custom cache setting only support for DBCache now!"
 
         # Apply cache on pipeline: wrap cache context
         cache_kwargs, _ = cache_context.collect_cache_kwargs(
