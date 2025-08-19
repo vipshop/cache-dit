@@ -11,7 +11,7 @@
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
-  🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#dbprune">DBPrune</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
+  🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
 <!--
@@ -40,7 +40,6 @@
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [⚡️Dynamic Block Prune](#dbprune)
 - [🎉Unified Cache APIs](#unified)
 - [🔥Torch Compile](#compile)
 - [⚙️Metrics CLI](#metrics)
@@ -165,37 +164,6 @@ cache_options = {
 }
 ```
 
-<!--
-<div id="fbcache"></div>
-
-![](https://github.com/vipshop/cache-dit/raw/main/assets/fbcache-v1.png)
-
-**DBCache** is a more general cache algorithm than **FBCache**. When Fn=1 and Bn=0, DBCache behaves identically to FBCache. Therefore, you can use configure **DBCache** with **F1B0** settings to achieve the same functionality.
-
-```python
-import cache_dit
-from diffusers import FluxPipeline
-
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
-
-# Or using DBCache with F1B0. 
-# Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
-cache_options = {
-    "cache_type": cache_dit.DBCache,
-    "warmup_steps": 8,
-    "max_cached_steps": -1,  # -1 means no limit
-    "Fn_compute_blocks": 1,  # Fn, F1, etc.
-    "Bn_compute_blocks": 0,  # Bn, B0, etc.
-    "residual_diff_threshold": 0.12,
-}
-
-cache_dit.enable_cache(pipe, **cache_options)
-```
--->
-
 ## 🔥Hybrid TaylorSeer
 
 <div id="taylorseer"></div>
@@ -263,78 +231,6 @@ cache_options = {
 }
 ```
 
-## ⚡️DBPrune: Dynamic Block Prune
-
-<div id="dbprune"></div>  
-
-![](https://github.com/vipshop/cache-dit/raw/main/assets/dbprune-v1.png)
-
-We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. 
-
-```python
-import cache_dit
-from diffusers import FluxPipeline
-
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
-).to("cuda")
-
-# Using DBPrune with default options
-cache_dit.enable_cache(
-    pipe, **cache_dit.default_options(cache_dit.DBPrune)
-)
-```
-
-We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_blocks_ids** to avoid aggressive pruning. For example:
-
-```python
-# Custom options for DBPrune
-cache_options = {
-    "cache_type": cache_dit.DBPrune,
-    "residual_diff_threshold": 0.05,
-    # Never prune the first `Fn` and last `Bn` blocks.
-    "Fn_compute_blocks": 8,  # default 1
-    "Bn_compute_blocks": 8,  # default 0
-    "warmup_steps": 8,  # default -1
-    # Disables the pruning strategy when the previous 
-    # pruned steps greater than this value.
-    "max_pruned_steps": 12,  # default, -1 means no limit
-    # Enable dynamic prune threshold within step, higher 
-    # `max_dynamic_prune_threshold` value may introduce a more 
-    # ageressive pruning strategy.
-    "enable_dynamic_prune_threshold": True,
-    "max_dynamic_prune_threshold": 2 * 0.05,
-    # (New thresh) = mean(previous_block_diffs_within_step) * 1.25
-    # (New thresh) = ((New thresh) if (New thresh) <
-    # max_dynamic_prune_threshold else residual_diff_threshold)
-    "dynamic_prune_threshold_relax_ratio": 1.25,
-    # The step interval to update residual cache. For example, 
-    # 2: means the update steps will be [0, 2, 4, ...].
-    "residual_cache_update_interval": 1,
-    # You can set non-prune blocks to avoid ageressive pruning. 
-    # For example, FLUX.1 has 19 + 38 blocks, so we can set it 
-    # to 0, 2, 4, ..., 56, etc.
-    "non_prune_blocks_ids": [],
-}
-
-cache_dit.enable_cache(pipe, **cache_options)
-```
-
-> [!Important]
-> Please note that for GPUs with lower VRAM, DBPrune may not be suitable for use on video DiTs, as it caches the hidden states and residuals of each block, leading to higher GPU memory requirements. In such cases, please use DBCache, which only caches the hidden states and residuals of 2 blocks.
-
-<div align="center">
-  <p align="center">
-    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
-
-|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
-
 ## 🎉Unified Cache APIs
 
 <div id="unified"></div>  
@@ -373,7 +269,7 @@ By the way, **CacheDiT** is designed to work compatibly with **torch.compile.** 
 
 ```python
 cache_dit.enable_cache(
-    pipe, **cache_dit.default_options(cache_dit.DBPrune)
+    pipe, **cache_dit.default_options(cache_dit.DBCache)
 )
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)

@@ -86,29 +86,6 @@ def get_cache_options(cache_type, args: argparse.Namespace = None):
                     "n_derivatives": args.taylorseer_order,
                 },
             }
-        elif cache_type == cache_dit.DBPrune:
-            assert (
-                args.taylorseer is False
-            ), "DBPrune does not support TaylorSeer yet."
-            cache_options = {
-                "cache_type": cache_dit.DBPrune,
-                "residual_diff_threshold": args.rdt,
-                "Fn_compute_blocks": args.Fn_compute_blocks,
-                "Bn_compute_blocks": args.Bn_compute_blocks,
-                "warmup_steps": args.warmup_steps,
-                "max_pruned_steps": args.max_pruned_steps,  # -1 means no limit
-                # releative token diff threshold, default is 0.0
-                "important_condition_threshold": 0.00,
-                "enable_dynamic_prune_threshold": (
-                    True if args.rdt <= 0.15 else False
-                ),
-                "max_dynamic_prune_threshold": 2 * args.rdt,
-                "dynamic_prune_threshold_relax_ratio": 1.25,
-                "residual_cache_update_interval": 1,
-                # You can set non-prune blocks to avoid ageressive pruning.
-                # FLUX.1 has 19 + 38 blocks, so we can set it to 0, 2, 4, ..., etc.
-                "non_prune_blocks_ids": [],
-            }
         else:
             cache_options = {
                 "cache_type": cache_dit.NONE,
@@ -120,11 +97,6 @@ def get_cache_options(cache_type, args: argparse.Namespace = None):
             f"{cache_type_str}_F{args.Fn_compute_blocks}"
             f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
             f"T{int(args.taylorseer)}O{args.taylorseer_order}"
-        )
-    elif cache_type == cache_dit.DBPrune:
-        cache_type_str = (
-            f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
         )
     return cache_options, cache_type_str
 

@@ -58,7 +58,7 @@ class CacheType(Enum):
             raise ValueError(f"Unknown cache type: {cache_type}")
 
     @staticmethod
-    def range(start: int, end: int, step: int = 1) -> list[int]:
+    def block_range(start: int, end: int, step: int = 1) -> list[int]:
         if start > end or end <= 0 or step <= 1:
             return []
         # Always compute 0 and end - 1 blocks for DB Cache
@@ -138,7 +138,7 @@ class UnifiedCacheAdapter:
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             return UnifiedCacheParams(
                 pipe=pipe,
-                transformer=pipe.transformers,
+                transformer=pipe.transformer,
                 blocks=(
                     pipe.transformer.transformer_blocks
                     + pipe.transformer.single_transformer_blocks
@@ -154,7 +154,7 @@ class UnifiedCacheAdapter:
             assert isinstance(pipe.transformer, MochiTransformer3DModel)
             return UnifiedCacheParams(
                 pipe=pipe,
-                transformer=pipe.transformers,
+                transformer=pipe.transformer,
                 blocks=pipe.transformer.transformer_blocks,
                 blocks_name="transformer_blocks",
                 dummy_blocks_names=[],
@@ -167,7 +167,7 @@ class UnifiedCacheAdapter:
             assert isinstance(pipe.transformer, CogVideoXTransformer3DModel)
             return UnifiedCacheParams(
                 pipe=pipe,
-                transformer=pipe.transformers,
+                transformer=pipe.transformer,
                 blocks=pipe.transformer.transformer_blocks,
                 blocks_name="transformer_blocks",
                 dummy_blocks_names=[],
@@ -180,7 +180,7 @@ class UnifiedCacheAdapter:
             assert isinstance(pipe.transformer, WanTransformer3DModel)
             return UnifiedCacheParams(
                 pipe=pipe,
-                transformer=pipe.transformers,
+                transformer=pipe.transformer,
                 blocks=pipe.transformer.blocks,
                 blocks_name="blocks",
                 dummy_blocks_names=[],
@@ -208,7 +208,7 @@ class UnifiedCacheAdapter:
             assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
             return UnifiedCacheParams(
                 pipe=pipe,
-                transformer=pipe.transformers,
+                transformer=pipe.transformer,
                 blocks=pipe.transformer.transformer_blocks,
                 blocks_name="transformer_blocks",
                 dummy_blocks_names=[],

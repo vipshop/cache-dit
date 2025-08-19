@@ -1,4 +1,5 @@
 import torch
+from typing import Dict, List
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.cache_adapters import CacheType
 from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
@@ -12,6 +13,18 @@ logger = init_logger(__name__)
 def load_options(path: str):
     """cache_dit.load_options(cache_config.yaml)"""
     return load_cache_options_from_yaml(path)
+
+
+def cache_type(type_hint: "CacheType | str") -> CacheType:
+    return CacheType.type(cache_type=type_hint)
+
+
+def default_options(cache_type: CacheType) -> Dict:
+    return CacheType.default_options(cache_type)
+
+
+def block_range(start: int, end: int, step: int = 1) -> List[int]:
+    return CacheType.block_range(start, end, step)
 
 
 def enable_cache(
@@ -28,8 +41,8 @@ def enable_cache(
 ) -> DiffusionPipeline:
     return UnifiedCacheAdapter.apply(
         pipe,
-        transformer,
-        blocks,
+        transformer=transformer,
+        blocks=blocks,
         blocks_name=blocks_name,
         dummy_blocks_names=dummy_blocks_names,
         return_hidden_states_first=return_hidden_states_first,
