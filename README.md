@@ -30,12 +30,12 @@
 
 - [⚙️Installation](#️installation)
 - [🔥Supported Models](#supported)
+- [🎉Unified Cache APIs](#unified)
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [🎉Unified Cache APIs](#unified)
 - [🔥Torch Compile](#compile)
-- [⚙️Metrics CLI](#metrics)
+- [🛠Metrics CLI](#metrics)
 
 <!--
 - [👋Contribute](#contribute)
@@ -73,6 +73,37 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 
+
+## 🎉Unified Cache APIs
+
+<div id="unified"></div>  
+
+Currently, for any diffusion models with transformer blocks that match the specific input/output pattern, we can use the **Unified Cache APIs** from **cache-dit**. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
+
+>![Important]  
+>(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
+>(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states，hidden_states)  
+>(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
+
+The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
+
+```python
+import cache_dit
+from diffusers import QwenImagePipeline # Can be [Any] Diffusion Pipeline
+
+pipe = QwenImagePipeline.from_pretrained(
+   "Qwen/Qwen-Image",
+    torch_dtype=torch.bfloat16,
+)
+
+cache_dit.enable_cache(
+    pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    return_hidden_states_first=False,
+    **cache_dit.default_options(cache_dit.DBCache),
+)
+```
 
 ## ⚡️DBCache: Dual Block Cache  
 
@@ -224,37 +255,6 @@ cache_options = {
 }
 ```
 
-## 🎉Unified Cache APIs
-
-<div id="unified"></div>  
-
-Currently, for any diffusion models with transformer blocks that match the specific input/output pattern, we can use the **Unified Cache APIs** from **cache-dit**. Please refer to [run_qwen_image_uapi.py](./examples/run_qwen_image_uapi.py) as an example.
-```bash
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states，hidden_states)
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
-```
-The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
-
-```python
-import cache_dit
-from diffusers import QwenImagePipeline # Can be [Any] Diffusion Pipeline
-
-pipe = QwenImagePipeline.from_pretrained(
-   "Qwen/Qwen-Image",
-    torch_dtype=torch.bfloat16,
-)
-
-cache_dit.enable_cache(
-    pipe,
-    transformer=pipe.transformer,
-    blocks=pipe.transformer.transformer_blocks,
-    return_hidden_states_first=False,
-    **cache_options,
-)
-```
-
-
 ## 🔥Torch Compile
 
 <div id="compile"></div>  
@@ -277,7 +277,7 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 Please check [bench.py](./bench/bench.py) for more details.
 
 
-## ⚙️Metrics CLI
+## 🛠Metrics CLI
 
 <div id="metrics"></div>    
 
