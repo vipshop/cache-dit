@@ -4,7 +4,7 @@ import torch
 import argparse
 
 from PIL import Image
-from diffusers import QwenImageEditPipeline
+from diffusers import QwenImageEditPipeline, QwenImageTransformer2DModel
 from utils import GiB
 import cache_dit
 
@@ -13,6 +13,7 @@ def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("--cache", action="store_true", default=False)
+    parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=4)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
@@ -79,12 +80,17 @@ if torch.cuda.device_count() <= 1:
     # Enable memory savings
     pipe.enable_model_cpu_offload()
 
-image = Image.open("./data/cat.png").convert("RGB")
-prompt = "Change the cat's color to purple, with a flash light background."
 
-start = time.time()
+image = Image.open("./data/bear.png").convert("RGB")
+prompt = "Only change the bear's color to purple"
 
-with torch.inference_mode():
+if args.compile:
+    assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+    torch._dynamo.config.recompile_limit = 1024
+    torch._dynamo.config.accumulated_recompile_limit = 8192
+    pipe.transformer.compile_repeated_blocks(mode="default")
+
+    # Warmup
     image = pipe(
         image=image,
         prompt=prompt,
@@ -94,12 +100,23 @@ with torch.inference_mode():
         num_inference_steps=50,
     ).images[0]
 
+start = time.time()
+
+image = pipe(
+    image=image,
+    prompt=prompt,
+    negative_prompt=" ",
+    generator=torch.Generator(device="cpu").manual_seed(0),
+    true_cfg_scale=4.0,
+    num_inference_steps=50,
+).images[0]
+
 end = time.time()
 
 cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"qwen-image-edit.{cache_type_str}.png"
+save_path = f"qwen-image-edit.C{int(args.compile)}_{cache_type_str}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

@@ -20,7 +20,6 @@
   </p>
 </div> 
 
-
 ## 🔥News  
 
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check example [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
