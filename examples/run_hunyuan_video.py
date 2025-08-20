@@ -109,18 +109,7 @@ output = pipe(
 ).frames[0]
 end = time.time()
 
-if hasattr(pipe.transformer, "_cached_steps"):
-    cached_steps = pipe.transformer._cached_steps
-    residual_diffs = pipe.transformer._residual_diffs
-    print(f"Cache Steps: {len(cached_steps)}, {cached_steps}")
-    print(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}")
-if hasattr(pipe.transformer, "_cfg_cached_steps"):
-    cfg_cached_steps = pipe.transformer._cfg_cached_steps
-    cfg_residual_diffs = pipe.transformer._cfg_residual_diffs
-    print(f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps} ")
-    print(
-        f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}"
-    )
+cache_dit.summary(pipe)
 
 time_cost = end - start
 save_path = f"hunyuan_video.{cache_type_str}.mp4"

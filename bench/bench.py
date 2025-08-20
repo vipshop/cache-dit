@@ -182,19 +182,16 @@ def main():
         ).images[0]
         end = time.time()
         all_times.append(end - start)
-        if hasattr(pipe.transformer, "_cached_steps"):
-            cached_stepes = len(pipe.transformer._cached_steps)
         logger.info(
-            f"Run {i + 1}/{args.repeats}, "
-            f"Time: {all_times[-1]:.2f}s, "
-            f"Cached Steps: {cached_stepes}"
+            f"Run {i + 1}/{args.repeats}, " f"Time: {all_times[-1]:.2f}s"
         )
 
     all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)
-    logger.info(
-        f"Mean Time: {mean_time:.2f}s, " f"Cached Steps: {cached_stepes}"
-    )
+    logger.info(f"Mean Time: {mean_time:.2f}s")
+
+    cache_dit.summary(pipe)
+
     save_name = (
         f"C{int(args.compile)}_{cache_type}_"
         f"R{args.rdt}_S{cached_stepes}_"

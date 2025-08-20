@@ -107,16 +107,39 @@ from diffusers import DiffusionPipeline # Can be [Any] Diffusion Pipeline
 
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
-# Just use the one line code with default cache options.
+# One line code with default cache options.
 cache_dit.enable_cache(pipe) 
 
-# Or, enable cache with custom setting according to your models.
+# Or, enable cache with custom setting.
 cache_dit.enable_cache(
     pipe, transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
     return_hidden_states_first=False,
     **cache_dit.default_options(),
 )
+
+# summary cache stats.
+cache_dit.summary(pipe)
+```
+
+After finishing each inference of `pipe(...)`, you can call the `cache_dict.summary` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
+
+```bash
+🤗Cache Options: QwenImagePipeline
+
+{'Fn_compute_blocks': 8, 'Bn_compute_blocks': 0, 'non_compute_blocks_diff_threshold': 0.08, 'max_Fn_compute_blocks': -1, 'max_Bn_compute_blocks': -1, 'residual_diff_threshold': 0.12, 'l1_hidden_states_diff_threshold': None, 'important_condition_threshold': 0.0, 'enable_alter_cache': False, 'is_alter_cache': True, 'alter_residual_diff_threshold': 1.0, 'downsample_factor': 1, 'num_inference_steps': -1, 'warmup_steps': 8, 'max_cached_steps': -1, 'executed_steps': 0, 'transformer_executed_steps': 0, 'enable_taylorseer': True, 'enable_encoder_taylorseer': True, 'taylorseer_cache_type': 'residual', 'taylorseer': None, 'encoder_tarlorseer': None, 'do_separate_classifier_free_guidance': True, 'cfg_compute_first': False, 'cfg_diff_compute_separate': True, 'cfg_taylorseer': None, 'cfg_encoder_taylorseer': None, 'Fn_compute_blocks_ids': [], 'Bn_compute_blocks_ids': [], 'taylorseer_kwargs': {'n_derivatives': 4, 'warmup_steps': 8}}
+
+⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
+
+| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
+|-------------|-----------|-----------|-----------|-----------|-----------|
+| 23          | 0.04      | 0.082     | 0.115     | 0.152     | 0.245     |
+
+⚡️CFG Cache Steps and Residual Diffs Statistics: QwenImagePipeline
+
+| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
+|-----------------|-----------|-----------|-----------|-----------|-----------|
+| 22              | 0.045     | 0.077     | 0.112     | 0.148     | 0.245     |
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
