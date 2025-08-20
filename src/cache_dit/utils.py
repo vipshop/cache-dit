@@ -63,10 +63,11 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
                 f"| {len(cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                 f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} |"
             )
+            print("")
 
             if details:
                 print(
-                    f"\n📚Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                    f"📚Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
                 )
                 print("-" * 200)
                 pprint(
@@ -110,10 +111,11 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
                 f"| {len(cfg_cached_steps):<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                 f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} |"
             )
+            print("")
 
             if details:
                 print(
-                    f"\n📚CFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                    f"📚CFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
                 )
                 print("-" * 200)
                 pprint(
