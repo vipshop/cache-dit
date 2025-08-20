@@ -144,28 +144,19 @@ def main():
                 2048  # default is 256
             )
         if isinstance(pipe.transformer, FluxTransformer2DModel):
-            logger.warning(
-                "Only compile transformer blocks not the whole model "
-                "for FluxTransformer2DModel to keep higher precision."
-            )
-            if (
-                args.taylorseer_order <= 2
-                or not args.taylorseer
-                or args.compile_all
-            ):
-                # NOTE: Seems like compiling the whole transformer
-                # will cause precision issues while using TaylorSeer
-                # with order > 2.
+            if not args.compile_all:
+                logger.warning(
+                    "Only compile transformer blocks not the whole model "
+                    "for FluxTransformer2DModel to keep higher precision."
+                )
                 for module in pipe.transformer.transformer_blocks:
                     module.compile(fullgraph=True)
+                for module in pipe.transformer.single_transformer_blocks:
+                    module.compile(fullgraph=True)
             else:
-                logger.warning(
-                    "Compiling the whole transformer model with TaylorSeer "
-                    "order > 2 may cause precision issues. Skipping "
-                    "transformer_blocks."
+                pipe.transformer = torch.compile(
+                    pipe.transformer, mode="default"
                 )
-            for module in pipe.transformer.single_transformer_blocks:
-                module.compile(fullgraph=True)
         else:
             logger.info("Compiling the transformer with default mode.")
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
