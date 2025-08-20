@@ -33,7 +33,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
     if hasattr(pipe, "_cache_options"):
         cache_options = pipe._cache_options
         cache_stats.cache_options = cache_options
-        print(f"\nCache Options: {pipe_cls_name}\n\n{cache_options}")
+        print(f"\n🤗Cache Options: {pipe_cls_name}\n\n{cache_options}")
 
     if hasattr(pipe.transformer, "_cached_steps"):
         cached_steps: list[int] = pipe.transformer._cached_steps
@@ -50,7 +50,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
             q4 = np.percentile(diffs_values, 95)
 
             print(
-                f"\nCache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
+                f"\n⚡️Cache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
             )
 
             print(
@@ -66,7 +66,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
 
             if details:
                 print(
-                    f"\nCache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                    f"\n📚Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
                 )
                 print("-" * 200)
                 pprint(
@@ -97,7 +97,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
             q4 = np.percentile(cfg_diffs_values, 95)
 
             print(
-                f"\nCFG Cache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
+                f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
             )
 
             print(
@@ -113,7 +113,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
 
             if details:
                 print(
-                    f"\nCFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                    f"\n📚CFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
                 )
                 print("-" * 200)
                 pprint(
