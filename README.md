@@ -91,7 +91,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The supported patterns are listed as follows:
 
-```bash
+```python
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states, hidden_states)  
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
