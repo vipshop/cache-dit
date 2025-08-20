@@ -81,8 +81,8 @@ if torch.cuda.device_count() <= 1:
     pipe.enable_model_cpu_offload()
 
 
-image = Image.open("./data/bear.png").convert("RGB")
-prompt = "Only change the bear's color to purple"
+image = Image.open("./data/cat.png").convert("RGB")
+prompt = "Change the cat's color to purple, with a flash light background."
 
 if args.compile:
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
