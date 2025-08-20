@@ -107,10 +107,10 @@ from diffusers import DiffusionPipeline # Can be [Any] Diffusion Pipeline
 
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
-# Just use the one line code with default cache options.
+# One line code with default cache options.
 cache_dit.enable_cache(pipe) 
 
-# Or, enable cache with custom setting according to your models.
+# Or, enable cache with custom setting.
 cache_dit.enable_cache(
     pipe, transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
@@ -118,20 +118,18 @@ cache_dit.enable_cache(
     **cache_dit.default_options(),
 )
 
-# summary cache stats
+# summary cache stats.
 cache_dit.summary(pipe)
 ```
 
 After finishing each inference of `pipe(...)`, you can call the `cache_dict.summary` API on pipe to get the details of the cache stats for the current inference (markdown table format). For example:
 
 ```bash
-| Cache Steps | Diffs Q0 | Diffs Q1 | Diffs Q2 | Diffs Q3 |
-|-------------|----------|----------|----------|----------|
-| 23          | 0.04     | 0.082    | 0.115    | 0.152    |
+Cache Steps and Residual Diffs Statistics:
 
-| CFG Cache Steps | Diffs Q0 | Diffs Q1 | Diffs Q2 | Diffs Q3 |
-|-----------------|----------|----------|----------|----------|
-| 22              | 0.045    | 0.077    | 0.112    | 0.148    |
+| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
+|-------------|-----------|-----------|-----------|-----------|-----------|
+| 14          | 0.033     | 0.083     | 0.116     | 0.144     | 0.243     |
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
