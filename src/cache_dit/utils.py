@@ -53,11 +53,17 @@ def summary(pipe: DiffusionPipeline, details: bool = True):
             print("No residual diffs data available for statistics")
 
         if details:
-            pprint(f"\nCache Steps: {len(cached_steps)}, {cached_steps}")
+            print("\n")
             pprint(
-                f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}\n",
-                compact=True,
+                f"Cache Steps: {len(cached_steps)}, {cached_steps}",
+                width=200,
             )
+            pprint(
+                f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
+                compact=True,
+                width=200,
+            )
+            print("\n")
 
     if hasattr(pipe.transformer, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = pipe.transformer._cfg_cached_steps
@@ -90,12 +96,16 @@ def summary(pipe: DiffusionPipeline, details: bool = True):
             print("No CFG residual diffs data available for statistics")
 
         if details:
+            print("\n")
             pprint(
-                f"\nCFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps} "
+                f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
+                width=200,
             )
             pprint(
-                f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}\n",
+                f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
                 compact=True,
+                width=200,
             )
+            print("\n")
 
     return cache_stats
