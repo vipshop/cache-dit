@@ -230,7 +230,7 @@ def maybe_patch_flux_transformer(
     for block in blocks:
         if isinstance(block, FluxSingleTransformerBlock):
             forward_parameters = inspect.signature(
-                blocks.forward
+                block.forward
             ).parameters.keys()
             if "encoder_hidden_states" not in forward_parameters:
                 block.forward = __patch_single_forward__.__get__(block)
