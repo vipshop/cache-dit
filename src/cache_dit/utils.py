@@ -17,6 +17,7 @@ def is_diffusers_at_least_0_3_5() -> bool:
 
 @dataclasses.dataclass
 class CacheStats:
+    cache_options: dict = dataclasses.field(default_factory=dict)
     cached_steps: list[int] = dataclasses.field(default_factory=list)
     residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
     cfg_cached_steps: list[int] = dataclasses.field(default_factory=list)
@@ -31,6 +32,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
 
     if hasattr(pipe, "_cache_options"):
         cache_options = pipe._cache_options
+        cache_stats.cache_options = cache_options
         print(f"\nCache Options: {pipe_cls_name}\n\n{cache_options}")
 
     if hasattr(pipe.transformer, "_cached_steps"):
