@@ -26,7 +26,6 @@ def get_args() -> argparse.ArgumentParser:
 args = get_args()
 print(args)
 
-
 pipe = QwenImageEditPipeline.from_pretrained(
     os.environ.get(
         "QWEN_IMAGE_EDIT_DIR",
@@ -81,8 +80,8 @@ if torch.cuda.device_count() <= 1:
     pipe.enable_model_cpu_offload()
 
 
-image = Image.open("./data/cat.png").convert("RGB")
-prompt = "Change the cat's color to purple, with a flash light background."
+image = Image.open("./data/bear.png").convert("RGB")
+prompt = "Only change the bear's color to purple"
 
 if args.compile:
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
