@@ -31,7 +31,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
 
     if hasattr(pipe, "_cache_options"):
         cache_options = pipe._cache_options
-        print(f"\nCache Options: {pipe_cls_name}\n{cache_options}")
+        print(f"\nCache Options: {pipe_cls_name}\n\n{cache_options}")
 
     if hasattr(pipe.transformer, "_cached_steps"):
         cached_steps: list[int] = pipe.transformer._cached_steps
