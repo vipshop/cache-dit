@@ -89,8 +89,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="unified"></div>  
 
-
-Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output pattern**, we can use the **Unified Cache APIs** from **cache-dit**. The supported patterns are listed as follows:
+Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The supported patterns are listed as follows:
 
 ```bash
 (IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
@@ -99,18 +98,19 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 (IN: hidden_states, ...) -> (OUT: hidden_states) # TODO, DiT, Lumina2, etc. 
 ```
 
-Please refer to [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example. The `pipe` parameter can be **Any** Diffusion Pipelines. The **Unified Cache APIs** are currently in the experimental phase, please stay tuned for updates. 
+After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` parameter can be **any** Diffusion Pipeline. Please refer to [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates.
 
 ```python
 import cache_dit
-from diffusers import DiffusionPipeline # Can be [Any] Diffusion Pipeline
+from diffusers import DiffusionPipeline 
 
+# can be any diffusion pipeline
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
-# One line code with default cache options.
+# one line code with default cache options.
 cache_dit.enable_cache(pipe) 
 
-# Or, enable cache with custom setting.
+# or, enable cache with custom settings.
 cache_dit.enable_cache(
     pipe, transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
@@ -118,13 +118,16 @@ cache_dit.enable_cache(
     **cache_dit.default_options(),
 )
 
-# summary cache stats.
-cache_dit.summary(pipe)
+# just call the pipe as normal.
+output = pipe(...)
+
+# then, summary the cache stats.
+stats = cache_dit.summary(pipe)
 ```
 
-After finishing each inference of `pipe(...)`, you can call the `cache_dict.summary` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
+After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
 
-```bash
+```python
 ⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
 
 | Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
