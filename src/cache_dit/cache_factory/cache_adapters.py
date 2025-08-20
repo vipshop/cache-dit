@@ -464,6 +464,7 @@ class UnifiedCacheAdapter:
 
         pipe.__class__.__call__ = new_call
         pipe.__class__._is_cached = True
+        pipe.__class__._cache_options = cache_kwargs
         return pipe
 
     @classmethod

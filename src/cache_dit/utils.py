@@ -25,8 +25,13 @@ class CacheStats:
     )
 
 
-def summary(pipe: DiffusionPipeline, details: bool = True):
+def summary(pipe: DiffusionPipeline, details: bool = False):
     cache_stats = CacheStats()
+    pipe_cls_name = pipe.__class__.__name__
+
+    if hasattr(pipe, "_cache_options"):
+        cache_options = pipe._cache_options
+        print(f"\nCache Options: {pipe_cls_name}\n{cache_options}")
 
     if hasattr(pipe.transformer, "_cached_steps"):
         cached_steps: list[int] = pipe.transformer._cached_steps
@@ -42,7 +47,9 @@ def summary(pipe: DiffusionPipeline, details: bool = True):
             q3 = np.percentile(diffs_values, 75)
             q4 = np.percentile(diffs_values, 95)
 
-            print("\nCache Steps and Residual Diffs Statistics:\n")
+            print(
+                f"\nCache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
+            )
 
             print(
                 "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |"
@@ -56,7 +63,9 @@ def summary(pipe: DiffusionPipeline, details: bool = True):
             )
 
             if details:
-                print("Cache Steps and Residual Diffs Details:\n")
+                print(
+                    f"\nCache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                )
                 print("-" * 200)
                 pprint(
                     f"Cache Steps: {len(cached_steps)}, {cached_steps}",
@@ -85,7 +94,9 @@ def summary(pipe: DiffusionPipeline, details: bool = True):
             q3 = np.percentile(cfg_diffs_values, 75)
             q4 = np.percentile(cfg_diffs_values, 95)
 
-            print("CFG Cache Steps and Residual Diffs Statistics:\n")
+            print(
+                f"\nCFG Cache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
+            )
 
             print(
                 "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |"
@@ -99,7 +110,9 @@ def summary(pipe: DiffusionPipeline, details: bool = True):
             )
 
             if details:
-                print("CFG Cache Steps and Residual Diffs Details:\n")
+                print(
+                    f"\nCFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                )
                 print("-" * 200)
                 pprint(
                     f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",

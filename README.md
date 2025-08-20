@@ -122,14 +122,20 @@ cache_dit.enable_cache(
 cache_dit.summary(pipe)
 ```
 
-After finishing each inference of `pipe(...)`, you can call the `cache_dict.summary` API on pipe to get the details of the cache stats for the current inference (markdown table format). For example:
+After finishing each inference of `pipe(...)`, you can call the `cache_dict.summary` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
 
 ```bash
-Cache Steps and Residual Diffs Statistics:
+Cache Steps and Residual Diffs Statistics: QwenImagePipeline
 
 | Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
 |-------------|-----------|-----------|-----------|-----------|-----------|
-| 14          | 0.033     | 0.083     | 0.116     | 0.144     | 0.243     |
+| 23          | 0.04      | 0.082     | 0.115     | 0.152     | 0.245     |
+
+CFG Cache Steps and Residual Diffs Statistics: QwenImagePipeline
+
+| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
+|-----------------|-----------|-----------|-----------|-----------|-----------|
+| 22              | 0.045     | 0.077     | 0.112     | 0.148     | 0.245     |
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
