@@ -117,6 +117,21 @@ cache_dit.enable_cache(
     return_hidden_states_first=False,
     **cache_dit.default_options(),
 )
+
+# summary cache stats
+cache_dit.summary(pipe)
+```
+
+After finishing each inference of `pipe(...)`, you can call the `cache_dict.summary` API on pipe to get the details of the cache stats for the current inference (markdown table format). For example:
+
+```bash
+| Cache Steps | Diffs Q0 | Diffs Q1 | Diffs Q2 | Diffs Q3 |
+|-------------|----------|----------|----------|----------|
+| 23          | 0.04     | 0.082    | 0.115    | 0.152    |
+
+| CFG Cache Steps | Diffs Q0 | Diffs Q1 | Diffs Q2 | Diffs Q3 |
+|-----------------|----------|----------|----------|----------|
+| 22              | 0.045    | 0.077    | 0.112    | 0.148    |
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
