@@ -631,7 +631,8 @@ class UnifiedCacheAdapter:
                 pattern_id = list(unique_pattern_ids)[0]
                 pattern = selected_patterns[pattern_id]
                 logger.info(
-                    f"Match cache pattern: IN({pattern['IN']}, OUT({pattern['OUT']}))"
+                    f"Match Block Forward Pattern: {transformer_blocks[0].__class__.__name__}"
+                    f"\n IN({pattern['IN']}, \nOUT({pattern['OUT']}))"
                 )
 
         return pattern_matched

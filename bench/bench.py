@@ -135,8 +135,7 @@ def main():
         )
 
     if args.compile:
-        # Increase recompile limit for DBCache and DBPrune while
-        # using dynamic input shape.
+        # Increase recompile limit for DBCache
         if args.inductor_flags:
             cache_dit.set_compile_configs()
         else:
