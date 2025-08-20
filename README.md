@@ -98,7 +98,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 (IN: hidden_states, ...) -> (OUT: hidden_states) # TODO, DiT, Lumina2, etc. 
 ```
 
-After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` parameter can be **any** Diffusion Pipeline. Please refer to [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates.
+After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates.
 
 ```python
 import cache_dit
