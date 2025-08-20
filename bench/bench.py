@@ -172,7 +172,6 @@ def main():
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
 
     all_times = []
-    cached_stepes = 0
     for i in range(args.repeats):
         start = time.time()
         image = pipe(
@@ -190,11 +189,10 @@ def main():
     mean_time = sum(all_times) / len(all_times)
     logger.info(f"Mean Time: {mean_time:.2f}s")
 
-    cache_dit.summary(pipe)
-
+    stats = cache_dit.summary(pipe)
     save_name = (
         f"C{int(args.compile)}_{cache_type}_"
-        f"R{args.rdt}_S{cached_stepes}_"
+        f"R{args.rdt}_S{len(stats.cached_steps)}_"
         f"T{mean_time:.2f}s.png"
     )
 
