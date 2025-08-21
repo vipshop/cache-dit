@@ -4,7 +4,8 @@
     An <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
     ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-v1.png >
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png>
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
@@ -16,6 +17,11 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
+<!--
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-v1.png >
+    <img src=https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png height="320px">
+
+-->
 
 ## 🔥News  
 
@@ -23,10 +29,16 @@
 - [2025-08-18] 🎉Early **[Unified Cache APIs](#unified)** released! Check [Qwen-Image w/ UAPI](./examples/run_qwen_image_uapi.py) as an example.
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x⚡️** speedup! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
+
+<details>
+<summary> Previous News </summary>  
+  
 - [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
 
+</details>
+ 
 ## 📖Contents 
 
 <div id="contents"></div>  
