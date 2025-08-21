@@ -1,6 +1,8 @@
 <div align="center">
   <p align="center">
-    <h2>🤗 CacheDiT: An Unified and Training-free Cache Acceleration <br>Toolbox for Diffusion Transformers</h2>
+    <h2>🤗 CacheDiT </h2>
+    An <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
+    ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-v1.png >
   <div align='center'>
@@ -14,11 +16,13 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
+<!--
 <div align="center">
   <p align="center">
-    ♥️ Cache <b>Acceleration</b> with <b>One-line</b> Code ~ ♥️
+    ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
 </div> 
+-->
 
 ## 🔥News  
 
