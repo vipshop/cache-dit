@@ -4,7 +4,7 @@
     An <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
     ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png >
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png >
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
