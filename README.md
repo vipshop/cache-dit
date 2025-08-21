@@ -103,7 +103,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
-![](./assets/patterns.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
 
 After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
 ```python
