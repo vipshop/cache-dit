@@ -150,38 +150,10 @@ After finishing each inference of `pipe(...)`, you can call the `cache_dit.summa
 
 **DBCache**: **Dual Block Caching** for Diffusion Transformers. DBCache achieved fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache. Moreover, it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision! 
 
-<div align="center">
-  <p align="center">
-    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
-
-|Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
-
-<div align="center">
-  <p align="center">
-    DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
-  </p>
-</div>
-
 **DBCache** provides configurable parameters for custom optimization, enabling a balanced trade-off between performance and precision. Please check [DBCache.md](./docs/DBCache.md) docs for more details.
 
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
-
-For a good balance between performance and precision, DBCache is configured by default with **F8B0**, 8 warmup steps, and unlimited cached steps.
-
-<details>
-<summary>more options</summary>
-
-- **warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
-- **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
-- **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
-
-</details>
 
 ```python
 import cache_dit
@@ -192,7 +164,8 @@ pipe = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
-# Default options, F8B0, good balance between performance and precision
+# Default options, F8B0, 8 warmup steps, and unlimited cached 
+# steps for good balance between performance and precision
 cache_options = cache_dit.default_options()
 
 # Custom options, F8B8, higher precision
@@ -220,6 +193,17 @@ cache_options = {
     "non_compute_blocks_diff_threshold": 0.08,
 }
 ```
+
+<div align="center">
+  <p align="center">
+    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
 ## 🔥Hybrid TaylorSeer
 
