@@ -87,6 +87,10 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+
+<details>
+<summary> More Pipelines </summary>  
+  
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Allegro](https://github.com/vipshop/cache-dit/raw/main/examples)
@@ -96,6 +100,8 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀EasyAnimate](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SD3](https://github.com/vipshop/cache-dit/raw/main/examples)
+  
+</details>
 
 ## 🎉Unified Cache APIs
 
