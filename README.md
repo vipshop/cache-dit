@@ -16,13 +16,6 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
 </div>
 
-<!--
-<div align="center">
-  <p align="center">
-    ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
-  </p>
-</div> 
--->
 
 ## 🔥News  
 
@@ -92,17 +85,11 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="unified"></div>  
 
-Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The supported patterns are listed as follows:
+Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
-```python
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states, encoder_hidden_states)  
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: encoder_hidden_states, hidden_states)  
-(IN: hidden_states, encoder_hidden_states, ...) -> (OUT: hidden_states)
-(IN: hidden_states, ...) -> (OUT: hidden_states) # TODO, DiT, Lumina2, etc. 
-```
+![](./assets/patterns.png)
 
-After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates.
-
+After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
 ```python
 import cache_dit
 from diffusers import DiffusionPipeline 
