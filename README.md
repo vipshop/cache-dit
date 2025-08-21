@@ -1,5 +1,5 @@
 <div align="center">
-  <img src=./assets/cache-dit-logo.png height="120">
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
 
   <p align="center">
     An <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
