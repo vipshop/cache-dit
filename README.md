@@ -1,6 +1,7 @@
 <div align="center">
+  <img src=./assets/cache-dit-logo.png height="120">
+
   <p align="center">
-    <h2>🤗 CacheDiT </h2>
     An <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
     ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
