@@ -49,7 +49,7 @@
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [🔥Torch Compile](#compile)
+- [⚙️Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
 
 ## ⚙️Installation  
@@ -288,16 +288,15 @@ cache_options = {
 }
 ```
 
-## 🔥Torch Compile
+## ⚙️Torch Compile
 
 <div id="compile"></div>  
 
 By the way, **cache-dit** is designed to work compatibly with **torch.compile.** You can easily use cache-dit with torch.compile to further achieve a better performance. For example:
 
 ```python
-cache_dit.enable_cache(
-    pipe, **cache_dit.default_options()
-)
+cache_dit.enable_cache(pipe)
+
 # Compile the Transformer module
 pipe.transformer = torch.compile(pipe.transformer)
 ```
