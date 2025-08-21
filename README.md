@@ -17,7 +17,7 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Currently, Diffusers's Pipelines <b>Coverage Ratio: ~ 60% </b>🎉
+  🎉Now, <b>Diffusers's</b> Pipelines <b>Coverage Ratio: 60%~70%</b>🎉
   </p>
 </div>
 
