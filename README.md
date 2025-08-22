@@ -122,14 +122,11 @@ cache_dit.enable_cache(pipe)
 
 # just call the pipe as normal.
 output = pipe(...)
-
-# then, summary the cache stats.
-stats = cache_dit.summary(pipe)
 ```
 
 ### 🔥BlockAdapter: Cache Acceleration for Custom Diffusion Models
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. For such situations, the **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. For example:
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
@@ -145,8 +142,18 @@ cache_dit.enable_cache(
     forward_pattern=ForwardPattern.Pattern_1,
 )
 ```
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [block_adapter.md](./docs/block_adapter.md) for more details.
 
-After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
+### 🤖Cache Acceleration Stats Summary
+
+After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference. 
+
+```python
+# then, summary the cache stats.
+stats = cache_dit.summary(pipe)
+```
+
+You can set `details` param as `True` to show more details of cache stats. (markdown table format)
 
 ```python
 ⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
@@ -154,7 +161,6 @@ After finishing each inference of `pipe(...)`, you can call the `cache_dit.summa
 | Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |
 |-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|
 | 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.045     | 0.297     |
-...
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
