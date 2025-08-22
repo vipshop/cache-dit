@@ -37,7 +37,9 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
 
     if hasattr(pipe.transformer, "_cached_steps"):
         cached_steps: list[int] = pipe.transformer._cached_steps
-        residual_diffs: dict[str, float] = pipe.transformer._residual_diffs
+        residual_diffs: dict[str, float] = dict(
+            pipe.transformer._residual_diffs
+        )
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
 
@@ -64,7 +66,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
             print(
                 f"| {len(cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                 f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                f"| {round(qmin, 3):<9} |{round(qmax, 3):<9} |"
+                f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
             )
             print("")
 
@@ -72,21 +74,17 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
                 print(
                     f"📚Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
                 )
-                print("-" * 200)
                 pprint(
                     f"Cache Steps: {len(cached_steps)}, {cached_steps}",
-                    width=200,
                 )
                 pprint(
                     f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
                     compact=True,
-                    width=200,
                 )
-                print("-" * 200)
 
     if hasattr(pipe.transformer, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = pipe.transformer._cfg_cached_steps
-        cfg_residual_diffs: dict[str, float] = (
+        cfg_residual_diffs: dict[str, float] = dict(
             pipe.transformer._cfg_residual_diffs
         )
         cache_stats.cfg_cached_steps = cfg_cached_steps
@@ -115,7 +113,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
             print(
                 f"| {len(cfg_cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                 f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                f"| {round(qmin, 3):<9} |{round(qmax, 3):<9} |"
+                f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
             )
             print("")
 
@@ -123,16 +121,12 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
                 print(
                     f"📚CFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
                 )
-                print("-" * 200)
                 pprint(
                     f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
-                    width=200,
                 )
                 pprint(
                     f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
                     compact=True,
-                    width=200,
                 )
-                print("-" * 200)
 
     return cache_stats
