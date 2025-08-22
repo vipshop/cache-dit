@@ -67,11 +67,15 @@ if args.cache:
     print(f"cache options:\n{cache_options}")
 
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+    from cache_dit import ForwardPattern, BlockAdapter
+
     cache_dit.enable_cache(
-        pipe,
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.transformer_blocks,
-        return_hidden_states_first=False,
+        BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.transformer_blocks,
+        ),
+        forward_pattern=ForwardPattern.Pattern_1,
         **cache_options,
     )
 else:

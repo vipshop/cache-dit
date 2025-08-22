@@ -101,11 +101,15 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="unified"></div>  
 
+### 📚 Forward Pattern Matching 
+
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
 
-After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
+### 📚 Cache Acceleration with One-line Code
+
+In most cases, you need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
 ```python
 import cache_dit
 from diffusers import DiffusionPipeline 
@@ -116,14 +120,6 @@ pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 # one line code with default cache options.
 cache_dit.enable_cache(pipe) 
 
-# or, enable cache with custom pattern settings.
-cache_dit.enable_cache(
-    pipe, 
-    transformer=pipe.transformer,
-    blocks=pipe.transformer.transformer_blocks,
-    return_hidden_states_first=False,
-)
-
 # just call the pipe as normal.
 output = pipe(...)
 
@@ -131,14 +127,39 @@ output = pipe(...)
 stats = cache_dit.summary(pipe)
 ```
 
+### 📚 BlockAdapter: Cache Acceleration for Custom Diffusion Models
+
+But, in some cases, you may have a modified Diffusion Pipeline or Transformer that not located in `diffusers` library or do not officail supported by **cache-dit** at this time. For this suitations, **BlockAdapter** can help you to quickly apply many cache acceleration to your own Diffusion Pipelines and Transformers. For example:
+
+```python
+import cache_dit
+from diffusers import DiffusionPipeline 
+
+pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+
+# or, enable cache with custom pattern/block settings.
+from cache_dit import ForwardPattern, BlockAdapter
+
+# please check docs/block_adapter.md for more details.
+cache_dit.enable_cache(
+    BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.transformer_blocks,
+        blocks_name="transformer_blocks",
+    ),  
+    forward_pattern=ForwardPattern.Pattern_1,
+)
+```
+
 After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
 
 ```python
 ⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
 
-| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
-|-------------|-----------|-----------|-----------|-----------|-----------|
-| 23          | 0.04      | 0.082     | 0.115     | 0.152     | 0.245     |
+| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |
+|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|
+| 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.045     | 0.297     |
 ...
 ```
 

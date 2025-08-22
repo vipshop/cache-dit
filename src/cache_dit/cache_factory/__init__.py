@@ -41,14 +41,26 @@ def block_range(
 
 
 def enable_cache(
-    pipe: DiffusionPipeline = None,
-    adapter_params: BlockAdapterParams = None,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapterParams,
     forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     **cache_options_kwargs,
 ) -> DiffusionPipeline:
-    return UnifiedCacheAdapter.apply(
-        pipe,
-        adapter_params,
-        forward_pattern=forward_pattern,
-        **cache_options_kwargs,
-    )
+    if isinstance(pipe_or_adapter, BlockAdapterParams):
+        return UnifiedCacheAdapter.apply(
+            pipe=None,
+            adapter_params=pipe_or_adapter,
+            forward_pattern=forward_pattern,
+            **cache_options_kwargs,
+        )
+    elif isinstance(pipe_or_adapter, DiffusionPipeline):
+        return UnifiedCacheAdapter.apply(
+            pipe=pipe_or_adapter,
+            adapter_params=None,
+            forward_pattern=forward_pattern,
+            **cache_options_kwargs,
+        )
+    else:
+        raise ValueError(
+            "Please pass DiffusionPipeline or BlockAdapterParams"
+            "(BlockAdapter) for the 1 position param: pipe_or_adapter"
+        )
