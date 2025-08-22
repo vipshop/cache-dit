@@ -17,7 +17,8 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>Diffusers's</b> Pipelines <b>Coverage Ratio: 60%~70%</b>🎉
+  🎉Now, <b>cache-dit</b> covers <b>Most</b> mainstream <b>Diffusers'</b> Pipelines</b>🎉<br>
+  🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
   </p>
 </div>
 
@@ -79,12 +80,12 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 <details>
 <summary> More Pipelines </summary>  
 
 - [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Allegro](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogView3Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
