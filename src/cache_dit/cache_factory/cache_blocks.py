@@ -2,41 +2,45 @@ import inspect
 import torch
 
 from cache_dit.cache_factory import cache_context
+from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
 class DBCachedTransformerBlocks(torch.nn.Module):
+    _supported_patterns = [
+        ForwardPattern.Pattern_0,
+        ForwardPattern.Pattern_1,
+        ForwardPattern.Pattern_2,
+    ]
+
     def __init__(
         self,
         transformer_blocks: torch.nn.ModuleList,
         *,
         transformer: torch.nn.Module = None,
-        return_hidden_states_first: bool = True,
-        return_hidden_states_only: bool = False,
+        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ):
         super().__init__()
 
         self.transformer = transformer
         self.transformer_blocks = transformer_blocks
-        self.return_hidden_states_first = return_hidden_states_first
-        self.return_hidden_states_only = return_hidden_states_only
-        self._check_forward_params()
+        self.forward_pattern = forward_pattern
+        self._check_forward_pattern()
 
-    def _check_forward_params(self):
-        # NOTE: DBCache only support blocks which have the pattern:
-        # IN/OUT: (hidden_states, encoder_hidden_states)
-        self.required_parameters = [
-            "hidden_states",
-            "encoder_hidden_states",
-        ]
+    def _check_forward_pattern(self):
+        assert (
+            self.forward_pattern.Supported
+            and self.forward_pattern in self._supported_patterns
+        ), f"Pattern {self.forward_pattern} is not support for DBCache now!"
+
         if self.transformer_blocks is not None:
             for block in self.transformer_blocks:
                 forward_parameters = set(
                     inspect.signature(block.forward).parameters.keys()
                 )
-                for required_param in self.required_parameters:
+                for required_param in self.forward_pattern.In:
                     assert (
                         required_param in forward_parameters
                     ), f"The input parameters must contains: {required_param}."
@@ -164,10 +168,10 @@ class DBCachedTransformerBlocks(torch.nn.Module):
 
         return (
             hidden_states
-            if self.return_hidden_states_only
+            if self.forward_pattern.Return_H_Only
             else (
                 (hidden_states, encoder_hidden_states)
-                if self.return_hidden_states_first
+                if self.forward_pattern.Return_H_First
                 else (encoder_hidden_states, hidden_states)
             )
         )
@@ -247,7 +251,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             )
             if not isinstance(hidden_states, torch.Tensor):
                 hidden_states, encoder_hidden_states = hidden_states
-                if not self.return_hidden_states_first:
+                if not self.forward_pattern.Return_H_First:
                     hidden_states, encoder_hidden_states = (
                         encoder_hidden_states,
                         hidden_states,
@@ -273,7 +277,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             )
             if not isinstance(hidden_states, torch.Tensor):
                 hidden_states, encoder_hidden_states = hidden_states
-                if not self.return_hidden_states_first:
+                if not self.forward_pattern.Return_H_First:
                     hidden_states, encoder_hidden_states = (
                         encoder_hidden_states,
                         hidden_states,
@@ -325,7 +329,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
             )
             if not isinstance(hidden_states, torch.Tensor):
                 hidden_states, encoder_hidden_states = hidden_states
-                if not self.return_hidden_states_first:
+                if not self.forward_pattern.Return_H_First:
                     hidden_states, encoder_hidden_states = (
                         encoder_hidden_states,
                         hidden_states,
@@ -376,7 +380,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 )
                 if not isinstance(hidden_states, torch.Tensor):
                     hidden_states, encoder_hidden_states = hidden_states
-                    if not self.return_hidden_states_first:
+                    if not self.forward_pattern.Return_H_First:
                         hidden_states, encoder_hidden_states = (
                             encoder_hidden_states,
                             hidden_states,
@@ -416,7 +420,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                     )
                     if not isinstance(hidden_states, torch.Tensor):
                         hidden_states, encoder_hidden_states = hidden_states
-                        if not self.return_hidden_states_first:
+                        if not self.forward_pattern.Return_H_First:
                             hidden_states, encoder_hidden_states = (
                                 encoder_hidden_states,
                                 hidden_states,
@@ -462,7 +466,7 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                 )
                 if not isinstance(hidden_states, torch.Tensor):
                     hidden_states, encoder_hidden_states = hidden_states
-                    if not self.return_hidden_states_first:
+                    if not self.forward_pattern.Return_H_First:
                         hidden_states, encoder_hidden_states = (
                             encoder_hidden_states,
                             hidden_states,
