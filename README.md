@@ -109,7 +109,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ### 📚Cache Acceleration with One-line Code
 
-In most cases, you need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
 ```python
 import cache_dit
 from diffusers import DiffusionPipeline 
@@ -129,7 +129,7 @@ stats = cache_dit.summary(pipe)
 
 ### 📚BlockAdapter: Cache Acceleration for Custom Diffusion Models
 
-But, in some cases, you may have a modified Diffusion Pipeline or Transformer that not located in `diffusers` library or do not officail supported by **cache-dit** at this time. For this suitations, **BlockAdapter** can help you to quickly apply many cache acceleration to your own Diffusion Pipelines and Transformers. For example:
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. For such situations, the **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. please check [block_adapter.md](docs/block_adapter).md for more details. For example:
 
 ```python
 import cache_dit
