@@ -174,7 +174,6 @@ cache_options = cache_dit.default_options()
 
 # Custom options, F8B8, higher precision
 cache_options = {
-    "cache_type": cache_dit.DBCache,
     "warmup_steps": 8,
     "max_cached_steps": -1, # -1 means no limit
     "Fn_compute_blocks": 8, # Fn, F8, etc.
