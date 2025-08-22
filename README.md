@@ -107,7 +107,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
 
-### 📚Cache Acceleration with One-line Code
+### ⚡️Cache Acceleration with One-line Code
 
 In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
 ```python
@@ -127,23 +127,17 @@ output = pipe(...)
 stats = cache_dit.summary(pipe)
 ```
 
-### 📚BlockAdapter: Cache Acceleration for Custom Diffusion Models
+### 🔥BlockAdapter: Cache Acceleration for Custom Diffusion Models
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. For such situations, the **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. please check [📚BlockAdapter](docs/block_adapter) for more details. For example:
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. For such situations, the **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. For example:
 
 ```python
-import cache_dit
-from diffusers import DiffusionPipeline 
-
-pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-
-# or, enable cache with custom pattern/block settings.
 from cache_dit import ForwardPattern, BlockAdapter
 
 # please check docs/block_adapter.md for more details.
 cache_dit.enable_cache(
     BlockAdapter(
-        pipe=pipe,
+        pipe=pipe, # Qwen-Image, etc.
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         blocks_name="transformer_blocks",
