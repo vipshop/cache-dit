@@ -6,6 +6,7 @@ import functools
 import dataclasses
 
 from enum import Enum
+from typing import Any
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.patch.flux import (
@@ -412,11 +413,14 @@ class UnifiedCacheAdapter:
         return pipe
 
     @classmethod
-    def has_separate_cfg(cls, pipe: DiffusionPipeline) -> bool:
-        pipe_cls_name = pipe.__class__.__name__
-        if pipe_cls_name.startswith("QwenImage"):
+    def has_separate_classifier_free_guidance(
+        cls,
+        pipe_or_transformer: DiffusionPipeline | Any,
+    ) -> bool:
+        cls_name = pipe_or_transformer.__class__.__name__
+        if cls_name.startswith("QwenImage"):
             return True
-        elif pipe_cls_name.startswith("Wan"):
+        elif cls_name.startswith("Wan"):
             return True
         return False
 
@@ -425,7 +429,7 @@ class UnifiedCacheAdapter:
         # Check cache_context_kwargs
         if not cache_context_kwargs:
             cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
-            if cls.has_separate_cfg(pipe):
+            if cls.has_separate_classifier_free_guidance(pipe):
                 cache_context_kwargs["do_separate_classifier_free_guidance"] = (
                     True
                 )
