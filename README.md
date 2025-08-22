@@ -131,7 +131,7 @@ But in some cases, you may have a **modified** Diffusion Pipeline or Transformer
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
 
-# Please check docs/block_adapter.md for more details.
+# Please check docs/BlockAdapter.md for more details.
 cache_dit.enable_cache(
     BlockAdapter(
         pipe=pipe, # Qwen-Image, etc.
