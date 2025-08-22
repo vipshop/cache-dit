@@ -129,7 +129,7 @@ stats = cache_dit.summary(pipe)
 
 ### 📚BlockAdapter: Cache Acceleration for Custom Diffusion Models
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. For such situations, the **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. please check [block_adapter.md](docs/block_adapter).md for more details. For example:
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. For such situations, the **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. please check [📚BlockAdapter](docs/block_adapter) for more details. For example:
 
 ```python
 import cache_dit
