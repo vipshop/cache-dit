@@ -28,7 +28,7 @@ class DBCacheContext:
     max_Fn_compute_blocks: int = -1
     max_Bn_compute_blocks: int = -1
     # L1 hidden states or residual diff threshold for Fn
-    residual_diff_threshold: Union[torch.Tensor, float] = 0.0
+    residual_diff_threshold: Union[torch.Tensor, float] = 0.05
     l1_hidden_states_diff_threshold: float = None
     important_condition_threshold: float = 0.0
 

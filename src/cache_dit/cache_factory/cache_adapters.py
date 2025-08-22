@@ -5,13 +5,14 @@ import unittest
 import functools
 import dataclasses
 
-from enum import Enum
 from typing import Any
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.patch.flux import (
     maybe_patch_flux_transformer,
 )
+from cache_dit.cache_factory import CacheType
+from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_blocks import (
     cache_context,
     DBCachedTransformerBlocks,
@@ -21,92 +22,30 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class CacheType(Enum):
-    NONE = "NONE"
-    DBCache = "Dual_Block_Cache"
-
-    @staticmethod
-    def type(cache_type: "CacheType | str") -> "CacheType":
-        if isinstance(cache_type, CacheType):
-            return cache_type
-        return CacheType.cache_type(cache_type)
-
-    @staticmethod
-    def cache_type(cache_type: "CacheType | str") -> "CacheType":
-        if cache_type is None:
-            return CacheType.NONE
-
-        if isinstance(cache_type, CacheType):
-            return cache_type
-
-        elif cache_type.lower() in (
-            "dual_block_cache",
-            "db_cache",
-            "dbcache",
-            "db",
-        ):
-            return CacheType.DBCache
-        elif cache_type.lower() in (
-            "none_cache",
-            "nonecache",
-            "no_cache",
-            "nocache",
-            "none",
-            "no",
-        ):
-            return CacheType.NONE
-        else:
-            raise ValueError(f"Unknown cache type: {cache_type}")
-
-    @staticmethod
-    def block_range(start: int, end: int, step: int = 1) -> list[int]:
-        if start > end or end <= 0 or step <= 1:
-            return []
-        # Always compute 0 and end - 1 blocks for DB Cache
-        return list(
-            sorted(set([0] + list(range(start, end, step)) + [end - 1]))
-        )
-
-    @staticmethod
-    def default_options(cache_type: "CacheType | str") -> dict:
-        _no_options = {
-            "cache_type": CacheType.NONE,
-        }
-
-        _Fn_compute_blocks = 8
-        _Bn_compute_blocks = 0
-
-        _db_options = {
-            "cache_type": CacheType.DBCache,
-            "residual_diff_threshold": 0.12,
-            "warmup_steps": 8,
-            "max_cached_steps": -1,  # -1 means no limit
-            "Fn_compute_blocks": _Fn_compute_blocks,
-            "Bn_compute_blocks": _Bn_compute_blocks,
-            "max_Fn_compute_blocks": 16,
-            "max_Bn_compute_blocks": 16,
-            "Fn_compute_blocks_ids": [],  # 0, 1, 2, ..., 7, etc.
-            "Bn_compute_blocks_ids": [],  # 0, 1, 2, ..., 7, etc.
-        }
-
-        if cache_type == CacheType.DBCache:
-            return _db_options
-        elif cache_type == CacheType.NONE:
-            return _no_options
-        else:
-            raise ValueError(f"Unknown cache type: {cache_type}")
-
-
 @dataclasses.dataclass
-class UnifiedCacheParams:
+class BlockAdapterParams:
     pipe: DiffusionPipeline = None
     transformer: torch.nn.Module = None
     blocks: torch.nn.ModuleList = None
     # transformer_blocks, blocks, etc.
     blocks_name: str = None
     dummy_blocks_names: list[str] = dataclasses.field(default_factory=list)
-    return_hidden_states_first: bool = True
-    return_hidden_states_only: bool = False
+
+    def check_adapter_params(self) -> bool:
+        if (
+            isinstance(self.pipe, DiffusionPipeline)
+            and self.transformer is not None
+            and self.blocks is not None
+            and isinstance(self.blocks, torch.nn.ModuleList)
+        ):
+            return True
+        return False
+
+
+@dataclasses.dataclass
+class UnifiedCacheParams:
+    adapter_params: BlockAdapterParams = None
+    forward_pattern: ForwardPattern = ForwardPattern.Pattern_0
 
 
 class UnifiedCacheAdapter:
@@ -146,42 +85,45 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=(
-                    pipe.transformer.transformer_blocks
-                    + pipe.transformer.single_transformer_blocks
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
                 ),
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=["single_transformer_blocks"],
-                return_hidden_states_first=False,
-                return_hidden_states_only=False,
+                forward_pattern=ForwardPattern.Pattern_1,
             )
         elif pipe_cls_name.startswith("Mochi"):
             from diffusers import MochiTransformer3DModel
 
             assert isinstance(pipe.transformer, MochiTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
             )
         elif pipe_cls_name.startswith("CogVideoX"):
             from diffusers import CogVideoXTransformer3DModel
 
             assert isinstance(pipe.transformer, CogVideoXTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
             )
         elif pipe_cls_name.startswith("Wan"):
             from diffusers import (
@@ -194,145 +136,156 @@ class UnifiedCacheAdapter:
                 (WanTransformer3DModel, WanVACETransformer3DModel),
             )
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.blocks,
-                blocks_name="blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=True,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.blocks,
+                    blocks_name="blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_2,
             )
         elif pipe_cls_name.startswith("HunyuanVideo"):
             from diffusers import HunyuanVideoTransformer3DModel
 
             assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                blocks=(
-                    pipe.transformer.transformer_blocks
-                    + pipe.transformer.single_transformer_blocks
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
                 ),
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=["single_transformer_blocks"],
-                return_hidden_states_first=True,
-                return_hidden_states_only=False,
+                forward_pattern=ForwardPattern.Pattern_0,
             )
         elif pipe_cls_name.startswith("QwenImage"):
             from diffusers import QwenImageTransformer2DModel
 
             assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=False,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_1,
             )
         elif pipe_cls_name.startswith("LTXVideo"):
             from diffusers import LTXVideoTransformer3DModel
 
             assert isinstance(pipe.transformer, LTXVideoTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=True,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_2,
             )
         elif pipe_cls_name.startswith("Allegro"):
             from diffusers import AllegroTransformer3DModel
 
             assert isinstance(pipe.transformer, AllegroTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=True,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_2,
             )
         elif pipe_cls_name.startswith("CogView3Plus"):
             from diffusers import CogView3PlusTransformer2DModel
 
             assert isinstance(pipe.transformer, CogView3PlusTransformer2DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
             )
         elif pipe_cls_name.startswith("CogView4"):
             from diffusers import CogView4Transformer2DModel
 
             assert isinstance(pipe.transformer, CogView4Transformer2DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
             )
         elif pipe_cls_name.startswith("Cosmos"):
             from diffusers import CosmosTransformer3DModel
 
             assert isinstance(pipe.transformer, CosmosTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=True,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_2,
             )
         elif pipe_cls_name.startswith("EasyAnimate"):
             from diffusers import EasyAnimateTransformer3DModel
 
             assert isinstance(pipe.transformer, EasyAnimateTransformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
             )
         elif pipe_cls_name.startswith("SkyReelsV2"):
             from diffusers import SkyReelsV2Transformer3DModel
 
             assert isinstance(pipe.transformer, SkyReelsV2Transformer3DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.blocks,
-                blocks_name="blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=True,
-                return_hidden_states_only=True,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.blocks,
+                    blocks_name="blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_2,
             )
         elif pipe_cls_name.startswith("SD3"):
             from diffusers import SD3Transformer2DModel
 
             assert isinstance(pipe.transformer, SD3Transformer2DModel)
             return UnifiedCacheParams(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=pipe.transformer.transformer_blocks,
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=[],
-                return_hidden_states_first=False,
-                return_hidden_states_only=False,
+                adapter_params=BlockAdapterParams(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_1,
             )
         else:
             raise ValueError(f"Unknown pipeline class name: {pipe_cls_name}")
@@ -340,77 +293,61 @@ class UnifiedCacheAdapter:
     @classmethod
     def apply(
         cls,
-        pipe: DiffusionPipeline,
-        *,
-        transformer: torch.nn.Module = None,
-        blocks: torch.nn.ModuleList = None,
-        # transformer_blocks, blocks, etc.
-        blocks_name: str = None,
-        dummy_blocks_names: list[str] = [],
-        return_hidden_states_first: bool = True,
-        return_hidden_states_only: bool = False,
+        pipe: DiffusionPipeline = None,
+        adapter_params: BlockAdapterParams = None,
+        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if cls.is_supported(pipe) and (transformer is None or blocks is None):
-            params = cls.get_params(pipe)
-            return cls.cachify(
-                params.pipe,
-                params.transformer,
-                params.blocks,
-                blocks_name=params.blocks_name,
-                dummy_blocks_names=params.dummy_blocks_names,
-                return_hidden_states_first=params.return_hidden_states_first,
-                return_hidden_states_only=params.return_hidden_states_only,
-                **cache_context_kwargs,
-            )
+        assert (
+            pipe is not None or adapter_params is not None
+        ), "pipe or adapter_params can not both None!"
+
+        if pipe is not None:
+            if cls.is_supported(pipe):
+                logger.info(
+                    f"{pipe.__class__.__name__} is officially supported by cache-dit. "
+                    "Use it's pre-defined BlockAdapter directly!"
+                )
+                params = cls.get_params(pipe)
+                return cls.cachify(
+                    params.adapter_params,
+                    forward_pattern=params.forward_pattern,
+                    **cache_context_kwargs,
+                )
+            else:
+                raise ValueError(
+                    f"{pipe.__class__.__name__} is not officially supported "
+                    "by cache-dit, please set BlockAdapter instead!"
+                )
         else:
+            logger.info(
+                "Adapting cache acceleration using custom BlockAdapter!"
+            )
             return cls.cachify(
-                pipe,
-                transformer,
-                blocks,
-                blocks_name=blocks_name,
-                dummy_blocks_names=dummy_blocks_names,
-                return_hidden_states_first=return_hidden_states_first,
-                return_hidden_states_only=return_hidden_states_only,
+                adapter_params,
+                forward_pattern=forward_pattern,
                 **cache_context_kwargs,
             )
 
     @classmethod
     def cachify(
         cls,
-        pipe: DiffusionPipeline,
-        transformer: torch.nn.Module,
-        blocks: torch.nn.ModuleList,
+        adapter_params: BlockAdapterParams,
         *,
-        # transformer_blocks, blocks, etc.
-        blocks_name: str = None,
-        dummy_blocks_names: list[str] = [],
-        # (encoder_hidden_states, hidden_states) or
-        # (hidden_states, encoder_hidden_states)
-        return_hidden_states_first: bool = True,
-        return_hidden_states_only: bool = False,
+        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if (
-            isinstance(pipe, DiffusionPipeline)
-            and transformer is not None
-            and blocks is not None
-            and isinstance(blocks, torch.nn.ModuleList)
-        ):
-            assert isinstance(blocks, torch.nn.ModuleList)
+        if adapter_params.check_adapter_params():
+            assert isinstance(adapter_params.blocks, torch.nn.ModuleList)
             # Apply cache on pipeline: wrap cache context
-            cls.create_context(pipe, **cache_context_kwargs)
+            cls.create_context(adapter_params.pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
             cls.mock_blocks(
-                transformer,
-                blocks,
-                blocks_name=blocks_name,
-                dummy_blocks_names=dummy_blocks_names,
-                return_hidden_states_first=return_hidden_states_first,
-                return_hidden_states_only=return_hidden_states_only,
+                adapter_params,
+                forward_pattern=forward_pattern,
             )
 
-        return pipe
+        return adapter_params.pipe
 
     @classmethod
     def has_separate_classifier_free_guidance(
@@ -487,52 +424,48 @@ class UnifiedCacheAdapter:
     @classmethod
     def mock_blocks(
         cls,
-        transformer: torch.nn.Module,
-        blocks: torch.nn.ModuleList,
-        blocks_name: str = None,
-        dummy_blocks_names: list[str] = [],
-        return_hidden_states_first: bool = True,
-        return_hidden_states_only: bool = False,
+        adapter_params: BlockAdapterParams,
+        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> torch.nn.Module:
-        if getattr(transformer, "_is_cached", False):
-            return transformer
+        if getattr(adapter_params.transformer, "_is_cached", False):
+            return adapter_params.transformer
 
         # Firstly, process some specificial cases (TODO: more patches)
-        if transformer.__class__.__name__.startswith("Flux"):
-            transformer = maybe_patch_flux_transformer(
-                transformer,
-                blocks=blocks,
+        if adapter_params.transformer.__class__.__name__.startswith("Flux"):
+            adapter_params.transformer = maybe_patch_flux_transformer(
+                adapter_params.transformer,
+                blocks=adapter_params.blocks,
             )
 
         # Check block forward pattern matching
         assert cls.match_pattern(
-            blocks,
-            return_hidden_states_first=return_hidden_states_first,
-            return_hidden_states_only=return_hidden_states_only,
+            adapter_params.blocks,
+            forward_pattern=forward_pattern,
         ), (
             "No block forward pattern matched, "
-            f"supported lists: {cls.supported_patterns()}"
+            f"supported lists: {ForwardPattern.supported_patterns()}"
         )
 
         # Apply cache on transformer: mock cached transformer blocks
         cached_blocks = torch.nn.ModuleList(
             [
                 DBCachedTransformerBlocks(
-                    blocks,
-                    transformer=transformer,
-                    return_hidden_states_first=return_hidden_states_first,
-                    return_hidden_states_only=return_hidden_states_only,
+                    adapter_params.blocks,
+                    transformer=adapter_params.transformer,
+                    forward_pattern=forward_pattern,
                 )
             ]
         )
         dummy_blocks = torch.nn.ModuleList()
 
-        original_forward = transformer.forward
+        original_forward = adapter_params.transformer.forward
 
-        assert isinstance(dummy_blocks_names, list)
-        if blocks_name is None:
-            blocks_name = cls.find_blocks_name(transformer)
-            assert blocks_name is not None
+        assert isinstance(adapter_params.dummy_blocks_names, list)
+        if adapter_params.blocks_name is None:
+            adapter_params.blocks_name = cls.find_blocks_name(
+                adapter_params.transformer
+            )
+            assert adapter_params.blocks_name is not None
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
@@ -540,11 +473,11 @@ class UnifiedCacheAdapter:
                 stack.enter_context(
                     unittest.mock.patch.object(
                         self,
-                        blocks_name,
+                        adapter_params.blocks_name,
                         cached_blocks,
                     )
                 )
-                for dummy_name in dummy_blocks_names:
+                for dummy_name in adapter_params.dummy_blocks_names:
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self,
@@ -554,59 +487,25 @@ class UnifiedCacheAdapter:
                     )
                 return original_forward(*args, **kwargs)
 
-        transformer.forward = new_forward.__get__(transformer)
-        transformer._is_cached = True
+        adapter_params.transformer.forward = new_forward.__get__(
+            adapter_params.transformer
+        )
+        adapter_params.transformer._is_cached = True
 
-        return transformer
-
-    @classmethod
-    def make_pattern(cls, in_params: list, out_params: list) -> dict:
-        return {"IN": in_params, "OUT": out_params}
-
-    @classmethod
-    def supported_patterns(cls):
-        # TODO: support more cache patterns.
-        return [
-            cls.make_pattern(
-                ["hidden_states", "encoder_hidden_states"],
-                ["hidden_states", "encoder_hidden_states"],
-            ),
-            cls.make_pattern(
-                ["hidden_states", "encoder_hidden_states"],
-                ["encoder_hidden_states", "hidden_states"],
-            ),
-            cls.make_pattern(
-                ["hidden_states", "encoder_hidden_states"],
-                ["hidden_states"],
-            ),
-        ]
+        return adapter_params.transformer
 
     @classmethod
     def match_pattern(
         cls,
         transformer_blocks: torch.nn.ModuleList,
-        return_hidden_states_first: bool = True,
-        return_hidden_states_only: bool = False,
+        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> bool:
-        pattern_matched = True
-        pattern_ids = []
+        pattern_matched_states = []
 
-        valid_patterns = []
-        if return_hidden_states_first:
-            for pattern in cls.supported_patterns():
-                if pattern["OUT"][0] == "hidden_states":
-                    valid_patterns.append(pattern)
-        else:
-            for pattern in cls.supported_patterns():
-                if pattern["OUT"][0] == "encoder_hidden_states":
-                    valid_patterns.append(pattern)
-
-        selected_patterns = valid_patterns.copy()
-        if return_hidden_states_only:
-            selected_patterns = []
-            for pattern in valid_patterns:
-                if len(pattern["OUT"]) == 1:
-                    selected_patterns.append(pattern)
+        assert (
+            forward_pattern.Supported
+            and forward_pattern in ForwardPattern.supported_patterns()
+        ), f"Pattern {forward_pattern} is not support now!"
 
         for block in transformer_blocks:
             forward_parameters = set(
@@ -616,41 +515,25 @@ class UnifiedCacheAdapter:
                 inspect.signature(block.forward).return_annotation
             ).count("torch.Tensor")
 
-            matched_pattern_id = None
-            param_matched = False
-            for i, pattern in enumerate(selected_patterns):
-                if param_matched:
-                    break
+            in_matched = True
+            out_matched = True
+            if num_outputs > 0 and len(forward_pattern.Out) != num_outputs:
+                # output pattern not match
+                out_matched = False
 
-                if num_outputs > 0 and len(pattern["OUT"]) != num_outputs:
-                    # output pattern not match
-                    break
+            for required_param in forward_pattern.In:
+                if required_param not in forward_parameters:
+                    in_matched = False
 
-                for required_param in pattern["IN"]:
-                    if required_param not in forward_parameters:
-                        break
+            pattern_matched_states.append(in_matched and out_matched)
 
-                param_matched = True
-                if param_matched:
-                    matched_pattern_id = i  # first pattern
-
-            if matched_pattern_id is not None:
-                pattern_ids.append(matched_pattern_id)
-            else:
-                pattern_matched = False
-                break
-
+        pattern_matched = all(pattern_matched_states)  # all block match
         if pattern_matched:
-            unique_pattern_ids = set(pattern_ids)
-            if len(unique_pattern_ids) > 1:
-                pattern_matched = False
-            else:
-                pattern_id = list(unique_pattern_ids)[0]
-                pattern = selected_patterns[pattern_id]
-                logger.info(
-                    f"Match Block Forward Pattern: {transformer_blocks[0].__class__.__name__}"
-                    f"\n IN({pattern['IN']}, \nOUT({pattern['OUT']}))"
-                )
+            block_cls_name = transformer_blocks[0].__class__.__name__
+            logger.info(
+                f"Match Block Forward Pattern: {block_cls_name}, {forward_pattern}"
+                f"\nIN:{forward_pattern.In}, OUT:{forward_pattern.Out})"
+            )
 
         return pattern_matched
 
@@ -665,6 +548,7 @@ class UnifiedCacheAdapter:
                     if attr_name.startswith(prefix):
                         blocks_name = attr_name
                         logger.info(f"Auto selected blocks name: {blocks_name}")
+                        # only find one transformer blocks name
                         break
         if blocks_name is None:
             logger.warning(

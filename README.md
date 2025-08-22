@@ -101,45 +101,67 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="unified"></div>  
 
+### 📚Forward Pattern Matching 
+
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
 
-After the `cache_dit.enable_cache(...)` API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image_uapi.py) as an example. 
+### ♥️Cache Acceleration with One-line Code
+
+In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image.py) as an example. 
+
 ```python
 import cache_dit
 from diffusers import DiffusionPipeline 
 
-# can be any diffusion pipeline
+# Can be any diffusion pipeline
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 
-# one line code with default cache options.
+# One-line code with default cache options.
 cache_dit.enable_cache(pipe) 
 
-# or, enable cache with custom settings.
-cache_dit.enable_cache(
-    pipe, transformer=pipe.transformer,
-    blocks=pipe.transformer.transformer_blocks,
-    return_hidden_states_first=False,
-    **cache_dit.default_options(),
-)
-
-# just call the pipe as normal.
+# Just call the pipe as normal.
 output = pipe(...)
+```
 
-# then, summary the cache stats.
+### 🔥BlockAdapter: Cache Acceleration for Custom Diffusion Models
+
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) as an example.
+
+```python
+from cache_dit import ForwardPattern, BlockAdapter
+
+# Please check docs/BlockAdapter.md for more details.
+cache_dit.enable_cache(
+    BlockAdapter(
+        pipe=pipe, # Qwen-Image, etc.
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.transformer_blocks,
+        blocks_name="transformer_blocks",
+    ),  
+    # Check `📚Forward Pattern Matching` documentation and hack the code of
+    # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
+    forward_pattern=ForwardPattern.Pattern_1,  
+)
+```
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.
+
+### 🤖Cache Acceleration Stats Summary
+
+After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary()` API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
+```python
 stats = cache_dit.summary(pipe)
 ```
 
-After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference (markdown table format). You can set `details` param as `True` to show more details of cache stats.
+You can set `details` param as `True` to show more details of cache stats. (markdown table format) Sometimes, this may help you analyze what values of the residual diff threshold would be better.
 
 ```python
 ⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
 
-| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 |
-|-------------|-----------|-----------|-----------|-----------|-----------|
-| 23          | 0.04      | 0.082     | 0.115     | 0.152     | 0.245     |
-...
+| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Max |
+|-------------|-----------|-----------|-----------|-----------|-----------|-----------|
+| 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.297     |
 ```
 
 ## ⚡️DBCache: Dual Block Cache  
@@ -164,31 +186,33 @@ pipe = FluxPipeline.from_pretrained(
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
 # steps for good balance between performance and precision
-cache_options = cache_dit.default_options()
+cache_dit.enable_cache(pipe)
 
 # Custom options, F8B8, higher precision
-cache_options = {
-    "warmup_steps": 8,
-    "max_cached_steps": -1, # -1 means no limit
-    "Fn_compute_blocks": 8, # Fn, F8, etc.
-    "Bn_compute_blocks": 8, # Bn, B8, etc.
-    "residual_diff_threshold": 0.12,
-}
-
-cache_dit.enable_cache(pipe, **cache_options)
+cache_dit.enable_cache(
+    pipe,
+    warmup_steps=8,      # steps do not cache
+    max_cached_steps=-1, # -1 means no limit
+    Fn_compute_blocks=8, # Fn, F8, etc.
+    Bn_compute_blocks=8, # Bn, B8, etc.
+    residual_diff_threshold=0.12,
+)
 ```
 Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming to maintain good performance can specify **Bn_compute_blocks_ids** to work with Bn. DBCache will only compute the specified blocks, with the remaining estimated using the previous step's residual cache.
 
 ```python
 # Custom options, F8B16, higher precision with good performance.
-cache_options = {
+cache_dit.enable_cache(
+    pipe,
+    Fn_compute_blocks=8,  # Fn, F8, etc.
+    Bn_compute_blocks=16, # Bn, B16, etc.
     # 0, 2, 4, ..., 14, 15, etc. [0,16)
-    "Bn_compute_blocks_ids": cache_dit.block_range(0, 16, 2),
+    Bn_compute_blocks_ids=cache_dit.block_range(0, 16, 2),
     # If the L1 difference is below this threshold, skip Bn blocks 
     # not in `Bn_compute_blocks_ids`(1, 3,..., etc), Otherwise, 
     # compute these blocks.
-    "non_compute_blocks_diff_threshold": 0.08,
-}
+    non_compute_blocks_diff_threshold=0.08,
+)
 ```
 
 <div align="center">
@@ -215,20 +239,20 @@ $$
 **TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
-cache_options = {
-    # TaylorSeer options
-    "enable_taylorseer": True,
-    "enable_encoder_taylorseer": True,
+cache_dit.enable_cache(
+    pipe,
+    enable_taylorseer=True,
+    enable_encoder_taylorseer=True,
     # Taylorseer cache type cache be hidden_states or residual.
-    "taylorseer_cache_type": "residual",
+    taylorseer_cache_type="residual",
     # Higher values of n_derivatives will lead to longer 
     # computation time but may improve precision significantly.
-    "taylorseer_kwargs": {
+    taylorseer_kwargs={
         "n_derivatives": 2, # default is 2.
     },
-    "warmup_steps": 3, # prefer: >= n_derivatives + 1
-    "residual_diff_threshold": 0.12,
-}
+    warmup_steps=3, # prefer: >= n_derivatives + 1
+    residual_diff_threshold=0.12
+)
 ``` 
 
 > [!Important]
@@ -252,21 +276,23 @@ cache_options = {
 cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
-cache_options = {
+cache_dit.enable_cache(
+    pipe, 
+    ...,
     # CFG: classifier free guidance or not
     # For model that fused CFG and non-CFG into single forward step,
     # should set do_separate_classifier_free_guidance as False.
     # For example, set it as True for Wan 2.1 and set it as False 
     # for FLUX.1, HunyuanVideo, CogVideoX, Mochi.
-    "do_separate_classifier_free_guidance": True, # Wan 2.1, Qwen-Image
+    do_separate_classifier_free_guidance=True, # Wan 2.1, Qwen-Image
     # Compute cfg forward first or not, default False, namely, 
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-    "cfg_compute_first": False,
+    cfg_compute_first=False,
     # Compute spearate diff values for CFG and non-CFG step, 
     # default True. If False, we will use the computed diff from 
     # current non-CFG transformer step for current CFG step.
-    "cfg_diff_compute_separate": True,
-}
+    cfg_diff_compute_separate=True,
+)
 ```
 
 ## ⚙️Torch Compile
