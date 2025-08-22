@@ -421,14 +421,7 @@ class UnifiedCacheAdapter:
         return False
 
     @classmethod
-    def create_context(
-        cls,
-        pipe: DiffusionPipeline,
-        **cache_context_kwargs,
-    ) -> DiffusionPipeline:
-        if getattr(pipe, "_is_cached", False):
-            return pipe
-
+    def check_context_kwargs(cls, pipe, **cache_context_kwargs):
         # Check cache_context_kwargs
         if not cache_context_kwargs:
             cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
@@ -440,12 +433,32 @@ class UnifiedCacheAdapter:
                 "cache_context_kwargs is empty, use default "
                 f"cache options: {cache_context_kwargs}"
             )
+        else:
+            # Allow empty cache_type, we only support DBCache now.
+            if cache_context_kwargs.get("cache_type", None):
+                cache_context_kwargs["cache_type"] = CacheType.DBCache
 
         if cache_type := cache_context_kwargs.pop("cache_type", None):
             assert (
                 cache_type == CacheType.DBCache
             ), "Custom cache setting only support for DBCache now!"
 
+        return cache_context_kwargs
+
+    @classmethod
+    def create_context(
+        cls,
+        pipe: DiffusionPipeline,
+        **cache_context_kwargs,
+    ) -> DiffusionPipeline:
+        if getattr(pipe, "_is_cached", False):
+            return pipe
+
+        # Check cache_context_kwargs
+        cache_context_kwargs = cls.check_context_kwargs(
+            pipe,
+            **cache_context_kwargs,
+        )
         # Apply cache on pipeline: wrap cache context
         cache_kwargs, _ = cache_context.collect_cache_kwargs(
             default_attrs={},
