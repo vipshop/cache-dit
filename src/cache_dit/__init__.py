@@ -19,6 +19,8 @@ from cache_dit.logger import init_logger
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
 
+BlockAdapter = BlockAdapterParams
+
 Forward_Pattern_0 = ForwardPattern.Pattern_0
 Forward_Pattern_1 = ForwardPattern.Pattern_1
 Forward_Pattern_2 = ForwardPattern.Pattern_2

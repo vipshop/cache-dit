@@ -2,7 +2,7 @@ import torch
 from typing import Dict, List
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
-from cache_dit.cache_factory.cache_adapters import CacheType
+from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.cache_adapters import BlockAdapterParams
 from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
 from cache_dit.cache_factory.utils import load_cache_options_from_yaml

@@ -6,6 +6,7 @@ import time
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 import cache_dit
+from cache_dit import ForwardPattern, BlockAdapter
 
 logger = cache_dit.init_logger(__name__)
 
@@ -121,7 +122,7 @@ def main():
     else:
         assert isinstance(pipe.transformer, FluxTransformer2DModel)
         cache_dit.enable_cache(
-            adapter_params=cache_dit.BlockAdapterParams(
+            adapter_params=BlockAdapter(
                 pipe,
                 transformer=pipe.transformer,
                 blocks=(
@@ -131,7 +132,7 @@ def main():
                 blocks_name="transformer_blocks",
                 dummy_blocks_names=["single_transformer_blocks"],
             ),
-            forward_pattern=cache_dit.Forward_Pattern_1,
+            forward_pattern=ForwardPattern.Pattern_1,
             **cache_options,
         )
 
