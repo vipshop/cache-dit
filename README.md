@@ -140,7 +140,7 @@ cache_dit.enable_cache(
         blocks=pipe.transformer.transformer_blocks,
         blocks_name="transformer_blocks",
     ),  
-    # Check: 📚Forward Pattern Matching documentation and hack the code of
+    # Check `📚Forward Pattern Matching` documentation and hack the code of
     # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
     forward_pattern=ForwardPattern.Pattern_1,  
 )
