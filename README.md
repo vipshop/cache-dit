@@ -151,7 +151,6 @@ For such situations, **BlockAdapter** can help you quickly apply various cache a
 After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference. 
 
 ```python
-# Then, summary the cache stats.
 stats = cache_dit.summary(pipe)
 ```
 
