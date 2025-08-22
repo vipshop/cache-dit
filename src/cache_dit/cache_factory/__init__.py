@@ -1,7 +1,9 @@
 import torch
 from typing import Dict, List
 from diffusers import DiffusionPipeline
+from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_adapters import CacheType
+from cache_dit.cache_factory.cache_adapters import BlockAdapterParams
 from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
 from cache_dit.cache_factory.utils import load_cache_options_from_yaml
 
@@ -39,24 +41,14 @@ def block_range(
 
 
 def enable_cache(
-    pipe: DiffusionPipeline,
-    *,
-    transformer: torch.nn.Module = None,
-    blocks: torch.nn.ModuleList = None,
-    # transformer_blocks, blocks, etc.
-    blocks_name: str = None,
-    dummy_blocks_names: list[str] = [],
-    return_hidden_states_first: bool = True,
-    return_hidden_states_only: bool = False,
+    pipe: DiffusionPipeline = None,
+    adapter_params: BlockAdapterParams = None,
+    forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     **cache_options_kwargs,
 ) -> DiffusionPipeline:
     return UnifiedCacheAdapter.apply(
         pipe,
-        transformer=transformer,
-        blocks=blocks,
-        blocks_name=blocks_name,
-        dummy_blocks_names=dummy_blocks_names,
-        return_hidden_states_first=return_hidden_states_first,
-        return_hidden_states_only=return_hidden_states_only,
+        adapter_params,
+        forward_pattern=forward_pattern,
         **cache_options_kwargs,
     )

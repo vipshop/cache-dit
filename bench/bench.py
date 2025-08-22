@@ -121,16 +121,17 @@ def main():
     else:
         assert isinstance(pipe.transformer, FluxTransformer2DModel)
         cache_dit.enable_cache(
-            pipe,
-            transformer=pipe.transformer,
-            blocks=(
-                pipe.transformer.transformer_blocks
-                + pipe.transformer.single_transformer_blocks
+            adapter_params=cache_dit.BlockAdapterParams(
+                pipe,
+                transformer=pipe.transformer,
+                blocks=(
+                    pipe.transformer.transformer_blocks
+                    + pipe.transformer.single_transformer_blocks
+                ),
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=["single_transformer_blocks"],
             ),
-            blocks_name="transformer_blocks",
-            dummy_blocks_names=["single_transformer_blocks"],
-            # (encoder_hidden_states, hidden_states)
-            return_hidden_states_first=False,
+            forward_pattern=cache_dit.Forward_Pattern_1,
             **cache_options,
         )
 

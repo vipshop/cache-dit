@@ -53,3 +53,11 @@ class ForwardPattern(Enum):
         ("hidden_states",),
         False,
     )
+
+    @staticmethod
+    def supported_patterns():
+        return [
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_2,
+        ]
