@@ -148,7 +148,7 @@ For such situations, **BlockAdapter** can help you quickly apply various cache a
 
 ### 🤖Cache Acceleration Stats Summary
 
-After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference. This can help you analyze what values of diff threshold would be better to set.
+After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary(...)` API on pipe to get the details of the cache stats for the current inference. Sometimes, this may help you analyze what values of the residual diff threshold would be better.
 
 ```python
 stats = cache_dit.summary(pipe)
