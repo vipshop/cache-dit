@@ -29,17 +29,7 @@ class CacheType(Enum):
             "db",
         ):
             return CacheType.DBCache
-        elif cache_type.lower() in (
-            "none_cache",
-            "nonecache",
-            "no_cache",
-            "nocache",
-            "none",
-            "no",
-        ):
-            return CacheType.NONE
-        else:
-            raise ValueError(f"Unknown cache type: {cache_type}")
+        return CacheType.NONE
 
     @staticmethod
     def block_range(start: int, end: int, step: int = 1) -> list[int]:

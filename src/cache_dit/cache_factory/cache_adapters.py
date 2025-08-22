@@ -305,7 +305,7 @@ class UnifiedCacheAdapter:
         if pipe is not None:
             if cls.is_supported(pipe):
                 logger.info(
-                    f"{pipe.__class__.__name__} is official supported by cache-dit."
+                    f"{pipe.__class__.__name__} is officially supported by cache-dit."
                 )
                 params = cls.get_params(pipe)
                 return cls.cachify(
@@ -315,11 +315,11 @@ class UnifiedCacheAdapter:
                 )
             else:
                 raise ValueError(
-                    f"{pipe.__class__.__name__} is not official supported "
-                    "by cache-dit, please set adapter_params instead!"
+                    f"{pipe.__class__.__name__} is not officially supported "
+                    "by cache-dit, please set BlockAdapter instead!"
                 )
         else:
-            logger.info("Adapt cache policy using custom block adapter params!")
+            logger.info("Adapt cache policy using custom BlockAdapter!")
             return cls.cachify(
                 adapter_params,
                 forward_pattern=forward_pattern,
