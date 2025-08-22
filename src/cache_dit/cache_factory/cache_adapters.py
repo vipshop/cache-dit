@@ -320,7 +320,9 @@ class UnifiedCacheAdapter:
                     "by cache-dit, please set BlockAdapter instead!"
                 )
         else:
-            logger.info("Adapt cache policy using custom BlockAdapter!")
+            logger.info(
+                "Adapting cache acceleration using custom BlockAdapter!"
+            )
             return cls.cachify(
                 adapter_params,
                 forward_pattern=forward_pattern,
