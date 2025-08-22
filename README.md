@@ -21,13 +21,6 @@
   </p>
 </div>
 
-<!--
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-v1.png >
-    <img src=https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png height="320px">
- <img src=https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png>
-<img src=https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png>
--->
-
 ## 🔥News  
 
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check example [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
