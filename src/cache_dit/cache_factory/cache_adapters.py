@@ -305,7 +305,8 @@ class UnifiedCacheAdapter:
         if pipe is not None:
             if cls.is_supported(pipe):
                 logger.info(
-                    f"{pipe.__class__.__name__} is officially supported by cache-dit."
+                    f"{pipe.__class__.__name__} is officially supported by cache-dit. "
+                    "Use it's pre-defined BlockAdapter directly!"
                 )
                 params = cls.get_params(pipe)
                 return cls.cachify(
@@ -529,7 +530,7 @@ class UnifiedCacheAdapter:
             block_cls_name = transformer_blocks[0].__class__.__name__
             logger.info(
                 f"Match Block Forward Pattern: {block_cls_name}, {forward_pattern}"
-                f"\n IN({forward_pattern.In}, \nOUT({forward_pattern.Out}))"
+                f"\nIN:{forward_pattern.In}, OUT:{forward_pattern.Out})"
             )
 
         return pattern_matched
