@@ -51,3 +51,7 @@ def load_cache_options_from_yaml(yaml_file_path):
         )
     except yaml.YAMLError as e:
         raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
+
+
+def load_options(path: str):
+    return load_cache_options_from_yaml(path)

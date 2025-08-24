@@ -159,7 +159,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 ```python
 ⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
 
-| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Max |
+| Cache Steps | Diffs Min | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Max |
 |-------------|-----------|-----------|-----------|-----------|-----------|-----------|
 | 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.297     |
 ```
