@@ -30,8 +30,8 @@ def set_compile_configs(
     **kwargs,  # other kwargs
 ):
     # Alway increase recompile_limit for dynamic shape compilation
-    torch._dynamo.config.recompile_limit = 96  # default is 8
-    torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
+    torch._dynamo.config.recompile_limit = 1024  # default is 8
+    torch._dynamo.config.accumulated_recompile_limit = 8192  # default is 256
     # Handle compiler caches
     # https://github.com/vllm-project/vllm/blob/23baa2180b0ebba5ae94073ba9b8e93f88b75486/vllm/compilation/compiler_interface.py#L270
     torch._inductor.config.fx_graph_cache = True
