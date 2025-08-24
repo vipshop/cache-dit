@@ -24,6 +24,7 @@ def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
 
 
 def set_compile_configs(
+    descent_tuning: bool = True,
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
     use_fast_math: bool = False,
@@ -46,6 +47,9 @@ def set_compile_configs(
         torch._inductor.config.intra_node_bw = (
             64 if "L20" in torch.cuda.get_device_name() else 300
         )
+
+    if not descent_tuning:
+        return
 
     FORCE_DISABLE_CUSTOM_COMPILE_CONFIG = (
         os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0")
