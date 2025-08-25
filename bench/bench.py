@@ -101,6 +101,7 @@ def main():
                     else BlockAdapter(
                         pipe=pipe,
                         auto=True,
+                        blocks_policy="min",
                     )
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
@@ -136,6 +137,7 @@ def main():
                     else BlockAdapter(
                         pipe=pipe,
                         auto=True,
+                        blocks_policy="min",
                     )
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,

@@ -30,8 +30,23 @@ class BlockAdapter:
     # transformer_blocks, blocks, etc.
     blocks_name: str = None
     dummy_blocks_names: list[str] = dataclasses.field(default_factory=list)
-    # flag to control auto block adapter
+    # flags to control auto block adapter
     auto: bool = False
+    allow_prefixes: List[str] = dataclasses.field(
+        default_factory=lambda: [
+            "transformer",
+            "single_transformer",
+            "blocks",
+            "layers",
+        ]
+    )
+    allow_suffixes: List[str] = dataclasses.field(
+        default_factory=lambda: ["TransformerBlock"]
+    )
+    check_suffixes: bool = False
+    blocks_policy: str = dataclasses.field(
+        default="max", metadata={"allowed_values": ["max", "min"]}
+    )
 
     @staticmethod
     def auto_block_adapter(adapter: "BlockAdapter") -> "BlockAdapter":
@@ -46,8 +61,13 @@ class BlockAdapter:
 
         transformer = pipe.transformer
 
+        # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
         blocks, blocks_name = BlockAdapter.find_blocks(
-            transformer=transformer, check_suffixes=False
+            transformer=transformer,
+            allow_prefixes=adapter.allow_prefixes,
+            allow_suffixes=adapter.allow_suffixes,
+            check_suffixes=adapter.check_suffixes,
+            blocks_policy=adapter.blocks_policy,
         )
 
         return BlockAdapter(
@@ -72,10 +92,17 @@ class BlockAdapter:
     @staticmethod
     def find_blocks(
         transformer: torch.nn.Module,
-        # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
-        allow_prefixes: List[str] = ["transformer", "blocks", "layers"],
-        allow_suffixes: List[str] = ["TransformerBlock"],
-        check_suffixes: bool = True,
+        allow_prefixes: List[str] = [
+            "transformer",
+            "single_transformer",
+            "blocks",
+            "layers",
+        ],
+        allow_suffixes: List[str] = [
+            "TransformerBlock",
+        ],
+        check_suffixes: bool = False,
+        **kwargs,
     ) -> Tuple[torch.nn.ModuleList, str]:
 
         blocks_names = []
@@ -111,6 +138,7 @@ class BlockAdapter:
 
         final_name = valid_names[0]
         final_count = valid_count[0]
+        block_policy = kwargs.get("blocks_policy", "max")
         for blocks_name, count in zip(valid_names, valid_count):
             blocks = getattr(transformer, blocks_name)
             logger.info(
@@ -118,16 +146,21 @@ class BlockAdapter:
                 f"class: {blocks[0].__class__.__name__}, "
                 f"num blocks: {count}"
             )
-            if final_count < count:
-                final_count = count
-                final_name = blocks_name
+            if block_policy == "max":
+                if final_count < count:
+                    final_count = count
+                    final_name = blocks_name
+            else:
+                if final_count > count:
+                    final_count = count
+                    final_name = blocks_name
 
         final_blocks = getattr(transformer, final_name)
 
         logger.info(
             f"Final selected transformer blocks: {final_name}, "
             f"class: {final_blocks[0].__class__.__name__}, "
-            f"num blocks: {final_count}"
+            f"num blocks: {final_count}, block_policy: {block_policy}."
         )
 
         return final_blocks, final_name
