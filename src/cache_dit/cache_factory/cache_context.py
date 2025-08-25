@@ -747,8 +747,16 @@ def are_two_tensors_similar(
             # dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG)
             # dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG)
             workers = [
-                dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG, async_op=True),
-                dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG, async_op=True),
+                dist.all_reduce(
+                    mean_diff,
+                    op=dist.ReduceOp.AVG,
+                    async_op=True,
+                ),
+                dist.all_reduce(
+                    mean_t1,
+                    op=dist.ReduceOp.AVG,
+                    async_op=True,
+                ),
             ]
             for worker in workers:
                 worker.wait()
