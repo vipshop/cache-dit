@@ -23,7 +23,7 @@ logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
-class BlockAdapterParams:
+class BlockAdapter:
     pipe: DiffusionPipeline = None
     transformer: torch.nn.Module = None
     blocks: torch.nn.ModuleList = None
@@ -31,7 +31,7 @@ class BlockAdapterParams:
     blocks_name: str = None
     dummy_blocks_names: list[str] = dataclasses.field(default_factory=list)
 
-    def check_adapter_params(self) -> bool:
+    def check_block_adapter(self) -> bool:
         if (
             isinstance(self.pipe, DiffusionPipeline)
             and self.transformer is not None
@@ -44,7 +44,7 @@ class BlockAdapterParams:
 
 @dataclasses.dataclass
 class UnifiedCacheParams:
-    adapter_params: BlockAdapterParams = None
+    block_adapter: BlockAdapter = None
     forward_pattern: ForwardPattern = ForwardPattern.Pattern_0
 
 
@@ -85,7 +85,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=(
@@ -102,7 +102,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, MochiTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -116,7 +116,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CogVideoXTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -136,7 +136,7 @@ class UnifiedCacheAdapter:
                 (WanTransformer3DModel, WanVACETransformer3DModel),
             )
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.blocks,
@@ -150,7 +150,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     blocks=(
                         pipe.transformer.transformer_blocks
@@ -166,7 +166,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -180,7 +180,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, LTXVideoTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -194,7 +194,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, AllegroTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -208,7 +208,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CogView3PlusTransformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -222,7 +222,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CogView4Transformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -236,7 +236,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CosmosTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -250,7 +250,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, EasyAnimateTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -264,7 +264,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, SkyReelsV2Transformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.blocks,
@@ -278,7 +278,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, SD3Transformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -294,13 +294,13 @@ class UnifiedCacheAdapter:
     def apply(
         cls,
         pipe: DiffusionPipeline = None,
-        adapter_params: BlockAdapterParams = None,
+        block_adapter: BlockAdapter = None,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
         assert (
-            pipe is not None or adapter_params is not None
-        ), "pipe or adapter_params can not both None!"
+            pipe is not None or block_adapter is not None
+        ), "pipe or block_adapter can not both None!"
 
         if pipe is not None:
             if cls.is_supported(pipe):
@@ -310,7 +310,7 @@ class UnifiedCacheAdapter:
                 )
                 params = cls.get_params(pipe)
                 return cls.cachify(
-                    params.adapter_params,
+                    params.block_adapter,
                     forward_pattern=params.forward_pattern,
                     **cache_context_kwargs,
                 )
@@ -324,7 +324,7 @@ class UnifiedCacheAdapter:
                 "Adapting cache acceleration using custom BlockAdapter!"
             )
             return cls.cachify(
-                adapter_params,
+                block_adapter,
                 forward_pattern=forward_pattern,
                 **cache_context_kwargs,
             )
@@ -332,22 +332,22 @@ class UnifiedCacheAdapter:
     @classmethod
     def cachify(
         cls,
-        adapter_params: BlockAdapterParams,
+        block_adapter: BlockAdapter,
         *,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if adapter_params.check_adapter_params():
-            assert isinstance(adapter_params.blocks, torch.nn.ModuleList)
+        if block_adapter.check_block_adapter():
+            assert isinstance(block_adapter.blocks, torch.nn.ModuleList)
             # Apply cache on pipeline: wrap cache context
-            cls.create_context(adapter_params.pipe, **cache_context_kwargs)
+            cls.create_context(block_adapter.pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
             cls.mock_blocks(
-                adapter_params,
+                block_adapter,
                 forward_pattern=forward_pattern,
             )
 
-        return adapter_params.pipe
+        return block_adapter.pipe
 
     @classmethod
     def has_separate_cfg(
@@ -413,22 +413,22 @@ class UnifiedCacheAdapter:
     @classmethod
     def mock_blocks(
         cls,
-        adapter_params: BlockAdapterParams,
+        block_adapter: BlockAdapter,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> torch.nn.Module:
-        if getattr(adapter_params.transformer, "_is_cached", False):
-            return adapter_params.transformer
+        if getattr(block_adapter.transformer, "_is_cached", False):
+            return block_adapter.transformer
 
         # Firstly, process some specificial cases (TODO: more patches)
-        if adapter_params.transformer.__class__.__name__.startswith("Flux"):
-            adapter_params.transformer = maybe_patch_flux_transformer(
-                adapter_params.transformer,
-                blocks=adapter_params.blocks,
+        if block_adapter.transformer.__class__.__name__.startswith("Flux"):
+            block_adapter.transformer = maybe_patch_flux_transformer(
+                block_adapter.transformer,
+                blocks=block_adapter.blocks,
             )
 
         # Check block forward pattern matching
         assert cls.match_pattern(
-            adapter_params.blocks,
+            block_adapter.blocks,
             forward_pattern=forward_pattern,
         ), (
             "No block forward pattern matched, "
@@ -439,22 +439,22 @@ class UnifiedCacheAdapter:
         cached_blocks = torch.nn.ModuleList(
             [
                 DBCachedTransformerBlocks(
-                    adapter_params.blocks,
-                    transformer=adapter_params.transformer,
+                    block_adapter.blocks,
+                    transformer=block_adapter.transformer,
                     forward_pattern=forward_pattern,
                 )
             ]
         )
         dummy_blocks = torch.nn.ModuleList()
 
-        original_forward = adapter_params.transformer.forward
+        original_forward = block_adapter.transformer.forward
 
-        assert isinstance(adapter_params.dummy_blocks_names, list)
-        if adapter_params.blocks_name is None:
-            adapter_params.blocks_name = cls.find_blocks_name(
-                adapter_params.transformer
+        assert isinstance(block_adapter.dummy_blocks_names, list)
+        if block_adapter.blocks_name is None:
+            block_adapter.blocks_name = cls.find_blocks_name(
+                block_adapter.transformer
             )
-            assert adapter_params.blocks_name is not None
+            assert block_adapter.blocks_name is not None
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
@@ -462,11 +462,11 @@ class UnifiedCacheAdapter:
                 stack.enter_context(
                     unittest.mock.patch.object(
                         self,
-                        adapter_params.blocks_name,
+                        block_adapter.blocks_name,
                         cached_blocks,
                     )
                 )
-                for dummy_name in adapter_params.dummy_blocks_names:
+                for dummy_name in block_adapter.dummy_blocks_names:
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self,
@@ -476,12 +476,12 @@ class UnifiedCacheAdapter:
                     )
                 return original_forward(*args, **kwargs)
 
-        adapter_params.transformer.forward = new_forward.__get__(
-            adapter_params.transformer
+        block_adapter.transformer.forward = new_forward.__get__(
+            block_adapter.transformer
         )
-        adapter_params.transformer._is_cached = True
+        block_adapter.transformer._is_cached = True
 
-        return adapter_params.transformer
+        return block_adapter.transformer
 
     @classmethod
     def match_pattern(

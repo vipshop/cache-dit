@@ -1,7 +1,7 @@
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_types import CacheType
-from cache_dit.cache_factory.cache_adapters import BlockAdapterParams
+from cache_dit.cache_factory.cache_adapters import BlockAdapter
 from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
 
 from cache_dit.logger import init_logger
@@ -11,7 +11,7 @@ logger = init_logger(__name__)
 
 def enable_cache(
     # BlockAdapter & forward pattern
-    pipe_or_adapter: DiffusionPipeline | BlockAdapterParams,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
     forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     # Cache context kwargs
     Fn_compute_blocks: int = 8,
@@ -38,7 +38,7 @@ def enable_cache(
     with F8B0, 8 warmup steps, and unlimited cached steps.
 
     Args:
-        pipe_or_adapter (`DiffusionPipeline` or `BlockAdapterParams`, *required*):
+        pipe_or_adapter (`DiffusionPipeline` or `BlockAdapter`, *required*):
             The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
             For example: cache_dit.enable_cache(FluxPipeline(...)). Please check https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md
             for the usgae of BlockAdapter.
@@ -128,22 +128,22 @@ def enable_cache(
             "n_derivatives": taylorseer_order
         }
 
-    if isinstance(pipe_or_adapter, BlockAdapterParams):
+    if isinstance(pipe_or_adapter, BlockAdapter):
         return UnifiedCacheAdapter.apply(
             pipe=None,
-            adapter_params=pipe_or_adapter,
+            block_adapter=pipe_or_adapter,
             forward_pattern=forward_pattern,
             **cache_context_kwargs,
         )
     elif isinstance(pipe_or_adapter, DiffusionPipeline):
         return UnifiedCacheAdapter.apply(
             pipe=pipe_or_adapter,
-            adapter_params=None,
+            block_adapter=None,
             forward_pattern=forward_pattern,
             **cache_context_kwargs,
         )
     else:
         raise ValueError(
-            "Please pass DiffusionPipeline or BlockAdapterParams"
-            "(BlockAdapter) for the 1 position param: pipe_or_adapter"
+            "Please pass DiffusionPipeline or BlockAdapter"
+            "for the 1's position param: pipe_or_adapter"
         )
