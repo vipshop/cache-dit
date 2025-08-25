@@ -168,7 +168,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 <div id="dbcache"></div>
 
-![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-fnbn-v1.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
 **DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](./docs/DBCache.md) docs for more design details.
 
