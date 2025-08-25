@@ -744,9 +744,14 @@ def are_two_tensors_similar(
             mean_t1 = t1.abs().mean()
 
         if parallelized:
-            # TODO: May use async op
-            dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG)
-            dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG)
+            # dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG)
+            # dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG)
+            workers = [
+                dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG, async_op=True),
+                dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG, async_op=True),
+            ]
+            for worker in workers:
+                worker.wait()
 
         # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
         # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
