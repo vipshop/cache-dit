@@ -41,6 +41,7 @@ if args.cache:
         taylorseer_order=4,
         residual_diff_threshold=0.12,
     )
+    cache_type_str = "DBCACHE"
 else:
     cache_type_str = "NONE"
 

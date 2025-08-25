@@ -41,8 +41,6 @@ def prepare_pipeline(
     args: argparse.ArgumentParser,
 ):
     if args.cache:
-        cache_type_str = "DBCACHE"
-
         cache_dit.enable_cache(
             pipe,
             # Cache context kwargs
@@ -51,6 +49,7 @@ def prepare_pipeline(
             enable_encoder_taylorseer=True,
             taylorseer_order=2,
         )
+        cache_type_str = "DBCACHE"
     else:
         cache_type_str = "NONE"
 

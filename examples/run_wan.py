@@ -35,8 +35,6 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 
 if args.cache:
-    cache_type_str = "DBCACHE"
-
     cache_dit.enable_cache(
         pipe,
         # Cache context kwargs
@@ -45,6 +43,7 @@ if args.cache:
         enable_encoder_taylorseer=True,
         taylorseer_order=2,
     )
+    cache_type_str = "DBCACHE"
 else:
     cache_type_str = "NONE"
 
