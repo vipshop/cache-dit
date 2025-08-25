@@ -1,5 +1,6 @@
 import inspect
 import torch
+import torch.distributed as dist
 
 from cache_dit.cache_factory import cache_context
 from cache_dit.cache_factory import ForwardPattern
@@ -179,10 +180,15 @@ class DBCachedTransformerBlocks(torch.nn.Module):
     @torch.compiler.disable
     def _is_parallelized(self):
         # Compatible with distributed inference.
-        return all(
+        return any(
             (
-                self.transformer is not None,
-                getattr(self.transformer, "_is_parallelized", False),
+                all(
+                    (
+                        self.transformer is not None,
+                        getattr(self.transformer, "_is_parallelized", False),
+                    )
+                ),
+                (dist.is_initialized() and dist.get_world_size() > 1),
             )
         )
 
