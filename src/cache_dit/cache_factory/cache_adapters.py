@@ -13,6 +13,7 @@ from cache_dit.cache_factory.patch.flux import (
 )
 from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import ForwardPattern
+from cache_dit.cache_factory import default_options
 from cache_dit.cache_factory.cache_blocks import (
     cache_context,
     DBCachedTransformerBlocks,
@@ -350,7 +351,7 @@ class UnifiedCacheAdapter:
         return adapter_params.pipe
 
     @classmethod
-    def has_separate_classifier_free_guidance(
+    def has_separate_cfg(
         cls,
         pipe_or_transformer: DiffusionPipeline | Any,
     ) -> bool:
@@ -365,11 +366,9 @@ class UnifiedCacheAdapter:
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
         # Check cache_context_kwargs
         if not cache_context_kwargs:
-            cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
-            if cls.has_separate_classifier_free_guidance(pipe):
-                cache_context_kwargs["do_separate_classifier_free_guidance"] = (
-                    True
-                )
+            cache_context_kwargs = default_options(CacheType.DBCache)
+            if cls.has_separate_cfg(pipe):
+                cache_context_kwargs["do_separate_cfg"] = True
             logger.warning(
                 "cache_context_kwargs is empty, use default "
                 f"cache options: {cache_context_kwargs}"

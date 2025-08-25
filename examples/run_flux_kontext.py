@@ -43,8 +43,8 @@ if args.cache:
         "residual_diff_threshold": args.rdt,
         # CFG: classifier free guidance or not
         # FLUX.1 dev don not have CFG, so, we set
-        # do_separate_classifier_free_guidance as False.
-        "do_separate_classifier_free_guidance": False,
+        # do_separate_cfg as False.
+        "do_separate_cfg": False,
         "cfg_compute_first": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,

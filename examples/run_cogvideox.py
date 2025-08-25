@@ -50,8 +50,8 @@ if args.cache:
         "important_condition_threshold": 0.05,
         # CFG: classifier free guidance or not
         # CogVideoX fused CFG and non-CFG into single forward step
-        # so, we set do_separate_classifier_free_guidance as False.
-        "do_separate_classifier_free_guidance": False,
+        # so, we set do_separate_cfg as False.
+        "do_separate_cfg": False,
         "cfg_compute_first": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,

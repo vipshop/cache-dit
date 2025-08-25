@@ -53,10 +53,10 @@ if args.cache:
         "residual_diff_threshold": args.rdt,
         # CFG: classifier free guidance or not
         # For model that fused CFG and non-CFG into single forward step,
-        # should set do_separate_classifier_free_guidance as False.
+        # should set do_separate_cfg as False.
         # NOTE: set it as True if true_cfg_scale > 1 and has_neg_prompt
         # for HunyuanVideoPipeline.
-        "do_separate_classifier_free_guidance": False,
+        "do_separate_cfg": False,
         "cfg_compute_first": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,

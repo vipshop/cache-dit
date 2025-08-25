@@ -47,7 +47,7 @@ if args.cache:
         "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
         "residual_diff_threshold": args.rdt,
         # CFG: classifier free guidance or not
-        "do_separate_classifier_free_guidance": True,
+        "do_separate_cfg": True,
         "cfg_compute_first": False,
         "enable_taylorseer": args.taylorseer,
         "enable_encoder_taylorseer": args.taylorseer,

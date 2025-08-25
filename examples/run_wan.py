@@ -59,8 +59,8 @@ if args.cache:
         "important_condition_threshold": 0.00,
         # CFG: classifier free guidance or not
         # For model that fused CFG and non-CFG into single forward step,
-        # should set do_separate_classifier_free_guidance as False.
-        "do_separate_classifier_free_guidance": True,
+        # should set do_separate_cfg as False.
+        "do_separate_cfg": True,
         # Compute cfg forward first or not, default False, namely,
         # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
         "cfg_compute_first": False,
