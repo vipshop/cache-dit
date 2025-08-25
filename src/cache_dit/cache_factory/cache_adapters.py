@@ -5,7 +5,7 @@ import unittest
 import functools
 import dataclasses
 
-from typing import Any
+from typing import Any, Tuple, List
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.patch.flux import (
@@ -23,28 +23,152 @@ logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
-class BlockAdapterParams:
+class BlockAdapter:
     pipe: DiffusionPipeline = None
     transformer: torch.nn.Module = None
     blocks: torch.nn.ModuleList = None
     # transformer_blocks, blocks, etc.
     blocks_name: str = None
     dummy_blocks_names: list[str] = dataclasses.field(default_factory=list)
+    # flags to control auto block adapter
+    auto: bool = False
+    allow_prefixes: List[str] = dataclasses.field(
+        default_factory=lambda: [
+            "transformer",
+            "single_transformer",
+            "blocks",
+            "layers",
+        ]
+    )
+    allow_suffixes: List[str] = dataclasses.field(
+        default_factory=lambda: ["TransformerBlock"]
+    )
+    check_suffixes: bool = False
+    blocks_policy: str = dataclasses.field(
+        default="max", metadata={"allowed_values": ["max", "min"]}
+    )
 
-    def check_adapter_params(self) -> bool:
+    @staticmethod
+    def auto_block_adapter(adapter: "BlockAdapter") -> "BlockAdapter":
+        assert adapter.auto, (
+            "Please manually set `auto` to True, or, manually "
+            "set all the transformer blocks configuration."
+        )
+        assert adapter.pipe is not None, "adapter.pipe can not be None."
+        pipe = adapter.pipe
+
+        assert hasattr(pipe, "transformer"), "pipe.transformer can not be None."
+
+        transformer = pipe.transformer
+
+        # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
+        blocks, blocks_name = BlockAdapter.find_blocks(
+            transformer=transformer,
+            allow_prefixes=adapter.allow_prefixes,
+            allow_suffixes=adapter.allow_suffixes,
+            check_suffixes=adapter.check_suffixes,
+            blocks_policy=adapter.blocks_policy,
+        )
+
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=transformer,
+            blocks=blocks,
+            blocks_name=blocks_name,
+        )
+
+    @staticmethod
+    def check_block_adapter(adapter: "BlockAdapter") -> bool:
         if (
-            isinstance(self.pipe, DiffusionPipeline)
-            and self.transformer is not None
-            and self.blocks is not None
-            and isinstance(self.blocks, torch.nn.ModuleList)
+            isinstance(adapter.pipe, DiffusionPipeline)
+            and adapter.transformer is not None
+            and adapter.blocks is not None
+            and adapter.blocks_name is not None
+            and isinstance(adapter.blocks, torch.nn.ModuleList)
         ):
             return True
         return False
 
+    @staticmethod
+    def find_blocks(
+        transformer: torch.nn.Module,
+        allow_prefixes: List[str] = [
+            "transformer",
+            "single_transformer",
+            "blocks",
+            "layers",
+        ],
+        allow_suffixes: List[str] = [
+            "TransformerBlock",
+        ],
+        check_suffixes: bool = False,
+        **kwargs,
+    ) -> Tuple[torch.nn.ModuleList, str]:
+
+        blocks_names = []
+        for attr_name in dir(transformer):
+            for prefix in allow_prefixes:
+                if attr_name.startswith(prefix):
+                    blocks_names.append(attr_name)
+
+        # Type check
+        valid_names = []
+        valid_count = []
+        for blocks_name in blocks_names:
+            if blocks := getattr(transformer, blocks_name, None):
+                if isinstance(blocks, torch.nn.ModuleList):
+                    block = blocks[0]
+                    block_cls_name = block.__class__.__name__
+                    if isinstance(block, torch.nn.Module) and (
+                        any(
+                            (
+                                block_cls_name.endswith(allow_suffix)
+                                for allow_suffix in allow_suffixes
+                            )
+                        )
+                        or (not check_suffixes)
+                    ):
+                        valid_names.append(blocks_name)
+                        valid_count.append(len(blocks))
+
+        if not valid_names:
+            raise ValueError(
+                "Auto selected transformer blocks failed, please set it manually."
+            )
+
+        final_name = valid_names[0]
+        final_count = valid_count[0]
+        block_policy = kwargs.get("blocks_policy", "max")
+        for blocks_name, count in zip(valid_names, valid_count):
+            blocks = getattr(transformer, blocks_name)
+            logger.info(
+                f"Auto selected transformer blocks: {blocks_name}, "
+                f"class: {blocks[0].__class__.__name__}, "
+                f"num blocks: {count}"
+            )
+            if block_policy == "max":
+                if final_count < count:
+                    final_count = count
+                    final_name = blocks_name
+            else:
+                if final_count > count:
+                    final_count = count
+                    final_name = blocks_name
+
+        final_blocks = getattr(transformer, final_name)
+
+        logger.info(
+            f"Final selected transformer blocks: {final_name}, "
+            f"class: {final_blocks[0].__class__.__name__}, "
+            f"num blocks: {final_count}, block_policy: {block_policy}."
+        )
+
+        return final_blocks, final_name
+
 
 @dataclasses.dataclass
 class UnifiedCacheParams:
-    adapter_params: BlockAdapterParams = None
+    block_adapter: BlockAdapter = None
     forward_pattern: ForwardPattern = ForwardPattern.Pattern_0
 
 
@@ -85,7 +209,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=(
@@ -102,7 +226,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, MochiTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -116,7 +240,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CogVideoXTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -136,7 +260,7 @@ class UnifiedCacheAdapter:
                 (WanTransformer3DModel, WanVACETransformer3DModel),
             )
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.blocks,
@@ -150,7 +274,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     blocks=(
                         pipe.transformer.transformer_blocks
@@ -166,7 +290,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -180,7 +304,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, LTXVideoTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -194,7 +318,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, AllegroTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -208,7 +332,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CogView3PlusTransformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -222,7 +346,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CogView4Transformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -236,7 +360,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, CosmosTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -250,7 +374,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, EasyAnimateTransformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -264,7 +388,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, SkyReelsV2Transformer3DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.blocks,
@@ -278,7 +402,7 @@ class UnifiedCacheAdapter:
 
             assert isinstance(pipe.transformer, SD3Transformer2DModel)
             return UnifiedCacheParams(
-                adapter_params=BlockAdapterParams(
+                block_adapter=BlockAdapter(
                     pipe=pipe,
                     transformer=pipe.transformer,
                     blocks=pipe.transformer.transformer_blocks,
@@ -294,13 +418,13 @@ class UnifiedCacheAdapter:
     def apply(
         cls,
         pipe: DiffusionPipeline = None,
-        adapter_params: BlockAdapterParams = None,
+        block_adapter: BlockAdapter = None,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
         assert (
-            pipe is not None or adapter_params is not None
-        ), "pipe or adapter_params can not both None!"
+            pipe is not None or block_adapter is not None
+        ), "pipe or block_adapter can not both None!"
 
         if pipe is not None:
             if cls.is_supported(pipe):
@@ -310,7 +434,7 @@ class UnifiedCacheAdapter:
                 )
                 params = cls.get_params(pipe)
                 return cls.cachify(
-                    params.adapter_params,
+                    params.block_adapter,
                     forward_pattern=params.forward_pattern,
                     **cache_context_kwargs,
                 )
@@ -324,7 +448,7 @@ class UnifiedCacheAdapter:
                 "Adapting cache acceleration using custom BlockAdapter!"
             )
             return cls.cachify(
-                adapter_params,
+                block_adapter,
                 forward_pattern=forward_pattern,
                 **cache_context_kwargs,
             )
@@ -332,22 +456,25 @@ class UnifiedCacheAdapter:
     @classmethod
     def cachify(
         cls,
-        adapter_params: BlockAdapterParams,
+        block_adapter: BlockAdapter,
         *,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if adapter_params.check_adapter_params():
-            assert isinstance(adapter_params.blocks, torch.nn.ModuleList)
+
+        if block_adapter.auto:
+            block_adapter = BlockAdapter.auto_block_adapter(block_adapter)
+
+        if BlockAdapter.check_block_adapter(block_adapter):
+            assert isinstance(block_adapter.blocks, torch.nn.ModuleList)
             # Apply cache on pipeline: wrap cache context
-            cls.create_context(adapter_params.pipe, **cache_context_kwargs)
+            cls.create_context(block_adapter.pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
             cls.mock_blocks(
-                adapter_params,
+                block_adapter,
                 forward_pattern=forward_pattern,
             )
-
-        return adapter_params.pipe
+        return block_adapter.pipe
 
     @classmethod
     def has_separate_cfg(
@@ -413,22 +540,33 @@ class UnifiedCacheAdapter:
     @classmethod
     def mock_blocks(
         cls,
-        adapter_params: BlockAdapterParams,
+        block_adapter: BlockAdapter,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> torch.nn.Module:
-        if getattr(adapter_params.transformer, "_is_cached", False):
-            return adapter_params.transformer
+
+        if (
+            block_adapter.transformer is None
+            or block_adapter.blocks_name is None
+            or block_adapter.blocks is None
+        ):
+            assert block_adapter.auto, (
+                "Please manually set `auto` to True, or, "
+                "manually set transformer blocks configuration."
+            )
+
+        if getattr(block_adapter.transformer, "_is_cached", False):
+            return block_adapter.transformer
 
         # Firstly, process some specificial cases (TODO: more patches)
-        if adapter_params.transformer.__class__.__name__.startswith("Flux"):
-            adapter_params.transformer = maybe_patch_flux_transformer(
-                adapter_params.transformer,
-                blocks=adapter_params.blocks,
+        if block_adapter.transformer.__class__.__name__.startswith("Flux"):
+            block_adapter.transformer = maybe_patch_flux_transformer(
+                block_adapter.transformer,
+                blocks=block_adapter.blocks,
             )
 
         # Check block forward pattern matching
         assert cls.match_pattern(
-            adapter_params.blocks,
+            block_adapter.blocks,
             forward_pattern=forward_pattern,
         ), (
             "No block forward pattern matched, "
@@ -439,22 +577,17 @@ class UnifiedCacheAdapter:
         cached_blocks = torch.nn.ModuleList(
             [
                 DBCachedTransformerBlocks(
-                    adapter_params.blocks,
-                    transformer=adapter_params.transformer,
+                    block_adapter.blocks,
+                    transformer=block_adapter.transformer,
                     forward_pattern=forward_pattern,
                 )
             ]
         )
         dummy_blocks = torch.nn.ModuleList()
 
-        original_forward = adapter_params.transformer.forward
+        original_forward = block_adapter.transformer.forward
 
-        assert isinstance(adapter_params.dummy_blocks_names, list)
-        if adapter_params.blocks_name is None:
-            adapter_params.blocks_name = cls.find_blocks_name(
-                adapter_params.transformer
-            )
-            assert adapter_params.blocks_name is not None
+        assert isinstance(block_adapter.dummy_blocks_names, list)
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
@@ -462,11 +595,11 @@ class UnifiedCacheAdapter:
                 stack.enter_context(
                     unittest.mock.patch.object(
                         self,
-                        adapter_params.blocks_name,
+                        block_adapter.blocks_name,
                         cached_blocks,
                     )
                 )
-                for dummy_name in adapter_params.dummy_blocks_names:
+                for dummy_name in block_adapter.dummy_blocks_names:
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self,
@@ -476,12 +609,12 @@ class UnifiedCacheAdapter:
                     )
                 return original_forward(*args, **kwargs)
 
-        adapter_params.transformer.forward = new_forward.__get__(
-            adapter_params.transformer
+        block_adapter.transformer.forward = new_forward.__get__(
+            block_adapter.transformer
         )
-        adapter_params.transformer._is_cached = True
+        block_adapter.transformer._is_cached = True
 
-        return adapter_params.transformer
+        return block_adapter.transformer
 
     @classmethod
     def match_pattern(
@@ -525,22 +658,3 @@ class UnifiedCacheAdapter:
             )
 
         return pattern_matched
-
-    @classmethod
-    def find_blocks_name(cls, transformer):
-        blocks_name = None
-        allow_prefixes = ["transformer", "blocks"]
-        for attr_name in dir(transformer):
-            if blocks_name is None:
-                for prefix in allow_prefixes:
-                    # transformer_blocks, blocks
-                    if attr_name.startswith(prefix):
-                        blocks_name = attr_name
-                        logger.info(f"Auto selected blocks name: {blocks_name}")
-                        # only find one transformer blocks name
-                        break
-        if blocks_name is None:
-            logger.warning(
-                "Auto selected blocks name failed, please set it manually."
-            )
-        return blocks_name

@@ -132,16 +132,23 @@ But in some cases, you may have a **modified** Diffusion Pipeline or Transformer
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
 
-# Please check docs/BlockAdapter.md for more details.
+# Use BlockAdapter with `auto` mode.
+cache_dit.enable_cache(
+    BlockAdapter(pipe=pipe, auto=True), # Qwen-Image, etc.  
+    # Check `📚Forward Pattern Matching` documentation and hack the code of
+    # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
+    forward_pattern=ForwardPattern.Pattern_1,  
+)
+
+# Or, manualy setup transformer configurations.
 cache_dit.enable_cache(
     BlockAdapter(
         pipe=pipe, # Qwen-Image, etc.
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-    ),  
-    # Check `📚Forward Pattern Matching` documentation and hack the code of
-    # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
-    forward_pattern=ForwardPattern.Pattern_1,  
+        blocks_name="transformer_blocks",
+    ), 
+    forward_pattern=ForwardPattern.Pattern_1,
 )
 ```
 For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.
