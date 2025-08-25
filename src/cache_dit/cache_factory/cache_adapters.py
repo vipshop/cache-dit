@@ -5,7 +5,7 @@ import unittest
 import functools
 import dataclasses
 
-from typing import Any
+from typing import Any, Tuple, List
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.patch.flux import (
@@ -30,16 +30,103 @@ class BlockAdapter:
     # transformer_blocks, blocks, etc.
     blocks_name: str = None
     dummy_blocks_names: list[str] = dataclasses.field(default_factory=list)
+    # flag to control auto block adapter
+    auto: bool = False
 
-    def check_block_adapter(self) -> bool:
+    @staticmethod
+    def auto_block_adapter(adapter: "BlockAdapter") -> "BlockAdapter":
+        assert adapter.auto, (
+            "Please manually set `auto` to True, or, manually "
+            "set all the transformer blocks configuration."
+        )
+        assert adapter.pipe is not None, "adapter.pipe can not be None."
+        pipe = adapter.pipe
+
+        assert hasattr(pipe, "transformer"), "pipe.transformer can not be None."
+
+        transformer = pipe.transformer
+
+        blocks, blocks_name = BlockAdapter.find_blocks(
+            transformer=transformer, check_suffixes=True
+        )
+
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=transformer,
+            blocks=blocks,
+            blocks_name=blocks_name,
+        )
+
+    @staticmethod
+    def check_block_adapter(adapter: "BlockAdapter") -> bool:
         if (
-            isinstance(self.pipe, DiffusionPipeline)
-            and self.transformer is not None
-            and self.blocks is not None
-            and isinstance(self.blocks, torch.nn.ModuleList)
+            isinstance(adapter.pipe, DiffusionPipeline)
+            and adapter.transformer is not None
+            and adapter.blocks is not None
+            and adapter.blocks_name is not None
+            and isinstance(adapter.blocks, torch.nn.ModuleList)
         ):
             return True
         return False
+
+    @staticmethod
+    def find_blocks(
+        transformer: torch.nn.Module,
+        # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
+        allow_prefixes: List[str] = ["transformer", "blocks", "layers"],
+        allow_suffixes: List[str] = ["TransformerBlock"],
+        check_suffixes: bool = True,
+    ) -> Tuple[torch.nn.ModuleList, str]:
+
+        blocks_names = []
+        for attr_name in dir(transformer):
+            for prefix in allow_prefixes:
+                if attr_name.startswith(prefix):
+                    blocks_names.append(attr_name)
+
+        # Type check
+        valid_blocks_names = []
+        valid_blocks_count = []
+        for blocks_name in blocks_names:
+            if blocks := getattr(transformer, blocks_name, None):
+                if isinstance(blocks, torch.nn.ModuleList):
+                    block = blocks[0]
+                    if isinstance(block, torch.nn.Module) and (
+                        any(
+                            (
+                                attr_name.endswith(allow_suffix)
+                                for allow_suffix in allow_suffixes
+                            )
+                        )
+                        or (not check_suffixes)
+                    ):
+                        valid_blocks_names.append(blocks_name)
+                        valid_blocks_count.append(len(blocks))
+
+        if not valid_blocks_names:
+            logger.warning(
+                "Auto selected transformer blocks failed, please set it manually."
+            )
+
+        max_num_blocks = valid_blocks_count[0]
+        seletcted_blocks_name = valid_blocks_names[0]
+        for blocks_name, count in zip(valid_blocks_names, valid_blocks_count):
+            logger.info(
+                f"Auto selected transformer blocks: {blocks_name}, num blocks: {count}"
+            )
+            if max_num_blocks < count:
+                max_num_blocks = count
+                seletcted_blocks_name = blocks_name
+
+        selected_blocks = getattr(transformer, seletcted_blocks_name)
+
+        logger.info(
+            f"Final selected transformer blocks: {seletcted_blocks_name}, "
+            f"class: {selected_blocks[0].__class__.__name__}, "
+            f"num blocks: {max_num_blocks}"
+        )
+
+        return selected_blocks, seletcted_blocks_name
 
 
 @dataclasses.dataclass
@@ -337,7 +424,11 @@ class UnifiedCacheAdapter:
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if block_adapter.check_block_adapter():
+
+        if block_adapter.auto:
+            block_adapter = BlockAdapter.auto_block_adapter(block_adapter)
+
+        if BlockAdapter.check_block_adapter(block_adapter):
             assert isinstance(block_adapter.blocks, torch.nn.ModuleList)
             # Apply cache on pipeline: wrap cache context
             cls.create_context(block_adapter.pipe, **cache_context_kwargs)
@@ -346,7 +437,6 @@ class UnifiedCacheAdapter:
                 block_adapter,
                 forward_pattern=forward_pattern,
             )
-
         return block_adapter.pipe
 
     @classmethod
@@ -416,6 +506,17 @@ class UnifiedCacheAdapter:
         block_adapter: BlockAdapter,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> torch.nn.Module:
+
+        if (
+            block_adapter.transformer is None
+            or block_adapter.blocks_name is None
+            or block_adapter.blocks is None
+        ):
+            assert block_adapter.auto, (
+                "Please manually set `auto` to True, or, "
+                "manually set transformer blocks configuration."
+            )
+
         if getattr(block_adapter.transformer, "_is_cached", False):
             return block_adapter.transformer
 
@@ -450,11 +551,6 @@ class UnifiedCacheAdapter:
         original_forward = block_adapter.transformer.forward
 
         assert isinstance(block_adapter.dummy_blocks_names, list)
-        if block_adapter.blocks_name is None:
-            block_adapter.blocks_name = cls.find_blocks_name(
-                block_adapter.transformer
-            )
-            assert block_adapter.blocks_name is not None
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
@@ -525,22 +621,3 @@ class UnifiedCacheAdapter:
             )
 
         return pattern_matched
-
-    @classmethod
-    def find_blocks_name(cls, transformer):
-        blocks_name = None
-        allow_prefixes = ["transformer", "blocks"]
-        for attr_name in dir(transformer):
-            if blocks_name is None:
-                for prefix in allow_prefixes:
-                    # transformer_blocks, blocks
-                    if attr_name.startswith(prefix):
-                        blocks_name = attr_name
-                        logger.info(f"Auto selected blocks name: {blocks_name}")
-                        # only find one transformer blocks name
-                        break
-        if blocks_name is None:
-            logger.warning(
-                "Auto selected blocks name failed, please set it manually."
-            )
-        return blocks_name
