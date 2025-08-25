@@ -33,6 +33,9 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument(
         "--use-block-adapter", "--adapt", action="store_true", default=False
     )
+    parser.add_argument(
+        "--use-auto-block-adapter", "--auto", action="store_true", default=False
+    )
     return parser.parse_args()
 
 
@@ -83,15 +86,22 @@ def main():
 
             cache_dit.enable_cache(
                 # BlockAdapter & forward pattern
-                BlockAdapter(
-                    pipe,
-                    transformer=pipe.transformer,
-                    blocks=(
-                        pipe.transformer.transformer_blocks
-                        + pipe.transformer.single_transformer_blocks
-                    ),
-                    blocks_name="transformer_blocks",
-                    dummy_blocks_names=["single_transformer_blocks"],
+                (
+                    BlockAdapter(
+                        pipe=pipe,
+                        transformer=pipe.transformer,
+                        blocks=(
+                            pipe.transformer.transformer_blocks
+                            + pipe.transformer.single_transformer_blocks
+                        ),
+                        blocks_name="transformer_blocks",
+                        dummy_blocks_names=["single_transformer_blocks"],
+                    )
+                    if not args.use_auto_block_adapter
+                    else BlockAdapter(
+                        pipe=pipe,
+                        auto=True,
+                    )
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
                 # Cache context kwargs
@@ -111,15 +121,22 @@ def main():
         else:
             cache_dit.enable_cache(
                 # BlockAdapter & forward pattern
-                BlockAdapter(
-                    pipe,
-                    transformer=pipe.transformer,
-                    blocks=(
-                        pipe.transformer.transformer_blocks
-                        + pipe.transformer.single_transformer_blocks
-                    ),
-                    blocks_name="transformer_blocks",
-                    dummy_blocks_names=["single_transformer_blocks"],
+                (
+                    BlockAdapter(
+                        pipe,
+                        transformer=pipe.transformer,
+                        blocks=(
+                            pipe.transformer.transformer_blocks
+                            + pipe.transformer.single_transformer_blocks
+                        ),
+                        blocks_name="transformer_blocks",
+                        dummy_blocks_names=["single_transformer_blocks"],
+                    )
+                    if not args.use_auto_block_adapter
+                    else BlockAdapter(
+                        pipe=pipe,
+                        auto=True,
+                    )
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
                 # Cache context kwargs

@@ -28,11 +28,7 @@ if args.cache:
     from cache_dit import ForwardPattern, BlockAdapter
 
     cache_dit.enable_cache(
-        BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=pipe.transformer.transformer_blocks,
-        ),
+        BlockAdapter(pipe=pipe, auto=True),
         forward_pattern=ForwardPattern.Pattern_1,
         # Cache context kwargs
         do_separate_cfg=True,

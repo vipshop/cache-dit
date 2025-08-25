@@ -134,11 +134,7 @@ from cache_dit import ForwardPattern, BlockAdapter
 
 # Please check docs/BlockAdapter.md for more details.
 cache_dit.enable_cache(
-    BlockAdapter(
-        pipe=pipe, # Qwen-Image, etc.
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.transformer_blocks,
-    ),  
+    BlockAdapter(pipe=pipe, auto=True), # Qwen-Image, etc.  
     # Check `📚Forward Pattern Matching` documentation and hack the code of
     # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
     forward_pattern=ForwardPattern.Pattern_1,  
