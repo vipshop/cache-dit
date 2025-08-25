@@ -140,7 +140,7 @@ cache_dit.enable_cache(
     forward_pattern=ForwardPattern.Pattern_1,  
 )
 
-# Or, manualy setup transformer configurations.
+# Or, manually setup transformer configurations.
 cache_dit.enable_cache(
     BlockAdapter(
         pipe=pipe, # Qwen-Image, etc.
