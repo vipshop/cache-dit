@@ -125,7 +125,7 @@ cache_dit.enable_cache(pipe)
 output = pipe(...)
 ```
 
-### 🔥Automatic Block Adapter: Cache Acceleration for Any Diffusion Models
+### 🔥Automatic Block Adapter
 
 But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) as an example.
 
