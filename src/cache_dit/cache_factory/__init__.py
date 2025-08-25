@@ -1,7 +1,6 @@
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.cache_types import cache_type
-from cache_dit.cache_factory.cache_types import default_options
 from cache_dit.cache_factory.cache_types import block_range
 from cache_dit.cache_factory.cache_adapters import BlockAdapterParams
 from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter

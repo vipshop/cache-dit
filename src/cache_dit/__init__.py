@@ -7,7 +7,6 @@ except ImportError:
 from cache_dit.cache_factory import load_options
 from cache_dit.cache_factory import enable_cache
 from cache_dit.cache_factory import cache_type
-from cache_dit.cache_factory import default_options
 from cache_dit.cache_factory import block_range
 from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import ForwardPattern
