@@ -13,6 +13,7 @@ from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import BlockAdapterParams
 from cache_dit.compile import set_compile_configs
 from cache_dit.utils import summary
+from cache_dit.utils import strify
 from cache_dit.logger import init_logger
 
 NONE = CacheType.NONE
