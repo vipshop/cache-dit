@@ -18,7 +18,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cache", type=str, default=None)
     parser.add_argument("--cache-config", type=str, default=None)
-    parser.add_argument("--alter", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
     parser.add_argument("--l1-diff", action="store_true", default=False)
@@ -32,7 +31,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--compile-all", action="store_true", default=False)
     parser.add_argument(
-        "--unified-api", "--uapi", action="store_true", default=False
+        "--use-block-adapter", "--adapt", action="store_true", default=False
     )
     return parser.parse_args()
 
@@ -42,73 +41,11 @@ def set_rand_seeds(seed):
     torch.manual_seed(seed)
 
 
-def get_cache_options(cache_type, args: argparse.Namespace = None):
-    assert args is not None
-    if args.cache_config is not None:
-        assert os.path.exists(args.cache_config)
-
-        cache_options = cache_dit.load_options(args.cache_config)
-        logger.info(
-            f"Loaded cache options from file: {args.cache_config}, "
-            f"\n{cache_options}"
-        )
-        if cache_type is None:
-            cache_type = cache_options["cache_type"]
-    else:
-        cache_type = cache_dit.cache_type(cache_type)
-        if cache_type == cache_dit.DBCache:
-            cache_options = {
-                "cache_type": cache_dit.DBCache,
-                "warmup_steps": args.warmup_steps,
-                "max_cached_steps": args.max_cached_steps,  # -1 means no limit
-                "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
-                "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
-                "max_Fn_compute_blocks": 19,
-                "max_Bn_compute_blocks": 38,
-                "non_compute_blocks_diff_threshold": 0.08,
-                "residual_diff_threshold": args.rdt,
-                # Alter cache pattern: 0 F 1 T 2 F 3 T 4 F 5 T ...
-                "enable_alter_cache": args.alter,
-                "alter_residual_diff_threshold": args.rdt,
-                "l1_hidden_states_diff_threshold": (
-                    None if not args.l1_diff else args.rdt
-                ),
-                # releative token diff threshold, default is 0.0
-                "important_condition_threshold": 0.00,
-                # TaylorSeer options
-                "enable_taylorseer": args.taylorseer,
-                "enable_encoder_taylorseer": args.taylorseer,
-                # Taylorseer cache type cache be hidden_states or residual
-                "taylorseer_cache_type": "residual",
-                "taylorseer_kwargs": {
-                    "n_derivatives": args.taylorseer_order,
-                },
-            }
-        else:
-            cache_options = {
-                "cache_type": cache_dit.NONE,
-            }
-    # Reset cache_type for result saving
-    cache_type_str = str(cache_type).removeprefix("CacheType.").upper()
-    if cache_type == cache_dit.DBCache:
-        cache_type_str = (
-            f"{cache_type_str}_F{args.Fn_compute_blocks}"
-            f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
-            f"T{int(args.taylorseer)}O{args.taylorseer_order}"
-        )
-    return cache_options, cache_type_str
-
-
 @torch.no_grad()
 def main():
     args = get_args()
     logger.info(f"Arguments: {args}")
     set_rand_seeds(args.seed)
-
-    cache_options, cache_type = get_cache_options(args.cache, args)
-
-    logger.info(f"Cache Type: {cache_type}")
-    logger.info(f"Cache Options: {cache_options}")
 
     pipe = FluxPipeline.from_pretrained(
         os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
@@ -116,26 +53,78 @@ def main():
     ).to("cuda")
 
     # Apply cache to the pipeline
-    if not args.unified_api:
-        cache_dit.enable_cache(pipe, **cache_options)
+    if not args.use_block_adapter:
+        if args.cache_config is None:
+            cache_dit.enable_cache(
+                pipe,
+                # Cache context kwargs
+                Fn_compute_blocks=args.Fn_compute_blocks,
+                Bn_compute_blocks=args.Bn_compute_blocks,
+                warmup_steps=args.warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                residual_diff_threshold=args.rdt,
+                l1_hidden_states_diff_threshold=(
+                    None if not args.l1_diff else args.rdt
+                ),
+                enable_taylorseer=args.taylorseer,
+                enable_encoder_taylorseer=args.taylorseer,
+                taylorseer_cache_type="residual",
+                taylorseer_order=args.taylorseer_order,
+            )
+        else:
+            cache_dit.enable_cache(
+                pipe, **cache_dit.load_options(args.cache_config)
+            )
     else:
         assert isinstance(pipe.transformer, FluxTransformer2DModel)
         from cache_dit import ForwardPattern, BlockAdapter
 
-        cache_dit.enable_cache(
-            BlockAdapter(
-                pipe,
-                transformer=pipe.transformer,
-                blocks=(
-                    pipe.transformer.transformer_blocks
-                    + pipe.transformer.single_transformer_blocks
+        if args.cache_config is None:
+
+            cache_dit.enable_cache(
+                # BlockAdapter & forward pattern
+                BlockAdapter(
+                    pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
                 ),
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=["single_transformer_blocks"],
-            ),
-            forward_pattern=ForwardPattern.Pattern_1,
-            **cache_options,
-        )
+                forward_pattern=ForwardPattern.Pattern_1,
+                # Cache context kwargs
+                Fn_compute_blocks=args.Fn_compute_blocks,
+                Bn_compute_blocks=args.Bn_compute_blocks,
+                warmup_steps=args.warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                residual_diff_threshold=args.rdt,
+                l1_hidden_states_diff_threshold=(
+                    None if not args.l1_diff else args.rdt
+                ),
+                enable_taylorseer=args.taylorseer,
+                enable_encoder_taylorseer=args.taylorseer,
+                taylorseer_cache_type="residual",
+                taylorseer_order=args.taylorseer_order,
+            )
+        else:
+            cache_dit.enable_cache(
+                # BlockAdapter & forward pattern
+                BlockAdapter(
+                    pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
+                ),
+                forward_pattern=ForwardPattern.Pattern_1,
+                # Cache context kwargs
+                **cache_dit.load_options(args.cache_config),
+            )
 
     if args.compile:
         # Increase recompile limit for DBCache
@@ -184,8 +173,7 @@ def main():
 
     stats = cache_dit.summary(pipe)
     save_name = (
-        f"C{int(args.compile)}_{cache_type}_"
-        f"R{args.rdt}_S{len(stats.cached_steps)}_"
+        f"C{int(args.compile)}_{cache_dit.strify(stats)}_"
         f"T{mean_time:.2f}s.png"
     )
 

@@ -138,7 +138,6 @@ cache_dit.enable_cache(
         pipe=pipe, # Qwen-Image, etc.
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
     ),  
     # Check `📚Forward Pattern Matching` documentation and hack the code of
     # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
@@ -168,7 +167,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 <div id="dbcache"></div>
 
-![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-fnbn-v1.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
 **DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](./docs/DBCache.md) docs for more design details.
 
@@ -273,7 +272,7 @@ cache_dit.enable_cache(
 
 <div id="cfg"></div>
 
-cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_classifier_free_guidance` param to **False (default)**. Otherwise, set it to True. For examples:
+cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_cfg` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
 cache_dit.enable_cache(
@@ -281,10 +280,10 @@ cache_dit.enable_cache(
     ...,
     # CFG: classifier free guidance or not
     # For model that fused CFG and non-CFG into single forward step,
-    # should set do_separate_classifier_free_guidance as False.
-    # For example, set it as True for Wan 2.1 and set it as False 
-    # for FLUX.1, HunyuanVideo, CogVideoX, Mochi.
-    do_separate_classifier_free_guidance=True, # Wan 2.1, Qwen-Image
+    # should set do_separate_cfg as False. For example, set it as True 
+    # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
+    # CogVideoX, Mochi, etc.
+    do_separate_cfg=True, # Wan 2.1, Qwen-Image
     # Compute cfg forward first or not, default False, namely, 
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first=False,
@@ -340,10 +339,6 @@ cache-dit-metrics-cli -h  # show usage
 # all: PSNR, FID, SSIM, MSE, ..., etc.
 cache-dit-metrics-cli all  -i1 true.png -i2 test.png  # image
 cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
-cache-dit-metrics-cli all  -v1 true.mp4 -v2 test.mp4  # video
-cache-dit-metrics-cli all  -v1 true_dir -v2 test_dir  # video dir
-cache-dit-metrics-cli fid  -i1 true_dir -i2 test_dir  # FID
-cache-dit-metrics-cli psnr -i1 true_dir -i2 test_dir  # PSNR
 ```
 
 ## 👋Contribute 

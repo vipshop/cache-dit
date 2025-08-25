@@ -1,4 +1,5 @@
 import torch
+import argparse
 
 
 def get_gpu_memory_in_gib():
@@ -17,3 +18,9 @@ def get_gpu_memory_in_gib():
 
 def GiB():
     return get_gpu_memory_in_gib()
+
+
+def get_args() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cache", action="store_true", default=False)
+    return parser.parse_args()

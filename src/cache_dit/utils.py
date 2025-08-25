@@ -26,14 +26,17 @@ class CacheStats:
     )
 
 
-def summary(pipe: DiffusionPipeline, details: bool = False):
+def summary(
+    pipe: DiffusionPipeline, details: bool = False, logging: bool = True
+):
     cache_stats = CacheStats()
     pipe_cls_name = pipe.__class__.__name__
 
     if hasattr(pipe, "_cache_options"):
         cache_options = pipe._cache_options
         cache_stats.cache_options = cache_options
-        print(f"\n🤗Cache Options: {pipe_cls_name}\n\n{cache_options}")
+        if logging:
+            print(f"\n🤗Cache Options: {pipe_cls_name}\n\n{cache_options}")
 
     if hasattr(pipe.transformer, "_cached_steps"):
         cached_steps: list[int] = pipe.transformer._cached_steps
@@ -43,7 +46,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
 
-        if residual_diffs:
+        if residual_diffs and logging:
             diffs_values = list(residual_diffs.values())
             qmin = np.min(diffs_values)
             q0 = np.percentile(diffs_values, 0)
@@ -90,7 +93,7 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
         cache_stats.cfg_cached_steps = cfg_cached_steps
         cache_stats.cfg_residual_diffs = cfg_residual_diffs
 
-        if cfg_residual_diffs:
+        if cfg_residual_diffs and logging:
             cfg_diffs_values = list(cfg_residual_diffs.values())
             qmin = np.min(cfg_diffs_values)
             q0 = np.percentile(cfg_diffs_values, 0)
@@ -130,3 +133,29 @@ def summary(pipe: DiffusionPipeline, details: bool = False):
                 )
 
     return cache_stats
+
+
+def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
+    if not isinstance(pipe_or_stats, CacheStats):
+        stats = summary(pipe_or_stats, logging=False)
+    else:
+        stats = pipe_or_stats
+
+    cache_options = stats.cache_options
+    cached_steps = len(stats.cached_steps)
+
+    if not cache_options:
+        return "NONE"
+
+    cache_type_str = (
+        f"DBCACHE_F{cache_options['Fn_compute_blocks']}"
+        f"B{cache_options['Bn_compute_blocks']}"
+        f"W{cache_options['warmup_steps']}"
+        f"M{max(0, cache_options['max_cached_steps'])}"
+        f"T{int(cache_options['enable_taylorseer'])}"
+        f"O{cache_options['taylorseer_kwargs']['n_derivatives']}_"
+        f"R{cache_options['residual_diff_threshold']}_"
+        f"S{cached_steps}"  # skiped steps
+    )
+
+    return cache_type_str

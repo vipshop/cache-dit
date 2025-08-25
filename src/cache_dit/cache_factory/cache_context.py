@@ -69,11 +69,11 @@ class DBCacheContext:
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
 
-    # Support do_separate_classifier_free_guidance, such as Wan 2.1,
+    # Support do_separate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
-    # forward step, should set do_separate_classifier_free_guidance
-    # as False. For example: CogVideoX, HunyuanVideo, Mochi.
-    do_separate_classifier_free_guidance: bool = False
+    # forward step, should set do_separate_cfg as False.
+    # For example: CogVideoX, HunyuanVideo, Mochi.
+    do_separate_cfg: bool = False
     # Compute cfg forward first or not, default False, namely,
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first: bool = False
@@ -97,10 +97,10 @@ class DBCacheContext:
     @torch.compiler.disable
     def __post_init__(self):
         # Some checks for settings
-        if self.do_separate_classifier_free_guidance:
+        if self.do_separate_cfg:
             assert self.enable_alter_cache is False, (
                 "enable_alter_cache must set as False if "
-                "do_separate_classifier_free_guidance is enabled."
+                "do_separate_cfg is enabled."
             )
             if self.cfg_diff_compute_separate:
                 assert self.cfg_compute_first is False, (
@@ -123,12 +123,12 @@ class DBCacheContext:
 
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
-            if self.do_separate_classifier_free_guidance:
+            if self.do_separate_cfg:
                 self.cfg_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
 
         if self.enable_encoder_taylorseer:
             self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
-            if self.do_separate_classifier_free_guidance:
+            if self.do_separate_cfg:
                 self.cfg_encoder_taylorseer = TaylorSeer(
                     **self.taylorseer_kwargs
                 )
@@ -175,16 +175,16 @@ class DBCacheContext:
         # incr    step: prev 0 -> 1; prev 1 -> 2
         # current step: incr step - 1
         self.transformer_executed_steps += 1
-        if not self.do_separate_classifier_free_guidance:
+        if not self.do_separate_cfg:
             self.executed_steps += 1
         else:
             # 0,1 -> 0 + 1, 2,3 -> 1 + 1, ...
             if not self.cfg_compute_first:
-                if not self.is_separate_classifier_free_guidance_step():
+                if not self.is_separate_cfg_step():
                     # transformer step: 0,2,4,...
                     self.executed_steps += 1
             else:
-                if self.is_separate_classifier_free_guidance_step():
+                if self.is_separate_cfg_step():
                     # transformer step: 0,2,4,...
                     self.executed_steps += 1
 
@@ -217,9 +217,9 @@ class DBCacheContext:
 
         # mark_step_begin of TaylorSeer must be called after the cache is reset.
         if self.enable_taylorseer or self.enable_encoder_taylorseer:
-            if self.do_separate_classifier_free_guidance:
+            if self.do_separate_cfg:
                 # Assume non-CFG steps: 0, 2, 4, 6, ...
-                if not self.is_separate_classifier_free_guidance_step():
+                if not self.is_separate_cfg_step():
                     taylorseer, encoder_taylorseer = self.get_taylorseers()
                     if taylorseer is not None:
                         taylorseer.mark_step_begin()
@@ -251,7 +251,7 @@ class DBCacheContext:
         # step: executed_steps - 1, not transformer_steps - 1
         step = str(self.get_current_step())
         # Only add the diff if it is not already recorded for this step
-        if not self.is_separate_classifier_free_guidance_step():
+        if not self.is_separate_cfg_step():
             if step not in self.residual_diffs:
                 self.residual_diffs[step] = diff
         else:
@@ -268,7 +268,7 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def add_cached_step(self):
-        if not self.is_separate_classifier_free_guidance_step():
+        if not self.is_separate_cfg_step():
             self.cached_steps.append(self.get_current_step())
         else:
             self.cfg_cached_steps.append(self.get_current_step())
@@ -290,8 +290,8 @@ class DBCacheContext:
         return self.transformer_executed_steps - 1
 
     @torch.compiler.disable
-    def is_separate_classifier_free_guidance_step(self):
-        if not self.do_separate_classifier_free_guidance:
+    def is_separate_cfg_step(self):
+        if not self.do_separate_cfg:
             return False
         if self.cfg_compute_first:
             # CFG steps: 0, 2, 4, 6, ...
@@ -589,17 +589,17 @@ def Bn_compute_blocks_ids():
 
 
 @torch.compiler.disable
-def do_separate_classifier_free_guidance():
+def do_separate_cfg():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
-    return cache_context.do_separate_classifier_free_guidance
+    return cache_context.do_separate_cfg
 
 
 @torch.compiler.disable
-def is_separate_classifier_free_guidance_step():
+def is_separate_cfg_step():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
-    return cache_context.is_separate_classifier_free_guidance_step()
+    return cache_context.is_separate_cfg_step()
 
 
 @torch.compiler.disable
@@ -710,8 +710,8 @@ def are_two_tensors_similar(
 
     if all(
         (
-            do_separate_classifier_free_guidance(),
-            is_separate_classifier_free_guidance_step(),
+            do_separate_cfg(),
+            is_separate_cfg_step(),
             not cfg_diff_compute_separate(),
             get_current_step_residual_diff() is not None,
         )
@@ -789,7 +789,7 @@ def set_Fn_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
     if downsample_factor > 1:
         buffer = buffer[..., ::downsample_factor]
         buffer = buffer.contiguous()
-    if is_separate_classifier_free_guidance_step():
+    if is_separate_cfg_step():
         _debugging_set_buffer(f"{prefix}_buffer_cfg")
         set_buffer(f"{prefix}_buffer_cfg", buffer)
     else:
@@ -799,7 +799,7 @@ def set_Fn_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
 
 @torch.compiler.disable
 def get_Fn_buffer(prefix: str = "Fn"):
-    if is_separate_classifier_free_guidance_step():
+    if is_separate_cfg_step():
         _debugging_get_buffer(f"{prefix}_buffer_cfg")
         return get_buffer(f"{prefix}_buffer_cfg")
     _debugging_get_buffer(f"{prefix}_buffer")
@@ -808,7 +808,7 @@ def get_Fn_buffer(prefix: str = "Fn"):
 
 @torch.compiler.disable
 def set_Fn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
-    if is_separate_classifier_free_guidance_step():
+    if is_separate_cfg_step():
         _debugging_set_buffer(f"{prefix}_encoder_buffer_cfg")
         set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
     else:
@@ -818,7 +818,7 @@ def set_Fn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Fn"):
 
 @torch.compiler.disable
 def get_Fn_encoder_buffer(prefix: str = "Fn"):
-    if is_separate_classifier_free_guidance_step():
+    if is_separate_cfg_step():
         _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
         return get_buffer(f"{prefix}_encoder_buffer_cfg")
     _debugging_get_buffer(f"{prefix}_encoder_buffer")
@@ -832,7 +832,7 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # This buffer is use for hidden states approximation.
     if is_taylorseer_enabled():
         # taylorseer, encoder_taylorseer
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             taylorseer, _ = get_cfg_taylorseers()
         else:
             taylorseer, _ = get_taylorseers()
@@ -846,14 +846,14 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
                     "TaylorSeer is enabled but not set in the cache context. "
                     "Falling back to default buffer retrieval."
                 )
-            if is_separate_classifier_free_guidance_step():
+            if is_separate_cfg_step():
                 _debugging_set_buffer(f"{prefix}_buffer_cfg")
                 set_buffer(f"{prefix}_buffer_cfg", buffer)
             else:
                 _debugging_set_buffer(f"{prefix}_buffer")
                 set_buffer(f"{prefix}_buffer", buffer)
     else:
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             _debugging_set_buffer(f"{prefix}_buffer_cfg")
             set_buffer(f"{prefix}_buffer_cfg", buffer)
         else:
@@ -865,7 +865,7 @@ def set_Bn_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
 def get_Bn_buffer(prefix: str = "Bn"):
     if is_taylorseer_enabled():
         # taylorseer, encoder_taylorseer
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             taylorseer, _ = get_cfg_taylorseers()
         else:
             taylorseer, _ = get_taylorseers()
@@ -879,13 +879,13 @@ def get_Bn_buffer(prefix: str = "Bn"):
                     "Falling back to default buffer retrieval."
                 )
             # Fallback to default buffer retrieval
-            if is_separate_classifier_free_guidance_step():
+            if is_separate_cfg_step():
                 _debugging_get_buffer(f"{prefix}_buffer_cfg")
                 return get_buffer(f"{prefix}_buffer_cfg")
             _debugging_get_buffer(f"{prefix}_buffer")
             return get_buffer(f"{prefix}_buffer")
     else:
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             _debugging_get_buffer(f"{prefix}_buffer_cfg")
             return get_buffer(f"{prefix}_buffer_cfg")
         _debugging_get_buffer(f"{prefix}_buffer")
@@ -897,7 +897,7 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
     # This buffer is use for encoder hidden states approximation.
     if is_encoder_taylorseer_enabled():
         # taylorseer, encoder_taylorseer
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             _, encoder_taylorseer = get_cfg_taylorseers()
         else:
             _, encoder_taylorseer = get_taylorseers()
@@ -911,14 +911,14 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
                     "TaylorSeer is enabled but not set in the cache context. "
                     "Falling back to default buffer retrieval."
                 )
-            if is_separate_classifier_free_guidance_step():
+            if is_separate_cfg_step():
                 _debugging_set_buffer(f"{prefix}_encoder_buffer_cfg")
                 set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
             else:
                 _debugging_set_buffer(f"{prefix}_encoder_buffer")
                 set_buffer(f"{prefix}_encoder_buffer", buffer)
     else:
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             _debugging_set_buffer(f"{prefix}_encoder_buffer_cfg")
             set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
         else:
@@ -929,7 +929,7 @@ def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
 @torch.compiler.disable
 def get_Bn_encoder_buffer(prefix: str = "Bn"):
     if is_encoder_taylorseer_enabled():
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             _, encoder_taylorseer = get_cfg_taylorseers()
         else:
             _, encoder_taylorseer = get_taylorseers()
@@ -944,13 +944,13 @@ def get_Bn_encoder_buffer(prefix: str = "Bn"):
                     "Falling back to default buffer retrieval."
                 )
             # Fallback to default buffer retrieval
-            if is_separate_classifier_free_guidance_step():
+            if is_separate_cfg_step():
                 _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
                 return get_buffer(f"{prefix}_encoder_buffer_cfg")
             _debugging_get_buffer(f"{prefix}_encoder_buffer")
             return get_buffer(f"{prefix}_encoder_buffer")
     else:
-        if is_separate_classifier_free_guidance_step():
+        if is_separate_cfg_step():
             _debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
             return get_buffer(f"{prefix}_encoder_buffer_cfg")
         _debugging_get_buffer(f"{prefix}_encoder_buffer")
@@ -1021,7 +1021,7 @@ def get_can_use_cache(
         return False
 
     max_cached_steps = get_max_cached_steps()
-    if not is_separate_classifier_free_guidance_step():
+    if not is_separate_cfg_step():
         cached_steps = get_cached_steps()
     else:
         cached_steps = get_cfg_cached_steps()

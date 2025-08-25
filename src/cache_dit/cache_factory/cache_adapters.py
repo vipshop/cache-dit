@@ -350,7 +350,7 @@ class UnifiedCacheAdapter:
         return adapter_params.pipe
 
     @classmethod
-    def has_separate_classifier_free_guidance(
+    def has_separate_cfg(
         cls,
         pipe_or_transformer: DiffusionPipeline | Any,
     ) -> bool:
@@ -364,20 +364,9 @@ class UnifiedCacheAdapter:
     @classmethod
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
         # Check cache_context_kwargs
-        if not cache_context_kwargs:
-            cache_context_kwargs = CacheType.default_options(CacheType.DBCache)
-            if cls.has_separate_classifier_free_guidance(pipe):
-                cache_context_kwargs["do_separate_classifier_free_guidance"] = (
-                    True
-                )
-            logger.warning(
-                "cache_context_kwargs is empty, use default "
-                f"cache options: {cache_context_kwargs}"
-            )
-        else:
-            # Allow empty cache_type, we only support DBCache now.
-            if cache_context_kwargs.get("cache_type", None):
-                cache_context_kwargs["cache_type"] = CacheType.DBCache
+        if not cache_context_kwargs["do_separate_cfg"]:
+            # Check cfg for some specific case if users don't set it as True
+            cache_context_kwargs["do_separate_cfg"] = cls.has_separate_cfg(pipe)
 
         if cache_type := cache_context_kwargs.pop("cache_type", None):
             assert (
