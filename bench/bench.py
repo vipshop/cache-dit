@@ -16,7 +16,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--steps", type=int, default=28)
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--cache", type=str, default=None)
+    parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--cache-config", type=str, default=None)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
@@ -56,94 +56,95 @@ def main():
     ).to("cuda")
 
     # Apply cache to the pipeline
-    if not args.use_block_adapter:
-        if args.cache_config is None:
-            cache_dit.enable_cache(
-                pipe,
-                # Cache context kwargs
-                Fn_compute_blocks=args.Fn_compute_blocks,
-                Bn_compute_blocks=args.Bn_compute_blocks,
-                warmup_steps=args.warmup_steps,
-                max_cached_steps=args.max_cached_steps,
-                residual_diff_threshold=args.rdt,
-                l1_hidden_states_diff_threshold=(
-                    None if not args.l1_diff else args.rdt
-                ),
-                enable_taylorseer=args.taylorseer,
-                enable_encoder_taylorseer=args.taylorseer,
-                taylorseer_cache_type="residual",
-                taylorseer_order=args.taylorseer_order,
-            )
+    if args.cache:
+        if not args.use_block_adapter:
+            if args.cache_config is None:
+                cache_dit.enable_cache(
+                    pipe,
+                    # Cache context kwargs
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
+                    warmup_steps=args.warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                    l1_hidden_states_diff_threshold=(
+                        None if not args.l1_diff else args.rdt
+                    ),
+                    enable_taylorseer=args.taylorseer,
+                    enable_encoder_taylorseer=args.taylorseer,
+                    taylorseer_cache_type="residual",
+                    taylorseer_order=args.taylorseer_order,
+                )
+            else:
+                cache_dit.enable_cache(
+                    pipe, **cache_dit.load_options(args.cache_config)
+                )
         else:
-            cache_dit.enable_cache(
-                pipe, **cache_dit.load_options(args.cache_config)
-            )
-    else:
-        assert isinstance(pipe.transformer, FluxTransformer2DModel)
-        from cache_dit import ForwardPattern, BlockAdapter
+            assert isinstance(pipe.transformer, FluxTransformer2DModel)
+            from cache_dit import ForwardPattern, BlockAdapter
 
-        if args.cache_config is None:
+            if args.cache_config is None:
 
-            cache_dit.enable_cache(
-                # BlockAdapter & forward pattern
-                (
-                    BlockAdapter(
-                        pipe=pipe,
-                        transformer=pipe.transformer,
-                        blocks=(
-                            pipe.transformer.transformer_blocks
-                            + pipe.transformer.single_transformer_blocks
-                        ),
-                        blocks_name="transformer_blocks",
-                        dummy_blocks_names=["single_transformer_blocks"],
-                    )
-                    if not args.use_auto_block_adapter
-                    else BlockAdapter(
-                        pipe=pipe,
-                        auto=True,
-                        blocks_policy="min",
-                    )
-                ),
-                forward_pattern=ForwardPattern.Pattern_1,
-                # Cache context kwargs
-                Fn_compute_blocks=args.Fn_compute_blocks,
-                Bn_compute_blocks=args.Bn_compute_blocks,
-                warmup_steps=args.warmup_steps,
-                max_cached_steps=args.max_cached_steps,
-                residual_diff_threshold=args.rdt,
-                l1_hidden_states_diff_threshold=(
-                    None if not args.l1_diff else args.rdt
-                ),
-                enable_taylorseer=args.taylorseer,
-                enable_encoder_taylorseer=args.taylorseer,
-                taylorseer_cache_type="residual",
-                taylorseer_order=args.taylorseer_order,
-            )
-        else:
-            cache_dit.enable_cache(
-                # BlockAdapter & forward pattern
-                (
-                    BlockAdapter(
-                        pipe,
-                        transformer=pipe.transformer,
-                        blocks=(
-                            pipe.transformer.transformer_blocks
-                            + pipe.transformer.single_transformer_blocks
-                        ),
-                        blocks_name="transformer_blocks",
-                        dummy_blocks_names=["single_transformer_blocks"],
-                    )
-                    if not args.use_auto_block_adapter
-                    else BlockAdapter(
-                        pipe=pipe,
-                        auto=True,
-                        blocks_policy="min",
-                    )
-                ),
-                forward_pattern=ForwardPattern.Pattern_1,
-                # Cache context kwargs
-                **cache_dit.load_options(args.cache_config),
-            )
+                cache_dit.enable_cache(
+                    # BlockAdapter & forward pattern
+                    (
+                        BlockAdapter(
+                            pipe=pipe,
+                            transformer=pipe.transformer,
+                            blocks=(
+                                pipe.transformer.transformer_blocks
+                                + pipe.transformer.single_transformer_blocks
+                            ),
+                            blocks_name="transformer_blocks",
+                            dummy_blocks_names=["single_transformer_blocks"],
+                        )
+                        if not args.use_auto_block_adapter
+                        else BlockAdapter(
+                            pipe=pipe,
+                            auto=True,
+                            blocks_policy="min",
+                        )
+                    ),
+                    forward_pattern=ForwardPattern.Pattern_1,
+                    # Cache context kwargs
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
+                    warmup_steps=args.warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                    l1_hidden_states_diff_threshold=(
+                        None if not args.l1_diff else args.rdt
+                    ),
+                    enable_taylorseer=args.taylorseer,
+                    enable_encoder_taylorseer=args.taylorseer,
+                    taylorseer_cache_type="residual",
+                    taylorseer_order=args.taylorseer_order,
+                )
+            else:
+                cache_dit.enable_cache(
+                    # BlockAdapter & forward pattern
+                    (
+                        BlockAdapter(
+                            pipe,
+                            transformer=pipe.transformer,
+                            blocks=(
+                                pipe.transformer.transformer_blocks
+                                + pipe.transformer.single_transformer_blocks
+                            ),
+                            blocks_name="transformer_blocks",
+                            dummy_blocks_names=["single_transformer_blocks"],
+                        )
+                        if not args.use_auto_block_adapter
+                        else BlockAdapter(
+                            pipe=pipe,
+                            auto=True,
+                            blocks_policy="min",
+                        )
+                    ),
+                    forward_pattern=ForwardPattern.Pattern_1,
+                    # Cache context kwargs
+                    **cache_dit.load_options(args.cache_config),
+                )
 
     if args.compile:
         # Increase recompile limit for DBCache
