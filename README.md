@@ -107,7 +107,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
 
-### ♥️Cache it with One-line Code
+### ♥️Cache Acceleration with One-line Code
 
 In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image.py) as an example. 
 
