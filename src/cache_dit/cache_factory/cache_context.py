@@ -5,8 +5,8 @@ from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 
 import torch
+import torch.distributed as dist
 
-import cache_dit.primitives as primitives
 from cache_dit.cache_factory.taylorseer import TaylorSeer
 from cache_dit.logger import init_logger
 
@@ -744,8 +744,9 @@ def are_two_tensors_similar(
             mean_t1 = t1.abs().mean()
 
         if parallelized:
-            mean_diff = primitives.all_reduce_sync(mean_diff, "avg")
-            mean_t1 = primitives.all_reduce_sync(mean_t1, "avg")
+            # TODO: May use async op
+            dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG)
+            dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG)
 
         # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
         # Futher, if we assume that (H(t,  0) - H(t-1,0)) ~ 0, then,
