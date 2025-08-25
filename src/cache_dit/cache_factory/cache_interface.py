@@ -10,6 +10,7 @@ logger = init_logger(__name__)
 
 
 def enable_cache(
+    # BlockAdapter & forward pattern
     pipe_or_adapter: DiffusionPipeline | BlockAdapterParams,
     forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     # Cache context kwargs
