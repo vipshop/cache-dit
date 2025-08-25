@@ -155,7 +155,7 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
         f"T{int(cache_options['enable_taylorseer'])}"
         f"O{cache_options['taylorseer_kwargs']['n_derivatives']}_"
         f"R{cache_options['residual_diff_threshold']}_"
-        f"CS{cached_steps}"
+        f"S{cached_steps}"  # skiped steps
     )
 
     return cache_type_str
