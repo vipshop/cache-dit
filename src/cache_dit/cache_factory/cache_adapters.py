@@ -85,8 +85,8 @@ class BlockAdapter:
                     blocks_names.append(attr_name)
 
         # Type check
-        valid_blocks_names = []
-        valid_blocks_count = []
+        valid_names = []
+        valid_count = []
         for blocks_name in blocks_names:
             if blocks := getattr(transformer, blocks_name, None):
                 if isinstance(blocks, torch.nn.ModuleList):
@@ -100,33 +100,33 @@ class BlockAdapter:
                         )
                         or (not check_suffixes)
                     ):
-                        valid_blocks_names.append(blocks_name)
-                        valid_blocks_count.append(len(blocks))
+                        valid_names.append(blocks_name)
+                        valid_count.append(len(blocks))
 
-        if not valid_blocks_names:
+        if not valid_names:
             logger.warning(
                 "Auto selected transformer blocks failed, please set it manually."
             )
 
-        max_num_blocks = valid_blocks_count[0]
-        seletcted_blocks_name = valid_blocks_names[0]
-        for blocks_name, count in zip(valid_blocks_names, valid_blocks_count):
+        final_name = valid_names[0]
+        final_count = valid_count[0]
+        for blocks_name, count in zip(valid_names, valid_count):
             logger.info(
                 f"Auto selected transformer blocks: {blocks_name}, num blocks: {count}"
             )
-            if max_num_blocks < count:
-                max_num_blocks = count
-                seletcted_blocks_name = blocks_name
+            if final_count < count:
+                final_count = count
+                final_name = blocks_name
 
-        selected_blocks = getattr(transformer, seletcted_blocks_name)
+        final_blocks = getattr(transformer, final_name)
 
         logger.info(
-            f"Final selected transformer blocks: {seletcted_blocks_name}, "
-            f"class: {selected_blocks[0].__class__.__name__}, "
-            f"num blocks: {max_num_blocks}"
+            f"Final selected transformer blocks: {final_name}, "
+            f"class: {final_blocks[0].__class__.__name__}, "
+            f"num blocks: {final_count}"
         )
 
-        return selected_blocks, seletcted_blocks_name
+        return final_blocks, final_name
 
 
 @dataclasses.dataclass
