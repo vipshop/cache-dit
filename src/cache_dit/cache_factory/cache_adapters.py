@@ -47,7 +47,7 @@ class BlockAdapter:
         transformer = pipe.transformer
 
         blocks, blocks_name = BlockAdapter.find_blocks(
-            transformer=transformer, check_suffixes=True
+            transformer=transformer, check_suffixes=False
         )
 
         return BlockAdapter(
@@ -91,10 +91,11 @@ class BlockAdapter:
             if blocks := getattr(transformer, blocks_name, None):
                 if isinstance(blocks, torch.nn.ModuleList):
                     block = blocks[0]
+                    block_cls_name = block.__class__.__name__
                     if isinstance(block, torch.nn.Module) and (
                         any(
                             (
-                                attr_name.endswith(allow_suffix)
+                                block_cls_name.endswith(allow_suffix)
                                 for allow_suffix in allow_suffixes
                             )
                         )
@@ -104,15 +105,18 @@ class BlockAdapter:
                         valid_count.append(len(blocks))
 
         if not valid_names:
-            logger.warning(
+            raise ValueError(
                 "Auto selected transformer blocks failed, please set it manually."
             )
 
         final_name = valid_names[0]
         final_count = valid_count[0]
         for blocks_name, count in zip(valid_names, valid_count):
+            blocks = getattr(transformer, blocks_name)
             logger.info(
-                f"Auto selected transformer blocks: {blocks_name}, num blocks: {count}"
+                f"Auto selected transformer blocks: {blocks_name}, "
+                f"class: {blocks[0].__class__.__name__}, "
+                f"num blocks: {count}"
             )
             if final_count < count:
                 final_count = count
