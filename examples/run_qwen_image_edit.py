@@ -1,26 +1,11 @@
 import os
 import time
 import torch
-import argparse
 
 from PIL import Image
 from diffusers import QwenImageEditPipeline, QwenImageTransformer2DModel
-from utils import GiB
+from utils import GiB, get_args
 import cache_dit
-
-
-def get_args() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    # General arguments
-    parser.add_argument("--cache", action="store_true", default=False)
-    parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--taylorseer", action="store_true", default=False)
-    parser.add_argument("--taylorseer-order", "--order", type=int, default=4)
-    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
-    parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
-    parser.add_argument("--rdt", type=float, default=0.12)
-    parser.add_argument("--warmup-steps", type=int, default=8)
-    return parser.parse_args()
 
 
 args = get_args()
@@ -39,37 +24,16 @@ pipe = QwenImageEditPipeline.from_pretrained(
 )
 
 if args.cache:
-    cache_options = {
-        "cache_type": cache_dit.DBCache,
-        "warmup_steps": args.warmup_steps,
-        "max_cached_steps": -1,  # -1 means no limit
-        "Fn_compute_blocks": args.Fn_compute_blocks,  # Fn, F8, etc.
-        "Bn_compute_blocks": args.Bn_compute_blocks,  # Bn, B16, etc.
-        "residual_diff_threshold": args.rdt,
-        # CFG: classifier free guidance or not
-        "do_separate_cfg": True,
-        "cfg_compute_first": False,
-        "enable_taylorseer": args.taylorseer,
-        "enable_encoder_taylorseer": args.taylorseer,
-        # Taylorseer cache type cache be hidden_states or residual
-        "taylorseer_cache_type": "residual",
-        "taylorseer_kwargs": {
-            "n_derivatives": args.taylorseer_order,
-        },
-    }
     cache_type_str = "DBCACHE"
-    cache_type_str = (
-        f"{cache_type_str}_F{args.Fn_compute_blocks}"
-        f"B{args.Bn_compute_blocks}W{args.warmup_steps}"
-        f"T{int(args.taylorseer)}O{args.taylorseer_order}_"
-        f"R{args.rdt}"
-    )
-
-    print(f"cache options:\n{cache_options}")
 
     cache_dit.enable_cache(
         pipe,
-        **cache_options,
+        # Cache context kwargs
+        do_separate_cfg=True,
+        enable_taylorseer=True,
+        enable_encoder_taylorseer=True,
+        taylorseer_order=4,
+        residual_diff_threshold=0.12,
     )
 else:
     cache_type_str = "NONE"
