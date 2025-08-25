@@ -26,9 +26,6 @@ pipe = CogVideoXPipeline.from_pretrained(
 
 if args.cache:
     cache_dit.enable_cache(pipe)
-    cache_type_str = "DBCACHE"
-else:
-    cache_type_str = "NONE"
 
 
 pipe.enable_model_cpu_offload()
@@ -65,10 +62,10 @@ video = pipe(
 ).frames[0]
 end = time.time()
 
-cache_dit.summary(pipe)
+stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"cogvideox.{cache_type_str}.mp4"
+save_path = f"cogvideox.{cache_dit.strify(stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=8)

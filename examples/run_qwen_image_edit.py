@@ -33,9 +33,6 @@ if args.cache:
         taylorseer_order=4,
         residual_diff_threshold=0.12,
     )
-    cache_type_str = "DBCACHE"
-else:
-    cache_type_str = "NONE"
 
 
 if torch.cuda.device_count() <= 1:
@@ -75,10 +72,12 @@ image = pipe(
 
 end = time.time()
 
-cache_dit.summary(pipe)
+stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"qwen-image-edit.C{int(args.compile)}_{cache_type_str}.png"
+save_path = (
+    f"qwen-image-edit.C{int(args.compile)}_{cache_dit.strify(stats)}.png"
+)
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

@@ -138,6 +138,9 @@ def summary(
 def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
     if not isinstance(pipe_or_stats, CacheStats):
         stats = summary(pipe_or_stats, logging=False)
+    else:
+        stats = pipe_or_stats
+
     cache_options = stats.cache_options
     cached_steps = len(stats.cached_steps)
 
@@ -150,7 +153,7 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
         f"W{cache_options['warmup_steps']}"
         f"M{max(0, cache_options['max_cached_steps'])}"
         f"T{int(cache_options['enable_taylorseer'])}"
-        f"O{cache_options['taylorseer_order']}_"
+        f"O{cache_options['taylorseer_kwargs']['n_derivatives']}_"
         f"R{cache_options['residual_diff_threshold']}_"
         f"CS{cached_steps}"
     )

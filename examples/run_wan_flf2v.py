@@ -49,9 +49,6 @@ def prepare_pipeline(
             enable_encoder_taylorseer=True,
             taylorseer_order=2,
         )
-        cache_type_str = "DBCACHE"
-    else:
-        cache_type_str = "NONE"
 
     # Enable memory savings
     pipe.enable_model_cpu_offload()
@@ -68,7 +65,7 @@ def prepare_pipeline(
             "from source."
         )
 
-    return cache_type_str, pipe
+    return pipe
 
 
 def main():
@@ -93,7 +90,7 @@ def main():
     )
     pipe.to("cuda")
 
-    cache_type_str, pipe = prepare_pipeline(pipe, args)
+    pipe = prepare_pipeline(pipe, args)
 
     first_frame = load_image("data/flf2v_input_first_frame.png")
     last_frame = load_image("data/flf2v_input_last_frame.png")
@@ -123,10 +120,10 @@ def main():
     ).frames[0]
     end = time.time()
 
-    cache_dit.summary(pipe)
+    stats = cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"wan.flf2v.{cache_type_str}.mp4"
+    save_path = f"wan.flf2v.{cache_dit.strify(stats)}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving video to {save_path}")
     export_to_video(output, save_path, fps=16)

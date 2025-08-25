@@ -31,9 +31,7 @@ pipe = HunyuanVideoPipeline.from_pretrained(
 
 if args.cache:
     cache_dit.enable_cache(pipe)
-    cache_type_str = "DBCACHE"
-else:
-    cache_type_str = "NONE"
+
 
 assert isinstance(
     pipe.vae, AutoencoderKLHunyuanVideo
@@ -66,10 +64,10 @@ output = pipe(
 ).frames[0]
 end = time.time()
 
-cache_dit.summary(pipe)
+stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"hunyuan_video.{cache_type_str}.mp4"
+save_path = f"hunyuan_video.{cache_dit.strify(stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(output, save_path, fps=15)
