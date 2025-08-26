@@ -16,7 +16,7 @@ def enable_cache(
     # Cache context kwargs
     Fn_compute_blocks: int = 8,
     Bn_compute_blocks: int = 0,
-    warmup_steps: int = 8,
+    max_warmup_steps: int = 8,
     max_cached_steps: int = -1,
     max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
@@ -55,7 +55,7 @@ def enable_cache(
             Further fuses approximate information in the **last n** Transformer blocks to enhance
             prediction accuracy. These blocks act as an auto-scaler for approximate hidden states
             that use residual cache.
-        warmup_steps (`int`, *required*, defaults to 8):
+        max_warmup_steps (`int`, *required*, defaults to 8):
             DBCache does not apply the caching strategy when the number of running steps is less than
             or equal to this value, ensuring the model sufficiently learns basic features during warmup.
         max_cached_steps (`int`, *required*, defaults to -1):
@@ -110,7 +110,7 @@ def enable_cache(
     cache_context_kwargs["cache_type"] = CacheType.DBCache
     cache_context_kwargs["Fn_compute_blocks"] = Fn_compute_blocks
     cache_context_kwargs["Bn_compute_blocks"] = Bn_compute_blocks
-    cache_context_kwargs["warmup_steps"] = warmup_steps
+    cache_context_kwargs["max_warmup_steps"] = max_warmup_steps
     cache_context_kwargs["max_cached_steps"] = max_cached_steps
     cache_context_kwargs["max_continuous_cached_steps"] = (
         max_continuous_cached_steps

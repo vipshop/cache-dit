@@ -44,18 +44,22 @@ if args.cache:
     cache_dit.enable_cache(
         BlockAdapter(
             pipe=pipe,
-            # Only cache for high-noise transformer (occupancy most timesteps)
-            # boundary_ratio: 0.875, boundary_timestep=0.875*50=43.75
-            # t >= boundary_timestep: transformer, high-noise
-            # t < boundary_timestep: transformer_2, low-noise
-            transformer=pipe.transformer,
-            blocks=pipe.transformer.blocks,
+            # Only cache for low-noise transformer (occupancy most timesteps)
+            # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
+            # t >= boundary_timestep: transformer, high-noise, lower  diff
+            # t < boundary_timestep: transformer_2, low-noise, higher diff
+            transformer=pipe.transformer_2,
+            blocks=pipe.transformer_2.blocks,
             blocks_name="blocks",
             dummy_blocks_names=[],
         ),
         forward_pattern=ForwardPattern.Pattern_2,
         # Cache context kwargs
-        warmup_steps=4,
+        Fn_compute_blocks=8,
+        Bn_compute_blocks=0,
+        max_warmup_steps=0,
+        max_cached_steps=20,
+        residual_diff_threshold=0.15,
         do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
@@ -84,13 +88,16 @@ video = pipe(
     negative_prompt="",
     height=height,
     width=width,
-    num_frames=81,
+    num_frames=8,
     num_inference_steps=50,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
 
-stats = cache_dit.summary(pipe)
+stats = cache_dit.summary(
+    pipe.transformer_2,
+    details=True,
+)
 
 time_cost = end - start
 save_path = f"wan2.2.{cache_dit.strify(stats)}.mp4"

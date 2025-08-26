@@ -27,22 +27,26 @@ class CacheStats:
 
 
 def summary(
-    pipe: DiffusionPipeline, details: bool = False, logging: bool = True
-):
+    pipe_or_transformer: DiffusionPipeline | torch.nn.Module,
+    details: bool = False,
+    logging: bool = True,
+) -> CacheStats:
     cache_stats = CacheStats()
-    pipe_cls_name = pipe.__class__.__name__
+    cls_name = pipe_or_transformer.__class__.__name__
+    if isinstance(pipe_or_transformer, DiffusionPipeline):
+        transformer = pipe_or_transformer.transformer
+    else:
+        transformer = pipe_or_transformer
 
-    if hasattr(pipe, "_cache_options"):
-        cache_options = pipe._cache_options
+    if hasattr(transformer, "_cache_options"):
+        cache_options = transformer._cache_options
         cache_stats.cache_options = cache_options
         if logging:
-            print(f"\n🤗Cache Options: {pipe_cls_name}\n\n{cache_options}")
+            print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")
 
-    if hasattr(pipe.transformer, "_cached_steps"):
-        cached_steps: list[int] = pipe.transformer._cached_steps
-        residual_diffs: dict[str, float] = dict(
-            pipe.transformer._residual_diffs
-        )
+    if hasattr(transformer, "_cached_steps"):
+        cached_steps: list[int] = transformer._cached_steps
+        residual_diffs: dict[str, float] = dict(transformer._residual_diffs)
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
 
@@ -57,7 +61,7 @@ def summary(
             qmax = np.max(diffs_values)
 
             print(
-                f"\n⚡️Cache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
+                f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n"
             )
 
             print(
@@ -74,9 +78,7 @@ def summary(
             print("")
 
             if details:
-                print(
-                    f"📚Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
-                )
+                print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
                 pprint(
                     f"Cache Steps: {len(cached_steps)}, {cached_steps}",
                 )
@@ -85,10 +87,10 @@ def summary(
                     compact=True,
                 )
 
-    if hasattr(pipe.transformer, "_cfg_cached_steps"):
-        cfg_cached_steps: list[int] = pipe.transformer._cfg_cached_steps
+    if hasattr(transformer, "_cfg_cached_steps"):
+        cfg_cached_steps: list[int] = transformer._cfg_cached_steps
         cfg_residual_diffs: dict[str, float] = dict(
-            pipe.transformer._cfg_residual_diffs
+            transformer._cfg_residual_diffs
         )
         cache_stats.cfg_cached_steps = cfg_cached_steps
         cache_stats.cfg_residual_diffs = cfg_residual_diffs
@@ -104,7 +106,7 @@ def summary(
             qmax = np.max(cfg_diffs_values)
 
             print(
-                f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {pipe_cls_name}\n"
+                f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n"
             )
 
             print(
@@ -122,7 +124,7 @@ def summary(
 
             if details:
                 print(
-                    f"📚CFG Cache Steps and Residual Diffs Details: {pipe_cls_name}\n"
+                    f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n"
                 )
                 pprint(
                     f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
@@ -150,7 +152,7 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
     cache_type_str = (
         f"DBCACHE_F{cache_options['Fn_compute_blocks']}"
         f"B{cache_options['Bn_compute_blocks']}_"
-        f"W{cache_options['warmup_steps']}"
+        f"W{cache_options['max_warmup_steps']}"
         f"M{max(0, cache_options['max_cached_steps'])}"
         f"MC{max(0, cache_options['max_continuous_cached_steps'])}_"
         f"T{int(cache_options['enable_taylorseer'])}"

@@ -9,7 +9,7 @@ def load_cache_options_from_yaml(yaml_file_path):
 
         required_keys = [
             "cache_type",
-            "warmup_steps",
+            "max_warmup_steps",
             "max_cached_steps",
             "Fn_compute_blocks",
             "Bn_compute_blocks",

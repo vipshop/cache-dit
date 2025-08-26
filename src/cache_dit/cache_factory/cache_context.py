@@ -48,7 +48,7 @@ class DBCacheContext:
     # Other settings
     downsample_factor: int = 1
     num_inference_steps: int = -1  # for future use
-    warmup_steps: int = 0  # DON'T Cache in warmup steps
+    max_warmup_steps: int = 0  # DON'T Cache in warmup steps
     # DON'T Cache if the number of cached steps >= max_cached_steps
     max_cached_steps: int = -1  # for both CFG and non-CFG
     max_continuous_cached_steps: int = -1  # the max continuous cached steps
@@ -111,17 +111,17 @@ class DBCacheContext:
                     "cfg_diff_compute_separate is enabled."
                 )
 
-        if "warmup_steps" not in self.taylorseer_kwargs:
-            # If warmup_steps is not set in taylorseer_kwargs,
-            # set the same as warmup_steps for DBCache
-            self.taylorseer_kwargs["warmup_steps"] = (
-                self.warmup_steps if self.warmup_steps > 0 else 1
+        if "max_warmup_steps" not in self.taylorseer_kwargs:
+            # If max_warmup_steps is not set in taylorseer_kwargs,
+            # set the same as max_warmup_steps for DBCache
+            self.taylorseer_kwargs["max_warmup_steps"] = (
+                self.max_warmup_steps if self.max_warmup_steps > 0 else 1
             )
 
         # Only set n_derivatives as 2 or 3, which is enough for most cases.
         if "n_derivatives" not in self.taylorseer_kwargs:
             self.taylorseer_kwargs["n_derivatives"] = max(
-                2, min(3, self.taylorseer_kwargs["warmup_steps"])
+                2, min(3, self.taylorseer_kwargs["max_warmup_steps"])
             )
 
         if self.enable_taylorseer:
@@ -325,7 +325,7 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def is_in_warmup(self):
-        return self.get_current_step() < self.warmup_steps
+        return self.get_current_step() < self.max_warmup_steps
 
 
 @torch.compiler.disable

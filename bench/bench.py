@@ -24,7 +24,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
-    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--max-warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
     parser.add_argument("--max-continuous-cached-steps", type=int, default=-1)
     parser.add_argument("--gen-device", type=str, default="cpu")
@@ -65,7 +65,7 @@ def main():
                     # Cache context kwargs
                     Fn_compute_blocks=args.Fn_compute_blocks,
                     Bn_compute_blocks=args.Bn_compute_blocks,
-                    warmup_steps=args.warmup_steps,
+                    max_warmup_steps=args.max_warmup_steps,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,
@@ -111,7 +111,7 @@ def main():
                     # Cache context kwargs
                     Fn_compute_blocks=args.Fn_compute_blocks,
                     Bn_compute_blocks=args.Bn_compute_blocks,
-                    warmup_steps=args.warmup_steps,
+                    max_warmup_steps=args.max_warmup_steps,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,

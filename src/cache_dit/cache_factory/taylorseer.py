@@ -6,13 +6,13 @@ class TaylorSeer:
     def __init__(
         self,
         n_derivatives=2,
-        warmup_steps=1,
+        max_warmup_steps=1,
         skip_interval_steps=1,
         compute_step_map=None,
     ):
         self.n_derivatives = n_derivatives
         self.ORDER = n_derivatives + 1
-        self.warmup_steps = warmup_steps
+        self.max_warmup_steps = max_warmup_steps
         self.skip_interval_steps = skip_interval_steps
         self.compute_step_map = compute_step_map
         self.reset_cache()
@@ -32,8 +32,9 @@ class TaylorSeer:
         if self.compute_step_map is not None:
             return self.compute_step_map[step]
         if (
-            step < self.warmup_steps
-            or (step - self.warmup_steps + 1) % self.skip_interval_steps == 0
+            step < self.max_warmup_steps
+            or (step - self.max_warmup_steps + 1) % self.skip_interval_steps
+            == 0
         ):
             return True
         return False

@@ -16,7 +16,7 @@ def get_args():
         help="Number of derivatives to approximate.",
     )
     parser.add_argument(
-        "--warmup_steps",
+        "--max_warmup_steps",
         "--warmup",
         type=int,
         default=2,
@@ -36,7 +36,7 @@ args = get_args()
 
 taylor_seer = TaylorSeer(
     n_derivatives=args.n_derivatives,
-    warmup_steps=args.warmup_steps,
+    max_warmup_steps=args.max_warmup_steps,
     skip_interval_steps=args.skip_interval_steps,
 )
 
