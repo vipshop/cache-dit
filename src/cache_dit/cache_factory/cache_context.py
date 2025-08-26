@@ -47,10 +47,11 @@ class DBCacheContext:
 
     # Other settings
     downsample_factor: int = 1
-    num_inference_steps: int = -1  # un-used now
+    num_inference_steps: int = -1  # for future use
     warmup_steps: int = 0  # DON'T Cache in warmup steps
     # DON'T Cache if the number of cached steps >= max_cached_steps
     max_cached_steps: int = -1  # for both CFG and non-CFG
+    max_continuous_cached_steps: int = -1  # the max continuous cached steps
 
     # Record the steps that have been cached, both cached and non-cache
     executed_steps: int = 0  # cache + non-cache steps pippeline
@@ -89,10 +90,12 @@ class DBCacheContext:
     residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    continuous_cached_steps: int = 0
     cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: DefaultDict[str, float] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    cfg_continuous_cached_steps: int = 0
 
     @torch.compiler.disable
     def __post_init__(self):
@@ -268,10 +271,17 @@ class DBCacheContext:
 
     @torch.compiler.disable
     def add_cached_step(self):
+        curr_cached_step = self.get_current_step()
         if not self.is_separate_cfg_step():
-            self.cached_steps.append(self.get_current_step())
+            prev_cached_step = self.cached_steps[-1]
+            self.cached_steps.append(curr_cached_step)
+            if curr_cached_step - prev_cached_step == 1:
+                self.continuous_cached_steps += 1
         else:
-            self.cfg_cached_steps.append(self.get_current_step())
+            prev_cfg_cached_step = self.cfg_cached_steps[-1]
+            self.cfg_cached_steps.append(curr_cached_step)
+            if curr_cached_step - prev_cfg_cached_step == 1:
+                self.cfg_continuous_cached_steps += 1
 
     @torch.compiler.disable
     def get_cached_steps(self):
@@ -394,6 +404,27 @@ def get_max_cached_steps():
     cache_context = get_current_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.max_cached_steps
+
+
+@torch.compiler.disable
+def get_max_continuous_cached_steps():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.max_continuous_cached_steps
+
+
+@torch.compiler.disable
+def get_continuous_cached_steps():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.continuous_cached_steps
+
+
+@torch.compiler.disable
+def get_cfg_continuous_cached_steps():
+    cache_context = get_current_cache_context()
+    assert cache_context is not None, "cache_context must be set before"
+    return cache_context.cfg_continuous_cached_steps
 
 
 @torch.compiler.disable
@@ -1030,6 +1061,23 @@ def get_can_use_cache(
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"{prefix}, max_cached_steps reached: {max_cached_steps}, "
+                "cannot use cache."
+            )
+        return False
+
+    max_continuous_cached_steps = get_max_continuous_cached_steps()
+    if not is_separate_cfg_step():
+        continuous_cached_steps = get_continuous_cached_steps()
+    else:
+        continuous_cached_steps = get_cfg_continuous_cached_steps()
+
+    if max_continuous_cached_steps >= 0 and (
+        continuous_cached_steps >= max_continuous_cached_steps
+    ):
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"{prefix}, max_continuous_cached_steps "
+                f"reached: {max_continuous_cached_steps}, "
                 "cannot use cache."
             )
         return False
