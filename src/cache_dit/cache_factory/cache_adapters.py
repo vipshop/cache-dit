@@ -578,7 +578,25 @@ class UnifiedCacheAdapter:
                 block_adapter,
                 forward_pattern=forward_pattern,
             )
+            cls.patch_params(
+                block_adapter,
+                forward_pattern=forward_pattern,
+                **cache_context_kwargs,
+            )
         return block_adapter.pipe
+
+    @classmethod
+    def patch_params(
+        cls,
+        block_adapter: BlockAdapter,
+        forward_pattern: ForwardPattern = None,
+        **cache_context_kwargs,
+    ):
+        block_adapter.transformer._forward_pattern = forward_pattern
+        block_adapter.transformer._cache_context_kwargs = cache_context_kwargs
+        block_adapter.pipe.__class__._cache_context_kwargs = (
+            cache_context_kwargs
+        )
 
     @classmethod
     def has_separate_cfg(
@@ -638,7 +656,6 @@ class UnifiedCacheAdapter:
 
         pipe.__class__.__call__ = new_call
         pipe.__class__._is_cached = True
-        pipe.__class__._cache_options = cache_kwargs
         return pipe
 
     @classmethod

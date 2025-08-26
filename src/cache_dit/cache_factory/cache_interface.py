@@ -16,8 +16,9 @@ def enable_cache(
     # Cache context kwargs
     Fn_compute_blocks: int = 8,
     Bn_compute_blocks: int = 0,
-    warmup_steps: int = 8,
+    max_warmup_steps: int = 8,
     max_cached_steps: int = -1,
+    max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
     # Cache CFG or not
     do_separate_cfg: bool = False,
@@ -54,11 +55,14 @@ def enable_cache(
             Further fuses approximate information in the **last n** Transformer blocks to enhance
             prediction accuracy. These blocks act as an auto-scaler for approximate hidden states
             that use residual cache.
-        warmup_steps (`int`, *required*, defaults to 8):
+        max_warmup_steps (`int`, *required*, defaults to 8):
             DBCache does not apply the caching strategy when the number of running steps is less than
             or equal to this value, ensuring the model sufficiently learns basic features during warmup.
         max_cached_steps (`int`, *required*, defaults to -1):
             DBCache disables the caching strategy when the previous cached steps exceed this value to
+            prevent precision degradation.
+        max_continuous_cached_steps (`int`, *required*, defaults to -1):
+            DBCache disables the caching strategy when the previous continous cached steps exceed this value to
             prevent precision degradation.
         residual_diff_threshold (`float`, *required*, defaults to 0.08):
             he value of residual diff threshold, a higher value leads to faster performance at the
@@ -106,8 +110,11 @@ def enable_cache(
     cache_context_kwargs["cache_type"] = CacheType.DBCache
     cache_context_kwargs["Fn_compute_blocks"] = Fn_compute_blocks
     cache_context_kwargs["Bn_compute_blocks"] = Bn_compute_blocks
-    cache_context_kwargs["warmup_steps"] = warmup_steps
+    cache_context_kwargs["max_warmup_steps"] = max_warmup_steps
     cache_context_kwargs["max_cached_steps"] = max_cached_steps
+    cache_context_kwargs["max_continuous_cached_steps"] = (
+        max_continuous_cached_steps
+    )
     cache_context_kwargs["residual_diff_threshold"] = residual_diff_threshold
     cache_context_kwargs["do_separate_cfg"] = do_separate_cfg
     cache_context_kwargs["cfg_compute_first"] = cfg_compute_first

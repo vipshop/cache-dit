@@ -37,7 +37,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-fnbn-v1.png)
 
-- **warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+- **max_warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
 - **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
 - **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
 
@@ -59,7 +59,7 @@ cache_dit.enable_cache(pipe)
 # Custom options, F8B8, higher precision
 cache_dit.enable_cache(
     pipe,
-    warmup_steps=8,      # steps do not cache
+    max_warmup_steps=8,  # steps do not cache
     max_cached_steps=-1, # -1 means no limit
     Fn_compute_blocks=8, # Fn, F8, etc.
     Bn_compute_blocks=8, # Bn, B8, etc.
@@ -118,7 +118,7 @@ cache_dit.enable_cache(
     taylorseer_kwargs={
         "n_derivatives": 2, # default is 2.
     },
-    warmup_steps=3, # prefer: >= n_derivatives + 1
+    max_warmup_steps=3, # prefer: >= n_derivatives + 1
     residual_diff_threshold=0.12
 )
 ``` 
