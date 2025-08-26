@@ -89,7 +89,7 @@ video = pipe(
     negative_prompt="",
     height=height,
     width=width,
-    num_frames=8,
+    num_frames=81,
     num_inference_steps=50,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
