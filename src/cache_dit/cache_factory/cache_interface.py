@@ -23,7 +23,7 @@ def enable_cache(
     # Cache CFG or not
     do_separate_cfg: bool = False,
     cfg_compute_first: bool = False,
-    cfg_diff_compute_separate: bool = False,
+    cfg_diff_compute_separate: bool = True,
     # Hybird TaylorSeer
     enable_taylorseer: bool = False,
     enable_encoder_taylorseer: bool = False,
