@@ -49,6 +49,19 @@ class BlockAdapter:
         default="max", metadata={"allowed_values": ["max", "min"]}
     )
 
+    def __post_init__(self):
+        self.maybe_patch_transformer()
+
+    def maybe_patch_transformer(self):
+        # Process some specificial cases, specific for transformers
+        # that has different forward patterns between single_transformer_blocks
+        # and transformer_blocks , such as Flux (diffusers < 0.35.0).
+        if self.transformer.__class__.__name__.startswith("Flux"):
+            self.transformer = maybe_patch_flux_transformer(
+                self.transformer,
+                blocks=self.blocks,
+            )
+
     @staticmethod
     def auto_block_adapter(
         adapter: "BlockAdapter",
@@ -638,13 +651,6 @@ class UnifiedCacheAdapter:
 
         if getattr(block_adapter.transformer, "_is_cached", False):
             return block_adapter.transformer
-
-        # Firstly, process some specificial cases (TODO: more patches)
-        if block_adapter.transformer.__class__.__name__.startswith("Flux"):
-            block_adapter.transformer = maybe_patch_flux_transformer(
-                block_adapter.transformer,
-                blocks=block_adapter.blocks,
-            )
 
         # Check block forward pattern matching
         assert BlockAdapter.match_blocks_pattern(
