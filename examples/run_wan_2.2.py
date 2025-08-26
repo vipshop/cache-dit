@@ -46,8 +46,8 @@ if args.cache:
             pipe=pipe,
             # Only cache for low-noise transformer (occupancy most timesteps)
             # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
-            # t >= boundary_timestep: transformer, high-noise, lower  diff
-            # t < boundary_timestep: transformer_2, low-noise, higher diff
+            # t >= boundary_timestep: transformer, high-noise
+            # t < boundary_timestep: transformer_2, low-noise
             transformer=pipe.transformer_2,
             blocks=pipe.transformer_2.blocks,
             blocks_name="blocks",
@@ -59,8 +59,8 @@ if args.cache:
         Bn_compute_blocks=0,
         max_warmup_steps=2,
         max_cached_steps=20,
-        residual_diff_threshold=0.08,
         max_continuous_cached_steps=2,
+        residual_diff_threshold=0.08,
         do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
