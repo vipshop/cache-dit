@@ -59,7 +59,7 @@ if args.cache:
         Bn_compute_blocks=0,
         max_warmup_steps=4,
         max_cached_steps=20,
-        residual_diff_threshold=0.15,
+        residual_diff_threshold=0.08,
         max_continuous_cached_steps=2,
         do_separate_cfg=True,
         enable_taylorseer=True,
