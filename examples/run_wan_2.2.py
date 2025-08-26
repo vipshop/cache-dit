@@ -42,16 +42,15 @@ if args.cache:
     from cache_dit import ForwardPattern, BlockAdapter
 
     cache_dit.enable_cache(
+        # Only cache for low-noise transformer (occupancy most timesteps)
+        # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
+        # t >= boundary_timestep: transformer, high-noise
+        # t < boundary_timestep: transformer_2, low-noise
         BlockAdapter(
             pipe=pipe,
-            # Only cache for low-noise transformer (occupancy most timesteps)
-            # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
-            # t >= boundary_timestep: transformer, high-noise
-            # t < boundary_timestep: transformer_2, low-noise
             transformer=pipe.transformer_2,
             blocks=pipe.transformer_2.blocks,
             blocks_name="blocks",
-            dummy_blocks_names=[],
         ),
         forward_pattern=ForwardPattern.Pattern_2,
         # Cache context kwargs
@@ -66,6 +65,12 @@ if args.cache:
         enable_encoder_taylorseer=True,
         taylorseer_order=2,
     )
+
+
+if args.compile:
+    cache_dit.set_compile_configs(descent_tuning=False)
+    pipe.transformer = torch.compile(pipe.transformer)
+    pipe.transformer_2 = torch.compile(pipe.transformer_2)
 
 
 # Wan currently requires installing diffusers from source
