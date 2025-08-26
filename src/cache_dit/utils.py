@@ -38,8 +38,8 @@ def summary(
     else:
         transformer = pipe_or_transformer
 
-    if hasattr(transformer, "_cache_options"):
-        cache_options = transformer._cache_options
+    if hasattr(transformer, "_cache_context_kwargs"):
+        cache_options = transformer._cache_context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
             print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")
