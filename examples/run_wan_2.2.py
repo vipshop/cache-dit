@@ -2,7 +2,7 @@ import os
 import time
 import torch
 import diffusers
-from diffusers import WanPipeline, AutoencoderKLWan
+from diffusers import WanPipeline, AutoencoderKLWan, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
@@ -68,10 +68,11 @@ if args.cache:
 
 
 if args.compile:
+    assert isinstance(pipe.transformer, WanTransformer3DModel)
+    assert isinstance(pipe.transformer_2, WanTransformer3DModel)
     cache_dit.set_compile_configs(descent_tuning=False)
-    pipe.transformer = torch.compile(pipe.transformer)
-    pipe.transformer_2 = torch.compile(pipe.transformer_2)
-
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
 
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
