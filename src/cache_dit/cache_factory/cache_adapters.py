@@ -238,6 +238,8 @@ class BlockAdapter:
             and forward_pattern in ForwardPattern.supported_patterns()
         ), f"Pattern {forward_pattern} is not support now!"
 
+        assert isinstance(transformer_blocks, torch.nn.ModuleList)
+
         pattern_matched_states = []
         for block in transformer_blocks:
             pattern_matched_states.append(
@@ -561,14 +563,10 @@ class UnifiedCacheAdapter:
             )
 
         if BlockAdapter.check_block_adapter(block_adapter):
-            assert isinstance(block_adapter.blocks, torch.nn.ModuleList)
             # Apply cache on pipeline: wrap cache context
             cls.create_context(block_adapter.pipe, **cache_context_kwargs)
             # Apply cache on transformer: mock cached transformer blocks
-            cls.mock_blocks(
-                block_adapter,
-                forward_pattern=forward_pattern,
-            )
+            cls.mock_blocks(block_adapter, forward_pattern=forward_pattern)
         return block_adapter.pipe
 
     @classmethod
@@ -638,16 +636,6 @@ class UnifiedCacheAdapter:
         block_adapter: BlockAdapter,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> torch.nn.Module:
-
-        if (
-            block_adapter.transformer is None
-            or block_adapter.blocks_name is None
-            or block_adapter.blocks is None
-        ):
-            assert block_adapter.auto, (
-                "Please manually set `auto` to True, or, "
-                "manually set transformer blocks configuration."
-            )
 
         if getattr(block_adapter.transformer, "_is_cached", False):
             return block_adapter.transformer
