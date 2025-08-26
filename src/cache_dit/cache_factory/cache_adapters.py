@@ -5,7 +5,7 @@ import unittest
 import functools
 import dataclasses
 
-from typing import Any, Tuple, List
+from typing import Any, Tuple, List, Optional
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.patch.flux import (
@@ -40,6 +40,7 @@ class BlockAdapter:
             "layers",
         ]
     )
+    check_prefixes: bool = True
     allow_suffixes: List[str] = dataclasses.field(
         default_factory=lambda: ["TransformerBlock"]
     )
@@ -48,8 +49,24 @@ class BlockAdapter:
         default="max", metadata={"allowed_values": ["max", "min"]}
     )
 
+    def __post_init__(self):
+        self.maybe_apply_patch()
+
+    def maybe_apply_patch(self):
+        # Process some specificial cases, specific for transformers
+        # that has different forward patterns between single_transformer_blocks
+        # and transformer_blocks , such as Flux (diffusers < 0.35.0).
+        if self.transformer.__class__.__name__.startswith("Flux"):
+            self.transformer = maybe_patch_flux_transformer(
+                self.transformer,
+                blocks=self.blocks,
+            )
+
     @staticmethod
-    def auto_block_adapter(adapter: "BlockAdapter") -> "BlockAdapter":
+    def auto_block_adapter(
+        adapter: "BlockAdapter",
+        forward_pattern: Optional[ForwardPattern] = None,
+    ) -> "BlockAdapter":
         assert adapter.auto, (
             "Please manually set `auto` to True, or, manually "
             "set all the transformer blocks configuration."
@@ -66,8 +83,10 @@ class BlockAdapter:
             transformer=transformer,
             allow_prefixes=adapter.allow_prefixes,
             allow_suffixes=adapter.allow_suffixes,
+            check_prefixes=adapter.check_prefixes,
             check_suffixes=adapter.check_suffixes,
             blocks_policy=adapter.blocks_policy,
+            forward_pattern=forward_pattern,
         )
 
         return BlockAdapter(
@@ -87,6 +106,8 @@ class BlockAdapter:
             and isinstance(adapter.blocks, torch.nn.ModuleList)
         ):
             return True
+
+        logger.warning("Check block adapter failed!")
         return False
 
     @staticmethod
@@ -101,24 +122,30 @@ class BlockAdapter:
         allow_suffixes: List[str] = [
             "TransformerBlock",
         ],
+        check_prefixes: bool = True,
         check_suffixes: bool = False,
         **kwargs,
     ) -> Tuple[torch.nn.ModuleList, str]:
+        # Check prefixes
+        if check_prefixes:
+            blocks_names = []
+            for attr_name in dir(transformer):
+                for prefix in allow_prefixes:
+                    if attr_name.startswith(prefix):
+                        blocks_names.append(attr_name)
+        else:
+            blocks_names = dir(transformer)
 
-        blocks_names = []
-        for attr_name in dir(transformer):
-            for prefix in allow_prefixes:
-                if attr_name.startswith(prefix):
-                    blocks_names.append(attr_name)
-
-        # Type check
+        # Check ModuleList
         valid_names = []
         valid_count = []
+        forward_pattern = kwargs.get("forward_pattern", None)
         for blocks_name in blocks_names:
             if blocks := getattr(transformer, blocks_name, None):
                 if isinstance(blocks, torch.nn.ModuleList):
                     block = blocks[0]
                     block_cls_name = block.__class__.__name__
+                    # Check suffixes
                     if isinstance(block, torch.nn.Module) and (
                         any(
                             (
@@ -128,8 +155,18 @@ class BlockAdapter:
                         )
                         or (not check_suffixes)
                     ):
-                        valid_names.append(blocks_name)
-                        valid_count.append(len(blocks))
+                        # May check forward pattern
+                        if forward_pattern is not None:
+                            if BlockAdapter.match_blocks_pattern(
+                                blocks,
+                                forward_pattern,
+                                logging=False,
+                            ):
+                                valid_names.append(blocks_name)
+                                valid_count.append(len(blocks))
+                        else:
+                            valid_names.append(blocks_name)
+                            valid_count.append(len(blocks))
 
         if not valid_names:
             raise ValueError(
@@ -139,6 +176,7 @@ class BlockAdapter:
         final_name = valid_names[0]
         final_count = valid_count[0]
         block_policy = kwargs.get("blocks_policy", "max")
+
         for blocks_name, count in zip(valid_names, valid_count):
             blocks = getattr(transformer, blocks_name)
             logger.info(
@@ -164,6 +202,67 @@ class BlockAdapter:
         )
 
         return final_blocks, final_name
+
+    @staticmethod
+    def match_block_pattern(
+        block: torch.nn.Module,
+        forward_pattern: ForwardPattern,
+    ) -> bool:
+        assert (
+            forward_pattern.Supported
+            and forward_pattern in ForwardPattern.supported_patterns()
+        ), f"Pattern {forward_pattern} is not support now!"
+
+        forward_parameters = set(
+            inspect.signature(block.forward).parameters.keys()
+        )
+        num_outputs = str(
+            inspect.signature(block.forward).return_annotation
+        ).count("torch.Tensor")
+
+        in_matched = True
+        out_matched = True
+        if num_outputs > 0 and len(forward_pattern.Out) != num_outputs:
+            # output pattern not match
+            out_matched = False
+
+        for required_param in forward_pattern.In:
+            if required_param not in forward_parameters:
+                in_matched = False
+
+        return in_matched and out_matched
+
+    @staticmethod
+    def match_blocks_pattern(
+        transformer_blocks: torch.nn.ModuleList,
+        forward_pattern: ForwardPattern,
+        logging: bool = True,
+    ) -> bool:
+        assert (
+            forward_pattern.Supported
+            and forward_pattern in ForwardPattern.supported_patterns()
+        ), f"Pattern {forward_pattern} is not support now!"
+
+        assert isinstance(transformer_blocks, torch.nn.ModuleList)
+
+        pattern_matched_states = []
+        for block in transformer_blocks:
+            pattern_matched_states.append(
+                BlockAdapter.match_block_pattern(
+                    block,
+                    forward_pattern,
+                )
+            )
+
+        pattern_matched = all(pattern_matched_states)  # all block match
+        if pattern_matched and logging:
+            block_cls_name = transformer_blocks[0].__class__.__name__
+            logger.info(
+                f"Match Block Forward Pattern: {block_cls_name}, {forward_pattern}"
+                f"\nIN:{forward_pattern.In}, OUT:{forward_pattern.Out})"
+            )
+
+        return pattern_matched
 
 
 @dataclasses.dataclass
@@ -463,12 +562,17 @@ class UnifiedCacheAdapter:
     ) -> DiffusionPipeline:
 
         if block_adapter.auto:
-            block_adapter = BlockAdapter.auto_block_adapter(block_adapter)
+            block_adapter = BlockAdapter.auto_block_adapter(
+                block_adapter,
+                forward_pattern,
+            )
 
         if BlockAdapter.check_block_adapter(block_adapter):
-            assert isinstance(block_adapter.blocks, torch.nn.ModuleList)
             # Apply cache on pipeline: wrap cache context
-            cls.create_context(block_adapter.pipe, **cache_context_kwargs)
+            cls.create_context(
+                block_adapter.pipe,
+                **cache_context_kwargs,
+            )
             # Apply cache on transformer: mock cached transformer blocks
             cls.mock_blocks(
                 block_adapter,
@@ -544,28 +648,11 @@ class UnifiedCacheAdapter:
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     ) -> torch.nn.Module:
 
-        if (
-            block_adapter.transformer is None
-            or block_adapter.blocks_name is None
-            or block_adapter.blocks is None
-        ):
-            assert block_adapter.auto, (
-                "Please manually set `auto` to True, or, "
-                "manually set transformer blocks configuration."
-            )
-
         if getattr(block_adapter.transformer, "_is_cached", False):
             return block_adapter.transformer
 
-        # Firstly, process some specificial cases (TODO: more patches)
-        if block_adapter.transformer.__class__.__name__.startswith("Flux"):
-            block_adapter.transformer = maybe_patch_flux_transformer(
-                block_adapter.transformer,
-                blocks=block_adapter.blocks,
-            )
-
         # Check block forward pattern matching
-        assert cls.match_pattern(
+        assert BlockAdapter.match_blocks_pattern(
             block_adapter.blocks,
             forward_pattern=forward_pattern,
         ), (
@@ -615,46 +702,3 @@ class UnifiedCacheAdapter:
         block_adapter.transformer._is_cached = True
 
         return block_adapter.transformer
-
-    @classmethod
-    def match_pattern(
-        cls,
-        transformer_blocks: torch.nn.ModuleList,
-        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
-    ) -> bool:
-        pattern_matched_states = []
-
-        assert (
-            forward_pattern.Supported
-            and forward_pattern in ForwardPattern.supported_patterns()
-        ), f"Pattern {forward_pattern} is not support now!"
-
-        for block in transformer_blocks:
-            forward_parameters = set(
-                inspect.signature(block.forward).parameters.keys()
-            )
-            num_outputs = str(
-                inspect.signature(block.forward).return_annotation
-            ).count("torch.Tensor")
-
-            in_matched = True
-            out_matched = True
-            if num_outputs > 0 and len(forward_pattern.Out) != num_outputs:
-                # output pattern not match
-                out_matched = False
-
-            for required_param in forward_pattern.In:
-                if required_param not in forward_parameters:
-                    in_matched = False
-
-            pattern_matched_states.append(in_matched and out_matched)
-
-        pattern_matched = all(pattern_matched_states)  # all block match
-        if pattern_matched:
-            block_cls_name = transformer_blocks[0].__class__.__name__
-            logger.info(
-                f"Match Block Forward Pattern: {block_cls_name}, {forward_pattern}"
-                f"\nIN:{forward_pattern.In}, OUT:{forward_pattern.Out})"
-            )
-
-        return pattern_matched

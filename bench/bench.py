@@ -56,7 +56,7 @@ def main():
     ).to("cuda")
 
     # Apply cache to the pipeline
-    if args.cache:
+    if args.cache or args.cache_config:
         if not args.use_block_adapter:
             if args.cache_config is None:
                 cache_dit.enable_cache(

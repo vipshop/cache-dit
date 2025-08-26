@@ -744,7 +744,6 @@ def are_two_tensors_similar(
             mean_t1 = t1.abs().mean()
 
         if parallelized:
-            # TODO: May use async op
             dist.all_reduce(mean_diff, op=dist.ReduceOp.AVG)
             dist.all_reduce(mean_t1, op=dist.ReduceOp.AVG)
 
