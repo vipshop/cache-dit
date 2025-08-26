@@ -569,9 +569,15 @@ class UnifiedCacheAdapter:
 
         if BlockAdapter.check_block_adapter(block_adapter):
             # Apply cache on pipeline: wrap cache context
-            cls.create_context(block_adapter.pipe, **cache_context_kwargs)
+            cls.create_context(
+                block_adapter.pipe,
+                **cache_context_kwargs,
+            )
             # Apply cache on transformer: mock cached transformer blocks
-            cls.mock_blocks(block_adapter, forward_pattern=forward_pattern)
+            cls.mock_blocks(
+                block_adapter,
+                forward_pattern=forward_pattern,
+            )
         return block_adapter.pipe
 
     @classmethod
