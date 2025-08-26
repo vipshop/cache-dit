@@ -59,7 +59,7 @@ cache_dit.enable_cache(pipe)
 # Custom options, F8B8, higher precision
 cache_dit.enable_cache(
     pipe,
-    max_warmup_steps=8,      # steps do not cache
+    max_warmup_steps=8,  # steps do not cache
     max_cached_steps=-1, # -1 means no limit
     Fn_compute_blocks=8, # Fn, F8, etc.
     Bn_compute_blocks=8, # Bn, B8, etc.
