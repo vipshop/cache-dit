@@ -6,6 +6,8 @@ from pprint import pprint
 from diffusers import DiffusionPipeline
 
 from cache_dit.logger import init_logger
+from cache_dit.cache_factory import CacheType
+
 
 logger = init_logger(__name__)
 
@@ -137,16 +139,24 @@ def summary(
     return cache_stats
 
 
-def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
-    if not isinstance(pipe_or_stats, CacheStats):
+def strify(pipe_or_stats: DiffusionPipeline | CacheStats | dict):
+    if isinstance(pipe_or_stats, DiffusionPipeline):
         stats = summary(pipe_or_stats, logging=False)
-    else:
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    elif isinstance(pipe_or_stats, CacheStats):
         stats = pipe_or_stats
-
-    cache_options = stats.cache_options
-    cached_steps = len(stats.cached_steps)
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    else:
+        # Assume cache_context_kwargs
+        cache_options = pipe_or_stats
+        cached_steps = None
 
     if not cache_options:
+        return "NONE"
+
+    if cache_options.get("cache_type", None) != CacheType.DBCache:
         return "NONE"
 
     cache_type_str = (
@@ -157,8 +167,10 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
         f"MC{max(0, cache_options['max_continuous_cached_steps'])}_"
         f"T{int(cache_options['enable_taylorseer'])}"
         f"O{cache_options['taylorseer_kwargs']['n_derivatives']}_"
-        f"R{cache_options['residual_diff_threshold']}_"
-        f"S{cached_steps}"  # skiped steps
+        f"R{cache_options['residual_diff_threshold']}"
     )
+
+    if cached_steps:
+        cache_type_str += f"_S{cached_steps}"
 
     return cache_type_str
