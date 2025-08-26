@@ -156,7 +156,7 @@ class BlockAdapter:
                         # May check forward pattern
                         if forward_pattern is not None:
                             if BlockAdapter.match_blocks_pattern(
-                                blocks, forward_pattern
+                                blocks, forward_pattern, logging=False
                             ):
                                 valid_names.append(blocks_name)
                                 valid_count.append(len(blocks))
@@ -232,6 +232,7 @@ class BlockAdapter:
     def match_blocks_pattern(
         transformer_blocks: torch.nn.ModuleList,
         forward_pattern: ForwardPattern,
+        logging: bool = True,
     ) -> bool:
         assert (
             forward_pattern.Supported
@@ -250,7 +251,7 @@ class BlockAdapter:
             )
 
         pattern_matched = all(pattern_matched_states)  # all block match
-        if pattern_matched:
+        if pattern_matched and logging:
             block_cls_name = transformer_blocks[0].__class__.__name__
             logger.info(
                 f"Match Block Forward Pattern: {block_cls_name}, {forward_pattern}"
