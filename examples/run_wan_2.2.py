@@ -2,7 +2,7 @@ import os
 import time
 import torch
 import diffusers
-from diffusers import WanPipeline, AutoencoderKLWan
+from diffusers import WanPipeline, AutoencoderKLWan, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
@@ -42,16 +42,15 @@ if args.cache:
     from cache_dit import ForwardPattern, BlockAdapter
 
     cache_dit.enable_cache(
+        # Only cache for low-noise transformer (occupancy most timesteps)
+        # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
+        # t >= boundary_timestep: transformer, high-noise
+        # t < boundary_timestep: transformer_2, low-noise
         BlockAdapter(
             pipe=pipe,
-            # Only cache for low-noise transformer (occupancy most timesteps)
-            # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
-            # t >= boundary_timestep: transformer, high-noise, lower  diff
-            # t < boundary_timestep: transformer_2, low-noise, higher diff
             transformer=pipe.transformer_2,
             blocks=pipe.transformer_2.blocks,
             blocks_name="blocks",
-            dummy_blocks_names=[],
         ),
         forward_pattern=ForwardPattern.Pattern_2,
         # Cache context kwargs
@@ -59,14 +58,13 @@ if args.cache:
         Bn_compute_blocks=0,
         max_warmup_steps=2,
         max_cached_steps=20,
-        residual_diff_threshold=0.08,
         max_continuous_cached_steps=2,
+        residual_diff_threshold=0.08,
         do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=2,
     )
-
 
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
@@ -79,6 +77,28 @@ else:
         "for vae tiling and slicing, please install diffusers "
         "from source."
     )
+
+if args.compile:
+    assert isinstance(pipe.transformer, WanTransformer3DModel)
+    assert isinstance(pipe.transformer_2, WanTransformer3DModel)
+    cache_dit.set_compile_configs(descent_tuning=False)
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
+
+    # warmup
+    video = pipe(
+        prompt=(
+            "An astronaut dancing vigorously on the moon with earth "
+            "flying past in the background, hyperrealistic"
+        ),
+        negative_prompt="",
+        height=height,
+        width=width,
+        num_frames=81,
+        num_inference_steps=50,
+        generator=torch.Generator("cpu").manual_seed(0),
+    ).frames[0]
+
 
 start = time.time()
 video = pipe(
