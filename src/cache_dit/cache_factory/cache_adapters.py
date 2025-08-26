@@ -50,9 +50,9 @@ class BlockAdapter:
     )
 
     def __post_init__(self):
-        self.maybe_patch_transformer()
+        self.maybe_apply_patch()
 
-    def maybe_patch_transformer(self):
+    def maybe_apply_patch(self):
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
@@ -106,6 +106,8 @@ class BlockAdapter:
             and isinstance(adapter.blocks, torch.nn.ModuleList)
         ):
             return True
+
+        logger.warning("Check block adapter failed!")
         return False
 
     @staticmethod
@@ -156,7 +158,9 @@ class BlockAdapter:
                         # May check forward pattern
                         if forward_pattern is not None:
                             if BlockAdapter.match_blocks_pattern(
-                                blocks, forward_pattern, logging=False
+                                blocks,
+                                forward_pattern,
+                                logging=False,
                             ):
                                 valid_names.append(blocks_name)
                                 valid_count.append(len(blocks))
