@@ -57,7 +57,7 @@ if args.cache:
         # Cache context kwargs
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
-        max_warmup_steps=4,
+        max_warmup_steps=2,
         max_cached_steps=20,
         residual_diff_threshold=0.08,
         max_continuous_cached_steps=2,
