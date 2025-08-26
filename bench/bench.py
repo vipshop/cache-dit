@@ -26,6 +26,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--max-cached-steps", type=int, default=-1)
+    parser.add_argument("--max-continuous-cached-steps", type=int, default=-1)
     parser.add_argument("--gen-device", type=str, default="cpu")
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)
@@ -66,6 +67,7 @@ def main():
                     Bn_compute_blocks=args.Bn_compute_blocks,
                     warmup_steps=args.warmup_steps,
                     max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,
                     l1_hidden_states_diff_threshold=(
                         None if not args.l1_diff else args.rdt
@@ -111,6 +113,7 @@ def main():
                     Bn_compute_blocks=args.Bn_compute_blocks,
                     warmup_steps=args.warmup_steps,
                     max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,
                     l1_hidden_states_diff_threshold=(
                         None if not args.l1_diff else args.rdt

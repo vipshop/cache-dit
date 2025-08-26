@@ -149,9 +149,10 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats):
 
     cache_type_str = (
         f"DBCACHE_F{cache_options['Fn_compute_blocks']}"
-        f"B{cache_options['Bn_compute_blocks']}"
+        f"B{cache_options['Bn_compute_blocks']}_"
         f"W{cache_options['warmup_steps']}"
         f"M{max(0, cache_options['max_cached_steps'])}"
+        f"MC{max(0, cache_options['max_continuous_cached_steps'])}_"
         f"T{int(cache_options['enable_taylorseer'])}"
         f"O{cache_options['taylorseer_kwargs']['n_derivatives']}_"
         f"R{cache_options['residual_diff_threshold']}_"

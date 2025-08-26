@@ -273,15 +273,17 @@ class DBCacheContext:
     def add_cached_step(self):
         curr_cached_step = self.get_current_step()
         if not self.is_separate_cfg_step():
-            prev_cached_step = self.cached_steps[-1]
+            if self.cached_steps:
+                prev_cached_step = self.cached_steps[-1]
+                if curr_cached_step - prev_cached_step == 1:
+                    self.continuous_cached_steps += 1
             self.cached_steps.append(curr_cached_step)
-            if curr_cached_step - prev_cached_step == 1:
-                self.continuous_cached_steps += 1
         else:
-            prev_cfg_cached_step = self.cfg_cached_steps[-1]
+            if self.cfg_cached_steps:
+                prev_cfg_cached_step = self.cfg_cached_steps[-1]
+                if curr_cached_step - prev_cfg_cached_step == 1:
+                    self.cfg_continuous_cached_steps += 1
             self.cfg_cached_steps.append(curr_cached_step)
-            if curr_cached_step - prev_cfg_cached_step == 1:
-                self.cfg_continuous_cached_steps += 1
 
     @torch.compiler.disable
     def get_cached_steps(self):
@@ -1051,6 +1053,7 @@ def get_can_use_cache(
     if is_in_warmup():
         return False
 
+    # max cached steps
     max_cached_steps = get_max_cached_steps()
     if not is_separate_cfg_step():
         cached_steps = get_cached_steps()
@@ -1061,10 +1064,11 @@ def get_can_use_cache(
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"{prefix}, max_cached_steps reached: {max_cached_steps}, "
-                "cannot use cache."
+                "can not use cache."
             )
         return False
 
+    # max continuous cached steps
     max_continuous_cached_steps = get_max_continuous_cached_steps()
     if not is_separate_cfg_step():
         continuous_cached_steps = get_continuous_cached_steps()
@@ -1078,8 +1082,14 @@ def get_can_use_cache(
             logger.debug(
                 f"{prefix}, max_continuous_cached_steps "
                 f"reached: {max_continuous_cached_steps}, "
-                "cannot use cache."
+                "can not use cache."
             )
+        # reset continuous cached steps stats
+        cache_context = get_current_cache_context()
+        if not is_separate_cfg_step():
+            cache_context.continuous_cached_steps = 0
+        else:
+            cache_context.cfg_continuous_cached_steps = 0
         return False
 
     if threshold is None or threshold <= 0.0:
