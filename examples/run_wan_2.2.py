@@ -66,14 +66,6 @@ if args.cache:
         taylorseer_order=2,
     )
 
-
-if args.compile:
-    assert isinstance(pipe.transformer, WanTransformer3DModel)
-    assert isinstance(pipe.transformer_2, WanTransformer3DModel)
-    cache_dit.set_compile_configs(descent_tuning=False)
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
-    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
-
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 if diffusers.__version__ >= "0.34.0":
@@ -85,6 +77,28 @@ else:
         "for vae tiling and slicing, please install diffusers "
         "from source."
     )
+
+if args.compile:
+    assert isinstance(pipe.transformer, WanTransformer3DModel)
+    assert isinstance(pipe.transformer_2, WanTransformer3DModel)
+    cache_dit.set_compile_configs(descent_tuning=False)
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
+
+    # warmup
+    video = pipe(
+        prompt=(
+            "An astronaut dancing vigorously on the moon with earth "
+            "flying past in the background, hyperrealistic"
+        ),
+        negative_prompt="",
+        height=height,
+        width=width,
+        num_frames=81,
+        num_inference_steps=50,
+        generator=torch.Generator("cpu").manual_seed(0),
+    ).frames[0]
+
 
 start = time.time()
 video = pipe(
