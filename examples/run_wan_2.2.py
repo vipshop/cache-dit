@@ -78,12 +78,24 @@ else:
         "from source."
     )
 
+assert isinstance(pipe.transformer, WanTransformer3DModel)
+assert isinstance(pipe.transformer_2, WanTransformer3DModel)
+
+if args.fp8:
+    from utils import quantize_fp8
+
+    print("Enable FP8 Quntization for Wan2.2")
+    pipe.transformer = quantize_fp8(pipe.transformer)
+    pipe.transformer_2 = quantize_fp8(pipe.transformer_2)
+
 if args.compile:
-    assert isinstance(pipe.transformer, WanTransformer3DModel)
-    assert isinstance(pipe.transformer_2, WanTransformer3DModel)
     cache_dit.set_compile_configs(descent_tuning=False)
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
-    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
+    if not args.fp8:
+        pipe.transformer.compile_repeated_blocks(fullgraph=True)
+        pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
+    else:
+        pipe.transformer = torch.compile(pipe.transformer)
+        pipe.transformer_2 = torch.compile(pipe.transformer_2)
 
     # warmup
     video = pipe(
@@ -91,7 +103,6 @@ if args.compile:
             "An astronaut dancing vigorously on the moon with earth "
             "flying past in the background, hyperrealistic"
         ),
-        negative_prompt="",
         height=height,
         width=width,
         num_frames=81,
