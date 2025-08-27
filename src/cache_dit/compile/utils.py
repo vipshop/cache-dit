@@ -24,7 +24,7 @@ def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
 
 
 def set_compile_configs(
-    descent_tuning: bool = True,
+    descent_tuning: bool = False,
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
     use_fast_math: bool = False,

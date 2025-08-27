@@ -328,6 +328,33 @@ class DBCacheContext:
         return self.get_current_step() < self.max_warmup_steps
 
 
+# TODO: Support context manager for different cache_context
+
+
+def create_cache_context(*args, **kwargs):
+    return DBCacheContext(*args, **kwargs)
+
+
+def get_current_cache_context():
+    return _current_cache_context
+
+
+def set_current_cache_context(cache_context=None):
+    global _current_cache_context
+    _current_cache_context = cache_context
+
+
+@contextlib.contextmanager
+def cache_context(cache_context):
+    global _current_cache_context
+    old_cache_context = _current_cache_context
+    _current_cache_context = cache_context
+    try:
+        yield
+    finally:
+        _current_cache_context = old_cache_context
+
+
 @torch.compiler.disable
 def get_residual_diff_threshold():
     cache_context = get_current_cache_context()
@@ -657,19 +684,6 @@ def cfg_diff_compute_separate():
 _current_cache_context: DBCacheContext = None
 
 
-def create_cache_context(*args, **kwargs):
-    return DBCacheContext(*args, **kwargs)
-
-
-def get_current_cache_context():
-    return _current_cache_context
-
-
-def set_current_cache_context(cache_context=None):
-    global _current_cache_context
-    _current_cache_context = cache_context
-
-
 def collect_cache_kwargs(default_attrs: dict, **kwargs):
     # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
     # default_attrs: specific settings for different pipelines
@@ -714,17 +728,6 @@ def collect_cache_kwargs(default_attrs: dict, **kwargs):
         logger.debug(f"Collected DBCache kwargs: {cache_kwargs}")
 
     return cache_kwargs, kwargs
-
-
-@contextlib.contextmanager
-def cache_context(cache_context):
-    global _current_cache_context
-    old_cache_context = _current_cache_context
-    _current_cache_context = cache_context
-    try:
-        yield
-    finally:
-        _current_cache_context = old_cache_context
 
 
 @torch.compiler.disable
