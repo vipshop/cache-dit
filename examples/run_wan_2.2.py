@@ -89,7 +89,7 @@ if args.fp8:
     pipe.transformer_2 = quantize_fp8(pipe.transformer_2)
 
 if args.compile:
-    cache_dit.set_compile_configs(descent_tuning=False)
+    cache_dit.set_compile_configs()
     if not args.fp8:
         pipe.transformer.compile_repeated_blocks(fullgraph=True)
         pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
