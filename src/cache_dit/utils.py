@@ -5,6 +5,7 @@ import numpy as np
 from pprint import pprint
 from diffusers import DiffusionPipeline
 
+from typing import Dict, Any
 from cache_dit.logger import init_logger
 from cache_dit.cache_factory import CacheType
 
@@ -139,7 +140,9 @@ def summary(
     return cache_stats
 
 
-def strify(pipe_or_stats: DiffusionPipeline | CacheStats | dict):
+def strify(
+    pipe_or_stats: DiffusionPipeline | CacheStats | Dict[str, Any],
+) -> str:
     if isinstance(pipe_or_stats, DiffusionPipeline):
         stats = summary(pipe_or_stats, logging=False)
         cache_options = stats.cache_options
@@ -148,10 +151,15 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats | dict):
         stats = pipe_or_stats
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
-    else:
+    elif isinstance(pipe_or_stats, dict):
         # Assume cache_context_kwargs
         cache_options = pipe_or_stats
         cached_steps = None
+    else:
+        raise ValueError(
+            "Please set pipe_or_stats param as one of: "
+            "DiffusionPipeline | CacheStats | Dict[str, Any]"
+        )
 
     if not cache_options:
         return "NONE"
