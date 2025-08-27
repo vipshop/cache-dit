@@ -2,11 +2,6 @@ import gc
 import time
 import torch
 import argparse
-from torchao.quantization import (
-    float8_dynamic_activation_float8_weight,
-    PerRow,
-    quantize_,
-)
 
 
 def get_gpu_memory_in_gib():
@@ -43,8 +38,14 @@ def quantize_fp8(
         8,
         9,
     ), "FP8 is not supported for current device."
+    from torchao.quantization import (
+        float8_dynamic_activation_float8_weight,
+        PerTensor,
+        quantize_,
+    )
+
     quantization_fn = float8_dynamic_activation_float8_weight(
-        granularity=((PerRow(), PerRow()))
+        granularity=((PerTensor(), PerTensor()))
     )
     quantize_(transformer, quantization_fn, filter_fn=filter_fn)
     force_empty_cache()
