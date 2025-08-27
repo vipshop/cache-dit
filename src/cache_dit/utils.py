@@ -159,15 +159,24 @@ def strify(pipe_or_stats: DiffusionPipeline | CacheStats | dict):
     if cache_options.get("cache_type", None) != CacheType.DBCache:
         return "NONE"
 
+    def get_taylorseer_order():
+        taylorseer_order = 0
+        if "taylorseer_kwargs" in cache_options:
+            if "n_derivatives" in cache_options["taylorseer_kwargs"]:
+                taylorseer_order = cache_options["taylorseer_kwargs"][
+                    "n_derivatives"
+                ]
+        return taylorseer_order
+
     cache_type_str = (
-        f"DBCACHE_F{cache_options['Fn_compute_blocks']}"
-        f"B{cache_options['Bn_compute_blocks']}_"
-        f"W{cache_options['max_warmup_steps']}"
-        f"M{max(0, cache_options['max_cached_steps'])}"
-        f"MC{max(0, cache_options['max_continuous_cached_steps'])}_"
-        f"T{int(cache_options['enable_taylorseer'])}"
-        f"O{cache_options['taylorseer_kwargs']['n_derivatives']}_"
-        f"R{cache_options['residual_diff_threshold']}"
+        f"DBCACHE_F{cache_options.get('Fn_compute_blocks', 1)}"
+        f"B{cache_options.get('Bn_compute_blocks', 0)}_"
+        f"W{cache_options.get('max_warmup_steps', 0)}"
+        f"M{max(0, cache_options.get('max_cached_steps', -1))}"
+        f"MC{max(0, cache_options.get('max_continuous_cached_steps', -1))}_"
+        f"T{int(cache_options.get('enable_taylorseer', False))}"
+        f"O{get_taylorseer_order()}_"
+        f"R{cache_options.get('residual_diff_threshold', 0.08)}"
     )
 
     if cached_steps:
