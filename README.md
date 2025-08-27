@@ -253,13 +253,11 @@ cache_dit.enable_cache(
     enable_encoder_taylorseer=True,
     # Taylorseer cache type cache be hidden_states or residual.
     taylorseer_cache_type="residual",
-    # Higher values of n_derivatives will lead to longer computation time
-    taylorseer_kwargs={
-        "n_derivatives": 2, # default is 2.
-    },
-    max_warmup_steps=3, # prefer: >= n_derivatives + 1
+    # Higher values of order will lead to longer computation time
+    taylorseer_order=2, # default is 2.
+    max_warmup_steps=3, # prefer: >= order + 1
     residual_diff_threshold=0.12
-)
+)s
 ``` 
 
 > [!Important]
