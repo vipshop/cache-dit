@@ -2,6 +2,7 @@ import gc
 import time
 import torch
 import argparse
+from typing import Callable
 
 
 def GiB():
@@ -29,8 +30,8 @@ def force_empty_cache():
 
 def quantize_fp8(
     transformer: torch.nn.Module,
-    filter_fn=None,
     per_row: bool = True,
+    filter_fn: Callable = None,
 ) -> torch.nn.Module:
     assert torch.cuda.get_device_capability() >= (
         8,
