@@ -27,9 +27,6 @@ pipe = WanPipeline.from_pretrained(
         "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
     ),
 )
-# ensure bfloat16
-pipe.transformer.to(torch.bfloat16)
-pipe.transformer_2.to(torch.bfloat16)
 
 # flow shift should be 3.0 for 480p images, 5.0 for 720p images
 if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
@@ -88,6 +85,9 @@ if args.fp8:
     from utils import quantize_fp8
 
     print("Enable FP8 Quntization for Wan2.2")
+    # ensure bfloat16
+    pipe.transformer.to(torch.bfloat16)
+    pipe.transformer_2.to(torch.bfloat16)
     pipe.transformer = quantize_fp8(pipe.transformer)
     pipe.transformer_2 = quantize_fp8(pipe.transformer_2)
 
