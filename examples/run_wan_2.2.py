@@ -133,7 +133,10 @@ stats = cache_dit.summary(
 )
 
 time_cost = end - start
-save_path = f"wan2.2.{cache_dit.strify(stats)}.mp4"
+save_path = (
+    f"wan2.2.C{int(args.compile)}_Q{int(args.fp8)}_"
+    f"{cache_dit.strify(stats)}.mp4"
+)
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)
