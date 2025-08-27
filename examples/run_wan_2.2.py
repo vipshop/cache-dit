@@ -27,6 +27,9 @@ pipe = WanPipeline.from_pretrained(
         "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
     ),
 )
+# ensure bfloat16
+pipe.transformer.to(torch.bfloat16)
+pipe.transformer_2.to(torch.bfloat16)
 
 # flow shift should be 3.0 for 480p images, 5.0 for 720p images
 if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
