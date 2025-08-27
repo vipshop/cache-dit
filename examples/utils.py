@@ -4,7 +4,7 @@ import torch
 import argparse
 
 
-def get_gpu_memory_in_gib():
+def GiB():
     if not torch.cuda.is_available():
         return 0
 
@@ -16,10 +16,6 @@ def get_gpu_memory_in_gib():
         return int(total_memory_gib)
     except Exception:
         return 0
-
-
-def GiB():
-    return get_gpu_memory_in_gib()
 
 
 def force_empty_cache():
