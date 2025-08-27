@@ -174,6 +174,8 @@ def strify(
                 taylorseer_order = cache_options["taylorseer_kwargs"][
                     "n_derivatives"
                 ]
+        elif "taylorseer_order" in cache_options:
+            taylorseer_order = cache_options["taylorseer_order"]
         return taylorseer_order
 
     cache_type_str = (
