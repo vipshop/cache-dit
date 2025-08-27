@@ -28,7 +28,9 @@ def force_empty_cache():
 
 
 def quantize_fp8(
-    transformer: torch.nn.Module, filter_fn=None
+    transformer: torch.nn.Module,
+    filter_fn=None,
+    per_row: bool = True,
 ) -> torch.nn.Module:
     assert torch.cuda.get_device_capability() >= (
         8,
@@ -37,11 +39,17 @@ def quantize_fp8(
     from torchao.quantization import (
         float8_dynamic_activation_float8_weight,
         PerTensor,
+        PerRow,
         quantize_,
     )
 
+    # Ensure bfloat16 for per_row
+    transformer.to(torch.bfloat16)
+
     quantization_fn = float8_dynamic_activation_float8_weight(
-        granularity=((PerTensor(), PerTensor()))
+        granularity=(
+            ((PerRow(), PerRow())) if per_row else ((PerTensor(), PerTensor()))
+        )
     )
     quantize_(transformer, quantization_fn, filter_fn=filter_fn)
     force_empty_cache()

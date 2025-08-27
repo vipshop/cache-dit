@@ -85,7 +85,6 @@ if args.fp8:
     from utils import quantize_fp8
 
     print("Enable FP8 Quntization for Wan2.2")
-    # ensure bfloat16
     pipe.transformer = quantize_fp8(pipe.transformer)
     pipe.transformer_2 = quantize_fp8(pipe.transformer_2)
 
