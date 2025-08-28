@@ -81,7 +81,7 @@ if args.quantize:
             "norm_out",
             "proj_out",
         ],
-        weight_dtype=torch.float8_e5m2,
+        weight_dtype=torch.float8_e4m3fn,
         activation_dtype=torch.float8_e5m2,
     )
 
