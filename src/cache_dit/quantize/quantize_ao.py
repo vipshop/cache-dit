@@ -135,6 +135,7 @@ def quantize_ao(
                 raise ValueError(
                     f"quant_type: {quant_type} is not supported now!"
                 )
+
         except ImportError as e:
             e.msg += (
                 f"{quant_type} is not supported in torchao backend now! "
