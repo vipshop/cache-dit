@@ -71,6 +71,7 @@ if args.quantize:
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
+        per_row=False,
         exclude_layers=[
             "img_in",
             "txt_in",
