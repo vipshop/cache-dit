@@ -40,8 +40,6 @@ def quantize_ao(
             9,
         ), "FP8 is not supported for current device."
 
-    from torchao.quantization import quantize_
-
     num_quant_linear = 0
     num_skip_linear = 0
     num_linear_layers = 0
@@ -154,6 +152,8 @@ def quantize_ao(
             raise e
 
         return quantization_fn
+
+    from torchao.quantization import quantize_
 
     quantize_(
         module,
