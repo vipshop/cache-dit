@@ -941,7 +941,11 @@ def get_Bn_buffer(prefix: str = "Bn"):
 
 
 @torch.compiler.disable
-def set_Bn_encoder_buffer(buffer: torch.Tensor, prefix: str = "Bn"):
+def set_Bn_encoder_buffer(buffer: torch.Tensor | None, prefix: str = "Bn"):
+    # DON'T set None Buffer
+    if buffer is None:
+        return
+
     # This buffer is use for encoder hidden states approximation.
     if is_encoder_taylorseer_enabled():
         # taylorseer, encoder_taylorseer

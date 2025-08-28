@@ -60,7 +60,7 @@ class ForwardPattern(Enum):
         True,  # Forward_H_only
         ("hidden_states",),  # In
         ("hidden_states", "encoder_hidden_states"),  # Out
-        False,  # Supported
+        True,  # Supported
     )
 
     Pattern_5 = (
@@ -69,7 +69,7 @@ class ForwardPattern(Enum):
         True,  # Forward_H_only
         ("hidden_states",),  # In
         ("encoder_hidden_states", "hidden_states"),  # Out
-        False,  # Supported
+        True,  # Supported
     )
 
     @staticmethod
@@ -79,4 +79,6 @@ class ForwardPattern(Enum):
             ForwardPattern.Pattern_1,
             ForwardPattern.Pattern_2,
             ForwardPattern.Pattern_3,
+            ForwardPattern.Pattern_4,
+            ForwardPattern.Pattern_5,
         ]
