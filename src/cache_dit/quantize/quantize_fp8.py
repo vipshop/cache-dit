@@ -39,17 +39,22 @@ def quantize_fp8(
                         f"Skip Quantization: {name} -> "
                         f"pattern<{exclude_name}>"
                     )
+
                     num_skip_linear += 1
                     return False
+
             if per_row and m.weight.dtype != torch.bfloat16:
                 logger.info(
                     f"Skip Quantization: {name} -> "
                     f"pattern<dtype({m.weight.dtype})!=bfloat16>"
                 )
+
                 num_skip_linear += 1
                 return False
+
             num_quant_linear += 1
             return True
+
         return False
 
     quantization_fn = float8_dynamic_activation_float8_weight(
