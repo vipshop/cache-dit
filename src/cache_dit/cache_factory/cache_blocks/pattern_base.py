@@ -4,7 +4,9 @@ import torch.distributed as dist
 
 from cache_dit.cache_factory import cache_context
 from cache_dit.cache_factory import ForwardPattern
-from cache_dit.cache_factory.cache_blocks.utils import patch_cached_stats
+from cache_dit.cache_factory.cache_blocks.utils import (
+    patch_cached_stats,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
