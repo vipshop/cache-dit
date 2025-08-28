@@ -32,19 +32,23 @@ def quantize_fp8(
         nonlocal num_quant_linear, num_skip_linear, num_linear_layers, num_layers
         num_layers += 1
         if isinstance(m, torch.nn.Linear):
+            num_linear_layers += 1
             for exclude_name in exclude_layers:
                 if exclude_name in name:
                     logger.info(
                         f"Skip Quantization: {name} -> "
                         f"pattern<{exclude_name}>"
                     )
+                    num_skip_linear += 1
                     return False
             if per_row and m.weight.dtype != torch.bfloat16:
                 logger.info(
                     f"Skip Quantization: {name} -> "
                     f"pattern<dtype({m.weight.dtype})!=bfloat16>"
                 )
+                num_skip_linear += 1
                 return False
+            num_quant_linear += 1
             return True
         return False
 
