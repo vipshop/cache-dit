@@ -1,7 +1,8 @@
-import gc
-import time
 import torch
 import argparse
+from cache_dit import init_logger
+
+logger = init_logger(__name__)
 
 
 def GiB():
@@ -18,39 +19,24 @@ def GiB():
         return 0
 
 
-def force_empty_cache():
-    time.sleep(1)
-    gc.collect()
-    torch.cuda.empty_cache()
-    time.sleep(1)
-    gc.collect()
-    torch.cuda.empty_cache()
-
-
-def quantize_fp8(
-    transformer: torch.nn.Module, filter_fn=None
-) -> torch.nn.Module:
-    assert torch.cuda.get_device_capability() >= (
-        8,
-        9,
-    ), "FP8 is not supported for current device."
-    from torchao.quantization import (
-        float8_dynamic_activation_float8_weight,
-        PerTensor,
-        quantize_,
-    )
-
-    quantization_fn = float8_dynamic_activation_float8_weight(
-        granularity=((PerTensor(), PerTensor()))
-    )
-    quantize_(transformer, quantization_fn, filter_fn=filter_fn)
-    force_empty_cache()
-    return transformer
-
-
 def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--fp8", action="store_true", default=False)
+    parser.add_argument("--quantize", "-q", action="store_true", default=False)
+    parser.add_argument(
+        "--quantize-type",
+        "-type",
+        type=str,
+        default="fp8_w8a8_dq",
+        choices=[
+            "fp8_w8a8_dq",
+            "fp8_w8a16_wo",
+            "int8_w8a8_dq",
+            "int8_w8a16_wo",
+            "int4_w4a8_dq",
+            "int4_w4a4_dq",
+            "int4_w4a16_wo",
+        ],
+    )
     return parser.parse_args()

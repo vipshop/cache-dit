@@ -81,22 +81,25 @@ else:
 assert isinstance(pipe.transformer, WanTransformer3DModel)
 assert isinstance(pipe.transformer_2, WanTransformer3DModel)
 
-if args.fp8:
-    from utils import quantize_fp8
+if args.quantize:
+    assert isinstance(args.quantize_type, str)
+    if args.quantize_type.endswith("wo"):  # weight only
+        pipe.transformer = cache_dit.quantize(
+            pipe.transformer,
+            quant_type=args.quantize_type,
+        )
+    # We only apply activation quantization (default: FP8 DQ)
+    # for low-noise transformer to avoid non-trivial precision
+    # downgrade.
+    pipe.transformer_2 = cache_dit.quantize(
+        pipe.transformer_2,
+        quant_type=args.quantize_type,
+    )
 
-    print("Enable FP8 Quntization for Wan2.2")
-    # ensure bfloat16
-    pipe.transformer = quantize_fp8(pipe.transformer)
-    pipe.transformer_2 = quantize_fp8(pipe.transformer_2)
-
-if args.compile:
+if args.compile or args.quantize:
     cache_dit.set_compile_configs()
-    if not args.fp8:
-        pipe.transformer.compile_repeated_blocks(fullgraph=True)
-        pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
-    else:
-        pipe.transformer = torch.compile(pipe.transformer)
-        pipe.transformer_2 = torch.compile(pipe.transformer_2)
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
 
     # warmup
     video = pipe(
@@ -134,7 +137,8 @@ stats = cache_dit.summary(
 
 time_cost = end - start
 save_path = (
-    f"wan2.2.C{int(args.compile)}_Q{int(args.fp8)}_"
+    f"wan2.2.C{int(args.compile)}_Q{int(args.quantize)}"
+    f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
     f"{cache_dit.strify(stats)}.mp4"
 )
 print(f"Time cost: {time_cost:.2f}s")
