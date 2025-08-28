@@ -8,7 +8,7 @@ logger = init_logger(__name__)
 
 
 def quantize_ao(
-    transformer: torch.nn.Module,
+    module: torch.nn.Module,
     quant_type: str = "fp8_w8a8_dq",
     per_row: bool = True,
     exclude_layers: List[str] = [
@@ -18,9 +18,11 @@ def quantize_ao(
     filter_fn: Optional[Callable] = None,
     **kwargs,
 ) -> torch.nn.Module:
-    # Apply FP8 DQ for Transformer and skip any `embed` modules
+    # Apply FP8 DQ for module and skip any `embed` modules
     # by default to avoid non-trivial precision downgrade. Please
     # set `exclude_layers` as `[]` if you don't want this behavior.
+    assert isinstance(module, torch.nn.Module)
+
     quant_type = quant_type.lower()
     assert quant_type in (
         "fp8_w8a8_dq",
@@ -146,7 +148,7 @@ def quantize_ao(
         return quantization_fn
 
     quantize_(
-        transformer,
+        module,
         _quantization_fn(),
         filter_fn=_filter_fn if filter_fn is None else filter_fn,
         **kwargs,
@@ -160,7 +162,7 @@ def quantize_ao(
         f"Total     Linear Layers: {num_linear_layers:>5}\n"
         f"Total     (all)  Layers: {num_layers:>5}"
     )
-    return transformer
+    return module
 
 
 def force_empty_cache():
