@@ -30,7 +30,7 @@ def quantize_ao(
         "int4_w4a8_dq",
         "int4_w4a4_dq",
         "int4_w4a16_wo",
-    )
+    ), f"{quant_type} is not supported for torchao backend now!"
     if "fp8" in quant_type:
         assert torch.cuda.get_device_capability() >= (
             8,
