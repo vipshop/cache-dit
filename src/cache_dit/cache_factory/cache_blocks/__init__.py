@@ -1,8 +1,8 @@
 from cache_dit.cache_factory.cache_blocks.pattern_0_1_2 import (
     DBCachedTransformerBlocks_Pattern_0_1_2,
 )
-from cache_dit.cache_factory.cache_blocks.pattern_3 import (
-    DBCachedTransformerBlocks_Pattern_3,
+from cache_dit.cache_factory.cache_blocks.pattern_3_4_5 import (
+    DBCachedTransformerBlocks_Pattern_3_4_5,
 )
 
 
@@ -17,8 +17,8 @@ class DBCachedTransformerBlocks:
             return DBCachedTransformerBlocks_Pattern_0_1_2(*args, **kwargs)
         elif (
             forward_pattern
-            in DBCachedTransformerBlocks_Pattern_3._supported_patterns
+            in DBCachedTransformerBlocks_Pattern_3_4_5._supported_patterns
         ):
-            return DBCachedTransformerBlocks_Pattern_3(*args, **kwargs)
+            return DBCachedTransformerBlocks_Pattern_3_4_5(*args, **kwargs)
         else:
             raise ValueError(f"Pattern {forward_pattern} is not supported now!")

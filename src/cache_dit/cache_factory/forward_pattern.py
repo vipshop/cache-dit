@@ -19,39 +19,57 @@ class ForwardPattern(Enum):
         self.Supported = Supported
 
     Pattern_0 = (
-        True,
-        False,
-        False,
-        ("hidden_states", "encoder_hidden_states"),
-        ("hidden_states", "encoder_hidden_states"),
-        True,
+        True,  # Return_H_First
+        False,  # Return_H_Only
+        False,  # Forward_H_only
+        ("hidden_states", "encoder_hidden_states"),  # In
+        ("hidden_states", "encoder_hidden_states"),  # Out
+        True,  # Supported
     )
 
     Pattern_1 = (
-        False,
-        False,
-        False,
-        ("hidden_states", "encoder_hidden_states"),
-        ("encoder_hidden_states", "hidden_states"),
-        True,
+        False,  # Return_H_First
+        False,  # Return_H_Only
+        False,  # Forward_H_only
+        ("hidden_states", "encoder_hidden_states"),  # In
+        ("encoder_hidden_states", "hidden_states"),  # Out
+        True,  # Supported
     )
 
     Pattern_2 = (
-        False,
-        True,
-        False,
-        ("hidden_states", "encoder_hidden_states"),
-        ("hidden_states",),
-        True,
+        False,  # Return_H_First
+        True,  # Return_H_Only
+        False,  # Forward_H_only
+        ("hidden_states", "encoder_hidden_states"),  # In
+        ("hidden_states",),  # Out
+        True,  # Supported
     )
 
     Pattern_3 = (
-        False,
-        True,
-        True,
-        ("hidden_states",),
-        ("hidden_states",),
-        True,
+        False,  # Return_H_First
+        True,  # Return_H_Only
+        True,  # Forward_H_only
+        ("hidden_states",),  # In
+        ("hidden_states",),  # Out
+        True,  # Supported
+    )
+
+    Pattern_4 = (
+        True,  # Return_H_First
+        False,  # Return_H_Only
+        True,  # Forward_H_only
+        ("hidden_states",),  # In
+        ("hidden_states", "encoder_hidden_states"),  # Out
+        False,  # Supported
+    )
+
+    Pattern_5 = (
+        False,  # Return_H_First
+        False,  # Return_H_Only
+        True,  # Forward_H_only
+        ("hidden_states",),  # In
+        ("encoder_hidden_states", "hidden_states"),  # Out
+        False,  # Supported
     )
 
     @staticmethod

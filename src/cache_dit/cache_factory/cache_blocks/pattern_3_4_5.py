@@ -7,10 +7,12 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class DBCachedTransformerBlocks_Pattern_3(
+class DBCachedTransformerBlocks_Pattern_3_4_5(
     DBCachedTransformerBlocks_Pattern_Base
 ):
     _supported_patterns = [
         ForwardPattern.Pattern_3,
+        ForwardPattern.Pattern_4,
+        ForwardPattern.Pattern_5,
     ]
     ...
