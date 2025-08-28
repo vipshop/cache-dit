@@ -80,12 +80,6 @@ if args.quantize:
             "txt_mod",
             "norm_out",
             "proj_out",
-            # softmax(q@k) will introduce more errors
-            # than other linear layers.
-            "attn.to_q",
-            "attn.to_k",
-            "attn.add_q_proj",
-            "attn.add_k_proj",
         ],
         weight_dtype=torch.float8_e5m2,
         activation_dtype=torch.float8_e5m2,
