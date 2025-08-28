@@ -32,18 +32,7 @@ def quantize_ao(
             9,
         ), "FP8 is not supported for current device."
 
-    from torchao.quantization import (
-        float8_dynamic_activation_float8_weight,
-        float8_weight_only,
-        int8_dynamic_activation_int8_weight,
-        int8_weight_only,
-        int8_dynamic_activation_int4_weight,
-        int4_dynamic_activation_int4_weight,
-        int4_weight_only,
-        PerRow,
-        PerTensor,
-        quantize_,
-    )
+    from torchao.quantization import quantize_
 
     num_quant_linear = 0
     num_skip_linear = 0
@@ -87,6 +76,12 @@ def quantize_ao(
     def get_quantization_fn():
         try:
             if quant_type == "fp8_w8a8_dq":
+                from torchao.quantization import (
+                    float8_dynamic_activation_float8_weight,
+                    PerTensor,
+                    PerRow,
+                )
+
                 quantization_fn = float8_dynamic_activation_float8_weight(
                     granularity=(
                         ((PerRow(), PerRow()))
@@ -94,17 +89,41 @@ def quantize_ao(
                         else ((PerTensor(), PerTensor()))
                     )
                 )
+
             elif quant_type == "fp8_w8a16_wo":
+                from torchao.quantization import float8_weight_only
+
                 quantization_fn = float8_weight_only()
+
             elif quant_type == "int8_w8a8_dq":
+                from torchao.quantization import (
+                    int8_dynamic_activation_int8_weight,
+                )
+
                 quantization_fn = int8_dynamic_activation_int8_weight()
+
             elif quant_type == "int8_w8a16_wo":
+                from torchao.quantization import int8_weight_only
+
                 quantization_fn = int8_weight_only()
+
             elif quant_type == "int4_w4a8_dq":
+                from torchao.quantization import (
+                    int8_dynamic_activation_int4_weight,
+                )
+
                 quantization_fn = int8_dynamic_activation_int4_weight()
+
             elif quant_type == "int4_w4a4_dq":
+                from torchao.quantization import (
+                    int4_dynamic_activation_int4_weight,
+                )
+
                 quantization_fn = int4_dynamic_activation_int4_weight()
+
             elif quant_type == "int4_w4a16_wo":
+                from torchao.quantization import int4_weight_only
+
                 quantization_fn = int4_weight_only()
             else:
                 raise ValueError(
