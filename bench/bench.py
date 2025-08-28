@@ -201,7 +201,8 @@ def main():
 
     stats = cache_dit.summary(pipe, details=True)
     save_name = (
-        f"C{int(args.compile)}_{cache_dit.strify(stats)}_"
+        f"C{int(args.compile)}_Q{int(args.quantize)}_"
+        f"{cache_dit.strify(stats)}_"
         f"T{mean_time:.2f}s.png"
     )
 
