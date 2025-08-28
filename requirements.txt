@@ -8,3 +8,4 @@ diffusers>=0.33.1
 scikit-image
 scipy
 lpips==0.1.4
+torchao>=0.12.0

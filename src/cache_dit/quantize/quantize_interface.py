@@ -6,12 +6,25 @@ logger = init_logger(__name__)
 
 def quantize(
     transformer: torch.nn.Module,
-    quant_type: str = "fp8_dq",
+    quant_type: str = "fp8_w8a8_dq",
+    backend: str = "ao",
+    # only for fp8_w8a8_dq
+    per_row: bool = True,
+    exclude_layers: list[str] = [
+        "embedder",
+        "embed",
+    ],
     **kwargs,
 ) -> torch.nn.Module:
-    if quant_type.lower() == "fp8_dq":
-        from cache_dit.quantize.quantize_fp8 import quantize_fp8
+    if backend.lower() in ("ao", "torchao"):
+        from cache_dit.quantize.quantize_ao import quantize_ao
 
-        return quantize_fp8(transformer, **kwargs)
+        return quantize_ao(
+            transformer,
+            quant_type=quant_type,
+            per_row=per_row,
+            exclude_layers=exclude_layers,
+            **kwargs,
+        )
     else:
-        raise ValueError(f"quant_type: {quant_type} is not supported now!")
+        raise ValueError(f"backend: {backend} is not supported now!")
