@@ -87,10 +87,7 @@ if args.quantize:
 
 if args.compile:
     cache_dit.set_compile_configs()
-    if args.quantize:
-        pipe.transformer = torch.compile(pipe.transformer)
-    else:
-        pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
 
     # warmup
     image = pipe(
