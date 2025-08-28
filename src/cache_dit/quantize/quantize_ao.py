@@ -10,12 +10,13 @@ logger = init_logger(__name__)
 def quantize_ao(
     module: torch.nn.Module,
     quant_type: str = "fp8_w8a8_dq",
-    per_row: bool = True,
     exclude_layers: List[str] = [
         "embedder",
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
+    # paramters for fp8 quantization
+    per_row: bool = True,
     **kwargs,
 ) -> torch.nn.Module:
     # Apply FP8 DQ for module and skip any `embed` modules
