@@ -82,7 +82,6 @@ assert isinstance(pipe.transformer, WanTransformer3DModel)
 assert isinstance(pipe.transformer_2, WanTransformer3DModel)
 
 if args.fp8:
-    print("Enable FP8 Quntization for Wan2.2 low-noise Transformer")
     # We only apply FP8 DQ for low-noise transformer to avoid
     # non-trivial precision downgrade.
     pipe.transformer_2 = cache_dit.quantize(pipe.transformer_2)
