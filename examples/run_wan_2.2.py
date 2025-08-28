@@ -82,8 +82,15 @@ assert isinstance(pipe.transformer, WanTransformer3DModel)
 assert isinstance(pipe.transformer_2, WanTransformer3DModel)
 
 if args.quantize:
-    # We only apply Quantization (default: FP8 DQ) for low-noise
-    # transformer to avoid non-trivial precision downgrade.
+    assert isinstance(args.quantize_type, str)
+    if args.quantize_type.endswith("wo"):  # weight only
+        pipe.transformer = cache_dit.quantize(
+            pipe.transformer,
+            quant_type=args.quantize_type,
+        )
+    # We only apply activation quantization (default: FP8 DQ)
+    # for low-noise transformer to avoid non-trivial precision
+    # downgrade.
     pipe.transformer_2 = cache_dit.quantize(
         pipe.transformer_2,
         quant_type=args.quantize_type,
