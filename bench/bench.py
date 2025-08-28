@@ -154,7 +154,7 @@ def main():
         # Apply Quantization (default: FP8 DQ) to Transformer
         pipe.transformer = cache_dit.quantize(pipe.transformer)
 
-    if args.compile:
+    if args.compile or args.quantize:
         # Increase recompile limit for DBCache
         if args.inductor_flags:
             cache_dit.set_compile_configs()
