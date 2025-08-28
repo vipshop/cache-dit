@@ -155,10 +155,10 @@ def quantize_ao(
     force_empty_cache()
 
     logger.info(
-        f"FP8 DQ  Linear Layers: {num_quant_linear:>5}\n"
-        f"Skipped Linear Layers: {num_skip_linear:>5}\n"
-        f"Total   Linear Layers: {num_linear_layers:>5}\n"
-        f"Total   (all)  Layers: {num_layers:>5}"
+        f"Quantized Linear Layers: {num_quant_linear:>5}\n"
+        f"Skipped   Linear Layers: {num_skip_linear:>5}\n"
+        f"Total     Linear Layers: {num_linear_layers:>5}\n"
+        f"Total     (all)  Layers: {num_layers:>5}"
     )
     return transformer
 
