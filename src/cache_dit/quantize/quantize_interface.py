@@ -9,13 +9,13 @@ def quantize(
     module: torch.nn.Module,
     quant_type: str = "fp8_w8a8_dq",
     backend: str = "ao",
-    # only for fp8_w8a8_dq
-    per_row: bool = True,
     exclude_layers: List[str] = [
         "embedder",
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
+    # only for fp8_w8a8_dq
+    per_row: bool = True,
     **kwargs,
 ) -> torch.nn.Module:
     assert isinstance(module, torch.nn.Module)

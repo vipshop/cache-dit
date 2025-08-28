@@ -67,7 +67,7 @@ width, height = aspect_ratios["16:9"]
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 if args.quantize:
-    # Apply Quantization (default: FP8 DQ) transformer
+    # Apply Quantization (default: FP8 DQ) to Transformer
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
@@ -76,20 +76,12 @@ if args.quantize:
             "txt_in",
             "embedder",
             "embed",
-            "img_mod",
-            "txt_mod",
             "norm_out",
             "proj_out",
-            # softmax(q@k) will introduce more errors
-            # than other linear layers.
-            "attn.to_q",
-            "attn.to_k",
-            "attn.add_q_proj",
-            "attn.add_k_proj",
         ],
     )
 
-if args.compile or args.quantize:
+if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer.compile_repeated_blocks(fullgraph=True)
 

@@ -31,6 +31,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--compile-all", action="store_true", default=False)
+    parser.add_argument("--quantize", "-q", action="store_true", default=False)
     parser.add_argument(
         "--use-block-adapter", "--adapt", action="store_true", default=False
     )
@@ -148,6 +149,10 @@ def main():
                     # Cache context kwargs
                     **cache_dit.load_options(args.cache_config),
                 )
+
+    if args.quantize:
+        # Apply Quantization (default: FP8 DQ) to Transformer
+        pipe.transformer = cache_dit.quantize(pipe.transformer)
 
     if args.compile:
         # Increase recompile limit for DBCache
