@@ -2,7 +2,6 @@ import gc
 import time
 import torch
 import argparse
-from typing import Callable
 
 
 def GiB():
@@ -31,7 +30,6 @@ def force_empty_cache():
 def quantize_fp8(
     transformer: torch.nn.Module,
     per_row: bool = True,
-    filter_fn: Callable = None,
 ) -> torch.nn.Module:
     assert torch.cuda.get_device_capability() >= (
         8,
@@ -45,7 +43,24 @@ def quantize_fp8(
     )
 
     # Ensure bfloat16 for per_row
-    transformer.to(torch.bfloat16)
+    def filter_fn(m: torch.nn.Module, name: str) -> bool:
+        exclude_layers = ["embedder", "embed", "attn"]
+        if isinstance(m, torch.nn.Linear):
+            for exclude_name in exclude_layers:
+                if exclude_name in name:
+                    print(
+                        f"Skip Quantization: {name} -> "
+                        f"pattern<{exclude_name}>"
+                    )
+                    return False
+            if per_row and m.weight.dtype != torch.bfloat16:
+                print(
+                    f"Skip Quantization: {name} -> "
+                    f"pattern<dtype({m.weight.dtype})!=bfloat16>"
+                )
+                return False
+            return True
+        return False
 
     quantization_fn = float8_dynamic_activation_float8_weight(
         granularity=(
