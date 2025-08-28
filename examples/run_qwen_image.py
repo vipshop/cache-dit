@@ -80,7 +80,7 @@ if args.quantize:
             "txt_mod",
             "proj_out",
             # softmax(q@k) will introduce more errors
-            # than others linear layers.
+            # than other linear layers.
             "attn.to_q",
             "attn.to_k",
             "attn.add_q_proj",
