@@ -1,0 +1,1 @@
+from cache_dit.quantize.quantize_interface import quantize

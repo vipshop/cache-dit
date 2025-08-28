@@ -82,20 +82,14 @@ assert isinstance(pipe.transformer, WanTransformer3DModel)
 assert isinstance(pipe.transformer_2, WanTransformer3DModel)
 
 if args.fp8:
-    from utils import quantize_fp8
-
     print("Enable FP8 Quntization for Wan2.2")
-    pipe.transformer = quantize_fp8(pipe.transformer)
-    pipe.transformer_2 = quantize_fp8(pipe.transformer_2)
+    pipe.transformer = cache_dit.quantize(pipe.transformer)
+    pipe.transformer_2 = cache_dit.quantize(pipe.transformer_2)
 
 if args.compile:
     cache_dit.set_compile_configs()
-    if not args.fp8:
-        pipe.transformer.compile_repeated_blocks(fullgraph=True)
-        pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
-    else:
-        pipe.transformer = torch.compile(pipe.transformer)
-        pipe.transformer_2 = torch.compile(pipe.transformer_2)
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
 
     # warmup
     video = pipe(
