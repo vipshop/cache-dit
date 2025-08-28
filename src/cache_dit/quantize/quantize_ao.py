@@ -112,14 +112,19 @@ def quantize_ao(
             elif quant_type == "int8_w8a16_wo":
                 from torchao.quantization import int8_weight_only
 
-                quantization_fn = int8_weight_only()
+                quantization_fn = int8_weight_only(
+                    # group_size is None -> per_channel, else per group
+                    group_size=kwargs.get("group_size", None),
+                )
 
             elif quant_type == "int4_w4a8_dq":
                 from torchao.quantization import (
                     int8_dynamic_activation_int4_weight,
                 )
 
-                quantization_fn = int8_dynamic_activation_int4_weight()
+                quantization_fn = int8_dynamic_activation_int4_weight(
+                    group_size=kwargs.get("group_size", 32),
+                )
 
             elif quant_type == "int4_w4a4_dq":
                 from torchao.quantization import (
@@ -131,7 +136,9 @@ def quantize_ao(
             elif quant_type == "int4_w4a16_wo":
                 from torchao.quantization import int4_weight_only
 
-                quantization_fn = int4_weight_only()
+                quantization_fn = int4_weight_only(
+                    group_size=kwargs.get("group_size", 32),
+                )
 
             else:
                 raise ValueError(
