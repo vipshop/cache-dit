@@ -67,10 +67,11 @@ width, height = aspect_ratios["16:9"]
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 if args.quantize:
-    # Apply Quantization (default: FP8 DQ) transformer
+    # Apply Quantization (default: FP8 DQ) to Transformer
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
+        per_row=False,
         exclude_layers=[
             "img_in",
             "txt_in",
