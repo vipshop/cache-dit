@@ -23,5 +23,5 @@ def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--fp8", action="store_true", default=False)
+    parser.add_argument("--quantize", "-q", action="store_true", default=False)
     return parser.parse_args()

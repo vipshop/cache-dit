@@ -81,12 +81,12 @@ else:
 assert isinstance(pipe.transformer, WanTransformer3DModel)
 assert isinstance(pipe.transformer_2, WanTransformer3DModel)
 
-if args.fp8:
-    # We only apply FP8 DQ for low-noise transformer to avoid
-    # non-trivial precision downgrade.
+if args.quantize:
+    # We only apply Quantization (default: FP8 DQ) for low-noise
+    # transformer to avoid non-trivial precision downgrade.
     pipe.transformer_2 = cache_dit.quantize(pipe.transformer_2)
 
-if args.compile:
+if args.compile or args.quantize:
     cache_dit.set_compile_configs()
     pipe.transformer.compile_repeated_blocks(fullgraph=True)
     pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
