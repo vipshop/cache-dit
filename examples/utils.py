@@ -24,4 +24,19 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
+    parser.add_argument(
+        "--quantize-type",
+        "-type",
+        type=str,
+        default="fp8_w8a8_dq",
+        choices=[
+            "fp8_w8a8_dq",
+            "fp8_w8a16_wo",
+            "int8_w8a8_dq",
+            "int8_w8a16_wo",
+            "int4_w4a8_dq",
+            "int4_w4a4_dq",
+            "int4_w4a16_wo",
+        ],
+    )
     return parser.parse_args()

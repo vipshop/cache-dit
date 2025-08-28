@@ -70,6 +70,7 @@ if args.quantize:
     # Apply Quantization (default: FP8 DQ) transformer
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
+        quant_type=args.quantize_type,
         exclude_layers=[
             "img_in",
             "txt_in",
