@@ -137,7 +137,8 @@ stats = cache_dit.summary(
 
 time_cost = end - start
 save_path = (
-    f"wan2.2.C{int(args.compile)}_Q{int(args.quantize)}_{'' if not args.quantize else args.quantize_type}"
+    f"wan2.2.C{int(args.compile)}_Q{int(args.quantize)}"
+    f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
     f"{cache_dit.strify(stats)}.mp4"
 )
 print(f"Time cost: {time_cost:.2f}s")
