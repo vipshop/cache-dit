@@ -1,7 +1,7 @@
 import gc
 import time
 import torch
-from typing import Callable, Optional
+from typing import Callable, Optional, List
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -11,7 +11,7 @@ def quantize_ao(
     transformer: torch.nn.Module,
     quant_type: str = "fp8_w8a8_dq",
     per_row: bool = True,
-    exclude_layers: list[str] = [
+    exclude_layers: List[str] = [
         "embedder",
         "embed",
     ],
