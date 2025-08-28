@@ -1,5 +1,5 @@
 import torch
-from cache_dit import init_logger
+from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 

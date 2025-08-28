@@ -1,7 +1,7 @@
 import gc
 import time
 import torch
-from cache_dit import init_logger
+from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
@@ -55,6 +55,13 @@ def quantize_fp8(
     )
     quantize_(transformer, quantization_fn, filter_fn=filter_fn)
     force_empty_cache()
+
+    logger.info(
+        f"FP8 DQ  Linear Layers: {num_quant_linear:>5}\n"
+        f"Skipped Linear Layers: {num_skip_linear:>5}\n"
+        f"Total   Linear Layers: {num_linear_layers:>5}\n"
+        f"Total   (all)  Layers: {num_layers:>5}"
+    )
     return transformer
 
 
