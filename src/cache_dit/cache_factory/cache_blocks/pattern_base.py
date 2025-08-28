@@ -45,6 +45,17 @@ class DBCachedTransformerBlocks_Pattern_Base(torch.nn.Module):
                 forward_parameters = set(
                     inspect.signature(block.forward).parameters.keys()
                 )
+                num_outputs = str(
+                    inspect.signature(block.forward).return_annotation
+                ).count("torch.Tensor")
+
+                if num_outputs > 0:
+                    assert len(self.forward_pattern.Out) == num_outputs, (
+                        f"The number of block's outputs is {num_outputs} don't not "
+                        f"match the number of the pattern: {self.forward_pattern}, "
+                        f"Out: {len(self.forward_pattern.Out)}."
+                    )
+
                 for required_param in self.forward_pattern.In:
                     assert (
                         required_param in forward_parameters
