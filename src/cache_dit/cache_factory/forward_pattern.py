@@ -48,10 +48,10 @@ class ForwardPattern(Enum):
     Pattern_3 = (
         False,
         True,
-        False,
+        True,
         ("hidden_states",),
         ("hidden_states",),
-        False,
+        True,
     )
 
     @staticmethod
@@ -60,4 +60,5 @@ class ForwardPattern(Enum):
             ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_1,
             ForwardPattern.Pattern_2,
+            ForwardPattern.Pattern_3,
         ]
