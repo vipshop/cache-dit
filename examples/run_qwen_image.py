@@ -76,8 +76,6 @@ if args.quantize:
             "txt_in",
             "embedder",
             "embed",
-            "img_mod",
-            "txt_mod",
             "norm_out",
             "proj_out",
         ],
