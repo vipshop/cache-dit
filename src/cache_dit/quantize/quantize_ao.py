@@ -1,6 +1,7 @@
 import gc
 import time
 import torch
+from typing import Callable, Optional
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -10,7 +11,11 @@ def quantize_ao(
     transformer: torch.nn.Module,
     quant_type: str = "fp8_w8a8_dq",
     per_row: bool = True,
-    exclude_layers: list[str] = ["embedder", "embed"],
+    exclude_layers: list[str] = [
+        "embedder",
+        "embed",
+    ],
+    filter_fn: Optional[Callable] = None,
     **kwargs,
 ) -> torch.nn.Module:
     # Apply FP8 DQ for Transformer and skip any `embed` modules
@@ -40,7 +45,7 @@ def quantize_ao(
     num_layers = 0
 
     # Ensure bfloat16 for per_row
-    def filter_fn(m: torch.nn.Module, name: str) -> bool:
+    def _filter_fn(m: torch.nn.Module, name: str) -> bool:
         nonlocal num_quant_linear, num_skip_linear, num_linear_layers, num_layers
         num_layers += 1
         if isinstance(m, torch.nn.Linear):
@@ -73,7 +78,7 @@ def quantize_ao(
 
         return False
 
-    def get_quantization_fn():
+    def _quantization_fn():
         try:
             if quant_type == "fp8_w8a8_dq":
                 from torchao.quantization import (
@@ -125,6 +130,7 @@ def quantize_ao(
                 from torchao.quantization import int4_weight_only
 
                 quantization_fn = int4_weight_only()
+
             else:
                 raise ValueError(
                     f"quant_type: {quant_type} is not supported now!"
@@ -138,7 +144,12 @@ def quantize_ao(
 
         return quantization_fn
 
-    quantize_(transformer, get_quantization_fn(), filter_fn=filter_fn)
+    quantize_(
+        transformer,
+        _quantization_fn(),
+        filter_fn=_filter_fn if filter_fn is None else filter_fn,
+    )
+
     force_empty_cache()
 
     logger.info(

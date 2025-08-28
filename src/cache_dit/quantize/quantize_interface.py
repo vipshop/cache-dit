@@ -1,4 +1,5 @@
 import torch
+from typing import Callable, Optional
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -14,6 +15,7 @@ def quantize(
         "embedder",
         "embed",
     ],
+    filter_fn: Optional[Callable] = None,
     **kwargs,
 ) -> torch.nn.Module:
     if backend.lower() in ("ao", "torchao"):
@@ -24,6 +26,7 @@ def quantize(
             quant_type=quant_type,
             per_row=per_row,
             exclude_layers=exclude_layers,
+            filter_fn=filter_fn,
             **kwargs,
         )
     else:
