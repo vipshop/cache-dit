@@ -112,7 +112,8 @@ stats = cache_dit.summary(pipe)
 
 time_cost = end - start
 save_path = (
-    f"qwen-image.C{int(args.compile)}_Q{int(args.quantize)}_"
+    f"qwen-image.C{int(args.compile)}_Q{int(args.quantize)}"
+    f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
     f"{cache_dit.strify(stats)}.png"
 )
 print(f"Time cost: {time_cost:.2f}s")
