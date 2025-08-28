@@ -88,6 +88,8 @@ if args.quantize:
             "attn.add_q_proj",
             "attn.add_k_proj",
         ],
+        weight_dtype=torch.float8_e5m2,
+        activation_dtype=torch.float8_e5m2,
     )
 
 if args.compile or args.quantize:

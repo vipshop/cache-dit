@@ -89,11 +89,19 @@ def quantize_ao(
                 )
 
                 quantization_fn = float8_dynamic_activation_float8_weight(
+                    weight_dtype=kwargs.get(
+                        "weight_dtype",
+                        torch.float8_e4m3fn,
+                    ),
+                    activation_dtype=kwargs.get(
+                        "activation_dtype",
+                        torch.float8_e4m3fn,
+                    ),
                     granularity=(
                         ((PerRow(), PerRow()))
                         if per_row
                         else ((PerTensor(), PerTensor()))
-                    )
+                    ),
                 )
 
             elif quant_type == "fp8_w8a16_wo":
