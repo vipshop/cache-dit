@@ -23,6 +23,17 @@ def quantize(
     if backend.lower() in ("ao", "torchao"):
         from cache_dit.quantize.quantize_ao import quantize_ao
 
+        quant_type = quant_type.lower()
+        assert quant_type in (
+            "fp8_w8a8_dq",
+            "fp8_w8a16_wo",
+            "int8_w8a8_dq",
+            "int8_w8a16_wo",
+            "int4_w4a8_dq",
+            "int4_w4a4_dq",
+            "int4_w4a16_wo",
+        ), f"{quant_type} is not supported for torchao backend now!"
+
         return quantize_ao(
             module,
             quant_type=quant_type,
