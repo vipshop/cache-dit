@@ -84,7 +84,8 @@ assert isinstance(pipe.transformer_2, WanTransformer3DModel)
 if args.fp8:
     print("Enable FP8 Quntization for Wan2.2 low-noise Transformer")
     # We only apply FP8 DQ for low-noise transformer to avoid
-    # non-trivial precision downgrade.
+    # non-trivial precision downgrade. By the way, we have also
+    # skip any `attn` and `embed` modules by default.
     pipe.transformer_2 = cache_dit.quantize(pipe.transformer_2)
 
 if args.compile:

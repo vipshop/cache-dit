@@ -9,8 +9,11 @@ logger = init_logger(__name__)
 def quantize_fp8(
     transformer: torch.nn.Module,
     per_row: bool = True,
-    exclude_layers: list[str] = ["embedder", "embed", "attn"],
+    exclude_layers: list[str] = ["embedder", "embed"],
 ) -> torch.nn.Module:
+    # Apply FP8 DQ for Transformer and skip any `embed` modules
+    # by default to avoid non-trivial precision downgrade. Please
+    # set `exclude_layers` as `[]` if you don't want this behavior.
     assert torch.cuda.get_device_capability() >= (
         8,
         9,
