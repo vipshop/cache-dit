@@ -76,6 +76,15 @@ if args.quantize:
             "txt_in",
             "embedder",
             "embed",
+            "img_mod",
+            "txt_mod",
+            "proj_out",
+            # softmax(q@k) will introduce more errors
+            # than others linear layers.
+            "attn.to_q",
+            "attn.to_k",
+            "attn.add_q_proj",
+            "attn.add_k_proj",
         ],
     )
 
