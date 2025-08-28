@@ -71,7 +71,6 @@ if args.quantize:
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
-        per_row=False,
         exclude_layers=[
             "img_in",
             "txt_in",
@@ -92,9 +91,12 @@ if args.quantize:
         activation_dtype=torch.float8_e5m2,
     )
 
-if args.compile or args.quantize:
+if args.compile:
     cache_dit.set_compile_configs()
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    if args.quantize:
+        pipe.transformer = torch.compile(pipe.transformer)
+    else:
+        pipe.transformer.compile_repeated_blocks(fullgraph=True)
 
     # warmup
     image = pipe(
