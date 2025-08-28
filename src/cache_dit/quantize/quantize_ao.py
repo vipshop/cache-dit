@@ -107,7 +107,12 @@ def quantize_ao(
             elif quant_type == "fp8_w8a16_wo":
                 from torchao.quantization import float8_weight_only
 
-                quantization_fn = float8_weight_only()
+                quantization_fn = float8_weight_only(
+                    weight_dtype=kwargs.get(
+                        "weight_dtype",
+                        torch.float8_e4m3fn,
+                    ),
+                )
 
             elif quant_type == "int8_w8a8_dq":
                 from torchao.quantization import (
@@ -167,7 +172,7 @@ def quantize_ao(
         module,
         _quantization_fn(),
         filter_fn=_filter_fn if filter_fn is None else filter_fn,
-        **kwargs,
+        device=kwargs.get("device", None),
     )
 
     force_empty_cache()
