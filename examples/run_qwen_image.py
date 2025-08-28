@@ -78,6 +78,7 @@ if args.quantize:
             "embed",
             "img_mod",
             "txt_mod",
+            "norm_out",
             "proj_out",
             # softmax(q@k) will introduce more errors
             # than other linear layers.
