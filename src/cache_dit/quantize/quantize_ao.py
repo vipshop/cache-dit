@@ -149,6 +149,7 @@ def quantize_ao(
         transformer,
         _quantization_fn(),
         filter_fn=_filter_fn if filter_fn is None else filter_fn,
+        **kwargs,
     )
 
     force_empty_cache()
