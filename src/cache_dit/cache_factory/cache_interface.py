@@ -10,7 +10,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-def supported_pipelines() -> Tuple[List[str], int]:
+def supported_pipelines() -> Tuple[int, List[str]]:
     return UnifiedCacheAdapter.supported_pipelines()
 
 

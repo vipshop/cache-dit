@@ -317,7 +317,7 @@ class UnifiedCacheAdapter:
         return self.apply(*args, **kwargs)
 
     @classmethod
-    def supported_pipelines(cls) -> Tuple[List[str], int]:
+    def supported_pipelines(cls) -> Tuple[int, List[str]]:
         return len(cls._supported_pipelines), [
             p + "*" for p in cls._supported_pipelines
         ]
