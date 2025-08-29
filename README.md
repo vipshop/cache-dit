@@ -17,7 +17,7 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>cache-dit</b> covers <b>Most</b> mainstream <b>Diffusers'</b> Pipelines</b>🎉<br>
+  🎉Now, <b>cache-dit</b> covers <b>All</b> mainstream <b>DiT-based</b> Diffusers' Pipelines</b>🎉<br>
   🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1/2.2</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
   </p>
 </div>
@@ -70,7 +70,14 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
+```python
+>>> import cache_dit
+>>> cache_dit.supported_pipelines()
+(['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTXVideo*', 'Allegro*', 'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'SD3*', 'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'HunyuanDiT*', 'HunyuanDiTPAG*', 'Lumina*', 'Lumina2*', 'OmniGen*', 'PixArt*', 'Sana*', 'ShapE*', 'StableAudio*', 'VisualCloze*', 'AuraFlow*', 'Chroma*', 'HiDream*'], 31)
+```
+
 Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
+
 
 - [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
@@ -83,6 +90,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 <details>
 <summary> More Pipelines </summary>  
@@ -96,6 +104,20 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀EasyAnimate](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SD3](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀ConsisID](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀DiT](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Amused](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanDiTPAG](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Lumina](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Lumina2](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀OmniGen](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀PixArt](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Sana](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀StableAudio](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀AuraFlow](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Chroma](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HiDream](https://github.com/vipshop/cache-dit/raw/main/examples)
   
 </details>
 
