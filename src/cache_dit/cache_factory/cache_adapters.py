@@ -318,9 +318,9 @@ class UnifiedCacheAdapter:
 
     @classmethod
     def supported_pipelines(cls) -> Tuple[List[str], int]:
-        return [p + "*" for p in cls._supported_pipelines], len(
-            cls._supported_pipelines
-        )
+        return len(cls._supported_pipelines), [
+            p + "*" for p in cls._supported_pipelines
+        ]
 
     @classmethod
     def is_supported(cls, pipe: DiffusionPipeline) -> bool:
