@@ -17,16 +17,17 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>cache-dit</b> covers <b>Most</b> mainstream <b>Diffusers'</b> Pipelines</b>🎉<br>
+  🎉Now, <b>cache-dit</b> covers <b>All</b> mainstream <b>DiT-based</b> Diffusers' Pipelines</b>🎉<br>
   🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1/2.2</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
   </p>
 </div>
 
 ## 🔥News  
 
-- [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Check the [example](./examples/run_wan_2.2.py).
-- [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check example [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
-- [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
+- [2025-08-29] 🔥</b>Covers <b>All</b> Diffusers' <b>DiT-based</b> Pipelines via **[BlockAdapter](#unified) + [Pattern Matching](#unified).**
+- [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Please check the [example](./examples/run_wan_2.2.py).
+- [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example at [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
+- [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x⚡️** speedup! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
 
 <details>
@@ -37,7 +38,7 @@
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
 
 </details>
- 
+
 ## 📖Contents 
 
 <div id="contents"></div>  
@@ -70,7 +71,18 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
+```python
+>>> import cache_dit
+>>> cache_dit.supported_pipelines()
+(31, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTXVideo*', 
+'Allegro*', 'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'SD3*', 
+'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'HunyuanDiT*', 'HunyuanDiTPAG*', 'Lumina*', 'Lumina2*',
+'OmniGen*', 'PixArt*', 'Sana*', 'ShapE*', 'StableAudio*', 'VisualCloze*', 'AuraFlow*', 
+'Chroma*', 'HiDream*'])
+```
+
 Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
+
 
 - [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
@@ -83,6 +95,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 <details>
 <summary> More Pipelines </summary>  
@@ -96,6 +109,20 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀EasyAnimate](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SD3](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀ConsisID](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀DiT](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Amused](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanDiTPAG](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Lumina](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Lumina2](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀OmniGen](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀PixArt](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Sana](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀StableAudio](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀AuraFlow](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Chroma](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HiDream](https://github.com/vipshop/cache-dit/raw/main/examples)
   
 </details>
 
@@ -288,8 +315,8 @@ cache_dit.enable_cache(
     # For model that fused CFG and non-CFG into single forward step,
     # should set do_separate_cfg as False. For example, set it as True 
     # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-    # CogVideoX, Mochi, etc.
-    do_separate_cfg=True, # Wan 2.1, Qwen-Image
+    # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+    do_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
     # Compute cfg forward first or not, default False, namely, 
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first=False,

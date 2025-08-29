@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Tuple, List
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_types import CacheType
@@ -8,6 +8,10 @@ from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
+
+
+def supported_pipelines() -> Tuple[int, List[str]]:
+    return UnifiedCacheAdapter.supported_pipelines()
 
 
 def enable_cache(

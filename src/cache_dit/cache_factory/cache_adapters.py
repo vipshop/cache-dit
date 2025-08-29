@@ -39,6 +39,8 @@ class BlockAdapter:
             "single_transformer",
             "blocks",
             "layers",
+            "single_stream_blocks",
+            "double_stream_blocks",
         ]
     )
     check_prefixes: bool = True
@@ -292,10 +294,33 @@ class UnifiedCacheAdapter:
         "EasyAnimate",
         "SkyReelsV2",
         "SD3",
+        "ConsisID",
+        "DiT",
+        "Amused",
+        "Bria",
+        "HunyuanDiT",
+        "HunyuanDiTPAG",
+        "Lumina",
+        "Lumina2",
+        "OmniGen",
+        "PixArt",
+        "Sana",
+        "ShapE",
+        "StableAudio",
+        "VisualCloze",
+        "AuraFlow",
+        "Chroma",
+        "HiDream",
     ]
 
     def __call__(self, *args, **kwargs):
         return self.apply(*args, **kwargs)
+
+    @classmethod
+    def supported_pipelines(cls) -> Tuple[int, List[str]]:
+        return len(cls._supported_pipelines), [
+            p + "*" for p in cls._supported_pipelines
+        ]
 
     @classmethod
     def is_supported(cls, pipe: DiffusionPipeline) -> bool:
@@ -308,6 +333,7 @@ class UnifiedCacheAdapter:
     @classmethod
     def get_params(cls, pipe: DiffusionPipeline) -> UnifiedCacheParams:
         pipe_cls_name: str = pipe.__class__.__name__
+
         if pipe_cls_name.startswith("Flux"):
             from diffusers import FluxTransformer2DModel
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
@@ -327,6 +353,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
             )
+
         elif pipe_cls_name.startswith("Mochi"):
             from diffusers import MochiTransformer3DModel
 
@@ -341,6 +368,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_0,
             )
+
         elif pipe_cls_name.startswith("CogVideoX"):
             from diffusers import CogVideoXTransformer3DModel
 
@@ -355,6 +383,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_0,
             )
+
         elif pipe_cls_name.startswith("Wan"):
             from diffusers import (
                 WanTransformer3DModel,
@@ -365,16 +394,35 @@ class UnifiedCacheAdapter:
                 pipe.transformer,
                 (WanTransformer3DModel, WanVACETransformer3DModel),
             )
-            return UnifiedCacheParams(
-                block_adapter=BlockAdapter(
-                    pipe=pipe,
-                    transformer=pipe.transformer,
-                    blocks=pipe.transformer.blocks,
-                    blocks_name="blocks",
-                    dummy_blocks_names=[],
-                ),
-                forward_pattern=ForwardPattern.Pattern_2,
-            )
+            if getattr(pipe, "transformer_2", None):
+                # Wan 2.2, cache for low-noise transformer
+                assert isinstance(
+                    pipe.transformer_2,
+                    (WanTransformer3DModel, WanVACETransformer3DModel),
+                )
+                return UnifiedCacheParams(
+                    block_adapter=BlockAdapter(
+                        pipe=pipe,
+                        transformer=pipe.transformer_2,
+                        blocks=pipe.transformer_2.blocks,
+                        blocks_name="blocks",
+                        dummy_blocks_names=[],
+                    ),
+                    forward_pattern=ForwardPattern.Pattern_2,
+                )
+            else:
+                # Wan 2.1
+                return UnifiedCacheParams(
+                    block_adapter=BlockAdapter(
+                        pipe=pipe,
+                        transformer=pipe.transformer,
+                        blocks=pipe.transformer.blocks,
+                        blocks_name="blocks",
+                        dummy_blocks_names=[],
+                    ),
+                    forward_pattern=ForwardPattern.Pattern_2,
+                )
+
         elif pipe_cls_name.startswith("HunyuanVideo"):
             from diffusers import HunyuanVideoTransformer3DModel
 
@@ -391,6 +439,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_0,
             )
+
         elif pipe_cls_name.startswith("QwenImage"):
             from diffusers import QwenImageTransformer2DModel
 
@@ -405,6 +454,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
             )
+
         elif pipe_cls_name.startswith("LTXVideo"):
             from diffusers import LTXVideoTransformer3DModel
 
@@ -419,6 +469,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_2,
             )
+
         elif pipe_cls_name.startswith("Allegro"):
             from diffusers import AllegroTransformer3DModel
 
@@ -433,6 +484,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_2,
             )
+
         elif pipe_cls_name.startswith("CogView3Plus"):
             from diffusers import CogView3PlusTransformer2DModel
 
@@ -447,6 +499,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_0,
             )
+
         elif pipe_cls_name.startswith("CogView4"):
             from diffusers import CogView4Transformer2DModel
 
@@ -461,6 +514,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_0,
             )
+
         elif pipe_cls_name.startswith("Cosmos"):
             from diffusers import CosmosTransformer3DModel
 
@@ -475,6 +529,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_2,
             )
+
         elif pipe_cls_name.startswith("EasyAnimate"):
             from diffusers import EasyAnimateTransformer3DModel
 
@@ -489,6 +544,7 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_0,
             )
+
         elif pipe_cls_name.startswith("SkyReelsV2"):
             from diffusers import SkyReelsV2Transformer3DModel
 
@@ -517,6 +573,284 @@ class UnifiedCacheAdapter:
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
             )
+
+        elif pipe_cls_name.startswith("ConsisID"):
+            from diffusers import ConsisIDTransformer3DModel
+
+            assert isinstance(pipe.transformer, ConsisIDTransformer3DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
+            )
+
+        elif pipe_cls_name.startswith("DiT"):
+            from diffusers import DiTTransformer2DModel
+
+            assert isinstance(pipe.transformer, DiTTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Amused"):
+            from diffusers import UVit2DModel
+
+            assert isinstance(pipe.transformer, UVit2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_layers,
+                    blocks_name="transformer_layers",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Bria"):
+            from diffusers import BriaTransformer2DModel
+
+            assert isinstance(pipe.transformer, BriaTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
+                ),
+                forward_pattern=ForwardPattern.Pattern_0,
+            )
+
+        elif pipe_cls_name.startswith("HunyuanDiT"):
+            from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
+
+            assert isinstance(
+                pipe.transformer,
+                (HunyuanDiT2DModel, HunyuanDiT2DControlNetModel),
+            )
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.blocks,
+                    blocks_name="blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("HunyuanDiTPAG"):
+            from diffusers import HunyuanDiT2DModel
+
+            assert isinstance(pipe.transformer, HunyuanDiT2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.blocks,
+                    blocks_name="blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Lumina"):
+            from diffusers import LuminaNextDiT2DModel
+
+            assert isinstance(pipe.transformer, LuminaNextDiT2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.layers,
+                    blocks_name="layers",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Lumina2"):
+            from diffusers import Lumina2Transformer2DModel
+
+            assert isinstance(pipe.transformer, Lumina2Transformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.layers,
+                    blocks_name="layers",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("OmniGen"):
+            from diffusers import OmniGenTransformer2DModel
+
+            assert isinstance(pipe.transformer, OmniGenTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.layers,
+                    blocks_name="layers",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("PixArt"):
+            from diffusers import PixArtTransformer2DModel
+
+            assert isinstance(pipe.transformer, PixArtTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Sana"):
+            from diffusers import SanaTransformer2DModel
+
+            assert isinstance(pipe.transformer, SanaTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("ShapE"):
+            from diffusers import PriorTransformer
+
+            assert isinstance(pipe.prior, PriorTransformer)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.prior,
+                    blocks=pipe.prior.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("StableAudio"):
+            from diffusers import StableAudioDiTModel
+
+            assert isinstance(pipe.transformer, StableAudioDiTModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=pipe.transformer.transformer_blocks,
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("VisualCloze"):
+            from diffusers import FluxTransformer2DModel
+            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
+
+            assert isinstance(pipe.transformer, FluxTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
+                    patch_functor=FluxPatchFunctor(),
+                ),
+                forward_pattern=ForwardPattern.Pattern_1,
+            )
+
+        elif pipe_cls_name.startswith("AuraFlow"):
+            from diffusers import AuraFlowTransformer2DModel
+
+            assert isinstance(pipe.transformer, AuraFlowTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    # Only support caching single_transformer_blocks for AuraFlow now.
+                    # TODO: Support AuraFlowPatchFunctor.
+                    blocks=pipe.transformer.single_transformer_blocks,
+                    blocks_name="single_transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Chroma"):
+            from diffusers import ChromaTransformer2DModel
+            from cache_dit.cache_factory.patch_functors import (
+                ChromaPatchFunctor,
+            )
+
+            assert isinstance(pipe.transformer, ChromaTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
+                    patch_functor=ChromaPatchFunctor(),
+                ),
+                forward_pattern=ForwardPattern.Pattern_1,
+            )
+
+        elif pipe_cls_name.startswith("HiDream"):
+            from diffusers import HiDreamImageTransformer2DModel
+
+            assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    # Only support caching single_stream_blocks for HiDream now.
+                    # TODO: Support HiDreamPatchFunctor.
+                    blocks=pipe.transformer.single_stream_blocks,
+                    blocks_name="single_stream_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
         else:
             raise ValueError(f"Unknown pipeline class name: {pipe_cls_name}")
 
@@ -614,6 +948,14 @@ class UnifiedCacheAdapter:
         if cls_name.startswith("QwenImage"):
             return True
         elif cls_name.startswith("Wan"):
+            return True
+        elif cls_name.startswith("CogView4"):
+            return True
+        elif cls_name.startswith("Cosmos"):
+            return True
+        elif cls_name.startswith("SkyReelsV2"):
+            return True
+        elif cls_name.startswith("Chroma"):
             return True
         return False
 
