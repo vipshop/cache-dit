@@ -24,6 +24,7 @@
 
 ## 🔥News  
 
+- [2025-08-29] 🔥Now, <b>cache-dit</b> covers <b>All</b> mainstream <b>DiT-based</b> Diffusers' Pipelines</b>🎉
 - [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Check the [example](./examples/run_wan_2.2.py).
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check example [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
@@ -37,7 +38,7 @@
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
 
 </details>
- 
+
 ## 📖Contents 
 
 <div id="contents"></div>  
