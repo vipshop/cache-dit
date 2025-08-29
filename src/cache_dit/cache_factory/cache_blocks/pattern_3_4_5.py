@@ -6,16 +6,14 @@ from cache_dit.cache_factory.cache_blocks.utils import (
     patch_cached_stats,
 )
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
-    DBCachedTransformerBlocks_Pattern_Base,
+    DBCachedBlocks_Pattern_Base,
 )
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-class DBCachedTransformerBlocks_Pattern_3_4_5(
-    DBCachedTransformerBlocks_Pattern_Base
-):
+class DBCachedBlocks_Pattern_3_4_5(DBCachedBlocks_Pattern_Base):
     _supported_patterns = [
         ForwardPattern.Pattern_3,
         ForwardPattern.Pattern_4,

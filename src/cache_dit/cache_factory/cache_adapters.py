@@ -15,7 +15,7 @@ from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import cache_context
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_blocks import (
-    DBCachedTransformerBlocks,
+    DBCachedBlocks,
 )
 from cache_dit.logger import init_logger
 
@@ -680,7 +680,7 @@ class UnifiedCacheAdapter:
         # Apply cache on transformer: mock cached transformer blocks
         cached_blocks = torch.nn.ModuleList(
             [
-                DBCachedTransformerBlocks(
+                DBCachedBlocks(
                     block_adapter.blocks,
                     transformer=block_adapter.transformer,
                     forward_pattern=forward_pattern,

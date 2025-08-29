@@ -12,7 +12,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class DBCachedTransformerBlocks_Pattern_Base(torch.nn.Module):
+class DBCachedBlocks_Pattern_Base(torch.nn.Module):
     _supported_patterns = [
         ForwardPattern.Pattern_0,
         ForwardPattern.Pattern_1,
