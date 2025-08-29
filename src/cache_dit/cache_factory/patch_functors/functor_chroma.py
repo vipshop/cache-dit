@@ -3,9 +3,9 @@ import inspect
 import torch
 import numpy as np
 from typing import Tuple, Optional, Dict, Any, Union
-from diffusers import FluxTransformer2DModel
-from diffusers.models.transformers.transformer_flux import (
-    FluxSingleTransformerBlock,
+from diffusers import ChromaTransformer2DModel
+from diffusers.models.transformers.transformer_chroma import (
+    ChromaSingleTransformerBlock,
     Transformer2DModelOutput,
 )
 from diffusers.utils import (
@@ -22,20 +22,20 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class FluxPatchFunctor(PatchFunctor):
+class ChromaPatchFunctor(PatchFunctor):
 
     def apply(
         self,
-        transformer: FluxTransformer2DModel,
+        transformer: ChromaTransformer2DModel,
         blocks: torch.nn.ModuleList = None,
         **kwargs,
-    ) -> FluxTransformer2DModel:
+    ) -> ChromaTransformer2DModel:
         if blocks is None:
             blocks = transformer.single_transformer_blocks
 
         is_patched = False
         for block in blocks:
-            if isinstance(block, FluxSingleTransformerBlock):
+            if isinstance(block, ChromaSingleTransformerBlock):
                 forward_parameters = inspect.signature(
                     block.forward
                 ).parameters.keys()
@@ -44,7 +44,7 @@ class FluxPatchFunctor(PatchFunctor):
                     is_patched = True
 
         if is_patched:
-            logger.warning("Patched Flux for cache-dit.")
+            logger.warning("Patched Chroma for cache-dit.")
             assert not getattr(transformer, "_is_parallelized", False), (
                 "Please call `cache_dit.enable_cache` before Parallelize, "
                 "the __patch_transformer_forward__ will overwrite the "
@@ -64,9 +64,9 @@ class FluxPatchFunctor(PatchFunctor):
         return transformer
 
 
-# copy from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
+# adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
 def __patch_single_forward__(
-    self: FluxSingleTransformerBlock,
+    self: ChromaSingleTransformerBlock,  # Almost same as FluxSingleTransformerBlock
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     temb: torch.Tensor,
@@ -100,16 +100,15 @@ def __patch_single_forward__(
     return encoder_hidden_states, hidden_states
 
 
-# copy from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L631
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
 def __patch_transformer_forward__(
-    self: FluxTransformer2DModel,
+    self: ChromaTransformer2DModel,
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor = None,
-    pooled_projections: torch.Tensor = None,
     timestep: torch.LongTensor = None,
     img_ids: torch.Tensor = None,
     txt_ids: torch.Tensor = None,
-    guidance: torch.Tensor = None,
+    attention_mask: torch.Tensor = None,
     joint_attention_kwargs: Optional[Dict[str, Any]] = None,
     controlnet_block_samples=None,
     controlnet_single_block_samples=None,
@@ -137,14 +136,10 @@ def __patch_transformer_forward__(
     hidden_states = self.x_embedder(hidden_states)
 
     timestep = timestep.to(hidden_states.dtype) * 1000
-    if guidance is not None:
-        guidance = guidance.to(hidden_states.dtype) * 1000
 
-    temb = (
-        self.time_text_embed(timestep, pooled_projections)
-        if guidance is None
-        else self.time_text_embed(timestep, guidance, pooled_projections)
-    )
+    input_vec = self.time_text_embed(timestep)
+    pooled_temb = self.distilled_guidance_layer(input_vec)
+
     encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
     if txt_ids.ndim == 3:
@@ -174,6 +169,17 @@ def __patch_transformer_forward__(
         joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
     for index_block, block in enumerate(self.transformer_blocks):
+        img_offset = 3 * len(self.single_transformer_blocks)
+        txt_offset = img_offset + 6 * len(self.transformer_blocks)
+        img_modulation = img_offset + 6 * index_block
+        text_modulation = txt_offset + 6 * index_block
+        temb = torch.cat(
+            (
+                pooled_temb[:, img_modulation : img_modulation + 6],
+                pooled_temb[:, text_modulation : text_modulation + 6],
+            ),
+            dim=1,
+        )
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             encoder_hidden_states, hidden_states = (
                 self._gradient_checkpointing_func(
@@ -182,7 +188,7 @@ def __patch_transformer_forward__(
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
-                    joint_attention_kwargs,
+                    attention_mask,
                 )
             )
 
@@ -192,6 +198,7 @@ def __patch_transformer_forward__(
                 encoder_hidden_states=encoder_hidden_states,
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
+                attention_mask=attention_mask,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
 
@@ -216,6 +223,8 @@ def __patch_transformer_forward__(
                 )
 
     for index_block, block in enumerate(self.single_transformer_blocks):
+        start_idx = 3 * index_block
+        temb = pooled_temb[:, start_idx : start_idx + 3]
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             encoder_hidden_states, hidden_states = (
                 self._gradient_checkpointing_func(
@@ -224,7 +233,6 @@ def __patch_transformer_forward__(
                     encoder_hidden_states,
                     temb,
                     image_rotary_emb,
-                    joint_attention_kwargs,
                 )
             )
 
@@ -234,6 +242,7 @@ def __patch_transformer_forward__(
                 encoder_hidden_states=encoder_hidden_states,
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
+                attention_mask=attention_mask,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
 
@@ -250,6 +259,7 @@ def __patch_transformer_forward__(
                 ]
             )
 
+    temb = pooled_temb[:, -2:]
     hidden_states = self.norm_out(hidden_states, temb)
     output = self.proj_out(hidden_states)
 

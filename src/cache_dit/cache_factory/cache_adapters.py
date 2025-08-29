@@ -39,6 +39,8 @@ class BlockAdapter:
             "single_transformer",
             "blocks",
             "layers",
+            "single_stream_blocks",
+            "double_stream_blocks",
         ]
     )
     check_prefixes: bool = True
@@ -306,6 +308,9 @@ class UnifiedCacheAdapter:
         "ShapE",
         "StableAudio",
         "VisualCloze",
+        "AuraFlow",
+        "Chroma",
+        "HiDream",
     ]
 
     def __call__(self, *args, **kwargs):
@@ -790,6 +795,62 @@ class UnifiedCacheAdapter:
                 forward_pattern=ForwardPattern.Pattern_1,
             )
 
+        elif pipe_cls_name.startswith("AuraFlow"):
+            from diffusers import AuraFlowTransformer2DModel
+
+            assert isinstance(pipe.transformer, AuraFlowTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    # Only support caching single_transformer_blocks for AuraFlow now.
+                    # TODO: Support AuraFlowPatchFunctor.
+                    blocks=pipe.transformer.single_transformer_blocks,
+                    blocks_name="single_transformer_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
+        elif pipe_cls_name.startswith("Chroma"):
+            from diffusers import ChromaTransformer2DModel
+            from cache_dit.cache_factory.patch_functors import (
+                ChromaPatchFunctor,
+            )
+
+            assert isinstance(pipe.transformer, ChromaTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
+                    patch_functor=ChromaPatchFunctor(),
+                ),
+                forward_pattern=ForwardPattern.Pattern_1,
+            )
+
+        elif pipe_cls_name.startswith("HiDream"):
+            from diffusers import HiDreamImageTransformer2DModel
+
+            assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+            return UnifiedCacheParams(
+                block_adapter=BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    # Only support caching single_stream_blocks for HiDream now.
+                    # TODO: Support HiDreamPatchFunctor.
+                    blocks=pipe.transformer.single_stream_blocks,
+                    blocks_name="single_stream_blocks",
+                    dummy_blocks_names=[],
+                ),
+                forward_pattern=ForwardPattern.Pattern_3,
+            )
+
         else:
             raise ValueError(f"Unknown pipeline class name: {pipe_cls_name}")
 
@@ -893,6 +954,8 @@ class UnifiedCacheAdapter:
         elif cls_name.startswith("Cosmos"):
             return True
         elif cls_name.startswith("SkyReelsV2"):
+            return True
+        elif cls_name.startswith("Chroma"):
             return True
         return False
 
