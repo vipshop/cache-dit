@@ -288,8 +288,8 @@ cache_dit.enable_cache(
     # For model that fused CFG and non-CFG into single forward step,
     # should set do_separate_cfg as False. For example, set it as True 
     # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-    # CogVideoX, Mochi, etc.
-    do_separate_cfg=True, # Wan 2.1, Qwen-Image
+    # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+    do_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
     # Compute cfg forward first or not, default False, namely, 
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first=False,
