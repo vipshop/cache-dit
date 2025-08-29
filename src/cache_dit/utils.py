@@ -30,13 +30,14 @@ class CacheStats:
 
 
 def summary(
-    pipe_or_transformer: DiffusionPipeline | torch.nn.Module,
+    pipe_or_transformer: DiffusionPipeline | torch.nn.Module | Any,
     details: bool = False,
     logging: bool = True,
 ) -> CacheStats:
     cache_stats = CacheStats()
     cls_name = pipe_or_transformer.__class__.__name__
-    if isinstance(pipe_or_transformer, DiffusionPipeline):
+    if not isinstance(pipe_or_transformer, torch.nn.Module):
+        assert hasattr(pipe_or_transformer, "transformer")
         transformer = pipe_or_transformer.transformer
     else:
         transformer = pipe_or_transformer

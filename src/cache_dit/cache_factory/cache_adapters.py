@@ -23,7 +23,7 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class BlockAdapter:
-    pipe: DiffusionPipeline = None
+    pipe: DiffusionPipeline | Any = None
     transformer: torch.nn.Module = None
     blocks: torch.nn.ModuleList = None
     # transformer_blocks, blocks, etc.
@@ -102,7 +102,9 @@ class BlockAdapter:
     @staticmethod
     def check_block_adapter(adapter: "BlockAdapter") -> bool:
         if (
-            isinstance(adapter.pipe, DiffusionPipeline)
+            # NOTE: pipe may not need to be DiffusionPipeline?
+            # isinstance(adapter.pipe, DiffusionPipeline)
+            adapter.pipe is not None
             and adapter.transformer is not None
             and adapter.blocks is not None
             and adapter.blocks_name is not None
