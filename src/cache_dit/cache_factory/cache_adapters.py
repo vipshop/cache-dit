@@ -8,15 +8,14 @@ import dataclasses
 from typing import Any, Tuple, List, Optional
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
-from cache_dit.cache_factory.patch.flux import (
-    maybe_patch_flux_transformer,
-)
 from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import cache_context
 from cache_dit.cache_factory import ForwardPattern
+from cache_dit.cache_factory.patch_functors import PatchFunctor
 from cache_dit.cache_factory.cache_blocks import (
     DBCachedBlocks,
 )
+
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -29,7 +28,9 @@ class BlockAdapter:
     blocks: torch.nn.ModuleList = None
     # transformer_blocks, blocks, etc.
     blocks_name: str = None
-    dummy_blocks_names: list[str] = dataclasses.field(default_factory=list)
+    dummy_blocks_names: List[str] = dataclasses.field(default_factory=list)
+    # patch functor: Flux, etc.
+    patch_functor: Optional[PatchFunctor] = None
     # flags to control auto block adapter
     auto: bool = False
     allow_prefixes: List[str] = dataclasses.field(
@@ -50,17 +51,19 @@ class BlockAdapter:
     )
 
     def __post_init__(self):
-        self.maybe_apply_patch()
+        assert any((self.pipe is not None, self.transformer is not None))
+        self.patchify()
 
-    def maybe_apply_patch(self):
+    def patchify(self, *args, **kwargs):
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
-        if self.transformer.__class__.__name__.startswith("Flux"):
-            self.transformer = maybe_patch_flux_transformer(
-                self.transformer,
-                blocks=self.blocks,
-            )
+        if self.patch_functor is not None:
+            if self.transformer is not None:
+                self.patch_functor.apply(self.transformer, *args, **kwargs)
+            else:
+                assert hasattr(self.pipe, "transformer")
+                self.patch_functor.apply(self.pipe.transformer, *args, **kwargs)
 
     @staticmethod
     def auto_block_adapter(
@@ -305,6 +308,7 @@ class UnifiedCacheAdapter:
         pipe_cls_name: str = pipe.__class__.__name__
         if pipe_cls_name.startswith("Flux"):
             from diffusers import FluxTransformer2DModel
+            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             return UnifiedCacheParams(
@@ -317,6 +321,7 @@ class UnifiedCacheAdapter:
                     ),
                     blocks_name="transformer_blocks",
                     dummy_blocks_names=["single_transformer_blocks"],
+                    patch_functor=FluxPatchFunctor(),
                 ),
                 forward_pattern=ForwardPattern.Pattern_1,
             )

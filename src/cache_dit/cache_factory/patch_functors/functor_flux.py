@@ -14,10 +14,54 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 
-
+from cache_dit.cache_factory.patch_functors.functor_base import (
+    PatchFunctor,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
+
+
+class FluxPatchFunctor(PatchFunctor):
+
+    def apply(
+        self,
+        transformer: FluxTransformer2DModel,
+        blocks: torch.nn.ModuleList = None,
+        **kwargs,
+    ) -> FluxTransformer2DModel:
+        if blocks is None:
+            blocks = transformer.single_transformer_blocks
+
+        is_patched = False
+        for block in blocks:
+            if isinstance(block, FluxSingleTransformerBlock):
+                forward_parameters = inspect.signature(
+                    block.forward
+                ).parameters.keys()
+                if "encoder_hidden_states" not in forward_parameters:
+                    block.forward = __patch_single_forward__.__get__(block)
+                    is_patched = True
+
+        if is_patched:
+            logger.warning("Patched Flux for cache-dit.")
+            assert not getattr(transformer, "_is_parallelized", False), (
+                "Please call apply_cache_on_pipe before Parallelize, "
+                "the __patch_transformer_forward__ will overwrite the "
+                "parallized forward and cause a downgrade of performance."
+            )
+            transformer.forward = __patch_transformer_forward__.__get__(
+                transformer
+            )
+            transformer._is_patched = True
+
+        cls_name = transformer.__class__.__name__
+        logger.info(
+            f"Applied {self.__class__.__name__} for {cls_name}, "
+            f"Patch: {is_patched}."
+        )
+
+        return transformer
 
 
 # copy from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
@@ -217,33 +261,3 @@ def __patch_transformer_forward__(
         return (output,)
 
     return Transformer2DModelOutput(sample=output)
-
-
-def maybe_patch_flux_transformer(
-    transformer: FluxTransformer2DModel,
-    blocks: torch.nn.ModuleList = None,
-) -> FluxTransformer2DModel:
-    if blocks is None:
-        blocks = transformer.single_transformer_blocks
-
-    is_patched = False
-    for block in blocks:
-        if isinstance(block, FluxSingleTransformerBlock):
-            forward_parameters = inspect.signature(
-                block.forward
-            ).parameters.keys()
-            if "encoder_hidden_states" not in forward_parameters:
-                block.forward = __patch_single_forward__.__get__(block)
-                is_patched = True
-
-    if is_patched:
-        logger.warning("Patched Flux for cache-dit.")
-        assert not getattr(transformer, "_is_parallelized", False), (
-            "Please call apply_cache_on_pipe before Parallelize, "
-            "the __patch_transformer_forward__ will overwrite the "
-            "parallized forward and cause a downgrade of performance."
-        )
-        transformer.forward = __patch_transformer_forward__.__get__(transformer)
-        transformer._is_patched = True
-
-    return transformer
