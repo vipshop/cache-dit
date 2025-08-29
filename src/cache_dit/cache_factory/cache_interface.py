@@ -1,3 +1,4 @@
+from typing import Any
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_types import CacheType
@@ -11,7 +12,7 @@ logger = init_logger(__name__)
 
 def enable_cache(
     # BlockAdapter & forward pattern
-    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter | Any,
     forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     # Cache context kwargs
     Fn_compute_blocks: int = 8,
@@ -30,7 +31,7 @@ def enable_cache(
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 2,
     **other_cache_kwargs,
-) -> DiffusionPipeline:
+) -> DiffusionPipeline | Any:
     r"""
     Unified Cache API for  almost Any Diffusion Transformers (with Transformer Blocks
     that match the specific Input and Output patterns).

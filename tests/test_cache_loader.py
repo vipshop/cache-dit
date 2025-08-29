@@ -1,6 +1,6 @@
-from cache_dit import cache_factory
+import cache_dit
 
-cache_options = cache_factory.load_cache_options_from_yaml(
+cache_options = cache_dit.load_options(
     "cache_config.yaml",
 )
 

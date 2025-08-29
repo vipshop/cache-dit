@@ -19,39 +19,57 @@ class ForwardPattern(Enum):
         self.Supported = Supported
 
     Pattern_0 = (
-        True,
-        False,
-        False,
-        ("hidden_states", "encoder_hidden_states"),
-        ("hidden_states", "encoder_hidden_states"),
-        True,
+        True,  # Return_H_First
+        False, # Return_H_Only
+        False, # Forward_H_only
+        ("hidden_states", "encoder_hidden_states"),  # In
+        ("hidden_states", "encoder_hidden_states"),  # Out
+        True,  # Supported
     )
 
     Pattern_1 = (
-        False,
-        False,
-        False,
-        ("hidden_states", "encoder_hidden_states"),
-        ("encoder_hidden_states", "hidden_states"),
-        True,
+        False, # Return_H_First
+        False, # Return_H_Only
+        False, # Forward_H_only
+        ("hidden_states", "encoder_hidden_states"),  # In
+        ("encoder_hidden_states", "hidden_states"),  # Out
+        True,  # Supported
     )
 
     Pattern_2 = (
-        False,
-        True,
-        False,
-        ("hidden_states", "encoder_hidden_states"),
-        ("hidden_states",),
-        True,
+        False, # Return_H_First
+        True,  # Return_H_Only
+        False, # Forward_H_only
+        ("hidden_states", "encoder_hidden_states"),  # In
+        ("hidden_states",),                          # Out
+        True,  # Supported
     )
 
     Pattern_3 = (
-        False,
-        True,
-        False,
-        ("hidden_states",),
-        ("hidden_states",),
-        False,
+        False, # Return_H_First
+        True,  # Return_H_Only
+        True,  # Forward_H_only
+        ("hidden_states",),  # In
+        ("hidden_states",),  # Out
+        True,  # Supported
+    )
+
+    Pattern_4 = (
+        True,  # Return_H_First
+        False, # Return_H_Only
+        True,  # Forward_H_only
+        ("hidden_states",),                          # In
+        ("hidden_states", "encoder_hidden_states"),  # Out
+        True,  # Supported
+    )
+
+    Pattern_5 = (
+        False, # Return_H_First
+        False, # Return_H_Only
+        True,  # Forward_H_only
+        ("hidden_states",),                          # In
+        ("encoder_hidden_states", "hidden_states"),  # Out
+        True,  # Supported
     )
 
     @staticmethod
@@ -60,4 +78,7 @@ class ForwardPattern(Enum):
             ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_1,
             ForwardPattern.Pattern_2,
+            ForwardPattern.Pattern_3,
+            ForwardPattern.Pattern_4,
+            ForwardPattern.Pattern_5,
         ]

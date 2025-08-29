@@ -4,12 +4,15 @@ import torch.distributed as dist
 
 from cache_dit.cache_factory import cache_context
 from cache_dit.cache_factory import ForwardPattern
+from cache_dit.cache_factory.cache_blocks.utils import (
+    patch_cached_stats,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-class DBCachedTransformerBlocks(torch.nn.Module):
+class DBCachedBlocks_Pattern_Base(torch.nn.Module):
     _supported_patterns = [
         ForwardPattern.Pattern_0,
         ForwardPattern.Pattern_1,
@@ -29,18 +32,30 @@ class DBCachedTransformerBlocks(torch.nn.Module):
         self.transformer_blocks = transformer_blocks
         self.forward_pattern = forward_pattern
         self._check_forward_pattern()
+        logger.info(f"Match Cached Blocks: {self.__class__.__name__}")
 
     def _check_forward_pattern(self):
         assert (
             self.forward_pattern.Supported
             and self.forward_pattern in self._supported_patterns
-        ), f"Pattern {self.forward_pattern} is not support for DBCache now!"
+        ), f"Pattern {self.forward_pattern} is not supported now!"
 
         if self.transformer_blocks is not None:
             for block in self.transformer_blocks:
                 forward_parameters = set(
                     inspect.signature(block.forward).parameters.keys()
                 )
+                num_outputs = str(
+                    inspect.signature(block.forward).return_annotation
+                ).count("torch.Tensor")
+
+                if num_outputs > 0:
+                    assert len(self.forward_pattern.Out) == num_outputs, (
+                        f"The number of block's outputs is {num_outputs} don't not "
+                        f"match the number of the pattern: {self.forward_pattern}, "
+                        f"Out: {len(self.forward_pattern.Out)}."
+                    )
+
                 for required_param in self.forward_pattern.In:
                     assert (
                         required_param in forward_parameters
@@ -479,19 +494,3 @@ class DBCachedTransformerBlocks(torch.nn.Module):
                         )
 
         return hidden_states, encoder_hidden_states
-
-
-@torch.compiler.disable
-def patch_cached_stats(
-    transformer,
-):
-    # Patch the cached stats to the transformer, the cached stats
-    # will be reset for each calling of pipe.__call__(**kwargs).
-    if transformer is None:
-        return
-
-    # TODO: Patch more cached stats to the transformer
-    transformer._cached_steps = cache_context.get_cached_steps()
-    transformer._residual_diffs = cache_context.get_residual_diffs()
-    transformer._cfg_cached_steps = cache_context.get_cfg_cached_steps()
-    transformer._cfg_residual_diffs = cache_context.get_cfg_residual_diffs()
