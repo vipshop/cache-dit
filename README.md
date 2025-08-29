@@ -109,8 +109,6 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
 
-![alt text](image.png)
-
 
 ### ♥️Cache Acceleration with One-line Code
 
