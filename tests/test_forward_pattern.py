@@ -335,7 +335,7 @@ class RandPipeline:
 def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--pattern", type=int, choices=[0, 1, 2, 3, 4, 5], default=3
+        "--pattern", type=int, choices=[0, 1, 2, 3, 4, 5], default=0
     )
     return parser.parse_args()
 
