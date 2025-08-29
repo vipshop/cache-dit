@@ -191,7 +191,12 @@ class RandTransformer2DModel_Pattern_0_1_2(torch.nn.Module):
     ) -> Union[torch.Tensor, RandTransformer2DModelOutput]:
 
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, *args, **kwargs)
+            hidden_states = block(
+                hidden_states,
+                encoder_hidden_states,
+                *args,
+                **kwargs,
+            )
             if not isinstance(hidden_states, torch.Tensor):
                 if self.pattern.Return_H_First:
                     hidden_states, encoder_hidden_states = hidden_states
@@ -245,7 +250,11 @@ class RandTransformer2DModel_Pattern_3_4_5(torch.nn.Module):
 
         encoder_hidden_states = None
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, *args, **kwargs)
+            hidden_states = block(
+                hidden_states,
+                *args,
+                **kwargs,
+            )
             if not isinstance(hidden_states, torch.Tensor):
                 if self.pattern.Return_H_First:
                     hidden_states, encoder_hidden_states = hidden_states
@@ -294,6 +303,7 @@ class RandPipeline:
     def __call__(
         self,
         hidden_states: torch.Tensor,
+        # None, Pattern 3, 4, 5 else 0, 1, 2
         encoder_hidden_states: torch.Tensor = None,
         num_inference_steps: int = 50,
         return_dict: bool = True,
