@@ -312,6 +312,12 @@ class UnifiedCacheAdapter:
         return self.apply(*args, **kwargs)
 
     @classmethod
+    def supported_pipelines(cls) -> Tuple[List[str], int]:
+        return [p + "*" for p in cls._supported_pipelines], len(
+            cls._supported_pipelines
+        )
+
+    @classmethod
     def is_supported(cls, pipe: DiffusionPipeline) -> bool:
         pipe_cls_name: str = pipe.__class__.__name__
         for prefix in cls._supported_pipelines:
@@ -383,16 +389,34 @@ class UnifiedCacheAdapter:
                 pipe.transformer,
                 (WanTransformer3DModel, WanVACETransformer3DModel),
             )
-            return UnifiedCacheParams(
-                block_adapter=BlockAdapter(
-                    pipe=pipe,
-                    transformer=pipe.transformer,
-                    blocks=pipe.transformer.blocks,
-                    blocks_name="blocks",
-                    dummy_blocks_names=[],
-                ),
-                forward_pattern=ForwardPattern.Pattern_2,
-            )
+            if getattr(pipe, "transformer_2", None):
+                # Wan 2.2, cache for low-noise transformer
+                assert isinstance(
+                    pipe.transformer_2,
+                    (WanTransformer3DModel, WanVACETransformer3DModel),
+                )
+                return UnifiedCacheParams(
+                    block_adapter=BlockAdapter(
+                        pipe=pipe,
+                        transformer=pipe.transformer_2,
+                        blocks=pipe.transformer_2.blocks,
+                        blocks_name="blocks",
+                        dummy_blocks_names=[],
+                    ),
+                    forward_pattern=ForwardPattern.Pattern_2,
+                )
+            else:
+                # Wan 2.1
+                return UnifiedCacheParams(
+                    block_adapter=BlockAdapter(
+                        pipe=pipe,
+                        transformer=pipe.transformer,
+                        blocks=pipe.transformer.blocks,
+                        blocks_name="blocks",
+                        dummy_blocks_names=[],
+                    ),
+                    forward_pattern=ForwardPattern.Pattern_2,
+                )
 
         elif pipe_cls_name.startswith("HunyuanVideo"):
             from diffusers import HunyuanVideoTransformer3DModel
