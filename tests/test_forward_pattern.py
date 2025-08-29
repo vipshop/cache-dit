@@ -75,7 +75,7 @@ class RandTransformerBlock_Pattern_2(torch.nn.Module):
         encoder_hidden_states: torch.Tensor,
         *args,
         **kwargs,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         if torch.rand(1).item() < RAND_RATIO:
             hidden_states = torch.randn_like(hidden_states)
             encoder_hidden_states = torch.randn_like(encoder_hidden_states)
@@ -365,7 +365,7 @@ if __name__ == "__main__":
             blocks=pipe.transformer.transformer_blocks,
             blocks_name="transformer_blocks",
         ),
-        forward_pattern=pipe.transformer.pattern,
+        forward_pattern=pipe.pattern,
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
         residual_diff_threshold=0.05,
