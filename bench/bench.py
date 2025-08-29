@@ -85,6 +85,7 @@ def main():
         else:
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             from cache_dit import ForwardPattern, BlockAdapter
+            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
             if args.cache_config is None:
 
@@ -100,12 +101,14 @@ def main():
                             ),
                             blocks_name="transformer_blocks",
                             dummy_blocks_names=["single_transformer_blocks"],
+                            patch_functor=FluxPatchFunctor(),
                         )
                         if not args.use_auto_block_adapter
                         else BlockAdapter(
                             pipe=pipe,
                             auto=True,
                             blocks_policy="min",
+                            patch_functor=FluxPatchFunctor(),
                         )
                     ),
                     forward_pattern=ForwardPattern.Pattern_1,
@@ -137,12 +140,14 @@ def main():
                             ),
                             blocks_name="transformer_blocks",
                             dummy_blocks_names=["single_transformer_blocks"],
+                            patch_functor=FluxPatchFunctor(),
                         )
                         if not args.use_auto_block_adapter
                         else BlockAdapter(
                             pipe=pipe,
                             auto=True,
                             blocks_policy="min",
+                            patch_functor=FluxPatchFunctor(),
                         )
                     ),
                     forward_pattern=ForwardPattern.Pattern_1,
