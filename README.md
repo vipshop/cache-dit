@@ -107,11 +107,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
-<!--
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
--->
-
-![](./assets/patterns.png)
 
 ### ♥️Cache Acceleration with One-line Code
 
