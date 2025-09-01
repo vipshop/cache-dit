@@ -111,7 +111,7 @@ def main():
                             else BlockAdapter(
                                 pipe=pipe,
                                 auto=True,
-                                blocks_policy="max",
+                                blocks_policy="min",
                                 patch_functor=FluxPatchFunctor(),
                                 forward_pattern=ForwardPattern.Pattern_1,
                             )
@@ -152,7 +152,7 @@ def main():
                         else BlockAdapter(
                             pipe=pipe,
                             auto=True,
-                            blocks_policy="max",
+                            blocks_policy="min",
                             patch_functor=FluxPatchFunctor(),
                             forward_pattern=ForwardPattern.Pattern_1,
                         )
