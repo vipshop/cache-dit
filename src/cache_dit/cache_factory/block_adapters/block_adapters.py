@@ -179,7 +179,7 @@ class BlockAdapter:
         # Check ModuleList
         valid_names = []
         valid_count = []
-        forward_pattern = kwargs.get("forward_pattern", None)
+        forward_pattern = kwargs.pop("forward_pattern", None)
         for blocks_name in blocks_names:
             if blocks := getattr(transformer, blocks_name, None):
                 if isinstance(blocks, torch.nn.ModuleList):
@@ -303,9 +303,14 @@ class BlockAdapter:
 
         pattern_matched = all(pattern_matched_states)  # all block match
         if pattern_matched and logging:
-            block_cls_name = transformer_blocks[0].__class__.__name__
+            block_cls_names = [
+                block.__class__.__name__ for block in transformer_blocks
+            ]
+            block_cls_names = list(set(block_cls_names))
+            if len(block_cls_names) == 1:
+                block_cls_names = block_cls_names[0]
             logger.info(
-                f"Match Block Forward Pattern: {block_cls_name}, {forward_pattern}"
+                f"Match Block Forward Pattern: {block_cls_names}, {forward_pattern}"
                 f"\nIN:{forward_pattern.In}, OUT:{forward_pattern.Out})"
             )
 

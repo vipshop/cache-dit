@@ -477,12 +477,19 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
-        # Only support caching single_transformer_blocks for AuraFlow now.
-        # TODO: Support AuraFlowPatchFunctor.
-        blocks=pipe.transformer.single_transformer_blocks,
-        blocks_name="single_transformer_blocks",
-        dummy_blocks_names=[],
-        forward_pattern=ForwardPattern.Pattern_3,
+        blocks=[
+            # Only 4 joint blocks, apply no-cache
+            # pipe.transformer.joint_transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        blocks_name=[
+            # "joint_transformer_blocks",
+            "single_transformer_blocks",
+        ],
+        forward_pattern=[
+            # ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_3,
+        ],
     )
 
 
