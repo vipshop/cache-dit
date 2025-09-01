@@ -60,6 +60,7 @@ if args.cache:
         max_cached_steps=20,
         max_continuous_cached_steps=2,
         residual_diff_threshold=0.08,
+        do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=2,
