@@ -2,7 +2,6 @@ import torch
 
 import unittest
 import functools
-import dataclasses
 
 # from typing import Any, Tuple, List
 from contextlib import ExitStack
@@ -17,11 +16,6 @@ from cache_dit.cache_factory import DBCachedBlocks
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
-
-
-@dataclasses.dataclass
-class UnifiedCacheParams:
-    block_adapter: BlockAdapter = None
 
 
 class UnifiedCacheAdapter:
