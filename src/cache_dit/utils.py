@@ -30,27 +30,32 @@ class CacheStats:
 
 
 def summary(
-    pipe_or_transformer: DiffusionPipeline | torch.nn.Module | Any,
+    pipe_or_module: DiffusionPipeline | torch.nn.Module | Any,
     details: bool = False,
     logging: bool = True,
 ) -> CacheStats:
     cache_stats = CacheStats()
-    cls_name = pipe_or_transformer.__class__.__name__
-    if not isinstance(pipe_or_transformer, torch.nn.Module):
-        assert hasattr(pipe_or_transformer, "transformer")
-        transformer = pipe_or_transformer.transformer
-    else:
-        transformer = pipe_or_transformer
 
-    if hasattr(transformer, "_cache_context_kwargs"):
-        cache_options = transformer._cache_context_kwargs
+    if not isinstance(pipe_or_module, torch.nn.Module):
+        assert hasattr(pipe_or_module, "transformer")
+        module = pipe_or_module.transformer
+        cls_name = module.__class__.__name__
+    else:
+        module = pipe_or_module
+
+    cls_name = module.__class__.__name__
+    if isinstance(module, torch.nn.ModuleList):
+        cls_name = module[0].__class__.__name__
+
+    if hasattr(module, "_cache_context_kwargs"):
+        cache_options = module._cache_context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
             print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")
 
-    if hasattr(transformer, "_cached_steps"):
-        cached_steps: list[int] = transformer._cached_steps
-        residual_diffs: dict[str, float] = dict(transformer._residual_diffs)
+    if hasattr(module, "_cached_steps"):
+        cached_steps: list[int] = module._cached_steps
+        residual_diffs: dict[str, float] = dict(module._residual_diffs)
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
 
@@ -91,11 +96,9 @@ def summary(
                     compact=True,
                 )
 
-    if hasattr(transformer, "_cfg_cached_steps"):
-        cfg_cached_steps: list[int] = transformer._cfg_cached_steps
-        cfg_residual_diffs: dict[str, float] = dict(
-            transformer._cfg_residual_diffs
-        )
+    if hasattr(module, "_cfg_cached_steps"):
+        cfg_cached_steps: list[int] = module._cfg_cached_steps
+        cfg_residual_diffs: dict[str, float] = dict(module._cfg_residual_diffs)
         cache_stats.cfg_cached_steps = cfg_cached_steps
         cache_stats.cfg_residual_diffs = cfg_residual_diffs
 

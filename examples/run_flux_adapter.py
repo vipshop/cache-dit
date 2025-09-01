@@ -58,10 +58,11 @@ image = pipe(
 
 end = time.time()
 
-stats = cache_dit.summary(pipe)
+cache_dit.summary(pipe.transformer.transformer_blocks)
+cache_dit.summary(pipe.transformer.single_transformer_blocks)
 
 time_cost = end - start
-save_path = f"flux.adapter.{cache_dit.strify(stats)}.png"
+save_path = f"flux.adapter.{cache_dit.strify(pipe)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

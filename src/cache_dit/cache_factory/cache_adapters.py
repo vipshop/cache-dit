@@ -106,6 +106,11 @@ class CachedAdapter:
         block_adapter.pipe.__class__._cache_context_kwargs = (
             cache_context_kwargs
         )
+        for blocks, forward_pattern in zip(
+            block_adapter.blocks, block_adapter.forward_pattern
+        ):
+            blocks._forward_pattern = forward_pattern
+            blocks._cache_context_kwargs = cache_context_kwargs
 
     @classmethod
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
