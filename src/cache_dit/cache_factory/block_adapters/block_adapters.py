@@ -179,7 +179,7 @@ class BlockAdapter:
         # Check ModuleList
         valid_names = []
         valid_count = []
-        forward_pattern = kwargs.get("forward_pattern", None)
+        forward_pattern = kwargs.pop("forward_pattern", None)
         for blocks_name in blocks_names:
             if blocks := getattr(transformer, blocks_name, None):
                 if isinstance(blocks, torch.nn.ModuleList):
