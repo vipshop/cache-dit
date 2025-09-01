@@ -74,12 +74,13 @@ class CachedAdapter:
             )
 
         if BlockAdapter.check_block_adapter(block_adapter):
-            # Apply cache on pipeline: wrap cache context
+            block_adapter = BlockAdapter.normalize(block_adapter)
+            # 0. Apply cache on pipeline: wrap cache context
             cls.create_context(
-                block_adapter.pipe,
+                block_adapter,
                 **cache_context_kwargs,
             )
-            # Apply cache on transformer: mock cached transformer blocks
+            # 1. Apply cache on transformer: mock cached transformer blocks
             cls.mock_blocks(
                 block_adapter,
             )
@@ -129,15 +130,15 @@ class CachedAdapter:
     @classmethod
     def create_context(
         cls,
-        pipe: DiffusionPipeline,
+        block_adapter: BlockAdapter,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if getattr(pipe, "_is_cached", False):
-            return pipe
+        if getattr(block_adapter.pipe, "_is_cached", False):
+            return block_adapter.pipe
 
         # Check cache_context_kwargs
         cache_context_kwargs = cls.check_context_kwargs(
-            pipe,
+            block_adapter.pipe,
             **cache_context_kwargs,
         )
         # Apply cache on pipeline: wrap cache context
@@ -145,20 +146,26 @@ class CachedAdapter:
             default_attrs={},
             **cache_context_kwargs,
         )
-        original_call = pipe.__class__.__call__
+        original_call = block_adapter.pipe.__class__.__call__
 
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
-            with CachedContext.cache_context(
-                CachedContext.create_cache_context(
-                    **cache_kwargs,
-                )
-            ):
+            with ExitStack() as stack:
+                # cache context will reset for each pipe inference
+                for blocks_name in block_adapter.blocks_name:
+                    stack.enter_context(
+                        CachedContext.cache_context(
+                            CachedContext.reset_cache_context(
+                                blocks_name,
+                                **cache_kwargs,
+                            ),
+                        )
+                    )
                 return original_call(self, *args, **kwargs)
 
-        pipe.__class__.__call__ = new_call
-        pipe.__class__._is_cached = True
-        return pipe
+        block_adapter.pipe.__class__.__call__ = new_call
+        block_adapter.pipe.__class__._is_cached = True
+        return block_adapter.pipe
 
     @classmethod
     def mock_blocks(
@@ -215,7 +222,8 @@ class CachedAdapter:
                             dummy_blocks,
                         )
                     )
-                return original_forward(*args, **kwargs)
+                outputs = original_forward(*args, **kwargs)
+                return outputs
 
         block_adapter.transformer.forward = new_forward.__get__(
             block_adapter.transformer
@@ -231,19 +239,21 @@ class CachedAdapter:
     ) -> Dict[str, torch.nn.ModuleList]:
         block_adapter = BlockAdapter.normalize(block_adapter)
 
-        num_cached_blocks = len(block_adapter.blocks)
-        cached_blocks = {}
+        cached_blocks_bind_context = {}
 
-        for i in range(num_cached_blocks):
-            cached_blocks[block_adapter.blocks_name[i]] = torch.nn.ModuleList(
-                [
-                    CachedBlocks(
-                        block_adapter.blocks[i],
-                        block_adapter.blocks_name[i],
-                        transformer=block_adapter.transformer,
-                        forward_pattern=block_adapter.forward_pattern[i],
-                    )
-                ]
+        for i in range(len(block_adapter.blocks)):
+            cached_blocks_bind_context[block_adapter.blocks_name[i]] = (
+                torch.nn.ModuleList(
+                    [
+                        CachedBlocks(
+                            block_adapter.blocks[i],
+                            block_adapter.blocks_name[i],
+                            block_adapter.blocks_name[i],  # context name
+                            transformer=block_adapter.transformer,
+                            forward_pattern=block_adapter.forward_pattern[i],
+                        )
+                    ]
+                )
             )
 
-        return cached_blocks
+        return cached_blocks_bind_context

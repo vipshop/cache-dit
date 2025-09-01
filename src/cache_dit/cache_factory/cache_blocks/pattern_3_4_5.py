@@ -26,6 +26,11 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         *args,
         **kwargs,
     ):
+        # Use it's own cache context.
+        CachedContext.set_cache_context(
+            self.cache_context,
+        )
+
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
         # more stable diff calculation.

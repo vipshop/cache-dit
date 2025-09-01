@@ -15,6 +15,7 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class _CachedContext:  # Internal CachedContext Impl class
+    name: str = "default"
     # Dual Block Cache
     # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
     Fn_compute_blocks: int = 1
@@ -99,6 +100,8 @@ class _CachedContext:  # Internal CachedContext Impl class
 
     @torch.compiler.disable
     def __post_init__(self):
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.info(f"Created _CacheContext: {self.name}")
         # Some checks for settings
         if self.do_separate_cfg:
             assert self.enable_alter_cache is False, (
@@ -329,26 +332,60 @@ class _CachedContext:  # Internal CachedContext Impl class
 
 
 # TODO: Support context manager for different cache_context
+_current_cache_context: _CachedContext = None
+
+_cache_context_manager: Dict[str, _CachedContext] = {}
 
 
 def create_cache_context(*args, **kwargs):
-    return _CachedContext(*args, **kwargs)
+    global _cache_context_manager
+    _context = _CachedContext(*args, **kwargs)
+    _cache_context_manager[_context.name] = _context
+    return _context
 
 
-def get_current_cache_context():
+def get_cache_context():
     return _current_cache_context
 
 
-def set_current_cache_context(cache_context=None):
-    global _current_cache_context
-    _current_cache_context = cache_context
+def set_cache_context(cache_context: _CachedContext | str):
+    global _current_cache_context, _cache_context_manager
+    if isinstance(cache_context, _CachedContext):
+        _current_cache_context = cache_context
+    else:
+        _current_cache_context = _cache_context_manager[cache_context]
+
+
+def reset_cache_context(cache_context: _CachedContext | str, *args, **kwargs):
+    global _cache_context_manager
+    if isinstance(cache_context, _CachedContext):
+        old_context_name = cache_context.name
+        if cache_context.name in _cache_context_manager:
+            del _cache_context_manager[cache_context.name]
+        # force use old_context name
+        kwargs["name"] = old_context_name
+        _context = _CachedContext(*args, **kwargs)
+        _cache_context_manager[_context.name] = _context
+    else:
+        old_context_name = cache_context
+        if cache_context in _cache_context_manager:
+            del _cache_context_manager[cache_context]
+        # force use old_context name
+        kwargs["name"] = old_context_name
+        _context = _CachedContext(*args, **kwargs)
+        _cache_context_manager[_context.name] = _context
+
+    return _context
 
 
 @contextlib.contextmanager
-def cache_context(cache_context):
-    global _current_cache_context
+def cache_context(cache_context: _CachedContext | str):
+    global _current_cache_context, _cache_context_manager
     old_cache_context = _current_cache_context
-    _current_cache_context = cache_context
+    if isinstance(cache_context, _CachedContext):
+        _current_cache_context = cache_context
+    else:
+        _current_cache_context = _cache_context_manager[cache_context]
     try:
         yield
     finally:
@@ -357,49 +394,49 @@ def cache_context(cache_context):
 
 @torch.compiler.disable
 def get_residual_diff_threshold():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_residual_diff_threshold()
 
 
 @torch.compiler.disable
 def get_buffer(name):
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_buffer(name)
 
 
 @torch.compiler.disable
 def set_buffer(name, buffer):
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     cache_context.set_buffer(name, buffer)
 
 
 @torch.compiler.disable
 def remove_buffer(name):
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     cache_context.remove_buffer(name)
 
 
 @torch.compiler.disable
 def mark_step_begin():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     cache_context.mark_step_begin()
 
 
 @torch.compiler.disable
 def get_current_step():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_current_step()
 
 
 @torch.compiler.disable
 def get_current_step_residual_diff():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     step = str(get_current_step())
     residual_diffs = get_residual_diffs()
@@ -410,7 +447,7 @@ def get_current_step_residual_diff():
 
 @torch.compiler.disable
 def get_current_step_cfg_residual_diff():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     step = str(get_current_step())
     cfg_residual_diffs = get_cfg_residual_diffs()
@@ -421,110 +458,110 @@ def get_current_step_cfg_residual_diff():
 
 @torch.compiler.disable
 def get_current_transformer_step():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_current_transformer_step()
 
 
 @torch.compiler.disable
 def get_cached_steps():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_cached_steps()
 
 
 @torch.compiler.disable
 def get_cfg_cached_steps():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_cfg_cached_steps()
 
 
 @torch.compiler.disable
 def get_max_cached_steps():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.max_cached_steps
 
 
 @torch.compiler.disable
 def get_max_continuous_cached_steps():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.max_continuous_cached_steps
 
 
 @torch.compiler.disable
 def get_continuous_cached_steps():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.continuous_cached_steps
 
 
 @torch.compiler.disable
 def get_cfg_continuous_cached_steps():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.cfg_continuous_cached_steps
 
 
 @torch.compiler.disable
 def add_cached_step():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     cache_context.add_cached_step()
 
 
 @torch.compiler.disable
 def add_residual_diff(diff):
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     cache_context.add_residual_diff(diff)
 
 
 @torch.compiler.disable
 def get_residual_diffs():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_residual_diffs()
 
 
 @torch.compiler.disable
 def get_cfg_residual_diffs():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_cfg_residual_diffs()
 
 
 @torch.compiler.disable
 def is_taylorseer_enabled():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.enable_taylorseer
 
 
 @torch.compiler.disable
 def is_encoder_taylorseer_enabled():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.enable_encoder_taylorseer
 
 
 def get_taylorseers() -> Tuple[TaylorSeer, TaylorSeer]:
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_taylorseers()
 
 
 def get_cfg_taylorseers() -> Tuple[TaylorSeer, TaylorSeer]:
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.get_cfg_taylorseers()
 
 
 @torch.compiler.disable
 def is_taylorseer_cache_residual():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.taylorseer_cache_type == "residual"
 
@@ -547,28 +584,28 @@ def is_encoder_cache_residual():
 
 @torch.compiler.disable
 def is_alter_cache_enabled():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.enable_alter_cache
 
 
 @torch.compiler.disable
 def is_alter_cache():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.is_alter_cache
 
 
 @torch.compiler.disable
 def is_in_warmup():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.is_in_warmup()
 
 
 @torch.compiler.disable
 def is_l1_diff_enabled():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return (
         cache_context.l1_hidden_states_diff_threshold is not None
@@ -578,21 +615,21 @@ def is_l1_diff_enabled():
 
 @torch.compiler.disable
 def get_important_condition_threshold():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.important_condition_threshold
 
 
 @torch.compiler.disable
 def non_compute_blocks_diff_threshold():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.non_compute_blocks_diff_threshold
 
 
 @torch.compiler.disable
 def Fn_compute_blocks():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     assert (
         cache_context.Fn_compute_blocks >= 1
@@ -612,7 +649,7 @@ def Fn_compute_blocks():
 
 @torch.compiler.disable
 def Fn_compute_blocks_ids():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     assert (
         len(cache_context.Fn_compute_blocks_ids)
@@ -627,7 +664,7 @@ def Fn_compute_blocks_ids():
 
 @torch.compiler.disable
 def Bn_compute_blocks():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     assert (
         cache_context.Bn_compute_blocks >= 0
@@ -647,7 +684,7 @@ def Bn_compute_blocks():
 
 @torch.compiler.disable
 def Bn_compute_blocks_ids():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     assert (
         len(cache_context.Bn_compute_blocks_ids)
@@ -662,26 +699,23 @@ def Bn_compute_blocks_ids():
 
 @torch.compiler.disable
 def do_separate_cfg():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.do_separate_cfg
 
 
 @torch.compiler.disable
 def is_separate_cfg_step():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.is_separate_cfg_step()
 
 
 @torch.compiler.disable
 def cfg_diff_compute_separate():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.cfg_diff_compute_separate
-
-
-_current_cache_context: _CachedContext = None
 
 
 def collect_cache_kwargs(default_attrs: dict, **kwargs):
@@ -1057,7 +1091,7 @@ def apply_hidden_states_residual(
 
 @torch.compiler.disable
 def get_downsample_factor():
-    cache_context = get_current_cache_context()
+    cache_context = get_cache_context()
     assert cache_context is not None, "cache_context must be set before"
     return cache_context.downsample_factor
 
@@ -1104,7 +1138,7 @@ def get_can_use_cache(
                 "can not use cache."
             )
         # reset continuous cached steps stats
-        cache_context = get_current_cache_context()
+        cache_context = get_cache_context()
         if not is_separate_cfg_step():
             cache_context.continuous_cached_steps = 0
         else:

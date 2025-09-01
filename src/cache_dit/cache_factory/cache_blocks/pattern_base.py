@@ -25,6 +25,8 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         # 'transformer_blocks', 'blocks', 'single_transformer_blocks',
         # 'layers', 'single_stream_blocks', 'double_stream_blocks'
         blocks_name: str,
+        # Usually, blocks_name, etc.
+        cache_context: str,
         *,
         transformer: torch.nn.Module = None,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
@@ -34,11 +36,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         self.transformer = transformer
         self.transformer_blocks = transformer_blocks
         self.blocks_name = blocks_name
+        self.cache_context = cache_context
         self.forward_pattern = forward_pattern
         self._check_forward_pattern()
         logger.info(
-            f"Match Cached Blocks: {self.__class__.__name__}, "
-            f"for {self.blocks_name}."
+            f"Match Cached Blocks: {self.__class__.__name__}, for "
+            f"{self.blocks_name}, context: {self.cache_context}"
         )
 
     def _check_forward_pattern(self):
@@ -75,6 +78,10 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *args,
         **kwargs,
     ):
+        CachedContext.set_cache_context(
+            self.cache_context,
+        )
+
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
         # more stable diff calculation.
@@ -190,6 +197,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 **kwargs,
             )
 
+        # patch cached stats for blocks or remove it.
         patch_cached_stats(self.transformer)
         torch._dynamo.graph_break()
 
