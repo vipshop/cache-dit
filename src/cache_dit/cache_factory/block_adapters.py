@@ -4,6 +4,7 @@ import inspect
 import dataclasses
 
 from typing import Any, Tuple, List, Optional, Dict
+
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import PatchFunctor
@@ -128,6 +129,8 @@ class BlockAdapter:
             "single_transformer",
             "blocks",
             "layers",
+            "single_stream_blocks",
+            "double_stream_blocks",
         ],
         allow_suffixes: List[str] = [
             "TransformerBlock",

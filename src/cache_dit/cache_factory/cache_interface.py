@@ -10,14 +10,6 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-def supported_pipelines(**kwargs) -> Tuple[int, List[str]]:
-    return BlockAdapterRegistry.supported_pipelines(**kwargs)
-
-
-def get_adapter(pipe: DiffusionPipeline | str | Any) -> BlockAdapter:
-    return BlockAdapterRegistry.get_adapter(pipe)
-
-
 def enable_cache(
     # DiffusionPipeline or BlockAdapter
     pipe_or_adapter: DiffusionPipeline | BlockAdapter | Any,
@@ -37,7 +29,7 @@ def enable_cache(
     enable_encoder_taylorseer: bool = False,
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 2,
-    **other_cache_kwargs,
+    **other_cache_context_kwargs,
 ) -> DiffusionPipeline | Any:
     r"""
     Unified Cache API for  almost Any Diffusion Transformers (with Transformer Blocks
@@ -111,7 +103,7 @@ def enable_cache(
     """
 
     # Collect cache context kwargs
-    cache_context_kwargs = other_cache_kwargs.copy()
+    cache_context_kwargs = other_cache_context_kwargs.copy()
     cache_context_kwargs["cache_type"] = CacheType.DBCache
     cache_context_kwargs["Fn_compute_blocks"] = Fn_compute_blocks
     cache_context_kwargs["Bn_compute_blocks"] = Bn_compute_blocks
@@ -157,3 +149,15 @@ def enable_cache(
             "Please pass DiffusionPipeline or BlockAdapter"
             "for the 1's position param: pipe_or_adapter"
         )
+
+
+def supported_pipelines(
+    **kwargs,
+) -> Tuple[int, List[str]]:
+    return BlockAdapterRegistry.supported_pipelines(**kwargs)
+
+
+def get_adapter(
+    pipe: DiffusionPipeline | str | Any,
+) -> BlockAdapter:
+    return BlockAdapterRegistry.get_adapter(pipe)
