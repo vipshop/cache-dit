@@ -161,11 +161,25 @@ class CachedAdapter:
                             ),
                         )
                     )
-                return original_call(self, *args, **kwargs)
+                outputs = original_call(self, *args, **kwargs)
+                cls.patch_stats(block_adapter)
+                return outputs
 
         block_adapter.pipe.__class__.__call__ = new_call
         block_adapter.pipe.__class__._is_cached = True
         return block_adapter.pipe
+
+    @classmethod
+    def patch_stats(cls, block_adapter: BlockAdapter):
+        from cache_dit.cache_factory.cache_blocks.utils import (
+            patch_cached_stats,
+        )
+
+        patch_cached_stats(block_adapter.transformer)
+        for blocks, blocks_name in zip(
+            block_adapter.blocks, block_adapter.blocks_name
+        ):
+            patch_cached_stats(blocks, blocks_name)
 
     @classmethod
     def mock_blocks(
@@ -222,8 +236,7 @@ class CachedAdapter:
                             dummy_blocks,
                         )
                     )
-                outputs = original_forward(*args, **kwargs)
-                return outputs
+                return original_forward(*args, **kwargs)
 
         block_adapter.transformer.forward = new_forward.__get__(
             block_adapter.transformer

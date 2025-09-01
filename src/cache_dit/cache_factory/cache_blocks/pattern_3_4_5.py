@@ -2,9 +2,6 @@ import torch
 
 from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import ForwardPattern
-from cache_dit.cache_factory.cache_blocks.utils import (
-    patch_cached_stats,
-)
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
     CachedBlocks_Pattern_Base,
 )
@@ -152,7 +149,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-        patch_cached_stats(self.transformer)
+        # patch_cached_stats(self.transformer)
         torch._dynamo.graph_break()
 
         return (

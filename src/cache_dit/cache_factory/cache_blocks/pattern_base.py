@@ -4,9 +4,6 @@ import torch.distributed as dist
 
 from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import ForwardPattern
-from cache_dit.cache_factory.cache_blocks.utils import (
-    patch_cached_stats,
-)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -198,7 +195,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             )
 
         # patch cached stats for blocks or remove it.
-        patch_cached_stats(self.transformer)
+        # patch_cached_stats(self.transformer)
         torch._dynamo.graph_break()
 
         return (
