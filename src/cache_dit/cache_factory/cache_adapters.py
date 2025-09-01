@@ -178,10 +178,15 @@ class CachedAdapter:
         )
 
         # Apply cache on transformer: mock cached transformer blocks
+        # TODO: Use blocks_name to spearate cached context for different
+        # blocks list. For example, single_transformer_blocks and
+        # transformer_blocks should have different cached context and
+        # forward pattern.
         cached_blocks = torch.nn.ModuleList(
             [
                 CachedBlocks(
                     block_adapter.blocks,
+                    block_adapter.blocks_name,
                     transformer=block_adapter.transformer,
                     forward_pattern=block_adapter.forward_pattern,
                 )

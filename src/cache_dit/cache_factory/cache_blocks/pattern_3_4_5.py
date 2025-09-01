@@ -49,9 +49,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             ),
             parallelized=self._is_parallelized(),
             prefix=(
-                "Fn_residual"
+                f"{self.blocks_name}_Fn_residual"
                 if not CachedContext.is_l1_diff_enabled()
-                else "Fn_hidden_states"
+                else f"{self.blocks_name}_Fn_hidden_states"
             ),
         )
 
@@ -65,14 +65,14 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                     # None Pattern 3, else 4, 5
                     encoder_hidden_states,
                     prefix=(
-                        "Bn_residual"
+                        f"{self.blocks_name}_Bn_residual"
                         if CachedContext.is_cache_residual()
-                        else "Bn_hidden_states"
+                        else f"{self.blocks_name}_Bn_hidden_states"
                     ),
                     encoder_prefix=(
-                        "Bn_residual"
+                        f"{self.blocks_name}_Bn_residual"
                         if CachedContext.is_encoder_cache_residual()
-                        else "Bn_hidden_states"
+                        else f"{self.blocks_name}_Bn_hidden_states"
                     ),
                 )
             )
@@ -87,11 +87,15 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             )
         else:
             CachedContext.set_Fn_buffer(
-                Fn_hidden_states_residual, prefix="Fn_residual"
+                Fn_hidden_states_residual,
+                prefix=f"{self.blocks_name}_Fn_residual",
             )
             if CachedContext.is_l1_diff_enabled():
                 # for hidden states L1 diff
-                CachedContext.set_Fn_buffer(hidden_states, "Fn_hidden_states")
+                CachedContext.set_Fn_buffer(
+                    hidden_states,
+                    f"{self.blocks_name}_Fn_hidden_states",
+                )
             del Fn_hidden_states_residual
             torch._dynamo.graph_break()
             (
@@ -111,26 +115,26 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             if CachedContext.is_cache_residual():
                 CachedContext.set_Bn_buffer(
                     hidden_states_residual,
-                    prefix="Bn_residual",
+                    prefix=f"{self.blocks_name}_Bn_residual",
                 )
             else:
                 # TaylorSeer
                 CachedContext.set_Bn_buffer(
                     hidden_states,
-                    prefix="Bn_hidden_states",
+                    prefix=f"{self.blocks_name}_Bn_hidden_states",
                 )
             if CachedContext.is_encoder_cache_residual():
                 CachedContext.set_Bn_encoder_buffer(
                     # None Pattern 3, else 4, 5
                     encoder_hidden_states_residual,
-                    prefix="Bn_residual",
+                    prefix=f"{self.blocks_name}_Bn_residual",
                 )
             else:
                 # TaylorSeer
                 CachedContext.set_Bn_encoder_buffer(
                     # None Pattern 3, else 4, 5
                     encoder_hidden_states,
-                    prefix="Bn_hidden_states",
+                    prefix=f"{self.blocks_name}_Bn_hidden_states",
                 )
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
