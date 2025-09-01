@@ -51,8 +51,8 @@ if args.cache:
             transformer=pipe.transformer_2,
             blocks=pipe.transformer_2.blocks,
             blocks_name="blocks",
+            forward_pattern=ForwardPattern.Pattern_2,
         ),
-        forward_pattern=ForwardPattern.Pattern_2,
         # Cache context kwargs
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
