@@ -51,8 +51,8 @@ if args.cache:
             transformer=pipe.transformer_2,
             blocks=pipe.transformer_2.blocks,
             blocks_name="blocks",
+            forward_pattern=ForwardPattern.Pattern_2,
         ),
-        forward_pattern=ForwardPattern.Pattern_2,
         # Cache context kwargs
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
@@ -60,6 +60,7 @@ if args.cache:
         max_cached_steps=20,
         max_continuous_cached_steps=2,
         residual_diff_threshold=0.08,
+        do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=2,

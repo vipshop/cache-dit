@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from cache_dit.cache_factory.taylorseer import TaylorSeer
+from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
 
 
 def get_args():
