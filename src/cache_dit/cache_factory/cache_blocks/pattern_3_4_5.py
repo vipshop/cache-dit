@@ -149,7 +149,6 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-        # patch_cached_stats(self.transformer)
         torch._dynamo.graph_break()
 
         return (

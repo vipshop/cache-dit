@@ -195,7 +195,6 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             )
 
         # patch cached stats for blocks or remove it.
-        # patch_cached_stats(self.transformer)
         torch._dynamo.graph_break()
 
         return (
