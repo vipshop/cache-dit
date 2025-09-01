@@ -29,12 +29,15 @@ if args.cache:
 
     cache_dit.enable_cache(
         BlockAdapter(
+            # Any DiffusionPipeline, Qwen-Image, etc.
             pipe=pipe,
             auto=True,
+            # Check `📚Forward Pattern Matching` documentation and hack the code of
+            # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
             forward_pattern=ForwardPattern.Pattern_1,
         ),
         # Cache context kwargs
-        has_separate_cfg=True,
+        do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=4,
