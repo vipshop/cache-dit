@@ -24,20 +24,25 @@
 
 ## 🔥News  
 
+- [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](./examples/run_flux_adapter.py) as an example.
 - [2025-08-29] 🔥</b>Covers <b>All</b> Diffusers' <b>DiT-based</b> Pipelines via **[BlockAdapter](#unified) + [Pattern Matching](#unified).**
 - [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Please check the [example](./examples/run_wan_2.2.py).
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example at [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x⚡️** speedup! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
-
-<details>
-<summary> Previous News </summary>  
-  
 - [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
 
+<!--
+<details>
+<summary> Previous News </summary>  
+
+- [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
+- [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
+
 </details>
+-->
 
 ## 📖Contents 
 
@@ -134,11 +139,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
-<!---
-![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
---->
-
-![](./assets/patterns-v1.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
 ### ♥️Cache Acceleration with One-line Code
 
@@ -158,14 +159,14 @@ cache_dit.enable_cache(pipe)
 output = pipe(...)
 ```
 
-### 🔥Automatic Block Adapter
+### 🔥Automatic Block Adapter + 📚Hybird Forward Pattern
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) as an example.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) and [📚FLUX.1 w/ Hybird Forward Pattern](./examples/run_flux_adapter.py) for more details.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
 
-# Use BlockAdapter with `auto` mode.
+# Use 🔥BlockAdapter with `auto` mode.
 cache_dit.enable_cache(
     BlockAdapter(
         # Any DiffusionPipeline, Qwen-Image, etc.  
@@ -185,6 +186,28 @@ cache_dit.enable_cache(
         blocks_name="transformer_blocks",
         forward_pattern=ForwardPattern.Pattern_1,
     ), 
+)
+
+# cache-dit supported 📚Hybird Forward Pattern, for example:
+# For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
+# single_transformer_blocks has different forward pattern.
+cache_dit.enable_cache(
+    BlockAdapter(
+        pipe=pipe, # FLUX.1, etc.
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        blocks_name=[
+            "transformer_blocks",
+            "single_transformer_blocks",
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_3,
+        ],
+    ),
 )
 ```
 For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.
