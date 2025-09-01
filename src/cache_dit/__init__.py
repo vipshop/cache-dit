@@ -13,6 +13,7 @@ from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import PatchFunctor
 from cache_dit.cache_factory import supported_pipelines
+from cache_dit.cache_factory import get_adapter
 from cache_dit.compile import set_compile_configs
 from cache_dit.quantize import quantize
 from cache_dit.utils import summary
@@ -22,9 +23,9 @@ from cache_dit.logger import init_logger
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
 
-Forward_Pattern_0 = ForwardPattern.Pattern_0
-Forward_Pattern_1 = ForwardPattern.Pattern_1
-Forward_Pattern_2 = ForwardPattern.Pattern_2
-Forward_Pattern_3 = ForwardPattern.Pattern_3
-Forward_Pattern_4 = ForwardPattern.Pattern_4
-Forward_Pattern_5 = ForwardPattern.Pattern_5
+Pattern_0 = ForwardPattern.Pattern_0
+Pattern_1 = ForwardPattern.Pattern_1
+Pattern_2 = ForwardPattern.Pattern_2
+Pattern_3 = ForwardPattern.Pattern_3
+Pattern_4 = ForwardPattern.Pattern_4
+Pattern_5 = ForwardPattern.Pattern_5

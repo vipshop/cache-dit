@@ -25,11 +25,17 @@ pipe = QwenImagePipeline.from_pretrained(
 
 if args.cache:
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-    from cache_dit import ForwardPattern, BlockAdapter
+    from cache_dit import BlockAdapter, ForwardPattern
 
     cache_dit.enable_cache(
-        BlockAdapter(pipe=pipe, auto=True),
-        forward_pattern=ForwardPattern.Pattern_1,
+        BlockAdapter(
+            # Any DiffusionPipeline, Qwen-Image, etc.
+            pipe=pipe,
+            auto=True,
+            # Check `📚Forward Pattern Matching` documentation and hack the code of
+            # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
+            forward_pattern=ForwardPattern.Pattern_1,
+        ),
         # Cache context kwargs
         do_separate_cfg=True,
         enable_taylorseer=True,

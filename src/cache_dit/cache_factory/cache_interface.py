@@ -1,8 +1,8 @@
 from typing import Any, Tuple, List
 from diffusers import DiffusionPipeline
-from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_types import CacheType
-from cache_dit.cache_factory.cache_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
 
 from cache_dit.logger import init_logger
@@ -10,14 +10,9 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-def supported_pipelines() -> Tuple[int, List[str]]:
-    return UnifiedCacheAdapter.supported_pipelines()
-
-
 def enable_cache(
-    # BlockAdapter & forward pattern
+    # DiffusionPipeline or BlockAdapter
     pipe_or_adapter: DiffusionPipeline | BlockAdapter | Any,
-    forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
     # Cache context kwargs
     Fn_compute_blocks: int = 8,
     Bn_compute_blocks: int = 0,
@@ -34,7 +29,7 @@ def enable_cache(
     enable_encoder_taylorseer: bool = False,
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 2,
-    **other_cache_kwargs,
+    **other_cache_context_kwargs,
 ) -> DiffusionPipeline | Any:
     r"""
     Unified Cache API for  almost Any Diffusion Transformers (with Transformer Blocks
@@ -48,9 +43,6 @@ def enable_cache(
             The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
             For example: cache_dit.enable_cache(FluxPipeline(...)). Please check https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md
             for the usgae of BlockAdapter.
-        forward_pattern (`ForwardPattern`, *required*, defaults to `ForwardPattern.Pattern_0`):
-            The forward pattern of Transformer block, please check https://github.com/vipshop/cache-dit/tree/main?tab=readme-ov-file#forward-pattern-matching
-            for more details.
         Fn_compute_blocks (`int`, *required*, defaults to 8):
             Specifies that `DBCache` uses the **first n** Transformer blocks to fit the information
             at time step t, enabling the calculation of a more stable L1 diff and delivering more
@@ -111,7 +103,7 @@ def enable_cache(
     """
 
     # Collect cache context kwargs
-    cache_context_kwargs = other_cache_kwargs.copy()
+    cache_context_kwargs = other_cache_context_kwargs.copy()
     cache_context_kwargs["cache_type"] = CacheType.DBCache
     cache_context_kwargs["Fn_compute_blocks"] = Fn_compute_blocks
     cache_context_kwargs["Bn_compute_blocks"] = Bn_compute_blocks
@@ -144,18 +136,29 @@ def enable_cache(
         return UnifiedCacheAdapter.apply(
             pipe=None,
             block_adapter=pipe_or_adapter,
-            forward_pattern=forward_pattern,
             **cache_context_kwargs,
         )
     elif isinstance(pipe_or_adapter, DiffusionPipeline):
         return UnifiedCacheAdapter.apply(
             pipe=pipe_or_adapter,
             block_adapter=None,
-            forward_pattern=forward_pattern,
             **cache_context_kwargs,
         )
     else:
         raise ValueError(
+            f"type: {type(pipe_or_adapter)} is not valid, "
             "Please pass DiffusionPipeline or BlockAdapter"
             "for the 1's position param: pipe_or_adapter"
         )
+
+
+def supported_pipelines(
+    **kwargs,
+) -> Tuple[int, List[str]]:
+    return BlockAdapterRegistry.supported_pipelines(**kwargs)
+
+
+def get_adapter(
+    pipe: DiffusionPipeline | str | Any,
+) -> BlockAdapter:
+    return BlockAdapterRegistry.get_adapter(pipe)

@@ -134,7 +134,11 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
+<!---
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns.png)
+--->
+
+![](./assets/patterns-v1.png)
 
 ### ♥️Cache Acceleration with One-line Code
 
@@ -163,10 +167,13 @@ from cache_dit import ForwardPattern, BlockAdapter
 
 # Use BlockAdapter with `auto` mode.
 cache_dit.enable_cache(
-    BlockAdapter(pipe=pipe, auto=True), # Qwen-Image, etc.  
-    # Check `📚Forward Pattern Matching` documentation and hack the code of
-    # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
-    forward_pattern=ForwardPattern.Pattern_1,  
+    BlockAdapter(
+        # Any DiffusionPipeline, Qwen-Image, etc.  
+        pipe=pipe, auto=True,
+        # Check `📚Forward Pattern Matching` documentation and hack the code of
+        # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
+        forward_pattern=ForwardPattern.Pattern_1,
+    ),   
 )
 
 # Or, manually setup transformer configurations.
@@ -176,8 +183,8 @@ cache_dit.enable_cache(
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         blocks_name="transformer_blocks",
+        forward_pattern=ForwardPattern.Pattern_1,
     ), 
-    forward_pattern=ForwardPattern.Pattern_1,
 )
 ```
 For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.

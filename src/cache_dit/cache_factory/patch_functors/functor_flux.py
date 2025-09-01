@@ -30,6 +30,10 @@ class FluxPatchFunctor(PatchFunctor):
         blocks: torch.nn.ModuleList = None,
         **kwargs,
     ) -> FluxTransformer2DModel:
+
+        if getattr(transformer, "_is_patched", False):
+            return transformer
+
         if blocks is None:
             blocks = transformer.single_transformer_blocks
 
