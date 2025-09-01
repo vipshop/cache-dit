@@ -19,16 +19,14 @@ class BlockAdapter:
     # Transformer configurations.
     pipe: DiffusionPipeline | Any = None
     transformer: torch.nn.Module = None
-    blocks: torch.nn.ModuleList = None
+
+    # ------------ Block Level Flags ------------
+    blocks: torch.nn.ModuleList | List[torch.nn.ModuleList] = None
     # transformer_blocks, blocks, etc.
-    blocks_name: str = None
+    blocks_name: str | List[str] = None
     dummy_blocks_names: List[str] = dataclasses.field(default_factory=list)
-    # Forward pattern
-    forward_pattern: ForwardPattern = None
-    # Patch Functor: Flux, etc.
-    patch_functor: Optional[PatchFunctor] = None
-    # Flags for separate cfg
-    has_separate_cfg: bool = False
+    forward_pattern: ForwardPattern | List[ForwardPattern] = None
+
     # Flags to control auto block adapter
     auto: bool = False
     allow_prefixes: List[str] = dataclasses.field(
@@ -50,8 +48,14 @@ class BlockAdapter:
         default="max", metadata={"allowed_values": ["max", "min"]}
     )
 
-    # TODO: Other flags.
+    # NOTE: Other flags.
     disable_patch: bool = False
+
+    # ------------ Pipeline Level Flags ------------
+    # Patch Functor: Flux, etc.
+    patch_functor: Optional[PatchFunctor] = None
+    # Flags for separate cfg
+    has_separate_cfg: bool = False
 
     def __post_init__(self):
         assert any((self.pipe is not None, self.transformer is not None))
@@ -130,9 +134,15 @@ class BlockAdapter:
         if not _check_warning("forward_pattern"):
             return False
 
-        if not isinstance(adapter.blocks, torch.nn.ModuleList):
-            logger.warning("blocks is not ModuleList.")
-            return False
+        if isinstance(adapter.blocks, list):
+            for i, blocks in enumerate(adapter.blocks):
+                if not isinstance(blocks, torch.nn.ModuleList):
+                    logger.warning(f"blocks[{i}] is not ModuleList.")
+                    return False
+        else:
+            if not isinstance(adapter.blocks, torch.nn.ModuleList):
+                logger.warning("blocks is not ModuleList.")
+                return False
 
         return True
 
@@ -291,3 +301,19 @@ class BlockAdapter:
             )
 
         return pattern_matched
+
+    @staticmethod
+    def normalize(
+        adapter: "BlockAdapter",
+    ) -> "BlockAdapter":
+        if not isinstance(adapter.blocks, list):
+            adapter.blocks = [adapter.blocks]
+        if not isinstance(adapter.blocks_name, list):
+            adapter.blocks_name = [adapter.blocks_name]
+        if not isinstance(adapter.forward_pattern, list):
+            adapter.forward_pattern = [adapter.forward_pattern]
+
+        assert len(adapter.blocks) == len(adapter.blocks_name)
+        assert len(adapter.blocks) == len(adapter.forward_pattern)
+
+        return adapter

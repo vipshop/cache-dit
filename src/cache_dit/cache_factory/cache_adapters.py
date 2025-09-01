@@ -3,6 +3,7 @@ import torch
 import unittest
 import functools
 
+from typing import Dict
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory import CacheType
@@ -169,28 +170,25 @@ class CachedAdapter:
             return block_adapter.transformer
 
         # Check block forward pattern matching
-        assert BlockAdapter.match_blocks_pattern(
-            block_adapter.blocks,
-            forward_pattern=block_adapter.forward_pattern,
-        ), (
-            "No block forward pattern matched, "
-            f"supported lists: {ForwardPattern.supported_patterns()}"
-        )
+        block_adapter = BlockAdapter.normalize(block_adapter)
+        for forward_pattern, blocks in zip(
+            block_adapter.forward_pattern, block_adapter.blocks
+        ):
+            assert BlockAdapter.match_blocks_pattern(
+                blocks,
+                forward_pattern=forward_pattern,
+            ), (
+                "No block forward pattern matched, "
+                f"supported lists: {ForwardPattern.supported_patterns()}"
+            )
 
         # Apply cache on transformer: mock cached transformer blocks
         # TODO: Use blocks_name to spearate cached context for different
         # blocks list. For example, single_transformer_blocks and
         # transformer_blocks should have different cached context and
         # forward pattern.
-        cached_blocks = torch.nn.ModuleList(
-            [
-                CachedBlocks(
-                    block_adapter.blocks,
-                    block_adapter.blocks_name,
-                    transformer=block_adapter.transformer,
-                    forward_pattern=block_adapter.forward_pattern,
-                )
-            ]
+        cached_blocks = cls.collect_cached_blocks(
+            block_adapter=block_adapter,
         )
         dummy_blocks = torch.nn.ModuleList()
 
@@ -201,13 +199,14 @@ class CachedAdapter:
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                stack.enter_context(
-                    unittest.mock.patch.object(
-                        self,
-                        block_adapter.blocks_name,
-                        cached_blocks,
+                for blocks_name in block_adapter.blocks_name:
+                    stack.enter_context(
+                        unittest.mock.patch.object(
+                            self,
+                            blocks_name,
+                            cached_blocks[blocks_name],
+                        )
                     )
-                )
                 for dummy_name in block_adapter.dummy_blocks_names:
                     stack.enter_context(
                         unittest.mock.patch.object(
@@ -224,3 +223,27 @@ class CachedAdapter:
         block_adapter.transformer._is_cached = True
 
         return block_adapter.transformer
+
+    @classmethod
+    def collect_cached_blocks(
+        cls,
+        block_adapter: BlockAdapter,
+    ) -> Dict[str, torch.nn.ModuleList]:
+        block_adapter = BlockAdapter.normalize(block_adapter)
+
+        num_cached_blocks = len(block_adapter.blocks)
+        cached_blocks = {}
+
+        for i in range(num_cached_blocks):
+            cached_blocks[block_adapter.blocks_name[i]] = torch.nn.ModuleList(
+                [
+                    CachedBlocks(
+                        block_adapter.blocks[i],
+                        block_adapter.blocks_name[i],
+                        transformer=block_adapter.transformer,
+                        forward_pattern=block_adapter.forward_pattern[i],
+                    )
+                ]
+            )
+
+        return cached_blocks
