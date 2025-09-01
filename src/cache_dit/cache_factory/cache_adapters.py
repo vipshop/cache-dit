@@ -3,22 +3,22 @@ import torch
 import unittest
 import functools
 
-# from typing import Any, Tuple, List
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory import CacheType
-from cache_dit.cache_factory import cache_context
+from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import BlockAdapterRegistry
-from cache_dit.cache_factory import DBCachedBlocks
+from cache_dit.cache_factory import CachedBlocks
 
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-class UnifiedCacheAdapter:
+# Unified Cached Adapter
+class CachedAdapter:
 
     def __call__(self, *args, **kwargs):
         return self.apply(*args, **kwargs)
@@ -140,7 +140,7 @@ class UnifiedCacheAdapter:
             **cache_context_kwargs,
         )
         # Apply cache on pipeline: wrap cache context
-        cache_kwargs, _ = cache_context.collect_cache_kwargs(
+        cache_kwargs, _ = CachedContext.collect_cache_kwargs(
             default_attrs={},
             **cache_context_kwargs,
         )
@@ -148,8 +148,8 @@ class UnifiedCacheAdapter:
 
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
-            with cache_context.cache_context(
-                cache_context.create_cache_context(
+            with CachedContext.cache_context(
+                CachedContext.create_cache_context(
                     **cache_kwargs,
                 )
             ):
@@ -180,7 +180,7 @@ class UnifiedCacheAdapter:
         # Apply cache on transformer: mock cached transformer blocks
         cached_blocks = torch.nn.ModuleList(
             [
-                DBCachedBlocks(
+                CachedBlocks(
                     block_adapter.blocks,
                     transformer=block_adapter.transformer,
                     forward_pattern=block_adapter.forward_pattern,

@@ -7,14 +7,14 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 import torch
 import torch.distributed as dist
 
-from cache_dit.cache_factory.taylorseer import TaylorSeer
+from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
-class DBCacheContext:
+class _CachedContext:  # Internal CachedContext Impl class
     # Dual Block Cache
     # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
     Fn_compute_blocks: int = 1
@@ -332,7 +332,7 @@ class DBCacheContext:
 
 
 def create_cache_context(*args, **kwargs):
-    return DBCacheContext(*args, **kwargs)
+    return _CachedContext(*args, **kwargs)
 
 
 def get_current_cache_context():
@@ -681,25 +681,25 @@ def cfg_diff_compute_separate():
     return cache_context.cfg_diff_compute_separate
 
 
-_current_cache_context: DBCacheContext = None
+_current_cache_context: _CachedContext = None
 
 
 def collect_cache_kwargs(default_attrs: dict, **kwargs):
     # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
     # default_attrs: specific settings for different pipelines
-    cache_attrs = dataclasses.fields(DBCacheContext)
+    cache_attrs = dataclasses.fields(_CachedContext)
     cache_attrs = [
         attr
         for attr in cache_attrs
         if hasattr(
-            DBCacheContext,
+            _CachedContext,
             attr.name,
         )
     ]
     cache_kwargs = {
         attr.name: kwargs.pop(
             attr.name,
-            getattr(DBCacheContext, attr.name),
+            getattr(_CachedContext, attr.name),
         )
         for attr in cache_attrs
     }

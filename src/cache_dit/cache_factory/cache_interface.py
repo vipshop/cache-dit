@@ -3,7 +3,7 @@ from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
-from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
+from cache_dit.cache_factory.cache_adapters import CachedAdapter
 
 from cache_dit.logger import init_logger
 
@@ -133,13 +133,13 @@ def enable_cache(
         }
 
     if isinstance(pipe_or_adapter, BlockAdapter):
-        return UnifiedCacheAdapter.apply(
+        return CachedAdapter.apply(
             pipe=None,
             block_adapter=pipe_or_adapter,
             **cache_context_kwargs,
         )
     elif isinstance(pipe_or_adapter, DiffusionPipeline):
-        return UnifiedCacheAdapter.apply(
+        return CachedAdapter.apply(
             pipe=pipe_or_adapter,
             block_adapter=None,
             **cache_context_kwargs,

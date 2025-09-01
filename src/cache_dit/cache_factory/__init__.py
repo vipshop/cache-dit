@@ -5,11 +5,14 @@ from cache_dit.cache_factory.cache_types import block_range
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 
 from cache_dit.cache_factory.patch_functors import PatchFunctor
+
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
-from cache_dit.cache_factory.cache_blocks import DBCachedBlocks
 
-from cache_dit.cache_factory.cache_adapters import UnifiedCacheAdapter
+from cache_dit.cache_factory.cache_contexts import CachedContext
+from cache_dit.cache_factory.cache_blocks import CachedBlocks
+
+from cache_dit.cache_factory.cache_adapters import CachedAdapter
 
 from cache_dit.cache_factory.cache_interface import enable_cache
 from cache_dit.cache_factory.cache_interface import supported_pipelines

@@ -1,6 +1,6 @@
 import torch
 
-from cache_dit.cache_factory import cache_context
+from cache_dit.cache_factory import CachedContext
 
 
 @torch.compiler.disable
@@ -13,7 +13,7 @@ def patch_cached_stats(
         return
 
     # TODO: Patch more cached stats to the transformer
-    transformer._cached_steps = cache_context.get_cached_steps()
-    transformer._residual_diffs = cache_context.get_residual_diffs()
-    transformer._cfg_cached_steps = cache_context.get_cfg_cached_steps()
-    transformer._cfg_residual_diffs = cache_context.get_cfg_residual_diffs()
+    transformer._cached_steps = CachedContext.get_cached_steps()
+    transformer._residual_diffs = CachedContext.get_residual_diffs()
+    transformer._cfg_cached_steps = CachedContext.get_cfg_cached_steps()
+    transformer._cfg_residual_diffs = CachedContext.get_cfg_residual_diffs()
