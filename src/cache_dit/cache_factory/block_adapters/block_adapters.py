@@ -26,6 +26,7 @@ class BlockAdapter:
     blocks_name: str | List[str] = None
     dummy_blocks_names: List[str] = dataclasses.field(default_factory=list)
     forward_pattern: ForwardPattern | List[ForwardPattern] = None
+    check_num_outputs: bool = True
 
     # Flags to control auto block adapter
     auto: bool = False
@@ -99,6 +100,7 @@ class BlockAdapter:
             check_suffixes=adapter.check_suffixes,
             blocks_policy=adapter.blocks_policy,
             forward_pattern=adapter.forward_pattern,
+            check_num_outputs=adapter.check_num_outputs,
         )
 
         return BlockAdapter(
@@ -199,6 +201,7 @@ class BlockAdapter:
                                 blocks,
                                 forward_pattern,
                                 logging=False,
+                                **kwargs,
                             ):
                                 valid_names.append(blocks_name)
                                 valid_count.append(len(blocks))
@@ -245,6 +248,7 @@ class BlockAdapter:
     def match_block_pattern(
         block: torch.nn.Module,
         forward_pattern: ForwardPattern,
+        **kwargs,
     ) -> bool:
         assert (
             forward_pattern.Supported
@@ -254,15 +258,18 @@ class BlockAdapter:
         forward_parameters = set(
             inspect.signature(block.forward).parameters.keys()
         )
-        num_outputs = str(
-            inspect.signature(block.forward).return_annotation
-        ).count("torch.Tensor")
 
         in_matched = True
         out_matched = True
-        if num_outputs > 0 and len(forward_pattern.Out) != num_outputs:
-            # output pattern not match
-            out_matched = False
+
+        if kwargs.get("check_num_outputs", True):
+            num_outputs = str(
+                inspect.signature(block.forward).return_annotation
+            ).count("torch.Tensor")
+
+            if num_outputs > 0 and len(forward_pattern.Out) != num_outputs:
+                # output pattern not match
+                out_matched = False
 
         for required_param in forward_pattern.In:
             if required_param not in forward_parameters:
@@ -275,6 +282,7 @@ class BlockAdapter:
         transformer_blocks: torch.nn.ModuleList,
         forward_pattern: ForwardPattern,
         logging: bool = True,
+        **kwargs,
     ) -> bool:
         assert (
             forward_pattern.Supported
@@ -289,6 +297,7 @@ class BlockAdapter:
                 BlockAdapter.match_block_pattern(
                     block,
                     forward_pattern,
+                    **kwargs,
                 )
             )
 

@@ -25,28 +25,50 @@ if args.cache:
     from cache_dit.utils import is_diffusers_at_least_0_3_5
     from diffusers import FluxTransformer2DModel
 
-    assert is_diffusers_at_least_0_3_5()
-
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
-    cache_dit.enable_cache(
-        BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            blocks_name=[
-                "transformer_blocks",
-                "single_transformer_blocks",
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
-            ],
-        ),
-    )
+    if is_diffusers_at_least_0_3_5():
+        # For diffusers >= 0.35.0
+        cache_dit.enable_cache(
+            BlockAdapter(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=[
+                    pipe.transformer.transformer_blocks,
+                    pipe.transformer.single_transformer_blocks,
+                ],
+                blocks_name=[
+                    "transformer_blocks",
+                    "single_transformer_blocks",
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_1,
+                    ForwardPattern.Pattern_1,
+                ],
+            ),
+        )
+
+    else:
+
+        # For diffusers <= 0.34.0
+        cache_dit.enable_cache(
+            BlockAdapter(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=[
+                    pipe.transformer.transformer_blocks,
+                    pipe.transformer.single_transformer_blocks,
+                ],
+                blocks_name=[
+                    "transformer_blocks",
+                    "single_transformer_blocks",
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_1,
+                    ForwardPattern.Pattern_3,
+                ],
+            ),
+        )
 
 
 start = time.time()

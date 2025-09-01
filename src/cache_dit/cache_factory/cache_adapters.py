@@ -203,6 +203,7 @@ class CachedAdapter:
             assert BlockAdapter.match_blocks_pattern(
                 blocks,
                 forward_pattern=forward_pattern,
+                check_num_outputs=block_adapter.check_num_outputs,
             ), (
                 "No block forward pattern matched, "
                 f"supported lists: {ForwardPattern.supported_patterns()}"
@@ -269,6 +270,7 @@ class CachedAdapter:
                             block_adapter.blocks_name[i],  # context name
                             transformer=block_adapter.transformer,
                             forward_pattern=block_adapter.forward_pattern[i],
+                            check_num_outputs=block_adapter.check_num_outputs,
                         )
                     ]
                 )

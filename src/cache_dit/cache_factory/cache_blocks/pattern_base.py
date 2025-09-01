@@ -27,6 +27,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *,
         transformer: torch.nn.Module = None,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
+        check_num_outputs: bool = True,
     ):
         super().__init__()
 
@@ -35,6 +36,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         self.blocks_name = blocks_name
         self.cache_context = cache_context
         self.forward_pattern = forward_pattern
+        self.check_num_outputs = check_num_outputs
         self._check_forward_pattern()
         logger.info(
             f"Match Cached Blocks: {self.__class__.__name__}, for "
@@ -52,16 +54,18 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 forward_parameters = set(
                     inspect.signature(block.forward).parameters.keys()
                 )
-                num_outputs = str(
-                    inspect.signature(block.forward).return_annotation
-                ).count("torch.Tensor")
 
-                if num_outputs > 0:
-                    assert len(self.forward_pattern.Out) == num_outputs, (
-                        f"The number of block's outputs is {num_outputs} don't not "
-                        f"match the number of the pattern: {self.forward_pattern}, "
-                        f"Out: {len(self.forward_pattern.Out)}."
-                    )
+                if self.check_num_outputs:
+                    num_outputs = str(
+                        inspect.signature(block.forward).return_annotation
+                    ).count("torch.Tensor")
+
+                    if num_outputs > 0:
+                        assert len(self.forward_pattern.Out) == num_outputs, (
+                            f"The number of block's outputs is {num_outputs} don't not "
+                            f"match the number of the pattern: {self.forward_pattern}, "
+                            f"Out: {len(self.forward_pattern.Out)}."
+                        )
 
                 for required_param in self.forward_pattern.In:
                     assert (
