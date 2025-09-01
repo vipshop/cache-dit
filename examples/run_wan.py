@@ -38,7 +38,6 @@ if args.cache:
     cache_dit.enable_cache(
         pipe,
         # Cache context kwargs
-        do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=2,

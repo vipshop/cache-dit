@@ -113,6 +113,10 @@ class UnifiedCacheAdapter:
             cache_context_kwargs["do_separate_cfg"] = (
                 BlockAdapterRegistry.has_separate_cfg(pipe)
             )
+            logger.info(
+                f"Use default 'do_separate_cfg': {cache_context_kwargs['do_separate_cfg']}, "
+                f"Pipeline: {pipe.__class__.__name__}."
+            )
 
         if cache_type := cache_context_kwargs.pop("cache_type", None):
             assert (

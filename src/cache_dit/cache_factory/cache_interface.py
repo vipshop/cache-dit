@@ -146,6 +146,7 @@ def enable_cache(
         )
     else:
         raise ValueError(
+            f"type: {type(pipe_or_adapter)} is not valid, "
             "Please pass DiffusionPipeline or BlockAdapter"
             "for the 1's position param: pipe_or_adapter"
         )

@@ -25,13 +25,17 @@ pipe = QwenImagePipeline.from_pretrained(
 
 if args.cache:
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-    from cache_dit import ForwardPattern, BlockAdapter
+    from cache_dit import BlockAdapter, ForwardPattern
 
     cache_dit.enable_cache(
-        BlockAdapter(pipe=pipe, auto=True),
-        forward_pattern=ForwardPattern.Pattern_1,
+        BlockAdapter(
+            pipe=pipe,
+            auto=True,
+            blocks_policy="max",
+            forward_pattern=ForwardPattern.Pattern_1,
+        ),
         # Cache context kwargs
-        do_separate_cfg=True,
+        has_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=4,
