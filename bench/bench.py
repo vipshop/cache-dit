@@ -102,6 +102,7 @@ def main():
                             blocks_name="transformer_blocks",
                             dummy_blocks_names=["single_transformer_blocks"],
                             patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
                         )
                         if not args.use_auto_block_adapter
                         else BlockAdapter(
@@ -109,9 +110,9 @@ def main():
                             auto=True,
                             blocks_policy="min",
                             patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
                         )
                     ),
-                    forward_pattern=ForwardPattern.Pattern_1,
                     # Cache context kwargs
                     Fn_compute_blocks=args.Fn_compute_blocks,
                     Bn_compute_blocks=args.Bn_compute_blocks,
@@ -141,6 +142,7 @@ def main():
                             blocks_name="transformer_blocks",
                             dummy_blocks_names=["single_transformer_blocks"],
                             patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
                         )
                         if not args.use_auto_block_adapter
                         else BlockAdapter(
@@ -148,9 +150,9 @@ def main():
                             auto=True,
                             blocks_policy="min",
                             patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
                         )
                     ),
-                    forward_pattern=ForwardPattern.Pattern_1,
                     # Cache context kwargs
                     **cache_dit.load_options(args.cache_config),
                 )
