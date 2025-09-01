@@ -106,8 +106,9 @@ class BlockAdapter:
         )
 
     @staticmethod
-    def check_block_adapter(adapter: "BlockAdapter") -> bool:
-
+    def check_block_adapter(
+        adapter: "BlockAdapter",
+    ) -> bool:
         def _check_warning(attr: str):
             if getattr(adapter, attr, None) is None:
                 logger.warning(f"{attr} is None!")
@@ -129,7 +130,7 @@ class BlockAdapter:
         if not _check_warning("forward_pattern"):
             return False
 
-        if isinstance(adapter.blocks, torch.nn.ModuleList):
+        if not isinstance(adapter.blocks, torch.nn.ModuleList):
             logger.warning("blocks is not ModuleList.")
             return False
 

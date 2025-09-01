@@ -31,7 +31,6 @@ if args.cache:
         BlockAdapter(
             pipe=pipe,
             auto=True,
-            blocks_policy="max",
             forward_pattern=ForwardPattern.Pattern_1,
         ),
         # Cache context kwargs
