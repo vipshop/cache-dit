@@ -489,23 +489,23 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
 @BlockAdapterRegistry.register("Chroma")
 def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ChromaTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import (
-        ChromaPatchFunctor,
-    )
 
     assert isinstance(pipe.transformer, ChromaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
-        blocks=(
-            pipe.transformer.transformer_blocks
-            + pipe.transformer.single_transformer_blocks
-        ),
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=["single_transformer_blocks"],
-        patch_functor=ChromaPatchFunctor(),
-        disable_patch=kwargs.pop("disable_patch", False),
-        forward_pattern=ForwardPattern.Pattern_1,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        blocks_name=[
+            "transformer_blocks",
+            "single_transformer_blocks",
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_3,
+        ],
         has_separate_cfg=True,
     )
 
@@ -518,10 +518,14 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
-        # Only support caching single_stream_blocks for HiDream now.
-        # TODO: Support HiDreamPatchFunctor.
-        blocks=pipe.transformer.single_stream_blocks,
-        blocks_name="single_stream_blocks",
+        blocks=[
+            pipe.transformer.double_stream_blocks,
+            pipe.transformer.single_stream_blocks,
+        ],
         dummy_blocks_names=[],
-        forward_pattern=ForwardPattern.Pattern_3,
+        forward_pattern=[
+            ForwardPattern.Pattern_4,
+            ForwardPattern.Pattern_3,
+        ],
+        check_num_outputs=False,
     )
