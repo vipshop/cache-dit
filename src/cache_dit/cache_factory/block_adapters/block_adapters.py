@@ -306,7 +306,7 @@ class BlockAdapter:
             block_cls_names = [
                 block.__class__.__name__ for block in transformer_blocks
             ]
-            block_cls_names = set(block_cls_names)
+            block_cls_names = list(set(block_cls_names))
             if len(block_cls_names) == 1:
                 block_cls_names = block_cls_names[0]
             logger.info(
