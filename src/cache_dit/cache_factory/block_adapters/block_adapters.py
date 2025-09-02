@@ -363,7 +363,10 @@ class BlockAdapter:
         elif isinstance(adapter.blocks, list):
             if isinstance(adapter.blocks[0], torch.nn.ModuleList):
                 # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
-                adapter.blocks = [adapter.blocks]
+                if len(adapter.blocks) == len(adapter.transformer):
+                    adapter.blocks = [[blocks] for blocks in adapter.blocks]
+                else:
+                    adapter.blocks = [adapter.blocks]
             elif isinstance(adapter.blocks[0], list):
                 # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                 pass
@@ -374,7 +377,12 @@ class BlockAdapter:
         elif isinstance(adapter.blocks_name, list):
             if isinstance(adapter.blocks_name[0], str):
                 # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
-                adapter.blocks_name = [adapter.blocks_name]
+                if len(adapter.blocks_name) == len(adapter.transformer):
+                    adapter.blocks_name = [
+                        [blocks_name] for blocks_name in adapter.blocks_name
+                    ]
+                else:
+                    adapter.blocks_name = [adapter.blocks_name]
             elif isinstance(adapter.blocks_name[0], list):
                 # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                 pass
@@ -385,7 +393,13 @@ class BlockAdapter:
         elif isinstance(adapter.forward_pattern, list):
             if isinstance(adapter.forward_pattern[0], ForwardPattern):
                 # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
-                adapter.forward_pattern = [adapter.forward_pattern]
+                if len(adapter.forward_pattern) == len(adapter.transformer):
+                    adapter.forward_pattern = [
+                        [forward_pattern]
+                        for forward_pattern in adapter.forward_pattern
+                    ]
+                else:
+                    adapter.forward_pattern = [adapter.forward_pattern]
             elif isinstance(adapter.forward_pattern[0], list):
                 # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                 pass
@@ -394,7 +408,17 @@ class BlockAdapter:
             if len(adapter.dummy_blocks_names) > 0:
                 if isinstance(adapter.dummy_blocks_names[0], str):
                     # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
-                    adapter.dummy_blocks_names = [adapter.dummy_blocks_names]
+                    if len(adapter.dummy_blocks_names) == len(
+                        adapter.transformer
+                    ):
+                        adapter.dummy_blocks_names = [
+                            [dummy_blocks_names]
+                            for dummy_blocks_names in adapter.dummy_blocks_names
+                        ]
+                    else:
+                        adapter.dummy_blocks_names = [
+                            adapter.dummy_blocks_names
+                        ]
                 elif isinstance(adapter.dummy_blocks_names[0], list):
                     # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                     pass
