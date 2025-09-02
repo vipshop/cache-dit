@@ -27,23 +27,23 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         check_num_outputs: bool = True,
         # 1. Cache context configuration
-        # 'transformer_blocks', 'blocks', 'single_transformer_blocks',
-        # 'layers', 'single_stream_blocks', 'double_stream_blocks'
-        cache_prefix: str = None,  # cache_prefix maybe un-need.
-        # Usually, blocks_name, etc.
+        cache_prefix: str = None,  # maybe un-need.
         cache_context: CachedContext | str = None,
         cache_manager: CachedContextManager = None,
         **kwargs,
     ):
         super().__init__()
 
+        # 0. Transformer blocks configuration
         self.transformer = transformer
         self.transformer_blocks = transformer_blocks
+        self.forward_pattern = forward_pattern
+        self.check_num_outputs = check_num_outputs
+        # 1. Cache context configuration
         self.cache_prefix = cache_prefix
         self.cache_context = cache_context
         self.cache_manager = cache_manager
-        self.forward_pattern = forward_pattern
-        self.check_num_outputs = check_num_outputs
+
         self._check_forward_pattern()
         logger.info(
             f"Match Cached Blocks: {self.__class__.__name__}, for "
