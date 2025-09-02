@@ -24,7 +24,6 @@
 
 ## 🔥News  
 
-- [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](./examples/run_flux_adapter.py) as an example.
 - [2025-08-29] 🔥</b>Covers <b>All</b> Diffusers' <b>DiT-based</b> Pipelines via **[BlockAdapter](#unified) + [Pattern Matching](#unified).**
 - [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Please check the [example](./examples/run_wan_2.2.py).
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example at [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
@@ -34,6 +33,7 @@
 <details>
 <summary> Previous News </summary>  
 
+- [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](./examples/run_flux_adapter.py) as an example.
 - [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
