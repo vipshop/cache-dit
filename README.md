@@ -2,7 +2,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
 
   <p align="center">
-    An <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
+    A <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
     ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
   <div align='center'>
@@ -17,14 +17,14 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>cache-dit</b> covers <b>All</b> mainstream <b>DiT-based</b> Diffusers' Pipelines</b>🎉<br>
+  🎉Now, <b>cache-dit</b> covers <b>100%</b> Diffusers' <b>DiT-based</b> Pipelines🎉<br>
   🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1/2.2</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
   </p>
 </div>
 
 ## 🔥News  
 
-- [2025-08-29] 🔥</b>Covers <b>All</b> Diffusers' <b>DiT-based</b> Pipelines via **[BlockAdapter](#unified) + [Pattern Matching](#unified).**
+- [2025-08-29] 🔥</b>Covers <b>100%</b> Diffusers' <b>DiT-based</b> Pipelines: **[BlockAdapter](#unified) + [Pattern Matching](#unified).**
 - [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Please check the [example](./examples/run_wan_2.2.py).
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example at [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
@@ -47,6 +47,11 @@
 - [⚙️Installation](#️installation)
 - [🔥Supported Models](#supported)
 - [🎉Unified Cache APIs](#unified)
+  - [📚Forward Pattern Matching](#unified)
+  - [♥️Cache with One-line Code](#unified)
+  - [🔥Automatic Block Adapter](#unified)
+  - [📚Hybird Forward Pattern](#unified)
+  - [🤖Cache Acceleration Stats](#unified)
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
@@ -155,9 +160,9 @@ cache_dit.enable_cache(pipe)
 output = pipe(...)
 ```
 
-### 🔥Automatic Block Adapter + 📚Hybird Forward Pattern
+### 🔥Automatic Block Adapter
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) and [📚FLUX.1 w/ Hybird Forward Pattern](./examples/run_flux_adapter.py) for more details.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
@@ -183,10 +188,16 @@ cache_dit.enable_cache(
         forward_pattern=ForwardPattern.Pattern_1,
     ), 
 )
+```
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.
 
-# cache-dit supported 📚Hybird Forward Pattern, for example:
+### 📚Hybird Forward Pattern
+
+cache-dit also supports 📚Hybrid Forward Pattern. Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, `FluxTransformer2DModel` contains transformer_blocks and single_transformer_blocks (with different forward patterns). Similar situations include HiDream, Chroma, and so on. The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1 w/ Hybird Forward Pattern](./examples/run_flux_adapter.py) as an example.
+
+```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
-# single_transformer_blocks has different forward pattern.
+# single_transformer_blocks have different forward patterns.
 cache_dit.enable_cache(
     BlockAdapter(
         pipe=pipe, # FLUX.1, etc.
@@ -206,7 +217,6 @@ cache_dit.enable_cache(
     ),
 )
 ```
-For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.
 
 ### 🤖Cache Acceleration Stats Summary
 
@@ -417,7 +427,7 @@ The **cache-dit** codebase is adapted from FBCache. Special thanks to their exce
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: An Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
+  title={cache-dit: A Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={vipshop.com},
