@@ -62,14 +62,13 @@ if args.cache:
             ],
             params_modifiers=[
                 ParamsModifier(max_cached_steps=8),
-                ParamsModifier(),
+                ParamsModifier(max_cached_steps=20),
             ],
         ),
-        # Cache context kwargs
+        # common cache params
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
         max_warmup_steps=2,
-        max_cached_steps=20,
         max_continuous_cached_steps=2,
         residual_diff_threshold=0.08,
         do_separate_cfg=True,
