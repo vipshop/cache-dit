@@ -180,7 +180,7 @@ class CachedAdapter:
         contexts_kwargs = [
             cache_kwargs.copy() for _ in range(len(flatten_contexts))
         ]
-        contexts_kwargs = cls.modify_context_params(
+        contexts_kwargs = cls.modify_params(
             contexts_kwargs,
             flatten_contexts,
             block_adapter,
@@ -215,7 +215,7 @@ class CachedAdapter:
         return block_adapter.pipe
 
     @classmethod
-    def modify_context_params(
+    def modify_params(
         cls,
         contexts_kwargs: List[Dict],
         flatten_contexts: List[str],
