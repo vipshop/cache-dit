@@ -14,7 +14,7 @@ logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
-class _CachedContext:  # Internal CachedContext Impl class
+class CachedContext:  # Internal CachedContext Impl class
     name: str = "default"
     # Dual Block Cache
     # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
@@ -332,14 +332,14 @@ class _CachedContext:  # Internal CachedContext Impl class
 
 
 # TODO: Support context manager for different cache_context
-_current_cache_context: _CachedContext = None
+_current_cache_context: CachedContext = None
 
-_cache_context_manager: Dict[str, _CachedContext] = {}
+_cache_context_manager: Dict[str, CachedContext] = {}
 
 
 def create_cache_context(*args, **kwargs):
     global _cache_context_manager
-    _context = _CachedContext(*args, **kwargs)
+    _context = CachedContext(*args, **kwargs)
     _cache_context_manager[_context.name] = _context
     return _context
 
@@ -348,23 +348,23 @@ def get_cache_context():
     return _current_cache_context
 
 
-def set_cache_context(cache_context: _CachedContext | str):
+def set_cache_context(cache_context: CachedContext | str):
     global _current_cache_context, _cache_context_manager
-    if isinstance(cache_context, _CachedContext):
+    if isinstance(cache_context, CachedContext):
         _current_cache_context = cache_context
     else:
         _current_cache_context = _cache_context_manager[cache_context]
 
 
-def reset_cache_context(cache_context: _CachedContext | str, *args, **kwargs):
+def reset_cache_context(cache_context: CachedContext | str, *args, **kwargs):
     global _cache_context_manager
-    if isinstance(cache_context, _CachedContext):
+    if isinstance(cache_context, CachedContext):
         old_context_name = cache_context.name
         if cache_context.name in _cache_context_manager:
             del _cache_context_manager[cache_context.name]
         # force use old_context name
         kwargs["name"] = old_context_name
-        _context = _CachedContext(*args, **kwargs)
+        _context = CachedContext(*args, **kwargs)
         _cache_context_manager[_context.name] = _context
     else:
         old_context_name = cache_context
@@ -372,17 +372,17 @@ def reset_cache_context(cache_context: _CachedContext | str, *args, **kwargs):
             del _cache_context_manager[cache_context]
         # force use old_context name
         kwargs["name"] = old_context_name
-        _context = _CachedContext(*args, **kwargs)
+        _context = CachedContext(*args, **kwargs)
         _cache_context_manager[_context.name] = _context
 
     return _context
 
 
 @contextlib.contextmanager
-def cache_context(cache_context: _CachedContext | str):
+def cache_context(cache_context: CachedContext | str):
     global _current_cache_context, _cache_context_manager
     old_cache_context = _current_cache_context
-    if isinstance(cache_context, _CachedContext):
+    if isinstance(cache_context, CachedContext):
         _current_cache_context = cache_context
     else:
         _current_cache_context = _cache_context_manager[cache_context]
@@ -721,19 +721,19 @@ def cfg_diff_compute_separate():
 def collect_cache_kwargs(default_attrs: dict, **kwargs):
     # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
     # default_attrs: specific settings for different pipelines
-    cache_attrs = dataclasses.fields(_CachedContext)
+    cache_attrs = dataclasses.fields(CachedContext)
     cache_attrs = [
         attr
         for attr in cache_attrs
         if hasattr(
-            _CachedContext,
+            CachedContext,
             attr.name,
         )
     ]
     cache_kwargs = {
         attr.name: kwargs.pop(
             attr.name,
-            getattr(_CachedContext, attr.name),
+            getattr(CachedContext, attr.name),
         )
         for attr in cache_attrs
     }

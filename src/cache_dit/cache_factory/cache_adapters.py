@@ -7,10 +7,10 @@ from typing import Dict
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory import CacheType
-from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import BlockAdapterRegistry
+from cache_dit.cache_factory import CachedContextManager
 from cache_dit.cache_factory import CachedBlocks
 
 from cache_dit.logger import init_logger
@@ -75,12 +75,13 @@ class CachedAdapter:
 
         if BlockAdapter.check_block_adapter(block_adapter):
             block_adapter = BlockAdapter.normalize(block_adapter)
-            # 0. Apply cache on pipeline: wrap cache context
+            # 0. Apply cache on pipeline: wrap cache context, must
+            # call create_context before mock_blocks.
             cls.create_context(
                 block_adapter,
                 **cache_context_kwargs,
             )
-            # 1. Apply cache on transformer: mock cached transformer blocks
+            # 1. Apply cache on transformer: mock cached blocks
             cls.mock_blocks(
                 block_adapter,
             )
@@ -147,7 +148,12 @@ class CachedAdapter:
             **cache_context_kwargs,
         )
         # Apply cache on pipeline: wrap cache context
-        cache_kwargs, _ = CachedContext.collect_cache_kwargs(
+        pipe_cls_name = block_adapter.pipe.__class__.__name__
+
+        # Each Pipeline should have it's own context manager instance.
+        cache_manager = CachedContextManager(name=pipe_cls_name)
+
+        cache_kwargs, _ = cache_manager.collect_cache_kwargs(
             default_attrs={},
             **cache_context_kwargs,
         )
@@ -159,8 +165,8 @@ class CachedAdapter:
                 # cache context will reset for each pipe inference
                 for blocks_name in block_adapter.blocks_name:
                     stack.enter_context(
-                        CachedContext.cache_context(
-                            CachedContext.reset_cache_context(
+                        cache_manager.enter_context(
+                            cache_manager.reset_context(
                                 blocks_name,
                                 **cache_kwargs,
                             ),
@@ -171,6 +177,7 @@ class CachedAdapter:
                 return outputs
 
         block_adapter.pipe.__class__.__call__ = new_call
+        block_adapter.pipe.__class__._cache_manager = cache_manager
         block_adapter.pipe.__class__._is_cached = True
         return block_adapter.pipe
 
@@ -259,6 +266,7 @@ class CachedAdapter:
         block_adapter = BlockAdapter.normalize(block_adapter)
 
         cached_blocks_bind_context = {}
+        assert hasattr(block_adapter.pipe.__class__, "_cache_manager")
 
         for i in range(len(block_adapter.blocks)):
             cached_blocks_bind_context[block_adapter.blocks_name[i]] = (
@@ -267,7 +275,8 @@ class CachedAdapter:
                         CachedBlocks(
                             block_adapter.blocks[i],
                             block_adapter.blocks_name[i],
-                            block_adapter.blocks_name[i],  # context name
+                            block_adapter.blocks_name[i],  # cache context
+                            block_adapter.pipe.__class__._cache_manager,  # cache manager
                             transformer=block_adapter.transformer,
                             forward_pattern=block_adapter.forward_pattern[i],
                             check_num_outputs=block_adapter.check_num_outputs,

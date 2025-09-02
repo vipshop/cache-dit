@@ -1,6 +1,5 @@
 import torch
 
-from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
     CachedBlocks_Pattern_Base,
@@ -24,7 +23,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         **kwargs,
     ):
         # Use it's own cache context.
-        CachedContext.set_cache_context(
+        self.cache_manager.set_context(
             self.cache_context,
         )
 
@@ -41,39 +40,39 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         Fn_hidden_states_residual = hidden_states - original_hidden_states
         del original_hidden_states
 
-        CachedContext.mark_step_begin()
+        self.cache_manager.mark_step_begin()
         # Residual L1 diff or Hidden States L1 diff
-        can_use_cache = CachedContext.get_can_use_cache(
+        can_use_cache = self.cache_manager.can_cache(
             (
                 Fn_hidden_states_residual
-                if not CachedContext.is_l1_diff_enabled()
+                if not self.cache_manager.is_l1_diff_enabled()
                 else hidden_states
             ),
             parallelized=self._is_parallelized(),
             prefix=(
                 f"{self.blocks_name}_Fn_residual"
-                if not CachedContext.is_l1_diff_enabled()
+                if not self.cache_manager.is_l1_diff_enabled()
                 else f"{self.blocks_name}_Fn_hidden_states"
             ),
         )
 
         torch._dynamo.graph_break()
         if can_use_cache:
-            CachedContext.add_cached_step()
+            self.cache_manager.add_cached_step()
             del Fn_hidden_states_residual
             hidden_states, encoder_hidden_states = (
-                CachedContext.apply_hidden_states_residual(
+                self.cache_manager.apply_cache(
                     hidden_states,
                     # None Pattern 3, else 4, 5
                     encoder_hidden_states,
                     prefix=(
                         f"{self.blocks_name}_Bn_residual"
-                        if CachedContext.is_cache_residual()
+                        if self.cache_manager.is_cache_residual()
                         else f"{self.blocks_name}_Bn_hidden_states"
                     ),
                     encoder_prefix=(
                         f"{self.blocks_name}_Bn_residual"
-                        if CachedContext.is_encoder_cache_residual()
+                        if self.cache_manager.is_encoder_cache_residual()
                         else f"{self.blocks_name}_Bn_hidden_states"
                     ),
                 )
@@ -88,13 +87,13 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
         else:
-            CachedContext.set_Fn_buffer(
+            self.cache_manager.set_Fn_buffer(
                 Fn_hidden_states_residual,
                 prefix=f"{self.blocks_name}_Fn_residual",
             )
-            if CachedContext.is_l1_diff_enabled():
+            if self.cache_manager.is_l1_diff_enabled():
                 # for hidden states L1 diff
-                CachedContext.set_Fn_buffer(
+                self.cache_manager.set_Fn_buffer(
                     hidden_states,
                     f"{self.blocks_name}_Fn_hidden_states",
                 )
@@ -114,26 +113,26 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
             torch._dynamo.graph_break()
-            if CachedContext.is_cache_residual():
-                CachedContext.set_Bn_buffer(
+            if self.cache_manager.is_cache_residual():
+                self.cache_manager.set_Bn_buffer(
                     hidden_states_residual,
                     prefix=f"{self.blocks_name}_Bn_residual",
                 )
             else:
                 # TaylorSeer
-                CachedContext.set_Bn_buffer(
+                self.cache_manager.set_Bn_buffer(
                     hidden_states,
                     prefix=f"{self.blocks_name}_Bn_hidden_states",
                 )
-            if CachedContext.is_encoder_cache_residual():
-                CachedContext.set_Bn_encoder_buffer(
+            if self.cache_manager.is_encoder_cache_residual():
+                self.cache_manager.set_Bn_encoder_buffer(
                     # None Pattern 3, else 4, 5
                     encoder_hidden_states_residual,
                     prefix=f"{self.blocks_name}_Bn_residual",
                 )
             else:
                 # TaylorSeer
-                CachedContext.set_Bn_encoder_buffer(
+                self.cache_manager.set_Bn_encoder_buffer(
                     # None Pattern 3, else 4, 5
                     encoder_hidden_states,
                     prefix=f"{self.blocks_name}_Bn_hidden_states",
@@ -167,10 +166,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         *args,
         **kwargs,
     ):
-        assert CachedContext.Fn_compute_blocks() <= len(
+        assert self.cache_manager.Fn_compute_blocks() <= len(
             self.transformer_blocks
         ), (
-            f"Fn_compute_blocks {CachedContext.Fn_compute_blocks()} must be less than "
+            f"Fn_compute_blocks {self.cache_manager.Fn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
         encoder_hidden_states = None  # Pattern 3
@@ -242,16 +241,16 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         *args,
         **kwargs,
     ):
-        if CachedContext.Bn_compute_blocks() == 0:
+        if self.cache_manager.Bn_compute_blocks() == 0:
             return hidden_states, encoder_hidden_states
 
-        assert CachedContext.Bn_compute_blocks() <= len(
+        assert self.cache_manager.Bn_compute_blocks() <= len(
             self.transformer_blocks
         ), (
-            f"Bn_compute_blocks {CachedContext.Bn_compute_blocks()} must be less than "
+            f"Bn_compute_blocks {self.cache_manager.Bn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
-        if len(CachedContext.Bn_compute_blocks_ids()) > 0:
+        if len(self.cache_manager.Bn_compute_blocks_ids()) > 0:
             raise ValueError(
                 f"Bn_compute_blocks_ids is not support for "
                 f"patterns: {self._supported_patterns}."

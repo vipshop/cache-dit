@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 
 from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
-from cache_dit.cache_factory.cache_contexts.cache_context import _CachedContext
+from cache_dit.cache_factory.cache_contexts.cache_context import CachedContext
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -16,22 +16,23 @@ logger = init_logger(__name__)
 class CachedContextManager:
     # Different Pipeline should have it's own context manager instance.
 
-    def __init__(self):
-        self._current_context: _CachedContext = None
-        self._cached_context_manager: Dict[str, _CachedContext] = {}
+    def __init__(self, name: str = None):
+        self.name = name
+        self._current_context: CachedContext = None
+        self._cached_context_manager: Dict[str, CachedContext] = {}
 
-    def new_context(self, *args, **kwargs) -> _CachedContext:
-        _context = _CachedContext(*args, **kwargs)
+    def new_context(self, *args, **kwargs) -> CachedContext:
+        _context = CachedContext(*args, **kwargs)
         self._cached_context_manager[_context.name] = _context
         return _context
 
-    def set_context(self, cached_context: _CachedContext | str):
-        if isinstance(cached_context, _CachedContext):
+    def set_context(self, cached_context: CachedContext | str):
+        if isinstance(cached_context, CachedContext):
             self._current_context = cached_context
         else:
             self._current_context = self._cached_context_manager[cached_context]
 
-    def get_context(self, name: str = None) -> _CachedContext:
+    def get_context(self, name: str = None) -> CachedContext:
         if name is not None:
             if name not in self._cached_context_manager:
                 raise ValueError("Context not exist!")
@@ -40,11 +41,11 @@ class CachedContextManager:
 
     def reset_context(
         self,
-        cached_context: _CachedContext | str,
+        cached_context: CachedContext | str,
         *args,
         **kwargs,
-    ) -> _CachedContext:
-        if isinstance(cached_context, _CachedContext):
+    ) -> CachedContext:
+        if isinstance(cached_context, CachedContext):
             old_context_name = cached_context.name
             if cached_context.name in self._cached_context_manager:
                 cached_context.clear_buffers()
@@ -63,9 +64,9 @@ class CachedContextManager:
         return _context
 
     @contextlib.contextmanager
-    def enter_context(self, cached_context: _CachedContext | str):
+    def enter_context(self, cached_context: CachedContext | str):
         old_cached_context = self._current_context
-        if isinstance(cached_context, _CachedContext):
+        if isinstance(cached_context, CachedContext):
             self._current_context = cached_context
         else:
             self._current_context = self._cached_context_manager[cached_context]
@@ -78,19 +79,19 @@ class CachedContextManager:
     def collect_cache_kwargs(default_attrs: dict, **kwargs):
         # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
         # default_attrs: specific settings for different pipelines
-        cache_attrs = dataclasses.fields(_CachedContext)
+        cache_attrs = dataclasses.fields(CachedContext)
         cache_attrs = [
             attr
             for attr in cache_attrs
             if hasattr(
-                _CachedContext,
+                CachedContext,
                 attr.name,
             )
         ]
         cache_kwargs = {
             attr.name: kwargs.pop(
                 attr.name,
-                getattr(_CachedContext, attr.name),
+                getattr(CachedContext, attr.name),
             )
             for attr in cache_attrs
         }
