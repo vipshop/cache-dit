@@ -193,7 +193,7 @@ For such situations, **BlockAdapter** can help you quickly apply various cache a
 
 ### 📚Hybird Forward Pattern
 
-cache-dit also supports 📚Hybrid Forward Pattern. Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, `FluxTransformer2DModel` contains transformer_blocks and single_transformer_blocks (with different forward patterns). Similar situations include HiDream, Chroma, and so on. The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1 w/ Hybird Forward Pattern](./examples/run_flux_adapter.py) as an example.
+cache-dit also supports 📚Hybrid Forward Pattern. Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** contains transformer_blocks and single_transformer_blocks (with different forward patterns). Similar situations include HiDream, Chroma, and so on. The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1 w/ Hybird Forward Pattern](./examples/run_flux_adapter.py) as an example.
 
 ```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
