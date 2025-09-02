@@ -197,12 +197,12 @@ class CachedAdapter:
             block_adapter.transformer,
             cache_manager=cache_manager,
         )
-        for blocks, blocks_name in zip(
-            block_adapter.blocks, block_adapter.blocks_name
+        for blocks, unique_name in zip(
+            block_adapter.blocks, block_adapter.unique_blocks_name
         ):
             patch_cached_stats(
                 blocks,
-                cache_context=blocks_name,
+                cache_context=unique_name,
                 cache_manager=cache_manager,
             )
 
@@ -242,11 +242,14 @@ class CachedAdapter:
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                for unique_name in block_adapter.unique_blocks_name:
+                for blocks_name, unique_name in zip(
+                    block_adapter.blocks_name,
+                    block_adapter.unique_blocks_name,
+                ):
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self,
-                            unique_name,
+                            blocks_name,
                             cached_blocks[unique_name],
                         )
                     )
