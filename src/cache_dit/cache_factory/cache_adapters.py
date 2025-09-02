@@ -239,6 +239,9 @@ class CachedAdapter:
         ):
             params_modifier: ParamsModifier = flatten_modifiers[i]
             contexts_kwargs[i].update(params_modifier._context_kwargs)
+            contexts_kwargs[i], _ = CachedContextManager.collect_cache_kwargs(
+                default_attrs={}, **contexts_kwargs[i]
+            )
 
         return contexts_kwargs
 
