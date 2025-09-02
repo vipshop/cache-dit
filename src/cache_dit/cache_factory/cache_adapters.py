@@ -96,21 +96,25 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
         **cache_context_kwargs,
     ):
-        block_adapter.transformer._forward_pattern = (
-            block_adapter.forward_pattern
-        )
-        block_adapter.transformer._has_separate_cfg = (
-            block_adapter.has_separate_cfg
-        )
-        block_adapter.transformer._cache_context_kwargs = cache_context_kwargs
         block_adapter.pipe.__class__._cache_context_kwargs = (
             cache_context_kwargs
         )
-        for blocks, forward_pattern in zip(
-            block_adapter.blocks, block_adapter.forward_pattern
-        ):
-            blocks._forward_pattern = forward_pattern
-            blocks._cache_context_kwargs = cache_context_kwargs
+        for i in range(len(block_adapter.transformer)):
+            block_adapter.transformer[i]._forward_pattern = (
+                block_adapter.forward_pattern
+            )
+            block_adapter.transformer[i]._has_separate_cfg = (
+                block_adapter.has_separate_cfg
+            )
+            block_adapter.transformer[i]._cache_context_kwargs = (
+                cache_context_kwargs
+            )
+
+            for blocks, forward_pattern in zip(
+                block_adapter.blocks[i], block_adapter.forward_pattern[i]
+            ):
+                blocks._forward_pattern = forward_pattern
+                blocks._cache_context_kwargs = cache_context_kwargs
 
     @classmethod
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
@@ -121,7 +125,8 @@ class CachedAdapter:
                 BlockAdapterRegistry.has_separate_cfg(pipe)
             )
             logger.info(
-                f"Use default 'do_separate_cfg': {cache_context_kwargs['do_separate_cfg']}, "
+                f"Use default 'do_separate_cfg': "
+                f"{cache_context_kwargs['do_separate_cfg']}, "
                 f"Pipeline: {pipe.__class__.__name__}."
             )
 
@@ -138,6 +143,10 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
+
+        if not getattr(block_adapter, "_is_normalized", False):
+            raise RuntimeError("block_adapter must be normailed.")
+
         if getattr(block_adapter.pipe, "_is_cached", False):
             return block_adapter.pipe
 
@@ -150,8 +159,8 @@ class CachedAdapter:
         pipe_cls_name = block_adapter.pipe.__class__.__name__
 
         # Each Pipeline should have it's own context manager instance.
-        # TODO: Different transformers (Wan2.2, etc) should shared the
-        # same cache manager but with different cache context (according
+        # Different transformers (Wan2.2, etc) should shared the same
+        # cache manager but with different cache context (according
         # to their unique instance id).
         cache_manager = CachedContextManager(
             name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
@@ -162,17 +171,24 @@ class CachedAdapter:
             default_attrs={},
             **cache_context_kwargs,
         )
+
+        flatten_contexts = [
+            item
+            for i in range(len(block_adapter.transformer))
+            for item in block_adapter.unique_blocks_name[i]
+        ]
+
         original_call = block_adapter.pipe.__class__.__call__
 
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
             with ExitStack() as stack:
                 # cache context will be reset for each pipe inference
-                for unique_name in block_adapter.unique_blocks_name:
+                for context_name in flatten_contexts:
                     stack.enter_context(
                         cache_manager.enter_context(
                             cache_manager.reset_context(
-                                unique_name,
+                                context_name,
                                 **cache_kwargs,
                             ),
                         )
@@ -186,31 +202,39 @@ class CachedAdapter:
         return block_adapter.pipe
 
     @classmethod
-    def patch_stats(cls, block_adapter: BlockAdapter):
+    def patch_stats(
+        cls,
+        block_adapter: BlockAdapter,
+    ):
         from cache_dit.cache_factory.cache_blocks.utils import (
             patch_cached_stats,
         )
 
         cache_manager = block_adapter.pipe._cache_manager
-        patch_cached_stats(
-            block_adapter.transformer,
-            cache_manager=cache_manager,
-        )
-        for blocks, unique_name in zip(
-            block_adapter.blocks, block_adapter.unique_blocks_name
-        ):
+
+        for i in range(len(block_adapter.transformer)):
             patch_cached_stats(
-                blocks,
-                cache_context=unique_name,
+                block_adapter.transformer[i],
+                cache_context=block_adapter.unique_blocks_name[i][-1],
                 cache_manager=cache_manager,
             )
+            for blocks, unique_name in zip(
+                block_adapter.blocks[i], block_adapter.unique_blocks_name[i]
+            ):
+                patch_cached_stats(
+                    blocks,
+                    cache_context=unique_name,
+                    cache_manager=cache_manager,
+                )
 
     @classmethod
     def mock_blocks(
         cls,
         block_adapter: BlockAdapter,
     ) -> List[torch.nn.Module]:
-        assert getattr(block_adapter, "_is_normalized", False)
+
+        if not getattr(block_adapter, "_is_normalized", False):
+            raise RuntimeError("block_adapter must be normailed.")
 
         if getattr(block_adapter.transformer[0], "_is_cached", False):
             return block_adapter.transformer
@@ -241,41 +265,6 @@ class CachedAdapter:
                 dummy_blocks_names,
             )
 
-        # dummy_blocks = torch.nn.ModuleList()
-
-        # original_forward = block_adapter.transformer.forward
-
-        # assert isinstance(block_adapter.dummy_blocks_names, list)
-
-        # @functools.wraps(original_forward)
-        # def new_forward(self, *args, **kwargs):
-        #     with ExitStack() as stack:
-        #         for blocks_name, unique_name in zip(
-        #             block_adapter.blocks_name,
-        #             block_adapter.unique_blocks_name,
-        #         ):
-        #             stack.enter_context(
-        #                 unittest.mock.patch.object(
-        #                     self,
-        #                     blocks_name,
-        #                     cached_blocks[unique_name],
-        #                 )
-        #             )
-        #         for dummy_name in block_adapter.dummy_blocks_names:
-        #             stack.enter_context(
-        #                 unittest.mock.patch.object(
-        #                     self,
-        #                     dummy_name,
-        #                     dummy_blocks,
-        #                 )
-        #             )
-        #         return original_forward(*args, **kwargs)
-
-        # block_adapter.transformer.forward = new_forward.__get__(
-        #     block_adapter.transformer
-        # )
-        # block_adapter.transformer._is_cached = True
-
         return block_adapter.transformer
 
     @classmethod
@@ -296,22 +285,16 @@ class CachedAdapter:
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                for block_name, unique_name in zip(
-                    blocks_name, unique_blocks_name
-                ):
+                for name, context_name in zip(blocks_name, unique_blocks_name):
                     stack.enter_context(
                         unittest.mock.patch.object(
-                            self,
-                            block_name,
-                            cached_blocks[unique_name],
+                            self, name, cached_blocks[context_name]
                         )
                     )
                 for dummy_name in dummy_blocks_names:
                     stack.enter_context(
                         unittest.mock.patch.object(
-                            self,
-                            dummy_name,
-                            dummy_blocks,
+                            self, dummy_name, dummy_blocks
                         )
                     )
                 return original_forward(*args, **kwargs)
