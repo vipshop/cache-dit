@@ -104,6 +104,9 @@ def enable_cache(
 
     # Collect cache context kwargs
     cache_context_kwargs = other_cache_context_kwargs.copy()
+    if cache_context_kwargs.get("cache_type", CacheType.NONE) == CacheType.NONE:
+        return pipe_or_adapter
+
     cache_context_kwargs["cache_type"] = CacheType.DBCache
     cache_context_kwargs["Fn_compute_blocks"] = Fn_compute_blocks
     cache_context_kwargs["Bn_compute_blocks"] = Bn_compute_blocks
