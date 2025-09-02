@@ -165,7 +165,7 @@ class CachedAdapter:
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
             with ExitStack() as stack:
-                # cache context will reset for each pipe inference
+                # cache context will be reset for each pipe inference
                 for blocks_name in block_adapter.blocks_name:
                     stack.enter_context(
                         cache_manager.enter_context(
@@ -227,10 +227,6 @@ class CachedAdapter:
             )
 
         # Apply cache on transformer: mock cached transformer blocks
-        # TODO: Use blocks_name to spearate cached context for different
-        # blocks list. For example, single_transformer_blocks and
-        # transformer_blocks should have different cached context and
-        # forward pattern.
         cached_blocks = cls.collect_cached_blocks(
             block_adapter=block_adapter,
         )
@@ -277,6 +273,9 @@ class CachedAdapter:
 
         cached_blocks_bind_context = {}
         assert hasattr(block_adapter.pipe, "_cache_manager")
+        assert isinstance(
+            block_adapter.pipe._cache_manager, CachedContextManager
+        )
 
         for i in range(len(block_adapter.blocks)):
             cached_blocks_bind_context[block_adapter.blocks_name[i]] = (
