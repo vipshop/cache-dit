@@ -172,11 +172,9 @@ class CachedAdapter:
             **cache_context_kwargs,
         )
 
-        flatten_contexts = [
-            item
-            for i in range(len(block_adapter.transformer))
-            for item in block_adapter.unique_blocks_name[i]
-        ]
+        flatten_contexts = BlockAdapter.flatten(
+            block_adapter.unique_blocks_name
+        )
 
         contexts_kwargs = [
             cache_kwargs.copy() for _ in range(len(flatten_contexts))
@@ -213,8 +211,7 @@ class CachedAdapter:
 
         return block_adapter.pipe
 
-    classmethod
-
+    @classmethod
     def modify_context_params(
         cls,
         contexts_kwargs: List[Dict],
@@ -223,19 +220,15 @@ class CachedAdapter:
         if block_adapter.params_modifiers is None:
             return contexts_kwargs
 
-        flatten_params_modifiers = [
-            item
-            for i in range(len(block_adapter.transformer))
-            for item in block_adapter.params_modifiers[i]
-        ]
+        flatten_modifiers = BlockAdapter.flatten(block_adapter.params_modifiers)
 
         for i in range(
             min(
                 len(contexts_kwargs),
-                len(flatten_params_modifiers),
+                len(flatten_modifiers),
             )
         ):
-            params_modifier: ParamsModifier = flatten_params_modifiers[i]
+            params_modifier: ParamsModifier = flatten_modifiers[i]
             contexts_kwargs[i].update(params_modifier._context_kwargs)
 
         return contexts_kwargs

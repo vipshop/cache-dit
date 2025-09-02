@@ -508,3 +508,14 @@ class BlockAdapter:
         adapter._is_normalized = True
 
         return adapter
+
+    @classmethod
+    def flatten(cls, attr: List[List[Any]]):
+        if isinstance(attr, list):
+            if not isinstance(attr[0], list):
+                return attr
+            flatten_attr = []
+            for i in range(len(attr)):
+                flatten_attr.extend(attr[i])
+            return flatten_attr
+        return attr
