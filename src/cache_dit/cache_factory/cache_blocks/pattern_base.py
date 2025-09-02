@@ -48,7 +48,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         logger.info(
             f"Match Cached Blocks: {self.__class__.__name__}, for "
             f"{self.cache_prefix}, cache_context: {self.cache_context}, "
-            f"cache_manger: {self.cache_manager.name}."
+            f"cache_manager: {self.cache_manager.name}."
         )
 
     def _check_forward_pattern(self):
