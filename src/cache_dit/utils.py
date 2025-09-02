@@ -147,7 +147,7 @@ def strify(
     pipe_or_stats: DiffusionPipeline | CacheStats | Dict[str, Any],
 ) -> str:
     if isinstance(pipe_or_stats, DiffusionPipeline):
-        stats = summary(pipe_or_stats, logging=True)
+        stats = summary(pipe_or_stats, logging=False)
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(pipe_or_stats, CacheStats):
