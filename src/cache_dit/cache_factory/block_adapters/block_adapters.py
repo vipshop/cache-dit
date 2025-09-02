@@ -20,7 +20,7 @@ class BlockAdapter:
     pipe: DiffusionPipeline | Any = None
     transformer: torch.nn.Module = None
 
-    # ------------ Block Level Flags ------------
+    # Block Level Flags
     blocks: torch.nn.ModuleList | List[torch.nn.ModuleList] = None
     # transformer_blocks, blocks, etc.
     blocks_name: str | List[str] = None
@@ -50,14 +50,14 @@ class BlockAdapter:
         default="max", metadata={"allowed_values": ["max", "min"]}
     )
 
-    # NOTE: Other flags.
-    disable_patch: bool = False
-
-    # ------------ Pipeline Level Flags ------------
+    # Pipeline Level Flags
     # Patch Functor: Flux, etc.
     patch_functor: Optional[PatchFunctor] = None
     # Flags for separate cfg
     has_separate_cfg: bool = False
+
+    # Other Flags
+    disable_patch: bool = False
 
     def __post_init__(self):
         assert any((self.pipe is not None, self.transformer is not None))
