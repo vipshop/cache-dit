@@ -221,6 +221,9 @@ class CachedAdapter:
         flatten_contexts: List[str],
         block_adapter: BlockAdapter,
     ):
+        for i in range(len(contexts_kwargs)):
+            contexts_kwargs[i]["name"] = flatten_contexts[i]
+
         if block_adapter.params_modifiers is None:
             return contexts_kwargs
 
@@ -236,9 +239,6 @@ class CachedAdapter:
         ):
             params_modifier: ParamsModifier = flatten_modifiers[i]
             contexts_kwargs[i].update(params_modifier._context_kwargs)
-
-        for i in range(len(contexts_kwargs)):
-            contexts_kwargs["name"] = flatten_contexts[i]
 
         return contexts_kwargs
 
