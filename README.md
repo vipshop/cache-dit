@@ -48,7 +48,7 @@
 - [🔥Supported Models](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#unified)
-  - [♥️Cache with One-line Code](#unified)
+  - [🎉Cache with One-line Code](#unified)
   - [🔥Automatic Block Adapter](#unified)
   - [📚Hybird Forward Pattern](#unified)
   - [🤖Cache Acceleration Stats](#unified)
