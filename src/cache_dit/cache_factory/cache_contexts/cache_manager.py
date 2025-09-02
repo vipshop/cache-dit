@@ -14,7 +14,7 @@ logger = init_logger(__name__)
 
 
 class CachedContextManager:
-    # Different Pipeline should have it's own context manager instance.
+    # Each Pipeline should have it's own context manager instance.
 
     def __init__(self, name: str = None):
         self.name = name

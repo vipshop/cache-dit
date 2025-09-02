@@ -187,11 +187,19 @@ class CachedAdapter:
             patch_cached_stats,
         )
 
-        patch_cached_stats(block_adapter.transformer)
+        cache_manager = block_adapter.pipe.__class__._cache_manager
+        patch_cached_stats(
+            block_adapter.transformer,
+            cache_manager=cache_manager,
+        )
         for blocks, blocks_name in zip(
             block_adapter.blocks, block_adapter.blocks_name
         ):
-            patch_cached_stats(blocks, blocks_name)
+            patch_cached_stats(
+                blocks,
+                cache_context=blocks_name,
+                cache_manager=cache_manager,
+            )
 
     @classmethod
     def mock_blocks(
