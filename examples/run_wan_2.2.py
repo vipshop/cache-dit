@@ -46,12 +46,31 @@ if args.cache:
         # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
         # t >= boundary_timestep: transformer, high-noise
         # t < boundary_timestep: transformer_2, low-noise
+        # BlockAdapter(
+        #     pipe=pipe,
+        #     transformer=pipe.transformer_2,
+        #     blocks=pipe.transformer_2.blocks,
+        #     blocks_name="blocks",
+        #     forward_pattern=ForwardPattern.Pattern_2,
+        # ),
         BlockAdapter(
             pipe=pipe,
-            transformer=pipe.transformer_2,
-            blocks=pipe.transformer_2.blocks,
-            blocks_name="blocks",
-            forward_pattern=ForwardPattern.Pattern_2,
+            transformer=[
+                pipe.transformer,
+                pipe.transformer_2,
+            ],
+            blocks=[
+                pipe.transformer.blocks,
+                pipe.transformer_2.blocks,
+            ],
+            blocks_name=[
+                "blocks",
+                "blocks",
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_2,
+                ForwardPattern.Pattern_2,
+            ],
         ),
         # Cache context kwargs
         Fn_compute_blocks=1,
@@ -130,16 +149,14 @@ video = pipe(
 ).frames[0]
 end = time.time()
 
-stats = cache_dit.summary(
-    pipe.transformer_2,
-    details=True,
-)
+cache_dit.summary(pipe.transformer, details=True)
+cache_dit.summary(pipe.transformer_2, details=True)
 
 time_cost = end - start
 save_path = (
     f"wan2.2.C{int(args.compile)}_Q{int(args.quantize)}"
     f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
-    f"{cache_dit.strify(stats)}.mp4"
+    f"{cache_dit.strify(pipe)}.mp4"
 )
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
