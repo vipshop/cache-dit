@@ -1,5 +1,6 @@
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.block_adapters.block_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters.block_registers import (
     BlockAdapterRegistry,
 )

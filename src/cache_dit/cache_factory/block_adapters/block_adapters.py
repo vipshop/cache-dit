@@ -14,6 +14,11 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+class ParamsModifier:
+    def __init__(self, **kwargs):
+        self._context_kwargs = kwargs.copy()
+
+
 @dataclasses.dataclass
 class BlockAdapter:
 
@@ -60,6 +65,13 @@ class BlockAdapter:
         ForwardPattern,
         List[ForwardPattern],
         List[List[ForwardPattern]],
+    ] = None
+
+    # modify cache context params for specific blocks.
+    params_modifiers: Union[
+        ParamsModifier,
+        List[ParamsModifier],
+        List[List[ParamsModifier]],
     ] = None
 
     check_num_outputs: bool = True
@@ -435,10 +447,30 @@ class BlockAdapter:
                     [] for _ in range(len(adapter.transformer))
                 ]
 
+        if adapter.params_modifiers is not None:
+            if isinstance(adapter.params_modifiers, ParamsModifier):
+                adapter.params_modifiers = [[adapter.params_modifiers]]
+            elif isinstance(adapter.params_modifiers, list):
+                if isinstance(adapter.params_modifiers[0], ParamsModifier):
+                    if len(adapter.params_modifiers) == len(
+                        adapter.transformer
+                    ):
+                        adapter.params_modifiers = [
+                            [params_modifiers]
+                            for params_modifiers in adapter.params_modifiers
+                        ]
+                    else:
+                        adapter.params_modifiers = [adapter.params_modifiers]
+                elif isinstance(adapter.params_modifiers[0], list):
+                    # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
+                    pass
+
         assert len(adapter.transformer) == len(adapter.blocks)
         assert len(adapter.transformer) == len(adapter.blocks_name)
         assert len(adapter.transformer) == len(adapter.forward_pattern)
         assert len(adapter.transformer) == len(adapter.dummy_blocks_names)
+        if adapter.params_modifiers is not None:
+            assert len(adapter.transformer) == len(adapter.params_modifiers)
 
         for i in range(len(adapter.blocks)):
             assert len(adapter.blocks[i]) == len(adapter.blocks_name[i])

@@ -8,6 +8,7 @@ from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import BlockAdapter
+from cache_dit.cache_factory import ParamsModifier
 from cache_dit.cache_factory import BlockAdapterRegistry
 from cache_dit.cache_factory import CachedContextManager
 from cache_dit.cache_factory import CachedBlocks
@@ -84,22 +85,19 @@ class CachedAdapter:
             cls.mock_blocks(
                 block_adapter,
             )
-            cls.patch_params(
-                block_adapter,
-                **cache_context_kwargs,
-            )
         return block_adapter.pipe
 
     @classmethod
     def patch_params(
         cls,
         block_adapter: BlockAdapter,
-        **cache_context_kwargs,
+        contexts_kwargs: List[Dict],
     ):
-        block_adapter.pipe.__class__._cache_context_kwargs = (
-            cache_context_kwargs
-        )
+        block_adapter.pipe.__class__._cache_context_kwargs = contexts_kwargs[0]
+
+        params_shift = 0
         for i in range(len(block_adapter.transformer)):
+
             block_adapter.transformer[i]._forward_pattern = (
                 block_adapter.forward_pattern
             )
@@ -107,14 +105,16 @@ class CachedAdapter:
                 block_adapter.has_separate_cfg
             )
             block_adapter.transformer[i]._cache_context_kwargs = (
-                cache_context_kwargs
+                contexts_kwargs[params_shift]
             )
 
-            for blocks, forward_pattern in zip(
-                block_adapter.blocks[i], block_adapter.forward_pattern[i]
-            ):
-                blocks._forward_pattern = forward_pattern
-                blocks._cache_context_kwargs = cache_context_kwargs
+            blocks = block_adapter.blocks[i]
+
+            for j in range(len(blocks)):
+                blocks._forward_pattern = block_adapter.forward_pattern[i][j]
+                blocks._cache_context_kwargs = contexts_kwargs[params_shift + j]
+
+            params_shift += len(blocks)
 
     @classmethod
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
@@ -178,18 +178,27 @@ class CachedAdapter:
             for item in block_adapter.unique_blocks_name[i]
         ]
 
+        contexts_kwargs = [
+            cache_kwargs.copy() for _ in range(len(flatten_contexts))
+        ]
+        contexts_kwargs = cls.modify_context_params(
+            contexts_kwargs, block_adapter
+        )
+
         original_call = block_adapter.pipe.__class__.__call__
 
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
             with ExitStack() as stack:
                 # cache context will be reset for each pipe inference
-                for context_name in flatten_contexts:
+                for context_name, context_kwargs in zip(
+                    flatten_contexts, contexts_kwargs
+                ):
                     stack.enter_context(
                         cache_manager.enter_context(
                             cache_manager.reset_context(
                                 context_name,
-                                **cache_kwargs,
+                                **context_kwargs,
                             ),
                         )
                     )
@@ -199,7 +208,37 @@ class CachedAdapter:
 
         block_adapter.pipe.__class__.__call__ = new_call
         block_adapter.pipe.__class__._is_cached = True
+
+        cls.patch_params(block_adapter, contexts_kwargs)
+
         return block_adapter.pipe
+
+    classmethod
+
+    def modify_context_params(
+        cls,
+        contexts_kwargs: List[Dict],
+        block_adapter: BlockAdapter,
+    ):
+        if block_adapter.params_modifiers is None:
+            return contexts_kwargs
+
+        flatten_params_modifiers = [
+            item
+            for i in range(len(block_adapter.transformer))
+            for item in block_adapter.params_modifiers[i]
+        ]
+
+        for i in range(
+            min(
+                len(contexts_kwargs),
+                len(flatten_params_modifiers),
+            )
+        ):
+            params_modifier: ParamsModifier = flatten_params_modifiers[i]
+            contexts_kwargs[i].update(params_modifier._context_kwargs)
+
+        return contexts_kwargs
 
     @classmethod
     def patch_stats(
