@@ -155,12 +155,15 @@ def strify(
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(pipe_or_stats, dict):
+        from cache_dit.cache_factory import CacheType
+
         # Assume cache_context_kwargs
         cache_options = pipe_or_stats
         cached_steps = None
-        from cache_dit.cache_factory import CacheType
 
-        if cache_options.get("cache_type", CacheType.NONE) == CacheType.NONE:
+        cache_type = cache_options.get("cache_type", CacheType.NONE)
+
+        if cache_type == CacheType.NONE:
             return "NONE"
     else:
         raise ValueError(
