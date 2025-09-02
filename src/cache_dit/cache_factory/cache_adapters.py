@@ -151,7 +151,10 @@ class CachedAdapter:
         pipe_cls_name = block_adapter.pipe.__class__.__name__
 
         # Each Pipeline should have it's own context manager instance.
-        cache_manager = CachedContextManager(name=pipe_cls_name)
+        cache_manager = CachedContextManager(
+            name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
+        )
+        block_adapter.pipe._cache_manager = cache_manager  # instance level
 
         cache_kwargs, _ = cache_manager.collect_cache_kwargs(
             default_attrs={},
@@ -177,7 +180,6 @@ class CachedAdapter:
                 return outputs
 
         block_adapter.pipe.__class__.__call__ = new_call
-        block_adapter.pipe.__class__._cache_manager = cache_manager
         block_adapter.pipe.__class__._is_cached = True
         return block_adapter.pipe
 
@@ -187,7 +189,7 @@ class CachedAdapter:
             patch_cached_stats,
         )
 
-        cache_manager = block_adapter.pipe.__class__._cache_manager
+        cache_manager = block_adapter.pipe._cache_manager
         patch_cached_stats(
             block_adapter.transformer,
             cache_manager=cache_manager,
@@ -274,7 +276,7 @@ class CachedAdapter:
         block_adapter = BlockAdapter.normalize(block_adapter)
 
         cached_blocks_bind_context = {}
-        assert hasattr(block_adapter.pipe.__class__, "_cache_manager")
+        assert hasattr(block_adapter.pipe, "_cache_manager")
 
         for i in range(len(block_adapter.blocks)):
             cached_blocks_bind_context[block_adapter.blocks_name[i]] = (
@@ -282,12 +284,12 @@ class CachedAdapter:
                     [
                         CachedBlocks(
                             block_adapter.blocks[i],
-                            block_adapter.blocks_name[i],
-                            block_adapter.blocks_name[i],  # cache context
-                            block_adapter.pipe.__class__._cache_manager,  # cache manager
                             transformer=block_adapter.transformer,
                             forward_pattern=block_adapter.forward_pattern[i],
                             check_num_outputs=block_adapter.check_num_outputs,
+                            cache_prefix=block_adapter.blocks_name[i],
+                            cache_context=block_adapter.blocks_name[i],
+                            cache_manager=block_adapter.pipe._cache_manager,
                         )
                     ]
                 )
