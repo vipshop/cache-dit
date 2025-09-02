@@ -283,10 +283,12 @@ class CachedAdapter:
                 torch.nn.ModuleList(
                     [
                         CachedBlocks(
+                            # 0. Transformer blocks configuration
                             block_adapter.blocks[i],
                             transformer=block_adapter.transformer,
                             forward_pattern=block_adapter.forward_pattern[i],
                             check_num_outputs=block_adapter.check_num_outputs,
+                            # 1. Cache context configuration
                             cache_prefix=block_adapter.blocks_name[i],
                             cache_context=block_adapter.blocks_name[i],
                             cache_manager=block_adapter.pipe._cache_manager,
