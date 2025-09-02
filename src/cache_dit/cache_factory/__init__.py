@@ -10,6 +10,7 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 
 from cache_dit.cache_factory.cache_contexts import CachedContext
+from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 
 from cache_dit.cache_factory.cache_adapters import CachedAdapter

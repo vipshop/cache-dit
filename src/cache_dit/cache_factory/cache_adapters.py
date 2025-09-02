@@ -7,10 +7,10 @@ from typing import Dict
 from contextlib import ExitStack
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory import CacheType
-from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import BlockAdapterRegistry
+from cache_dit.cache_factory import CachedContextManager
 from cache_dit.cache_factory import CachedBlocks
 
 from cache_dit.logger import init_logger
@@ -75,12 +75,13 @@ class CachedAdapter:
 
         if BlockAdapter.check_block_adapter(block_adapter):
             block_adapter = BlockAdapter.normalize(block_adapter)
-            # 0. Apply cache on pipeline: wrap cache context
+            # 0. Apply cache on pipeline: wrap cache context, must
+            # call create_context before mock_blocks.
             cls.create_context(
                 block_adapter,
                 **cache_context_kwargs,
             )
-            # 1. Apply cache on transformer: mock cached transformer blocks
+            # 1. Apply cache on transformer: mock cached blocks
             cls.mock_blocks(
                 block_adapter,
             )
@@ -147,7 +148,18 @@ class CachedAdapter:
             **cache_context_kwargs,
         )
         # Apply cache on pipeline: wrap cache context
-        cache_kwargs, _ = CachedContext.collect_cache_kwargs(
+        pipe_cls_name = block_adapter.pipe.__class__.__name__
+
+        # Each Pipeline should have it's own context manager instance.
+        # TODO: Different transformers (Wan2.2, etc) should shared the
+        # same cache manager but with different cache context (according
+        # to their unique instance id).
+        cache_manager = CachedContextManager(
+            name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
+        )
+        block_adapter.pipe._cache_manager = cache_manager  # instance level
+
+        cache_kwargs, _ = cache_manager.collect_cache_kwargs(
             default_attrs={},
             **cache_context_kwargs,
         )
@@ -156,12 +168,12 @@ class CachedAdapter:
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
             with ExitStack() as stack:
-                # cache context will reset for each pipe inference
-                for blocks_name in block_adapter.blocks_name:
+                # cache context will be reset for each pipe inference
+                for unique_name in block_adapter.unique_blocks_name:
                     stack.enter_context(
-                        CachedContext.cache_context(
-                            CachedContext.reset_cache_context(
-                                blocks_name,
+                        cache_manager.enter_context(
+                            cache_manager.reset_context(
+                                unique_name,
                                 **cache_kwargs,
                             ),
                         )
@@ -180,11 +192,19 @@ class CachedAdapter:
             patch_cached_stats,
         )
 
-        patch_cached_stats(block_adapter.transformer)
-        for blocks, blocks_name in zip(
-            block_adapter.blocks, block_adapter.blocks_name
+        cache_manager = block_adapter.pipe._cache_manager
+        patch_cached_stats(
+            block_adapter.transformer,
+            cache_manager=cache_manager,
+        )
+        for blocks, unique_name in zip(
+            block_adapter.blocks, block_adapter.unique_blocks_name
         ):
-            patch_cached_stats(blocks, blocks_name)
+            patch_cached_stats(
+                blocks,
+                cache_context=unique_name,
+                cache_manager=cache_manager,
+            )
 
     @classmethod
     def mock_blocks(
@@ -210,10 +230,6 @@ class CachedAdapter:
             )
 
         # Apply cache on transformer: mock cached transformer blocks
-        # TODO: Use blocks_name to spearate cached context for different
-        # blocks list. For example, single_transformer_blocks and
-        # transformer_blocks should have different cached context and
-        # forward pattern.
         cached_blocks = cls.collect_cached_blocks(
             block_adapter=block_adapter,
         )
@@ -226,12 +242,15 @@ class CachedAdapter:
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                for blocks_name in block_adapter.blocks_name:
+                for blocks_name, unique_name in zip(
+                    block_adapter.blocks_name,
+                    block_adapter.unique_blocks_name,
+                ):
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self,
                             blocks_name,
-                            cached_blocks[blocks_name],
+                            cached_blocks[unique_name],
                         )
                     )
                 for dummy_name in block_adapter.dummy_blocks_names:
@@ -258,22 +277,29 @@ class CachedAdapter:
     ) -> Dict[str, torch.nn.ModuleList]:
         block_adapter = BlockAdapter.normalize(block_adapter)
 
-        cached_blocks_bind_context = {}
+        cached_blocks_already_bind_context = {}
+        assert hasattr(block_adapter.pipe, "_cache_manager")
+        assert isinstance(
+            block_adapter.pipe._cache_manager, CachedContextManager
+        )
 
         for i in range(len(block_adapter.blocks)):
-            cached_blocks_bind_context[block_adapter.blocks_name[i]] = (
-                torch.nn.ModuleList(
-                    [
-                        CachedBlocks(
-                            block_adapter.blocks[i],
-                            block_adapter.blocks_name[i],
-                            block_adapter.blocks_name[i],  # context name
-                            transformer=block_adapter.transformer,
-                            forward_pattern=block_adapter.forward_pattern[i],
-                            check_num_outputs=block_adapter.check_num_outputs,
-                        )
-                    ]
-                )
+            cached_blocks_already_bind_context[
+                block_adapter.unique_blocks_name[i]
+            ] = torch.nn.ModuleList(
+                [
+                    CachedBlocks(
+                        # 0. Transformer blocks configuration
+                        block_adapter.blocks[i],
+                        transformer=block_adapter.transformer,
+                        forward_pattern=block_adapter.forward_pattern[i],
+                        check_num_outputs=block_adapter.check_num_outputs,
+                        # 1. Cache context configuration
+                        cache_prefix=block_adapter.blocks_name[i],
+                        cache_context=block_adapter.unique_blocks_name[i],
+                        cache_manager=block_adapter.pipe._cache_manager,
+                    )
+                ]
             )
 
-        return cached_blocks_bind_context
+        return cached_blocks_already_bind_context
