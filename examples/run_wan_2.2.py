@@ -61,11 +61,16 @@ if args.cache:
                 ForwardPattern.Pattern_2,
             ],
             params_modifiers=[
-                ParamsModifier(max_cached_steps=8),
-                ParamsModifier(max_cached_steps=20),
+                # high-noise transformer only 15% steps
+                ParamsModifier(
+                    max_cached_steps=8,
+                ),
+                ParamsModifier(
+                    max_cached_steps=20,
+                ),
             ],
         ),
-        # common cache params
+        # Common cache params
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
         max_warmup_steps=2,
