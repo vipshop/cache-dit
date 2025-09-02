@@ -61,7 +61,7 @@ if args.cache:
                 ForwardPattern.Pattern_2,
             ],
             params_modifiers=[
-                # high-noise transformer only 15% steps
+                # high-noise transformer only have 15% steps
                 ParamsModifier(
                     max_cached_steps=8,
                 ),
