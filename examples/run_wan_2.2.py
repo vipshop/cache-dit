@@ -39,7 +39,7 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 
 if args.cache:
-    from cache_dit import ForwardPattern, BlockAdapter
+    from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
 
     cache_dit.enable_cache(
         BlockAdapter(
@@ -59,6 +59,10 @@ if args.cache:
             forward_pattern=[
                 ForwardPattern.Pattern_2,
                 ForwardPattern.Pattern_2,
+            ],
+            params_modifiers=[
+                ParamsModifier(max_cached_steps=8),
+                ParamsModifier(),
             ],
         ),
         # Cache context kwargs
