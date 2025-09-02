@@ -160,7 +160,6 @@ def strify(
         # Assume cache_context_kwargs
         cache_options = pipe_or_stats
         cached_steps = None
-
         cache_type = cache_options.get("cache_type", CacheType.NONE)
 
         if cache_type == CacheType.NONE:
