@@ -42,17 +42,6 @@ if args.cache:
     from cache_dit import ForwardPattern, BlockAdapter
 
     cache_dit.enable_cache(
-        # Only cache for low-noise transformer (occupancy most timesteps)
-        # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
-        # t >= boundary_timestep: transformer, high-noise
-        # t < boundary_timestep: transformer_2, low-noise
-        # BlockAdapter(
-        #     pipe=pipe,
-        #     transformer=pipe.transformer_2,
-        #     blocks=pipe.transformer_2.blocks,
-        #     blocks_name="blocks",
-        #     forward_pattern=ForwardPattern.Pattern_2,
-        # ),
         BlockAdapter(
             pipe=pipe,
             transformer=[
