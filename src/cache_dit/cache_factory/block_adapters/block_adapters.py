@@ -25,6 +25,7 @@ class BlockAdapter:
     # transformer_blocks, blocks, etc.
     blocks_name: str | List[str] = None
     dummy_blocks_names: List[str] = dataclasses.field(default_factory=list)
+    unique_blocks_name: str | List[str] = None
     forward_pattern: ForwardPattern | List[ForwardPattern] = None
     check_num_outputs: bool = True
 
@@ -329,5 +330,16 @@ class BlockAdapter:
 
         assert len(adapter.blocks) == len(adapter.blocks_name)
         assert len(adapter.blocks) == len(adapter.forward_pattern)
+
+        if adapter.unique_blocks_name is None:
+            adapter.unique_blocks_name = [
+                f"{name}_{hash(id(blocks))}"
+                for blocks, name in zip(
+                    adapter.blocks,
+                    adapter.blocks_name,
+                )
+            ]
+        else:
+            assert len(adapter.unique_blocks_name) == len(adapter.blocks)
 
         return adapter

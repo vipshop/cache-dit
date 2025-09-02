@@ -151,6 +151,9 @@ class CachedAdapter:
         pipe_cls_name = block_adapter.pipe.__class__.__name__
 
         # Each Pipeline should have it's own context manager instance.
+        # TODO: Different transformers (Wan2.2, etc) should shared the
+        # same cache manager but with different cache context (according
+        # to their unique instance id).
         cache_manager = CachedContextManager(
             name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
         )
@@ -166,11 +169,11 @@ class CachedAdapter:
         def new_call(self, *args, **kwargs):
             with ExitStack() as stack:
                 # cache context will be reset for each pipe inference
-                for blocks_name in block_adapter.blocks_name:
+                for unique_name in block_adapter.unique_blocks_name:
                     stack.enter_context(
                         cache_manager.enter_context(
                             cache_manager.reset_context(
-                                blocks_name,
+                                unique_name,
                                 **cache_kwargs,
                             ),
                         )
@@ -239,12 +242,12 @@ class CachedAdapter:
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                for blocks_name in block_adapter.blocks_name:
+                for unique_name in block_adapter.unique_blocks_name:
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self,
-                            blocks_name,
-                            cached_blocks[blocks_name],
+                            unique_name,
+                            cached_blocks[unique_name],
                         )
                     )
                 for dummy_name in block_adapter.dummy_blocks_names:
@@ -271,29 +274,29 @@ class CachedAdapter:
     ) -> Dict[str, torch.nn.ModuleList]:
         block_adapter = BlockAdapter.normalize(block_adapter)
 
-        cached_blocks_bind_context = {}
+        cached_blocks_already_bind_context = {}
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
             block_adapter.pipe._cache_manager, CachedContextManager
         )
 
         for i in range(len(block_adapter.blocks)):
-            cached_blocks_bind_context[block_adapter.blocks_name[i]] = (
-                torch.nn.ModuleList(
-                    [
-                        CachedBlocks(
-                            # 0. Transformer blocks configuration
-                            block_adapter.blocks[i],
-                            transformer=block_adapter.transformer,
-                            forward_pattern=block_adapter.forward_pattern[i],
-                            check_num_outputs=block_adapter.check_num_outputs,
-                            # 1. Cache context configuration
-                            cache_prefix=block_adapter.blocks_name[i],
-                            cache_context=block_adapter.blocks_name[i],
-                            cache_manager=block_adapter.pipe._cache_manager,
-                        )
-                    ]
-                )
+            cached_blocks_already_bind_context[
+                block_adapter.unique_blocks_name[i]
+            ] = torch.nn.ModuleList(
+                [
+                    CachedBlocks(
+                        # 0. Transformer blocks configuration
+                        block_adapter.blocks[i],
+                        transformer=block_adapter.transformer,
+                        forward_pattern=block_adapter.forward_pattern[i],
+                        check_num_outputs=block_adapter.check_num_outputs,
+                        # 1. Cache context configuration
+                        cache_prefix=block_adapter.blocks_name[i],
+                        cache_context=block_adapter.unique_blocks_name[i],
+                        cache_manager=block_adapter.pipe._cache_manager,
+                    )
+                ]
             )
 
-        return cached_blocks_bind_context
+        return cached_blocks_already_bind_context
