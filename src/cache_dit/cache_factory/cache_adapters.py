@@ -145,7 +145,7 @@ class CachedAdapter:
     ) -> DiffusionPipeline:
 
         if not getattr(block_adapter, "_is_normalized", False):
-            raise RuntimeError("block_adapter must be normailed.")
+            raise RuntimeError("block_adapter must be normailzed.")
 
         if getattr(block_adapter.pipe, "_is_cached", False):
             return block_adapter.pipe
@@ -234,7 +234,7 @@ class CachedAdapter:
     ) -> List[torch.nn.Module]:
 
         if not getattr(block_adapter, "_is_normalized", False):
-            raise RuntimeError("block_adapter must be normailed.")
+            raise RuntimeError("block_adapter must be normailzed.")
 
         if getattr(block_adapter.transformer[0], "_is_cached", False):
             return block_adapter.transformer
@@ -308,8 +308,10 @@ class CachedAdapter:
     def collect_cached_blocks(
         cls,
         block_adapter: BlockAdapter,
-    ) -> List[Dict[str, torch.nn.ModuleList],]:
-        block_adapter = BlockAdapter.normalize(block_adapter)
+    ) -> List[Dict[str, torch.nn.ModuleList]]:
+
+        if not getattr(block_adapter, "_is_normalized", False):
+            raise RuntimeError("block_adapter must be normailzed.")
 
         cached_blocks_list: List[Dict[str, torch.nn.ModuleList]] = []
         assert hasattr(block_adapter.pipe, "_cache_manager")
@@ -318,8 +320,8 @@ class CachedAdapter:
         )
 
         for i in range(len(block_adapter.transformer)):
-            cached_blocks_bind_context = {}
 
+            cached_blocks_bind_context = {}
             for j in range(len(block_adapter.blocks[i])):
                 cached_blocks_bind_context[
                     block_adapter.unique_blocks_name[i][j]

@@ -16,11 +16,13 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class BlockAdapter:
+
     # Transformer configurations.
     pipe: Union[
         DiffusionPipeline,
         Any,
     ] = None
+
     # single transformer (most cases) or list of transformers (Wan2.2, etc)
     transformer: Union[
         torch.nn.Module,
@@ -35,26 +37,31 @@ class BlockAdapter:
         List[torch.nn.ModuleList],
         List[List[torch.nn.ModuleList]],
     ] = None
+
     # transformer_blocks, blocks, etc.
     blocks_name: Union[
         str,
         List[str],
         List[List[str]],
     ] = None
-    dummy_blocks_names: Union[
-        List[str],
-        List[List[str]],
-    ] = dataclasses.field(default_factory=list)
+
     unique_blocks_name: Union[
         str,
         List[str],
         List[List[str]],
     ] = dataclasses.field(default_factory=list)
+
+    dummy_blocks_names: Union[
+        List[str],
+        List[List[str]],
+    ] = dataclasses.field(default_factory=list)
+
     forward_pattern: Union[
         ForwardPattern,
         List[ForwardPattern],
         List[List[ForwardPattern]],
     ] = None
+
     check_num_outputs: bool = True
 
     # Pipeline Level Flags
