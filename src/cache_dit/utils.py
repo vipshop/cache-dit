@@ -7,7 +7,6 @@ from diffusers import DiffusionPipeline
 
 from typing import Dict, Any
 from cache_dit.logger import init_logger
-from cache_dit.cache_factory import CacheType
 
 
 logger = init_logger(__name__)
@@ -148,7 +147,7 @@ def strify(
     pipe_or_stats: DiffusionPipeline | CacheStats | Dict[str, Any],
 ) -> str:
     if isinstance(pipe_or_stats, DiffusionPipeline):
-        stats = summary(pipe_or_stats, logging=False)
+        stats = summary(pipe_or_stats, logging=True)
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(pipe_or_stats, CacheStats):
@@ -166,9 +165,6 @@ def strify(
         )
 
     if not cache_options:
-        return "NONE"
-
-    if cache_options.get("cache_type", None) != CacheType.DBCache:
         return "NONE"
 
     def get_taylorseer_order():

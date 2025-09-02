@@ -93,7 +93,7 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
         contexts_kwargs: List[Dict],
     ):
-        block_adapter.pipe.__class__._cache_context_kwargs = contexts_kwargs[0]
+        block_adapter.pipe._cache_context_kwargs = contexts_kwargs[0]
 
         params_shift = 0
         for i in range(len(block_adapter.transformer)):
@@ -109,10 +109,11 @@ class CachedAdapter:
             )
 
             blocks = block_adapter.blocks[i]
-
             for j in range(len(blocks)):
-                blocks._forward_pattern = block_adapter.forward_pattern[i][j]
-                blocks._cache_context_kwargs = contexts_kwargs[params_shift + j]
+                blocks[j]._forward_pattern = block_adapter.forward_pattern[i][j]
+                blocks[j]._cache_context_kwargs = contexts_kwargs[
+                    params_shift + j
+                ]
 
             params_shift += len(blocks)
 
@@ -180,7 +181,9 @@ class CachedAdapter:
             cache_kwargs.copy() for _ in range(len(flatten_contexts))
         ]
         contexts_kwargs = cls.modify_context_params(
-            contexts_kwargs, block_adapter
+            contexts_kwargs,
+            flatten_contexts,
+            block_adapter,
         )
 
         original_call = block_adapter.pipe.__class__.__call__
@@ -215,12 +218,15 @@ class CachedAdapter:
     def modify_context_params(
         cls,
         contexts_kwargs: List[Dict],
+        flatten_contexts: List[str],
         block_adapter: BlockAdapter,
     ):
         if block_adapter.params_modifiers is None:
             return contexts_kwargs
 
-        flatten_modifiers = BlockAdapter.flatten(block_adapter.params_modifiers)
+        flatten_modifiers = BlockAdapter.flatten(
+            block_adapter.params_modifiers,
+        )
 
         for i in range(
             min(
@@ -230,6 +236,9 @@ class CachedAdapter:
         ):
             params_modifier: ParamsModifier = flatten_modifiers[i]
             contexts_kwargs[i].update(params_modifier._context_kwargs)
+
+        for i in range(len(contexts_kwargs)):
+            contexts_kwargs["name"] = flatten_contexts[i]
 
         return contexts_kwargs
 
