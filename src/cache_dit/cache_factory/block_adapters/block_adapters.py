@@ -428,7 +428,7 @@ class BlockAdapter:
 
         assert len(adapter.transformer) == len(adapter.unique_blocks_name)
 
-        # Match Forward pattern
+        # Match Forward Pattern
         for i in range(len(adapter.transformer)):
             for forward_pattern, blocks in zip(
                 adapter.forward_pattern[i], adapter.blocks[i]

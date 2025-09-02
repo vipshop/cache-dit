@@ -328,7 +328,7 @@ class CachedAdapter:
     ) -> List[Dict[str, torch.nn.ModuleList],]:
         block_adapter = BlockAdapter.normalize(block_adapter)
 
-        cached_blocks_list: List[Dict[str, torch.nn.ModuleList]] = {}
+        cached_blocks_list: List[Dict[str, torch.nn.ModuleList]] = []
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
             block_adapter.pipe._cache_manager, CachedContextManager
