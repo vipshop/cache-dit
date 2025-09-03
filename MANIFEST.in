@@ -2,4 +2,4 @@ include MANIFEST.in
 include LICENSE
 include requirements.txt
 prune */__pycache__
-global-exclude *.o *.so *.dylib *.a .git *.pyc *.swp *.mp4 *.png *.jpg assets docs examples tests .github
+global-exclude *.o *.so *.dylib *.a .git *.pyc *.swp *.mp4 *.png *.jpg assets docs examples tests .github tmp debug
