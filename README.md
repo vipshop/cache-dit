@@ -23,13 +23,13 @@
 </div>
 
 <div align='center'>
-  <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=170px>
-  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
-  <img src=./assets/gifs/wan2.2.C1_Q1_fp8_w8a8_dq_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
+  <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=160px>
+  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=160px>
+  <img src=./assets/gifs/wan2.2.C1_Q1_fp8_w8a8_dq_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=160px>
   <p><b>🔥Wan2.2 MoE</b> Baseline | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~2x↑🎉</b> | +FP8 DQ:<b>~2.4x↑🎉</b></p>
-  <img src=https://github.com/user-attachments/assets/4a9237c5-5736-483b-85f7-38ab6c417009 width=120px>
-  <img src=https://github.com/user-attachments/assets/958ae267-0351-4f85-b378-f863d9d3038c width=120px>
-  <img src=https://github.com/user-attachments/assets/aa7538b1-b0e8-4ea4-b9ca-0d32e946d5b8 width=120px>
+  <img src=https://github.com/user-attachments/assets/4a9237c5-5736-483b-85f7-38ab6c417009 width=110px>
+  <img src=https://github.com/user-attachments/assets/958ae267-0351-4f85-b378-f863d9d3038c width=110px>
+  <img src=https://github.com/user-attachments/assets/aa7538b1-b0e8-4ea4-b9ca-0d32e946d5b8 width=110px>
   <p><b>🔥FLUX.1-dev</b> Baseline | +FP8 DQ:<b>~2x↑🎉</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~3.3x↑🎉</b><br>
   ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
   </p>
