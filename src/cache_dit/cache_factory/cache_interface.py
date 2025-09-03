@@ -127,14 +127,7 @@ def enable_cache(
         enable_encoder_taylorseer
     )
     cache_context_kwargs["taylorseer_cache_type"] = taylorseer_cache_type
-    if "taylorseer_kwargs" in cache_context_kwargs:
-        cache_context_kwargs["taylorseer_kwargs"][
-            "n_derivatives"
-        ] = taylorseer_order
-    else:
-        cache_context_kwargs["taylorseer_kwargs"] = {
-            "n_derivatives": taylorseer_order
-        }
+    cache_context_kwargs["taylorseer_order"] = taylorseer_order
 
     if isinstance(pipe_or_adapter, BlockAdapter):
         return CachedAdapter.apply(

@@ -175,12 +175,7 @@ def strify(
 
     def get_taylorseer_order():
         taylorseer_order = 0
-        if "taylorseer_kwargs" in cache_options:
-            if "n_derivatives" in cache_options["taylorseer_kwargs"]:
-                taylorseer_order = cache_options["taylorseer_kwargs"][
-                    "n_derivatives"
-                ]
-        elif "taylorseer_order" in cache_options:
+        if "taylorseer_order" in cache_options:
             taylorseer_order = cache_options["taylorseer_order"]
         return taylorseer_order
 

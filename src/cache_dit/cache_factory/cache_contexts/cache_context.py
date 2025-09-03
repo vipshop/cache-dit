@@ -65,6 +65,7 @@ class CachedContext:  # Internal CachedContext Impl class
     enable_encoder_taylorseer: bool = False
     # NOTE: use residual cache for taylorseer may incur precision loss
     taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
+    taylorseer_order: int = 2  # The order for TaylorSeer
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
@@ -119,11 +120,8 @@ class CachedContext:  # Internal CachedContext Impl class
                 self.max_warmup_steps if self.max_warmup_steps > 0 else 1
             )
 
-        # Only set n_derivatives as 2 or 3, which is enough for most cases.
-        if "n_derivatives" not in self.taylorseer_kwargs:
-            self.taylorseer_kwargs["n_derivatives"] = max(
-                2, min(3, self.taylorseer_kwargs["max_warmup_steps"])
-            )
+        # Overwrite the 'n_derivatives' by 'taylorseer_order', default: 2.
+        self.taylorseer_kwargs["n_derivatives"] = self.taylorseer_order
 
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
