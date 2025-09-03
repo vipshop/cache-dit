@@ -25,8 +25,8 @@
 <div align='center'>
   <div style="display: flex; justify-content: center; gap: 10px; font-family: Arial, sans-serif; font-size: 14px;">
     <div style="width: 200px; text-align: center;">🔥Wan2.2 MoE Baseline</div>
-    <div style="width: 200px; text-align: center;">+cache-dit: ~2x⚡️ speedup</div>
-    <div style="width: 200px; text-align: center;">+cache-dit: ~2.4x⚡️ speedup</div>
+    <div style="width: 200px; text-align: center;">~2x⚡️ speedup</div>
+    <div style="width: 200px; text-align: center;">~2.4x⚡️ speedup</div>
   </div>
   <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=200px>
   <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=200px>
