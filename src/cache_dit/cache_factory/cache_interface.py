@@ -89,7 +89,7 @@ def enable_cache(
             The order of taylorseer, higher values of n_derivatives will lead to longer computation time,
             but may improve precision significantly.
         other_cache_kwargs: (`dict`, *optional*, defaults to {})
-            Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_context.py
+            Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
 
     Examples:
