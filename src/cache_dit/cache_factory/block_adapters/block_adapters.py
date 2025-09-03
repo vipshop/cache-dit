@@ -520,7 +520,7 @@ class BlockAdapter:
             (DiffusionPipeline, torch.nn.Module),
         ):
             return getattr(adapter, "_is_cached", False)
-        elif isinstance(adapter, list):  # [TRN]
+        elif isinstance(adapter, list):  # [TRN_0,...]
             assert isinstance(adapter[0], torch.nn.Module)
             return getattr(adapter[0], "_is_cached", False)
         else:
