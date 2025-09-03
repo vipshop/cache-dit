@@ -515,11 +515,18 @@ class BlockAdapter:
             raise RuntimeError("block_adapter must be normailzed.")
 
     @classmethod
-    def is_cached(cls, adapter: "BlockAdapter") -> bool:
-        cls.assert_normalized(adapter)
-        return getattr(adapter.pipe, "_is_cached", False) and getattr(
-            adapter.transformer[0], "_is_cached", False
-        )
+    def is_cached(
+        cls,
+        adapter: "BlockAdapter" | Any,
+    ) -> bool:
+        if isinstance(adapter, "BlockAdapter"):
+            cls.assert_normalized(adapter)
+            return getattr(adapter.pipe, "_is_cached", False) and getattr(
+                adapter.transformer[0], "_is_cached", False
+            )
+        else:
+            # DiffusionPipeline | torch.nn.Module
+            return getattr(adapter, "_is_cached", False)
 
     @classmethod
     def flatten(cls, attr: List[List[Any]]):
