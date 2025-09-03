@@ -393,10 +393,10 @@ class CachedContextManager:
         return cached_context.Bn_compute_blocks_ids
 
     @torch.compiler.disable
-    def do_separate_cfg(self):
+    def enable_spearate_cfg(self):
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.do_separate_cfg
+        return cached_context.enable_spearate_cfg
 
     @torch.compiler.disable
     def is_separate_cfg_step(self):
@@ -439,7 +439,7 @@ class CachedContextManager:
 
         if all(
             (
-                self.do_separate_cfg(),
+                self.enable_spearate_cfg(),
                 self.is_separate_cfg_step(),
                 not self.cfg_diff_compute_separate(),
                 self.get_current_step_residual_diff() is not None,

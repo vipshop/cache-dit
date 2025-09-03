@@ -21,7 +21,7 @@ def enable_cache(
     max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
     # Cache CFG or not
-    do_separate_cfg: bool = False,
+    enable_spearate_cfg: bool = False,
     cfg_compute_first: bool = False,
     cfg_diff_compute_separate: bool = True,
     # Hybird TaylorSeer
@@ -64,9 +64,9 @@ def enable_cache(
         residual_diff_threshold (`float`, *required*, defaults to 0.08):
             he value of residual diff threshold, a higher value leads to faster performance at the
             cost of lower precision.
-        do_separate_cfg (`bool`, *required*,  defaults to False):
+        enable_spearate_cfg (`bool`, *required*,  defaults to False):
             Whether to do separate cfg or not, such as Wan 2.1, Qwen-Image. For model that fused CFG
-            and non-CFG into single forward step, should set do_separate_cfg as False, for example:
+            and non-CFG into single forward step, should set enable_spearate_cfg as False, for example:
             CogVideoX, HunyuanVideo, Mochi, etc.
         cfg_compute_first (`bool`, *required*,  defaults to False):
             Compute cfg forward first or not, default False, namely, 0, 2, 4, ..., -> non-CFG step;
@@ -117,7 +117,7 @@ def enable_cache(
         max_continuous_cached_steps
     )
     cache_context_kwargs["residual_diff_threshold"] = residual_diff_threshold
-    cache_context_kwargs["do_separate_cfg"] = do_separate_cfg
+    cache_context_kwargs["enable_spearate_cfg"] = enable_spearate_cfg
     cache_context_kwargs["cfg_compute_first"] = cfg_compute_first
     cache_context_kwargs["cfg_diff_compute_separate"] = (
         cfg_diff_compute_separate

@@ -3,9 +3,11 @@ import torch
 import unittest
 import functools
 
-from typing import Dict, List
 from contextlib import ExitStack
+from typing import Dict, List, Tuple, Any
+
 from diffusers import DiffusionPipeline
+
 from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import ParamsModifier
@@ -120,14 +122,14 @@ class CachedAdapter:
     @classmethod
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
         # Check cache_context_kwargs
-        if not cache_context_kwargs["do_separate_cfg"]:
+        if not cache_context_kwargs["enable_spearate_cfg"]:
             # Check cfg for some specific case if users don't set it as True
-            cache_context_kwargs["do_separate_cfg"] = (
+            cache_context_kwargs["enable_spearate_cfg"] = (
                 BlockAdapterRegistry.has_separate_cfg(pipe)
             )
             logger.info(
-                f"Use default 'do_separate_cfg': "
-                f"{cache_context_kwargs['do_separate_cfg']}, "
+                f"Use default 'enable_spearate_cfg': "
+                f"{cache_context_kwargs['enable_spearate_cfg']}, "
                 f"Pipeline: {pipe.__class__.__name__}."
             )
 
@@ -173,17 +175,8 @@ class CachedAdapter:
             **cache_context_kwargs,
         )
 
-        flatten_contexts = BlockAdapter.flatten(
-            block_adapter.unique_blocks_name
-        )
-
-        contexts_kwargs = [
-            cache_kwargs.copy() for _ in range(len(flatten_contexts))
-        ]
-        contexts_kwargs = cls.modify_params(
-            contexts_kwargs,
-            flatten_contexts,
-            block_adapter,
+        flatten_contexts, contexts_kwargs = cls.modify_context_params(
+            block_adapter, cache_manager, **cache_kwargs
         )
 
         original_call = block_adapter.pipe.__class__.__call__
@@ -215,17 +208,24 @@ class CachedAdapter:
         return block_adapter.pipe
 
     @classmethod
-    def modify_params(
+    def modify_context_params(
         cls,
-        contexts_kwargs: List[Dict],
-        flatten_contexts: List[str],
         block_adapter: BlockAdapter,
-    ):
+        cache_manager: CachedContextManager,
+        **cache_kwargs,
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+        flatten_contexts = BlockAdapter.flatten(
+            block_adapter.unique_blocks_name
+        )
+        contexts_kwargs = [
+            cache_kwargs.copy() for _ in range(len(flatten_contexts))
+        ]
+
         for i in range(len(contexts_kwargs)):
             contexts_kwargs[i]["name"] = flatten_contexts[i]
 
         if block_adapter.params_modifiers is None:
-            return contexts_kwargs
+            return flatten_contexts, contexts_kwargs
 
         flatten_modifiers = BlockAdapter.flatten(
             block_adapter.params_modifiers,
@@ -239,11 +239,11 @@ class CachedAdapter:
         ):
             params_modifier: ParamsModifier = flatten_modifiers[i]
             contexts_kwargs[i].update(params_modifier._context_kwargs)
-            contexts_kwargs[i], _ = CachedContextManager.collect_cache_kwargs(
+            contexts_kwargs[i], _ = cache_manager.collect_cache_kwargs(
                 default_attrs={}, **contexts_kwargs[i]
             )
 
-        return contexts_kwargs
+        return flatten_contexts, contexts_kwargs
 
     @classmethod
     def patch_stats(

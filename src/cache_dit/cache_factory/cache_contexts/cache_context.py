@@ -69,11 +69,11 @@ class CachedContext:  # Internal CachedContext Impl class
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
 
-    # Support do_separate_cfg, such as Wan 2.1,
+    # Support enable_spearate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
-    # forward step, should set do_separate_cfg as False.
+    # forward step, should set enable_spearate_cfg as False.
     # For example: CogVideoX, HunyuanVideo, Mochi.
-    do_separate_cfg: bool = False
+    enable_spearate_cfg: bool = False
     # Compute cfg forward first or not, default False, namely,
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first: bool = False
@@ -101,10 +101,10 @@ class CachedContext:  # Internal CachedContext Impl class
         if logger.isEnabledFor(logging.DEBUG):
             logger.info(f"Created _CacheContext: {self.name}")
         # Some checks for settings
-        if self.do_separate_cfg:
+        if self.enable_spearate_cfg:
             assert self.enable_alter_cache is False, (
                 "enable_alter_cache must set as False if "
-                "do_separate_cfg is enabled."
+                "enable_spearate_cfg is enabled."
             )
             if self.cfg_diff_compute_separate:
                 assert self.cfg_compute_first is False, (
@@ -127,12 +127,12 @@ class CachedContext:  # Internal CachedContext Impl class
 
         if self.enable_taylorseer:
             self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
-            if self.do_separate_cfg:
+            if self.enable_spearate_cfg:
                 self.cfg_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
 
         if self.enable_encoder_taylorseer:
             self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
-            if self.do_separate_cfg:
+            if self.enable_spearate_cfg:
                 self.cfg_encoder_taylorseer = TaylorSeer(
                     **self.taylorseer_kwargs
                 )
@@ -179,7 +179,7 @@ class CachedContext:  # Internal CachedContext Impl class
         # incr    step: prev 0 -> 1; prev 1 -> 2
         # current step: incr step - 1
         self.transformer_executed_steps += 1
-        if not self.do_separate_cfg:
+        if not self.enable_spearate_cfg:
             self.executed_steps += 1
         else:
             # 0,1 -> 0 + 1, 2,3 -> 1 + 1, ...
@@ -221,7 +221,7 @@ class CachedContext:  # Internal CachedContext Impl class
 
         # mark_step_begin of TaylorSeer must be called after the cache is reset.
         if self.enable_taylorseer or self.enable_encoder_taylorseer:
-            if self.do_separate_cfg:
+            if self.enable_spearate_cfg:
                 # Assume non-CFG steps: 0, 2, 4, 6, ...
                 if not self.is_separate_cfg_step():
                     taylorseer, encoder_taylorseer = self.get_taylorseers()
@@ -316,7 +316,7 @@ class CachedContext:  # Internal CachedContext Impl class
 
     @torch.compiler.disable
     def is_separate_cfg_step(self):
-        if not self.do_separate_cfg:
+        if not self.enable_spearate_cfg:
             return False
         if self.cfg_compute_first:
             # CFG steps: 0, 2, 4, 6, ...

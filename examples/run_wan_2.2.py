@@ -69,6 +69,7 @@ if args.cache:
                     max_cached_steps=20,
                 ),
             ],
+            has_separate_cfg=True,
         ),
         # Common cache params
         Fn_compute_blocks=1,
@@ -76,10 +77,8 @@ if args.cache:
         max_warmup_steps=2,
         max_continuous_cached_steps=2,
         residual_diff_threshold=0.08,
-        do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
-        taylorseer_order=2,
     )
 
 # Wan currently requires installing diffusers from source

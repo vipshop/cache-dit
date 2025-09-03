@@ -37,7 +37,7 @@ if args.cache:
             forward_pattern=ForwardPattern.Pattern_1,
         ),
         # Cache context kwargs
-        do_separate_cfg=True,
+        enable_spearate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=4,
