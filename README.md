@@ -29,12 +29,13 @@
   <img src=./assets/qwen-image.C0_Q0_NONE.png width=160px>
   <img src=./assets/qwen-image.C1_Q0_DBCACHE_F8B0_W8M0MC0_T1O4_R0.12_S23.png width=160px>
   <img src=./assets/qwen-image.C1_Q0_DBCACHE_F8B0_W8M0MC0_T1O4_R0.12_S23.png width=160px>
-  <p><b>🔥Qwen-Image</b> Baseline | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~1.8x↑🎉</b> | +FP8 DQ:<b>~2.2x↑🎉</b></p>
-  <img src=https://github.com/user-attachments/assets/4a9237c5-5736-483b-85f7-38ab6c417009 width=160px height=100px>
-  <img src=https://github.com/user-attachments/assets/958ae267-0351-4f85-b378-f863d9d3038c width=160px height=100px>
-  <img src=https://github.com/user-attachments/assets/aa7538b1-b0e8-4ea4-b9ca-0d32e946d5b8 width=160px height=100px>
-  <p><b>🔥FLUX.1-dev</b> Baseline | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~2.3x↑🎉</b> | +FP8 DQ:<b>~3.3x↑🎉</b><br>
-  ♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️
+  <p><b>🔥Qwen-Image</b> Baseline | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~1.8x↑🎉</b> | +FP8 DQ:<b>~2.2x↑🎉</b><br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
+<!--  
+  <img src=https://github.com/user-attachments/assets/4a9237c5-5736-483b-85f7-38ab6c417009 width=160px>
+  <img src=https://github.com/user-attachments/assets/958ae267-0351-4f85-b378-f863d9d3038c width=160px>
+  <img src=https://github.com/user-attachments/assets/aa7538b1-b0e8-4ea4-b9ca-0d32e946d5b8 width=160px>
+  <p><b>🔥FLUX.1-dev</b> Baseline | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~2.3x↑🎉</b> | +FP8 DQ:<b>~3.3x↑🎉</b><br> ♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️
+-->  
   </p>
 </div>
 
