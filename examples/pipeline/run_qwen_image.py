@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
@@ -22,22 +26,10 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
 )
 
-
 if args.cache:
-    assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-    from cache_dit import BlockAdapter, ForwardPattern
-
     cache_dit.enable_cache(
-        BlockAdapter(
-            # Any DiffusionPipeline, Qwen-Image, etc.
-            pipe=pipe,
-            auto=True,
-            # Check `📚Forward Pattern Matching` documentation and hack the code of
-            # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
-            forward_pattern=ForwardPattern.Pattern_1,
-        ),
+        pipe,
         # Cache context kwargs
-        enable_spearate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=4,
@@ -75,8 +67,41 @@ aspect_ratios = {
 
 width, height = aspect_ratios["16:9"]
 
-start = time.time()
+assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
+if args.quantize:
+    # Apply Quantization (default: FP8 DQ) to Transformer
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        per_row=False,
+        exclude_layers=[
+            "img_in",
+            "txt_in",
+            "embedder",
+            "embed",
+            "norm_out",
+            "proj_out",
+        ],
+    )
+
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+
+    # warmup
+    image = pipe(
+        prompt=prompt + positive_magic["en"],
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        num_inference_steps=50,
+        true_cfg_scale=4.0,
+        generator=torch.Generator(device="cpu").manual_seed(42),
+    ).images[0]
+
+
+start = time.time()
 # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
 image = pipe(
     prompt=prompt + positive_magic["en"],
@@ -87,13 +112,16 @@ image = pipe(
     true_cfg_scale=4.0,
     generator=torch.Generator(device="cpu").manual_seed(42),
 ).images[0]
-
 end = time.time()
 
 stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"qwen-image.adapter.{cache_dit.strify(stats)}.png"
+save_path = (
+    f"qwen-image.C{int(args.compile)}_Q{int(args.quantize)}"
+    f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
+    f"{cache_dit.strify(stats)}.png"
+)
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

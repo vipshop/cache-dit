@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 from diffusers import FluxFillPipeline
@@ -27,8 +31,8 @@ if args.cache:
 start = time.time()
 image = pipe(
     prompt="a white paper cup",
-    image=load_image("data/cup.png"),
-    mask_image=load_image("data/cup_mask.png"),
+    image=load_image("../data/cup.png"),
+    mask_image=load_image("../data/cup_mask.png"),
     guidance_scale=30,
     num_inference_steps=28,
     max_sequence_length=512,

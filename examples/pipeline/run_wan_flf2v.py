@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 import diffusers
@@ -8,6 +12,7 @@ import torchvision.transforms.functional as TF
 from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
+
 from utils import get_args
 import cache_dit
 
@@ -92,8 +97,8 @@ def main():
 
     pipe = prepare_pipeline(pipe, args)
 
-    first_frame = load_image("data/flf2v_input_first_frame.png")
-    last_frame = load_image("data/flf2v_input_last_frame.png")
+    first_frame = load_image("../data/flf2v_input_first_frame.png")
+    last_frame = load_image("../data/flf2v_input_last_frame.png")
 
     first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
     if last_frame.size != first_frame.size:

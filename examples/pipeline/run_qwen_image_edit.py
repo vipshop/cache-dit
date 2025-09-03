@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 
@@ -39,7 +43,7 @@ if torch.cuda.device_count() <= 1:
     pipe.enable_model_cpu_offload()
 
 
-image = Image.open("./data/bear.png").convert("RGB")
+image = Image.open("../data/bear.png").convert("RGB")
 prompt = "Only change the bear's color to purple"
 
 if args.compile:
