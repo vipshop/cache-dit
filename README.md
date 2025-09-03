@@ -22,6 +22,10 @@
   </p>
 </div>
 
+<p align="center">
+  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+</p>
+
 <div align='center'>
   <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=170px>
   <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
@@ -32,8 +36,6 @@
   <img src=https://github.com/user-attachments/assets/aa7538b1-b0e8-4ea4-b9ca-0d32e946d5b8 width=120px>
   <p><b>🔥FLUX.1-dev Baseline | +FP8 DQ:~2x↑🎉 | +cache-dit:~3.3x↑🎉</b></p>
 </div>
-
-
 
 ## 🔥News  
 
