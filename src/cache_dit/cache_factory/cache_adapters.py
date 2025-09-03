@@ -214,7 +214,10 @@ class CachedAdapter:
             block_adapter.unique_blocks_name
         )
         contexts_kwargs = [
-            cache_context_kwargs.copy() for _ in range(len(flatten_contexts))
+            cache_context_kwargs.copy()
+            for _ in range(
+                len(flatten_contexts),
+            )
         ]
 
         for i in range(len(contexts_kwargs)):
@@ -223,7 +226,7 @@ class CachedAdapter:
         if block_adapter.params_modifiers is None:
             return flatten_contexts, contexts_kwargs
 
-        flatten_modifiers = BlockAdapter.flatten(
+        flatten_modifiers: List[ParamsModifier] = BlockAdapter.flatten(
             block_adapter.params_modifiers,
         )
 
@@ -233,8 +236,7 @@ class CachedAdapter:
                 len(flatten_modifiers),
             )
         ):
-            params_modifier: ParamsModifier = flatten_modifiers[i]
-            contexts_kwargs[i].update(params_modifier._context_kwargs)
+            contexts_kwargs[i].update(flatten_modifiers[i]._context_kwargs)
             contexts_kwargs[i], _ = cache_manager.collect_cache_kwargs(
                 default_attrs={}, **contexts_kwargs[i]
             )
