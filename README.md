@@ -22,29 +22,31 @@
   </p>
 </div>
 
+<div style="display: flex; justify-content: center; width: 100%;">
+    <table style="margin: 0 auto; text-align: center; border-collapse: collapse; width: auto;">
+        <thead>
+            <tr>
+                <th style="padding: 12px 16px; border: none;">Wan2.2 MoE Baseline</th>
+                <th style="padding: 12px 16px; border: none;">+cache-dit: ~2x⚡️ speedup</th>
+                <th style="padding: 12px 16px; border: none;">+cache-dit+fp8: ~2.4x⚡️ speedup</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="padding: 8px; border: none;">
+                    <img src="./assets/gifs/wan2.2.C0_Q0_NONE.gif" width="200px" alt="Wan2.2 MoE Baseline" style="display: block; margin: 0 auto;">
+                </td>
+                <td style="padding: 8px; border: none;">
+                    <img src="./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif" width="200px" alt="+cache-dit" style="display: block; margin: 0 auto;">
+                </td>
+                <td style="padding: 8px; border: none;">
+                    <img src="./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif" width="200px" alt="+cache-dit+fp8" style="display: block; margin: 0 auto;">
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
 
-<table style="margin: 0 auto; text-align: center; border-collapse: collapse;">
-    <thead>
-        <tr>
-            <th style="padding: 8px; border: none;">Wan2.2 MoE Baseline</th>
-            <th style="padding: 8px; border: none;">+cache-dit: ~2x⚡️ speedup</th>
-            <th style="padding: 8px; border: none;">+fp8: ~2.4x⚡️ speedup</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td style="padding: 8px; border: none;">
-                <img src="./assets/gifs/wan2.2.C0_Q0_NONE.gif" width="200px" alt="Wan2.2 MoE Baseline">
-            </td>
-            <td style="padding: 8px; border: none;">
-                <img src="./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif" width="200px" alt="+cache-dit">
-            </td>
-            <td style="padding: 8px; border: none;">
-                <img src="./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif" width="200px" alt="+cache-dit+fp8">
-            </td>
-        </tr>
-    </tbody>
-</table>
     
 ## 🔥News  
 
