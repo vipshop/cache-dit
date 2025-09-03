@@ -391,11 +391,9 @@ class BlockAdapter:
                 pass
 
         if isinstance(adapter.blocks_name, str):
-            # blocks_0 = [[blocks_0,],] -> match [TRN_0,]
             adapter.blocks_name = [[adapter.blocks_name]]
         elif isinstance(adapter.blocks_name, list):
             if isinstance(adapter.blocks_name[0], str):
-                # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
                 if len(adapter.blocks_name) == len(adapter.transformer):
                     adapter.blocks_name = [
                         [blocks_name] for blocks_name in adapter.blocks_name
@@ -403,15 +401,12 @@ class BlockAdapter:
                 else:
                     adapter.blocks_name = [adapter.blocks_name]
             elif isinstance(adapter.blocks_name[0], list):
-                # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                 pass
 
         if isinstance(adapter.forward_pattern, ForwardPattern):
-            # blocks_0 = [[blocks_0,],] -> match [TRN_0,]
             adapter.forward_pattern = [[adapter.forward_pattern]]
         elif isinstance(adapter.forward_pattern, list):
             if isinstance(adapter.forward_pattern[0], ForwardPattern):
-                # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
                 if len(adapter.forward_pattern) == len(adapter.transformer):
                     adapter.forward_pattern = [
                         [forward_pattern]
@@ -420,13 +415,11 @@ class BlockAdapter:
                 else:
                     adapter.forward_pattern = [adapter.forward_pattern]
             elif isinstance(adapter.forward_pattern[0], list):
-                # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                 pass
 
         if isinstance(adapter.dummy_blocks_names, list):
             if len(adapter.dummy_blocks_names) > 0:
                 if isinstance(adapter.dummy_blocks_names[0], str):
-                    # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
                     if len(adapter.dummy_blocks_names) == len(
                         adapter.transformer
                     ):
@@ -439,7 +432,6 @@ class BlockAdapter:
                             adapter.dummy_blocks_names
                         ]
                 elif isinstance(adapter.dummy_blocks_names[0], list):
-                    # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                     pass
             else:
                 # Empty dummy_blocks_names
@@ -462,7 +454,6 @@ class BlockAdapter:
                     else:
                         adapter.params_modifiers = [adapter.params_modifiers]
                 elif isinstance(adapter.params_modifiers[0], list):
-                    # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
                     pass
 
         assert len(adapter.transformer) == len(adapter.blocks)
@@ -478,7 +469,7 @@ class BlockAdapter:
 
         if len(adapter.unique_blocks_name) == 0:
             for i in range(len(adapter.transformer)):
-                # generate unique blocks names
+                # Generate unique blocks names
                 adapter.unique_blocks_name.append(
                     [
                         f"{name}_{hash(id(blocks))}"
