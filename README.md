@@ -1,7 +1,4 @@
-<img width="1618" height="494" alt="image" src="https://github.com/user-attachments/assets/4cde8ad3-a904-41be-a0f9-265cd84ddd1a" /><div align="center">
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
-
-  <p align="center">
+<p align="center">
     A <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
     ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
