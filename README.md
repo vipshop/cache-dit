@@ -25,9 +25,9 @@
 - [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x⚡️** speedup! Please refer to [run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.
 
 <div align='center'>
-  <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=250px>
-  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=250px>
-  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=250px>
+  <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=220px>
+  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=220px>
+  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=220px>
   <p><b>🔥Wan2.2 MoE Baseline </b> | <b>~2x⚡️ speedup </b> | <b>~2.4x⚡️ speedup</b></p>
 </div>
 
