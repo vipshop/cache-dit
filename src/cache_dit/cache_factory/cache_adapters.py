@@ -169,13 +169,8 @@ class CachedAdapter:
         )
         block_adapter.pipe._cache_manager = cache_manager  # instance level
 
-        cache_kwargs, _ = cache_manager.collect_cache_kwargs(
-            default_attrs={},
-            **cache_context_kwargs,
-        )
-
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
-            block_adapter, cache_manager, **cache_kwargs
+            block_adapter, cache_manager, **cache_context_kwargs
         )
 
         original_call = block_adapter.pipe.__class__.__call__
@@ -200,6 +195,7 @@ class CachedAdapter:
                 return outputs
 
         block_adapter.pipe.__class__.__call__ = new_call
+        block_adapter.pipe.__class__._original_call = original_call
         block_adapter.pipe.__class__._is_cached = True
 
         cls.patch_params(block_adapter, contexts_kwargs)
@@ -211,14 +207,14 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
         cache_manager: CachedContextManager,
-        **cache_kwargs,
+        **cache_context_kwargs,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
 
         flatten_contexts = BlockAdapter.flatten(
             block_adapter.unique_blocks_name
         )
         contexts_kwargs = [
-            cache_kwargs.copy() for _ in range(len(flatten_contexts))
+            cache_context_kwargs.copy() for _ in range(len(flatten_contexts))
         ]
 
         for i in range(len(contexts_kwargs)):
@@ -343,6 +339,7 @@ class CachedAdapter:
                 return original_forward(*args, **kwargs)
 
         transformer.forward = new_forward.__get__(transformer)
+        transformer._original_forward = original_forward
         transformer._is_cached = True
 
         return transformer
