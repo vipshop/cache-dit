@@ -527,7 +527,7 @@ class BlockAdapter:
             assert isinstance(adapter[0], torch.nn.Module)
             return getattr(adapter[0], "_is_cached", False)
         else:
-            raise ValueError("Can't check this type!")
+            raise TypeError(f"Can't check this type: {adapter}!")
 
     @classmethod
     def flatten(cls, attr: List[List[Any]]):
