@@ -26,7 +26,7 @@
   <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=170px>
   <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
   <img src=./assets/gifs/wan2.2.C1_Q1_fp8_w8a8_dq_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
-  <p><b>🔥Wan2.2 MoE Baseline </b> | <b>~2x⚡️ speedup </b> | <b>~2.4x⚡️ speedup</b></p>
+  <p><b>🔥Wan2.2 MoE Baseline </b> | <b>+cache-dit:~2x↑🎉 </b> | <b>+FP8 DQ:~2.4x↑🎉</b></p>
 </div>
 
 ## 🔥News  
