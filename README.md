@@ -22,19 +22,17 @@
   </p>
 </div>
 
-<p align="center">
-  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
-</p>
-
 <div align='center'>
   <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=170px>
   <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
   <img src=./assets/gifs/wan2.2.C1_Q1_fp8_w8a8_dq_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=170px>
-  <p><b>🔥Wan2.2 MoE</b> Baseline | +cache-dit:<b>~2x↑🎉</b> | +FP8 DQ:<b>~2.4x↑🎉</b></p>
+  <p><b>🔥Wan2.2 MoE</b> Baseline | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~2x↑🎉</b> | +FP8 DQ:<b>~2.4x↑🎉</b></p>
   <img src=https://github.com/user-attachments/assets/4a9237c5-5736-483b-85f7-38ab6c417009 width=120px>
   <img src=https://github.com/user-attachments/assets/958ae267-0351-4f85-b378-f863d9d3038c width=120px>
   <img src=https://github.com/user-attachments/assets/aa7538b1-b0e8-4ea4-b9ca-0d32e946d5b8 width=120px>
-  <p><b>🔥FLUX.1-dev</b> Baseline | +FP8 DQ:<b>~2x↑🎉</b> | +cache-dit:<b>~3.3x↑🎉</b></p>
+  <p><b>🔥FLUX.1-dev</b> Baseline | +FP8 DQ:<b>~2x↑🎉</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~3.3x↑🎉</b><br>
+  ♥️ Please consider to leave a ⭐️ Star to support us ~ ♥️
+  </p>
 </div>
 
 ## 🔥News  
@@ -43,7 +41,7 @@
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](./examples/pipeline/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x↑🎉** speedup! Please refer to [run_qwen_image.py](./examples/pipeline/run_qwen_image.py) as an example.
-- [2025-07-13] 🎉[**flux-faster**](https://github.com/xlite-dev/flux-faster) is released! **3.3x↑🎉** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
+- [2025-07-13] 🎉[**FLUX.1-Dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + `compile + FP8 DQ`.
 
 <details>
 <summary> Previous News </summary>  
