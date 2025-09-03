@@ -22,36 +22,21 @@
   </p>
 </div>
 
-<div style="display: flex; justify-content: center; width: 100%;">
-    <table style="margin: 0 auto; text-align: center; border-collapse: collapse; width: auto;">
-        <thead>
-            <tr>
-                <th style="padding: 12px 16px; border: none;">Wan2.2 MoE Baseline</th>
-                <th style="padding: 12px 16px; border: none;">+cache-dit: ~2x⚡️ speedup</th>
-                <th style="padding: 12px 16px; border: none;">+cache-dit+fp8: ~2.4x⚡️ speedup</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td style="padding: 8px; border: none;">
-                    <img src="./assets/gifs/wan2.2.C0_Q0_NONE.gif" width="200px" alt="Wan2.2 MoE Baseline" style="display: block; margin: 0 auto;">
-                </td>
-                <td style="padding: 8px; border: none;">
-                    <img src="./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif" width="200px" alt="+cache-dit" style="display: block; margin: 0 auto;">
-                </td>
-                <td style="padding: 8px; border: none;">
-                    <img src="./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif" width="200px" alt="+cache-dit+fp8" style="display: block; margin: 0 auto;">
-                </td>
-            </tr>
-        </tbody>
-    </table>
+<div align='center'>
+  <div style="display: flex; justify-content: center; gap: 10px; font-family: Arial, sans-serif; font-size: 14px;">
+    <div style="width: 200px; text-align: center;">🔥Wan2.2 MoE Baseline</div>
+    <div style="width: 200px; text-align: center;">+cache-dit: ~2x⚡️ speedup</div>
+    <div style="width: 200px; text-align: center;">+cache-dit: ~2.4x⚡️ speedup</div>
+  </div>
+  <img src=./assets/gifs/wan2.2.C0_Q0_NONE.gif width=200px>
+  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=200px>
+  <img src=./assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=200px>
 </div>
 
-    
 ## 🔥News  
 
 - [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x⚡️** speedup! Please refer to 
-[run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.        
+[run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.    
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example: [run_qwen_image_edit.py](./examples/pipeline/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x⚡️** speedup! Please refer to [run_qwen_image.py](./examples/pipeline/run_qwen_image.py) as an example.
