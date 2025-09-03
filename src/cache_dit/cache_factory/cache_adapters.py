@@ -291,9 +291,7 @@ class CachedAdapter:
             unique_blocks_name,
             dummy_blocks_names,
         ) in zip(
-            cls.collect_cached_blocks(
-                block_adapter=block_adapter,
-            ),
+            cls.collect_cached_blocks(block_adapter),
             block_adapter.transformer,
             block_adapter.blocks_name,
             block_adapter.unique_blocks_name,
@@ -327,7 +325,10 @@ class CachedAdapter:
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                for name, context_name in zip(blocks_name, unique_blocks_name):
+                for name, context_name in zip(
+                    blocks_name,
+                    unique_blocks_name,
+                ):
                     stack.enter_context(
                         unittest.mock.patch.object(
                             self, name, cached_blocks[context_name]
@@ -354,7 +355,7 @@ class CachedAdapter:
 
         BlockAdapter.assert_normalized(block_adapter)
 
-        cached_blocks_list: List[Dict[str, torch.nn.ModuleList]] = []
+        total_cached_blocks: List[Dict[str, torch.nn.ModuleList]] = []
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
             block_adapter.pipe._cache_manager, CachedContextManager
@@ -384,6 +385,6 @@ class CachedAdapter:
                     ]
                 )
 
-            cached_blocks_list.append(cached_blocks_bind_context)
+            total_cached_blocks.append(cached_blocks_bind_context)
 
-        return cached_blocks_list
+        return total_cached_blocks
