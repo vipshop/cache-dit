@@ -284,10 +284,6 @@ class CachedAdapter:
             return block_adapter.transformer
 
         # Apply cache on transformer: mock cached transformer blocks
-        cached_blocks_list = cls.collect_cached_blocks(
-            block_adapter=block_adapter,
-        )
-
         for (
             cached_blocks,
             transformer,
@@ -295,7 +291,9 @@ class CachedAdapter:
             unique_blocks_name,
             dummy_blocks_names,
         ) in zip(
-            cached_blocks_list,
+            cls.collect_cached_blocks(
+                block_adapter=block_adapter,
+            ),
             block_adapter.transformer,
             block_adapter.blocks_name,
             block_adapter.unique_blocks_name,
