@@ -70,7 +70,7 @@ if args.cache:
                     max_cached_steps=8,
                 ),
                 ParamsModifier(
-                    max_cached_steps=20,
+                    max_cached_steps=25,
                 ),
             ],
             has_separate_cfg=True,
@@ -80,7 +80,7 @@ if args.cache:
         Bn_compute_blocks=0,
         max_warmup_steps=2,
         max_continuous_cached_steps=2,
-        residual_diff_threshold=0.08,
+        residual_diff_threshold=0.12,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
     )
