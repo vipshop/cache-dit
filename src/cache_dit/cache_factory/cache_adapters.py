@@ -147,10 +147,9 @@ class CachedAdapter:
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
 
-        if not getattr(block_adapter, "_is_normalized", False):
-            raise RuntimeError("block_adapter must be normailzed.")
+        BlockAdapter.assert_normalized(block_adapter)
 
-        if getattr(block_adapter.pipe, "_is_cached", False):
+        if BlockAdapter.is_cached(block_adapter):
             return block_adapter.pipe
 
         # Check cache_context_kwargs
@@ -214,6 +213,7 @@ class CachedAdapter:
         cache_manager: CachedContextManager,
         **cache_kwargs,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
+
         flatten_contexts = BlockAdapter.flatten(
             block_adapter.unique_blocks_name
         )
@@ -263,7 +263,8 @@ class CachedAdapter:
                 cache_manager=cache_manager,
             )
             for blocks, unique_name in zip(
-                block_adapter.blocks[i], block_adapter.unique_blocks_name[i]
+                block_adapter.blocks[i],
+                block_adapter.unique_blocks_name[i],
             ):
                 patch_cached_stats(
                     blocks,
@@ -277,10 +278,9 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
     ) -> List[torch.nn.Module]:
 
-        if not getattr(block_adapter, "_is_normalized", False):
-            raise RuntimeError("block_adapter must be normailzed.")
+        BlockAdapter.assert_normalized(block_adapter)
 
-        if getattr(block_adapter.transformer[0], "_is_cached", False):
+        if BlockAdapter.is_cached(block_adapter):
             return block_adapter.transformer
 
         # Apply cache on transformer: mock cached transformer blocks
@@ -354,8 +354,7 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
     ) -> List[Dict[str, torch.nn.ModuleList]]:
 
-        if not getattr(block_adapter, "_is_normalized", False):
-            raise RuntimeError("block_adapter must be normailzed.")
+        BlockAdapter.assert_normalized(block_adapter)
 
         cached_blocks_list: List[Dict[str, torch.nn.ModuleList]] = []
         assert hasattr(block_adapter.pipe, "_cache_manager")

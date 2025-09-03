@@ -510,6 +510,18 @@ class BlockAdapter:
         return adapter
 
     @classmethod
+    def assert_normalized(cls, adapter: "BlockAdapter"):
+        if not getattr(adapter, "_is_normalized", False):
+            raise RuntimeError("block_adapter must be normailzed.")
+
+    @classmethod
+    def is_cached(cls, adapter: "BlockAdapter") -> bool:
+        cls.assert_normalized(adapter)
+        return getattr(adapter.pipe, "_is_cached", False) or getattr(
+            adapter.transformer[0], "_is_cached", False
+        )
+
+    @classmethod
     def flatten(cls, attr: List[List[Any]]):
         if isinstance(attr, list):
             if not isinstance(attr[0], list):
