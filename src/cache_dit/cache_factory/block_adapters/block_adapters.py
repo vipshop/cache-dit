@@ -521,12 +521,22 @@ class BlockAdapter:
     ) -> bool:
         if isinstance(adapter, "BlockAdapter"):
             cls.assert_normalized(adapter)
-            return getattr(adapter.pipe, "_is_cached", False) and getattr(
-                adapter.transformer[0], "_is_cached", False
+            return all(
+                (
+                    getattr(adapter.pipe, "_is_cached", False),
+                    getattr(adapter.transformer[0], "_is_cached", False),
+                )
             )
-        else:
-            # DiffusionPipeline | torch.nn.Module
+        elif isinstance(
+            adapter,
+            (DiffusionPipeline, torch.nn.Module),
+        ):
             return getattr(adapter, "_is_cached", False)
+        elif isinstance(adapter, list):  # [TRN]
+            assert isinstance(adapter[0], torch.nn.Module)
+            return getattr(adapter[0], "_is_cached", False)
+        else:
+            raise ValueError("Can't check this type!")
 
     @classmethod
     def flatten(cls, attr: List[List[Any]]):

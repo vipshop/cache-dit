@@ -75,18 +75,24 @@ class CachedAdapter:
             )
 
         if BlockAdapter.check_block_adapter(block_adapter):
+
             # 0. Must normalize block_adapter before apply cache
             block_adapter = BlockAdapter.normalize(block_adapter)
+            if BlockAdapter.is_cached(block_adapter):
+                return block_adapter.pipe
+
             # 1. Apply cache on pipeline: wrap cache context, must
             # call create_context before mock_blocks.
             cls.create_context(
                 block_adapter,
                 **cache_context_kwargs,
             )
+
             # 2. Apply cache on transformer: mock cached blocks
             cls.mock_blocks(
                 block_adapter,
             )
+
         return block_adapter.pipe
 
     @classmethod
@@ -149,7 +155,7 @@ class CachedAdapter:
 
         BlockAdapter.assert_normalized(block_adapter)
 
-        if BlockAdapter.is_cached(block_adapter):
+        if BlockAdapter.is_cached(block_adapter.pipe):
             return block_adapter.pipe
 
         # Check cache_context_kwargs
@@ -277,7 +283,7 @@ class CachedAdapter:
 
         BlockAdapter.assert_normalized(block_adapter)
 
-        if BlockAdapter.is_cached(block_adapter):
+        if BlockAdapter.is_cached(block_adapter.transformer):
             return block_adapter.transformer
 
         # Apply cache on transformer: mock cached transformer blocks
