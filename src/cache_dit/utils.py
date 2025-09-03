@@ -7,7 +7,6 @@ from diffusers import DiffusionPipeline
 
 from typing import Dict, Any
 from cache_dit.logger import init_logger
-from cache_dit.cache_factory import CacheType
 
 
 logger = init_logger(__name__)
@@ -156,9 +155,15 @@ def strify(
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(pipe_or_stats, dict):
+        from cache_dit.cache_factory import CacheType
+
         # Assume cache_context_kwargs
         cache_options = pipe_or_stats
         cached_steps = None
+        cache_type = cache_options.get("cache_type", CacheType.NONE)
+
+        if cache_type == CacheType.NONE:
+            return "NONE"
     else:
         raise ValueError(
             "Please set pipe_or_stats param as one of: "
@@ -168,17 +173,9 @@ def strify(
     if not cache_options:
         return "NONE"
 
-    if cache_options.get("cache_type", None) != CacheType.DBCache:
-        return "NONE"
-
     def get_taylorseer_order():
         taylorseer_order = 0
-        if "taylorseer_kwargs" in cache_options:
-            if "n_derivatives" in cache_options["taylorseer_kwargs"]:
-                taylorseer_order = cache_options["taylorseer_kwargs"][
-                    "n_derivatives"
-                ]
-        elif "taylorseer_order" in cache_options:
+        if "taylorseer_order" in cache_options:
             taylorseer_order = cache_options["taylorseer_order"]
         return taylorseer_order
 

@@ -24,17 +24,17 @@
 
 ## 🔥News  
 
-- [2025-08-29] 🔥</b>Covers <b>100%</b> Diffusers' <b>DiT-based</b> Pipelines: **[BlockAdapter](#unified) + [Pattern Matching](#unified).**
-- [2025-08-26] 🎉[**Wan2.2**](https://github.com/Wan-Video) **1.8x⚡️** speedup with `cache-dit + compile`! Please check the [example](./examples/run_wan_2.2.py).
-- [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example at [run_qwen_image_edit.py](./examples/run_qwen_image_edit.py).
+- [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x⚡️** speedup! Please refer to [run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.
+- [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x⚡️** speedup! Check the example: [run_qwen_image_edit.py](./examples/pipeline/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
-- [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x⚡️** speedup! Please refer [run_qwen_image.py](./examples/run_qwen_image.py) as an example.
+- [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x⚡️** speedup! Please refer to [run_qwen_image.py](./examples/pipeline/run_qwen_image.py) as an example.
 
 <details>
 <summary> Previous News </summary>  
 
 - [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](./examples/run_flux_adapter.py) as an example.
-- [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/run_flux_kontext.py) as an example.
+- [2025-08-29] 🔥</b>Covers <b>100%</b> Diffusers' <b>DiT-based</b> Pipelines: **[BlockAdapter](#unified) + [Pattern Matching](#unified).**  
+- [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/pipeline/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 - [2025-07-13] **[🤗flux-faster](https://github.com/xlite-dev/flux-faster)** is released! **3.3x** speedup for FLUX.1 on NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)**.
 
@@ -144,7 +144,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ### ♥️Cache Acceleration with One-line Code
 
-In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/run_qwen_image.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/pipeline/run_qwen_image.py) as an example. 
 
 ```python
 import cache_dit
@@ -162,7 +162,7 @@ output = pipe(...)
 
 ### 🔥Automatic Block Adapter
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](./examples/run_qwen_image_adapter.py) as an example.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](./examples/adapter/run_qwen_image_adapter.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
@@ -193,7 +193,7 @@ For such situations, **BlockAdapter** can help you quickly apply various cache a
 
 ### 📚Hybird Forward Pattern
 
-Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](./examples/run_flux_adapter.py) as an example.
+Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](./examples/adapter/run_flux_adapter.py) as an example.
 
 ```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
@@ -341,7 +341,7 @@ cache_dit.enable_cache(
 
 <div id="cfg"></div>
 
-cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `do_separate_cfg` param to **False (default)**. Otherwise, set it to True. For examples:
+cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_spearate_cfg` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
 cache_dit.enable_cache(
@@ -349,10 +349,10 @@ cache_dit.enable_cache(
     ...,
     # CFG: classifier free guidance or not
     # For model that fused CFG and non-CFG into single forward step,
-    # should set do_separate_cfg as False. For example, set it as True 
+    # should set enable_spearate_cfg as False. For example, set it as True 
     # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
     # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
-    do_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
+    enable_spearate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
     # Compute cfg forward first or not, default False, namely, 
     # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
     cfg_compute_first=False,

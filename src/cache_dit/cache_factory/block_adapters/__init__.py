@@ -1,5 +1,6 @@
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.block_adapters.block_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters.block_registers import (
     BlockAdapterRegistry,
 )
@@ -69,14 +70,30 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
         (WanTransformer3DModel, WanVACETransformer3DModel),
     )
     if getattr(pipe, "transformer_2", None):
-        # Wan 2.2, cache for low-noise transformer
+        assert isinstance(
+            pipe.transformer_2,
+            (WanTransformer3DModel, WanVACETransformer3DModel),
+        )
+        # Wan 2.2 MoE
         return BlockAdapter(
             pipe=pipe,
-            transformer=pipe.transformer_2,
-            blocks=pipe.transformer_2.blocks,
-            blocks_name="blocks",
+            transformer=[
+                pipe.transformer,
+                pipe.transformer_2,
+            ],
+            blocks=[
+                pipe.transformer.blocks,
+                pipe.transformer_2.blocks,
+            ],
+            blocks_name=[
+                "blocks",
+                "blocks",
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_2,
+                ForwardPattern.Pattern_2,
+            ],
             dummy_blocks_names=[],
-            forward_pattern=ForwardPattern.Pattern_2,
             has_separate_cfg=True,
         )
     else:

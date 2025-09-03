@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 import diffusers
@@ -38,7 +42,7 @@ if args.cache:
     cache_dit.enable_cache(
         pipe,
         # Cache context kwargs
-        do_separate_cfg=True,
+        enable_spearate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
         taylorseer_order=2,

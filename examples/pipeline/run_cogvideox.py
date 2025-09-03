@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 from diffusers.utils import export_to_video

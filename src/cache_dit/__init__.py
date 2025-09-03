@@ -10,6 +10,7 @@ from cache_dit.cache_factory import cache_type
 from cache_dit.cache_factory import block_range
 from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import BlockAdapter
+from cache_dit.cache_factory import ParamsModifier
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import PatchFunctor
 from cache_dit.cache_factory import supported_pipelines

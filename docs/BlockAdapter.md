@@ -10,7 +10,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ### ⚡️Cache Acceleration with One-line Code
 
-In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples/run_qwen_image.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_qwen_image.py) as an example. 
 ```python
 import cache_dit
 from diffusers import DiffusionPipeline 
@@ -27,7 +27,7 @@ output = pipe(...)
 
 ### 🔥Automatic Block Adapter: Cache Acceleration for Custom Diffusion Models
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/raw/main/examples/run_qwen_image_adapter.py) as an example.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/raw/main/examples/adapter/run_qwen_image_adapter.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter

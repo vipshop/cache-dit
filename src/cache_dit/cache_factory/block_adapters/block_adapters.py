@@ -3,7 +3,7 @@ import torch
 import inspect
 import dataclasses
 
-from typing import Any, Tuple, List, Optional
+from typing import Any, Tuple, List, Optional, Union
 
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
@@ -14,22 +14,79 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+class ParamsModifier:
+    def __init__(self, **kwargs):
+        self._context_kwargs = kwargs.copy()
+
+
 @dataclasses.dataclass
 class BlockAdapter:
-    # Transformer configurations.
-    pipe: DiffusionPipeline | Any = None
-    transformer: torch.nn.Module = None
 
-    # ------------ Block Level Flags ------------
-    blocks: torch.nn.ModuleList | List[torch.nn.ModuleList] = None
+    # Transformer configurations.
+    pipe: Union[
+        DiffusionPipeline,
+        Any,
+    ] = None
+
+    # single transformer (most cases) or list of transformers (Wan2.2, etc)
+    transformer: Union[
+        torch.nn.Module,
+        List[torch.nn.Module],
+    ] = None
+
+    # Block Level Flags
+    # Each transformer contains a list of blocks-list,
+    # blocks_name-list, dummy_blocks_names-list, etc.
+    blocks: Union[
+        torch.nn.ModuleList,
+        List[torch.nn.ModuleList],
+        List[List[torch.nn.ModuleList]],
+    ] = None
+
     # transformer_blocks, blocks, etc.
-    blocks_name: str | List[str] = None
-    dummy_blocks_names: List[str] = dataclasses.field(default_factory=list)
-    unique_blocks_name: str | List[str] = None
-    forward_pattern: ForwardPattern | List[ForwardPattern] = None
+    blocks_name: Union[
+        str,
+        List[str],
+        List[List[str]],
+    ] = None
+
+    unique_blocks_name: Union[
+        str,
+        List[str],
+        List[List[str]],
+    ] = dataclasses.field(default_factory=list)
+
+    dummy_blocks_names: Union[
+        List[str],
+        List[List[str]],
+    ] = dataclasses.field(default_factory=list)
+
+    forward_pattern: Union[
+        ForwardPattern,
+        List[ForwardPattern],
+        List[List[ForwardPattern]],
+    ] = None
+
+    # modify cache context params for specific blocks.
+    params_modifiers: Union[
+        ParamsModifier,
+        List[ParamsModifier],
+        List[List[ParamsModifier]],
+    ] = None
+
     check_num_outputs: bool = True
 
+    # Pipeline Level Flags
+    # Patch Functor: Flux, etc.
+    patch_functor: Optional[PatchFunctor] = None
+    # Flags for separate cfg
+    has_separate_cfg: bool = False
+
+    # Other Flags
+    disable_patch: bool = False
+
     # Flags to control auto block adapter
+    # NOTE: NOT support for multi-transformers.
     auto: bool = False
     allow_prefixes: List[str] = dataclasses.field(
         default_factory=lambda: [
@@ -49,15 +106,6 @@ class BlockAdapter:
     blocks_policy: str = dataclasses.field(
         default="max", metadata={"allowed_values": ["max", "min"]}
     )
-
-    # NOTE: Other flags.
-    disable_patch: bool = False
-
-    # ------------ Pipeline Level Flags ------------
-    # Patch Functor: Flux, etc.
-    patch_functor: Optional[PatchFunctor] = None
-    # Flags for separate cfg
-    has_separate_cfg: bool = False
 
     def __post_init__(self):
         assert any((self.pipe is not None, self.transformer is not None))
@@ -321,25 +369,170 @@ class BlockAdapter:
     def normalize(
         adapter: "BlockAdapter",
     ) -> "BlockAdapter":
-        if not isinstance(adapter.blocks, list):
-            adapter.blocks = [adapter.blocks]
-        if not isinstance(adapter.blocks_name, list):
-            adapter.blocks_name = [adapter.blocks_name]
-        if not isinstance(adapter.forward_pattern, list):
-            adapter.forward_pattern = [adapter.forward_pattern]
 
-        assert len(adapter.blocks) == len(adapter.blocks_name)
-        assert len(adapter.blocks) == len(adapter.forward_pattern)
+        if getattr(adapter, "_is_normalized", False):
+            return adapter
 
-        if adapter.unique_blocks_name is None:
-            adapter.unique_blocks_name = [
-                f"{name}_{hash(id(blocks))}"
-                for blocks, name in zip(
-                    adapter.blocks,
-                    adapter.blocks_name,
+        if not isinstance(adapter.transformer, list):
+            adapter.transformer = [adapter.transformer]
+
+        if isinstance(adapter.blocks, torch.nn.ModuleList):
+            # blocks_0 = [[blocks_0,],] -> match [TRN_0,]
+            adapter.blocks = [[adapter.blocks]]
+        elif isinstance(adapter.blocks, list):
+            if isinstance(adapter.blocks[0], torch.nn.ModuleList):
+                # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
+                if len(adapter.blocks) == len(adapter.transformer):
+                    adapter.blocks = [[blocks] for blocks in adapter.blocks]
+                else:
+                    adapter.blocks = [adapter.blocks]
+            elif isinstance(adapter.blocks[0], list):
+                # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
+                pass
+
+        if isinstance(adapter.blocks_name, str):
+            adapter.blocks_name = [[adapter.blocks_name]]
+        elif isinstance(adapter.blocks_name, list):
+            if isinstance(adapter.blocks_name[0], str):
+                if len(adapter.blocks_name) == len(adapter.transformer):
+                    adapter.blocks_name = [
+                        [blocks_name] for blocks_name in adapter.blocks_name
+                    ]
+                else:
+                    adapter.blocks_name = [adapter.blocks_name]
+            elif isinstance(adapter.blocks_name[0], list):
+                pass
+
+        if isinstance(adapter.forward_pattern, ForwardPattern):
+            adapter.forward_pattern = [[adapter.forward_pattern]]
+        elif isinstance(adapter.forward_pattern, list):
+            if isinstance(adapter.forward_pattern[0], ForwardPattern):
+                if len(adapter.forward_pattern) == len(adapter.transformer):
+                    adapter.forward_pattern = [
+                        [forward_pattern]
+                        for forward_pattern in adapter.forward_pattern
+                    ]
+                else:
+                    adapter.forward_pattern = [adapter.forward_pattern]
+            elif isinstance(adapter.forward_pattern[0], list):
+                pass
+
+        if isinstance(adapter.dummy_blocks_names, list):
+            if len(adapter.dummy_blocks_names) > 0:
+                if isinstance(adapter.dummy_blocks_names[0], str):
+                    if len(adapter.dummy_blocks_names) == len(
+                        adapter.transformer
+                    ):
+                        adapter.dummy_blocks_names = [
+                            [dummy_blocks_names]
+                            for dummy_blocks_names in adapter.dummy_blocks_names
+                        ]
+                    else:
+                        adapter.dummy_blocks_names = [
+                            adapter.dummy_blocks_names
+                        ]
+                elif isinstance(adapter.dummy_blocks_names[0], list):
+                    pass
+            else:
+                # Empty dummy_blocks_names
+                adapter.dummy_blocks_names = [
+                    [] for _ in range(len(adapter.transformer))
+                ]
+
+        if adapter.params_modifiers is not None:
+            if isinstance(adapter.params_modifiers, ParamsModifier):
+                adapter.params_modifiers = [[adapter.params_modifiers]]
+            elif isinstance(adapter.params_modifiers, list):
+                if isinstance(adapter.params_modifiers[0], ParamsModifier):
+                    if len(adapter.params_modifiers) == len(
+                        adapter.transformer
+                    ):
+                        adapter.params_modifiers = [
+                            [params_modifiers]
+                            for params_modifiers in adapter.params_modifiers
+                        ]
+                    else:
+                        adapter.params_modifiers = [adapter.params_modifiers]
+                elif isinstance(adapter.params_modifiers[0], list):
+                    pass
+
+        assert len(adapter.transformer) == len(adapter.blocks)
+        assert len(adapter.transformer) == len(adapter.blocks_name)
+        assert len(adapter.transformer) == len(adapter.forward_pattern)
+        assert len(adapter.transformer) == len(adapter.dummy_blocks_names)
+        if adapter.params_modifiers is not None:
+            assert len(adapter.transformer) == len(adapter.params_modifiers)
+
+        for i in range(len(adapter.blocks)):
+            assert len(adapter.blocks[i]) == len(adapter.blocks_name[i])
+            assert len(adapter.blocks[i]) == len(adapter.forward_pattern[i])
+
+        if len(adapter.unique_blocks_name) == 0:
+            for i in range(len(adapter.transformer)):
+                # Generate unique blocks names
+                adapter.unique_blocks_name.append(
+                    [
+                        f"{name}_{hash(id(blocks))}"
+                        for blocks, name in zip(
+                            adapter.blocks[i],
+                            adapter.blocks_name[i],
+                        )
+                    ]
                 )
-            ]
-        else:
-            assert len(adapter.unique_blocks_name) == len(adapter.blocks)
+
+        assert len(adapter.transformer) == len(adapter.unique_blocks_name)
+
+        # Match Forward Pattern
+        for i in range(len(adapter.transformer)):
+            for forward_pattern, blocks in zip(
+                adapter.forward_pattern[i], adapter.blocks[i]
+            ):
+                assert BlockAdapter.match_blocks_pattern(
+                    blocks,
+                    forward_pattern=forward_pattern,
+                    check_num_outputs=adapter.check_num_outputs,
+                ), (
+                    "No block forward pattern matched, "
+                    f"supported lists: {ForwardPattern.supported_patterns()}"
+                )
+
+        adapter._is_normalized = True
 
         return adapter
+
+    @classmethod
+    def assert_normalized(cls, adapter: "BlockAdapter"):
+        if not getattr(adapter, "_is_normalized", False):
+            raise RuntimeError("block_adapter must be normailzed.")
+
+    @classmethod
+    def is_cached(cls, adapter: Any) -> bool:
+        if isinstance(adapter, cls):
+            cls.assert_normalized(adapter)
+            return all(
+                (
+                    getattr(adapter.pipe, "_is_cached", False),
+                    getattr(adapter.transformer[0], "_is_cached", False),
+                )
+            )
+        elif isinstance(
+            adapter,
+            (DiffusionPipeline, torch.nn.Module),
+        ):
+            return getattr(adapter, "_is_cached", False)
+        elif isinstance(adapter, list):  # [TRN_0,...]
+            assert isinstance(adapter[0], torch.nn.Module)
+            return getattr(adapter[0], "_is_cached", False)
+        else:
+            raise TypeError(f"Can't check this type: {adapter}!")
+
+    @classmethod
+    def flatten(cls, attr: List[List[Any]]):
+        if isinstance(attr, list):
+            if not isinstance(attr[0], list):
+                return attr
+            flatten_attr = []
+            for i in range(len(attr)):
+                flatten_attr.extend(attr[i])
+            return flatten_attr
+        return attr

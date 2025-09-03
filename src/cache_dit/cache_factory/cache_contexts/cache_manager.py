@@ -1,7 +1,7 @@
 import logging
 import contextlib
 import dataclasses
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union, List
 
 import torch
 import torch.distributed as dist
@@ -76,7 +76,9 @@ class CachedContextManager:
             self._current_context = old_cached_context
 
     @staticmethod
-    def collect_cache_kwargs(default_attrs: dict, **kwargs):
+    def collect_cache_kwargs(
+        default_attrs: dict, **kwargs
+    ) -> Tuple[Dict, Dict]:
         # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
         # default_attrs: specific settings for different pipelines
         cache_attrs = dataclasses.fields(CachedContext)
@@ -122,13 +124,13 @@ class CachedContextManager:
         return cache_kwargs, kwargs
 
     @torch.compiler.disable
-    def get_residual_diff_threshold(self):
+    def get_residual_diff_threshold(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_residual_diff_threshold()
 
     @torch.compiler.disable
-    def get_buffer(self, name):
+    def get_buffer(self, name) -> torch.Tensor:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_buffer(name)
@@ -146,21 +148,19 @@ class CachedContextManager:
         cached_context.remove_buffer(name)
 
     @torch.compiler.disable
-    def mark_step_begin(
-        self,
-    ):
+    def mark_step_begin(self):
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         cached_context.mark_step_begin()
 
     @torch.compiler.disable
-    def get_current_step(self):
+    def get_current_step(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_current_step()
 
     @torch.compiler.disable
-    def get_current_step_residual_diff(self):
+    def get_current_step_residual_diff(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         step = str(self.get_current_step())
@@ -170,7 +170,7 @@ class CachedContextManager:
         return None
 
     @torch.compiler.disable
-    def get_current_step_cfg_residual_diff(self):
+    def get_current_step_cfg_residual_diff(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         step = str(self.get_current_step())
@@ -180,43 +180,43 @@ class CachedContextManager:
         return None
 
     @torch.compiler.disable
-    def get_current_transformer_step(self):
+    def get_current_transformer_step(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_current_transformer_step()
 
     @torch.compiler.disable
-    def get_cached_steps(self):
+    def get_cached_steps(self) -> List[int]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_cached_steps()
 
     @torch.compiler.disable
-    def get_cfg_cached_steps(self):
+    def get_cfg_cached_steps(self) -> List[int]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_cfg_cached_steps()
 
     @torch.compiler.disable
-    def get_max_cached_steps(self):
+    def get_max_cached_steps(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.max_cached_steps
 
     @torch.compiler.disable
-    def get_max_continuous_cached_steps(self):
+    def get_max_continuous_cached_steps(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.max_continuous_cached_steps
 
     @torch.compiler.disable
-    def get_continuous_cached_steps(self):
+    def get_continuous_cached_steps(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.continuous_cached_steps
 
     @torch.compiler.disable
-    def get_cfg_continuous_cached_steps(self):
+    def get_cfg_continuous_cached_steps(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.cfg_continuous_cached_steps
@@ -234,25 +234,25 @@ class CachedContextManager:
         cached_context.add_residual_diff(diff)
 
     @torch.compiler.disable
-    def get_residual_diffs(self):
+    def get_residual_diffs(self) -> Dict[str, float]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_residual_diffs()
 
     @torch.compiler.disable
-    def get_cfg_residual_diffs(self):
+    def get_cfg_residual_diffs(self) -> Dict[str, float]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_cfg_residual_diffs()
 
     @torch.compiler.disable
-    def is_taylorseer_enabled(self):
+    def is_taylorseer_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.enable_taylorseer
 
     @torch.compiler.disable
-    def is_encoder_taylorseer_enabled(self):
+    def is_encoder_taylorseer_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.enable_encoder_taylorseer
@@ -268,45 +268,45 @@ class CachedContextManager:
         return cached_context.get_cfg_taylorseers()
 
     @torch.compiler.disable
-    def is_taylorseer_cache_residual(self):
+    def is_taylorseer_cache_residual(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.taylorseer_cache_type == "residual"
 
     @torch.compiler.disable
-    def is_cache_residual(self):
+    def is_cache_residual(self) -> bool:
         if self.is_taylorseer_enabled():
             # residual or hidden_states
             return self.is_taylorseer_cache_residual()
         return True
 
     @torch.compiler.disable
-    def is_encoder_cache_residual(self):
+    def is_encoder_cache_residual(self) -> bool:
         if self.is_encoder_taylorseer_enabled():
             # residual or hidden_states
             return self.is_taylorseer_cache_residual()
         return True
 
     @torch.compiler.disable
-    def is_alter_cache_enabled(self):
+    def is_alter_cache_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.enable_alter_cache
 
     @torch.compiler.disable
-    def is_alter_cache(self):
+    def is_alter_cache(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.is_alter_cache
 
     @torch.compiler.disable
-    def is_in_warmup(self):
+    def is_in_warmup(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.is_in_warmup()
 
     @torch.compiler.disable
-    def is_l1_diff_enabled(self):
+    def is_l1_diff_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return (
@@ -315,19 +315,19 @@ class CachedContextManager:
         )
 
     @torch.compiler.disable
-    def get_important_condition_threshold(self):
+    def get_important_condition_threshold(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.important_condition_threshold
 
     @torch.compiler.disable
-    def non_compute_blocks_diff_threshold(self):
+    def non_compute_blocks_diff_threshold(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.non_compute_blocks_diff_threshold
 
     @torch.compiler.disable
-    def Fn_compute_blocks(self):
+    def Fn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         assert (
@@ -346,7 +346,7 @@ class CachedContextManager:
         return cached_context.Fn_compute_blocks
 
     @torch.compiler.disable
-    def Fn_compute_blocks_ids(self):
+    def Fn_compute_blocks_ids(self) -> List[int]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         assert (
@@ -360,7 +360,7 @@ class CachedContextManager:
         return cached_context.Fn_compute_blocks_ids
 
     @torch.compiler.disable
-    def Bn_compute_blocks(self):
+    def Bn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         assert (
@@ -379,7 +379,7 @@ class CachedContextManager:
         return cached_context.Bn_compute_blocks
 
     @torch.compiler.disable
-    def Bn_compute_blocks_ids(self):
+    def Bn_compute_blocks_ids(self) -> List[int]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         assert (
@@ -393,19 +393,19 @@ class CachedContextManager:
         return cached_context.Bn_compute_blocks_ids
 
     @torch.compiler.disable
-    def do_separate_cfg(self):
+    def enable_spearate_cfg(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.do_separate_cfg
+        return cached_context.enable_spearate_cfg
 
     @torch.compiler.disable
-    def is_separate_cfg_step(self):
+    def is_separate_cfg_step(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.is_separate_cfg_step()
 
     @torch.compiler.disable
-    def cfg_diff_compute_separate(self):
+    def cfg_diff_compute_separate(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.cfg_diff_compute_separate
@@ -419,7 +419,7 @@ class CachedContextManager:
         threshold: float,
         parallelized: bool = False,
         prefix: str = "Fn",  # for debugging
-    ):
+    ) -> bool:
         # Special case for threshold, 0.0 means the threshold is disabled, -1.0 means
         # the threshold is always enabled, -2.0 means the shape is not matched.
         if threshold <= 0.0:
@@ -439,7 +439,7 @@ class CachedContextManager:
 
         if all(
             (
-                self.do_separate_cfg(),
+                self.enable_spearate_cfg(),
                 self.is_separate_cfg_step(),
                 not self.cfg_diff_compute_separate(),
                 self.get_current_step_residual_diff() is not None,
@@ -492,7 +492,6 @@ class CachedContextManager:
 
         return diff < threshold
 
-    @torch.compiler.disable
     def _debugging_set_buffer(self, prefix):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -501,7 +500,6 @@ class CachedContextManager:
                 f"executed step: {self.get_current_step()}"
             )
 
-    @torch.compiler.disable
     def _debugging_get_buffer(self, prefix):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -527,7 +525,7 @@ class CachedContextManager:
             self.set_buffer(f"{prefix}_buffer", buffer)
 
     @torch.compiler.disable
-    def get_Fn_buffer(self, prefix: str = "Fn"):
+    def get_Fn_buffer(self, prefix: str = "Fn") -> torch.Tensor:
         if self.is_separate_cfg_step():
             self._debugging_get_buffer(f"{prefix}_buffer_cfg")
             return self.get_buffer(f"{prefix}_buffer_cfg")
@@ -544,7 +542,7 @@ class CachedContextManager:
             self.set_buffer(f"{prefix}_encoder_buffer", buffer)
 
     @torch.compiler.disable
-    def get_Fn_encoder_buffer(self, prefix: str = "Fn"):
+    def get_Fn_encoder_buffer(self, prefix: str = "Fn") -> torch.Tensor:
         if self.is_separate_cfg_step():
             self._debugging_get_buffer(f"{prefix}_encoder_buffer_cfg")
             return self.get_buffer(f"{prefix}_encoder_buffer_cfg")
@@ -587,7 +585,7 @@ class CachedContextManager:
                 self.set_buffer(f"{prefix}_buffer", buffer)
 
     @torch.compiler.disable
-    def get_Bn_buffer(self, prefix: str = "Bn"):
+    def get_Bn_buffer(self, prefix: str = "Bn") -> torch.Tensor:
         if self.is_taylorseer_enabled():
             # taylorseer, encoder_taylorseer
             if self.is_separate_cfg_step():
@@ -656,7 +654,7 @@ class CachedContextManager:
                 self.set_buffer(f"{prefix}_encoder_buffer", buffer)
 
     @torch.compiler.disable
-    def get_Bn_encoder_buffer(self, prefix: str = "Bn"):
+    def get_Bn_encoder_buffer(self, prefix: str = "Bn") -> torch.Tensor:
         if self.is_encoder_taylorseer_enabled():
             if self.is_separate_cfg_step():
                 _, encoder_taylorseer = self.get_cfg_taylorseers()
@@ -692,7 +690,7 @@ class CachedContextManager:
         encoder_hidden_states: torch.Tensor = None,
         prefix: str = "Bn",
         encoder_prefix: str = "Bn_encoder",
-    ):
+    ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
         # Allow Bn and Fn prefix to be used for residual cache.
         if "Bn" in prefix:
             hidden_states_prev = self.get_Bn_buffer(prefix)
@@ -738,7 +736,7 @@ class CachedContextManager:
         return hidden_states, encoder_hidden_states
 
     @torch.compiler.disable
-    def get_downsample_factor(self):
+    def get_downsample_factor(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.downsample_factor
@@ -751,6 +749,7 @@ class CachedContextManager:
         threshold: Optional[float] = None,  # can manually set threshold
         prefix: str = "Fn",
     ) -> bool:
+
         if self.is_in_warmup():
             return False
 

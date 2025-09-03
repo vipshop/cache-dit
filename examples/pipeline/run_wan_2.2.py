@@ -1,4 +1,8 @@
 import os
+import sys
+
+sys.path.append("..")
+
 import time
 import torch
 import diffusers
@@ -39,31 +43,46 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 
 if args.cache:
-    from cache_dit import ForwardPattern, BlockAdapter
+    from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
 
     cache_dit.enable_cache(
-        # Only cache for low-noise transformer (occupancy most timesteps)
-        # boundary_ratio: 0.875, boundary_timestep=0.875*1000=875
-        # t >= boundary_timestep: transformer, high-noise
-        # t < boundary_timestep: transformer_2, low-noise
         BlockAdapter(
             pipe=pipe,
-            transformer=pipe.transformer_2,
-            blocks=pipe.transformer_2.blocks,
-            blocks_name="blocks",
-            forward_pattern=ForwardPattern.Pattern_2,
+            transformer=[
+                pipe.transformer,
+                pipe.transformer_2,
+            ],
+            blocks=[
+                pipe.transformer.blocks,
+                pipe.transformer_2.blocks,
+            ],
+            blocks_name=[
+                "blocks",
+                "blocks",
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_2,
+                ForwardPattern.Pattern_2,
+            ],
+            params_modifiers=[
+                # high-noise transformer only have 15% steps
+                ParamsModifier(
+                    max_cached_steps=8,
+                ),
+                ParamsModifier(
+                    max_cached_steps=20,
+                ),
+            ],
+            has_separate_cfg=True,
         ),
-        # Cache context kwargs
+        # Common cache params
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
         max_warmup_steps=2,
-        max_cached_steps=20,
         max_continuous_cached_steps=2,
         residual_diff_threshold=0.08,
-        do_separate_cfg=True,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
-        taylorseer_order=2,
     )
 
 # Wan currently requires installing diffusers from source
@@ -130,16 +149,14 @@ video = pipe(
 ).frames[0]
 end = time.time()
 
-stats = cache_dit.summary(
-    pipe.transformer_2,
-    details=True,
-)
+cache_dit.summary(pipe.transformer, details=True)
+cache_dit.summary(pipe.transformer_2, details=True)
 
 time_cost = end - start
 save_path = (
     f"wan2.2.C{int(args.compile)}_Q{int(args.quantize)}"
     f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
-    f"{cache_dit.strify(stats)}.mp4"
+    f"{cache_dit.strify(pipe)}.mp4"
 )
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")

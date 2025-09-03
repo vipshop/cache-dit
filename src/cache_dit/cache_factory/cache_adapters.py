@@ -3,12 +3,14 @@ import torch
 import unittest
 import functools
 
-from typing import Dict
 from contextlib import ExitStack
+from typing import Dict, List, Tuple, Any
+
 from diffusers import DiffusionPipeline
+
 from cache_dit.cache_factory import CacheType
-from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import BlockAdapter
+from cache_dit.cache_factory import ParamsModifier
 from cache_dit.cache_factory import BlockAdapterRegistry
 from cache_dit.cache_factory import CachedContextManager
 from cache_dit.cache_factory import CachedBlocks
@@ -29,7 +31,6 @@ class CachedAdapter:
         cls,
         pipe: DiffusionPipeline = None,
         block_adapter: BlockAdapter = None,
-        # forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
         assert (
@@ -74,55 +75,67 @@ class CachedAdapter:
             )
 
         if BlockAdapter.check_block_adapter(block_adapter):
+
+            # 0. Must normalize block_adapter before apply cache
             block_adapter = BlockAdapter.normalize(block_adapter)
-            # 0. Apply cache on pipeline: wrap cache context, must
+            if BlockAdapter.is_cached(block_adapter):
+                return block_adapter.pipe
+
+            # 1. Apply cache on pipeline: wrap cache context, must
             # call create_context before mock_blocks.
             cls.create_context(
                 block_adapter,
                 **cache_context_kwargs,
             )
-            # 1. Apply cache on transformer: mock cached blocks
+
+            # 2. Apply cache on transformer: mock cached blocks
             cls.mock_blocks(
                 block_adapter,
             )
-            cls.patch_params(
-                block_adapter,
-                **cache_context_kwargs,
-            )
+
         return block_adapter.pipe
 
     @classmethod
     def patch_params(
         cls,
         block_adapter: BlockAdapter,
-        **cache_context_kwargs,
+        contexts_kwargs: List[Dict],
     ):
-        block_adapter.transformer._forward_pattern = (
-            block_adapter.forward_pattern
-        )
-        block_adapter.transformer._has_separate_cfg = (
-            block_adapter.has_separate_cfg
-        )
-        block_adapter.transformer._cache_context_kwargs = cache_context_kwargs
-        block_adapter.pipe.__class__._cache_context_kwargs = (
-            cache_context_kwargs
-        )
-        for blocks, forward_pattern in zip(
-            block_adapter.blocks, block_adapter.forward_pattern
-        ):
-            blocks._forward_pattern = forward_pattern
-            blocks._cache_context_kwargs = cache_context_kwargs
+        block_adapter.pipe._cache_context_kwargs = contexts_kwargs[0]
+
+        params_shift = 0
+        for i in range(len(block_adapter.transformer)):
+
+            block_adapter.transformer[i]._forward_pattern = (
+                block_adapter.forward_pattern
+            )
+            block_adapter.transformer[i]._has_separate_cfg = (
+                block_adapter.has_separate_cfg
+            )
+            block_adapter.transformer[i]._cache_context_kwargs = (
+                contexts_kwargs[params_shift]
+            )
+
+            blocks = block_adapter.blocks[i]
+            for j in range(len(blocks)):
+                blocks[j]._forward_pattern = block_adapter.forward_pattern[i][j]
+                blocks[j]._cache_context_kwargs = contexts_kwargs[
+                    params_shift + j
+                ]
+
+            params_shift += len(blocks)
 
     @classmethod
     def check_context_kwargs(cls, pipe, **cache_context_kwargs):
         # Check cache_context_kwargs
-        if not cache_context_kwargs["do_separate_cfg"]:
+        if not cache_context_kwargs["enable_spearate_cfg"]:
             # Check cfg for some specific case if users don't set it as True
-            cache_context_kwargs["do_separate_cfg"] = (
+            cache_context_kwargs["enable_spearate_cfg"] = (
                 BlockAdapterRegistry.has_separate_cfg(pipe)
             )
             logger.info(
-                f"Use default 'do_separate_cfg': {cache_context_kwargs['do_separate_cfg']}, "
+                f"Use default 'enable_spearate_cfg': "
+                f"{cache_context_kwargs['enable_spearate_cfg']}, "
                 f"Pipeline: {pipe.__class__.__name__}."
             )
 
@@ -139,7 +152,10 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
         **cache_context_kwargs,
     ) -> DiffusionPipeline:
-        if getattr(block_adapter.pipe, "_is_cached", False):
+
+        BlockAdapter.assert_normalized(block_adapter)
+
+        if BlockAdapter.is_cached(block_adapter.pipe):
             return block_adapter.pipe
 
         # Check cache_context_kwargs
@@ -151,30 +167,32 @@ class CachedAdapter:
         pipe_cls_name = block_adapter.pipe.__class__.__name__
 
         # Each Pipeline should have it's own context manager instance.
-        # TODO: Different transformers (Wan2.2, etc) should shared the
-        # same cache manager but with different cache context (according
+        # Different transformers (Wan2.2, etc) should shared the same
+        # cache manager but with different cache context (according
         # to their unique instance id).
         cache_manager = CachedContextManager(
             name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
         )
         block_adapter.pipe._cache_manager = cache_manager  # instance level
 
-        cache_kwargs, _ = cache_manager.collect_cache_kwargs(
-            default_attrs={},
-            **cache_context_kwargs,
+        flatten_contexts, contexts_kwargs = cls.modify_context_params(
+            block_adapter, cache_manager, **cache_context_kwargs
         )
+
         original_call = block_adapter.pipe.__class__.__call__
 
         @functools.wraps(original_call)
         def new_call(self, *args, **kwargs):
             with ExitStack() as stack:
                 # cache context will be reset for each pipe inference
-                for unique_name in block_adapter.unique_blocks_name:
+                for context_name, context_kwargs in zip(
+                    flatten_contexts, contexts_kwargs
+                ):
                     stack.enter_context(
                         cache_manager.enter_context(
                             cache_manager.reset_context(
-                                unique_name,
-                                **cache_kwargs,
+                                context_name,
+                                **context_kwargs,
                             ),
                         )
                     )
@@ -183,123 +201,194 @@ class CachedAdapter:
                 return outputs
 
         block_adapter.pipe.__class__.__call__ = new_call
+        block_adapter.pipe.__class__._original_call = original_call
         block_adapter.pipe.__class__._is_cached = True
+
+        cls.patch_params(block_adapter, contexts_kwargs)
+
         return block_adapter.pipe
 
     @classmethod
-    def patch_stats(cls, block_adapter: BlockAdapter):
+    def modify_context_params(
+        cls,
+        block_adapter: BlockAdapter,
+        cache_manager: CachedContextManager,
+        **cache_context_kwargs,
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+
+        flatten_contexts = BlockAdapter.flatten(
+            block_adapter.unique_blocks_name
+        )
+        contexts_kwargs = [
+            cache_context_kwargs.copy()
+            for _ in range(
+                len(flatten_contexts),
+            )
+        ]
+
+        for i in range(len(contexts_kwargs)):
+            contexts_kwargs[i]["name"] = flatten_contexts[i]
+
+        if block_adapter.params_modifiers is None:
+            return flatten_contexts, contexts_kwargs
+
+        flatten_modifiers: List[ParamsModifier] = BlockAdapter.flatten(
+            block_adapter.params_modifiers,
+        )
+
+        for i in range(
+            min(len(contexts_kwargs), len(flatten_modifiers)),
+        ):
+            contexts_kwargs[i].update(
+                flatten_modifiers[i]._context_kwargs,
+            )
+            contexts_kwargs[i], _ = cache_manager.collect_cache_kwargs(
+                default_attrs={}, **contexts_kwargs[i]
+            )
+
+        return flatten_contexts, contexts_kwargs
+
+    @classmethod
+    def patch_stats(
+        cls,
+        block_adapter: BlockAdapter,
+    ):
         from cache_dit.cache_factory.cache_blocks.utils import (
             patch_cached_stats,
         )
 
         cache_manager = block_adapter.pipe._cache_manager
-        patch_cached_stats(
-            block_adapter.transformer,
-            cache_manager=cache_manager,
-        )
-        for blocks, unique_name in zip(
-            block_adapter.blocks, block_adapter.unique_blocks_name
-        ):
+
+        for i in range(len(block_adapter.transformer)):
             patch_cached_stats(
-                blocks,
-                cache_context=unique_name,
+                block_adapter.transformer[i],
+                cache_context=block_adapter.unique_blocks_name[i][-1],
                 cache_manager=cache_manager,
             )
+            for blocks, unique_name in zip(
+                block_adapter.blocks[i],
+                block_adapter.unique_blocks_name[i],
+            ):
+                patch_cached_stats(
+                    blocks,
+                    cache_context=unique_name,
+                    cache_manager=cache_manager,
+                )
 
     @classmethod
     def mock_blocks(
         cls,
         block_adapter: BlockAdapter,
-    ) -> torch.nn.Module:
+    ) -> List[torch.nn.Module]:
 
-        if getattr(block_adapter.transformer, "_is_cached", False):
+        BlockAdapter.assert_normalized(block_adapter)
+
+        if BlockAdapter.is_cached(block_adapter.transformer):
             return block_adapter.transformer
 
-        # Check block forward pattern matching
-        block_adapter = BlockAdapter.normalize(block_adapter)
-        for forward_pattern, blocks in zip(
-            block_adapter.forward_pattern, block_adapter.blocks
+        # Apply cache on transformer: mock cached transformer blocks
+        for (
+            cached_blocks,
+            transformer,
+            blocks_name,
+            unique_blocks_name,
+            dummy_blocks_names,
+        ) in zip(
+            cls.collect_cached_blocks(block_adapter),
+            block_adapter.transformer,
+            block_adapter.blocks_name,
+            block_adapter.unique_blocks_name,
+            block_adapter.dummy_blocks_names,
         ):
-            assert BlockAdapter.match_blocks_pattern(
-                blocks,
-                forward_pattern=forward_pattern,
-                check_num_outputs=block_adapter.check_num_outputs,
-            ), (
-                "No block forward pattern matched, "
-                f"supported lists: {ForwardPattern.supported_patterns()}"
+            cls.mock_transformer(
+                cached_blocks,
+                transformer,
+                blocks_name,
+                unique_blocks_name,
+                dummy_blocks_names,
             )
 
-        # Apply cache on transformer: mock cached transformer blocks
-        cached_blocks = cls.collect_cached_blocks(
-            block_adapter=block_adapter,
-        )
+        return block_adapter.transformer
+
+    @classmethod
+    def mock_transformer(
+        cls,
+        cached_blocks: Dict[str, torch.nn.ModuleList],
+        transformer: torch.nn.Module,
+        blocks_name: List[str],
+        unique_blocks_name: List[str],
+        dummy_blocks_names: List[str],
+    ) -> torch.nn.Module:
         dummy_blocks = torch.nn.ModuleList()
 
-        original_forward = block_adapter.transformer.forward
+        original_forward = transformer.forward
 
-        assert isinstance(block_adapter.dummy_blocks_names, list)
+        assert isinstance(dummy_blocks_names, list)
 
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
-                for blocks_name, unique_name in zip(
-                    block_adapter.blocks_name,
-                    block_adapter.unique_blocks_name,
+                for name, context_name in zip(
+                    blocks_name,
+                    unique_blocks_name,
                 ):
                     stack.enter_context(
                         unittest.mock.patch.object(
-                            self,
-                            blocks_name,
-                            cached_blocks[unique_name],
+                            self, name, cached_blocks[context_name]
                         )
                     )
-                for dummy_name in block_adapter.dummy_blocks_names:
+                for dummy_name in dummy_blocks_names:
                     stack.enter_context(
                         unittest.mock.patch.object(
-                            self,
-                            dummy_name,
-                            dummy_blocks,
+                            self, dummy_name, dummy_blocks
                         )
                     )
                 return original_forward(*args, **kwargs)
 
-        block_adapter.transformer.forward = new_forward.__get__(
-            block_adapter.transformer
-        )
-        block_adapter.transformer._is_cached = True
+        transformer.forward = new_forward.__get__(transformer)
+        transformer._original_forward = original_forward
+        transformer._is_cached = True
 
-        return block_adapter.transformer
+        return transformer
 
     @classmethod
     def collect_cached_blocks(
         cls,
         block_adapter: BlockAdapter,
-    ) -> Dict[str, torch.nn.ModuleList]:
-        block_adapter = BlockAdapter.normalize(block_adapter)
+    ) -> List[Dict[str, torch.nn.ModuleList]]:
 
-        cached_blocks_already_bind_context = {}
+        BlockAdapter.assert_normalized(block_adapter)
+
+        total_cached_blocks: List[Dict[str, torch.nn.ModuleList]] = []
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
             block_adapter.pipe._cache_manager, CachedContextManager
         )
 
-        for i in range(len(block_adapter.blocks)):
-            cached_blocks_already_bind_context[
-                block_adapter.unique_blocks_name[i]
-            ] = torch.nn.ModuleList(
-                [
-                    CachedBlocks(
-                        # 0. Transformer blocks configuration
-                        block_adapter.blocks[i],
-                        transformer=block_adapter.transformer,
-                        forward_pattern=block_adapter.forward_pattern[i],
-                        check_num_outputs=block_adapter.check_num_outputs,
-                        # 1. Cache context configuration
-                        cache_prefix=block_adapter.blocks_name[i],
-                        cache_context=block_adapter.unique_blocks_name[i],
-                        cache_manager=block_adapter.pipe._cache_manager,
-                    )
-                ]
-            )
+        for i in range(len(block_adapter.transformer)):
 
-        return cached_blocks_already_bind_context
+            cached_blocks_bind_context = {}
+            for j in range(len(block_adapter.blocks[i])):
+                cached_blocks_bind_context[
+                    block_adapter.unique_blocks_name[i][j]
+                ] = torch.nn.ModuleList(
+                    [
+                        CachedBlocks(
+                            # 0. Transformer blocks configuration
+                            block_adapter.blocks[i][j],
+                            transformer=block_adapter.transformer[i],
+                            forward_pattern=block_adapter.forward_pattern[i][j],
+                            check_num_outputs=block_adapter.check_num_outputs,
+                            # 1. Cache context configuration
+                            cache_prefix=block_adapter.blocks_name[i][j],
+                            cache_context=block_adapter.unique_blocks_name[i][
+                                j
+                            ],
+                            cache_manager=block_adapter.pipe._cache_manager,
+                        )
+                    ]
+                )
+
+            total_cached_blocks.append(cached_blocks_bind_context)
+
+        return total_cached_blocks

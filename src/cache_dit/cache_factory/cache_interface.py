@@ -21,7 +21,7 @@ def enable_cache(
     max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
     # Cache CFG or not
-    do_separate_cfg: bool = False,
+    enable_spearate_cfg: bool = False,
     cfg_compute_first: bool = False,
     cfg_diff_compute_separate: bool = True,
     # Hybird TaylorSeer
@@ -64,9 +64,9 @@ def enable_cache(
         residual_diff_threshold (`float`, *required*, defaults to 0.08):
             he value of residual diff threshold, a higher value leads to faster performance at the
             cost of lower precision.
-        do_separate_cfg (`bool`, *required*,  defaults to False):
+        enable_spearate_cfg (`bool`, *required*,  defaults to False):
             Whether to do separate cfg or not, such as Wan 2.1, Qwen-Image. For model that fused CFG
-            and non-CFG into single forward step, should set do_separate_cfg as False, for example:
+            and non-CFG into single forward step, should set enable_spearate_cfg as False, for example:
             CogVideoX, HunyuanVideo, Mochi, etc.
         cfg_compute_first (`bool`, *required*,  defaults to False):
             Compute cfg forward first or not, default False, namely, 0, 2, 4, ..., -> non-CFG step;
@@ -89,7 +89,7 @@ def enable_cache(
             The order of taylorseer, higher values of n_derivatives will lead to longer computation time,
             but may improve precision significantly.
         other_cache_kwargs: (`dict`, *optional*, defaults to {})
-            Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_context.py
+            Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
 
     Examples:
@@ -104,6 +104,10 @@ def enable_cache(
 
     # Collect cache context kwargs
     cache_context_kwargs = other_cache_context_kwargs.copy()
+    if cache_type := cache_context_kwargs.get("cache_type", None):
+        if cache_type == CacheType.NONE:
+            return pipe_or_adapter
+
     cache_context_kwargs["cache_type"] = CacheType.DBCache
     cache_context_kwargs["Fn_compute_blocks"] = Fn_compute_blocks
     cache_context_kwargs["Bn_compute_blocks"] = Bn_compute_blocks
@@ -113,7 +117,7 @@ def enable_cache(
         max_continuous_cached_steps
     )
     cache_context_kwargs["residual_diff_threshold"] = residual_diff_threshold
-    cache_context_kwargs["do_separate_cfg"] = do_separate_cfg
+    cache_context_kwargs["enable_spearate_cfg"] = enable_spearate_cfg
     cache_context_kwargs["cfg_compute_first"] = cfg_compute_first
     cache_context_kwargs["cfg_diff_compute_separate"] = (
         cfg_diff_compute_separate
@@ -123,14 +127,7 @@ def enable_cache(
         enable_encoder_taylorseer
     )
     cache_context_kwargs["taylorseer_cache_type"] = taylorseer_cache_type
-    if "taylorseer_kwargs" in cache_context_kwargs:
-        cache_context_kwargs["taylorseer_kwargs"][
-            "n_derivatives"
-        ] = taylorseer_order
-    else:
-        cache_context_kwargs["taylorseer_kwargs"] = {
-            "n_derivatives": taylorseer_order
-        }
+    cache_context_kwargs["taylorseer_order"] = taylorseer_order
 
     if isinstance(pipe_or_adapter, BlockAdapter):
         return CachedAdapter.apply(
