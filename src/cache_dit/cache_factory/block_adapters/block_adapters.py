@@ -517,7 +517,7 @@ class BlockAdapter:
     @classmethod
     def is_cached(cls, adapter: "BlockAdapter") -> bool:
         cls.assert_normalized(adapter)
-        return getattr(adapter.pipe, "_is_cached", False) or getattr(
+        return getattr(adapter.pipe, "_is_cached", False) and getattr(
             adapter.transformer[0], "_is_cached", False
         )
 
