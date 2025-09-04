@@ -214,7 +214,7 @@ class BlockAdapter:
         transformer = pipe.transformer
 
         # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
-        blocks, blocks_name = BlockAdapter.find_blocks(
+        blocks, blocks_name = BlockAdapter.find_match_blocks(
             transformer=transformer,
             allow_prefixes=adapter.allow_prefixes,
             allow_suffixes=adapter.allow_suffixes,
@@ -237,6 +237,10 @@ class BlockAdapter:
     def check_block_adapter(
         adapter: "BlockAdapter",
     ) -> bool:
+
+        if getattr(adapter, "_is_normlized", False):
+            return True
+
         def _check_warning(attr: str):
             if getattr(adapter, attr, None) is None:
                 logger.warning(f"{attr} is None!")
@@ -258,20 +262,19 @@ class BlockAdapter:
         if not _check_warning("forward_pattern"):
             return False
 
-        if isinstance(adapter.blocks, list):
-            for i, blocks in enumerate(adapter.blocks):
-                if not isinstance(blocks, torch.nn.ModuleList):
-                    logger.warning(f"blocks[{i}] is not ModuleList.")
-                    return False
+        if BlockAdapter.nested_depth(adapter.blocks) == 0:
+            blocks = adapter.blocks
         else:
-            if not isinstance(adapter.blocks, torch.nn.ModuleList):
-                logger.warning("blocks is not ModuleList.")
-                return False
+            blocks = BlockAdapter.flatten(adapter.blocks)[0]
+
+        if not isinstance(blocks, torch.nn.ModuleList):
+            logger.warning("blocks is not ModuleList.")
+            return False
 
         return True
 
     @staticmethod
-    def find_blocks(
+    def find_match_blocks(
         transformer: torch.nn.Module,
         allow_prefixes: List[str] = [
             "transformer_blocks",
@@ -365,6 +368,18 @@ class BlockAdapter:
         )
 
         return final_blocks, final_name
+
+    @staticmethod
+    def find_blocks(
+        transformer: torch.nn.Module,
+    ) -> List[torch.nn.ModuleList]:
+        total_blocks = []
+        for attr in dir(transformer):
+            if blocks := getattr(transformer, attr, None):
+                if isinstance(blocks, torch.nn.ModuleList):
+                    if isinstance(blocks[0], torch.nn.Module):
+                        total_blocks.append(blocks)
+        return total_blocks
 
     @staticmethod
     def match_block_pattern(
@@ -571,11 +586,18 @@ class BlockAdapter:
 
     @classmethod
     def flatten(cls, attr: List[Any]) -> List[Any]:
+        atom_types = (
+            str,
+            bytes,
+            torch.nn.ModuleList,
+            torch.nn.Module,
+            torch.Tensor,
+        )
         if not isinstance(attr, list):
             return attr
         flattened = []
         for item in attr:
-            if isinstance(item, list) and not isinstance(item, (str, bytes)):
+            if isinstance(item, list) and not isinstance(item, atom_types):
                 flattened.extend(cls.flatten(item))
             else:
                 flattened.append(item)

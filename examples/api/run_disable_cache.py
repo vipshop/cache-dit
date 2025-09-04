@@ -24,7 +24,11 @@ pipe = FluxPipeline.from_pretrained(
 
 
 if args.cache:
-    cache_dit.enable_cache(pipe)
+    adapter = cache_dit.enable_cache(pipe)
+    # Test disable_cache api
+    # cache_dit.disable_cache(adapter)
+    cache_dit.disable_cache(pipe)
+
 
 start = time.time()
 image = pipe(
@@ -35,7 +39,8 @@ image = pipe(
 
 end = time.time()
 
-cache_dit.summary(pipe)
+if args.cache:
+    cache_dit.summary(adapter)
 
 time_cost = end - start
 save_path = f"flux.{cache_dit.strify(pipe)}.png"

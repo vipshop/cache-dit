@@ -32,7 +32,7 @@ class CachedAdapter:
         pipe: DiffusionPipeline = None,
         block_adapter: BlockAdapter = None,
         **cache_context_kwargs,
-    ) -> DiffusionPipeline:
+    ) -> BlockAdapter:
         assert (
             pipe is not None or block_adapter is not None
         ), "pipe or block_adapter can not both None!"
@@ -67,7 +67,7 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
         **cache_context_kwargs,
-    ) -> DiffusionPipeline:
+    ) -> BlockAdapter:
 
         if block_adapter.auto:
             block_adapter = BlockAdapter.auto_block_adapter(
@@ -93,7 +93,7 @@ class CachedAdapter:
                 block_adapter,
             )
 
-        return block_adapter.pipe
+        return block_adapter
 
     @classmethod
     def patch_params(

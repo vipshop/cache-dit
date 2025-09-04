@@ -9,23 +9,35 @@ from cache_dit.cache_factory.block_adapters.block_registers import (
 @BlockAdapterRegistry.register("Flux")
 def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
+    from cache_dit.utils import is_diffusers_at_least_0_3_5
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
-
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=(
-            pipe.transformer.transformer_blocks
-            + pipe.transformer.single_transformer_blocks
-        ),
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=["single_transformer_blocks"],
-        patch_functor=FluxPatchFunctor(),
-        forward_pattern=ForwardPattern.Pattern_1,
-        disable_patch=kwargs.pop("disable_patch", False),
-    )
+    if is_diffusers_at_least_0_3_5():
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_1,
+            ],
+        )
+    else:
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_3,
+            ],
+        )
 
 
 @BlockAdapterRegistry.register("Mochi")
@@ -37,8 +49,6 @@ def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_0,
     )
 
@@ -52,8 +62,6 @@ def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_0,
     )
 
@@ -85,15 +93,10 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
                 pipe.transformer.blocks,
                 pipe.transformer_2.blocks,
             ],
-            blocks_name=[
-                "blocks",
-                "blocks",
-            ],
             forward_pattern=[
                 ForwardPattern.Pattern_2,
                 ForwardPattern.Pattern_2,
             ],
-            dummy_blocks_names=[],
             has_separate_cfg=True,
         )
     else:
@@ -102,8 +105,6 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
             pipe=pipe,
             transformer=pipe.transformer,
             blocks=pipe.transformer.blocks,
-            blocks_name="blocks",
-            dummy_blocks_names=[],
             forward_pattern=ForwardPattern.Pattern_2,
             has_separate_cfg=True,
         )
@@ -116,13 +117,14 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
-        blocks=(
-            pipe.transformer.transformer_blocks
-            + pipe.transformer.single_transformer_blocks
-        ),
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=["single_transformer_blocks"],
-        forward_pattern=ForwardPattern.Pattern_0,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_0,
+        ],
     )
 
 
@@ -135,8 +137,6 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_1,
         has_separate_cfg=True,
     )
@@ -151,8 +151,6 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_2,
     )
 
@@ -166,8 +164,6 @@ def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_2,
     )
 
@@ -181,8 +177,6 @@ def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_0,
     )
 
@@ -196,8 +190,6 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_0,
         has_separate_cfg=True,
     )
@@ -212,8 +204,6 @@ def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_2,
         has_separate_cfg=True,
     )
@@ -228,8 +218,6 @@ def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_0,
     )
 
@@ -243,8 +231,6 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
-        blocks_name="blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_2,
         has_separate_cfg=True,
     )
@@ -259,8 +245,6 @@ def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_1,
     )
 
@@ -274,8 +258,6 @@ def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_0,
     )
 
@@ -289,8 +271,6 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -304,8 +284,6 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_layers,
-        blocks_name="transformer_layers",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -318,13 +296,14 @@ def bria_adapter(pipe, **kwargs) -> BlockAdapter:
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
-        blocks=(
-            pipe.transformer.transformer_blocks
-            + pipe.transformer.single_transformer_blocks
-        ),
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=["single_transformer_blocks"],
-        forward_pattern=ForwardPattern.Pattern_0,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_0,
+        ],
     )
 
 
@@ -340,8 +319,6 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
-        blocks_name="blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -355,8 +332,6 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
-        blocks_name="blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -370,8 +345,6 @@ def lumina_adapter(pipe) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
-        blocks_name="layers",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -385,8 +358,6 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
-        blocks_name="layers",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -400,8 +371,6 @@ def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
-        blocks_name="layers",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -415,8 +384,6 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -430,8 +397,6 @@ def sana_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -445,8 +410,6 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.prior,
         blocks=pipe.prior.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -460,8 +423,6 @@ def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=[],
         forward_pattern=ForwardPattern.Pattern_3,
     )
 
@@ -469,20 +430,19 @@ def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
 @BlockAdapterRegistry.register("VisualCloze")
 def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
-        blocks=(
-            pipe.transformer.transformer_blocks
-            + pipe.transformer.single_transformer_blocks
-        ),
-        blocks_name="transformer_blocks",
-        dummy_blocks_names=["single_transformer_blocks"],
-        patch_functor=FluxPatchFunctor(),
-        forward_pattern=ForwardPattern.Pattern_1,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_3,
+        ],
     )
 
 
@@ -494,19 +454,8 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
-        blocks=[
-            # Only 4 joint blocks, apply no-cache
-            # pipe.transformer.joint_transformer_blocks,
-            pipe.transformer.single_transformer_blocks,
-        ],
-        blocks_name=[
-            # "joint_transformer_blocks",
-            "single_transformer_blocks",
-        ],
-        forward_pattern=[
-            # ForwardPattern.Pattern_1,
-            ForwardPattern.Pattern_3,
-        ],
+        blocks=pipe.transformer.single_transformer_blocks,
+        forward_pattern=ForwardPattern.Pattern_3,
     )
 
 
@@ -521,10 +470,6 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
         blocks=[
             pipe.transformer.transformer_blocks,
             pipe.transformer.single_transformer_blocks,
-        ],
-        blocks_name=[
-            "transformer_blocks",
-            "single_transformer_blocks",
         ],
         forward_pattern=[
             ForwardPattern.Pattern_1,
@@ -546,11 +491,6 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
             pipe.transformer.double_stream_blocks,
             pipe.transformer.single_stream_blocks,
         ],
-        blocks_name=[
-            "double_stream_blocks",
-            "single_stream_blocks",
-        ],
-        dummy_blocks_names=[],
         forward_pattern=[
             ForwardPattern.Pattern_4,
             ForwardPattern.Pattern_3,

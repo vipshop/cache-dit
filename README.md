@@ -169,6 +169,9 @@ cache_dit.enable_cache(pipe)
 
 # Just call the pipe as normal.
 output = pipe(...)
+
+# Disable cache and run original pipe.
+cache_dit.disable_cache(pipe)
 ```
 
 ### 🔥Automatic Block Adapter
@@ -421,11 +424,21 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 
 How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
-## ©️License   
+<div align='center'>
+<a href="https://star-history.com/#vipshop/cache-dit&Date">
+  <picture align='center'>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date" width=400px />
+  </picture>
+</a>
+</div>
 
-<div id="license"></div>
+## ©️Acknowledgements
 
-The **cache-dit** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](./LICENSE) for more details.
+<div id="Acknowledgements"></div>
+
+The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
 
 ## ©️Citations
 
