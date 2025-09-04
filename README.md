@@ -33,20 +33,6 @@
   </p>
 </div>
 
-## ©️Citations
-
-<div id="citations"></div>
-
-```BibTeX
-@misc{cache-dit@2025,
-  title={cache-dit: A Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
-  url={https://github.com/vipshop/cache-dit.git},
-  note={Open-source software available at https://github.com/vipshop/cache-dit.git},
-  author={vipshop.com},
-  year={2025}
-}
-```
-
 ## 🔥News  
 
 - [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.
@@ -443,3 +429,17 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 <div id="Acknowledgements"></div>
 
 The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
+
+## ©️Citations
+
+<div id="citations"></div>
+
+```BibTeX
+@misc{cache-dit@2025,
+  title={cache-dit: A Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
+  url={https://github.com/vipshop/cache-dit.git},
+  note={Open-source software available at https://github.com/vipshop/cache-dit.git},
+  author={vipshop.com},
+  year={2025}
+}
+```
