@@ -26,7 +26,6 @@ pipe = FluxPipeline.from_pretrained(
 if args.cache:
     cache_dit.enable_cache(pipe)
 
-
 start = time.time()
 image = pipe(
     "A cat holding a sign that says hello world",

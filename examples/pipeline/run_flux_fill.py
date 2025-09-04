@@ -27,7 +27,6 @@ pipe = FluxFillPipeline.from_pretrained(
 if args.cache:
     adapter = cache_dit.enable_cache(pipe)
 
-
 start = time.time()
 image = pipe(
     prompt="a white paper cup",
