@@ -147,19 +147,10 @@ class BlockAdapter:
                         _find(self.transformer, blocks)
                         for blocks in self.blocks
                     ]
-                elif self.nested_depth(self.blocks) == 2:
-                    self.blocks_name = []
-                    for i in range(len(self.blocks)):
-                        self.blocks_name.append(
-                            [
-                                _find(self.transformer, blocks)
-                                for blocks in self.blocks[i]
-                            ]
-                        )
                 else:
                     raise ValueError(
-                        "Blocks nested depth can't more than 2, "
-                        f"current is: {self.nested_depth(self.blocks)}"
+                        "Blocks nested depth can't more than 1 if transformer "
+                        f"is not a list, current is: {self.nested_depth(self.blocks)}"
                     )
             elif self.nested_depth(self.transformer) == 1:  # List[str]
                 if self.nested_depth(self.blocks) == 1:  # List[str]
