@@ -546,6 +546,10 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
             pipe.transformer.double_stream_blocks,
             pipe.transformer.single_stream_blocks,
         ],
+        blocks_name=[
+            "double_stream_blocks",
+            "single_stream_blocks",
+        ],
         dummy_blocks_names=[],
         forward_pattern=[
             ForwardPattern.Pattern_4,
