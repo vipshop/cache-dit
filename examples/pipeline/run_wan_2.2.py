@@ -56,10 +56,6 @@ if args.cache:
                 pipe.transformer.blocks,
                 pipe.transformer_2.blocks,
             ],
-            blocks_name=[
-                "blocks",
-                "blocks",
-            ],
             forward_pattern=[
                 ForwardPattern.Pattern_2,
                 ForwardPattern.Pattern_2,
