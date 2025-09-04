@@ -30,7 +30,7 @@ class ChromaPatchFunctor(PatchFunctor):
         blocks: torch.nn.ModuleList = None,
         **kwargs,
     ) -> ChromaTransformer2DModel:
-        if getattr(transformer, "_is_patched", False):
+        if hasattr(transformer, "_is_patched"):
             return transformer
 
         if blocks is None:
