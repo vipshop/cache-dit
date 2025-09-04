@@ -39,6 +39,9 @@ def summary(
     logging: bool = True,
     **kwargs,
 ) -> List[CacheStats]:
+    if adapter_or_others is None:
+        return [CacheStats()]
+
     if not isinstance(adapter_or_others, BlockAdapter):
         return [
             _summary(

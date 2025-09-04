@@ -237,6 +237,10 @@ class BlockAdapter:
     def check_block_adapter(
         adapter: "BlockAdapter",
     ) -> bool:
+
+        if getattr(adapter, "_is_normlized", False):
+            return True
+
         def _check_warning(attr: str):
             if getattr(adapter, attr, None) is None:
                 logger.warning(f"{attr} is None!")
@@ -258,15 +262,14 @@ class BlockAdapter:
         if not _check_warning("forward_pattern"):
             return False
 
-        if isinstance(adapter.blocks, list):
-            for i, blocks in enumerate(adapter.blocks):
-                if not isinstance(blocks, torch.nn.ModuleList):
-                    logger.warning(f"blocks[{i}] is not ModuleList.")
-                    return False
+        if BlockAdapter.nested_depth(adapter.blocks) == 0:
+            blocks = adapter.blocks
         else:
-            if not isinstance(adapter.blocks, torch.nn.ModuleList):
-                logger.warning("blocks is not ModuleList.")
-                return False
+            blocks = BlockAdapter.flatten(adapter.blocks)[0]
+
+        if not isinstance(blocks, torch.nn.ModuleList):
+            logger.warning("blocks is not ModuleList.")
+            return False
 
         return True
 
@@ -571,11 +574,18 @@ class BlockAdapter:
 
     @classmethod
     def flatten(cls, attr: List[Any]) -> List[Any]:
+        atom_types = (
+            str,
+            bytes,
+            torch.nn.ModuleList,
+            torch.nn.Module,
+            torch.Tensor,
+        )
         if not isinstance(attr, list):
             return attr
         flattened = []
         for item in attr:
-            if isinstance(item, list) and not isinstance(item, (str, bytes)):
+            if isinstance(item, list) and not isinstance(item, atom_types):
                 flattened.extend(cls.flatten(item))
             else:
                 flattened.append(item)

@@ -17,6 +17,7 @@ from cache_dit.cache_factory.cache_blocks import CachedBlocks
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 
 from cache_dit.cache_factory.cache_interface import enable_cache
+from cache_dit.cache_factory.cache_interface import disable_cache
 from cache_dit.cache_factory.cache_interface import supported_pipelines
 from cache_dit.cache_factory.cache_interface import get_adapter
 

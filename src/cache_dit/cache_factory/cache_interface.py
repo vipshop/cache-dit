@@ -1,9 +1,11 @@
+import torch
 from typing import Any, Tuple, List
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
+from cache_dit.cache_factory.cache_contexts import CachedContextManager
 
 from cache_dit.logger import init_logger
 
@@ -12,7 +14,7 @@ logger = init_logger(__name__)
 
 def enable_cache(
     # DiffusionPipeline or BlockAdapter
-    pipe_or_adapter: DiffusionPipeline | BlockAdapter | Any,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
     # Cache context kwargs
     Fn_compute_blocks: int = 8,
     Bn_compute_blocks: int = 0,
@@ -147,6 +149,79 @@ def enable_cache(
             "Please pass DiffusionPipeline or BlockAdapter"
             "for the 1's position param: pipe_or_adapter"
         )
+
+
+def disable_cache(
+    # DiffusionPipeline or BlockAdapter
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+):
+    from cache_dit.cache_factory.cache_blocks.utils import (
+        remove_cached_stats,
+    )
+
+    def _disable_pipe(pipe: DiffusionPipeline):
+        if pipe is None or not BlockAdapter.is_cached(pipe):
+            return
+        if original_call := getattr(pipe, "_original_call"):
+            pipe.__class__.__call__ = original_call
+            del pipe.__class__._original_call
+        if cache_manager := getattr(pipe, "_cache_manager"):
+            assert isinstance(cache_manager, CachedContextManager)
+            cache_manager.clear_contexts()
+            del pipe._cache_manager
+        if hasattr(pipe, "_is_cached"):
+            del pipe.__class__._is_cached
+        if hasattr(pipe, "_cache_context_kwargs"):
+            del pipe._cache_context_kwargs
+        remove_cached_stats(pipe)
+
+    def _disable_transformer(transformer: torch.nn.Module):
+        if transformer is None or not BlockAdapter.is_cached(transformer):
+            return
+        if original_forward := getattr(transformer, "_original_forward"):
+            transformer.forward = original_forward.__get__(transformer)
+            del transformer._original_forward
+        if hasattr(transformer, "_is_cached"):
+            del transformer._is_cached
+        if hasattr(transformer, "_forward_pattern"):
+            del transformer._forward_pattern
+        if hasattr(transformer, "_has_separate_cfg"):
+            del transformer._has_separate_cfg
+        if hasattr(transformer, "_cache_context_kwargs"):
+            del transformer._cache_context_kwargs
+        remove_cached_stats(transformer)
+
+    def _disable_blocks(blocks: torch.nn.ModuleList):
+        if blocks is None:
+            return
+        if hasattr(blocks, "_forward_pattern"):
+            del blocks._forward_pattern
+        if hasattr(blocks, "_cache_context_kwargs"):
+            del blocks._cache_context_kwargs
+        remove_cached_stats(blocks)
+
+    if isinstance(pipe_or_adapter, DiffusionPipeline):
+        pipe = pipe_or_adapter
+        _disable_pipe(pipe)
+        if hasattr(pipe, "transformer"):
+            _disable_transformer(pipe.transformer)
+        if hasattr(pipe, "transformer_2"):  # Wan 2.2
+            _disable_transformer(pipe.transformer_2)
+        pipe_cls_name = pipe.__class__.__name__
+        logger.warning(f"Cache Acceleration is disabled for: {pipe_cls_name}")
+    elif isinstance(pipe_or_adapter, BlockAdapter):
+        # BlockAdapter
+        adapter = pipe_or_adapter
+        BlockAdapter.assert_normalized(adapter)
+        _disable_pipe(adapter.pipe)
+        for transformer in BlockAdapter.flatten(adapter.transformer):
+            _disable_transformer(transformer)
+        for blocks in BlockAdapter.flatten(adapter.blocks):
+            _disable_blocks(blocks)
+        pipe_cls_name = adapter.pipe.__class__.__name__
+        logger.warning(f"Cache Acceleration is disabled for: {pipe_cls_name}")
+    else:
+        pass  # do nothing
 
 
 def supported_pipelines(

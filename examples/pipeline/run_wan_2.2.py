@@ -45,7 +45,7 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 if args.cache:
     from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
 
-    cache_dit.enable_cache(
+    adapter = cache_dit.enable_cache(
         BlockAdapter(
             pipe=pipe,
             transformer=[
@@ -145,8 +145,8 @@ video = pipe(
 ).frames[0]
 end = time.time()
 
-cache_dit.summary(pipe.transformer, details=True)
-cache_dit.summary(pipe.transformer_2, details=True)
+if args.cache:
+    cache_dit.summary(adapter, details=True)
 
 time_cost = end - start
 save_path = (

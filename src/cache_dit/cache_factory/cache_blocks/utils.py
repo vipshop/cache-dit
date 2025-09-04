@@ -23,3 +23,19 @@ def patch_cached_stats(
     module._residual_diffs = cache_manager.get_residual_diffs()
     module._cfg_cached_steps = cache_manager.get_cfg_cached_steps()
     module._cfg_residual_diffs = cache_manager.get_cfg_residual_diffs()
+
+
+def remove_cached_stats(
+    module: torch.nn.Module | Any,
+):
+    if module is None:
+        return
+
+    if hasattr(module, "_cached_steps"):
+        del module._cached_steps
+    if hasattr(module, "_residual_diffs"):
+        del module._residual_diffs
+    if hasattr(module, "_cfg_cached_steps"):
+        del module._cfg_cached_steps
+    if hasattr(module, "_cfg_residual_diffs"):
+        del module._cfg_residual_diffs
