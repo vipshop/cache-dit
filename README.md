@@ -33,6 +33,20 @@
   </p>
 </div>
 
+## ©️Citations
+
+<div id="citations"></div>
+
+```BibTeX
+@misc{cache-dit@2025,
+  title={cache-dit: A Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
+  url={https://github.com/vipshop/cache-dit.git},
+  note={Open-source software available at https://github.com/vipshop/cache-dit.git},
+  author={vipshop.com},
+  year={2025}
+}
+```
+
 ## 🔥News  
 
 - [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.
@@ -424,22 +438,8 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 
 How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
-## ©️License   
+## ©️Acknowledgements
 
-<div id="license"></div>
+<div id="Acknowledgements"></div>
 
-The **cache-dit** codebase is adapted from FBCache. Special thanks to their excellent work! We have followed the original License from FBCache, please check [LICENSE](./LICENSE) for more details.
-
-## ©️Citations
-
-<div id="citations"></div>
-
-```BibTeX
-@misc{cache-dit@2025,
-  title={cache-dit: A Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
-  url={https://github.com/vipshop/cache-dit.git},
-  note={Open-source software available at https://github.com/vipshop/cache-dit.git},
-  author={vipshop.com},
-  year={2025}
-}
-```
+The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
