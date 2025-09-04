@@ -41,10 +41,6 @@ if args.cache:
                     pipe.transformer.transformer_blocks,
                     pipe.transformer.single_transformer_blocks,
                 ],
-                blocks_name=[
-                    "transformer_blocks",
-                    "single_transformer_blocks",
-                ],
                 forward_pattern=[
                     ForwardPattern.Pattern_1,
                     ForwardPattern.Pattern_1,
@@ -62,10 +58,6 @@ if args.cache:
                 blocks=[
                     pipe.transformer.transformer_blocks,
                     pipe.transformer.single_transformer_blocks,
-                ],
-                blocks_name=[
-                    "transformer_blocks",
-                    "single_transformer_blocks",
                 ],
                 forward_pattern=[
                     ForwardPattern.Pattern_1,

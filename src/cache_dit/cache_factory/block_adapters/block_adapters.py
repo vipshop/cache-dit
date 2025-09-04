@@ -2,6 +2,7 @@ import torch
 
 import inspect
 import dataclasses
+from collections.abc import Iterable
 
 from typing import Any, Tuple, List, Optional, Union
 
@@ -109,9 +110,81 @@ class BlockAdapter:
 
     def __post_init__(self):
         assert any((self.pipe is not None, self.transformer is not None))
-        self.patchify()
+        self.maybe_fill_attrs()
+        self.maybe_patchify()
 
-    def patchify(self, *args, **kwargs):
+    def maybe_fill_attrs(self):
+        # NOTE: This func should be call before normalize.
+        # Allow empty `blocks_names`, we will auto fill it.
+        # TODO: preprocess more empty attrs.
+        if (
+            self.transformer is not None
+            and self.blocks is not None
+            and self.blocks_name is None
+        ):
+
+            def _find(transformer, blocks):
+                attr_names = dir(transformer)
+                assert isinstance(blocks, torch.nn.ModuleList)
+                blocks_name = None
+                for attr_name in attr_names:
+                    if attr := getattr(transformer, attr_name, None):
+                        if isinstance(attr, torch.nn.ModuleList) and id(
+                            attr
+                        ) == id(blocks):
+                            blocks_name = attr_name
+                            break
+                assert (
+                    blocks_name is not None
+                ), "No blocks_name match, please set it manually!"
+                return blocks_name
+
+            if self.nested_depth(self.transformer) == 0:
+                if self.nested_depth(self.blocks) == 0:  # str
+                    self.blocks_name = _find(self.transformer, self.blocks)
+                elif self.nested_depth(self.blocks) == 1:
+                    self.blocks_name = [
+                        _find(self.transformer, blocks)
+                        for blocks in self.blocks
+                    ]
+                else:
+                    raise ValueError(
+                        "Blocks nested depth can't more than 1 if transformer "
+                        f"is not a list, current is: {self.nested_depth(self.blocks)}"
+                    )
+            elif self.nested_depth(self.transformer) == 1:  # List[str]
+                if self.nested_depth(self.blocks) == 1:  # List[str]
+                    assert len(self.transformer) == len(self.blocks)
+                    self.blocks_name = [
+                        _find(transformer, blocks)
+                        for transformer, blocks in zip(
+                            self.transformer, self.blocks
+                        )
+                    ]
+                elif self.nested_depth(self.blocks) == 2:  # List[List[str]]
+                    assert len(self.transformer) == len(self.blocks)
+                    self.blocks_name = []
+                    for i in range(len(self.blocks)):
+                        self.blocks_name.append(
+                            [
+                                _find(self.transformer[i], blocks)
+                                for blocks in self.blocks[i]
+                            ]
+                        )
+                else:
+                    raise ValueError(
+                        "Blocks nested depth can only be 1 or 2 "
+                        "if transformer is a list, current is: "
+                        f"{self.nested_depth(self.blocks)}"
+                    )
+            else:
+                raise ValueError(
+                    "transformer nested depth can't more than 1, "
+                    f"current is: {self.nested_depth(self.transformer)}"
+                )
+            logger.info(f"Auto fill blocks_name: {self.blocks_name}.")
+
+    def maybe_patchify(self, *args, **kwargs):
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
@@ -201,8 +274,8 @@ class BlockAdapter:
     def find_blocks(
         transformer: torch.nn.Module,
         allow_prefixes: List[str] = [
-            "transformer",
-            "single_transformer",
+            "transformer_blocks",
+            "single_transformer_blocks",
             "blocks",
             "layers",
             "single_stream_blocks",
@@ -373,103 +446,51 @@ class BlockAdapter:
         if getattr(adapter, "_is_normalized", False):
             return adapter
 
-        if not isinstance(adapter.transformer, list):
+        if BlockAdapter.nested_depth(adapter.transformer) == 0:
             adapter.transformer = [adapter.transformer]
 
-        if isinstance(adapter.blocks, torch.nn.ModuleList):
-            # blocks_0 = [[blocks_0,],] -> match [TRN_0,]
-            adapter.blocks = [[adapter.blocks]]
-        elif isinstance(adapter.blocks, list):
-            if isinstance(adapter.blocks[0], torch.nn.ModuleList):
-                # [blocks_0, blocks_1] -> [[blocks_0, blocks_1],] -> match [TRN_0,]
-                if len(adapter.blocks) == len(adapter.transformer):
-                    adapter.blocks = [[blocks] for blocks in adapter.blocks]
-                else:
-                    adapter.blocks = [adapter.blocks]
-            elif isinstance(adapter.blocks[0], list):
-                # [[blocks_0, blocks_1],[blocks_2, blocks_3],] -> match [TRN_0, TRN_1,]
-                pass
+        def _normalize_attr(attr: Any):
+            normalized_attr = attr
+            if attr is None:
+                return normalized_attr
 
-        if isinstance(adapter.blocks_name, str):
-            adapter.blocks_name = [[adapter.blocks_name]]
-        elif isinstance(adapter.blocks_name, list):
-            if isinstance(adapter.blocks_name[0], str):
-                if len(adapter.blocks_name) == len(adapter.transformer):
-                    adapter.blocks_name = [
-                        [blocks_name] for blocks_name in adapter.blocks_name
-                    ]
-                else:
-                    adapter.blocks_name = [adapter.blocks_name]
-            elif isinstance(adapter.blocks_name[0], list):
-                pass
-
-        if isinstance(adapter.forward_pattern, ForwardPattern):
-            adapter.forward_pattern = [[adapter.forward_pattern]]
-        elif isinstance(adapter.forward_pattern, list):
-            if isinstance(adapter.forward_pattern[0], ForwardPattern):
-                if len(adapter.forward_pattern) == len(adapter.transformer):
-                    adapter.forward_pattern = [
-                        [forward_pattern]
-                        for forward_pattern in adapter.forward_pattern
-                    ]
-                else:
-                    adapter.forward_pattern = [adapter.forward_pattern]
-            elif isinstance(adapter.forward_pattern[0], list):
-                pass
-
-        if isinstance(adapter.dummy_blocks_names, list):
-            if len(adapter.dummy_blocks_names) > 0:
-                if isinstance(adapter.dummy_blocks_names[0], str):
-                    if len(adapter.dummy_blocks_names) == len(
-                        adapter.transformer
-                    ):
-                        adapter.dummy_blocks_names = [
-                            [dummy_blocks_names]
-                            for dummy_blocks_names in adapter.dummy_blocks_names
-                        ]
+            if BlockAdapter.nested_depth(attr) == 0:
+                normalized_attr = [[attr]]
+            elif BlockAdapter.nested_depth(attr) == 1:  # List
+                if attr:  # not-empty
+                    if len(attr) == len(adapter.transformer):
+                        normalized_attr = [[a] for a in attr]
                     else:
-                        adapter.dummy_blocks_names = [
-                            adapter.dummy_blocks_names
-                        ]
-                elif isinstance(adapter.dummy_blocks_names[0], list):
-                    pass
-            else:
-                # Empty dummy_blocks_names
-                adapter.dummy_blocks_names = [
-                    [] for _ in range(len(adapter.transformer))
-                ]
+                        normalized_attr = [attr]
+                else:  # [] empty
+                    normalized_attr = [
+                        [] for _ in range(len(adapter.transformer))
+                    ]
 
-        if adapter.params_modifiers is not None:
-            if isinstance(adapter.params_modifiers, ParamsModifier):
-                adapter.params_modifiers = [[adapter.params_modifiers]]
-            elif isinstance(adapter.params_modifiers, list):
-                if isinstance(adapter.params_modifiers[0], ParamsModifier):
-                    if len(adapter.params_modifiers) == len(
-                        adapter.transformer
-                    ):
-                        adapter.params_modifiers = [
-                            [params_modifiers]
-                            for params_modifiers in adapter.params_modifiers
-                        ]
-                    else:
-                        adapter.params_modifiers = [adapter.params_modifiers]
-                elif isinstance(adapter.params_modifiers[0], list):
-                    pass
+            assert len(adapter.transformer) == len(normalized_attr)
+            return normalized_attr
 
-        assert len(adapter.transformer) == len(adapter.blocks)
-        assert len(adapter.transformer) == len(adapter.blocks_name)
-        assert len(adapter.transformer) == len(adapter.forward_pattern)
-        assert len(adapter.transformer) == len(adapter.dummy_blocks_names)
-        if adapter.params_modifiers is not None:
-            assert len(adapter.transformer) == len(adapter.params_modifiers)
+        adapter.blocks = _normalize_attr(adapter.blocks)
+        adapter.blocks_name = _normalize_attr(adapter.blocks_name)
+        adapter.forward_pattern = _normalize_attr(adapter.forward_pattern)
+        adapter.dummy_blocks_names = _normalize_attr(adapter.dummy_blocks_names)
+        adapter.params_modifiers = _normalize_attr(adapter.params_modifiers)
+        BlockAdapter.unique(adapter)
 
+        adapter._is_normalized = True
+
+        return adapter
+
+    @classmethod
+    def unique(cls, adapter: "BlockAdapter"):
+        # NOTE: Users should never call this function
         for i in range(len(adapter.blocks)):
             assert len(adapter.blocks[i]) == len(adapter.blocks_name[i])
             assert len(adapter.blocks[i]) == len(adapter.forward_pattern[i])
 
+        # Generate unique blocks names
         if len(adapter.unique_blocks_name) == 0:
             for i in range(len(adapter.transformer)):
-                # Generate unique blocks names
                 adapter.unique_blocks_name.append(
                     [
                         f"{name}_{hash(id(blocks))}"
@@ -479,10 +500,10 @@ class BlockAdapter:
                         )
                     ]
                 )
+        else:
+            assert len(adapter.transformer) == len(adapter.unique_blocks_name)
 
-        assert len(adapter.transformer) == len(adapter.unique_blocks_name)
-
-        # Match Forward Pattern
+        # Also check Match Forward Pattern
         for i in range(len(adapter.transformer)):
             for forward_pattern, blocks in zip(
                 adapter.forward_pattern[i], adapter.blocks[i]
@@ -495,10 +516,6 @@ class BlockAdapter:
                     "No block forward pattern matched, "
                     f"supported lists: {ForwardPattern.supported_patterns()}"
                 )
-
-        adapter._is_normalized = True
-
-        return adapter
 
     @classmethod
     def assert_normalized(cls, adapter: "BlockAdapter"):
@@ -527,12 +544,39 @@ class BlockAdapter:
             raise TypeError(f"Can't check this type: {adapter}!")
 
     @classmethod
-    def flatten(cls, attr: List[List[Any]]):
-        if isinstance(attr, list):
-            if not isinstance(attr[0], list):
-                return attr
-            flatten_attr = []
-            for i in range(len(attr)):
-                flatten_attr.extend(attr[i])
-            return flatten_attr
-        return attr
+    def nested_depth(cls, obj: Any):
+        # str: 0; List[str]: 1; List[List[str]]: 2
+        atom_types = (
+            str,
+            bytes,
+            torch.nn.ModuleList,
+            torch.nn.Module,
+            torch.Tensor,
+        )
+        if isinstance(obj, atom_types):
+            return 0
+        if not isinstance(obj, Iterable):
+            return 0
+        if isinstance(obj, dict):
+            items = obj.values()
+        else:
+            items = obj
+
+        max_depth = 0
+        for item in items:
+            current_depth = cls.nested_depth(item)
+            if current_depth > max_depth:
+                max_depth = current_depth
+        return 1 + max_depth
+
+    @classmethod
+    def flatten(cls, attr: List[Any]) -> List[Any]:
+        if not isinstance(attr, list):
+            return attr
+        flattened = []
+        for item in attr:
+            if isinstance(item, list) and not isinstance(item, (str, bytes)):
+                flattened.extend(cls.flatten(item))
+            else:
+                flattened.append(item)
+        return flattened
