@@ -424,11 +424,23 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 
 How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
+<div align='center'>
+<a href="https://star-history.com/#vipshop/cache-dit&Date">
+  <picture align='center'>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date" />
+    <img width="350" height="250" alt="Star History Chart" src="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date" />
+  </picture>
+</a>
+</div>
+
 ## ©️Acknowledgements
 
 <div id="Acknowledgements"></div>
 
 The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
+
+
 
 ## ©️Citations
 
