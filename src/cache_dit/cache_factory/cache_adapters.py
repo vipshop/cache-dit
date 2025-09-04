@@ -137,7 +137,7 @@ class CachedAdapter:
             if BlockAdapterRegistry.has_separate_cfg(block_adapter):
                 cache_context_kwargs["enable_spearate_cfg"] = True
                 logger.info(
-                    f"Use 'enable_spearate_cfg' from BlockAdapter: True."
+                    f"Use custom 'enable_spearate_cfg' from BlockAdapter: True."
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
             else:
