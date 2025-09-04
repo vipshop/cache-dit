@@ -131,16 +131,9 @@ def enable_cache(
     cache_context_kwargs["taylorseer_cache_type"] = taylorseer_cache_type
     cache_context_kwargs["taylorseer_order"] = taylorseer_order
 
-    if isinstance(pipe_or_adapter, BlockAdapter):
+    if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
         return CachedAdapter.apply(
-            pipe=None,
-            block_adapter=pipe_or_adapter,
-            **cache_context_kwargs,
-        )
-    elif isinstance(pipe_or_adapter, DiffusionPipeline):
-        return CachedAdapter.apply(
-            pipe=pipe_or_adapter,
-            block_adapter=None,
+            pipe_or_adapter,
             **cache_context_kwargs,
         )
     else:

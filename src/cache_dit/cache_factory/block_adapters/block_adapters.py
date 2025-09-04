@@ -83,9 +83,6 @@ class BlockAdapter:
     # Flags for separate cfg
     has_separate_cfg: bool = False
 
-    # Other Flags
-    disable_patch: bool = False
-
     # Flags to control auto block adapter
     # NOTE: NOT support for multi-transformers.
     auto: bool = False
@@ -108,7 +105,12 @@ class BlockAdapter:
         default="max", metadata={"allowed_values": ["max", "min"]}
     )
 
+    # Other Flags
+    skip_post_init: bool = False
+
     def __post_init__(self):
+        if self.skip_post_init:
+            return
         assert any((self.pipe is not None, self.transformer is not None))
         self.maybe_fill_attrs()
         self.maybe_patchify()
@@ -188,7 +190,7 @@ class BlockAdapter:
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
-        if self.patch_functor is not None and not self.disable_patch:
+        if self.patch_functor is not None:
             if self.transformer is not None:
                 self.patch_functor.apply(self.transformer, *args, **kwargs)
             else:
@@ -306,10 +308,10 @@ class BlockAdapter:
         valid_count = []
         forward_pattern = kwargs.pop("forward_pattern", None)
         for blocks_name in blocks_names:
-            if blocks := getattr(transformer, blocks_name, None):
+            if (blocks := getattr(transformer, blocks_name, None)) is not None:
                 if isinstance(blocks, torch.nn.ModuleList):
                     block = blocks[0]
-                    block_cls_name = block.__class__.__name__
+                    block_cls_name: str = block.__class__.__name__
                     # Check suffixes
                     if isinstance(block, torch.nn.Module) and (
                         any(
@@ -375,7 +377,7 @@ class BlockAdapter:
     ) -> List[torch.nn.ModuleList]:
         total_blocks = []
         for attr in dir(transformer):
-            if blocks := getattr(transformer, attr, None):
+            if (blocks := getattr(transformer, attr, None)) is not None:
                 if isinstance(blocks, torch.nn.ModuleList):
                     if isinstance(blocks[0], torch.nn.Module):
                         total_blocks.append(blocks)
