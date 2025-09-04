@@ -475,7 +475,15 @@ class BlockAdapter:
         adapter.forward_pattern = _normalize_attr(adapter.forward_pattern)
         adapter.dummy_blocks_names = _normalize_attr(adapter.dummy_blocks_names)
         adapter.params_modifiers = _normalize_attr(adapter.params_modifiers)
+        BlockAdapter.unique(adapter)
 
+        adapter._is_normalized = True
+
+        return adapter
+
+    @classmethod
+    def unique(cls, adapter: "BlockAdapter"):
+        # NOTE: Users should never call this function
         for i in range(len(adapter.blocks)):
             assert len(adapter.blocks[i]) == len(adapter.blocks_name[i])
             assert len(adapter.blocks[i]) == len(adapter.forward_pattern[i])
@@ -492,10 +500,10 @@ class BlockAdapter:
                         )
                     ]
                 )
+        else:
+            assert len(adapter.transformer) == len(adapter.unique_blocks_name)
 
-        assert len(adapter.transformer) == len(adapter.unique_blocks_name)
-
-        # Match Forward Pattern
+        # Also check Match Forward Pattern
         for i in range(len(adapter.transformer)):
             for forward_pattern, blocks in zip(
                 adapter.forward_pattern[i], adapter.blocks[i]
@@ -508,10 +516,6 @@ class BlockAdapter:
                     "No block forward pattern matched, "
                     f"supported lists: {ForwardPattern.supported_patterns()}"
                 )
-
-        adapter._is_normalized = True
-
-        return adapter
 
     @classmethod
     def assert_normalized(cls, adapter: "BlockAdapter"):
