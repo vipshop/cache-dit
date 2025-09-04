@@ -50,10 +50,12 @@ class BlockAdapterRegistry:
         pipe_or_adapter: DiffusionPipeline | BlockAdapter | Any,
     ) -> bool:
 
-        has_separate_cfg = False
+        # Prefer custom setting from block adapter.
         if isinstance(pipe_or_adapter, BlockAdapter):
-            has_separate_cfg = pipe_or_adapter.has_separate_cfg
-        elif isinstance(pipe_or_adapter, DiffusionPipeline):
+            return pipe_or_adapter.has_separate_cfg
+
+        has_separate_cfg = False
+        if isinstance(pipe_or_adapter, DiffusionPipeline):
             has_separate_cfg = cls.get_adapter(
                 pipe_or_adapter,
                 skip_post_init=True,  # check cfg setting only

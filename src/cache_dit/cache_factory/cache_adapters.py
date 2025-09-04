@@ -126,18 +126,29 @@ class CachedAdapter:
             params_shift += len(blocks)
 
     @classmethod
-    def check_context_kwargs(cls, pipe, **cache_context_kwargs):
+    def check_context_kwargs(
+        cls,
+        block_adapter: BlockAdapter,
+        **cache_context_kwargs,
+    ):
         # Check cache_context_kwargs
         if not cache_context_kwargs["enable_spearate_cfg"]:
             # Check cfg for some specific case if users don't set it as True
-            cache_context_kwargs["enable_spearate_cfg"] = (
-                BlockAdapterRegistry.has_separate_cfg(pipe)
-            )
-            logger.info(
-                f"Use default 'enable_spearate_cfg': "
-                f"{cache_context_kwargs['enable_spearate_cfg']}, "
-                f"Pipeline: {pipe.__class__.__name__}."
-            )
+            if BlockAdapterRegistry.has_separate_cfg(block_adapter):
+                cache_context_kwargs["enable_spearate_cfg"] = True
+                logger.info(
+                    f"Use 'enable_spearate_cfg' from BlockAdapter: True."
+                    f"Pipeline: {block_adapter.pipe.__class__.__name__}."
+                )
+            else:
+                cache_context_kwargs["enable_spearate_cfg"] = (
+                    BlockAdapterRegistry.has_separate_cfg(block_adapter.pipe)
+                )
+                logger.info(
+                    f"Use default 'enable_spearate_cfg' from block adapter "
+                    f"register: {cache_context_kwargs['enable_spearate_cfg']}, "
+                    f"Pipeline: {block_adapter.pipe.__class__.__name__}."
+                )
 
         if cache_type := cache_context_kwargs.pop("cache_type", None):
             assert (
@@ -160,8 +171,7 @@ class CachedAdapter:
 
         # Check cache_context_kwargs
         cache_context_kwargs = cls.check_context_kwargs(
-            block_adapter.pipe,
-            **cache_context_kwargs,
+            block_adapter, **cache_context_kwargs
         )
         # Apply cache on pipeline: wrap cache context
         pipe_cls_name = block_adapter.pipe.__class__.__name__
