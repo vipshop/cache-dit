@@ -32,7 +32,8 @@ class CacheStats:
 def summary(
     adapter_or_others: Union[
         BlockAdapter,
-        Any,
+        DiffusionPipeline,
+        torch.nn.Module,
     ],
     details: bool = False,
     logging: bool = True,
@@ -138,7 +139,6 @@ def _summary(
     pipe_or_module: Union[
         DiffusionPipeline,
         torch.nn.Module,
-        Any,
     ],
     details: bool = False,
     logging: bool = True,
