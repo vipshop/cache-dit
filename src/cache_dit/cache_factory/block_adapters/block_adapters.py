@@ -128,7 +128,7 @@ class BlockAdapter:
                 assert isinstance(blocks, torch.nn.ModuleList)
                 blocks_name = None
                 for attr_name in attr_names:
-                    if attr := getattr(self.transformer, attr_name, None):
+                    if attr := getattr(transformer, attr_name, None):
                         if isinstance(attr, torch.nn.ModuleList) and id(
                             attr
                         ) == id(blocks):
@@ -161,7 +161,7 @@ class BlockAdapter:
                             self.transformer, self.blocks
                         )
                     ]
-                if self.nested_depth(self.blocks) == 2:  # List[List[str]]
+                elif self.nested_depth(self.blocks) == 2:  # List[List[str]]
                     assert len(self.transformer) == len(self.blocks)
                     self.blocks_name = []
                     for i in range(len(self.blocks)):
@@ -171,11 +171,12 @@ class BlockAdapter:
                                 for blocks in self.blocks[i]
                             ]
                         )
-                raise ValueError(
-                    "Blocks nested depth can't more than 2 or less than 1 "
-                    "if transformer is a list, current is: "
-                    f"{self.nested_depth(self.blocks)}"
-                )
+                else:
+                    raise ValueError(
+                        "Blocks nested depth can only be 1 or 2 "
+                        "if transformer is a list, current is: "
+                        f"{self.nested_depth(self.blocks)}"
+                    )
             else:
                 raise ValueError(
                     "transformer nested depth can't more than 1, "
