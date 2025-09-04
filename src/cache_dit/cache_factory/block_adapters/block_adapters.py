@@ -2,6 +2,7 @@ import torch
 
 import inspect
 import dataclasses
+from collections.abc import Iterable
 
 from typing import Any, Tuple, List, Optional, Union
 
@@ -109,9 +110,89 @@ class BlockAdapter:
 
     def __post_init__(self):
         assert any((self.pipe is not None, self.transformer is not None))
-        self.patchify()
+        self.maybe_fill_attrs()
+        self.maybe_patchify()
 
-    def patchify(self, *args, **kwargs):
+    def maybe_fill_attrs(self):
+        # NOTE: This func should be call before normalize.
+        # Allow empty `blocks_names`, we will auto fill it.
+        # TODO: preprocess more empty attrs.
+        if (
+            self.transformer is not None
+            and self.blocks is not None
+            and self.blocks_name is None
+        ):
+
+            def _find(transformer, blocks):
+                attr_names = dir(transformer)
+                assert isinstance(self.blocks, torch.nn.ModuleList)
+                blocks_name = None
+                for attr_name in attr_names:
+                    if attr := getattr(self.transformer, attr_name, None):
+                        if isinstance(attr, torch.nn.ModuleList) and id(
+                            attr
+                        ) == id(blocks):
+                            blocks_name = attr
+                            break
+                assert (
+                    blocks_name is not None
+                ), "No blocks_name match, please set it manually!"
+                return blocks_name
+
+            if self.nested_depth(self.transformer) == 0:
+                if self.nested_depth(self.blocks) == 0:  # str
+                    self.blocks_name = _find(self.transformer, self.blocks)
+                elif self.nested_depth(self.blocks) == 1:
+                    self.blocks_name = [
+                        _find(self.transformer, blocks)
+                        for blocks in self.blocks
+                    ]
+                elif self.nested_depth(self.blocks) == 2:
+                    self.blocks_name = []
+                    for i in range(len(self.blocks)):
+                        self.blocks_name.append(
+                            [
+                                _find(self.transformer, blocks)
+                                for blocks in self.blocks[i]
+                            ]
+                        )
+                else:
+                    raise ValueError(
+                        "Blocks nested depth can't more than 2, "
+                        f"current is: {self.nested_depth(self.blocks)}"
+                    )
+            elif self.nested_depth(self.transformer) == 1:  # List[str]
+                if self.nested_depth(self.blocks) == 1:  # List[str]
+                    assert len(self.transformer) == len(self.blocks)
+                    self.blocks_name = [
+                        _find(transformer, blocks)
+                        for transformer, blocks in zip(
+                            self.transformer, self.blocks
+                        )
+                    ]
+                if self.nested_depth(self.blocks) == 2:  # List[List[str]]
+                    assert len(self.transformer) == len(self.blocks)
+                    self.blocks_name = []
+                    for i in range(len(self.blocks)):
+                        self.blocks_name.append(
+                            [
+                                _find(self.transformer[i], blocks)
+                                for blocks in self.blocks[i]
+                            ]
+                        )
+                raise ValueError(
+                    "Blocks nested depth can't more than 2 or less than 1 "
+                    "if transformer is a list, current is: "
+                    f"{self.nested_depth(self.blocks)}"
+                )
+            else:
+                raise ValueError(
+                    "transformer nested depth can't more than 1, "
+                    f"current is: {self.nested_depth(self.transformer)}"
+                )
+            logger.info(f"Auto fill blocks_name: {self.blocks_name}.")
+
+    def maybe_patchify(self, *args, **kwargs):
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
@@ -121,6 +202,25 @@ class BlockAdapter:
             else:
                 assert hasattr(self.pipe, "transformer")
                 self.patch_functor.apply(self.pipe.transformer, *args, **kwargs)
+
+    @classmethod
+    def nested_depth(cls, obj: Any):
+        # str: 0; List[str]: 1; List[List[str]]: 2
+        if isinstance(obj, (str, bytes)):
+            return 0
+        if not isinstance(obj, Iterable):
+            return 0
+        if isinstance(obj, dict):
+            items = obj.values()
+        else:
+            items = obj
+
+        max_depth = 0
+        for item in items:
+            current_depth = cls.nested_depth(item)
+            if current_depth > max_depth:
+                max_depth = current_depth
+        return 1 + max_depth
 
     @staticmethod
     def auto_block_adapter(
