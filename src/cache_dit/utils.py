@@ -52,7 +52,7 @@ def summary(
             if hasattr(adapter_or_others, "transformer_2"):
                 transformer_2 = adapter_or_others.transformer_2
 
-        blocks_stats = []
+        blocks_stats: List[CacheStats] = []
         for blocks in BlockAdapter.find_blocks(transformer):
             blocks_stats.append(
                 _summary(
@@ -73,6 +73,26 @@ def summary(
                         **kwargs,
                     )
                 )
+
+        blocks_stats.append(
+            _summary(
+                transformer,
+                details=details,
+                logging=logging,
+                **kwargs,
+            )
+        )
+        if transformer_2 is not None:
+            blocks_stats.append(
+                _summary(
+                    transformer_2,
+                    details=details,
+                    logging=logging,
+                    **kwargs,
+                )
+            )
+
+        blocks_stats = [stats for stats in blocks_stats if stats.cache_options]
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
 
@@ -105,11 +125,11 @@ def strify(
     ],
 ) -> str:
     if isinstance(adapter_or_others, BlockAdapter):
-        stats = summary(adapter_or_others, logging=False)[0]
+        stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, DiffusionPipeline):
-        stats = summary(adapter_or_others, logging=False)[0]
+        stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, CacheStats):
@@ -189,6 +209,8 @@ def _summary(
         cache_stats.cache_options = cache_options
         if logging:
             print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")
+    else:
+        logger.warning(f"Can't find Cache Options for: {cls_name}")
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
