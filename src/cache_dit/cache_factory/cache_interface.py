@@ -30,7 +30,7 @@ def enable_cache(
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 2,
     **other_cache_context_kwargs,
-) -> DiffusionPipeline | Any:
+) -> BlockAdapter:
     r"""
     Unified Cache API for  almost Any Diffusion Transformers (with Transformer Blocks
     that match the specific Input and Output patterns).

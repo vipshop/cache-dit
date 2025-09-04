@@ -5,7 +5,8 @@ import numpy as np
 from pprint import pprint
 from diffusers import DiffusionPipeline
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Union
+from cache_dit.cache_factory import BlockAdapter
 from cache_dit.logger import init_logger
 
 
@@ -29,9 +30,119 @@ class CacheStats:
 
 
 def summary(
-    pipe_or_module: DiffusionPipeline | torch.nn.Module | Any,
+    adapter_or_others: Union[
+        BlockAdapter,
+        Any,
+    ],
     details: bool = False,
     logging: bool = True,
+    **kwargs,
+) -> List[CacheStats]:
+    if not isinstance(adapter_or_others, BlockAdapter):
+        return [
+            _summary(
+                adapter_or_others,
+                details=details,
+                logging=logging,
+                **kwargs,
+            )
+        ]
+
+    adapter = adapter_or_others
+    if not BlockAdapter.check_block_adapter(adapter):
+        return [CacheStats()]
+
+    blocks_stats = []
+    flatten_blocks = BlockAdapter.flatten(adapter.blocks)
+    for blocks in flatten_blocks:
+        blocks_stats.append(
+            _summary(
+                blocks,
+                details=details,
+                logging=logging,
+                **kwargs,
+            )
+        )
+
+    return blocks_stats
+
+
+def strify(
+    adapter_or_others: Union[
+        BlockAdapter,
+        DiffusionPipeline,
+        CacheStats,
+        List[CacheStats],
+        Dict[str, Any],
+    ],
+) -> str:
+    if isinstance(adapter_or_others, BlockAdapter):
+        stats = summary(adapter_or_others, logging=False)[0]
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    elif isinstance(adapter_or_others, DiffusionPipeline):
+        stats = summary(adapter_or_others, logging=False)[0]
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    elif isinstance(adapter_or_others, CacheStats):
+        stats = adapter_or_others
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    elif isinstance(adapter_or_others, list):
+        stats = adapter_or_others[0]
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    elif isinstance(adapter_or_others, dict):
+        from cache_dit.cache_factory import CacheType
+
+        # Assume cache_context_kwargs
+        cache_options = adapter_or_others
+        cached_steps = None
+        cache_type = cache_options.get("cache_type", CacheType.NONE)
+
+        if cache_type == CacheType.NONE:
+            return "NONE"
+    else:
+        raise ValueError(
+            "Please set pipe_or_stats param as one of: "
+            "DiffusionPipeline | CacheStats | Dict[str, Any]"
+        )
+
+    if not cache_options:
+        return "NONE"
+
+    def get_taylorseer_order():
+        taylorseer_order = 0
+        if "taylorseer_order" in cache_options:
+            taylorseer_order = cache_options["taylorseer_order"]
+        return taylorseer_order
+
+    cache_type_str = (
+        f"DBCACHE_F{cache_options.get('Fn_compute_blocks', 1)}"
+        f"B{cache_options.get('Bn_compute_blocks', 0)}_"
+        f"W{cache_options.get('max_warmup_steps', 0)}"
+        f"M{max(0, cache_options.get('max_cached_steps', -1))}"
+        f"MC{max(0, cache_options.get('max_continuous_cached_steps', -1))}_"
+        f"T{int(cache_options.get('enable_taylorseer', False))}"
+        f"O{get_taylorseer_order()}_"
+        f"R{cache_options.get('residual_diff_threshold', 0.08)}"
+    )
+
+    if cached_steps:
+        cache_type_str += f"_S{cached_steps}"
+
+    return cache_type_str
+
+
+def _summary(
+    pipe_or_module: Union[
+        DiffusionPipeline,
+        torch.nn.Module,
+        Any,
+    ],
+    details: bool = False,
+    logging: bool = True,
+    **kwargs,
 ) -> CacheStats:
     cache_stats = CacheStats()
 
@@ -141,56 +252,3 @@ def summary(
                 )
 
     return cache_stats
-
-
-def strify(
-    pipe_or_stats: DiffusionPipeline | CacheStats | Dict[str, Any],
-) -> str:
-    if isinstance(pipe_or_stats, DiffusionPipeline):
-        stats = summary(pipe_or_stats, logging=False)
-        cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
-    elif isinstance(pipe_or_stats, CacheStats):
-        stats = pipe_or_stats
-        cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
-    elif isinstance(pipe_or_stats, dict):
-        from cache_dit.cache_factory import CacheType
-
-        # Assume cache_context_kwargs
-        cache_options = pipe_or_stats
-        cached_steps = None
-        cache_type = cache_options.get("cache_type", CacheType.NONE)
-
-        if cache_type == CacheType.NONE:
-            return "NONE"
-    else:
-        raise ValueError(
-            "Please set pipe_or_stats param as one of: "
-            "DiffusionPipeline | CacheStats | Dict[str, Any]"
-        )
-
-    if not cache_options:
-        return "NONE"
-
-    def get_taylorseer_order():
-        taylorseer_order = 0
-        if "taylorseer_order" in cache_options:
-            taylorseer_order = cache_options["taylorseer_order"]
-        return taylorseer_order
-
-    cache_type_str = (
-        f"DBCACHE_F{cache_options.get('Fn_compute_blocks', 1)}"
-        f"B{cache_options.get('Bn_compute_blocks', 0)}_"
-        f"W{cache_options.get('max_warmup_steps', 0)}"
-        f"M{max(0, cache_options.get('max_cached_steps', -1))}"
-        f"MC{max(0, cache_options.get('max_continuous_cached_steps', -1))}_"
-        f"T{int(cache_options.get('enable_taylorseer', False))}"
-        f"O{get_taylorseer_order()}_"
-        f"R{cache_options.get('residual_diff_threshold', 0.08)}"
-    )
-
-    if cached_steps:
-        cache_type_str += f"_S{cached_steps}"
-
-    return cache_type_str
