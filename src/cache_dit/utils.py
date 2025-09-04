@@ -74,7 +74,7 @@ def summary(
                     )
                 )
 
-        return blocks_stats
+        return blocks_stats if len(blocks_stats) else [CacheStats()]
 
     adapter = adapter_or_others
     if not BlockAdapter.check_block_adapter(adapter):
@@ -92,7 +92,7 @@ def summary(
             )
         )
 
-    return blocks_stats
+    return blocks_stats if len(blocks_stats) else [CacheStats()]
 
 
 def strify(

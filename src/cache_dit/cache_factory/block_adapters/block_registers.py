@@ -47,15 +47,22 @@ class BlockAdapterRegistry:
     @classmethod
     def has_separate_cfg(
         cls,
-        pipe: DiffusionPipeline | str | Any,
+        pipe_or_adapter: DiffusionPipeline | BlockAdapter | Any,
     ) -> bool:
-        if cls.get_adapter(
-            pipe,
-            disable_patch=True,
-        ).has_separate_cfg:
+
+        has_separate_cfg = False
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            has_separate_cfg = pipe_or_adapter.has_separate_cfg
+        elif isinstance(pipe_or_adapter, DiffusionPipeline):
+            has_separate_cfg = cls.get_adapter(
+                pipe_or_adapter,
+                skip_post_init=True,  # check cfg setting only
+            ).has_separate_cfg
+
+        if has_separate_cfg:
             return True
 
-        pipe_cls_name = pipe.__class__.__name__
+        pipe_cls_name = pipe_or_adapter.__class__.__name__
         for name in cls._predefined_adapters_has_spearate_cfg:
             if pipe_cls_name.startswith(name):
                 return True

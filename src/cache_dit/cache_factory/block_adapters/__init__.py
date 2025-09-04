@@ -24,6 +24,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
                 ForwardPattern.Pattern_1,
                 ForwardPattern.Pattern_1,
             ],
+            **kwargs,
         )
     else:
         return BlockAdapter(
@@ -37,6 +38,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
                 ForwardPattern.Pattern_1,
                 ForwardPattern.Pattern_3,
             ],
+            **kwargs,
         )
 
 
@@ -50,6 +52,7 @@ def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_0,
+        **kwargs,
     )
 
 
@@ -63,6 +66,7 @@ def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_0,
+        **kwargs,
     )
 
 
@@ -98,6 +102,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
                 ForwardPattern.Pattern_2,
             ],
             has_separate_cfg=True,
+            **kwargs,
         )
     else:
         # Wan 2.1
@@ -107,6 +112,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
             blocks=pipe.transformer.blocks,
             forward_pattern=ForwardPattern.Pattern_2,
             has_separate_cfg=True,
+            **kwargs,
         )
 
 
@@ -125,6 +131,7 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_0,
         ],
+        **kwargs,
     )
 
 
@@ -139,6 +146,7 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_1,
         has_separate_cfg=True,
+        **kwargs,
     )
 
 
@@ -152,6 +160,7 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_2,
+        **kwargs,
     )
 
 
@@ -165,6 +174,7 @@ def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_2,
+        **kwargs,
     )
 
 
@@ -178,6 +188,7 @@ def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_0,
+        **kwargs,
     )
 
 
@@ -192,6 +203,7 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_0,
         has_separate_cfg=True,
+        **kwargs,
     )
 
 
@@ -206,6 +218,7 @@ def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_2,
         has_separate_cfg=True,
+        **kwargs,
     )
 
 
@@ -219,6 +232,7 @@ def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_0,
+        **kwargs,
     )
 
 
@@ -233,6 +247,7 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
         blocks=pipe.transformer.blocks,
         forward_pattern=ForwardPattern.Pattern_2,
         has_separate_cfg=True,
+        **kwargs,
     )
 
 
@@ -246,6 +261,7 @@ def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_1,
+        **kwargs,
     )
 
 
@@ -259,6 +275,7 @@ def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_0,
+        **kwargs,
     )
 
 
@@ -272,6 +289,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -285,6 +303,7 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_layers,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -304,6 +323,7 @@ def bria_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_0,
         ],
+        **kwargs,
     )
 
 
@@ -320,6 +340,7 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -333,11 +354,12 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
 @BlockAdapterRegistry.register("Lumina")
-def lumina_adapter(pipe) -> BlockAdapter:
+def lumina_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import LuminaNextDiT2DModel
 
     assert isinstance(pipe.transformer, LuminaNextDiT2DModel)
@@ -346,6 +368,7 @@ def lumina_adapter(pipe) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -359,6 +382,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -372,6 +396,7 @@ def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -385,6 +410,7 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -398,6 +424,7 @@ def sana_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -411,6 +438,7 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.prior,
         blocks=pipe.prior.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -424,6 +452,7 @@ def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -443,6 +472,7 @@ def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_1,
             ForwardPattern.Pattern_3,
         ],
+        **kwargs,
     )
 
 
@@ -456,6 +486,7 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.single_transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
     )
 
 
@@ -476,6 +507,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_3,
         ],
         has_separate_cfg=True,
+        **kwargs,
     )
 
 
@@ -496,4 +528,5 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_3,
         ],
         check_num_outputs=False,
+        **kwargs,
     )
