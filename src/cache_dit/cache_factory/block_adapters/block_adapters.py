@@ -203,25 +203,6 @@ class BlockAdapter:
                 assert hasattr(self.pipe, "transformer")
                 self.patch_functor.apply(self.pipe.transformer, *args, **kwargs)
 
-    @classmethod
-    def nested_depth(cls, obj: Any):
-        # str: 0; List[str]: 1; List[List[str]]: 2
-        if isinstance(obj, (str, bytes)):
-            return 0
-        if not isinstance(obj, Iterable):
-            return 0
-        if isinstance(obj, dict):
-            items = obj.values()
-        else:
-            items = obj
-
-        max_depth = 0
-        for item in items:
-            current_depth = cls.nested_depth(item)
-            if current_depth > max_depth:
-                max_depth = current_depth
-        return 1 + max_depth
-
     @staticmethod
     def auto_block_adapter(
         adapter: "BlockAdapter",
@@ -627,12 +608,32 @@ class BlockAdapter:
             raise TypeError(f"Can't check this type: {adapter}!")
 
     @classmethod
-    def flatten(cls, attr: List[List[Any]]):
-        if isinstance(attr, list):
-            if not isinstance(attr[0], list):
-                return attr
-            flatten_attr = []
-            for i in range(len(attr)):
-                flatten_attr.extend(attr[i])
-            return flatten_attr
-        return attr
+    def nested_depth(cls, obj: Any):
+        # str: 0; List[str]: 1; List[List[str]]: 2
+        if isinstance(obj, (str, bytes)):
+            return 0
+        if not isinstance(obj, Iterable):
+            return 0
+        if isinstance(obj, dict):
+            items = obj.values()
+        else:
+            items = obj
+
+        max_depth = 0
+        for item in items:
+            current_depth = cls.nested_depth(item)
+            if current_depth > max_depth:
+                max_depth = current_depth
+        return 1 + max_depth
+
+    @classmethod
+    def flatten(cls, attr: List[Any]) -> List[Any]:
+        if not isinstance(attr, list):
+            return attr
+        flattened = []
+        for item in attr:
+            if isinstance(item, list) and not isinstance(item, (str, bytes)):
+                flattened.extend(cls.flatten(item))
+            else:
+                flattened.append(item)
+        return flattened
