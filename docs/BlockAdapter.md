@@ -49,7 +49,6 @@ cache_dit.enable_cache(
         pipe=pipe, # Qwen-Image, etc.
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
         forward_pattern=ForwardPattern.Pattern_1,
     ), 
 )

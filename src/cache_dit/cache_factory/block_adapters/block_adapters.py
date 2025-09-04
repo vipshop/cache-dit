@@ -274,8 +274,8 @@ class BlockAdapter:
     def find_blocks(
         transformer: torch.nn.Module,
         allow_prefixes: List[str] = [
-            "transformer",
-            "single_transformer",
+            "transformer_blocks",
+            "single_transformer_blocks",
             "blocks",
             "layers",
             "single_stream_blocks",
