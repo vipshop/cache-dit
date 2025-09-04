@@ -457,10 +457,15 @@ class BlockAdapter:
             if BlockAdapter.nested_depth(attr) == 0:
                 normalized_attr = [[attr]]
             elif BlockAdapter.nested_depth(attr) == 1:
-                if len(attr) == len(adapter.transformer):
-                    normalized_attr = [[a] for a in attr]
-                else:
-                    normalized_attr = [attr]
+                if attr:
+                    if len(attr) == len(adapter.transformer):
+                        normalized_attr = [[a] for a in attr]
+                    else:
+                        normalized_attr = [attr]
+                else:  # []
+                    normalized_attr = [
+                        [] for _ in range(len(adapter.transformer))
+                    ]
 
             assert len(adapter.transformer) == len(normalized_attr)
             return normalized_attr
