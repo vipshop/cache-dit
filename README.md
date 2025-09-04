@@ -424,6 +424,12 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 
 How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
 
+## ©️Acknowledgements
+
+<div id="Acknowledgements"></div>
+
+The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
+
 ## ©️Citations
 
 <div id="citations"></div>
@@ -437,9 +443,3 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
   year={2025}
 }
 ```
-
-## ©️Acknowledgements
-
-<div id="Acknowledgements"></div>
-
-The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
