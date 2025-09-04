@@ -195,7 +195,6 @@ cache_dit.enable_cache(
         pipe=pipe, # Qwen-Image, etc.
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        blocks_name="transformer_blocks",
         forward_pattern=ForwardPattern.Pattern_1,
     ), 
 )
@@ -216,10 +215,6 @@ cache_dit.enable_cache(
         blocks=[
             pipe.transformer.transformer_blocks,
             pipe.transformer.single_transformer_blocks,
-        ],
-        blocks_name=[
-            "transformer_blocks",
-            "single_transformer_blocks",
         ],
         forward_pattern=[
             ForwardPattern.Pattern_1,
