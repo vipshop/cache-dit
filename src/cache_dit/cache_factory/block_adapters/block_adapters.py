@@ -214,7 +214,7 @@ class BlockAdapter:
         transformer = pipe.transformer
 
         # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
-        blocks, blocks_name = BlockAdapter.find_blocks(
+        blocks, blocks_name = BlockAdapter.find_match_blocks(
             transformer=transformer,
             allow_prefixes=adapter.allow_prefixes,
             allow_suffixes=adapter.allow_suffixes,
@@ -274,7 +274,7 @@ class BlockAdapter:
         return True
 
     @staticmethod
-    def find_blocks(
+    def find_match_blocks(
         transformer: torch.nn.Module,
         allow_prefixes: List[str] = [
             "transformer_blocks",
@@ -368,6 +368,18 @@ class BlockAdapter:
         )
 
         return final_blocks, final_name
+
+    @staticmethod
+    def find_blocks(
+        transformer: torch.nn.Module,
+    ) -> List[torch.nn.ModuleList]:
+        total_blocks = []
+        for attr in dir(transformer):
+            if blocks := getattr(transformer, attr, None):
+                if isinstance(blocks, torch.nn.ModuleList):
+                    if isinstance(blocks[0], torch.nn.Module):
+                        total_blocks.append(blocks)
+        return total_blocks
 
     @staticmethod
     def match_block_pattern(

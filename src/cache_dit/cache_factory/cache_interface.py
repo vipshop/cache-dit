@@ -159,21 +159,14 @@ def disable_cache(
         remove_cached_stats,
     )
 
-    def _disable_pipe(pipe: DiffusionPipeline):
-        if pipe is None or not BlockAdapter.is_cached(pipe):
+    def _disable_blocks(blocks: torch.nn.ModuleList):
+        if blocks is None:
             return
-        if original_call := getattr(pipe, "_original_call"):
-            pipe.__class__.__call__ = original_call
-            del pipe.__class__._original_call
-        if cache_manager := getattr(pipe, "_cache_manager"):
-            assert isinstance(cache_manager, CachedContextManager)
-            cache_manager.clear_contexts()
-            del pipe._cache_manager
-        if hasattr(pipe, "_is_cached"):
-            del pipe.__class__._is_cached
-        if hasattr(pipe, "_cache_context_kwargs"):
-            del pipe._cache_context_kwargs
-        remove_cached_stats(pipe)
+        if hasattr(blocks, "_forward_pattern"):
+            del blocks._forward_pattern
+        if hasattr(blocks, "_cache_context_kwargs"):
+            del blocks._cache_context_kwargs
+        remove_cached_stats(blocks)
 
     def _disable_transformer(transformer: torch.nn.Module):
         if transformer is None or not BlockAdapter.is_cached(transformer):
@@ -190,15 +183,24 @@ def disable_cache(
         if hasattr(transformer, "_cache_context_kwargs"):
             del transformer._cache_context_kwargs
         remove_cached_stats(transformer)
+        for blocks in BlockAdapter.find_blocks(transformer):
+            _disable_blocks(blocks)
 
-    def _disable_blocks(blocks: torch.nn.ModuleList):
-        if blocks is None:
+    def _disable_pipe(pipe: DiffusionPipeline):
+        if pipe is None or not BlockAdapter.is_cached(pipe):
             return
-        if hasattr(blocks, "_forward_pattern"):
-            del blocks._forward_pattern
-        if hasattr(blocks, "_cache_context_kwargs"):
-            del blocks._cache_context_kwargs
-        remove_cached_stats(blocks)
+        if original_call := getattr(pipe, "_original_call"):
+            pipe.__class__.__call__ = original_call
+            del pipe.__class__._original_call
+        if cache_manager := getattr(pipe, "_cache_manager"):
+            assert isinstance(cache_manager, CachedContextManager)
+            cache_manager.clear_contexts()
+            del pipe._cache_manager
+        if hasattr(pipe, "_is_cached"):
+            del pipe.__class__._is_cached
+        if hasattr(pipe, "_cache_context_kwargs"):
+            del pipe._cache_context_kwargs
+        remove_cached_stats(pipe)
 
     if isinstance(pipe_or_adapter, DiffusionPipeline):
         pipe = pipe_or_adapter

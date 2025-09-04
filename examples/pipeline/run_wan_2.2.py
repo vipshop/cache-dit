@@ -145,8 +145,7 @@ video = pipe(
 ).frames[0]
 end = time.time()
 
-if args.cache:
-    cache_dit.summary(adapter, details=True)
+cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
 save_path = (

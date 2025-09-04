@@ -169,6 +169,9 @@ cache_dit.enable_cache(pipe)
 
 # Just call the pipe as normal.
 output = pipe(...)
+
+# Disable cache and run original pipe.
+cache_dit.disable_cache(pipe)
 ```
 
 ### 🔥Automatic Block Adapter

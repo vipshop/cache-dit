@@ -43,14 +43,38 @@ def summary(
         return [CacheStats()]
 
     if not isinstance(adapter_or_others, BlockAdapter):
-        return [
-            _summary(
-                adapter_or_others,
-                details=details,
-                logging=logging,
-                **kwargs,
+        if not isinstance(adapter_or_others, DiffusionPipeline):
+            transformer = adapter_or_others
+            transformer_2 = None
+        else:
+            transformer = adapter_or_others.transformer
+            transformer_2 = None
+            if hasattr(adapter_or_others, "transformer_2"):
+                transformer_2 = adapter_or_others.transformer_2
+
+        blocks_stats = []
+        for blocks in BlockAdapter.find_blocks(transformer):
+            blocks_stats.append(
+                _summary(
+                    blocks,
+                    details=details,
+                    logging=logging,
+                    **kwargs,
+                )
             )
-        ]
+
+        if transformer_2 is not None:
+            for blocks in BlockAdapter.find_blocks(transformer_2):
+                blocks_stats.append(
+                    _summary(
+                        blocks,
+                        details=details,
+                        logging=logging,
+                        **kwargs,
+                    )
+                )
+
+        return blocks_stats
 
     adapter = adapter_or_others
     if not BlockAdapter.check_block_adapter(adapter):
