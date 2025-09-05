@@ -75,7 +75,7 @@ class BlockAdapter:
         List[List[ParamsModifier]],
     ] = None
 
-    check_num_outputs: bool = True
+    check_num_outputs: bool = False
 
     # Pipeline Level Flags
     # Patch Functor: Flux, etc.
@@ -111,9 +111,9 @@ class BlockAdapter:
     def __post_init__(self):
         if self.skip_post_init:
             return
-        assert any((self.pipe is not None, self.transformer is not None))
-        self.maybe_fill_attrs()
-        self.maybe_patchify()
+        if any((self.pipe is not None, self.transformer is not None)):
+            self.maybe_fill_attrs()
+            self.maybe_patchify()
 
     def maybe_fill_attrs(self):
         # NOTE: This func should be call before normalize.
@@ -560,7 +560,7 @@ class BlockAdapter:
             assert isinstance(adapter[0], torch.nn.Module)
             return getattr(adapter[0], "_is_cached", False)
         else:
-            raise TypeError(f"Can't check this type: {adapter}!")
+            raise TypeError(f"Can't check this type: {type(adapter)}!")
 
     @classmethod
     def nested_depth(cls, obj: Any):

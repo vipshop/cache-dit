@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from typing import Tuple, Union
-
+from diffusers import DiffusionPipeline
 import cache_dit
 from cache_dit import ForwardPattern, BlockAdapter
 
@@ -278,7 +278,7 @@ class RandTransformer2DModel_Pattern_3_4_5(torch.nn.Module):
 RandPipelineOutput = RandTransformer2DModelOutput
 
 
-class RandPipeline:
+class RandPipeline(DiffusionPipeline):
 
     def __init__(
         self,
@@ -364,8 +364,8 @@ if __name__ == "__main__":
             transformer=pipe.transformer,
             blocks=pipe.transformer.transformer_blocks,
             blocks_name="transformer_blocks",
+            forward_pattern=pipe.pattern,
         ),
-        forward_pattern=pipe.pattern,
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
         residual_diff_threshold=0.05,

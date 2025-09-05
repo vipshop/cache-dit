@@ -6,11 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers.utils import export_to_video
-from diffusers import (
-    HunyuanVideoPipeline,
-    HunyuanVideoTransformer3DModel,
-    AutoencoderKLHunyuanVideo,
-)
+from diffusers import HunyuanVideoPipeline, AutoencoderKLHunyuanVideo
 from utils import GiB, get_args
 import cache_dit
 
@@ -18,31 +14,25 @@ import cache_dit
 args = get_args()
 print(args)
 
-
-model_id = os.environ.get("HUNYUAN_DIR", "tencent/HunyuanVideo")
-transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-    model_id,
-    subfolder="transformer",
-    torch_dtype=torch.bfloat16,
-    revision="refs/pr/18",
+model_id = os.environ.get(
+    "HUNYUAN_VIDEO_DIR", "hunyuanvideo-community/HunyuanVideo"
 )
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
-    torch_dtype=torch.float16,
-    revision="refs/pr/18",
-).to("cuda")
+    torch_dtype=torch.bfloat16,
+    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
+    device_map=(
+        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
+    ),
+)
 
 
 if args.cache:
     cache_dit.enable_cache(pipe)
 
-
-assert isinstance(
-    pipe.vae, AutoencoderKLHunyuanVideo
-)  # enable type check for IDE
+assert isinstance(pipe.vae, AutoencoderKLHunyuanVideo)
 
 # Enable memory savings
-pipe.enable_model_cpu_offload()
 if GiB() <= 48:
     pipe.vae.enable_tiling(
         # Make it runnable on GPUs with 48GB memory
@@ -56,14 +46,13 @@ if GiB() <= 48:
 else:
     pipe.vae.enable_tiling()
 
+prompt = "A fluffy teddy bear sits on a bed of soft pillows surrounded by children's toys."
 
 start = time.time()
 output = pipe(
-    prompt="A cat walks on the grass, realistic",
-    height=720,
-    width=1280,
-    num_frames=129,
-    num_inference_steps=30,
+    prompt=prompt,
+    num_frames=10,
+    num_inference_steps=50,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
@@ -74,4 +63,4 @@ time_cost = end - start
 save_path = f"hunyuan_video.{cache_dit.strify(stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
-export_to_video(output, save_path, fps=15)
+export_to_video(output, save_path, fps=10)
