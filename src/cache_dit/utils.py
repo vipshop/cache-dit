@@ -52,6 +52,9 @@ def summary(
             if hasattr(adapter_or_others, "transformer_2"):
                 transformer_2 = adapter_or_others.transformer_2
 
+        if not BlockAdapter.is_cached(transformer):
+            return [CacheStats()]
+
         blocks_stats: List[CacheStats] = []
         for blocks in BlockAdapter.find_blocks(transformer):
             blocks_stats.append(

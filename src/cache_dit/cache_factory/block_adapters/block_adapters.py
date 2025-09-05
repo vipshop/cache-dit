@@ -75,7 +75,7 @@ class BlockAdapter:
         List[List[ParamsModifier]],
     ] = None
 
-    check_num_outputs: bool = True
+    check_num_outputs: bool = False
 
     # Pipeline Level Flags
     # Patch Functor: Flux, etc.

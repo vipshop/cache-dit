@@ -123,6 +123,7 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
+        transformer=pipe.transformer,
         blocks=[
             pipe.transformer.transformer_blocks,
             pipe.transformer.single_transformer_blocks,
@@ -131,6 +132,8 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_0,
         ],
+        # The type hint in diffusers is wrong
+        check_num_outputs=False,
         **kwargs,
     )
 
@@ -459,21 +462,37 @@ def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
 @BlockAdapterRegistry.register("VisualCloze")
 def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
+    from cache_dit.utils import is_diffusers_at_least_0_3_5
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.transformer_blocks,
-            pipe.transformer.single_transformer_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_1,
-            ForwardPattern.Pattern_3,
-        ],
-        **kwargs,
-    )
+    if is_diffusers_at_least_0_3_5():
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_1,
+            ],
+            **kwargs,
+        )
+    else:
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_3,
+            ],
+            **kwargs,
+        )
 
 
 @BlockAdapterRegistry.register("AuraFlow")
@@ -527,6 +546,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_4,
             ForwardPattern.Pattern_3,
         ],
+        # The type hint in diffusers is wrong
         check_num_outputs=False,
         **kwargs,
     )
