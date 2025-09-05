@@ -17,7 +17,7 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>cache-dit</b> covers <b>Most</b> Diffusers' <b>DiT-based</b> Pipelines🎉<br>
+  🎉Now, <b>cache-dit</b> covers <b>most</b> Diffusers' <b>DiT-based</b> Pipelines🎉<br>
   🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1/2.2</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
   </p>
 </div>
