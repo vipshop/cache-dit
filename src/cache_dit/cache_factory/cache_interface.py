@@ -156,8 +156,8 @@ def disable_cache(
 ):
     CachedAdapter.maybe_release_hooks(pipe_or_adapter)
     logger.warning(
-        f"Cache Acceleration is disabled: "
-        f"{pipe_or_adapter.__class__.__name__}"
+        f"Cache Acceleration is disabled for: "
+        f"{pipe_or_adapter.__class__.__name__}."
     )
 
 
