@@ -172,7 +172,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             f"Fn_compute_blocks {self.cache_manager.Fn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
-        encoder_hidden_states = None  # Pattern 3
+        encoder_hidden_states = kwargs.get(
+            "encoder_hidden_states", None
+        )  # Pattern 3
         for block in self._Fn_blocks():
             hidden_states = block(
                 hidden_states,

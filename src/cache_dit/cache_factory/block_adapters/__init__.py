@@ -534,9 +534,9 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HiDream", supported=False)
+@BlockAdapterRegistry.register("HiDream", supported=True)
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: Patch Transformer and blocks forward
+    # NOTE: Still have precision error
     from diffusers import HiDreamImageTransformer2DModel
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
@@ -544,11 +544,11 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=[
-            pipe.transformer.double_stream_blocks,
+            # pipe.transformer.double_stream_blocks,
             pipe.transformer.single_stream_blocks,
         ],
         forward_pattern=[
-            ForwardPattern.Pattern_4,
+            # ForwardPattern.Pattern_4,
             ForwardPattern.Pattern_3,
         ],
         # The type hint in diffusers is wrong
