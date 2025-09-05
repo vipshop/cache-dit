@@ -1,5 +1,6 @@
 import torch
 
+from typing import Dict, Any
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
     CachedBlocks_Pattern_Base,
@@ -80,6 +81,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
+            kwargs = self.maybe_update_kwargs(
+                encoder_hidden_states,
+                kwargs,
+            )
             hidden_states, encoder_hidden_states = self.call_Bn_blocks(
                 hidden_states,
                 # encoder_hidden_states,
@@ -99,6 +104,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 )
             del Fn_hidden_states_residual
             torch._dynamo.graph_break()
+            kwargs = self.maybe_update_kwargs(
+                encoder_hidden_states,
+                kwargs,
+            )
             (
                 hidden_states,
                 encoder_hidden_states,
@@ -140,10 +149,14 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
+            kwargs = self.maybe_update_kwargs(
+                encoder_hidden_states,
+                kwargs,
+            )
             hidden_states, encoder_hidden_states = self.call_Bn_blocks(
                 hidden_states,
                 # None Pattern 3, else 4, 5
-                encoder_hidden_states,
+                # encoder_hidden_states,
                 *args,
                 **kwargs,
             )
@@ -159,6 +172,14 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 else (encoder_hidden_states, hidden_states)
             )
         )
+
+    @torch.compiler.disable
+    def maybe_update_kwargs(
+        self, encoder_hidden_states, kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        if "encoder_hidden_states" in kwargs:
+            kwargs["encoder_hidden_states"] = encoder_hidden_states
+        return kwargs
 
     def call_Fn_blocks(
         self,
@@ -188,6 +209,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                         encoder_hidden_states,
                         hidden_states,
                     )
+            kwargs = self.maybe_update_kwargs(
+                encoder_hidden_states,
+                kwargs,
+            )
 
         return hidden_states, encoder_hidden_states
 
@@ -199,11 +224,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         *args,
         **kwargs,
     ):
+        encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
         original_hidden_states = hidden_states
-        original_encoder_hidden_states = kwargs.get(
-            "encoder_hidden_states", None
-        )
-        encoder_hidden_states = None
+        original_encoder_hidden_states = encoder_hidden_states
         for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -217,6 +240,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                         encoder_hidden_states,
                         hidden_states,
                     )
+            kwargs = self.maybe_update_kwargs(
+                encoder_hidden_states,
+                kwargs,
+            )
 
         # compute hidden_states residual
         hidden_states = hidden_states.contiguous()
@@ -276,5 +303,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                             encoder_hidden_states,
                             hidden_states,
                         )
+                kwargs = self.maybe_update_kwargs(
+                    encoder_hidden_states,
+                    kwargs,
+                )
 
         return hidden_states, encoder_hidden_states

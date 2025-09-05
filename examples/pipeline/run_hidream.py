@@ -60,7 +60,6 @@ pipe.to("cuda")
 if args.cache:
     cache_dit.enable_cache(
         pipe,
-        residual_diff_threshold=0.12,
     )
 
 start = time.time()

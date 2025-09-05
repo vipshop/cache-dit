@@ -512,11 +512,11 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=[
             pipe.transformer.double_stream_blocks,
-            pipe.transformer.single_stream_blocks,
+            # pipe.transformer.single_stream_blocks,
         ],
         forward_pattern=[
             ForwardPattern.Pattern_4,
-            ForwardPattern.Pattern_3,
+            # ForwardPattern.Pattern_3,
         ],
         # The type hint in diffusers is wrong
         check_num_outputs=False,
