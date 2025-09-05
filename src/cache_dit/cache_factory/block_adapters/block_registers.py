@@ -1,4 +1,4 @@
-from typing import Any, Tuple, List, Dict
+from typing import Any, Tuple, List, Dict, Callable
 
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.block_adapters.block_adapters import BlockAdapter
@@ -9,20 +9,23 @@ logger = init_logger(__name__)
 
 
 class BlockAdapterRegistry:
-    _adapters: Dict[str, BlockAdapter] = {}
-    _predefined_adapters_has_spearate_cfg: List[str] = {
+    _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
+    _predefined_adapters_has_spearate_cfg: List[str] = [
         "QwenImage",
         "Wan",
         "CogView4",
         "Cosmos",
         "SkyReelsV2",
         "Chroma",
-    }
+    ]
 
     @classmethod
-    def register(cls, name):
-        def decorator(func):
-            cls._adapters[name] = func
+    def register(cls, name: str, supported: bool = True):
+        def decorator(
+            func: Callable[..., BlockAdapter]
+        ) -> Callable[..., BlockAdapter]:
+            if supported:
+                cls._adapters[name] = func
             return func
 
         return decorator

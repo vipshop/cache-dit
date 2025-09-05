@@ -330,39 +330,6 @@ def bria_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HunyuanDiT")
-def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: Patch Transformer forward
-    from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
-
-    assert isinstance(
-        pipe.transformer,
-        (HunyuanDiT2DModel, HunyuanDiT2DControlNetModel),
-    )
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.blocks,
-        forward_pattern=ForwardPattern.Pattern_2,
-        **kwargs,
-    )
-
-
-@BlockAdapterRegistry.register("HunyuanDiTPAG")
-def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: Patch Transformer forward
-    from diffusers import HunyuanDiT2DModel
-
-    assert isinstance(pipe.transformer, HunyuanDiT2DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.blocks,
-        forward_pattern=ForwardPattern.Pattern_3,
-        **kwargs,
-    )
-
-
 @BlockAdapterRegistry.register("Lumina")
 def lumina_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import LuminaNextDiT2DModel
@@ -532,8 +499,42 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HiDream")
+@BlockAdapterRegistry.register("HunyuanDiT", supported=False)
+def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: Patch Transformer forward
+    from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
+
+    assert isinstance(
+        pipe.transformer,
+        (HunyuanDiT2DModel, HunyuanDiT2DControlNetModel),
+    )
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.blocks,
+        forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
+    )
+
+
+@BlockAdapterRegistry.register("HunyuanDiTPAG", supported=False)
+def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: Patch Transformer forward
+    from diffusers import HunyuanDiT2DModel
+
+    assert isinstance(pipe.transformer, HunyuanDiT2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.blocks,
+        forward_pattern=ForwardPattern.Pattern_3,
+        **kwargs,
+    )
+
+
+@BlockAdapterRegistry.register("HiDream", supported=False)
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: Patch Transformer and blocks forward
     from diffusers import HiDreamImageTransformer2DModel
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
