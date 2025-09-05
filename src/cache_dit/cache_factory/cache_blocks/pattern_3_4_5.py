@@ -1,5 +1,6 @@
 import torch
 
+from typing import Dict, Any
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
     CachedBlocks_Pattern_Base,
@@ -31,7 +32,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         # Call first `n` blocks to process the hidden states for
         # more stable diff calculation.
         # encoder_hidden_states: None Pattern 3, else 4, 5
-        hidden_states, encoder_hidden_states = self.call_Fn_blocks(
+        hidden_states, new_encoder_hidden_states = self.call_Fn_blocks(
             hidden_states,
             *args,
             **kwargs,
@@ -60,11 +61,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         if can_use_cache:
             self.cache_manager.add_cached_step()
             del Fn_hidden_states_residual
-            hidden_states, encoder_hidden_states = (
+            hidden_states, new_encoder_hidden_states = (
                 self.cache_manager.apply_cache(
                     hidden_states,
-                    # None Pattern 3, else 4, 5
-                    encoder_hidden_states,
+                    new_encoder_hidden_states,  # encoder_hidden_states not use cache
                     prefix=(
                         f"{self.cache_prefix}_Bn_residual"
                         if self.cache_manager.is_cache_residual()
@@ -80,12 +80,12 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
-            hidden_states, encoder_hidden_states = self.call_Bn_blocks(
-                hidden_states,
-                # encoder_hidden_states,
-                *args,
-                **kwargs,
-            )
+            if self.cache_manager.Bn_compute_blocks() > 0:
+                hidden_states, new_encoder_hidden_states = self.call_Bn_blocks(
+                    hidden_states,
+                    *args,
+                    **kwargs,
+                )
         else:
             self.cache_manager.set_Fn_buffer(
                 Fn_hidden_states_residual,
@@ -99,19 +99,20 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 )
             del Fn_hidden_states_residual
             torch._dynamo.graph_break()
+            old_encoder_hidden_states = new_encoder_hidden_states
             (
                 hidden_states,
-                encoder_hidden_states,
+                new_encoder_hidden_states,
                 hidden_states_residual,
-                # None Pattern 3, else 4, 5
-                encoder_hidden_states_residual,
             ) = self.call_Mn_blocks(  # middle
                 hidden_states,
-                # None Pattern 3, else 4, 5
-                # encoder_hidden_states,
                 *args,
                 **kwargs,
             )
+            if new_encoder_hidden_states is not None:
+                new_encoder_hidden_states_residual = (
+                    new_encoder_hidden_states - old_encoder_hidden_states
+                )
             torch._dynamo.graph_break()
             if self.cache_manager.is_cache_residual():
                 self.cache_manager.set_Bn_buffer(
@@ -119,34 +120,32 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                     prefix=f"{self.cache_prefix}_Bn_residual",
                 )
             else:
-                # TaylorSeer
                 self.cache_manager.set_Bn_buffer(
                     hidden_states,
                     prefix=f"{self.cache_prefix}_Bn_hidden_states",
                 )
+
             if self.cache_manager.is_encoder_cache_residual():
-                self.cache_manager.set_Bn_encoder_buffer(
-                    # None Pattern 3, else 4, 5
-                    encoder_hidden_states_residual,
-                    prefix=f"{self.cache_prefix}_Bn_residual",
-                )
+                if new_encoder_hidden_states is not None:
+                    self.cache_manager.set_Bn_encoder_buffer(
+                        new_encoder_hidden_states_residual,
+                        prefix=f"{self.cache_prefix}_Bn_residual",
+                    )
             else:
-                # TaylorSeer
-                self.cache_manager.set_Bn_encoder_buffer(
-                    # None Pattern 3, else 4, 5
-                    encoder_hidden_states,
-                    prefix=f"{self.cache_prefix}_Bn_hidden_states",
-                )
+                if new_encoder_hidden_states is not None:
+                    self.cache_manager.set_Bn_encoder_buffer(
+                        new_encoder_hidden_states_residual,
+                        prefix=f"{self.cache_prefix}_Bn_hidden_states",
+                    )
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
-            hidden_states, encoder_hidden_states = self.call_Bn_blocks(
-                hidden_states,
-                # None Pattern 3, else 4, 5
-                encoder_hidden_states,
-                *args,
-                **kwargs,
-            )
+            if self.cache_manager.Bn_compute_blocks() > 0:
+                hidden_states, new_encoder_hidden_states = self.call_Bn_blocks(
+                    hidden_states,
+                    *args,
+                    **kwargs,
+                )
 
         torch._dynamo.graph_break()
 
@@ -154,11 +153,20 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             hidden_states
             if self.forward_pattern.Return_H_Only
             else (
-                (hidden_states, encoder_hidden_states)
+                (hidden_states, new_encoder_hidden_states)
                 if self.forward_pattern.Return_H_First
-                else (encoder_hidden_states, hidden_states)
+                else (new_encoder_hidden_states, hidden_states)
             )
         )
+
+    @torch.compiler.disable
+    def maybe_update_kwargs(
+        self, encoder_hidden_states, kwargs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        # if "encoder_hidden_states" in kwargs:
+        #     kwargs["encoder_hidden_states"] = encoder_hidden_states
+        # return kwargs
+        return kwargs
 
     def call_Fn_blocks(
         self,
@@ -172,9 +180,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             f"Fn_compute_blocks {self.cache_manager.Fn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
-        encoder_hidden_states = kwargs.get(
-            "encoder_hidden_states", None
-        )  # Pattern 3
+        new_encoder_hidden_states = None
         for block in self._Fn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -182,28 +188,27 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
             if not isinstance(hidden_states, torch.Tensor):  # Pattern 4, 5
-                hidden_states, encoder_hidden_states = hidden_states
+                hidden_states, new_encoder_hidden_states = hidden_states
                 if not self.forward_pattern.Return_H_First:
-                    hidden_states, encoder_hidden_states = (
-                        encoder_hidden_states,
+                    hidden_states, new_encoder_hidden_states = (
+                        new_encoder_hidden_states,
                         hidden_states,
                     )
+            kwargs = self.maybe_update_kwargs(
+                new_encoder_hidden_states,
+                kwargs,
+            )
 
-        return hidden_states, encoder_hidden_states
+        return hidden_states, new_encoder_hidden_states
 
     def call_Mn_blocks(
         self,
         hidden_states: torch.Tensor,
-        # # None Pattern 3, else 4, 5
-        # encoder_hidden_states: torch.Tensor | None,
         *args,
         **kwargs,
     ):
         original_hidden_states = hidden_states
-        original_encoder_hidden_states = kwargs.get(
-            "encoder_hidden_states", None
-        )
-        encoder_hidden_states = None
+        new_encoder_hidden_states = None
         for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -211,45 +216,33 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
             if not isinstance(hidden_states, torch.Tensor):  # Pattern 4, 5
-                hidden_states, encoder_hidden_states = hidden_states
+                hidden_states, new_encoder_hidden_states = hidden_states
                 if not self.forward_pattern.Return_H_First:
-                    hidden_states, encoder_hidden_states = (
-                        encoder_hidden_states,
+                    hidden_states, new_encoder_hidden_states = (
+                        new_encoder_hidden_states,
                         hidden_states,
                     )
+            kwargs = self.maybe_update_kwargs(
+                new_encoder_hidden_states,
+                kwargs,
+            )
 
         # compute hidden_states residual
         hidden_states = hidden_states.contiguous()
         hidden_states_residual = hidden_states - original_hidden_states
-        if (
-            original_encoder_hidden_states is not None
-            and encoder_hidden_states is not None
-        ):  # Pattern 4, 5
-            encoder_hidden_states_residual = (
-                encoder_hidden_states - original_encoder_hidden_states
-            )
-        else:
-            encoder_hidden_states_residual = None  # Pattern 3
 
         return (
             hidden_states,
-            encoder_hidden_states,
+            new_encoder_hidden_states,
             hidden_states_residual,
-            encoder_hidden_states_residual,
         )
 
     def call_Bn_blocks(
         self,
         hidden_states: torch.Tensor,
-        # None Pattern 3, else 4, 5
-        # encoder_hidden_states: torch.Tensor | None,
         *args,
         **kwargs,
     ):
-        encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
-        if self.cache_manager.Bn_compute_blocks() == 0:
-            return hidden_states, encoder_hidden_states
-
         assert self.cache_manager.Bn_compute_blocks() <= len(
             self.transformer_blocks
         ), (
@@ -270,11 +263,15 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                     **kwargs,
                 )
                 if not isinstance(hidden_states, torch.Tensor):  # Pattern 4,5
-                    hidden_states, encoder_hidden_states = hidden_states
+                    hidden_states, new_encoder_hidden_states = hidden_states
                     if not self.forward_pattern.Return_H_First:
-                        hidden_states, encoder_hidden_states = (
-                            encoder_hidden_states,
+                        hidden_states, new_encoder_hidden_states = (
+                            new_encoder_hidden_states,
                             hidden_states,
                         )
+                kwargs = self.maybe_update_kwargs(
+                    new_encoder_hidden_states,
+                    kwargs,
+                )
 
-        return hidden_states, encoder_hidden_states
+        return hidden_states, new_encoder_hidden_states

@@ -501,9 +501,13 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HiDream")
+@BlockAdapterRegistry.register("HiDream", supported=True)
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
-    # NOTE: Still have precision error
+    # NOTE: Need to patch Transformer forward to fully support
+    # double_stream_blocks and single_stream_blocks, namely, need
+    # to remove the logics inside the blocks forward loop:
+    # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py#L893
+    # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py#L927
     from diffusers import HiDreamImageTransformer2DModel
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
@@ -511,11 +515,11 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=[
-            pipe.transformer.double_stream_blocks,
+            # pipe.transformer.double_stream_blocks,
             pipe.transformer.single_stream_blocks,
         ],
         forward_pattern=[
-            ForwardPattern.Pattern_4,
+            # ForwardPattern.Pattern_4,
             ForwardPattern.Pattern_3,
         ],
         # The type hint in diffusers is wrong
