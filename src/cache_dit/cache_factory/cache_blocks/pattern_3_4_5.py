@@ -82,7 +82,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             # for higher precision.
             hidden_states, encoder_hidden_states = self.call_Bn_blocks(
                 hidden_states,
-                encoder_hidden_states,
+                # encoder_hidden_states,
                 *args,
                 **kwargs,
             )
@@ -108,7 +108,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             ) = self.call_Mn_blocks(  # middle
                 hidden_states,
                 # None Pattern 3, else 4, 5
-                encoder_hidden_states,
+                # encoder_hidden_states,
                 *args,
                 **kwargs,
             )
@@ -192,13 +192,16 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
     def call_Mn_blocks(
         self,
         hidden_states: torch.Tensor,
-        # None Pattern 3, else 4, 5
-        encoder_hidden_states: torch.Tensor | None,
+        # # None Pattern 3, else 4, 5
+        # encoder_hidden_states: torch.Tensor | None,
         *args,
         **kwargs,
     ):
         original_hidden_states = hidden_states
-        original_encoder_hidden_states = encoder_hidden_states
+        original_encoder_hidden_states = kwargs.get(
+            "encoder_hidden_states", None
+        )
+        encoder_hidden_states = None
         for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -237,10 +240,11 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         self,
         hidden_states: torch.Tensor,
         # None Pattern 3, else 4, 5
-        encoder_hidden_states: torch.Tensor | None,
+        # encoder_hidden_states: torch.Tensor | None,
         *args,
         **kwargs,
     ):
+        encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
         if self.cache_manager.Bn_compute_blocks() == 0:
             return hidden_states, encoder_hidden_states
 

@@ -386,29 +386,17 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Sana")
+@BlockAdapterRegistry.register("Sana", supported=False)
 def sana_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SanaTransformer2DModel
+
+    # TODO: fix -> got multiple values for argument 'encoder_hidden_states'
 
     assert isinstance(pipe.transformer, SanaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
-        forward_pattern=ForwardPattern.Pattern_3,
-        **kwargs,
-    )
-
-
-@BlockAdapterRegistry.register("ShapE")
-def shape_adapter(pipe, **kwargs) -> BlockAdapter:
-    from diffusers import PriorTransformer
-
-    assert isinstance(pipe.prior, PriorTransformer)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.prior,
-        blocks=pipe.prior.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
         **kwargs,
     )
@@ -495,6 +483,20 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_3,
         ],
         has_separate_cfg=True,
+        **kwargs,
+    )
+
+
+@BlockAdapterRegistry.register("ShapE")
+def shape_adapter(pipe, **kwargs) -> BlockAdapter:
+    from diffusers import PriorTransformer
+
+    assert isinstance(pipe.prior, PriorTransformer)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.prior,
+        blocks=pipe.prior.transformer_blocks,
+        forward_pattern=ForwardPattern.Pattern_3,
         **kwargs,
     )
 

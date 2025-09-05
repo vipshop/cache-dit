@@ -245,10 +245,11 @@ class RandTransformer2DModel_Pattern_3_4_5(torch.nn.Module):
         self,
         hidden_states: torch.Tensor,
         *args,
+        encoder_hidden_states: torch.Tensor = None,
         **kwargs,
     ) -> Union[torch.Tensor, RandTransformer2DModelOutput]:
 
-        encoder_hidden_states = None
+        # encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
         for block in self.transformer_blocks:
             hidden_states = block(
                 hidden_states,
@@ -314,6 +315,7 @@ class RandPipeline(DiffusionPipeline):
             if not self.is_pattern_0_1_2:
                 noise_pred = self.transformer(
                     hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
                     return_dict=False,
                 )
             else:

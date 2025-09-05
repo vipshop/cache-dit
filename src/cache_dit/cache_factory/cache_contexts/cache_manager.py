@@ -733,17 +733,15 @@ class CachedContextManager:
                     encoder_prefix
                 )
 
-            assert (
-                encoder_hidden_states_prev is not None
-            ), f"{prefix}_encoder_buffer must be set before"
+            if encoder_hidden_states_prev is not None:
 
-            if self.is_encoder_cache_residual():
-                encoder_hidden_states = (
-                    encoder_hidden_states_prev + encoder_hidden_states
-                )
-            else:
-                # If encoder cache is not residual, we use the encoder hidden states directly
-                encoder_hidden_states = encoder_hidden_states_prev
+                if self.is_encoder_cache_residual():
+                    encoder_hidden_states = (
+                        encoder_hidden_states_prev + encoder_hidden_states
+                    )
+                else:
+                    # If encoder cache is not residual, we use the encoder hidden states directly
+                    encoder_hidden_states = encoder_hidden_states_prev
 
             encoder_hidden_states = encoder_hidden_states.contiguous()
 
