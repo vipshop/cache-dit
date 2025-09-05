@@ -212,7 +212,8 @@ def _summary(
         if logging:
             print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")
     else:
-        logger.warning(f"Can't find Cache Options for: {cls_name}")
+        if logging:
+            logger.warning(f"Can't find Cache Options for: {cls_name}")
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps

@@ -420,45 +420,45 @@ class CachedAdapter:
         ],
     ):
         # release model hooks
-        def _rel_blocks_hooks(blocks):
+        def _release_blocks_hooks(blocks):
             return
 
-        def _rel_transformer_hooks(transformer):
-            if (
-                original_forward := getattr(
-                    transformer, "_original_forward", None
-                )
-            ) is not None:
-                transformer.forward = original_forward.__get__(
-                    transformer,
-                )
+        def _release_transformer_hooks(transformer):
+            if hasattr(transformer, "_original_forward"):
+                original_forward = transformer._original_forward
+                transformer.forward = original_forward.__get__(transformer)
                 del transformer._original_forward
             if hasattr(transformer, "_is_cached"):
                 del transformer._is_cached
 
-        def _rel_pipe_hooks(pipe):
-            if (
-                original_call := getattr(pipe, "_original_call", None)
-            ) is not None:
+        def _release_pipeline_hooks(pipe):
+            if hasattr(pipe, "_original_call"):
+                original_call = pipe.__class__._original_call
                 pipe.__class__.__call__ = original_call
                 del pipe.__class__._original_call
-            if (
-                cache_manager := getattr(pipe, "_cache_manager", None)
-            ) is not None:
+            if hasattr(pipe, "_cache_manager"):
+                cache_manager = pipe._cache_manager
                 if isinstance(cache_manager, CachedContextManager):
                     cache_manager.clear_contexts()
                 del pipe._cache_manager
             if hasattr(pipe, "_is_cached"):
                 del pipe.__class__._is_cached
 
+        cls.release_hooks(
+            pipe_or_adapter,
+            _release_blocks_hooks,
+            _release_transformer_hooks,
+            _release_pipeline_hooks,
+        )
+
         # release params hooks
-        def _rel_blocks_params(blocks):
+        def _release_blocks_params(blocks):
             if hasattr(blocks, "_forward_pattern"):
                 del blocks._forward_pattern
             if hasattr(blocks, "_cache_context_kwargs"):
                 del blocks._cache_context_kwargs
 
-        def _rel_transformer_params(transformer):
+        def _release_transformer_params(transformer):
             if hasattr(transformer, "_forward_pattern"):
                 del transformer._forward_pattern
             if hasattr(transformer, "_has_separate_cfg"):
@@ -466,26 +466,17 @@ class CachedAdapter:
             if hasattr(transformer, "_cache_context_kwargs"):
                 del transformer._cache_context_kwargs
             for blocks in BlockAdapter.find_blocks(transformer):
-                _rel_blocks_params(blocks)
+                _release_blocks_params(blocks)
 
-        def _rel_pipe_params(pipe):
+        def _release_pipeline_params(pipe):
             if hasattr(pipe, "_cache_context_kwargs"):
                 del pipe._cache_context_kwargs
 
-        # release model hooks
         cls.release_hooks(
             pipe_or_adapter,
-            _rel_blocks_hooks,
-            _rel_transformer_hooks,
-            _rel_pipe_hooks,
-        )
-
-        # release params hooks
-        cls.release_hooks(
-            pipe_or_adapter,
-            _rel_blocks_params,
-            _rel_transformer_params,
-            _rel_pipe_params,
+            _release_blocks_params,
+            _release_transformer_params,
+            _release_pipeline_params,
         )
 
         # release stats hooks
@@ -505,11 +496,11 @@ class CachedAdapter:
         ],
         _release_blocks: Callable,
         _release_transformer: Callable,
-        _release_pipe: Callable,
+        _release_pipeline: Callable,
     ):
         if isinstance(pipe_or_adapter, DiffusionPipeline):
             pipe = pipe_or_adapter
-            _release_pipe(pipe)
+            _release_pipeline(pipe)
             if hasattr(pipe, "transformer"):
                 _release_transformer(pipe.transformer)
             if hasattr(pipe, "transformer_2"):  # Wan 2.2
@@ -517,7 +508,7 @@ class CachedAdapter:
         elif isinstance(pipe_or_adapter, BlockAdapter):
             adapter = pipe_or_adapter
             BlockAdapter.assert_normalized(adapter)
-            _release_pipe(adapter.pipe)
+            _release_pipeline(adapter.pipe)
             for transformer in BlockAdapter.flatten(adapter.transformer):
                 _release_transformer(transformer)
             for blocks in BlockAdapter.flatten(adapter.blocks):
