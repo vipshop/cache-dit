@@ -22,11 +22,11 @@ def cache_type(type_hint: "CacheType | str") -> "CacheType":
     if isinstance(type_hint, CacheType):
         return type_hint
 
-    elif type_hint.lower() in (
-        "dual_block_cache",
-        "db_cache",
-        "dbcache",
-        "db",
+    elif type_hint.upper() in (
+        "DUAL_BLOCK_CACHE",
+        "DB_CACHE",
+        "DBCACHE",
+        "DB",
     ):
         return CacheType.DBCache
     return CacheType.NONE

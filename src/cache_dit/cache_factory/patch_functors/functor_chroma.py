@@ -56,7 +56,8 @@ class ChromaPatchFunctor(PatchFunctor):
             transformer.forward = __patch_transformer_forward__.__get__(
                 transformer
             )
-            transformer._is_patched = True
+
+        transformer._is_patched = is_patched  # True or False
 
         cls_name = transformer.__class__.__name__
         logger.info(
