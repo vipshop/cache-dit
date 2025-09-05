@@ -19,7 +19,7 @@ model_id = os.environ.get(
 )
 
 pipe = HunyuanDiTPipeline.from_pretrained(
-    "Tencent-Hunyuan/HunyuanDiT-Diffusers",
+    model_id,
     torch_dtype=torch.float16,
 )
 pipe.to("cuda")
