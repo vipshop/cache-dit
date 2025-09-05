@@ -7,7 +7,7 @@ import time
 import torch
 from transformers import AutoTokenizer, LlamaForCausalLM
 from diffusers import HiDreamImagePipeline
-from utils import GiB, get_args
+from utils import get_args
 import cache_dit
 
 args = get_args()
@@ -38,11 +38,10 @@ pipe = HiDreamImagePipeline.from_pretrained(
     tokenizer_4=tokenizer_4,
     text_encoder_4=text_encoder_4,
     torch_dtype=torch.bfloat16,
-    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
-    ),
 )
+
+pipe.enable_model_cpu_offload()
+
 
 if args.cache:
     cache_dit.enable_cache(pipe)
