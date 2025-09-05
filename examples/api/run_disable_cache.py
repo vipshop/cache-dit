@@ -39,8 +39,7 @@ image = pipe(
 
 end = time.time()
 
-if args.cache:
-    cache_dit.summary(adapter)
+cache_dit.summary(pipe)
 
 time_cost = end - start
 save_path = f"flux.{cache_dit.strify(pipe)}.png"
