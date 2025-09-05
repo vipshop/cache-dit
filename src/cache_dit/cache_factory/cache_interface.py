@@ -108,7 +108,6 @@ def enable_cache(
     >>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
     >>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
     """
-
     # Collect cache context kwargs
     cache_context_kwargs = other_cache_context_kwargs.copy()
     if (cache_type := cache_context_kwargs.get("cache_type", None)) is not None:
