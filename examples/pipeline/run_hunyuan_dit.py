@@ -43,5 +43,5 @@ stats = cache_dit.summary(pipe)
 time_cost = end - start
 save_path = f"hunyuan_dit.{cache_dit.strify(stats)}.png"
 print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving video to {save_path}")
+print(f"Saving to {save_path}")
 image.save(save_path)
