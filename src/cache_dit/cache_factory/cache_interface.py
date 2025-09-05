@@ -106,6 +106,7 @@ def enable_cache(
     >>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
     >>> output = pipe(...) # Just call the pipe as normal.
     >>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+    >>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
     """
 
     # Collect cache context kwargs
