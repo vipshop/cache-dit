@@ -132,7 +132,9 @@ class CachedAdapter:
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
 
-        if cache_type := cache_context_kwargs.pop("cache_type", None):
+        if (
+            cache_type := cache_context_kwargs.pop("cache_type", None)
+        ) is not None:
             assert (
                 cache_type == CacheType.DBCache
             ), "Custom cache setting only support for DBCache now!"

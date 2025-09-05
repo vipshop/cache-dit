@@ -130,7 +130,9 @@ class BlockAdapter:
                 assert isinstance(blocks, torch.nn.ModuleList)
                 blocks_name = None
                 for attr_name in attr_names:
-                    if attr := getattr(transformer, attr_name, None):
+                    if (
+                        attr := getattr(transformer, attr_name, None)
+                    ) is not None:
                         if isinstance(attr, torch.nn.ModuleList) and id(
                             attr
                         ) == id(blocks):
