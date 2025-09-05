@@ -332,6 +332,7 @@ def bria_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegistry.register("HunyuanDiT")
 def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: Patch Transformer forward
     from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
 
     assert isinstance(
@@ -342,13 +343,14 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
-        forward_pattern=ForwardPattern.Pattern_3,
+        forward_pattern=ForwardPattern.Pattern_2,
         **kwargs,
     )
 
 
 @BlockAdapterRegistry.register("HunyuanDiTPAG")
 def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: Patch Transformer forward
     from diffusers import HunyuanDiT2DModel
 
     assert isinstance(pipe.transformer, HunyuanDiT2DModel)

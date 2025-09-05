@@ -17,7 +17,7 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>cache-dit</b> covers <b>most</b> Diffusers' <b>DiT-based</b> Pipelines🎉<br>
+  🎉Now, <b>cache-dit</b> covers <b>mainstream</b> Diffusers' <b>DiT-based</b> Pipelines🎉<br>
   🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1/2.2</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
   </p>
 </div>
@@ -45,7 +45,6 @@
 <summary> Previous News </summary>  
 
 - [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](./examples/run_flux_adapter.py) as an example.
-- [2025-08-29] 🔥</b>Covers <b>100%</b> Diffusers' <b>DiT-based</b> Pipelines: **[BlockAdapter](#unified) + [Pattern Matching](#unified).**  
 - [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/pipeline/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 
@@ -88,18 +87,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
-```python
->>> import cache_dit
->>> cache_dit.supported_pipelines()
-(31, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTXVideo*', 
-'Allegro*', 'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'SD3*', 
-'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'HunyuanDiT*', 'HunyuanDiTPAG*', 'Lumina*', 'Lumina2*',
-'OmniGen*', 'PixArt*', 'Sana*', 'ShapE*', 'StableAudio*', 'VisualCloze*', 'AuraFlow*', 
-'Chroma*', 'HiDream*'])
-```
-
 Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
-
 
 - [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
@@ -112,35 +100,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
 
-<details>
-<summary> More Pipelines </summary>  
-
-- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Allegro](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogView3Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogView4](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Cosmos](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀EasyAnimate](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀SD3](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀ConsisID](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀DiT](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Amused](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanDiTPAG](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Lumina](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Lumina2](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀OmniGen](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀PixArt](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Sana](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀StableAudio](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀AuraFlow](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Chroma](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HiDream](https://github.com/vipshop/cache-dit/raw/main/examples)
-  
 </details>
 
 ## 🎉Unified Cache APIs
