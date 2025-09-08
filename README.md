@@ -17,8 +17,9 @@
   🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
   </p>
   <p align="center">
-  🎉Now, <b>cache-dit</b> covers <b>mainstream</b> Diffusers' <b>DiT-based</b> Pipelines🎉<br>
-  🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1/2.2</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX</a></b>🔥
+  🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
+  🔥<b><a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1</a> | <a href="#supported"> Wan 2.2 </a> | <a href="#supported">HunyuanVideo</a></b>🔥<br>
+  🔥<b><a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">CogVideoX</a> | <a href="#supported"> ... </a> | <a href="#supported">CogVideoX1.5</a></b>🔥
   </p>
 </div>
 <div align='center'>
@@ -101,6 +102,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HiDream](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 </details>
