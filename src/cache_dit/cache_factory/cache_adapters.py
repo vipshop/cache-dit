@@ -114,7 +114,7 @@ class CachedAdapter:
         **cache_context_kwargs,
     ):
         # Check cache_context_kwargs
-        if not cache_context_kwargs["enable_spearate_cfg"]:
+        if cache_context_kwargs["enable_spearate_cfg"] is None:
             # Check cfg for some specific case if users don't set it as True
             if BlockAdapterRegistry.has_separate_cfg(block_adapter):
                 cache_context_kwargs["enable_spearate_cfg"] = True
@@ -131,6 +131,12 @@ class CachedAdapter:
                     f"register: {cache_context_kwargs['enable_spearate_cfg']}, "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
+        else:
+            logger.info(
+                f"Use custom 'enable_spearate_cfg' from cache context "
+                f"kwargs: {cache_context_kwargs['enable_spearate_cfg']}. "
+                f"Pipeline: {block_adapter.pipe.__class__.__name__}."
+            )
 
         if (
             cache_type := cache_context_kwargs.pop("cache_type", None)

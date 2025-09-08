@@ -345,12 +345,19 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
 
         # compute hidden_states residual
         hidden_states = hidden_states.contiguous()
-        encoder_hidden_states = encoder_hidden_states.contiguous()
 
         hidden_states_residual = hidden_states - original_hidden_states
-        encoder_hidden_states_residual = (
-            encoder_hidden_states - original_encoder_hidden_states
-        )
+
+        if (
+            encoder_hidden_states is not None
+            and original_encoder_hidden_states is not None
+        ):
+            encoder_hidden_states = encoder_hidden_states.contiguous()
+            encoder_hidden_states_residual = (
+                encoder_hidden_states - original_encoder_hidden_states
+            )
+        else:
+            encoder_hidden_states_residual = None
 
         return (
             hidden_states,
@@ -400,9 +407,16 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 Bn_i_hidden_states_residual = (
                     hidden_states - Bn_i_original_hidden_states
                 )
-                Bn_i_encoder_hidden_states_residual = (
-                    encoder_hidden_states - Bn_i_original_encoder_hidden_states
-                )
+                if (
+                    encoder_hidden_states is not None
+                    and Bn_i_original_encoder_hidden_states is not None
+                ):
+                    Bn_i_encoder_hidden_states_residual = (
+                        encoder_hidden_states
+                        - Bn_i_original_encoder_hidden_states
+                    )
+                else:
+                    Bn_i_encoder_hidden_states_residual = None
 
                 # Save original_hidden_states for diff calculation.
                 self.cache_manager.set_Bn_buffer(

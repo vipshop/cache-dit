@@ -254,7 +254,7 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("SD3")
+@BlockAdapterRegistry.register("StableDiffusion3")
 def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SD3Transformer2DModel
 
