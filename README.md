@@ -105,8 +105,9 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HiDream](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀PixArt](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 </details>
 
