@@ -509,19 +509,21 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py#L893
     # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py#L927
     from diffusers import HiDreamImageTransformer2DModel
+    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=[
-            # pipe.transformer.double_stream_blocks,
+            pipe.transformer.double_stream_blocks,
             pipe.transformer.single_stream_blocks,
         ],
         forward_pattern=[
-            # ForwardPattern.Pattern_4,
+            ForwardPattern.Pattern_4,
             ForwardPattern.Pattern_3,
         ],
+        patch_functor=HiDreamPatchFunctor(),
         # The type hint in diffusers is wrong
         check_num_outputs=False,
         **kwargs,

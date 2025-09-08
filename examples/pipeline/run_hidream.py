@@ -60,7 +60,6 @@ pipe.to("cuda")
 if args.cache:
     cache_dit.enable_cache(
         pipe,
-        Fn_compute_blocks=1,
         residual_diff_threshold=0.15,
     )
 
