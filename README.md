@@ -42,12 +42,12 @@
 
 ## 🔥News  
 
-- [2025-09-08] 🎉[**Qwen-Image-Lightning**](https://github.com/ModelTC/Qwen-Image-Lightning) **1.7x↑🎉** speedup!: **[cache-dit](https://github.com/vipshop/cache-dit)** + **fuse-lora + compile**
+- [2025-09-08] 🎉[**Qwen-Image-Lightning**](https://github.com/ModelTC/Qwen-Image-Lightning) **1.7x↑🎉** speedup! w/ **[cache-dit](https://github.com/vipshop/cache-dit)** + **fuse-lora + compile**
 - [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.
 - [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](./examples/pipeline/run_qwen_image_edit.py).
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
 - [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x↑🎉** speedup! Please refer to [run_qwen_image.py](./examples/pipeline/run_qwen_image.py) as an example.
-- [2025-07-13] 🎉[**FLUX.1-Dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + `compile + FP8 DQ`.
+- [2025-07-13] 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
 
 <details>
 <summary> Previous News </summary>  
