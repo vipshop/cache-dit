@@ -13,7 +13,7 @@ from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
-from utils import get_args
+from utils import get_args, strify
 import cache_dit
 
 
@@ -128,7 +128,7 @@ def main():
     stats = cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"wan.flf2v.{cache_dit.strify(stats)}.mp4"
+    save_path = f"wan.flf2v.{strify(args, stats)}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving video to {save_path}")
     export_to_video(output, save_path, fps=16)

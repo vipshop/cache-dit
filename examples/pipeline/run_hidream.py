@@ -10,7 +10,7 @@ from transformers import AutoTokenizer, LlamaForCausalLM
 from diffusers.quantizers import PipelineQuantizationConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from utils import get_args
+from utils import get_args, strify
 import cache_dit
 
 args = get_args()
@@ -80,7 +80,7 @@ end = time.time()
 stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"hidream.{cache_dit.strify(stats)}.png"
+save_path = f"hidream.{strify(args, stats)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving to {save_path}")
 image.save(save_path)

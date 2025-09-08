@@ -8,7 +8,7 @@ import torch
 
 from PIL import Image
 from diffusers import QwenImageEditPipeline, QwenImageTransformer2DModel
-from utils import GiB, get_args
+from utils import GiB, get_args, strify
 import cache_dit
 
 
@@ -78,9 +78,7 @@ end = time.time()
 stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = (
-    f"qwen-image-edit.C{int(args.compile)}_{cache_dit.strify(stats)}.png"
-)
+save_path = f"qwen-image-edit.{strify(args, stats)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

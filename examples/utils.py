@@ -1,5 +1,6 @@
 import torch
 import argparse
+import cache_dit
 from cache_dit import init_logger
 
 logger = init_logger(__name__)
@@ -40,3 +41,11 @@ def get_args() -> argparse.ArgumentParser:
         ],
     )
     return parser.parse_args()
+
+
+def strify(args, pipe_or_stats):
+    return (
+        f"C{int(args.compile)}_Q{int(args.quantize)}"
+        f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
+        f"{cache_dit.strify(pipe_or_stats)}"
+    )

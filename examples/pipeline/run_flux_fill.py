@@ -7,7 +7,7 @@ import time
 import torch
 from diffusers import FluxFillPipeline
 from diffusers.utils import load_image
-from utils import get_args
+from utils import get_args, strify
 import cache_dit
 
 
@@ -43,7 +43,7 @@ end = time.time()
 cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"flux-fill.{cache_dit.strify(pipe)}.png"
+save_path = f"flux-fill.{strify(args, pipe)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
