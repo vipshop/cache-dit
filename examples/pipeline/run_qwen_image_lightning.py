@@ -66,11 +66,12 @@ pipe.load_lora_weights(
     ),
 )
 
-
-if args.cache:
+if args.fuse_lora:
     pipe.fuse_lora()
     pipe.unload_lora_weights()
 
+
+if args.cache:
     cache_dit.enable_cache(
         pipe,
         # Cache context kwargs

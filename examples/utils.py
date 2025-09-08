@@ -24,6 +24,7 @@ def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--fuse-lora", action="store_true", default=False)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
     parser.add_argument(
         "--quantize-type",
@@ -46,7 +47,7 @@ def get_args() -> argparse.ArgumentParser:
 
 def strify(args, pipe_or_stats):
     return (
-        f"C{int(args.compile)}_Q{int(args.quantize)}"
+        f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}"
         f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
