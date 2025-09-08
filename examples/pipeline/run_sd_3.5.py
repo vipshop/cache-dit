@@ -39,7 +39,7 @@ end = time.time()
 
 stats = cache_dit.summary(pipe)
 time_cost = end - start
-save_path = f"sd3.{strify(args, stats)}.png"
+save_path = f"sd_3_5.{strify(args, stats)}.png"
 
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
