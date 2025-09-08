@@ -531,10 +531,10 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HunyuanDiT", supported=False)
+@BlockAdapterRegistry.register("HunyuanDiT")
 def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: Patch Transformer forward
     from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
+    from cache_dit.cache_factory.patch_functors import HunyuanDiTPatchFunctor
 
     assert isinstance(
         pipe.transformer,
@@ -545,14 +545,16 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        patch_functor=HunyuanDiTPatchFunctor(),
         **kwargs,
     )
 
 
-@BlockAdapterRegistry.register("HunyuanDiTPAG", supported=False)
+@BlockAdapterRegistry.register("HunyuanDiTPAG")
 def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
     # TODO: Patch Transformer forward
     from diffusers import HunyuanDiT2DModel
+    from cache_dit.cache_factory.patch_functors import HunyuanDiTPatchFunctor
 
     assert isinstance(pipe.transformer, HunyuanDiT2DModel)
     return BlockAdapter(
@@ -560,5 +562,6 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        patch_functor=HunyuanDiTPatchFunctor(),
         **kwargs,
     )
