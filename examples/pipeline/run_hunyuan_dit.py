@@ -1,0 +1,56 @@
+import os
+import sys
+
+sys.path.append("..")
+
+import time
+import torch
+from diffusers import HunyuanDiTPipeline
+from utils import get_args
+import cache_dit
+
+
+args = get_args()
+print(args)
+
+
+model_id = os.environ.get(
+    "HUNYUAN_DIT_DIR", "Tencent-Hunyuan/HunyuanDiT-Diffusers"
+)
+
+pipe = HunyuanDiTPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,
+)
+pipe.to("cuda")
+
+if args.cache:
+    cache_dit.enable_cache(
+        pipe,
+        Fn_compute_blocks=1,
+        Bn_compute_blocks=0,
+        max_warmup_steps=8,
+        max_continuous_cached_steps=2,
+        residual_diff_threshold=0.2,
+        enable_taylorseer=True,
+        enable_encoder_taylorseer=True,
+    )
+
+# You may also use English prompt as HunyuanDiT supports both English and Chinese
+# prompt = "An astronaut riding a horse"
+
+start = time.time()
+image = pipe(
+    "一个宇航员在骑马",
+    num_inference_steps=50,
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0]
+end = time.time()
+
+stats = cache_dit.summary(pipe)
+
+time_cost = end - start
+save_path = f"hunyuan_dit.{cache_dit.strify(stats)}.png"
+print(f"Time cost: {time_cost:.2f}s")
+print(f"Saving to {save_path}")
+image.save(save_path)

@@ -75,6 +75,7 @@ class BlockAdapter:
         List[List[ParamsModifier]],
     ] = None
 
+    check_forward_pattern: bool = True
     check_num_outputs: bool = False
 
     # Pipeline Level Flags
@@ -391,10 +392,19 @@ class BlockAdapter:
         forward_pattern: ForwardPattern,
         **kwargs,
     ) -> bool:
+
+        if not kwargs.get("check_forward_pattern", True):
+            return True
+
         assert (
             forward_pattern.Supported
             and forward_pattern in ForwardPattern.supported_patterns()
         ), f"Pattern {forward_pattern} is not support now!"
+
+        # NOTE: Special case for HiDreamBlock
+        if hasattr(block, "block"):
+            if isinstance(block.block, torch.nn.Module):
+                block = block.block
 
         forward_parameters = set(
             inspect.signature(block.forward).parameters.keys()
@@ -425,6 +435,14 @@ class BlockAdapter:
         logging: bool = True,
         **kwargs,
     ) -> bool:
+
+        if not kwargs.get("check_forward_pattern", True):
+            if logging:
+                logger.warning(
+                    f"Skipped Forward Pattern Check: {forward_pattern}"
+                )
+            return True
+
         assert (
             forward_pattern.Supported
             and forward_pattern in ForwardPattern.supported_patterns()
@@ -531,6 +549,7 @@ class BlockAdapter:
                     blocks,
                     forward_pattern=forward_pattern,
                     check_num_outputs=adapter.check_num_outputs,
+                    check_forward_pattern=adapter.check_forward_pattern,
                 ), (
                     "No block forward pattern matched, "
                     f"supported lists: {ForwardPattern.supported_patterns()}"

@@ -61,7 +61,9 @@ if args.cache:
     cache_dit.enable_cache(
         pipe,
         Fn_compute_blocks=1,
-        residual_diff_threshold=0.15,
+        Bn_compute_blocks=0,
+        max_warmup_steps=8,
+        residual_diff_threshold=0.06,
     )
 
 start = time.time()
