@@ -74,8 +74,8 @@ if args.cache:
     cache_dit.enable_cache(
         pipe,
         # Cache context kwargs
-        Fn_compute_blocks=1,
-        Bn_compute_blocks=0,
+        Fn_compute_blocks=16,
+        Bn_compute_blocks=16,
         max_warmup_steps=4 if steps > 4 else 2,
         max_cached_steps=2 if steps > 4 else 1,
         max_continuous_cached_steps=1,
