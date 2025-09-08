@@ -6,14 +6,12 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import Transformer2DModel, PixArtSigmaPipeline
-from utils import get_args
+from utils import get_args, strify
 import cache_dit
 
 
 args = get_args()
 print(args)
-
-weight_dtype = torch.float16
 
 model_id = os.environ.get(
     "PIXART_SIGMA_DIR",
@@ -22,13 +20,13 @@ model_id = os.environ.get(
 transformer = Transformer2DModel.from_pretrained(
     model_id,
     subfolder="transformer",
-    torch_dtype=weight_dtype,
+    torch_dtype=torch.bfloat16,
     use_safetensors=True,
 )
 pipe = PixArtSigmaPipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=weight_dtype,
+    torch_dtype=torch.bfloat16,
     use_safetensors=True,
 )
 pipe.to("cuda")
@@ -47,11 +45,8 @@ end = time.time()
 
 stats = cache_dit.summary(pipe)
 time_cost = end - start
-save_path = (
-    f"pixart-sigma.C{int(args.compile)}_Q{int(args.quantize)}"
-    f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
-    f"{cache_dit.strify(stats)}.png"
-)
+save_path = f"pixart-sigma.{strify(args, stats)}.png"
+
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

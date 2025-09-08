@@ -11,7 +11,7 @@ from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
 )
-from utils import get_args
+from utils import get_args, strify
 import cache_dit
 
 
@@ -81,7 +81,7 @@ end = time.time()
 stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"wan.{cache_dit.strify(stats)}.mp4"
+save_path = f"wan.{strify(args, stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)

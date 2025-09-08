@@ -7,7 +7,7 @@ import time
 import torch
 from diffusers.utils import export_to_video
 from diffusers import CogVideoXPipeline, AutoencoderKLCogVideoX
-from utils import GiB, get_args
+from utils import GiB, get_args, strify
 import cache_dit
 
 
@@ -69,7 +69,7 @@ end = time.time()
 stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"cogvideox.{cache_dit.strify(stats)}.mp4"
+save_path = f"cogvideox.{strify(args, stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=8)
