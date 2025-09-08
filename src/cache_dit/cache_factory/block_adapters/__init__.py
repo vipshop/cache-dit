@@ -501,7 +501,7 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HiDream", supported=True)
+@BlockAdapterRegistry.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     # NOTE: Need to patch Transformer forward to fully support
     # double_stream_blocks and single_stream_blocks, namely, need

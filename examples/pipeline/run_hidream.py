@@ -58,10 +58,7 @@ pipe = HiDreamImagePipeline.from_pretrained(
 pipe.to("cuda")
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        residual_diff_threshold=0.15,
-    )
+    cache_dit.enable_cache(pipe)
 
 start = time.time()
 image = pipe(

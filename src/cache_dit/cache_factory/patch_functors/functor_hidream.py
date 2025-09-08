@@ -78,6 +78,7 @@ class HiDreamPatchFunctor(PatchFunctor):
         return transformer
 
 
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_double_forward__(
     self: HiDreamImageTransformerBlock,
     hidden_states: torch.Tensor,
@@ -158,6 +159,7 @@ def __patch_double_forward__(
     return hidden_states, initial_encoder_hidden_states
 
 
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_single_forward__(
     self: HiDreamImageSingleTransformerBlock,
     hidden_states: torch.Tensor,
@@ -206,6 +208,7 @@ def __patch_single_forward__(
     return hidden_states
 
 
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_block_forward__(
     self: HiDreamBlock,
     hidden_states: torch.Tensor,
@@ -215,6 +218,7 @@ def __patch_block_forward__(
     return self.block(hidden_states, *args, **kwargs)
 
 
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_transformer_forward__(
     self: HiDreamImageTransformer2DModel,
     hidden_states: torch.Tensor,
