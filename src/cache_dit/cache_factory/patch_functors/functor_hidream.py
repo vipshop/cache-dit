@@ -82,21 +82,19 @@ class HiDreamPatchFunctor(PatchFunctor):
 def __patch_double_forward__(
     self: HiDreamImageTransformerBlock,
     hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,  # initial_encoder_hidden_states
     hidden_states_masks: Optional[torch.Tensor] = None,
     temb: Optional[torch.Tensor] = None,
     image_rotary_emb: torch.Tensor = None,
-    initial_encoder_hidden_states: torch.Tensor = None,
     llama31_encoder_hidden_states: List[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # Assume block_id was patched in transformer forward:
     # for i, block in enumerate(blocks): block._block_id = i;
     block_id = self._block_id
-    initial_encoder_hidden_states_seq_len = initial_encoder_hidden_states.shape[
-        1
-    ]
+    initial_encoder_hidden_states_seq_len = encoder_hidden_states.shape[1]
     cur_llama31_encoder_hidden_states = llama31_encoder_hidden_states[block_id]
     cur_encoder_hidden_states = torch.cat(
-        [initial_encoder_hidden_states, cur_llama31_encoder_hidden_states],
+        [encoder_hidden_states, cur_llama31_encoder_hidden_states],
         dim=1,
     )
     encoder_hidden_states = cur_encoder_hidden_states
@@ -341,20 +339,20 @@ def __patch_transformer_forward__(
                 self._gradient_checkpointing_func(
                     block,
                     hidden_states,
+                    initial_encoder_hidden_states,
                     hidden_states_masks,
                     temb,
                     image_rotary_emb,
-                    initial_encoder_hidden_states,
                     llama31_encoder_hidden_states,
                 )
             )
         else:
             hidden_states, initial_encoder_hidden_states = block(
                 hidden_states,
+                initial_encoder_hidden_states,  # encoder_hidden_states
                 hidden_states_masks=hidden_states_masks,
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
-                initial_encoder_hidden_states=initial_encoder_hidden_states,
                 llama31_encoder_hidden_states=llama31_encoder_hidden_states,
             )
 

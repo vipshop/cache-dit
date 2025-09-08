@@ -520,12 +520,13 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
             pipe.transformer.single_stream_blocks,
         ],
         forward_pattern=[
-            ForwardPattern.Pattern_4,
+            ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_3,
         ],
         patch_functor=HiDreamPatchFunctor(),
-        # The type hint in diffusers is wrong
-        check_num_outputs=False,
+        # NOTE: The type hint in diffusers is wrong
+        check_forward_pattern=True,
+        check_num_outputs=True,
         **kwargs,
     )
 

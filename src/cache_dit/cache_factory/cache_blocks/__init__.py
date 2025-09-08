@@ -25,6 +25,7 @@ class CachedBlocks:
         transformer_blocks: torch.nn.ModuleList,
         transformer: torch.nn.Module = None,
         forward_pattern: ForwardPattern = None,
+        check_forward_pattern: bool = True,
         check_num_outputs: bool = True,
         # 1. Cache context configuration
         # 'transformer_blocks', 'blocks', 'single_transformer_blocks',
@@ -45,6 +46,7 @@ class CachedBlocks:
                 transformer_blocks,
                 transformer=transformer,
                 forward_pattern=forward_pattern,
+                check_forward_pattern=check_forward_pattern,
                 check_num_outputs=check_num_outputs,
                 # 1. Cache context configuration
                 cache_prefix=cache_prefix,
@@ -58,6 +60,7 @@ class CachedBlocks:
                 transformer_blocks,
                 transformer=transformer,
                 forward_pattern=forward_pattern,
+                check_forward_pattern=check_forward_pattern,
                 check_num_outputs=check_num_outputs,
                 # 1. Cache context configuration
                 cache_prefix=cache_prefix,

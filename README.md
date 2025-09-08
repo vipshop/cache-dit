@@ -99,7 +99,9 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HiDream](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 </details>
 

@@ -25,6 +25,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         transformer_blocks: torch.nn.ModuleList,
         transformer: torch.nn.Module = None,
         forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
+        check_forward_pattern: bool = True,
         check_num_outputs: bool = True,
         # 1. Cache context configuration
         cache_prefix: str = None,  # maybe un-need.
@@ -38,6 +39,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         self.transformer = transformer
         self.transformer_blocks = transformer_blocks
         self.forward_pattern = forward_pattern
+        self.check_forward_pattern = check_forward_pattern
         self.check_num_outputs = check_num_outputs
         # 1. Cache context configuration
         self.cache_prefix = cache_prefix
@@ -52,6 +54,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         )
 
     def _check_forward_pattern(self):
+        if not self.check_forward_pattern:
+            logger.warning(
+                f"Skipped Forward Pattern Check: {self.forward_pattern}"
+            )
+            return
+
         assert (
             self.forward_pattern.Supported
             and self.forward_pattern in self._supported_patterns
@@ -59,6 +67,11 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
 
         if self.transformer_blocks is not None:
             for block in self.transformer_blocks:
+                # Special case for HiDreamBlock
+                if hasattr(block, "block"):
+                    if isinstance(block.block, torch.nn.Module):
+                        block = block.block
+
                 forward_parameters = set(
                     inspect.signature(block.forward).parameters.keys()
                 )
