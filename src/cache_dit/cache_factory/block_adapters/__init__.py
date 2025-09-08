@@ -552,7 +552,6 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegistry.register("HunyuanDiTPAG")
 def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: Patch Transformer forward
     from diffusers import HunyuanDiT2DModel
     from cache_dit.cache_factory.patch_functors import HunyuanDiTPatchFunctor
 

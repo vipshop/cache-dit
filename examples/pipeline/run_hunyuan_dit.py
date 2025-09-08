@@ -30,7 +30,10 @@ if args.cache:
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
         max_warmup_steps=8,
-        residual_diff_threshold=0.20,
+        max_continuous_cached_steps=2,
+        residual_diff_threshold=0.25,
+        enable_taylorseer=True,
+        enable_encoder_taylorseer=True,
     )
 
 # You may also use English prompt as HunyuanDiT supports both English and Chinese
