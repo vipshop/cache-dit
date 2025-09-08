@@ -31,7 +31,7 @@ if args.cache:
         Bn_compute_blocks=0,
         max_warmup_steps=8,
         max_continuous_cached_steps=2,
-        residual_diff_threshold=0.25,
+        residual_diff_threshold=0.2,
         enable_taylorseer=True,
         enable_encoder_taylorseer=True,
     )
