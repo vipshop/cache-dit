@@ -21,7 +21,8 @@
   🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Wan 2.1</a> | <a href="#supported"> Wan 2.2 </a> | <a href="#supported">HunyuanVideo</a>🔥<br>
   🔥<a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">Mochi</a> | <a href="#supported"> CogVideoX </a> | <a href="#supported">CogVideoX1.5</a>🔥<br>
   🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">Chroma</a> | <a href="#supported"> LTXVideo </a> | <a href="#supported">PixArt</a>🔥<br>
-  🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported"> ... </a> | <a href="#supported">Lumina2</a>🔥
+  🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported"> OmniGen </a> | <a href="#supported">Lumina 1/2</a>🔥<br>
+  🔥<a href="#supported">Allegro</a> | <a href="#supported">EasyAnimate</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported"> ... </a> | <a href="#supported">DiT-XL</a>🔥
   </p>
 </div>
 <div align='center'>
@@ -108,6 +109,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀SD-3/3.5](https://github.com/vipshop/cache-dit/raw/main/examples)
 
 </details>
 
