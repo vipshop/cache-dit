@@ -36,7 +36,7 @@
   <p><b>🔥Qwen-Image</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:~1.8x↑🎉</b> | +FP8 DQ:<b>~2.2x↑🎉</b></p>
   <img src=./assets/qwen-image-lightning.4steps.C0_Q0_NONE.png width=200px>
   <img src=./assets/qwen-image-lightning.4steps.C1_Q0_DBCACHE_F16B16_W2M1MC1_T0O2_R0.8_S1.png width=200px>
-  <p><b>🔥Qwen-Image-Lightning 4 steps</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit 3.5 steps</a></b>+...:<b>~1.7x↑🎉</b>
+  <p><b>🔥Qwen-Image-Lightning</b> 4 steps | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit 3.5 steps</a></b>+...:<b>~1.7x↑🎉</b>
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
 
