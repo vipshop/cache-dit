@@ -51,12 +51,18 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
 )
 
+steps = 4
+
 pipe.load_lora_weights(
     os.environ.get(
         "QWEN_IMAGE_LIGHT_DIR",
         "lightx2v/Qwen-Image-Lightning",
     ),
-    weight_name="Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors",
+    weight_name=(
+        "Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+        if steps > 4
+        else "Qwen-Image-Lightning-4steps-V1.0.safetensors"
+    ),
 )
 
 
@@ -69,13 +75,10 @@ if args.cache:
         # Cache context kwargs
         Fn_compute_blocks=16,
         Bn_compute_blocks=16,
-        max_warmup_steps=4,
-        max_cached_steps=2,
+        max_warmup_steps=4 if steps > 4 else 2,
+        max_cached_steps=2 if steps > 4 else 1,
         max_continuous_cached_steps=1,
         enable_spearate_cfg=False,  # true_cfg_scale=1.0
-        enable_taylorseer=False,
-        enable_encoder_taylorseer=False,
-        taylorseer_order=1,
         residual_diff_threshold=0.50,
     )
 
@@ -138,7 +141,7 @@ if args.compile:
         negative_prompt=negative_prompt,
         width=width,
         height=height,
-        num_inference_steps=8,
+        num_inference_steps=steps,
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
@@ -151,7 +154,7 @@ image = pipe(
     negative_prompt=negative_prompt,
     width=width,
     height=height,
-    num_inference_steps=8,
+    num_inference_steps=steps,
     true_cfg_scale=1.0,  # means no separate cfg
     generator=torch.Generator(device="cpu").manual_seed(42),
 ).images[0]
@@ -160,7 +163,7 @@ end = time.time()
 stats = cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = f"qwen-image-lightning.{strify(args, stats)}.png"
+save_path = f"qwen-image-lightning.{steps}steps.{strify(args, stats)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
