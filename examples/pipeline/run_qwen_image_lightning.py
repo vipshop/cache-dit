@@ -73,6 +73,9 @@ if args.cache:
         max_cached_steps=2,
         max_continuous_cached_steps=1,
         enable_spearate_cfg=False,  # true_cfg_scale=1.0
+        enable_taylorseer=False,
+        enable_encoder_taylorseer=False,
+        taylorseer_order=1,
         residual_diff_threshold=0.50,
     )
 
