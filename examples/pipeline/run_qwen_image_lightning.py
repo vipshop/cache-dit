@@ -51,7 +51,8 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
 )
 
-steps = 4
+steps = 8 if args.steps is None else args.steps
+assert steps in [8, 4]
 
 pipe.load_lora_weights(
     os.environ.get(
@@ -61,7 +62,7 @@ pipe.load_lora_weights(
     weight_name=(
         "Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
         if steps > 4
-        else "Qwen-Image-Lightning-4steps-V1.0.safetensors"
+        else "Qwen-Image-Lightning-4steps-V1.0-bf16.safetensors"
     ),
 )
 

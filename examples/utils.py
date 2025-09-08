@@ -40,6 +40,7 @@ def get_args() -> argparse.ArgumentParser:
             "int4_w4a16_wo",
         ],
     )
+    parser.add_argument("--steps", type=int, default=None)
     return parser.parse_args()
 
 
