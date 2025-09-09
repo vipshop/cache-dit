@@ -44,7 +44,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
-    parser.add_argument("--rdt", type=float, default=0.12)
+    parser.add_argument("--rdt", type=float, default=0.08)
     parser.add_argument("--max-warmup-steps", "-w", type=int, default=8)
     parser.add_argument("--max-cached-steps", "-mc", type=int, default=-1)
     parser.add_argument(
