@@ -28,7 +28,18 @@ pipe = HunyuanVideoPipeline.from_pretrained(
 
 
 if args.cache:
-    cache_dit.enable_cache(pipe)
+    cache_dit.enable_cache(
+        pipe,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
+    )
 
 assert isinstance(pipe.vae, AutoencoderKLHunyuanVideo)
 
@@ -51,7 +62,7 @@ prompt = "A fluffy teddy bear sits on a bed of soft pillows surrounded by childr
 start = time.time()
 output = pipe(
     prompt=prompt,
-    num_frames=10,
+    num_frames=18,
     num_inference_steps=50,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
@@ -63,4 +74,4 @@ time_cost = end - start
 save_path = f"hunyuan_video.{strify(args, stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
-export_to_video(output, save_path, fps=10)
+export_to_video(output, save_path, fps=9)
