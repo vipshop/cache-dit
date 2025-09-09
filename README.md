@@ -117,6 +117,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogView4](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
