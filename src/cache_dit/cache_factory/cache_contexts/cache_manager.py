@@ -348,20 +348,6 @@ class CachedContextManager:
         return cached_context.Fn_compute_blocks
 
     @torch.compiler.disable
-    def Fn_compute_blocks_ids(self) -> List[int]:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        assert (
-            len(cached_context.Fn_compute_blocks_ids)
-            <= cached_context.Fn_compute_blocks
-        ), (
-            "The num of Fn_compute_blocks_ids must be <= Fn_compute_blocks "
-            f"{cached_context.Fn_compute_blocks}, but got "
-            f"{len(cached_context.Fn_compute_blocks_ids)}"
-        )
-        return cached_context.Fn_compute_blocks_ids
-
-    @torch.compiler.disable
     def Bn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
@@ -379,20 +365,6 @@ class CachedContextManager:
                 f"but got {cached_context.Bn_compute_blocks}"
             )
         return cached_context.Bn_compute_blocks
-
-    @torch.compiler.disable
-    def Bn_compute_blocks_ids(self) -> List[int]:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        assert (
-            len(cached_context.Bn_compute_blocks_ids)
-            <= cached_context.Bn_compute_blocks
-        ), (
-            "The num of Bn_compute_blocks_ids must be <= Bn_compute_blocks "
-            f"{cached_context.Bn_compute_blocks}, but got "
-            f"{len(cached_context.Bn_compute_blocks_ids)}"
-        )
-        return cached_context.Bn_compute_blocks_ids
 
     @torch.compiler.disable
     def enable_spearate_cfg(self) -> bool:

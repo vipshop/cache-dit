@@ -17,9 +17,6 @@ class CachedContext:  # Internal CachedContext Impl class
     # Dual Block Cache with flexible FnBn configuration.
     Fn_compute_blocks: int = 1
     Bn_compute_blocks: int = 0
-    # DEPRECATED: We have added residual cache pattern for selected compute blocks
-    Fn_compute_blocks_ids: List[int] = dataclasses.field(default_factory=list)
-    Bn_compute_blocks_ids: List[int] = dataclasses.field(default_factory=list)
     # non compute blocks diff threshold, we don't skip the non
     # compute blocks if the diff >= threshold
     non_compute_blocks_diff_threshold: float = 0.08

@@ -252,23 +252,7 @@ cache_dit.enable_cache(
     Bn_compute_blocks=8, # Bn, B8, etc.
     residual_diff_threshold=0.12,
 )
-```
-Moreover, users configuring higher **Bn** values (e.g., **F8B16**) while aiming to maintain good performance can specify **Bn_compute_blocks_ids** to work with Bn. DBCache will only compute the specified blocks, with the remaining estimated using the previous step's residual cache.
-
-```python
-# Custom options, F8B16, higher precision with good performance.
-cache_dit.enable_cache(
-    pipe,
-    Fn_compute_blocks=8,  # Fn, F8, etc.
-    Bn_compute_blocks=16, # Bn, B16, etc.
-    # 0, 2, 4, ..., 14, 15, etc. [0,16)
-    Bn_compute_blocks_ids=cache_dit.block_range(0, 16, 2),
-    # If the L1 difference is below this threshold, skip Bn blocks 
-    # not in `Bn_compute_blocks_ids`(1, 3,..., etc), Otherwise, 
-    # compute these blocks.
-    non_compute_blocks_diff_threshold=0.08,
-)
-```
+```  
 
 <div align="center">
   <p align="center">
