@@ -60,15 +60,20 @@ pipe.to("cuda")
 if args.cache:
     cache_dit.enable_cache(
         pipe,
-        Fn_compute_blocks=1,
-        Bn_compute_blocks=0,
-        max_warmup_steps=8,
-        residual_diff_threshold=0.06,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
     )
 
 start = time.time()
 image = pipe(
-    'A cat holding a sign that says "Hi-Dreams.ai".',
+    'A cute girl holding a sign that says "Hi-Dreams.ai".',
     height=1024,
     width=1024,
     guidance_scale=5.0,
