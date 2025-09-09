@@ -89,6 +89,9 @@ def quantize_ao(
                     PerRow,
                 )
 
+                if per_row:  # Ensure bfloat16
+                    module.to(torch.bfloat16)
+
                 quantization_fn = float8_dynamic_activation_float8_weight(
                     weight_dtype=kwargs.get(
                         "weight_dtype",
