@@ -30,17 +30,17 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=140px>
   <img src=./assets/gifs/hunyuan_video.C0_L0_Q0_NONE.gif width=140px>
   <img src=./assets/gifs/hunyuan_video.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S27.gif width=140px>
-  <p><b>🔥Wan2.2 MoE</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.0x↑🎉</b> | <b>HunyuanVideo</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.1x↑🎉</b></p>
+  <p><b>🔥Wan2.2 MoE</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.0x↑🎉 | <b>HunyuanVideo</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.1x↑🎉</p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image.C0_Q0_NONE.png width=160px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image.C1_Q0_DBCACHE_F8B0_W8M0MC0_T1O4_R0.12_S23.png width=160px>
   <img src=./assets/flux.C0_Q0_NONE_T23.69s.png width=90px>
   <img src=./assets/flux.C0_Q0_DBCACHE_F1B0_W4M0MC0_T1O2_R0.15_S16_T11.39s.png width=90px>
-  <p><b>🔥Qwen-Image</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.8x↑🎉</b> | <b>FLUX.1-dev</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.1x↑🎉</b></p>
+  <p><b>🔥Qwen-Image</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.8x↑🎉 | <b>FLUX.1-dev</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.1x↑🎉</p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-lightning.4steps.C0_L1_Q0_NONE.png width=160px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-lightning.4steps.C0_L1_Q0_DBCACHE_F16B16_W2M1MC1_T0O2_R0.9_S1.png width=160px>
   <img src=./assets/sd_3_5.C0_L0_Q0_NONE.png width=90px>
   <img src=./assets/sd_3_5.C0_L0_Q0_DBCACHE_F1B0_W8M0MC3_T0O2_R0.12_S30.png width=90px>
-  <p><b>🔥Qwen-Image-Lightning</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a></b> <b>:1.14x↑🎉</b> | <b>SD 3.5</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a></b>:<b>2.5x↑🎉</b>
+  <p><b>🔥Qwen-Image-Lightning</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.14x↑🎉 | <b>SD 3.5</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.5x↑🎉
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
 
