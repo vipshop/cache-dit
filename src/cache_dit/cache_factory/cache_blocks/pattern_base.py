@@ -93,6 +93,21 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                         required_param in forward_parameters
                     ), f"The input parameters must contains: {required_param}."
 
+    @torch.compiler.disable
+    def _check_cache_params(self):
+        assert self.cache_manager.Fn_compute_blocks() <= len(
+            self.transformer_blocks
+        ), (
+            f"Fn_compute_blocks {self.cache_manager.Fn_compute_blocks()} must be less than "
+            f"the number of transformer blocks {len(self.transformer_blocks)}"
+        )
+        assert self.cache_manager.Bn_compute_blocks() <= len(
+            self.transformer_blocks
+        ), (
+            f"Bn_compute_blocks {self.cache_manager.Bn_compute_blocks()} must be less than "
+            f"the number of transformer blocks {len(self.transformer_blocks)}"
+        )
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -100,7 +115,9 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *args,
         **kwargs,
     ):
+        # Use it's own cache context.
         self.cache_manager.set_context(self.cache_context)
+        self._check_cache_params()
 
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
@@ -191,18 +208,17 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                     prefix=f"{self.cache_prefix}_Bn_residual",
                 )
             else:
-                # TaylorSeer
                 self.cache_manager.set_Bn_buffer(
                     hidden_states,
                     prefix=f"{self.cache_prefix}_Bn_hidden_states",
                 )
+
             if self.cache_manager.is_encoder_cache_residual():
                 self.cache_manager.set_Bn_encoder_buffer(
                     encoder_hidden_states_residual,
                     prefix=f"{self.cache_prefix}_Bn_residual",
                 )
             else:
-                # TaylorSeer
                 self.cache_manager.set_Bn_encoder_buffer(
                     encoder_hidden_states,
                     prefix=f"{self.cache_prefix}_Bn_hidden_states",
@@ -296,12 +312,6 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *args,
         **kwargs,
     ):
-        assert self.cache_manager.Fn_compute_blocks() <= len(
-            self.transformer_blocks
-        ), (
-            f"Fn_compute_blocks {self.cache_manager.Fn_compute_blocks()} must be less than "
-            f"the number of transformer blocks {len(self.transformer_blocks)}"
-        )
         for block in self._Fn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -366,28 +376,17 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             encoder_hidden_states_residual,
         )
 
-    def _compute_or_cache_block(
+    def call_Bn_blocks(
         self,
-        # Block index in the transformer blocks
-        # Bn: 8, block_id should be in [0, 8)
-        block_id: int,
-        # Below are the inputs to the block
-        block,  # The transformer block to be executed
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         *args,
         **kwargs,
     ):
-        # Helper function for `call_Bn_blocks`
-        # Skip the blocks by reuse residual cache if they are not
-        # in the Bn_compute_blocks_ids. NOTE: We should only skip
-        # the specific Bn blocks in cache steps. Compute the block
-        # and cache the residuals in non-cache steps.
+        if self.cache_manager.Bn_compute_blocks() == 0:
+            return hidden_states, encoder_hidden_states
 
-        # Normal steps: Compute the block and cache the residuals.
-        if not self._is_in_cache_step():
-            Bn_i_original_hidden_states = hidden_states
-            Bn_i_original_encoder_hidden_states = encoder_hidden_states
+        for block in self._Bn_blocks():
             hidden_states = block(
                 hidden_states,
                 encoder_hidden_states,
@@ -401,149 +400,5 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                         encoder_hidden_states,
                         hidden_states,
                     )
-            # Cache residuals for the non-compute Bn blocks for
-            # subsequent cache steps.
-            if block_id not in self.cache_manager.Bn_compute_blocks_ids():
-                Bn_i_hidden_states_residual = (
-                    hidden_states - Bn_i_original_hidden_states
-                )
-                if (
-                    encoder_hidden_states is not None
-                    and Bn_i_original_encoder_hidden_states is not None
-                ):
-                    Bn_i_encoder_hidden_states_residual = (
-                        encoder_hidden_states
-                        - Bn_i_original_encoder_hidden_states
-                    )
-                else:
-                    Bn_i_encoder_hidden_states_residual = None
-
-                # Save original_hidden_states for diff calculation.
-                self.cache_manager.set_Bn_buffer(
-                    Bn_i_original_hidden_states,
-                    prefix=f"{self.cache_prefix}_Bn_{block_id}_original",
-                )
-                self.cache_manager.set_Bn_encoder_buffer(
-                    Bn_i_original_encoder_hidden_states,
-                    prefix=f"{self.cache_prefix}_Bn_{block_id}_original",
-                )
-
-                self.cache_manager.set_Bn_buffer(
-                    Bn_i_hidden_states_residual,
-                    prefix=f"{self.cache_prefix}_Bn_{block_id}_residual",
-                )
-                self.cache_manager.set_Bn_encoder_buffer(
-                    Bn_i_encoder_hidden_states_residual,
-                    prefix=f"{self.cache_prefix}_Bn_{block_id}_residual",
-                )
-                del Bn_i_hidden_states_residual
-                del Bn_i_encoder_hidden_states_residual
-
-            del Bn_i_original_hidden_states
-            del Bn_i_original_encoder_hidden_states
-
-        else:
-            # Cache steps: Reuse the cached residuals.
-            # Check if the block is in the Bn_compute_blocks_ids.
-            if block_id in self.cache_manager.Bn_compute_blocks_ids():
-                hidden_states = block(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
-                if not isinstance(hidden_states, torch.Tensor):
-                    hidden_states, encoder_hidden_states = hidden_states
-                    if not self.forward_pattern.Return_H_First:
-                        hidden_states, encoder_hidden_states = (
-                            encoder_hidden_states,
-                            hidden_states,
-                        )
-            else:
-                # Skip the block if it is not in the Bn_compute_blocks_ids.
-                # Use the cached residuals instead.
-                # Check if can use the cached residuals.
-                if self.cache_manager.can_cache(
-                    hidden_states,  # curr step
-                    parallelized=self._is_parallelized(),
-                    threshold=self.cache_manager.non_compute_blocks_diff_threshold(),
-                    prefix=f"{self.cache_prefix}_Bn_{block_id}_original",  # prev step
-                ):
-                    hidden_states, encoder_hidden_states = (
-                        self.cache_manager.apply_cache(
-                            hidden_states,
-                            encoder_hidden_states,
-                            prefix=(
-                                f"{self.cache_prefix}_Bn_{block_id}_residual"
-                                if self.cache_manager.is_cache_residual()
-                                else f"{self.cache_prefix}_Bn_{block_id}_original"
-                            ),
-                            encoder_prefix=(
-                                f"{self.cache_prefix}_Bn_{block_id}_residual"
-                                if self.cache_manager.is_encoder_cache_residual()
-                                else f"{self.cache_prefix}_Bn_{block_id}_original"
-                            ),
-                        )
-                    )
-                else:
-                    hidden_states = block(
-                        hidden_states,
-                        encoder_hidden_states,
-                        *args,
-                        **kwargs,
-                    )
-                    if not isinstance(hidden_states, torch.Tensor):
-                        hidden_states, encoder_hidden_states = hidden_states
-                        if not self.forward_pattern.Return_H_First:
-                            hidden_states, encoder_hidden_states = (
-                                encoder_hidden_states,
-                                hidden_states,
-                            )
-        return hidden_states, encoder_hidden_states
-
-    def call_Bn_blocks(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        *args,
-        **kwargs,
-    ):
-        if self.cache_manager.Bn_compute_blocks() == 0:
-            return hidden_states, encoder_hidden_states
-
-        assert self.cache_manager.Bn_compute_blocks() <= len(
-            self.transformer_blocks
-        ), (
-            f"Bn_compute_blocks {self.cache_manager.Bn_compute_blocks()} must be less than "
-            f"the number of transformer blocks {len(self.transformer_blocks)}"
-        )
-        if len(self.cache_manager.Bn_compute_blocks_ids()) > 0:
-            for i, block in enumerate(self._Bn_blocks()):
-                hidden_states, encoder_hidden_states = (
-                    self._compute_or_cache_block(
-                        i,
-                        block,
-                        hidden_states,
-                        encoder_hidden_states,
-                        *args,
-                        **kwargs,
-                    )
-                )
-        else:
-            # Compute all Bn blocks if no specific Bn compute blocks ids are set.
-            for block in self._Bn_blocks():
-                hidden_states = block(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
-                if not isinstance(hidden_states, torch.Tensor):
-                    hidden_states, encoder_hidden_states = hidden_states
-                    if not self.forward_pattern.Return_H_First:
-                        hidden_states, encoder_hidden_states = (
-                            encoder_hidden_states,
-                            hidden_states,
-                        )
 
         return hidden_states, encoder_hidden_states

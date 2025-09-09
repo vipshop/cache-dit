@@ -14,13 +14,9 @@ logger = init_logger(__name__)
 @dataclasses.dataclass
 class CachedContext:  # Internal CachedContext Impl class
     name: str = "default"
-    # Dual Block Cache
-    # Fn=1, Bn=0, means FB Cache, otherwise, Dual Block Cache
+    # Dual Block Cache with flexible FnBn configuration.
     Fn_compute_blocks: int = 1
     Bn_compute_blocks: int = 0
-    # We have added residual cache pattern for selected compute blocks
-    Fn_compute_blocks_ids: List[int] = dataclasses.field(default_factory=list)
-    Bn_compute_blocks_ids: List[int] = dataclasses.field(default_factory=list)
     # non compute blocks diff threshold, we don't skip the non
     # compute blocks if the diff >= threshold
     non_compute_blocks_diff_threshold: float = 0.08
@@ -30,13 +26,6 @@ class CachedContext:  # Internal CachedContext Impl class
     residual_diff_threshold: Union[torch.Tensor, float] = 0.05
     l1_hidden_states_diff_threshold: float = None
     important_condition_threshold: float = 0.0
-
-    # Alter Cache Settings
-    # Pattern: 0 F 1 T 2 F 3 T 4 F 5 T ...
-    enable_alter_cache: bool = False
-    is_alter_cache: bool = True
-    # 1.0 means we always cache the residuals if alter_cache is enabled.
-    alter_residual_diff_threshold: Optional[Union[torch.Tensor, float]] = 1.0
 
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -63,7 +52,6 @@ class CachedContext:  # Internal CachedContext Impl class
     # Url: https://arxiv.org/pdf/2503.06923
     enable_taylorseer: bool = False
     enable_encoder_taylorseer: bool = False
-    # NOTE: use residual cache for taylorseer may incur precision loss
     taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
     taylorseer_order: int = 2  # The order for TaylorSeer
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -97,16 +85,11 @@ class CachedContext:  # Internal CachedContext Impl class
     )
     cfg_continuous_cached_steps: int = 0
 
-    @torch.compiler.disable
     def __post_init__(self):
         if logger.isEnabledFor(logging.DEBUG):
             logger.info(f"Created _CacheContext: {self.name}")
         # Some checks for settings
         if self.enable_spearate_cfg:
-            assert self.enable_alter_cache is False, (
-                "enable_alter_cache must set as False if "
-                "enable_spearate_cfg is enabled."
-            )
             if self.cfg_diff_compute_separate:
                 assert self.cfg_compute_first is False, (
                     "cfg_compute_first must set as False if "
@@ -135,47 +118,32 @@ class CachedContext:  # Internal CachedContext Impl class
                     **self.taylorseer_kwargs
                 )
 
-    @torch.compiler.disable
     def get_residual_diff_threshold(self):
-        if self.enable_alter_cache:
-            residual_diff_threshold = self.alter_residual_diff_threshold
-        else:
-            residual_diff_threshold = self.residual_diff_threshold
-            if self.l1_hidden_states_diff_threshold is not None:
-                # Use the L1 hidden states diff threshold if set
-                residual_diff_threshold = self.l1_hidden_states_diff_threshold
+        residual_diff_threshold = self.residual_diff_threshold
+        if self.l1_hidden_states_diff_threshold is not None:
+            # Use the L1 hidden states diff threshold if set
+            residual_diff_threshold = self.l1_hidden_states_diff_threshold
         if isinstance(residual_diff_threshold, torch.Tensor):
             residual_diff_threshold = residual_diff_threshold.item()
         return residual_diff_threshold
 
-    @torch.compiler.disable
     def get_buffer(self, name):
-        if self.enable_alter_cache and self.is_alter_cache:
-            name = f"{name}_alter"
         return self.buffers.get(name)
 
-    @torch.compiler.disable
     def set_buffer(self, name, buffer):
-        if self.enable_alter_cache and self.is_alter_cache:
-            name = f"{name}_alter"
         self.buffers[name] = buffer
 
-    @torch.compiler.disable
     def remove_buffer(self, name):
-        if self.enable_alter_cache and self.is_alter_cache:
-            name = f"{name}_alter"
         if name in self.buffers:
             del self.buffers[name]
 
-    @torch.compiler.disable
     def clear_buffers(self):
         self.buffers.clear()
 
-    @torch.compiler.disable
     def mark_step_begin(self):
         # Always increase transformer executed steps
-        # incr    step: prev 0 -> 1; prev 1 -> 2
-        # current step: incr step - 1
+        # incr     step: prev 0 -> 1; prev 1 -> 2
+        # current  step: incr step - 1
         self.transformer_executed_steps += 1
         if not self.enable_spearate_cfg:
             self.executed_steps += 1
@@ -189,10 +157,6 @@ class CachedContext:  # Internal CachedContext Impl class
                 if self.is_separate_cfg_step():
                     # transformer step: 0,2,4,...
                     self.executed_steps += 1
-
-        if not self.enable_alter_cache:
-            # 0 F 1 T 2 F 3 T 4 F 5 T ...
-            self.is_alter_cache = not self.is_alter_cache
 
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
@@ -248,7 +212,6 @@ class CachedContext:  # Internal CachedContext Impl class
     def get_cfg_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
         return self.cfg_taylorseer, self.cfg_encoder_taylorseer
 
-    @torch.compiler.disable
     def add_residual_diff(self, diff):
         # step: executed_steps - 1, not transformer_steps - 1
         step = str(self.get_current_step())
@@ -260,15 +223,12 @@ class CachedContext:  # Internal CachedContext Impl class
             if step not in self.cfg_residual_diffs:
                 self.cfg_residual_diffs[step] = diff
 
-    @torch.compiler.disable
     def get_residual_diffs(self):
         return self.residual_diffs.copy()
 
-    @torch.compiler.disable
     def get_cfg_residual_diffs(self):
         return self.cfg_residual_diffs.copy()
 
-    @torch.compiler.disable
     def add_cached_step(self):
         curr_cached_step = self.get_current_step()
         if not self.is_separate_cfg_step():
@@ -296,23 +256,18 @@ class CachedContext:  # Internal CachedContext Impl class
 
             self.cfg_cached_steps.append(curr_cached_step)
 
-    @torch.compiler.disable
     def get_cached_steps(self):
         return self.cached_steps.copy()
 
-    @torch.compiler.disable
     def get_cfg_cached_steps(self):
         return self.cfg_cached_steps.copy()
 
-    @torch.compiler.disable
     def get_current_step(self):
         return self.executed_steps - 1
 
-    @torch.compiler.disable
     def get_current_transformer_step(self):
         return self.transformer_executed_steps - 1
 
-    @torch.compiler.disable
     def is_separate_cfg_step(self):
         if not self.enable_spearate_cfg:
             return False
@@ -322,6 +277,5 @@ class CachedContext:  # Internal CachedContext Impl class
         # CFG steps: 1, 3, 5, 7, ...
         return self.get_current_transformer_step() % 2 != 0
 
-    @torch.compiler.disable
     def is_in_warmup(self):
         return self.get_current_step() < self.max_warmup_steps

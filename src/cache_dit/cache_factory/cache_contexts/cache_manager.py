@@ -302,18 +302,6 @@ class CachedContextManager:
         return True
 
     @torch.compiler.disable
-    def is_alter_cache_enabled(self) -> bool:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        return cached_context.enable_alter_cache
-
-    @torch.compiler.disable
-    def is_alter_cache(self) -> bool:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        return cached_context.is_alter_cache
-
-    @torch.compiler.disable
     def is_in_warmup(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
@@ -360,20 +348,6 @@ class CachedContextManager:
         return cached_context.Fn_compute_blocks
 
     @torch.compiler.disable
-    def Fn_compute_blocks_ids(self) -> List[int]:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        assert (
-            len(cached_context.Fn_compute_blocks_ids)
-            <= cached_context.Fn_compute_blocks
-        ), (
-            "The num of Fn_compute_blocks_ids must be <= Fn_compute_blocks "
-            f"{cached_context.Fn_compute_blocks}, but got "
-            f"{len(cached_context.Fn_compute_blocks_ids)}"
-        )
-        return cached_context.Fn_compute_blocks_ids
-
-    @torch.compiler.disable
     def Bn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
@@ -391,20 +365,6 @@ class CachedContextManager:
                 f"but got {cached_context.Bn_compute_blocks}"
             )
         return cached_context.Bn_compute_blocks
-
-    @torch.compiler.disable
-    def Bn_compute_blocks_ids(self) -> List[int]:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        assert (
-            len(cached_context.Bn_compute_blocks_ids)
-            <= cached_context.Bn_compute_blocks
-        ), (
-            "The num of Bn_compute_blocks_ids must be <= Bn_compute_blocks "
-            f"{cached_context.Bn_compute_blocks}, but got "
-            f"{len(cached_context.Bn_compute_blocks_ids)}"
-        )
-        return cached_context.Bn_compute_blocks_ids
 
     @torch.compiler.disable
     def enable_spearate_cfg(self) -> bool:
@@ -525,6 +485,9 @@ class CachedContextManager:
     # Fn buffers
     @torch.compiler.disable
     def set_Fn_buffer(self, buffer: torch.Tensor, prefix: str = "Fn"):
+        # DON'T set None Buffer
+        if buffer is None:
+            return
         # Set hidden_states or residual for Fn blocks.
         # This buffer is only use for L1 diff calculation.
         downsample_factor = self.get_downsample_factor()
@@ -548,6 +511,9 @@ class CachedContextManager:
 
     @torch.compiler.disable
     def set_Fn_encoder_buffer(self, buffer: torch.Tensor, prefix: str = "Fn"):
+        # DON'T set None Buffer
+        if buffer is None:
+            return
         if self.is_separate_cfg_step():
             self._debugging_set_buffer(f"{prefix}_encoder_buffer_cfg")
             self.set_buffer(f"{prefix}_encoder_buffer_cfg", buffer)
@@ -566,6 +532,9 @@ class CachedContextManager:
     # Bn buffers
     @torch.compiler.disable
     def set_Bn_buffer(self, buffer: torch.Tensor, prefix: str = "Bn"):
+        # DON'T set None Buffer
+        if buffer is None:
+            return
         # Set hidden_states or residual for Bn blocks.
         # This buffer is use for hidden states approximation.
         if self.is_taylorseer_enabled():
@@ -820,26 +789,12 @@ class CachedContextManager:
         else:
             prev_states_tensor = self.get_Fn_buffer(prefix)
 
-        if not self.is_alter_cache_enabled():
-            # Dynamic cache according to the residual diff
-            can_cache = prev_states_tensor is not None and self.similarity(
-                prev_states_tensor,
-                states_tensor,
-                threshold=threshold,
-                parallelized=parallelized,
-                prefix=prefix,
-            )
-        else:
-            # Only cache in the alter cache steps
-            can_cache = (
-                prev_states_tensor is not None
-                and self.similarity(
-                    prev_states_tensor,
-                    states_tensor,
-                    threshold=threshold,
-                    parallelized=parallelized,
-                    prefix=prefix,
-                )
-                and self.is_alter_cache()
-            )
+        # Dynamic cache according to the residual diff
+        can_cache = prev_states_tensor is not None and self.similarity(
+            prev_states_tensor,
+            states_tensor,
+            threshold=threshold,
+            parallelized=parallelized,
+            prefix=prefix,
+        )
         return can_cache
