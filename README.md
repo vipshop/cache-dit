@@ -30,7 +30,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-lightning.4steps.C0_L1_Q0_DBCACHE_F16B16_W2M1MC1_T0O2_R0.9_S1.png width=160px>
   <img src=./assets/sd_3_5.C0_L0_Q0_NONE.png width=88px>
   <img src=./assets/sd_3_5.C0_L0_Q0_DBCACHE_F1B0_W8M0MC3_T0O2_R0.12_S30.png width=88px>
-  <p><b>🔥Qwen...Lightning</b> 4 steps | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a></b> 3.5 steps:<b>~1.14x↑🎉</b> | <b>SD 3.5</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a></b>:<b>~2.5x↑🎉</b></p>
+  <p><b>🔥Qwen-Image-Lightning</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a></b> <b>:~1.14x↑🎉</b> | <b>SD 3.5</b> | <b><a href="https://github.com/vipshop/cache-dit">+cache-dit</a></b>:<b>~2.5x↑🎉</b></p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C0_Q0_NONE.gif width=140px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=140px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image.C0_Q0_NONE.png width=140px>
