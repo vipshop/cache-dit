@@ -469,8 +469,9 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Chroma")
+@BlockAdapterRegistry.register("Chroma", supported=False)
 def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: https://github.com/vipshop/cache-dit/issues/199
     from diffusers import ChromaTransformer2DModel
 
     assert isinstance(pipe.transformer, ChromaTransformer2DModel)
