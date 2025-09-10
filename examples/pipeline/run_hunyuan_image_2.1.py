@@ -71,7 +71,7 @@ if args.quantize:
 pipe.to("cuda")
 
 if args.cache:
-    from cache_dit import BlockAdapter, ForwardPattern
+    from cache_dit import BlockAdapter, ForwardPattern, ParamsModifier
 
     assert isinstance(pipe.dit, HYImageDiffusionTransformer)
 
@@ -80,12 +80,16 @@ if args.cache:
             pipe=pipe,
             transformer=pipe.dit,
             blocks=[
-                pipe.dit.double_blocks,
-                pipe.dit.single_blocks,
+                pipe.dit.double_blocks,  # 20
+                pipe.dit.single_blocks,  # 40
             ],
             forward_pattern=[
                 ForwardPattern.Pattern_0,
                 ForwardPattern.Pattern_3,
+            ],
+            params_modifiers=[
+                ParamsModifier(Fn_compute_blocks=args.Fn),
+                ParamsModifier(Fn_compute_blocks=1),
             ],
             # block forward contains 'img' and 'txt' as varible names,
             # not 'hidden_states' and 'encoder_hidden_states'.

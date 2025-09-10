@@ -122,10 +122,7 @@ class CachedContextManager:
                     default_value,
                 )
 
-        # Manually set sequence fields, namely, Fn_compute_blocks_ids
-        # and Bn_compute_blocks_ids, which are lists or sets.
-        _safe_set_sequence_field("Fn_compute_blocks_ids", [])
-        _safe_set_sequence_field("Bn_compute_blocks_ids", [])
+        # Manually set sequence fields
         _safe_set_sequence_field("taylorseer_kwargs", {})
 
         for attr in cache_attrs:
