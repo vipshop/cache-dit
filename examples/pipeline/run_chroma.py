@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import ChromaPipeline
-from utils import get_args, GiB, strify
+from utils import get_args, strify
 import cache_dit
 
 
@@ -20,11 +20,9 @@ pipe = ChromaPipeline.from_pretrained(
         "lodestones/Chroma1-HD",
     ),
     torch_dtype=torch.bfloat16,
-    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
-    ),
 )
+
+pipe.to("cuda")
 
 if args.cache:
     cache_dit.enable_cache(
