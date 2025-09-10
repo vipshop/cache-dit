@@ -55,7 +55,6 @@ if args.quantize:
     torch.cuda.empty_cache()
     gc.collect()
 
-# pipe = pipe.to("cuda")
 
 if args.cache:
     from cache_dit import BlockAdapter, ForwardPattern
@@ -89,6 +88,9 @@ if args.cache:
 
 prompt = "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, standing in a painting studio, wearing a red knitted scarf and a red beret with the word “Tencent” on it, holding a paintbrush with a focused expression as it paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."
 
+# 1024, 1024 for low GPU memory device. Generating images with 1K
+# resolution will result in artifacts.
+height, width = 2048, 2048
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.dit = torch.compile(pipe.dit)
@@ -104,8 +106,8 @@ if args.compile:
         # 3:4   -> width=1792, height=2304
         # 9:16  -> width=1536, height=2560
         # Please use one of the above width/height pairs for best results.
-        width=2048,
-        height=2048,
+        width=width,
+        height=height,
         use_reprompt=True,  # Enable prompt enhancement
         use_refiner=True,  # Enable refiner model
         # For the distilled model, use 8 steps for faster inference.
@@ -126,8 +128,8 @@ image = pipe(
     # 3:4   -> width=1792, height=2304
     # 9:16  -> width=1536, height=2560
     # Please use one of the above width/height pairs for best results.
-    width=2048,
-    height=2048,
+    width=width,
+    height=height,
     use_reprompt=True,  # Enable prompt enhancement
     use_refiner=True,  # Enable refiner model
     # For the distilled model, use 8 steps for faster inference.
