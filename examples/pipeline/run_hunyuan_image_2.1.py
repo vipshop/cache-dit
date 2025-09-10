@@ -18,6 +18,7 @@ import cache_dit
 args = get_args()
 print(args)
 
+torch.set_grad_enabled(False)
 
 # Supported model_name: hunyuanimage-v2.1, hunyuanimage-v2.1-distilled
 model_name = os.environ.get("HUNYUAN_IMAGE_DIR", "tencent/HunyuanImage-2.1")

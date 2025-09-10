@@ -7,7 +7,8 @@ import time
 import torch
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
-from utils import GiB, get_args, strify
+from diffusers.quantizers import PipelineQuantizationConfig
+from utils import get_args, strify
 import cache_dit
 
 
@@ -20,14 +21,33 @@ pipe = MochiPipeline.from_pretrained(
         "genmo/mochi-1-preview",
     ),
     torch_dtype=torch.bfloat16,
-    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
+    quantization_config=PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_4bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["transformer", "text_encoder"],
     ),
 )
 
+pipe.to("cuda")
+
 if args.cache:
-    cache_dit.enable_cache(pipe)
+    cache_dit.enable_cache(
+        pipe,
+        # Cache context kwargs
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
+    )
 
 pipe.enable_vae_tiling()
 
@@ -39,7 +59,8 @@ prompt = (
 start = time.time()
 video = pipe(
     prompt,
-    num_frames=84,
+    num_frames=49,
+    num_inference_steps=64,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
@@ -50,4 +71,4 @@ time_cost = end - start
 save_path = f"mochi.{strify(args, stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
-export_to_video(video, save_path, fps=30)
+export_to_video(video, save_path, fps=10)

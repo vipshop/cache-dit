@@ -37,7 +37,6 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=flow_shift
 )
 
-
 if args.cache:
     cache_dit.enable_cache(
         pipe,
