@@ -248,7 +248,10 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
-        forward_pattern=ForwardPattern.Pattern_2,
+        # NOTE: Use Pattern_3 instead of Pattern_2 because the
+        # encoder_hidden_states will never change in the blocks
+        # forward loop.
+        forward_pattern=ForwardPattern.Pattern_3,
         has_separate_cfg=True,
         **kwargs,
     )
@@ -466,8 +469,9 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Chroma")
+@BlockAdapterRegistry.register("Chroma", supported=False)
 def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
+    # TODO: https://github.com/vipshop/cache-dit/issues/199
     from diffusers import ChromaTransformer2DModel
 
     assert isinstance(pipe.transformer, ChromaTransformer2DModel)
