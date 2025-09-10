@@ -248,7 +248,10 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.blocks,
-        forward_pattern=ForwardPattern.Pattern_2,
+        # NOTE: Use Pattern_3 instead of Pattern_2 because the
+        # encoder_hidden_states will never change in the blocks
+        # forward loop.
+        forward_pattern=ForwardPattern.Pattern_3,
         has_separate_cfg=True,
         **kwargs,
     )
