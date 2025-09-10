@@ -47,9 +47,10 @@ if GiB() < 96:
 if args.quantize:
     # Minimum VRAM required: 38 GiB
     print("Apply FP8 Weight Only Quantize ...")
+    args.quantize_type = "fp8_w8a16_wo"  # force
     pipe.dit = cache_dit.quantize(
         pipe.dit,
-        quant_type="fp8_w8a16_wo",
+        quant_type=args.quantize_type,
         exclude_layers=[
             "img_in",
             "txt_in",
@@ -61,7 +62,7 @@ if args.quantize:
     )
     pipe.text_encoder = cache_dit.quantize(
         pipe.text_encoder,
-        quant_type="fp8_w8a16_wo",
+        quant_type=args.quantize_type,
     )
     time.sleep(0.5)
     torch.cuda.empty_cache()
