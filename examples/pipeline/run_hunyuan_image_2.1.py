@@ -3,6 +3,7 @@ import sys
 import gc
 
 sys.path.append("..")
+sys.path.append(os.environ.get("HYIMAGE_PKG_DIR", "."))
 
 import time
 import torch
@@ -12,7 +13,7 @@ from hyimage.diffusion.pipelines.hunyuanimage_pipeline import (
 from hyimage.models.hunyuan.modules.hunyuanimage_dit import (
     HYImageDiffusionTransformer,
 )
-from utils import get_args, strify
+from utils import get_args, strify, GiB
 import cache_dit
 
 args = get_args()
@@ -21,13 +22,31 @@ print(args)
 torch.set_grad_enabled(False)
 
 # Supported model_name: hunyuanimage-v2.1, hunyuanimage-v2.1-distilled
-model_name = os.environ.get("HUNYUAN_IMAGE_DIR", "tencent/HunyuanImage-2.1")
+# NOTE: Please set 'use_compile=False' by default at hyimage.models.model_zoo.py
+# export HYIMAGE_PKG_DIR=/path/to/Tencent-Hunyuan/HunyuanImage-2.1
+# export HUNYUANIMAGE_V2_1_MODEL_ROOT=/path/to/HunyuanImage-2.1
+# cd $HUNYUANIMAGE_V2_1_MODEL_ROOT
+# modelscope download --model AI-ModelScope/Glyph-SDXL-v2 --local_dir ./text_encoder/Glyph-SDXL-v2
+# modelscope download Qwen/Qwen2.5-VL-7B-Instruct --local_dir ./text_encoder/llm
+# modelscope download google/byt5-small --local_dir ./text_encoder/byt5-small
+model_name = "hunyuanimage-v2.1"
 pipe = HunyuanImagePipeline.from_pretrained(
-    model_name=model_name, torch_dtype="bf16"
+    model_name=model_name,
+    torch_dtype="bf16",
+    # NOTE: load in CPU first, this will enable HunyuanImage run
+    # on many device with low GPU VRAM (<96 GiB):
+    # CPU -> GPU VRAM < 96GiB ? -> FP8 weight only on CPU -> GPU
+    device="cpu" if GiB() < 96 else "cuda",
+    use_compile=False,
 )
+
+if GiB() < 96:
+    assert args.quantize, "Please enable quantize for low GPU memory device."
 
 # FP8 weight only
 if args.quantize:
+    # Minimum VRAM required: 38 GiB
+    print("Apply FP8 Weight Only Quantize ...")
     pipe.dit = cache_dit.quantize(
         pipe.dit,
         quant_type="fp8_w8a16_wo",
@@ -40,22 +59,16 @@ if args.quantize:
             "final_layer",
         ],
     )
-    pipe.refiner_pipeline.dit = cache_dit.quantize(
-        pipe.refiner_pipeline.dit,
+    pipe.text_encoder = cache_dit.quantize(
+        pipe.text_encoder,
         quant_type="fp8_w8a16_wo",
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-            "time_in",
-            "time_r_in",
-            "guidance_in",
-            "final_layer",
-        ],
     )
     time.sleep(0.5)
     torch.cuda.empty_cache()
     gc.collect()
 
+
+pipe.to("cuda")
 
 if args.cache:
     from cache_dit import BlockAdapter, ForwardPattern
@@ -74,6 +87,10 @@ if args.cache:
                 ForwardPattern.Pattern_0,
                 ForwardPattern.Pattern_3,
             ],
+            # block forward contains 'img' and 'txt' as varible names,
+            # not 'hidden_states' and 'encoder_hidden_states'.
+            check_forward_pattern=False,
+            check_num_outputs=False,
         ),
         # Cache context kwargs
         Fn_compute_blocks=args.Fn,
@@ -94,8 +111,9 @@ prompt = "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fu
 height, width = 2048, 2048
 if args.compile:
     cache_dit.set_compile_configs()
-    pipe.dit = torch.compile(pipe.dit)
-    pipe.refiner_pipeline.dit = torch.compile(pipe.refiner_pipeline.dit)
+    if not getattr(pipe.config.dit_config, "use_compile", False):
+        pipe.dit = torch.compile(pipe.dit)
+    pipe.text_encoder = torch.compile(pipe.text_encoder)
 
     # warmup
     image = pipe(
@@ -109,8 +127,8 @@ if args.compile:
         # Please use one of the above width/height pairs for best results.
         width=width,
         height=height,
-        use_reprompt=True,  # Enable prompt enhancement
-        use_refiner=True,  # Enable refiner model
+        use_reprompt=False if GiB() < 96 else True,  # Enable prompt enhancement
+        use_refiner=False if GiB() < 96 else True,  # Enable refiner model
         # For the distilled model, use 8 steps for faster inference.
         # For the non-distilled model, use 50 steps for better quality.
         num_inference_steps=8 if "distilled" in model_name else 50,
@@ -131,8 +149,8 @@ image = pipe(
     # Please use one of the above width/height pairs for best results.
     width=width,
     height=height,
-    use_reprompt=True,  # Enable prompt enhancement
-    use_refiner=True,  # Enable refiner model
+    use_reprompt=False if GiB() < 96 else True,  # Enable prompt enhancement
+    use_refiner=False if GiB() < 96 else True,  # Enable refiner model
     # For the distilled model, use 8 steps for faster inference.
     # For the non-distilled model, use 50 steps for better quality.
     num_inference_steps=8 if "distilled" in model_name else 50,
