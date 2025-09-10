@@ -579,7 +579,7 @@ class BlockAdapter:
             assert isinstance(adapter[0], torch.nn.Module)
             return getattr(adapter[0], "_is_cached", False)
         else:
-            raise TypeError(f"Can't check this type: {type(adapter)}!")
+            return getattr(adapter, "_is_cached", False)
 
     @classmethod
     def nested_depth(cls, obj: Any):
