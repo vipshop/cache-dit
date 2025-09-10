@@ -22,7 +22,10 @@ print(args)
 torch.set_grad_enabled(False)
 
 # Supported model_name: hunyuanimage-v2.1, hunyuanimage-v2.1-distilled
-# NOTE: Please set 'use_compile=False' by default at hyimage.models.model_zoo.py
+
+# NOTE: This example based on PR:
+# https://github.com/Tencent-Hunyuan/HunyuanImage-2.1/pull/12
+
 # export HYIMAGE_PKG_DIR=/path/to/Tencent-Hunyuan/HunyuanImage-2.1
 # export HUNYUANIMAGE_V2_1_MODEL_ROOT=/path/to/HunyuanImage-2.1
 # cd $HUNYUANIMAGE_V2_1_MODEL_ROOT
