@@ -41,6 +41,8 @@ pipe = SkyReelsV2Pipeline.from_pretrained(
     ),
 )
 
+pipe.to("cuda")
+
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=flow_shift
