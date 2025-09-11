@@ -59,10 +59,10 @@ prompt = (
 start = time.time()
 video = pipe(
     prompt,
-    num_frames=49,
+    num_frames=21,
     guidance_scale=7.5,
     max_sequence_length=512,
-    num_inference_steps=100,
+    num_inference_steps=30,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
