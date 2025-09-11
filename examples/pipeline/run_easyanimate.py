@@ -19,17 +19,18 @@ model_id = os.environ.get(
     "EASY_ANIMATE_DIR", "alibaba-pai/EasyAnimateV5.1-12b-zh"
 )
 
+
 pipe = EasyAnimatePipeline.from_pretrained(
     model_id,
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,
     quantization_config=PipelineQuantizationConfig(
         quant_backend="bitsandbytes_4bit",
         quant_kwargs={
             "load_in_4bit": True,
             "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
+            "bnb_4bit_compute_dtype": torch.float16,
         },
-        components_to_quantize=["text_encoder"],
+        components_to_quantize=["transformer", "text_encoder"],
     ),
 )
 
@@ -58,7 +59,7 @@ video = pipe(
     negative_prompt=negative_prompt,
     num_frames=49,
     num_inference_steps=30,
-    generator=torch.Generator("cpu").manual_seed(0),
+    generator=torch.Generator("cuda").manual_seed(0),
 ).frames[0]
 
 end = time.time()
