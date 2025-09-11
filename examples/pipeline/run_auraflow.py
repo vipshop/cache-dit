@@ -19,7 +19,7 @@ model_id = os.environ.get("AURAFLOW_DIR", "fal/AuraFlow-v0.3")
 pipe = AuraFlowPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.float16,
-    variant="fp16",
+    use_safetensors=True,
 ).to("cuda")
 
 if args.cache:

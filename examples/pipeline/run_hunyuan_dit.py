@@ -27,13 +27,15 @@ pipe.to("cuda")
 if args.cache:
     cache_dit.enable_cache(
         pipe,
-        Fn_compute_blocks=1,
-        Bn_compute_blocks=0,
-        max_warmup_steps=8,
-        max_continuous_cached_steps=2,
-        residual_diff_threshold=0.2,
-        enable_taylorseer=True,
-        enable_encoder_taylorseer=True,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
     )
 
 # You may also use English prompt as HunyuanDiT supports both English and Chinese
