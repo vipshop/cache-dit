@@ -48,6 +48,21 @@ pipe = AllegroPipeline.from_pretrained(
 )
 pipe.to("cuda")
 
+
+if args.cache:
+    cache_dit.enable_cache(
+        pipe,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
+    )
+
 prompt = (
     "A seaside harbor with bright sunlight and sparkling seawater, with many boats in the water. From an aerial view, "
     "the boats vary in size and color, some moving and some stationary. Fishing boats in the water suggest that this "
@@ -59,6 +74,7 @@ video = pipe(
     prompt,
     guidance_scale=7.5,
     max_sequence_length=512,
+    num_inference_steps=100,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
