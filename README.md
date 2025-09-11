@@ -142,6 +142,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
@@ -156,6 +157,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SD-3/3.5](https://github.com/vipshop/cache-dit/raw/main/examples)
+- ...
 
 </details>
 
