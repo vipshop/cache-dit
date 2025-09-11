@@ -14,6 +14,32 @@ import cache_dit
 args = get_args()
 print(args)
 
+# Load the VisualClozePipeline
+pipe = VisualClozePipeline.from_pretrained(
+    os.environ.get(
+        "VISUAL_CLOZE_DIR",
+        "VisualCloze/VisualClozePipeline-512",
+    ),
+    resolution=512,
+    torch_dtype=torch.bfloat16,
+)
+pipe.to("cuda")
+
+if args.cache:
+    cache_dit.enable_cache(
+        pipe,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
+    )
+
+
 # Load in-context images (make sure the paths are correct and accessible)
 # The images are from the VITON-HD dataset at https://github.com/shadow2496/VITON-HD
 image_paths = [
@@ -44,29 +70,6 @@ image_paths = [
 # Task and content prompt
 task_prompt = "Each row shows a virtual try-on process that aims to put [IMAGE2] the clothing onto [IMAGE1] the person, producing [IMAGE3] the person wearing the new clothing."
 content_prompt = None
-
-# Load the VisualClozePipeline
-pipe = VisualClozePipeline.from_pretrained(
-    os.environ.get("VISUAL_CLOZE_DIR", "VisualCloze/VisualClozePipeline-512"),
-    resolution=512,
-    torch_dtype=torch.bfloat16,
-)
-pipe.to("cuda")
-
-if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
-
 
 # Run the pipeline
 start = time.time()
