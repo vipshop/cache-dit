@@ -389,11 +389,9 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Sana", supported=False)
+@BlockAdapterRegistry.register("Sana")
 def sana_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SanaTransformer2DModel
-
-    # TODO: fix -> got multiple values for argument 'encoder_hidden_states'
 
     assert isinstance(pipe.transformer, SanaTransformer2DModel)
     return BlockAdapter(
@@ -469,10 +467,10 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Chroma", supported=False)
+@BlockAdapterRegistry.register("Chroma")
 def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: https://github.com/vipshop/cache-dit/issues/199
     from diffusers import ChromaTransformer2DModel
+    from cache_dit.cache_factory.patch_functors import ChromaPatchFunctor
 
     assert isinstance(pipe.transformer, ChromaTransformer2DModel)
     return BlockAdapter(
@@ -486,6 +484,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
             ForwardPattern.Pattern_1,
             ForwardPattern.Pattern_3,
         ],
+        patch_functor=ChromaPatchFunctor(),
         has_separate_cfg=True,
         **kwargs,
     )

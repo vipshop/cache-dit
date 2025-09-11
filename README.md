@@ -22,7 +22,7 @@
     🔥<a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">Mochi</a>🔥<br>
     🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">LTXVideo</a> | <a href="#supported">CogVideoX</a> | <a href="#supported">CogVideoX 1.5</a>🔥<br>
     🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported"> OmniGen </a> | <a href="#supported">Lumina 1/2</a>🔥<br>
-    🔥<a href="#supported">Allegro</a> | <a href="#supported">EasyAnimate</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported"> ... </a> | <a href="#supported">PixArt</a>🔥
+    🔥<a href="#supported">Chroma</a> | <a href="#supported">Allegro</a> | <a href="#supported">EasyAnimate</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported"> ... </a> | <a href="#supported">PixArt</a>🔥
   </p>
 </div>
 <div align='center'>
@@ -47,6 +47,12 @@
   <img src=./assets/cogview4.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S15.png width=100px>
   <img src=./assets/cogview4.C0_L0_Q0_DBCACHE_F1B0_W4M0MC4_T0O2_R0.2_S22.png width=100px>
   <p><b>🔥HiDream-I1</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.9x↑🎉 | <b>CogView4</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.4x↑🎉 | 1.7x↑🎉</p>
+  <img src=./assets/cogview3_plus.C0_L0_Q0_NONE.png width=100px>
+  <img src=./assets/cogview3_plus.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S15.png width=100px>
+  <img src=./assets/cogview3_plus.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.08_S25.png width=100px>
+  <img src=./assets/chroma1-hd.C0_L0_Q0_NONE.png width=100px>
+  <img src=./assets/chroma1-hd.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S20.png width=100px>
+  <p><b>🔥CogView3</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.5x↑🎉 | 2.0x↑🎉| <b>Chroma1-HD</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.9x↑🎉</p>
   <img src=./assets/gifs/mochi.C0_L0_Q0_NONE.gif width=125px>
   <img src=./assets/gifs/mochi.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S34.gif width=125px>
   <img src=./assets/gifs/skyreels_v2.C0_L0_Q0_NONE.gif width=125px>
@@ -129,6 +135,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
