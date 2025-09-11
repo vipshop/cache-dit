@@ -23,7 +23,6 @@ pipe = CogVideoXPipeline.from_pretrained(
     device_map="balanced",
 )
 
-
 if args.cache:
     cache_dit.enable_cache(
         pipe,

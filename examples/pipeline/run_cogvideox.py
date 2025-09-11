@@ -15,14 +15,14 @@ args = get_args()
 print(args)
 
 
-model_id = os.environ.get("COGVIDEOX_DIR", "THUDM/CogVideoX-5b")
+model_id = os.environ.get("COGVIDEOX_DIR", "THUDM/CogVideoX-2b")
 
 pipe = CogVideoXPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
-    device_map="balanced",
 )
 
+pipe.to("cuda")
 
 if args.cache:
     cache_dit.enable_cache(
