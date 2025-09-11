@@ -7,7 +7,6 @@ import time
 import torch
 from diffusers import EasyAnimatePipeline
 from diffusers.utils import export_to_video
-from diffusers.quantizers import PipelineQuantizationConfig
 from utils import get_args, strify
 import cache_dit
 
@@ -16,22 +15,13 @@ args = get_args()
 print(args)
 
 model_id = os.environ.get(
-    "EASY_ANIMATE_DIR", "alibaba-pai/EasyAnimateV5.1-12b-zh"
+    "EASY_ANIMATE_DIR", "alibaba-pai/EasyAnimateV5.1-7b-zh"
 )
 
 
 pipe = EasyAnimatePipeline.from_pretrained(
     model_id,
     torch_dtype=torch.float16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.float16,
-        },
-        components_to_quantize=["transformer", "text_encoder"],
-    ),
 )
 
 pipe.to("cuda")
