@@ -1,10 +1,9 @@
-import inspect
-
 import torch
 import numpy as np
 from typing import Tuple, Optional, Dict, Any, Union
 from diffusers import ChromaTransformer2DModel
 from diffusers.models.transformers.transformer_chroma import (
+    ChromaTransformerBlock,
     ChromaSingleTransformerBlock,
     Transformer2DModelOutput,
 )
@@ -27,24 +26,31 @@ class ChromaPatchFunctor(PatchFunctor):
     def apply(
         self,
         transformer: ChromaTransformer2DModel,
-        blocks: torch.nn.ModuleList = None,
         **kwargs,
     ) -> ChromaTransformer2DModel:
         if hasattr(transformer, "_is_patched"):
             return transformer
 
-        if blocks is None:
-            blocks = transformer.single_transformer_blocks
-
         is_patched = False
-        for block in blocks:
-            if isinstance(block, ChromaSingleTransformerBlock):
-                forward_parameters = inspect.signature(
-                    block.forward
-                ).parameters.keys()
-                if "encoder_hidden_states" not in forward_parameters:
-                    block.forward = __patch_single_forward__.__get__(block)
-                    is_patched = True
+        for index_block, block in enumerate(transformer.transformer_blocks):
+            assert isinstance(block, ChromaTransformerBlock)
+            img_offset = 3 * len(transformer.single_transformer_blocks)
+            txt_offset = img_offset + 6 * len(transformer.transformer_blocks)
+            img_modulation = img_offset + 6 * index_block
+            text_modulation = txt_offset + 6 * index_block
+            block._img_modulation = img_modulation
+            block._text_modulation = text_modulation
+            block.forward = __patch_double_forward__.__get__(block)
+
+        for index_block, block in enumerate(
+            transformer.single_transformer_blocks
+        ):
+            assert isinstance(block, ChromaSingleTransformerBlock)
+            start_idx = 3 * index_block
+            block._start_idx = start_idx
+            block.forward = __patch_single_forward__.__get__(block)
+
+        is_patched = True
 
         cls_name = transformer.__class__.__name__
 
@@ -69,25 +75,122 @@ class ChromaPatchFunctor(PatchFunctor):
         return transformer
 
 
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
+def __patch_double_forward__(
+    self: ChromaTransformerBlock,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    pooled_temb: torch.Tensor,
+    image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    # TODO: Fuse controlnet into block forward
+    img_modulation = self._img_modulation
+    text_modulation = self._text_modulation
+    temb = torch.cat(
+        (
+            pooled_temb[:, img_modulation : img_modulation + 6],
+            pooled_temb[:, text_modulation : text_modulation + 6],
+        ),
+        dim=1,
+    )
+
+    temb_img, temb_txt = temb[:, :6], temb[:, 6:]
+    norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+        hidden_states, emb=temb_img
+    )
+
+    (
+        norm_encoder_hidden_states,
+        c_gate_msa,
+        c_shift_mlp,
+        c_scale_mlp,
+        c_gate_mlp,
+    ) = self.norm1_context(encoder_hidden_states, emb=temb_txt)
+    joint_attention_kwargs = joint_attention_kwargs or {}
+    if attention_mask is not None:
+        attention_mask = (
+            attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
+        )
+
+    # Attention.
+    attention_outputs = self.attn(
+        hidden_states=norm_hidden_states,
+        encoder_hidden_states=norm_encoder_hidden_states,
+        image_rotary_emb=image_rotary_emb,
+        attention_mask=attention_mask,
+        **joint_attention_kwargs,
+    )
+
+    if len(attention_outputs) == 2:
+        attn_output, context_attn_output = attention_outputs
+    elif len(attention_outputs) == 3:
+        attn_output, context_attn_output, ip_attn_output = attention_outputs
+
+    # Process attention outputs for the `hidden_states`.
+    attn_output = gate_msa.unsqueeze(1) * attn_output
+    hidden_states = hidden_states + attn_output
+
+    norm_hidden_states = self.norm2(hidden_states)
+    norm_hidden_states = (
+        norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+    )
+
+    ff_output = self.ff(norm_hidden_states)
+    ff_output = gate_mlp.unsqueeze(1) * ff_output
+
+    hidden_states = hidden_states + ff_output
+    if len(attention_outputs) == 3:
+        hidden_states = hidden_states + ip_attn_output
+
+    # Process attention outputs for the `encoder_hidden_states`.
+
+    context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
+    encoder_hidden_states = encoder_hidden_states + context_attn_output
+
+    norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
+    norm_encoder_hidden_states = (
+        norm_encoder_hidden_states * (1 + c_scale_mlp[:, None])
+        + c_shift_mlp[:, None]
+    )
+
+    context_ff_output = self.ff_context(norm_encoder_hidden_states)
+    encoder_hidden_states = (
+        encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+    )
+    if encoder_hidden_states.dtype == torch.float16:
+        encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
+
+    return encoder_hidden_states, hidden_states
+
+
 # adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
 def __patch_single_forward__(
     self: ChromaSingleTransformerBlock,  # Almost same as FluxSingleTransformerBlock
     hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor,
-    temb: torch.Tensor,
+    pooled_temb: torch.Tensor,
     image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    text_seq_len = encoder_hidden_states.shape[1]
-    hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+) -> torch.Tensor:
+    # TODO: Fuse controlnet into block forward
+    start_idx = self._start_idx
+    temb = pooled_temb[:, start_idx : start_idx + 3]
 
     residual = hidden_states
     norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
     mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
     joint_attention_kwargs = joint_attention_kwargs or {}
+
+    if attention_mask is not None:
+        attention_mask = (
+            attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
+        )
+
     attn_output = self.attn(
         hidden_states=norm_hidden_states,
         image_rotary_emb=image_rotary_emb,
+        attention_mask=attention_mask,
         **joint_attention_kwargs,
     )
 
@@ -98,11 +201,7 @@ def __patch_single_forward__(
     if hidden_states.dtype == torch.float16:
         hidden_states = hidden_states.clip(-65504, 65504)
 
-    encoder_hidden_states, hidden_states = (
-        hidden_states[:, :text_seq_len],
-        hidden_states[:, text_seq_len:],
-    )
-    return encoder_hidden_states, hidden_states
+    return hidden_states
 
 
 # Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
@@ -174,24 +273,13 @@ def __patch_transformer_forward__(
         joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
     for index_block, block in enumerate(self.transformer_blocks):
-        img_offset = 3 * len(self.single_transformer_blocks)
-        txt_offset = img_offset + 6 * len(self.transformer_blocks)
-        img_modulation = img_offset + 6 * index_block
-        text_modulation = txt_offset + 6 * index_block
-        temb = torch.cat(
-            (
-                pooled_temb[:, img_modulation : img_modulation + 6],
-                pooled_temb[:, text_modulation : text_modulation + 6],
-            ),
-            dim=1,
-        )
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             encoder_hidden_states, hidden_states = (
                 self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    temb,
+                    pooled_temb,
                     image_rotary_emb,
                     attention_mask,
                 )
@@ -201,12 +289,13 @@ def __patch_transformer_forward__(
             encoder_hidden_states, hidden_states = block(
                 hidden_states=hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                temb=temb,
+                pooled_temb=pooled_temb,
                 image_rotary_emb=image_rotary_emb,
                 attention_mask=attention_mask,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
 
+        # TODO: Fuse controlnet into block forward
         # controlnet residual
         if controlnet_block_samples is not None:
             interval_control = len(self.transformer_blocks) / len(
@@ -227,43 +316,41 @@ def __patch_transformer_forward__(
                     + controlnet_block_samples[index_block // interval_control]
                 )
 
+    hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
     for index_block, block in enumerate(self.single_transformer_blocks):
-        start_idx = 3 * index_block
-        temb = pooled_temb[:, start_idx : start_idx + 3]
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            encoder_hidden_states, hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                )
+            hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                pooled_temb,
+                image_rotary_emb,
             )
 
         else:
-            encoder_hidden_states, hidden_states = block(
+            hidden_states = block(
                 hidden_states=hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                temb=temb,
+                pooled_temb=pooled_temb,
                 image_rotary_emb=image_rotary_emb,
                 attention_mask=attention_mask,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
 
+        # TODO: Fuse controlnet into block forward
         # controlnet residual
         if controlnet_single_block_samples is not None:
             interval_control = len(self.single_transformer_blocks) / len(
                 controlnet_single_block_samples
             )
             interval_control = int(np.ceil(interval_control))
-            hidden_states = (
-                hidden_states
+            hidden_states[:, encoder_hidden_states.shape[1] :, ...] = (
+                hidden_states[:, encoder_hidden_states.shape[1] :, ...]
                 + controlnet_single_block_samples[
                     index_block // interval_control
                 ]
             )
 
+    hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
     temb = pooled_temb[:, -2:]
     hidden_states = self.norm_out(hidden_states, temb)
     output = self.proj_out(hidden_states)
