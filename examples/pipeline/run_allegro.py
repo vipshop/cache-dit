@@ -49,7 +49,6 @@ prompt = (
 start = time.time()
 video = pipe(
     prompt,
-    num_frames=9,
     guidance_scale=7.5,
     max_sequence_length=512,
     num_inference_steps=100,
