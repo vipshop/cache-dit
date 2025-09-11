@@ -41,6 +41,11 @@
   <img src=./assets/sd_3_5.C0_L0_Q0_NONE.png width=90px>
   <img src=./assets/sd_3_5.C0_L0_Q0_DBCACHE_F1B0_W8M0MC3_T0O2_R0.12_S30.png width=90px>
   <p><b>🔥Qwen-Image-Lightning</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.14x↑🎉 | <b>SD 3.5</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.5x↑🎉</p>
+  <img src=./examples/data/bear.png width=125px>
+  <img src=./assets/qwen-image-edit.C0_L0_Q0_NONE.png width=125px>
+  <img src=./assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S18.png width=125px>
+  <img src=./assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S24.png width=125px>
+  <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 </p>
   <img src=./assets/hidream.C0_L0_Q0_NONE.png width=100px>
   <img src=./assets/hidream.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S24.png width=100px>
   <img src=./assets/cogview4.C0_L0_Q0_NONE.png width=100px>
