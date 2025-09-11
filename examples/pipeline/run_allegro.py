@@ -33,6 +33,7 @@ pipe = AllegroPipeline.from_pretrained(
 
 pipe.to("cuda")
 
+pipe.vae.enable_tiling()
 
 if args.cache:
     cache_dit.enable_cache(
@@ -54,9 +55,11 @@ prompt = (
     "location might be a popular spot for docking fishing boats."
 )
 
+
 start = time.time()
 video = pipe(
     prompt,
+    num_frames=49,
     guidance_scale=7.5,
     max_sequence_length=512,
     num_inference_steps=100,
