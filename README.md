@@ -18,11 +18,11 @@
   </p>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
-    🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1/2.2 </a>🔥<br>
-    🔥<a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">Mochi</a>🔥<br>
+    🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a>🔥<br>
+    🔥<a href="#supported">Wan 2.2</a> | <a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a>🔥<br>
     🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">LTXVideo</a> | <a href="#supported">CogVideoX</a> | <a href="#supported">CogVideoX 1.5</a>🔥<br>
     🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported"> OmniGen </a> | <a href="#supported">Lumina 1/2</a>🔥<br>
-    🔥<a href="#supported">Chroma</a> | <a href="#supported">Allegro</a> | <a href="#supported">EasyAnimate</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported"> ... </a> | <a href="#supported">PixArt</a>🔥
+    🔥<a href="#supported">Chroma</a> | <a href="#supported">Allegro</a> | <a href="#supported">Mochi</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported"> ... </a> | <a href="#supported">PixArt</a>🔥
   </p>
 </div>
 <div align='center'>
@@ -38,9 +38,14 @@
   <p><b>🔥Qwen-Image</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.8x↑🎉 | <b>FLUX.1-dev</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.1x↑🎉</p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-lightning.4steps.C0_L1_Q0_NONE.png width=160px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-lightning.4steps.C0_L1_Q0_DBCACHE_F16B16_W2M1MC1_T0O2_R0.9_S1.png width=160px>
-  <img src=./assets/sd_3_5.C0_L0_Q0_NONE.png width=90px>
-  <img src=./assets/sd_3_5.C0_L0_Q0_DBCACHE_F1B0_W8M0MC3_T0O2_R0.12_S30.png width=90px>
-  <p><b>🔥Qwen-Image-Lightning</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.14x↑🎉 | <b>SD 3.5</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.5x↑🎉</p>
+  <img src=./assets/hunyuan-image-2.1.C0_L0_Q1_fp8_w8a16_wo_NONE.png width=90px>
+  <img src=./assets/hunyuan-image-2.1.C0_L0_Q1_fp8_w8a16_wo_DBCACHE_F8B0_W8M0MC2_T1O2_R0.12_S25.png width=90px>
+  <p><b>🔥Qwen...Lightning</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.14x↑🎉 | <b>HunyuanImage</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.7x↑🎉</p>
+  <img src=./examples/data/bear.png width=125px>
+  <img src=./assets/qwen-image-edit.C0_L0_Q0_NONE.png width=125px>
+  <img src=./assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S18.png width=125px>
+  <img src=./assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S24.png width=125px>
+  <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 </p>
   <img src=./assets/hidream.C0_L0_Q0_NONE.png width=100px>
   <img src=./assets/hidream.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S24.png width=100px>
   <img src=./assets/cogview4.C0_L0_Q0_NONE.png width=100px>
@@ -64,17 +69,23 @@
   <img src=./assets/visualcloze-512.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S15.png width=100px>
   <img src=./assets/visualcloze-512.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S18.png width=100px>
   <p><b>🔥VisualCloze-512</b> | Model | Cloth | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.4x↑🎉 | 1.7x↑🎉 </p>
-  <img src=./assets/gifs/ltx-video.C0_L0_Q0_NONE.gif width=120px>
-  <img src=./assets/gifs/ltx-video.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.15_S13.gif width=120px>
-  <img src=./assets/gifs/cogvideox.C0_L0_Q0_NONE.gif width=130px>
-  <img src=./assets/gifs/cogvideox.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S25.gif width=130px>
-  <p><b>🔥LTX-Video-0.9.7-dev</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.7x↑🎉 | <b>CogVideoX</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.0x↑🎉</p>
+  <img src=./assets/gifs/ltx-video.C0_L0_Q0_NONE.gif width=144px>
+  <img src=./assets/gifs/ltx-video.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.15_S13.gif width=144px>
+  <img src=./assets/gifs/cogvideox1.5.C0_L0_Q0_NONE.gif width=105px>
+  <img src=./assets/gifs/cogvideox1.5.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.12_S22.gif width=105px>
+  <p><b>🔥LTX-Video-0.9.7-dev</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.7x↑🎉 | <b>CogVideoX1.5</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.0x↑🎉</p>
+  <img src=./assets/omingen-v1.C0_L0_Q0_NONE.png width=100px>
+  <img src=./assets/omingen-v1.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S24.png width=100px>
+  <img src=./assets/omingen-v1.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T1O2_R0.08_S38.png width=100px>
+  <img src=./assets/lumina2.C0_L0_Q0_NONE.png width=100px>
+  <img src=./assets/lumina2.C0_L0_Q0_DBCACHE_F1B0_W2M0MC2_T0O2_R0.12_S14.png width=100px>
+  <p><b>🔥OmniGen-v1</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.5x↑🎉 | 3.3x↑🎉 | <b>Lumina2</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.9x↑🎉</p>
   <img src=./assets/pixart-alpha.C0_L0_Q0_NONE.png width=100px>
   <img src=./assets/pixart-alpha.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.05_S27.png width=100px>
   <img src=./assets/pixart-alpha.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S32.png width=100px>
-  <img src=./assets/hunyuan-image-2.1.C0_L0_Q1_fp8_w8a16_wo_NONE.png width=100px>
-  <img src=./assets/hunyuan-image-2.1.C0_L0_Q1_fp8_w8a16_wo_DBCACHE_F8B0_W8M0MC2_T1O2_R0.12_S25.png width=100px>
-  <p><b>🔥PixArt</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.8x↑🎉| <b>HunyuanImage-2.1</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.7x↑🎉
+  <img src=./assets/sd_3_5.C0_L0_Q0_NONE.png width=100px>
+  <img src=./assets/sd_3_5.C0_L0_Q0_DBCACHE_F1B0_W8M0MC3_T0O2_R0.12_S30.png width=100px>
+  <p><b>🔥PixArt</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.8x↑🎉| <b>SD 3.5</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.5x↑🎉
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
 
@@ -144,6 +155,8 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀OmniGen](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀Lumina2](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
@@ -160,6 +173,8 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Allegro](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀EasyAnimate](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SD-3/3.5](https://github.com/vipshop/cache-dit/raw/main/examples)

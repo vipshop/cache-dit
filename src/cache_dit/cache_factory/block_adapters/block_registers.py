@@ -17,6 +17,7 @@ class BlockAdapterRegistry:
         "Cosmos",
         "SkyReelsV2",
         "Chroma",
+        "Lumina2",
     ]
 
     @classmethod

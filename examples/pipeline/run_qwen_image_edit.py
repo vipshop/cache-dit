@@ -31,10 +31,15 @@ if args.cache:
     cache_dit.enable_cache(
         pipe,
         # Cache context kwargs
-        enable_taylorseer=True,
-        enable_encoder_taylorseer=True,
-        taylorseer_order=4,
-        residual_diff_threshold=0.12,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
     )
 
 
