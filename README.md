@@ -64,6 +64,11 @@
   <img src=./assets/visualcloze-512.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S15.png width=100px>
   <img src=./assets/visualcloze-512.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S18.png width=100px>
   <p><b>🔥VisualCloze-512</b> | Model | Cloth | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.4x↑🎉 | 1.7x↑🎉 </p>
+  <img src=./assets/gifs/ltx-video.C0_L0_Q0_NONE.gif width=120px>
+  <img src=./assets/gifs/ltx-video.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.15_S13.gif width=120px>
+  <img src=./assets/gifs/cogvideox.C0_L0_Q0_NONE.gif width=130px>
+  <img src=./assets/gifs/cogvideox.C0_L0_Q0_DBCACHE_F1B0_W8M0MC0_T0O2_R0.08_S25.gif width=130px>
+  <p><b>🔥LTX-Video-0.9.7-dev</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.7x↑🎉 | <b>CogVideoX</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:2.0x↑🎉</p>
   <img src=./assets/pixart-alpha.C0_L0_Q0_NONE.png width=100px>
   <img src=./assets/pixart-alpha.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.05_S27.png width=100px>
   <img src=./assets/pixart-alpha.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S32.png width=100px>
@@ -138,6 +143,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  

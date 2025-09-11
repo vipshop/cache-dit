@@ -153,7 +153,7 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("LTXVideo")
+@BlockAdapterRegistry.register("LTX")
 def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import LTXVideoTransformer3DModel
 

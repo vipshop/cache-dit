@@ -87,9 +87,11 @@ latents = pipe(
     height=downscaled_height,
     num_frames=num_frames,
     num_inference_steps=30,
-    generator=torch.Generator().manual_seed(0),
+    generator=torch.Generator("cpu").manual_seed(0),
     output_type="latent",
 ).frames
+end = time.time()
+stats = cache_dit.summary(pipe)
 
 # Part 2. Upscale generated video using latent upsampler with fewer inference steps
 # The available latent upsampler upscales the height/width by 2x
@@ -112,12 +114,9 @@ video = pipe(
     output_type="pil",
 ).frames[0]
 
-end = time.time()
 
 # Part 4. Downscale the video to the expected resolution
 video = [frame.resize((expected_width, expected_height)) for frame in video]
-
-stats = cache_dit.summary(pipe)
 
 time_cost = end - start
 save_path = f"ltx-video.{strify(args, stats)}.mp4"

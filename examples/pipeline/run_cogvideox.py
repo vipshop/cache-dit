@@ -7,7 +7,6 @@ import time
 import torch
 from diffusers.utils import export_to_video
 from diffusers import CogVideoXPipeline, AutoencoderKLCogVideoX
-from diffusers.quantizers import PipelineQuantizationConfig
 from utils import get_args, strify
 import cache_dit
 
@@ -16,20 +15,11 @@ args = get_args()
 print(args)
 
 
-model_id = os.environ.get("COGVIDEOX_DIR", "THUDM/CogVideoX-5b")
+model_id = os.environ.get("COGVIDEOX_DIR", "THUDM/CogVideoX-2b")
 
 pipe = CogVideoXPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["transformer", "text_encoder"],
-    ),
 )
 
 pipe.to("cuda")
