@@ -171,6 +171,7 @@ def __patch_single_forward__(
     hidden_states: torch.Tensor,
     pooled_temb: torch.Tensor,
     image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
     joint_attention_kwargs: Optional[Dict[str, Any]] = None,
 ) -> torch.Tensor:
     # TODO: Fuse controlnet into block forward
@@ -325,6 +326,8 @@ def __patch_transformer_forward__(
                 hidden_states,
                 pooled_temb,
                 image_rotary_emb,
+                attention_mask,
+                joint_attention_kwargs,
             )
 
         else:

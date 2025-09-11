@@ -469,7 +469,6 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegistry.register("Chroma")
 def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
-    # TODO: https://github.com/vipshop/cache-dit/issues/199
     from diffusers import ChromaTransformer2DModel
     from cache_dit.cache_factory.patch_functors import ChromaPatchFunctor
 
