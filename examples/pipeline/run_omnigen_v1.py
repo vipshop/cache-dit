@@ -1,0 +1,55 @@
+import os
+import sys
+
+sys.path.append("..")
+
+import time
+import torch
+from diffusers import OmniGenPipeline
+from utils import get_args, strify
+import cache_dit
+
+
+args = get_args()
+print(args)
+
+
+model_id = os.environ.get("OMNIGEN_DIR", "Shitao/OmniGen-v1-diffusers")
+
+pipe = OmniGenPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+if args.cache:
+    cache_dit.enable_cache(
+        pipe,
+        Fn_compute_blocks=args.Fn,
+        Bn_compute_blocks=args.Bn,
+        max_warmup_steps=args.max_warmup_steps,
+        max_cached_steps=args.max_cached_steps,
+        max_continuous_cached_steps=args.max_continuous_cached_steps,
+        enable_taylorseer=args.taylorseer,
+        enable_encoder_taylorseer=args.taylorseer,
+        taylorseer_order=args.taylorseer_order,
+        residual_diff_threshold=args.rdt,
+    )
+
+start = time.time()
+prompt = "Realistic photo. A young woman sits on a sofa, holding a book and facing the camera. She wears delicate silver hoop earrings adorned with tiny, sparkling diamonds that catch the light, with her long chestnut hair cascading over her shoulders. Her eyes are focused and gentle, framed by long, dark lashes. She is dressed in a cozy cream sweater, which complements her warm, inviting smile. Behind her, there is a table with a cup of water in a sleek, minimalist blue mug. The background is a serene indoor setting with soft natural light filtering through a window, adorned with tasteful art and flowers, creating a cozy and peaceful ambiance. 4K, HD."
+image = pipe(
+    prompt=prompt,
+    height=1024,
+    width=1024,
+    guidance_scale=3,
+    num_inference_steps=50,
+    generator=torch.Generator(device="cpu").manual_seed(111),
+).images[0]
+
+end = time.time()
+
+cache_dit.summary(pipe)
+
+time_cost = end - start
+save_path = f"omingen-v1.{strify(args, pipe)}.png"
+print(f"Time cost: {time_cost:.2f}s")
+print(f"Saving image to {save_path}")
+image.save(save_path)

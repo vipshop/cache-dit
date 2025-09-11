@@ -334,24 +334,13 @@ def bria_adapter(pipe, **kwargs) -> BlockAdapter:
 
 
 @BlockAdapterRegistry.register("Lumina")
-def lumina_adapter(pipe, **kwargs) -> BlockAdapter:
-    from diffusers import LuminaNextDiT2DModel
-
-    assert isinstance(pipe.transformer, LuminaNextDiT2DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.layers,
-        forward_pattern=ForwardPattern.Pattern_3,
-        **kwargs,
-    )
-
-
-@BlockAdapterRegistry.register("Lumina2")
 def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import Lumina2Transformer2DModel
+    from diffusers import LuminaNextDiT2DModel
 
-    assert isinstance(pipe.transformer, Lumina2Transformer2DModel)
+    assert isinstance(
+        pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel)
+    )
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
