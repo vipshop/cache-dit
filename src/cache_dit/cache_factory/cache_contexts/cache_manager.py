@@ -74,8 +74,8 @@ class CachedContextManager:
                 del self._cached_context_manager[cached_context]
 
     def clear_contexts(self):
-        for cached_context in self._cached_context_manager:
-            self.remove_context(cached_context)
+        for context_name in list(self._cached_context_manager.keys()):
+            self.remove_context(context_name)
 
     @contextlib.contextmanager
     def enter_context(self, cached_context: CachedContext | str):
