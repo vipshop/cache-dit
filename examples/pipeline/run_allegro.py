@@ -7,7 +7,6 @@ import time
 import torch
 from diffusers import AllegroPipeline
 from diffusers.utils import export_to_video
-from diffusers.quantizers import PipelineQuantizationConfig
 from utils import get_args, strify
 import cache_dit
 
@@ -19,16 +18,7 @@ model_id = os.environ.get("ALLEGRO_DIR", "rhymes-ai/Allegro")
 
 pipe = AllegroPipeline.from_pretrained(
     model_id,
-    torch_dtype=torch.bfloat16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["text_encoder"],
-    ),
+    torch_dtype=torch.float16,
 )
 
 pipe.to("cuda")
@@ -59,10 +49,10 @@ prompt = (
 start = time.time()
 video = pipe(
     prompt,
-    num_frames=21,
+    num_frames=9,
     guidance_scale=7.5,
     max_sequence_length=512,
-    num_inference_steps=30,
+    num_inference_steps=100,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
