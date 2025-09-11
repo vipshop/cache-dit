@@ -45,24 +45,14 @@ if args.cache:
 image_paths = [
     # in-context examples
     [
-        load_image(
-            "https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/tryon/00700_00.jpg"
-        ),
-        load_image(
-            "https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/tryon/03673_00.jpg"
-        ),
-        load_image(
-            "https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/tryon/00700_00_tryon_catvton_0.jpg"
-        ),
+        load_image("../data/visualcloze/00700_00.jpg"),
+        load_image("../data/visualcloze/03673_00.jpg"),
+        load_image("../data/visualcloze/00700_00_tryon_catvton_0.jpg"),
     ],
     # query with the target image
     [
-        load_image(
-            "https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/tryon/00555_00.jpg"
-        ),
-        load_image(
-            "https://github.com/lzyhha/VisualCloze/raw/main/examples/examples/tryon/12265_00.jpg"
-        ),
+        load_image("../data/visualcloze/00555_00.jpg"),
+        load_image("../data/visualcloze/12265_00.jpg"),
         None,
     ],
 ]
@@ -78,9 +68,9 @@ image = pipe(
     task_prompt=task_prompt,
     content_prompt=content_prompt,
     image=image_paths,
-    upsampling_height=1632,
-    upsampling_width=1232,
-    upsampling_strength=0.3,
+    upsampling_width=1024,
+    upsampling_height=1024,
+    upsampling_strength=0.4,
     guidance_scale=30,
     num_inference_steps=30,
     max_sequence_length=512,
