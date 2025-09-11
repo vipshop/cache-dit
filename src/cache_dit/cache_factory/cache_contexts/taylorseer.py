@@ -1,4 +1,6 @@
 import math
+import torch
+from typing import List, Dict
 
 
 class TaylorSeer:
@@ -17,7 +19,7 @@ class TaylorSeer:
         self.reset_cache()
 
     def reset_cache(self):
-        self.state = {
+        self.state: Dict[str, List[torch.Tensor]] = {
             "dY_prev": [None] * self.ORDER,
             "dY_current": [None] * self.ORDER,
         }
@@ -36,15 +38,19 @@ class TaylorSeer:
             return True
         return False
 
-    def approximate_derivative(self, Y):
+    def approximate_derivative(self, Y: torch.Tensor) -> List[torch.Tensor]:
         # n-th order Taylor expansion:
         # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2!
         #        + ... + d^nY(0)/dt^n * t^n / n!
         # TODO: Custom Triton/CUDA kernel for better performance,
         # especially for large n_derivatives.
-        dY_current = [None] * self.ORDER
+        dY_current: List[torch.Tensor] = [None] * self.ORDER
         dY_current[0] = Y
         window = self.current_step - self.last_non_approximated_step
+        if self.state["dY_prev"][0] is not None:
+            if dY_current[0].shape != self.state["dY_prev"][0].shape:
+                self.reset_cache()
+
         for i in range(self.n_derivatives):
             if self.state["dY_prev"][i] is not None and self.current_step > 1:
                 dY_current[i + 1] = (
@@ -54,7 +60,7 @@ class TaylorSeer:
                 break
         return dY_current
 
-    def approximate_value(self):
+    def approximate_value(self) -> torch.Tensor:
         # TODO: Custom Triton/CUDA kernel for better performance,
         # especially for large n_derivatives.
         elapsed = self.current_step - self.last_non_approximated_step
@@ -69,7 +75,7 @@ class TaylorSeer:
     def mark_step_begin(self):
         self.current_step += 1
 
-    def update(self, Y):
+    def update(self, Y: torch.Tensor):
         # Directly call this method will ingnore the warmup
         # policy and force full computation.
         # Assume warmup steps is 3, and n_derivatives is 3.
@@ -87,7 +93,7 @@ class TaylorSeer:
         self.state["dY_current"] = self.approximate_derivative(Y)
         self.last_non_approximated_step = self.current_step
 
-    def step(self, Y):
+    def step(self, Y: torch.Tensor):
         self.mark_step_begin()
         if self.should_compute_full():
             self.update(Y)

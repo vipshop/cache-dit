@@ -15,7 +15,7 @@ args = get_args()
 print(args)
 
 
-model_id = os.environ.get("COGVIDEOX_DIR", "THUDM/CogVideoX-5b")
+model_id = os.environ.get("COGVIDEOX_1_5_DIR", "THUDM/CogVideoX1.5-5b")
 
 pipe = CogVideoXPipeline.from_pretrained(
     model_id,
@@ -37,7 +37,6 @@ if args.cache:
         taylorseer_order=args.taylorseer_order,
         residual_diff_threshold=args.rdt,
     )
-
 
 assert isinstance(pipe.vae, AutoencoderKLCogVideoX)  # enable type check for IDE
 pipe.vae.enable_slicing()
@@ -61,7 +60,7 @@ video = pipe(
     prompt=prompt,
     num_videos_per_prompt=1,
     num_inference_steps=50,
-    num_frames=49,
+    num_frames=16,
     guidance_scale=6,
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
@@ -70,7 +69,7 @@ end = time.time()
 stats = cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"cogvideox.{strify(args, stats)}.mp4"
+save_path = f"cogvideox1.5.{strify(args, stats)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=8)
