@@ -5,16 +5,9 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import (
-    BitsAndBytesConfig as DiffusersBitsAndBytesConfig,
-    AllegroTransformer3DModel,
-    AllegroPipeline,
-)
+from diffusers import AllegroPipeline
 from diffusers.utils import export_to_video
-from transformers import (
-    BitsAndBytesConfig as BitsAndBytesConfig,
-    T5EncoderModel,
-)
+from diffusers.quantizers import PipelineQuantizationConfig
 from utils import get_args, strify
 import cache_dit
 
@@ -24,28 +17,20 @@ print(args)
 
 model_id = os.environ.get("ALLEGRO_DIR", "rhymes-ai/Allegro")
 
-quant_config = BitsAndBytesConfig(load_in_8bit=True)
-text_encoder_8bit = T5EncoderModel.from_pretrained(
-    model_id,
-    subfolder="text_encoder",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
-)
-
-quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
-transformer_8bit = AllegroTransformer3DModel.from_pretrained(
-    model_id,
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
-)
-
 pipe = AllegroPipeline.from_pretrained(
     model_id,
-    text_encoder=text_encoder_8bit,
-    transformer=transformer_8bit,
     torch_dtype=torch.bfloat16,
+    quantization_config=PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_4bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["text_encoder"],
+    ),
 )
+
 pipe.to("cuda")
 
 

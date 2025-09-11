@@ -5,12 +5,9 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import (
-    BitsAndBytesConfig as DiffusersBitsAndBytesConfig,
-    EasyAnimateTransformer3DModel,
-    EasyAnimatePipeline,
-)
+from diffusers import EasyAnimatePipeline
 from diffusers.utils import export_to_video
+from diffusers.quantizers import PipelineQuantizationConfig
 from utils import get_args, strify
 import cache_dit
 
@@ -22,18 +19,18 @@ model_id = os.environ.get(
     "EASY_ANIMATE_DIR", "alibaba-pai/EasyAnimateV5.1-12b-zh"
 )
 
-quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
-transformer_8bit = EasyAnimateTransformer3DModel.from_pretrained(
-    model_id,
-    subfolder="transformer",
-    quantization_config=quant_config,
-    torch_dtype=torch.bfloat16,
-)
-
 pipe = EasyAnimatePipeline.from_pretrained(
     model_id,
-    transformer=transformer_8bit,
     torch_dtype=torch.bfloat16,
+    quantization_config=PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_4bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["text_encoder"],
+    ),
 )
 
 pipe.to("cuda")
