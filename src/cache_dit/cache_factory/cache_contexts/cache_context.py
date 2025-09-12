@@ -53,7 +53,7 @@ class CachedContext:  # Internal CachedContext Impl class
     enable_taylorseer: bool = False
     enable_encoder_taylorseer: bool = False
     taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
-    taylorseer_order: int = 2  # The order for TaylorSeer
+    taylorseer_order: int = 1  # The order for TaylorSeer
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     taylorseer: Optional[TaylorSeer] = None
     encoder_tarlorseer: Optional[TaylorSeer] = None
