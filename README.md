@@ -310,7 +310,7 @@ For any PATTERN not {0...5}, we introduced the simple abstract concept of **Patc
 
 ![](./assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit, such as [📚HiDreamPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_chroma.py) and [📚FluxPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_flux.py). After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
