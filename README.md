@@ -266,6 +266,42 @@ cache_dit.enable_cache(
 )
 ```
 
+Even sometimes you have more complex cases, such as Wan 2.2 MoE, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](./examples/pipeline/run_wan_2.2.py) as an example.
+
+```python
+from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
+
+cache_dit.enable_cache(
+    BlockAdapter(
+        pipe=pipe,
+        transformer=[
+            pipe.transformer,
+            pipe.transformer_2,
+        ],
+        blocks=[
+            pipe.transformer.blocks,
+            pipe.transformer_2.blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_2,
+            ForwardPattern.Pattern_2,
+        ],
+        # Setup different cache params for each 'blocks'.
+        params_modifiers=[
+            ParamsModifier(
+                max_warmup_steps=4,
+                max_cached_steps=8,
+            ),
+            ParamsModifier(
+                max_warmup_steps=2,
+                max_cached_steps=20,
+            ),
+        ],
+        has_separate_cfg=True,
+    ),
+)
+```
+
 ### 🤖Cache Acceleration Stats Summary
 
 After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary()` API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
