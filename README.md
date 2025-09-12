@@ -333,7 +333,7 @@ cache_dit.enable_cache(
 ```
 ### 📚Implement Patch Functor
 
-For any PATTERN not {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the code operations within the blocks for loop into block forward. 
+For any PATTERN not {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
