@@ -266,7 +266,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Even sometimes you have more complex cases, such as Wan 2.2 MoE, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](./examples/pipeline/run_wan_2.2.py) as an example.
+Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](./examples/pipeline/run_wan_2.2.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
@@ -286,7 +286,9 @@ cache_dit.enable_cache(
             ForwardPattern.Pattern_2,
             ForwardPattern.Pattern_2,
         ],
-        # Setup different cache params for each 'blocks'.
+        # Setup different cache params for each 'blocks'. You can 
+        # pass any specific cache params to ParamModifier, the old 
+        # value will be overwrite by the new one.
         params_modifiers=[
             ParamsModifier(
                 max_warmup_steps=4,
