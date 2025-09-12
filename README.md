@@ -446,7 +446,7 @@ cache_dit.enable_cache(
     # Taylorseer cache type cache be hidden_states or residual.
     taylorseer_cache_type="residual",
     # Higher values of order will lead to longer computation time
-    taylorseer_order=2, # default is 2.
+    taylorseer_order=1, # default is 1.
     max_warmup_steps=3, # prefer: >= order + 1
     residual_diff_threshold=0.12
 )s
