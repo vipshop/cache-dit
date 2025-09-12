@@ -306,7 +306,7 @@ cache_dit.enable_cache(
 ```
 ### 📚Implement Patch Functor
 
-For any PATTERN not {0... In the Forward Pattern of 5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert any unknown Pattern into a known PATTERN{0... 5}, and for some models, users may also need to fuse the code operations within the blocks for loop into block forward. 
+For any PATTERN not {0... In the Forward Pattern of 5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert any unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the code operations within the blocks for loop into block forward. 
 
 ![](./assets/patch-functor.png)
 
