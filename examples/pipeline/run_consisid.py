@@ -29,7 +29,11 @@ model_id = os.environ.get("CONSISID_DIR", "BestWishYsh/ConsisID-preview")
     eva_transform_mean,
     eva_transform_std,
 ) = prepare_face_models(model_id, device="cuda", dtype=torch.bfloat16)
-pipe = ConsisIDPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+pipe = ConsisIDPipeline.from_pretrained(
+    model_id,
+    torch_dtype=torch.bfloat16,
+    device_map="balanced",
+)
 pipe.to("cuda")
 
 # ConsisID works well with long and well-described prompts. Make sure the face in the image is clearly visible (e.g., preferably half-body or full-body).
