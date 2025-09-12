@@ -24,7 +24,7 @@ def enable_cache(
     max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
     # Cache CFG or not
-    enable_spearate_cfg: bool | None = None,
+    enable_separate_cfg: bool | None = None,
     cfg_compute_first: bool = False,
     cfg_diff_compute_separate: bool = True,
     # Hybird TaylorSeer
@@ -70,15 +70,15 @@ def enable_cache(
         residual_diff_threshold (`float`, *required*, defaults to 0.08):
             he value of residual diff threshold, a higher value leads to faster performance at the
             cost of lower precision.
-        enable_spearate_cfg (`bool`, *required*,  defaults to None):
+        enable_separate_cfg (`bool`, *required*,  defaults to None):
             Whether to do separate cfg or not, such as Wan 2.1, Qwen-Image. For model that fused CFG
-            and non-CFG into single forward step, should set enable_spearate_cfg as False, for example:
+            and non-CFG into single forward step, should set enable_separate_cfg as False, for example:
             CogVideoX, HunyuanVideo, Mochi, etc.
         cfg_compute_first (`bool`, *required*,  defaults to False):
             Compute cfg forward first or not, default False, namely, 0, 2, 4, ..., -> non-CFG step;
             1, 3, 5, ... -> CFG step.
         cfg_diff_compute_separate (`bool`, *required*,  defaults to True):
-            Compute spearate diff values for CFG and non-CFG step, default True. If False, we will
+            Compute separate diff values for CFG and non-CFG step, default True. If False, we will
             use the computed diff from current non-CFG transformer step for current CFG step.
         enable_taylorseer (`bool`, *required*,  defaults to False):
             Enable the hybird TaylorSeer for hidden_states or not. We have supported the
@@ -123,7 +123,7 @@ def enable_cache(
         max_continuous_cached_steps
     )
     cache_context_kwargs["residual_diff_threshold"] = residual_diff_threshold
-    cache_context_kwargs["enable_spearate_cfg"] = enable_spearate_cfg
+    cache_context_kwargs["enable_separate_cfg"] = enable_separate_cfg
     cache_context_kwargs["cfg_compute_first"] = cfg_compute_first
     cache_context_kwargs["cfg_diff_compute_separate"] = (
         cfg_diff_compute_separate

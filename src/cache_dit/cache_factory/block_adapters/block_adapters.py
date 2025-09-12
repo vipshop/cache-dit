@@ -16,8 +16,52 @@ logger = init_logger(__name__)
 
 
 class ParamsModifier:
-    def __init__(self, **kwargs):
-        self._context_kwargs = kwargs.copy()
+    def __init__(
+        self,
+        # Cache context kwargs
+        Fn_compute_blocks: Optional[int] = None,
+        Bn_compute_blocks: Optional[int] = None,
+        max_warmup_steps: Optional[int] = None,
+        max_cached_steps: Optional[int] = None,
+        max_continuous_cached_steps: Optional[int] = None,
+        residual_diff_threshold: Optional[float] = None,
+        # Cache CFG or not
+        enable_separate_cfg: Optional[bool] = None,
+        cfg_compute_first: Optional[bool] = None,
+        cfg_diff_compute_separate: Optional[bool] = None,
+        # Hybird TaylorSeer
+        enable_taylorseer: Optional[bool] = None,
+        enable_encoder_taylorseer: Optional[bool] = None,
+        taylorseer_cache_type: Optional[str] = None,
+        taylorseer_order: Optional[int] = None,
+        **other_cache_context_kwargs,
+    ):
+        self._context_kwargs = other_cache_context_kwargs.copy()
+        self._maybe_update_param("Fn_compute_blocks", Fn_compute_blocks)
+        self._maybe_update_param("Bn_compute_blocks", Bn_compute_blocks)
+        self._maybe_update_param("max_warmup_steps", max_warmup_steps)
+        self._maybe_update_param("max_cached_steps", max_cached_steps)
+        self._maybe_update_param(
+            "max_continuous_cached_steps", max_continuous_cached_steps
+        )
+        self._maybe_update_param(
+            "residual_diff_threshold", residual_diff_threshold
+        )
+        self._maybe_update_param("enable_separate_cfg", enable_separate_cfg)
+        self._maybe_update_param("cfg_compute_first", cfg_compute_first)
+        self._maybe_update_param(
+            "cfg_diff_compute_separate", cfg_diff_compute_separate
+        )
+        self._maybe_update_param("enable_taylorseer", enable_taylorseer)
+        self._maybe_update_param(
+            "enable_encoder_taylorseer", enable_encoder_taylorseer
+        )
+        self._maybe_update_param("taylorseer_cache_type", taylorseer_cache_type)
+        self._maybe_update_param("taylorseer_order", taylorseer_order)
+
+    def _maybe_update_param(self, key: str, value: Any):
+        if value is not None:
+            self._context_kwargs[key] = value
 
 
 @dataclasses.dataclass

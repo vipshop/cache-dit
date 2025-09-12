@@ -10,7 +10,7 @@ logger = init_logger(__name__)
 
 class BlockAdapterRegistry:
     _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
-    _predefined_adapters_has_spearate_cfg: List[str] = [
+    _predefined_adapters_has_separate_cfg: List[str] = [
         "QwenImage",
         "Wan",
         "CogView4",
@@ -69,7 +69,7 @@ class BlockAdapterRegistry:
             return True
 
         pipe_cls_name = pipe_or_adapter.__class__.__name__
-        for name in cls._predefined_adapters_has_spearate_cfg:
+        for name in cls._predefined_adapters_has_separate_cfg:
             if pipe_cls_name.startswith(name):
                 return True
 

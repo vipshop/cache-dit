@@ -35,7 +35,7 @@ if args.cache:
         enable_encoder_taylorseer=args.taylorseer,
         taylorseer_order=args.taylorseer_order,
         residual_diff_threshold=args.rdt,
-        enable_spearate_cfg=True,
+        enable_separate_cfg=True,
     )
 
 

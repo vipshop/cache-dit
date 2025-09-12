@@ -114,27 +114,27 @@ class CachedAdapter:
         **cache_context_kwargs,
     ):
         # Check cache_context_kwargs
-        if cache_context_kwargs["enable_spearate_cfg"] is None:
+        if cache_context_kwargs["enable_separate_cfg"] is None:
             # Check cfg for some specific case if users don't set it as True
             if BlockAdapterRegistry.has_separate_cfg(block_adapter):
-                cache_context_kwargs["enable_spearate_cfg"] = True
+                cache_context_kwargs["enable_separate_cfg"] = True
                 logger.info(
-                    f"Use custom 'enable_spearate_cfg' from BlockAdapter: True. "
+                    f"Use custom 'enable_separate_cfg' from BlockAdapter: True. "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
             else:
-                cache_context_kwargs["enable_spearate_cfg"] = (
+                cache_context_kwargs["enable_separate_cfg"] = (
                     BlockAdapterRegistry.has_separate_cfg(block_adapter.pipe)
                 )
                 logger.info(
-                    f"Use default 'enable_spearate_cfg' from block adapter "
-                    f"register: {cache_context_kwargs['enable_spearate_cfg']}, "
+                    f"Use default 'enable_separate_cfg' from block adapter "
+                    f"register: {cache_context_kwargs['enable_separate_cfg']}, "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
         else:
             logger.info(
-                f"Use custom 'enable_spearate_cfg' from cache context "
-                f"kwargs: {cache_context_kwargs['enable_spearate_cfg']}. "
+                f"Use custom 'enable_separate_cfg' from cache context "
+                f"kwargs: {cache_context_kwargs['enable_separate_cfg']}. "
                 f"Pipeline: {block_adapter.pipe.__class__.__name__}."
             )
 
