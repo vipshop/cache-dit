@@ -288,6 +288,7 @@ def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
 @BlockAdapterRegistry.register("DiT")
 def dit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import DiTTransformer2DModel
+    from cache_dit.cache_factory.patch_functors import DiTPatchFunctor
 
     assert isinstance(pipe.transformer, DiTTransformer2DModel)
     return BlockAdapter(
@@ -295,6 +296,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=ForwardPattern.Pattern_3,
+        patch_functor=DiTPatchFunctor(),
         **kwargs,
     )
 
