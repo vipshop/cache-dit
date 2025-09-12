@@ -118,9 +118,10 @@
 - [🔥Supported Models](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#unified)
-  - [🎉Cache with One-line Code](#unified)
+  - [♥️Cache with One-line Code](#unified)
   - [🔥Automatic Block Adapter](#unified)
   - [📚Hybird Forward Pattern](#unified)
+  - [📚Implement Patch Functor](#unified)
   - [🤖Cache Acceleration Stats](#unified)
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
@@ -302,6 +303,37 @@ cache_dit.enable_cache(
         has_separate_cfg=True,
     ),
 )
+```
+### 📚Implement Patch Functor
+
+For any PATTERN not {0... In the Forward Pattern of 5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert any unknown Pattern into a known PATTERN{0... 5}, and for some models, users may also need to fuse the code operations within the blocks for loop into block forward. 
+
+![](./assets/patch-functor.png)
+
+Some Patch functors have already been provided in cache-dit, such as [📚HiDreamPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_chroma.py) and [📚FluxPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_flux.py). After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+
+```python
+@BlockAdapterRegistry.register("HiDream")
+def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
+    from diffusers import HiDreamImageTransformer2DModel
+    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+
+    assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.double_stream_blocks,
+            pipe.transformer.single_stream_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_3,
+        ],
+        # NOTE: Setup your custom patch functor here.
+        patch_functor=HiDreamPatchFunctor(),
+        **kwargs,
+    )
 ```
 
 ### 🤖Cache Acceleration Stats Summary
