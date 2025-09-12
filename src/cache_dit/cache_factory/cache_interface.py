@@ -24,14 +24,14 @@ def enable_cache(
     max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
     # Cache CFG or not
-    enable_separate_cfg: bool | None = None,
+    enable_separate_cfg: bool = None,
     cfg_compute_first: bool = False,
     cfg_diff_compute_separate: bool = True,
     # Hybird TaylorSeer
     enable_taylorseer: bool = False,
     enable_encoder_taylorseer: bool = False,
     taylorseer_cache_type: str = "residual",
-    taylorseer_order: int = 2,
+    taylorseer_order: int = 1,
     **other_cache_context_kwargs,
 ) -> Union[
     DiffusionPipeline,
@@ -91,10 +91,10 @@ def enable_cache(
             Enable the hybird TaylorSeer for encoder_hidden_states or not.
         taylorseer_cache_type (`str`, *required*,  defaults to `residual`):
             The TaylorSeer implemented in cache-dit supports both `hidden_states` and `residual` as cache type.
-        taylorseer_order (`int`, *required*, defaults to 2):
+        taylorseer_order (`int`, *required*, defaults to 1):
             The order of taylorseer, higher values of n_derivatives will lead to longer computation time,
-            but may improve precision significantly.
-        other_cache_kwargs: (`dict`, *optional*, defaults to {})
+            the recommended value is 1 or 2.
+        other_cache_context_kwargs: (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
 
