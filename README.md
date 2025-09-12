@@ -118,9 +118,10 @@
 - [🔥Supported Models](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#unified)
-  - [🎉Cache with One-line Code](#unified)
+  - [♥️Cache with One-line Code](#unified)
   - [🔥Automatic Block Adapter](#unified)
   - [📚Hybird Forward Pattern](#unified)
+  - [📚Implement Patch Functor](#unified)
   - [🤖Cache Acceleration Stats](#unified)
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
@@ -264,6 +265,75 @@ cache_dit.enable_cache(
         ],
     ),
 )
+```
+
+Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](./examples/pipeline/run_wan_2.2.py) as an example.
+
+```python
+from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
+
+cache_dit.enable_cache(
+    BlockAdapter(
+        pipe=pipe,
+        transformer=[
+            pipe.transformer,
+            pipe.transformer_2,
+        ],
+        blocks=[
+            pipe.transformer.blocks,
+            pipe.transformer_2.blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_2,
+            ForwardPattern.Pattern_2,
+        ],
+        # Setup different cache params for each 'blocks'. You can 
+        # pass any specific cache params to ParamModifier, the old 
+        # value will be overwrite by the new one.
+        params_modifiers=[
+            ParamsModifier(
+                max_warmup_steps=4,
+                max_cached_steps=8,
+            ),
+            ParamsModifier(
+                max_warmup_steps=2,
+                max_cached_steps=20,
+            ),
+        ],
+        has_separate_cfg=True,
+    ),
+)
+```
+### 📚Implement Patch Functor
+
+For any PATTERN not {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the code operations within the blocks for loop into block forward. 
+
+![](./assets/patch-functor.png)
+
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+
+```python
+@BlockAdapterRegistry.register("HiDream")
+def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
+    from diffusers import HiDreamImageTransformer2DModel
+    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+
+    assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.double_stream_blocks,
+            pipe.transformer.single_stream_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_3,
+        ],
+        # NOTE: Setup your custom patch functor here.
+        patch_functor=HiDreamPatchFunctor(),
+        **kwargs,
+    )
 ```
 
 ### 🤖Cache Acceleration Stats Summary
