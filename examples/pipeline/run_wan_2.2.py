@@ -63,9 +63,11 @@ if args.cache:
             params_modifiers=[
                 # high-noise transformer only have 30% steps
                 ParamsModifier(
+                    max_warmup_steps=4,
                     max_cached_steps=8,
                 ),
                 ParamsModifier(
+                    max_warmup_steps=2,
                     max_cached_steps=20,
                 ),
             ],
@@ -74,7 +76,6 @@ if args.cache:
         # Common cache params
         Fn_compute_blocks=1,
         Bn_compute_blocks=0,
-        max_warmup_steps=2,
         max_continuous_cached_steps=2,
         residual_diff_threshold=0.08,
         enable_taylorseer=True,
