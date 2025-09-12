@@ -51,7 +51,7 @@ def get_args() -> argparse.ArgumentParser:
         "--max-continuous-cached-steps", "-mcc", type=int, default=-1
     )
     parser.add_argument("--taylorseer", action="store_true", default=False)
-    parser.add_argument("--taylorseer-order", "-order", type=int, default=2)
+    parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
     return parser.parse_args()
 
 
