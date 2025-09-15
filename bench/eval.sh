@@ -8,7 +8,7 @@ cache-dit-metrics-cli \
   --perf-log ./log/cache_dit_bench_default.log
 
 cache-dit-metrics-cli \
-  psnr ssim mse lpips fid --summary \
+  psnr ssim lpips --summary \
   --ref-img-dir ./tmp/DrawBench200_DBCache/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache \
   --perf-tag "Mean pipeline TFLOPs" \
@@ -23,7 +23,7 @@ cache-dit-metrics-cli \
   --perf-log ./log/cache_dit_bench_default.log
 
 cache-dit-metrics-cli \
-  psnr ssim mse lpips fid --summary \
+  psnr ssim lpips --summary \
   --ref-img-dir ./tmp/DrawBench200_DBCache/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache \
   --perf-tag "Mean pipeline time" \
@@ -39,7 +39,7 @@ cache-dit-metrics-cli \
   --perf-log ./log/cache_dit_bench_default.log
 
 cache-dit-metrics-cli \
-  psnr ssim mse lpips fid --summary \
+  psnr ssim lpips --summary \
   --ref-img-dir ./tmp/DrawBench200_DBCache_TaylorSeer/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache_TaylorSeer \
   --perf-tag "Mean pipeline TFLOPs" \
@@ -54,7 +54,7 @@ cache-dit-metrics-cli \
   --perf-log ./log/cache_dit_bench_default.log
 
 cache-dit-metrics-cli \
-  psnr ssim mse lpips fid --summary \
+  psnr ssim lpips --summary \
   --ref-img-dir ./tmp/DrawBench200_DBCache_TaylorSeer/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache_TaylorSeer \
   --perf-tag "Mean pipeline time" \
