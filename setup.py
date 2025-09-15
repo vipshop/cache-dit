@@ -63,6 +63,14 @@ setup(
     install_requires=fetch_requirements(),
     extras_require={
         "all": [],
+        # dev dependencies. Install them by `pip3 install 'cache-dit[metrics]'`
+        "metrics": [
+            "image-reward",
+            "pytorch-fid",
+            "lpips==0.1.4",
+            "CLIP @ git+https://github.com/openai/CLIP.git",
+            "calflops @ git+https://github.com/chengzegang/calculate-flops.pytorch.git",
+        ],
         # dev dependencies. Install them by `pip3 install 'cache-dit[dev]'`
         "dev": [
             "pre-commit",
