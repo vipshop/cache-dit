@@ -250,4 +250,4 @@ else
 fi
 
 # export CUDA_VISIBLE_DEVICES=4 && nohup bash bench.sh default > log/cache_dit_bench_default.log 2>&1 &
-# export CUDA_VISIBLE_DEVICES=4 && nohup bash bench.sh taylorseer > log/cache_dit_bench_taylorseer.log 2>&1 &
+# export CUDA_VISIBLE_DEVICES=5 && nohup bash bench.sh taylorseer > log/cache_dit_bench_taylorseer.log 2>&1 &
