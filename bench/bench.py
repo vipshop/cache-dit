@@ -59,7 +59,7 @@ def apply_flops_hook(
             if total_steps > 0:
                 total_tflops = total_flops * 10 ** (-12)
                 all_tflops.append(total_tflops)
-                logger.info(f"Total FLOPs: {total_tflops} TFLOPs")
+                logger.debug(f"Total FLOPs: {total_tflops} TFLOPs")
             total_flops = 0  # reset
 
         return results
