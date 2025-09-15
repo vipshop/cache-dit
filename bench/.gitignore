@@ -166,3 +166,7 @@ report*.html
 .DS_Store
 
 *.png
+tmp
+data
+log
+foca_eval.py

@@ -25,9 +25,11 @@ pipe = FluxPipeline.from_pretrained(
 
 if args.cache:
     adapter = cache_dit.enable_cache(pipe)
+    print(cache_dit.strify(pipe))
     # Test disable_cache api
     # cache_dit.disable_cache(adapter)
     cache_dit.disable_cache(pipe)
+    print(cache_dit.strify(pipe))
 
 
 start = time.time()

@@ -15,6 +15,8 @@ from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
 from cache_dit.metrics.lpips import compute_lpips_img
+from cache_dit.metrics.clip_score import compute_clip_score
+from cache_dit.metrics.image_reward import compute_reward_score
 
 logger = init_logger(__name__)
 
@@ -374,12 +376,14 @@ compute_video_mse = partial(
 
 
 METRICS_CHOICES = [
-    "lpips",
-    "psnr",
-    "ssim",
-    "mse",
-    "fid",
-    "all",
+    "lpips",  # img vs img
+    "psnr",  # img vs img
+    "ssim",  # img vs img
+    "mse",  # img vs img
+    "fid",  # img vs img
+    "all",  # img vs img
+    "clip_score",  # img vs prompt
+    "image_reward",  # img vs prompt
 ]
 
 
@@ -404,6 +408,13 @@ def get_args():
         type=str,
         default=None,
         help="Path to ground truth image or Dir to ground truth images",
+    )
+    parser.add_argument(
+        "--prompt-true",
+        "-p",
+        type=str,
+        default=None,
+        help="Path to ground truth prompt file for CLIP Score and Image Reward Score.",
     )
     parser.add_argument(
         "--img-test",
@@ -441,6 +452,13 @@ def get_args():
         type=str,
         default=None,
         help="Path to ref dir that contains ground truth images",
+    )
+    parser.add_argument(
+        "--ref-prompt-true",
+        "-rp",
+        type=str,
+        default=None,
+        help="Path to ground truth prompt file for CLIP Score and Image Reward Score.",
     )
 
     # Video 1 vs N pattern
@@ -516,6 +534,10 @@ def entrypoint():
     args = get_args()
     logger.debug(args)
 
+    if args.metrics in ["clip_score", "image_reward"]:
+        assert args.prompt_true is not None or args.ref_prompt_true is not None
+        assert args.img_test is not None or args.img_source_dir is not None
+
     if args.enable_verbose:
         global DISABLE_VERBOSE
         set_metrics_verbose(True)
@@ -533,6 +555,7 @@ def entrypoint():
     def _run_metric(
         metric: str,
         img_true: str = None,
+        prompt_true: str = None,
         img_test: str = None,
         video_true: str = None,
         video_test: str = None,
@@ -577,6 +600,36 @@ def entrypoint():
             if metric == "fid" or metric == "all":
                 img_fid, n = FID.compute_fid(img_true, img_test)
                 _logging_msg(img_fid, "fid", n)
+
+        if prompt_true is not None and img_test is not None:
+            if any(
+                (
+                    not os.path.exists(prompt_true),  # file
+                    not os.path.exists(img_test),  # dir
+                )
+            ):
+                return
+
+            # img_true and img_test can be files or dirs
+            prompt_true_info = os.path.basename(prompt_true)
+            img_test_info = os.path.basename(img_test)
+
+            def _logging_msg(value: float, name, n: int):
+                if value is None or n is None:
+                    return
+                msg = (
+                    f"{prompt_true_info} vs {img_test_info}, "
+                    f"Num: {n}, {name.upper()}: {value:.5f}"
+                )
+                METRICS_META[msg] = value
+                logger.info(msg)
+
+            if metric == "clip_score":
+                clip_score, n = compute_clip_score(img_test, prompt_true)
+                _logging_msg(clip_score, "clip_score", n)
+            if metric == "image_reward":
+                image_reward, n = compute_reward_score(img_test, prompt_true)
+                _logging_msg(image_reward, "image_reward", n)
 
         if video_true is not None and video_test is not None:
             if any(
@@ -627,7 +680,18 @@ def entrypoint():
     def _is_video_1vsN_pattern() -> bool:
         return args.video_source_dir is not None and args.ref_video is not None
 
-    assert not all((_is_image_1vsN_pattern(), _is_video_1vsN_pattern()))
+    def _is_prompt_1vsN_pattern() -> bool:
+        return (
+            args.img_source_dir is not None and args.ref_prompt_true is not None
+        )
+
+    assert not all(
+        (
+            _is_image_1vsN_pattern(),
+            _is_video_1vsN_pattern(),
+            _is_prompt_1vsN_pattern(),
+        )
+    )
 
     if _is_image_1vsN_pattern():
         # Glob Image dirs
@@ -711,11 +775,42 @@ def entrypoint():
                     video_test=video_test,
                 )
 
+    elif _is_prompt_1vsN_pattern():
+        # Glob Image dirs
+        if not os.path.exists(args.img_source_dir):
+            logger.error(f"{args.img_source_dir} not exist!")
+            return
+
+        directories = []
+        for item in os.listdir(args.img_source_dir):
+            item_path = os.path.join(args.img_source_dir, item)
+            if os.path.isdir(item_path):
+                directories.append(item_path)
+
+        if len(directories) == 0:
+            return
+
+        directories = sorted(directories)
+        if not DISABLE_VERBOSE:
+            logger.info(
+                f"Compare {args.ref_prompt_true} vs {directories}, "
+                f"Num compares: {len(directories)}"
+            )
+
+        for metric in args.metrics:
+            for img_test_dir in directories:
+                _run_metric(
+                    metric=metric,
+                    prompt_true=args.ref_prompt_true,
+                    img_test=img_test_dir,
+                )
+
     else:
         for metric in args.metrics:
             _run_metric(
                 metric=metric,
                 img_true=args.img_true,
+                prompt_true=args.prompt_true,
                 img_test=args.img_test,
                 video_true=args.video_true,
                 video_test=args.video_test,
@@ -848,7 +943,17 @@ def entrypoint():
                 if metric.upper() in key or metric.lower() in key:
                     selected_items[key] = METRICS_META[key]
 
-            reverse = True if metric.lower() in ["psnr", "ssim"] else False
+            reverse = (
+                True
+                if metric.lower()
+                in [
+                    "psnr",
+                    "ssim",
+                    "clip_score",
+                    "image_reward",
+                ]
+                else False
+            )
             sorted_items = sorted(
                 selected_items.items(), key=lambda x: x[1], reverse=reverse
             )

@@ -1,6 +1,9 @@
 import torch
 import dataclasses
 import diffusers
+import builtins as __builtin__
+import contextlib
+
 import numpy as np
 from pprint import pprint
 from diffusers import DiffusionPipeline
@@ -11,6 +14,18 @@ from cache_dit.logger import init_logger
 
 
 logger = init_logger(__name__)
+
+
+def dummy_print(*args, **kwargs):
+    pass
+
+
+@contextlib.contextmanager
+def disable_print():
+    origin_print = __builtin__.print
+    __builtin__.print = dummy_print
+    yield
+    __builtin__.print = origin_print
 
 
 @torch.compiler.disable
