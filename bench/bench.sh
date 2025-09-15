@@ -113,7 +113,7 @@ function run_flux_draw_bench() {
 function run_flux_draw_bench_with_taylorseer() {
   local taylorseer_params="--taylorseer --order 1"
   local test_num=200
-  local save_dir="./tmp/DrawBench200_DBCache"
+  local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer"
   local base_params="--test-num ${test_num} --save-dir ${save_dir}"
 
   # baseline
