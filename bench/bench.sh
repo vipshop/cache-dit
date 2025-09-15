@@ -218,8 +218,16 @@ function run_flux_draw_bench_with_taylorseer() {
   python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 2 ${taylorseer_params}
 }
 
-run_flux_draw_bench
-# run_flux_draw_bench_with_taylorseer
-# case: run this bench.sh script with nohup
 
-# nohup bash bench.sh > log/cache_dit_bench.log 2>&1 &
+bench_type=$1
+
+if [[ "${bench_type}" == "taylorseer" ]]; then
+  echo "bench_type: ${bench_type}, DBCache + TaylorSeer"
+  run_flux_draw_bench_with_taylorseer
+else 
+  echo "bench_type: ${bench_type}, DBCache"
+  run_flux_draw_bench
+fi
+
+# export CUDA_VISIBLE_DEVICES=4 && nohup bash bench.sh default > log/cache_dit_bench_default.log 2>&1 &
+# export CUDA_VISIBLE_DEVICES=4 && nohup bash bench.sh taylorseer > log/cache_dit_bench_taylorseer.log 2>&1 &
