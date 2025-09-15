@@ -12,6 +12,7 @@ import ImageReward as RM
 import torchvision.transforms.v2.functional as TF
 import torchvision.transforms.v2 as T
 
+from cache_dit.metrics import FrechetInceptionDistance
 from cache_dit import init_logger
 
 logger = init_logger(__name__)
@@ -120,6 +121,9 @@ def evaluate_all_metrics(
         ]
     )
 
+    # FID
+    FID = FrechetInceptionDistance()
+
     # Load data
     image_files = get_sorted_image_files(test_folder)
     prompts = load_prompts(prompt_file_path) if prompt_file_path else []
@@ -131,7 +135,7 @@ def evaluate_all_metrics(
     ssim_values = []
     lpips_values = []
 
-    # Process images
+    # Compute: CLIP Score, ImageReward, PSNR, SSIM, LPIPS
     for i, filename in enumerate(image_files):
         try:
             img_path = os.path.join(test_folder, filename)
@@ -214,6 +218,9 @@ def evaluate_all_metrics(
     if lpips_values:
         results["lpips"] = np.mean(lpips_values)
 
+    # FID
+    results["fid"] = FID.compute_fid(reference_folder, test_folder)
+
     return results
 
 
@@ -255,6 +262,7 @@ def main():
     print(f"{results.get('psnr', 0):.3f}")
     print(f"{results.get('ssim', 0):.4f}")
     print(f"{results.get('lpips', 0):.4f}")
+    print(f"{results.get('fid', 0):.2f}")
 
 
 if __name__ == "__main__":
