@@ -1,5 +1,4 @@
 import os
-import re
 import argparse
 import functools
 import torch
@@ -22,29 +21,9 @@ import cache_dit
 logger = cache_dit.init_logger(__name__)
 
 
-def convert_flops(flops_str):
-    """
-    Convert a string representing FLOPS (e.g., '12.34 GFLOPS', '1.2 TFLOPS') to its corresponding numerical value.
-    """
-    match = re.match(
-        r"([\d.]+)\s*([GT]?FLOPS)", flops_str.strip(), re.IGNORECASE
-    )
-    if not match:
-        raise ValueError(f"The FLOPS string cannot be parsed: {flops_str}")
-
-    # Extract the value and unit
-    value = float(match.group(1))
-    unit = match.group(2).upper()
-
-    # Convert to numerical value based on unit
-    if unit == "GFLOPS":
-        return value * 10**9
-    elif unit == "TFLOPS":
-        return value * 10**12
-    elif unit == "FLOPS":
-        return value
-    else:
-        raise ValueError(f"Unknown FLOPS unit: {unit}")
+def set_rand_seeds(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
 
 
 # TODO: Support calculate_flops using functools
@@ -58,12 +37,22 @@ def apply_flops_hook(
     transformer: FluxTransformer2DModel,
 ):
 
-    original_forward = transformer.forward
+    old_forward = transformer.forward
 
-    @functools.wraps(original_forward)
+    @functools.wraps(old_forward)
     def new_forward(self: FluxTransformer2DModel, **kwargs):
         global total_flops, total_steps, all_tflops
 
+        # reset original forward to avoid maximum recursion depth error.
+        hook_forward = transformer.forward
+        transformer.forward = old_forward.__get__(transformer)
+        step_flops = calculate_flops(model=transformer, kwargs=kwargs)[0]
+        transformer.forward = hook_forward.__get__(transformer)
+
+        total_flops += step_flops
+        total_steps += 1
+
+        # [1, 50]: one inference
         if total_steps % args.steps == 0:
             if total_steps > 0:
                 total_tflops = total_flops * 10 ** (-12)
@@ -71,63 +60,12 @@ def apply_flops_hook(
                 logger.info(f"Total FLOPs: {total_tflops} TFLOPs")
             total_flops = 0  # reset
 
-        flops = calculate_flops(
-            model=self.transformer, kwargs=kwargs, print_results=False
-        )[0]
-        step_flops = convert_flops(flops)
-        total_flops += step_flops
-        total_steps += 1
-
-        return original_forward(**kwargs)
+        return old_forward(**kwargs)
 
     transformer.forward = new_forward.__get__(transformer)
-    transformer._original_forward = original_forward
+    logger.info("Applied FLOPs hook to transformer!")
 
     return transformer
-
-
-def get_args() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    # General arguments
-    parser.add_argument("--steps", type=int, default=50)
-    parser.add_argument("--seed", type=int, default=0)
-    # Cache params
-    parser.add_argument("--cache", action="store_true", default=False)
-    parser.add_argument("--taylorseer", action="store_true", default=False)
-    parser.add_argument("--taylorseer-order", "--order", type=int, default=1)
-    parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
-    parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
-    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
-    parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
-    parser.add_argument(
-        "--max-continuous-cached-steps", "--mcc", type=int, default=-1
-    )
-    parser.add_argument(
-        "--disable-block-adapter", action="store_true", default=False
-    )
-    # Compile & FP8
-    parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--inductor-flags", action="store_true", default=False)
-    parser.add_argument("--compile-all", action="store_true", default=False)
-    parser.add_argument("--quantize", "--q", action="store_true", default=False)
-    # Test data
-    parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200")
-    parser.add_argument(
-        "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
-    )
-    parser.add_argument("--width", type=int, default=1024, help="Image width")
-    parser.add_argument("--height", type=int, default=1024, help="Image height")
-    parser.add_argument("--test-num", type=int, default=None)
-    parser.add_argument(
-        "--cal-flops", "--flops", action="store_true", default=False
-    )
-    return parser.parse_args()
-
-
-def set_rand_seeds(seed):
-    random.seed(seed)
-    torch.manual_seed(seed)
 
 
 def init_flux_pipe(args) -> FluxPipeline:
@@ -208,7 +146,7 @@ def init_flux_pipe(args) -> FluxPipeline:
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
 
     if args.cal_flops:
-        pipe.transformer = apply_flops_hook(pipe.transformer)
+        pipe.transformer = apply_flops_hook(args, pipe.transformer)
 
     return pipe
 
@@ -223,6 +161,45 @@ def gen_flux_image(args, pipe: FluxPipeline, prompt) -> Image.Image:
         generator=torch.Generator("cpu").manual_seed(args.seed),
     ).images[0]
     return image
+
+
+def get_args() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    # General arguments
+    parser.add_argument("--steps", type=int, default=50)
+    parser.add_argument("--seed", type=int, default=0)
+    # Cache params
+    parser.add_argument("--cache", action="store_true", default=False)
+    parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=1)
+    parser.add_argument("--rdt", type=float, default=0.08)
+    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
+    parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
+    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
+    parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
+    parser.add_argument(
+        "--max-continuous-cached-steps", "--mcc", type=int, default=-1
+    )
+    parser.add_argument(
+        "--disable-block-adapter", action="store_true", default=False
+    )
+    # Compile & FP8
+    parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--inductor-flags", action="store_true", default=False)
+    parser.add_argument("--compile-all", action="store_true", default=False)
+    parser.add_argument("--quantize", "--q", action="store_true", default=False)
+    # Test data
+    parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200")
+    parser.add_argument(
+        "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
+    )
+    parser.add_argument("--width", type=int, default=1024, help="Image width")
+    parser.add_argument("--height", type=int, default=1024, help="Image height")
+    parser.add_argument("--test-num", type=int, default=None)
+    parser.add_argument(
+        "--cal-flops", "--flops", action="store_true", default=False
+    )
+    return parser.parse_args()
 
 
 @torch.no_grad()
@@ -257,11 +234,12 @@ def main():
         save_name = os.path.join(save_dir, f"img_{i}.png")
         image.save(save_name)
 
+    # Perf. Latency and TFLOPs
     if len(all_times) > 1:
         all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)
     perf_msg = f"Perf. {perf_tag}, Mean pipeline time: {mean_time:.2f}s"
-    if args.cal_flops:
+    if args.cal_flops and len(all_tflops) > 0:
         mean_tflops = sum(all_tflops) / len(all_tflops)
         perf_msg += f", Mean pipeline TFLOPs: {mean_tflops:.2f}"
     logger.info(perf_msg)
