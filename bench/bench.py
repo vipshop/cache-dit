@@ -29,7 +29,6 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-continuous-cached-steps", "--mcc", type=int, default=-1
     )
-    parser.add_argument("--gen-device", type=str, default="cpu")
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--compile-all", action="store_true", default=False)
@@ -144,7 +143,7 @@ def gen_flux_image(args, pipe: FluxPipeline, prompt) -> Image.Image:
     image = pipe(
         prompt,
         num_inference_steps=args.steps,
-        generator=torch.Generator(args.gen_device).manual_seed(args.seed),
+        generator=torch.Generator("cpu").manual_seed(args.seed),
     ).images[0]
     return image
 
@@ -162,7 +161,7 @@ def main():
     # Load prompts
     with open(args.prompt_file, "r", encoding="utf-8") as f:
         prompts = [line.strip() for line in f.readlines() if line.strip()]
-    print(f"Loaded {len(prompts)} prompts from {args.prompt_file}")
+    logger.info(f"Loaded {len(prompts)} prompts from: {args.prompt_file}")
 
     all_times = []
     perf_tag = (

@@ -168,3 +168,4 @@ report*.html
 *.png
 tmp
 data
+log
