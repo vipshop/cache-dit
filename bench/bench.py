@@ -188,9 +188,9 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 8
-    # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 4
-    # python3 bench.py --cache --Fn 4 --Bn 0 --max-warmup-steps 4
+    # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt 0.08
+    # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt 0.08
+    # python3 bench.py --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt 0.08
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --mcc 3 --rdt 0.16
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --mcc 2 --rdt 0.16
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --mcc 3 --rdt 0.16
