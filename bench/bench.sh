@@ -75,6 +75,11 @@ function run_flux_draw_bench() {
   # rdt 0.24
   rdt=0.24
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 6
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6
+  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6
+
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 4
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4
   python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4
@@ -93,6 +98,11 @@ function run_flux_draw_bench() {
   # rdt 0.32
   rdt=0.32
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 6
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6
+  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6
+  
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 4
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4
   python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4
@@ -184,6 +194,11 @@ function run_flux_draw_bench_with_taylorseer() {
   # rdt 0.24
   rdt=0.24
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 4 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4 ${taylorseer_params}
@@ -202,6 +217,11 @@ function run_flux_draw_bench_with_taylorseer() {
   # rdt 0.32
   rdt=0.32
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 6 ${taylorseer_params}
+
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt ${rdt} --mcc 4 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 4 ${taylorseer_params}
