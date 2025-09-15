@@ -9,7 +9,7 @@ from tqdm import tqdm
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 try:
-    from calflops import calculate_flops
+    from utils import calculate_flops
 
     CALFLOPS_AVAILABLE = True
 except ImportError:
@@ -33,7 +33,7 @@ all_tflops = []
 
 
 def apply_flops_hook(
-    args: argparse.ArgumentParser,
+    args: argparse.Namespace,
     transformer: FluxTransformer2DModel,
 ):
 
@@ -46,7 +46,9 @@ def apply_flops_hook(
         # reset original forward to avoid maximum recursion depth error.
         hook_forward = transformer.forward
         transformer.forward = old_forward.__get__(transformer)
-        step_flops = calculate_flops(model=transformer, kwargs=kwargs)[0]
+        step_flops, _, _, results = calculate_flops(
+            model=transformer, kwargs=kwargs
+        )
         transformer.forward = hook_forward.__get__(transformer)
 
         total_flops += step_flops
@@ -60,7 +62,7 @@ def apply_flops_hook(
                 logger.info(f"Total FLOPs: {total_tflops} TFLOPs")
             total_flops = 0  # reset
 
-        return old_forward(**kwargs)
+        return results
 
     transformer.forward = new_forward.__get__(transformer)
     logger.info("Applied FLOPs hook to transformer!")
@@ -68,7 +70,7 @@ def apply_flops_hook(
     return transformer
 
 
-def init_flux_pipe(args) -> FluxPipeline:
+def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
     pipe: FluxPipeline = FluxPipeline.from_pretrained(
         os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
         torch_dtype=torch.bfloat16,
@@ -151,7 +153,9 @@ def init_flux_pipe(args) -> FluxPipeline:
     return pipe
 
 
-def gen_flux_image(args, pipe: FluxPipeline, prompt) -> Image.Image:
+def gen_flux_image(
+    args: argparse.Namespace, pipe: FluxPipeline, prompt: str = None
+) -> Image.Image:
     assert prompt is not None
     image = pipe(
         prompt,
