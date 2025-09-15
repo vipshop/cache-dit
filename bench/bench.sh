@@ -5,7 +5,7 @@ export IMAGEREWARD_MODEL_DIR="$HF_MODELS/cache-dit-eval/ImageReward"
 function run_flux_draw_bench() {
   local test_num=200
   local save_dir="./tmp/DrawBench200_DBCache"
-  local base_params="--test-num ${test_num} --save-dir ${save_dir}"
+  local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
   # baseline
   python3 bench.py ${base_params}
@@ -114,7 +114,7 @@ function run_flux_draw_bench_with_taylorseer() {
   local taylorseer_params="--taylorseer --order 1"
   local test_num=200
   local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer"
-  local base_params="--test-num ${test_num} --save-dir ${save_dir}"
+  local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
   # baseline
   python3 bench.py ${base_params}
