@@ -169,3 +169,4 @@ report*.html
 tmp
 data
 log
+foca_eval.py
