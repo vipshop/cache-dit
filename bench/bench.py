@@ -1,259 +1,243 @@
 import os
-import torch
-import cv2
-import numpy as np
-import re
 import argparse
+import torch
+import random
+import time
 from PIL import Image
-import lpips
-from skimage.metrics import structural_similarity as ssim
-from transformers import CLIPProcessor, CLIPModel
-import ImageReward as RM
-import torchvision.transforms.v2.functional as TF
-import torchvision.transforms.v2 as T
+from tqdm import tqdm
+from diffusers import FluxPipeline, FluxTransformer2DModel
 
-from cache_dit import init_logger
+import cache_dit
 
-logger = init_logger(__name__)
+logger = cache_dit.init_logger(__name__)
 
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-
-def load_prompts(prompt_file_path):
-    """Load prompts from file"""
-    with open(prompt_file_path, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f.readlines()]
-
-
-def get_sorted_image_files(folder_path):
-    """Get sorted image files from folder"""
-    image_files = []
-    for filename in os.listdir(folder_path):
-        if filename.lower().endswith(
-            (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff")
-        ):
-            image_files.append(filename)
-
-    # Natural sort by number in filename
-    def natural_sort_key(filename):
-        match = re.search(r"img_(\d+)\.", filename)
-        return int(match.group(1)) if match else 0
-
-    return sorted(image_files, key=natural_sort_key)
-
-
-def calculate_psnr(img1, img2):
-    """Calculate PSNR"""
-    mse = np.mean((img1 - img2) ** 2)
-    if mse == 0:
-        return float("inf")
-    return 20 * np.log10(255.0 / np.sqrt(mse))
-
-
-def calculate_ssim(img1, img2):
-    """Calculate SSIM"""
-    if len(img1.shape) == 3 and img1.shape[2] == 3:
-        gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-        return ssim(gray1, gray2, data_range=255)
-    return ssim(img1, img2, data_range=255)
-
-
-def preprocess_for_lpips(img):
-    """Preprocess image for LPIPS"""
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = img.astype(np.float32) / 255.0
-    img = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0)
-    return img * 2 - 1
-
-
-def evaluate_all_metrics(
-    test_folder,
-    prompt_file_path=None,
-    reference_folder=None,
-    clip_model_path=None,
-    imagereward_model_path=None,
-):
-    """Evaluate all metrics and return results"""
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    assert clip_model_path is not None
-    assert imagereward_model_path is not None
-
-    # Load models
-    clip_model = CLIPModel.from_pretrained(clip_model_path)
-    clip_model = clip_model.to(device)  # type: ignore
-    clip_processor = CLIPProcessor.from_pretrained(clip_model_path)
-
-    # Load ImageReward model
-    med_config = os.path.join(imagereward_model_path, "med_config.json")
-    imagereward_path = os.path.join(imagereward_model_path, "ImageReward.pt")
-    imagereward_model = RM.load(
-        imagereward_path,
-        download_root=imagereward_model_path,
-        med_config=med_config,
-    ).to(device)
-
-    # LPIPS model
-    lpips_model = lpips.LPIPS(net="alex", verbose=False).to(device)
-
-    # ImageReward transform
-    reward_transform = T.Compose(
-        [
-            T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-            T.CenterCrop(224),
-            T.ToImage(),
-            T.ToDtype(torch.float32, scale=True),
-            T.Normalize(
-                (0.48145466, 0.4578275, 0.40821073),
-                (0.26862954, 0.26130258, 0.27577711),
-            ),
-        ]
+def get_args() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    # General arguments
+    parser.add_argument("--steps", type=int, default=50)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--cache", action="store_true", default=False)
+    parser.add_argument("--cache-config", type=str, default=None)
+    parser.add_argument("--taylorseer", action="store_true", default=False)
+    parser.add_argument("--taylorseer-order", "--order", type=int, default=1)
+    parser.add_argument("--l1-diff", action="store_true", default=False)
+    parser.add_argument("--rdt", type=float, default=0.08)
+    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
+    parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
+    parser.add_argument("--max-warmup-steps", type=int, default=0)
+    parser.add_argument("--max-cached-steps", type=int, default=-1)
+    parser.add_argument("--max-continuous-cached-steps", type=int, default=-1)
+    parser.add_argument("--gen-device", type=str, default="cpu")
+    parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--inductor-flags", action="store_true", default=False)
+    parser.add_argument("--compile-all", action="store_true", default=False)
+    parser.add_argument("--quantize", "-q", action="store_true", default=False)
+    parser.add_argument(
+        "--use-block-adapter", "--adapt", action="store_true", default=False
     )
+    parser.add_argument(
+        "--use-auto-block-adapter", "--auto", action="store_true", default=False
+    )
+    parser.add_argument("--save-dir", type=str, default="./tmp/drawbench")
+    parser.add_argument(
+        "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
+    )
+    parser.add_argument("--width", type=int, default=1024, help="Image width")
+    parser.add_argument("--height", type=int, default=1024, help="Image height")
+    parser.add_argument("--test-num", type=int, default=None)
+    return parser.parse_args()
 
-    # Load data
-    image_files = get_sorted_image_files(test_folder)
-    prompts = load_prompts(prompt_file_path) if prompt_file_path else []
 
-    # Initialize score lists
-    clip_scores = []
-    imagereward_scores = []
-    psnr_values = []
-    ssim_values = []
-    lpips_values = []
+def set_rand_seeds(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
 
-    # Process images
-    for i, filename in enumerate(image_files):
-        try:
-            img_path = os.path.join(test_folder, filename)
-            img_pil = Image.open(img_path).convert("RGB")
 
-            # CLIP Score and ImageReward (require prompts)
-            if i < len(prompts):
-                prompt = prompts[i]
+def init_pipeline(args) -> FluxPipeline:
+    pipe = FluxPipeline.from_pretrained(
+        os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+        torch_dtype=torch.bfloat16,
+    ).to("cuda")
 
-                # CLIP Score
-                with torch.no_grad():
-                    inputs = clip_processor(
-                        text=prompt,
-                        images=img_pil,
-                        return_tensors="pt",
-                        padding=True,
-                        truncation=True,
-                    ).to(device)
-                    outputs = clip_model(**inputs)
-                    clip_scores.append(outputs.logits_per_image.item())
+    # Apply cache to the pipeline
+    if args.cache or args.cache_config:
+        if not args.use_block_adapter:
+            if args.cache_config is None:
+                cache_dit.enable_cache(
+                    pipe,
+                    # Cache context kwargs
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                    l1_hidden_states_diff_threshold=(
+                        None if not args.l1_diff else args.rdt
+                    ),
+                    enable_taylorseer=args.taylorseer,
+                    enable_encoder_taylorseer=args.taylorseer,
+                    taylorseer_cache_type="residual",
+                    taylorseer_order=args.taylorseer_order,
+                )
+            else:
+                cache_dit.enable_cache(
+                    pipe, **cache_dit.load_options(args.cache_config)
+                )
+        else:
+            assert isinstance(pipe.transformer, FluxTransformer2DModel)
+            from cache_dit import ForwardPattern, BlockAdapter
+            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
-                # ImageReward
-                if imagereward_model:
-                    with torch.no_grad():
-                        img_tensor = (
-                            TF.pil_to_tensor(img_pil).unsqueeze(0).to(device)
+            if args.cache_config is None:
+
+                cache_dit.enable_cache(
+                    # BlockAdapter & forward pattern
+                    (
+                        BlockAdapter(
+                            pipe=pipe,
+                            transformer=pipe.transformer,
+                            blocks=(
+                                pipe.transformer.transformer_blocks
+                                + pipe.transformer.single_transformer_blocks
+                            ),
+                            blocks_name="transformer_blocks",
+                            dummy_blocks_names=["single_transformer_blocks"],
+                            patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
                         )
-                        img_reward = reward_transform(img_tensor)
-                        inputs = imagereward_model.blip.tokenizer(
-                            [prompt],
-                            padding="max_length",
-                            truncation=True,
-                            max_length=512,
-                            return_tensors="pt",
-                        ).to(device)
-                        score = imagereward_model.score_gard(
-                            inputs.input_ids, inputs.attention_mask, img_reward
+                        if not args.use_auto_block_adapter
+                        else BlockAdapter(
+                            pipe=pipe,
+                            auto=True,
+                            blocks_policy="min",
+                            patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
                         )
-                        imagereward_scores.append(score.item())
+                    ),
+                    # Cache context kwargs
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                    l1_hidden_states_diff_threshold=(
+                        None if not args.l1_diff else args.rdt
+                    ),
+                    enable_taylorseer=args.taylorseer,
+                    enable_encoder_taylorseer=args.taylorseer,
+                    taylorseer_cache_type="residual",
+                    taylorseer_order=args.taylorseer_order,
+                )
+            else:
+                cache_dit.enable_cache(
+                    # BlockAdapter & forward pattern
+                    (
+                        BlockAdapter(
+                            pipe,
+                            transformer=pipe.transformer,
+                            blocks=(
+                                pipe.transformer.transformer_blocks
+                                + pipe.transformer.single_transformer_blocks
+                            ),
+                            blocks_name="transformer_blocks",
+                            dummy_blocks_names=["single_transformer_blocks"],
+                            patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
+                        )
+                        if not args.use_auto_block_adapter
+                        else BlockAdapter(
+                            pipe=pipe,
+                            auto=True,
+                            blocks_policy="min",
+                            patch_functor=FluxPatchFunctor(),
+                            forward_pattern=ForwardPattern.Pattern_1,
+                        )
+                    ),
+                    # Cache context kwargs
+                    **cache_dit.load_options(args.cache_config),
+                )
 
-            # Quality metrics (require reference)
-            if reference_folder:
-                ref_path = os.path.join(reference_folder, filename)
-                if os.path.exists(ref_path):
-                    img_cv = cv2.imread(img_path)
-                    ref_cv = cv2.imread(ref_path)
+    if args.quantize:
+        # Apply Quantization (default: FP8 DQ) to Transformer
+        pipe.transformer = cache_dit.quantize(pipe.transformer)
 
-                    if img_cv is not None and ref_cv is not None:
-                        # Resize if needed
-                        if img_cv.shape != ref_cv.shape:
-                            ref_cv = cv2.resize(
-                                ref_cv, (img_cv.shape[1], img_cv.shape[0])
-                            )
+    if args.compile or args.quantize:
+        # Increase recompile limit for DBCache
+        if args.inductor_flags:
+            cache_dit.set_compile_configs()
+        else:
+            torch._dynamo.config.recompile_limit = 96  # default is 8
+            torch._dynamo.config.accumulated_recompile_limit = (
+                2048  # default is 256
+            )
+        if isinstance(pipe.transformer, FluxTransformer2DModel):
+            if not args.compile_all:
+                logger.warning(
+                    "Only compile transformer blocks not the whole model "
+                    "for FluxTransformer2DModel to keep higher precision."
+                )
+                for module in pipe.transformer.transformer_blocks:
+                    module.compile(fullgraph=True)
+                for module in pipe.transformer.single_transformer_blocks:
+                    module.compile(fullgraph=True)
+            else:
+                pipe.transformer = torch.compile(
+                    pipe.transformer, mode="default"
+                )
+        else:
+            logger.info("Compiling the transformer with default mode.")
+            pipe.transformer = torch.compile(pipe.transformer, mode="default")
 
-                        # Calculate metrics
-                        psnr_values.append(calculate_psnr(img_cv, ref_cv))
-                        ssim_values.append(calculate_ssim(img_cv, ref_cv))
-
-                        with torch.no_grad():
-                            img_lpips = preprocess_for_lpips(img_cv).to(device)
-                            ref_lpips = preprocess_for_lpips(ref_cv).to(device)
-                            lpips_values.append(
-                                lpips_model(img_lpips, ref_lpips).item()
-                            )
-
-        except Exception as e:
-            logger.error(f"{e}")
-            continue
-
-    # Calculate averages
-    results = {}
-    if clip_scores:
-        results["clip_score"] = np.mean(clip_scores)
-    if imagereward_scores:
-        results["imagereward"] = np.mean(imagereward_scores)
-    if psnr_values:
-        results["psnr"] = np.mean(psnr_values)
-    if ssim_values:
-        results["ssim"] = np.mean(ssim_values)
-    if lpips_values:
-        results["lpips"] = np.mean(lpips_values)
-
-    return results
+    return pipe
 
 
+def gen_image(args, pipe: FluxPipeline, prompt) -> Image.Image:
+    assert prompt is not None
+    image = pipe(
+        prompt,
+        num_inference_steps=args.steps,
+        generator=torch.Generator(args.gen_device).manual_seed(args.seed),
+    ).images[0]
+    return image
+
+
+@torch.no_grad()
 def main():
-    parser = argparse.ArgumentParser(description="Unified metrics evaluation")
-    parser.add_argument(
-        "--test_folder", type=str, required=True, help="Test images folder"
-    )
-    parser.add_argument(
-        "--prompt_file",
-        type=str,
-        default="prompts/DrawBench200.txt",
-        help="Prompts file",
-    )
-    parser.add_argument(
-        "--reference_folder",
-        type=str,
-        default="samples/origin",
-        help="Reference images folder for quality metrics",
-    )
-    parser.add_argument(
-        "--clip_model_path",
-        type=str,
-        default="/path/to/laion/CLIP-ViT-g-14-laion2B-s12B-b42K",
-    )  # forexample, /data/public/.cache/huggingface/hub/models--laion--CLIP-ViT-g-14-laion2B-s12B-b42K/snapshots/4b0305adc6802b2632e11cbe6606a9bdd43d35c9
-    parser.add_argument(
-        "--imagereward_model_path",
-        type=str,
-        default="/path/to/zai-org/ImageReward",
-    )
+    args = get_args()
+    logger.info(f"Arguments: {args}")
+    set_rand_seeds(args.seed)
 
-    args = parser.parse_args()
+    pipe = init_pipeline(args)
+    pipe.set_progress_bar_config(disable=True)
 
-    results = evaluate_all_metrics(
-        test_folder=args.test_folder,
-        prompt_file_path=args.prompt_file,
-        reference_folder=args.reference_folder,
-        clip_model_path=args.clip_model_path,
-        imagereward_model_path=args.imagereward_model_path,
+    with open(args.prompt_file, "r", encoding="utf-8") as f:
+        prompts = [line.strip() for line in f.readlines() if line.strip()]
+    print(f"Loaded {len(prompts)} prompts from {args.prompt_file}")
+
+    all_times = []
+    base_dir = (
+        f"C{int(args.compile)}_Q{int(args.quantize)}_{cache_dit.strify(pipe)}"
     )
+    save_dir = os.path.join(args.save_dir, base_dir)
+    os.makedirs(save_dir, exist_ok=True)
 
-    # Output in requested format(方便复制粘贴)
-    print("Result:(ClipScore, ImageReward, PSNR, SSIM, LPIPS)")
-    print(f"{results.get('clip_score', 0):.4f}")
-    print(f"{results.get('imagereward', 0):.4f}")
-    print(f"{results.get('psnr', 0):.3f}")
-    print(f"{results.get('ssim', 0):.4f}")
-    print(f"{results.get('lpips', 0):.4f}")
+    if args.test_num is not None:
+        prompts = prompts[: args.test_num]
+
+    for i, prompt in tqdm(enumerate(prompts), total=len(prompts)):
+        start = time.time()
+        image = gen_image(args, pipe, prompt=prompt)
+        end = time.time()
+        all_times.append(end - start)
+        save_name = os.path.join(save_dir, f"img_{i}.png")
+        image.save(save_name)
+
+    all_times.pop(0)  # Remove the first run time, usually warmup
+    mean_time = sum(all_times) / len(all_times)
+    logger.info(f"Mean Time: {mean_time:.2f}s")
 
 
 if __name__ == "__main__":
