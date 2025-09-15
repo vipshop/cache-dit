@@ -534,9 +534,9 @@ def entrypoint():
     args = get_args()
     logger.debug(args)
 
-    if args.metric in ["clip_score", "image_reward"]:
+    if args.metrics in ["clip_score", "image_reward"]:
         assert args.prompt_true is not None or args.ref_prompt_true is not None
-        assert args.img_true is not None
+        assert args.img_test is not None or args.img_source_dir is not None
 
     if args.enable_verbose:
         global DISABLE_VERBOSE
