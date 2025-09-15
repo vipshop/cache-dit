@@ -165,10 +165,10 @@ def main():
     print(f"Loaded {len(prompts)} prompts from {args.prompt_file}")
 
     all_times = []
-    base_dir = (
+    perf_tag = (
         f"C{int(args.compile)}_Q{int(args.quantize)}_{cache_dit.strify(pipe)}"
     )
-    save_dir = os.path.join(args.save_dir, base_dir)
+    save_dir = os.path.join(args.save_dir, perf_tag)
     os.makedirs(save_dir, exist_ok=True)
 
     if args.test_num is not None:
@@ -184,7 +184,7 @@ def main():
 
     all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)
-    logger.info(f"Mean Time: {mean_time:.2f}s")
+    logger.info(f"Perf. {perf_tag}, Mean pipeline time: {mean_time:.2f}s")
 
 
 if __name__ == "__main__":
