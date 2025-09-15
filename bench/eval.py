@@ -78,8 +78,16 @@ def evaluate_all_metrics(
     """Evaluate all metrics and return results"""
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    assert clip_model_path is not None
-    assert imagereward_model_path is not None
+
+    if clip_model_path is None:
+        clip_model_path = os.environ.get(
+            "CLIP_MODEL_DIR", "laion/CLIP-ViT-g-14-laion2B-s12B-b42K"
+        )
+
+    if imagereward_model_path is None:
+        imagereward_model_path = os.environ.get(
+            "IMAGEREWARD_MODEL_DIR", "zai-org/ImageReward"
+        )
 
     # Load models
     clip_model = CLIPModel.from_pretrained(clip_model_path)
@@ -223,19 +231,13 @@ def main():
     parser.add_argument(
         "--reference_folder",
         type=str,
-        default="samples/origin",
+        default="./tmp/DrawBench200/C0_Q0_NONE",
         help="Reference images folder for quality metrics",
     )
-    parser.add_argument(
-        "--clip_model_path",
-        type=str,
-        default="/path/to/laion/CLIP-ViT-g-14-laion2B-s12B-b42K",
-    )  # forexample, /data/public/.cache/huggingface/hub/models--laion--CLIP-ViT-g-14-laion2B-s12B-b42K/snapshots/4b0305adc6802b2632e11cbe6606a9bdd43d35c9
-    parser.add_argument(
-        "--imagereward_model_path",
-        type=str,
-        default="/path/to/zai-org/ImageReward",
-    )
+    # "laion/CLIP-ViT-g-14-laion2B-s12B-b42K"
+    parser.add_argument("--clip_model_path", type=str, default=None)
+    # "zai-org/ImageReward"
+    parser.add_argument("--imagereward_model_path", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -247,7 +249,6 @@ def main():
         imagereward_model_path=args.imagereward_model_path,
     )
 
-    # Output in requested format(方便复制粘贴)
     print("Result:(ClipScore, ImageReward, PSNR, SSIM, LPIPS)")
     print(f"{results.get('clip_score', 0):.4f}")
     print(f"{results.get('imagereward', 0):.4f}")

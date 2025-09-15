@@ -39,7 +39,7 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument(
         "--use-auto-block-adapter", "--auto", action="store_true", default=False
     )
-    parser.add_argument("--save-dir", type=str, default="./tmp/drawbench")
+    parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200")
     parser.add_argument(
         "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
     )
@@ -213,6 +213,7 @@ def main():
     pipe = init_pipeline(args)
     pipe.set_progress_bar_config(disable=True)
 
+    # Load prompts
     with open(args.prompt_file, "r", encoding="utf-8") as f:
         prompts = [line.strip() for line in f.readlines() if line.strip()]
     print(f"Loaded {len(prompts)} prompts from {args.prompt_file}")
