@@ -4,6 +4,10 @@ export IMAGEREWARD_MODEL_DIR="$HF_MODELS/cache-dit-eval/ImageReward"
 
 function run_flux_draw_bench() {
   local test_num=200
+
+  # baseline
+  python3 bench.py --test-num ${test_num}
+
   # rdt 0.08
   local rdt=0.08
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
@@ -107,6 +111,10 @@ function run_flux_draw_bench() {
 function run_flux_draw_bench_with_taylorseer() {
   local taylorseer_params="--taylorseer --order 1"
   local test_num=200
+
+  # baseline
+  python3 bench.py --test-num ${test_num}
+  
   # rdt 0.08
   local rdt=0.08
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
