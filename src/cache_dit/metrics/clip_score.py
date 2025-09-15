@@ -105,7 +105,7 @@ def compute_clip_score(
 
     vaild_len = min(len(img_files), len(prompts))
     img_files = img_files[:vaild_len]
-    prompts = img_files[:vaild_len]
+    prompts = prompts[:vaild_len]
 
     clip_scores = []
 
