@@ -171,32 +171,44 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
-Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Unified Cache APIs](#unified) for more details. Here are just some of the tested models listed:
+Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](./examples/pipeline) for more details. Here are just some of the tested models listed.
+
+```python
+>>> import cache_dit
+>>> cache_dit.supported_pipelines()
+(30, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTX*', 'Allegro*',
+'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'StableDiffusion3*',
+'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
+'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*'])
+```
+
+<details>
+<summary> Show pipelines </summary>  
 
 - [🚀HunyuanImage-2.1](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogView4](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/raw/main/examples)  
+- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀OmniGen](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Lumina2](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogView4](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀AuraFlow-v0.3](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/raw/main/examples)
 - [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/raw/main/examples)
