@@ -17,28 +17,29 @@ def get_args() -> argparse.ArgumentParser:
     # General arguments
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
+    # Cache params
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "--order", type=int, default=1)
-    parser.add_argument("--l1-diff", action="store_true", default=False)
     parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
+    parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=8)
     parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=0)
-    parser.add_argument("--max-warmup-steps", "--w", type=int, default=0)
+    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
     parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
     parser.add_argument(
         "--max-continuous-cached-steps", "--mcc", type=int, default=-1
     )
-    parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--inductor-flags", action="store_true", default=False)
-    parser.add_argument("--compile-all", action="store_true", default=False)
-    parser.add_argument("--quantize", "-q", action="store_true", default=False)
     parser.add_argument(
         "--disable-block-adapter",
-        "--no-adapt",
         action="store_true",
         default=False,
     )
+    # Compile & FP8
+    parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--inductor-flags", action="store_true", default=False)
+    parser.add_argument("--compile-all", action="store_true", default=False)
+    parser.add_argument("--quantize", "--q", action="store_true", default=False)
+    # Test data
     parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200")
     parser.add_argument(
         "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
@@ -61,58 +62,53 @@ def init_flux_pipe(args) -> FluxPipeline:
     ).to("cuda")
 
     # Apply cache to the pipeline
-    if args.disable_block_adapter:
-        cache_dit.enable_cache(
-            pipe,
-            # Cache context kwargs
-            Fn_compute_blocks=args.Fn_compute_blocks,
-            Bn_compute_blocks=args.Bn_compute_blocks,
-            max_warmup_steps=args.max_warmup_steps,
-            max_cached_steps=args.max_cached_steps,
-            max_continuous_cached_steps=args.max_continuous_cached_steps,
-            residual_diff_threshold=args.rdt,
-            l1_hidden_states_diff_threshold=(
-                None if not args.l1_diff else args.rdt
-            ),
-            enable_taylorseer=args.taylorseer,
-            enable_encoder_taylorseer=args.taylorseer,
-            taylorseer_cache_type="residual",
-            taylorseer_order=args.taylorseer_order,
-        )
-    else:
-        assert isinstance(pipe.transformer, FluxTransformer2DModel)
-        from cache_dit import ForwardPattern, BlockAdapter
-        from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
+    if args.cache:
+        if args.disable_block_adapter:
+            cache_dit.enable_cache(
+                pipe,
+                # Cache context kwargs
+                Fn_compute_blocks=args.Fn_compute_blocks,
+                Bn_compute_blocks=args.Bn_compute_blocks,
+                max_warmup_steps=args.max_warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                max_continuous_cached_steps=args.max_continuous_cached_steps,
+                residual_diff_threshold=args.rdt,
+                enable_taylorseer=args.taylorseer,
+                enable_encoder_taylorseer=args.taylorseer,
+                taylorseer_cache_type="residual",
+                taylorseer_order=args.taylorseer_order,
+            )
+        else:
+            assert isinstance(pipe.transformer, FluxTransformer2DModel)
+            from cache_dit import ForwardPattern, BlockAdapter
+            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
-        cache_dit.enable_cache(
-            # BlockAdapter & forward pattern
-            BlockAdapter(
-                pipe=pipe,
-                transformer=pipe.transformer,
-                blocks=(
-                    pipe.transformer.transformer_blocks
-                    + pipe.transformer.single_transformer_blocks
+            cache_dit.enable_cache(
+                # BlockAdapter & forward pattern
+                BlockAdapter(
+                    pipe=pipe,
+                    transformer=pipe.transformer,
+                    blocks=(
+                        pipe.transformer.transformer_blocks
+                        + pipe.transformer.single_transformer_blocks
+                    ),
+                    blocks_name="transformer_blocks",
+                    dummy_blocks_names=["single_transformer_blocks"],
+                    patch_functor=FluxPatchFunctor(),
+                    forward_pattern=ForwardPattern.Pattern_1,
                 ),
-                blocks_name="transformer_blocks",
-                dummy_blocks_names=["single_transformer_blocks"],
-                patch_functor=FluxPatchFunctor(),
-                forward_pattern=ForwardPattern.Pattern_1,
-            ),
-            # Cache context kwargs
-            Fn_compute_blocks=args.Fn_compute_blocks,
-            Bn_compute_blocks=args.Bn_compute_blocks,
-            max_warmup_steps=args.max_warmup_steps,
-            max_cached_steps=args.max_cached_steps,
-            max_continuous_cached_steps=args.max_continuous_cached_steps,
-            residual_diff_threshold=args.rdt,
-            l1_hidden_states_diff_threshold=(
-                None if not args.l1_diff else args.rdt
-            ),
-            enable_taylorseer=args.taylorseer,
-            enable_encoder_taylorseer=args.taylorseer,
-            taylorseer_cache_type="residual",
-            taylorseer_order=args.taylorseer_order,
-        )
+                # Cache context kwargs
+                Fn_compute_blocks=args.Fn_compute_blocks,
+                Bn_compute_blocks=args.Bn_compute_blocks,
+                max_warmup_steps=args.max_warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                max_continuous_cached_steps=args.max_continuous_cached_steps,
+                residual_diff_threshold=args.rdt,
+                enable_taylorseer=args.taylorseer,
+                enable_encoder_taylorseer=args.taylorseer,
+                taylorseer_cache_type="residual",
+                taylorseer_order=args.taylorseer_order,
+            )
 
     if args.quantize:
         # Apply Quantization (default: FP8 DQ) to Transformer
