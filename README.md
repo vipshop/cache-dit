@@ -14,7 +14,8 @@
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
   <p align="center">
-  🔥<b><a href="#unified">Unified Cache APIs</a> | <a href="#dbcache">DBCache</a> | <a href="#taylorseer">Hybrid TaylorSeer</a> | <a href="#cfg">Hybrid Cache CFG</a></b>🔥
+    <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
+    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a>
   </p>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
@@ -140,12 +141,12 @@
 - [⚙️Installation](#️installation)
 - [🔥Supported Models](#supported)
 - [🎉Unified Cache APIs](#unified)
-  - [📚Forward Pattern Matching](#unified)
-  - [♥️Cache with One-line Code](#unified)
-  - [🔥Automatic Block Adapter](#unified)
-  - [📚Hybird Forward Pattern](#unified)
-  - [📚Implement Patch Functor](#unified)
-  - [🤖Cache Acceleration Stats](#unified)
+  - [📚Forward Pattern Matching](#forward-pattern-matching)
+  - [♥️Cache with One-line Code](#%EF%B8%8Fcache-acceleration-with-one-line-code)
+  - [🔥Automatic Block Adapter](#automatic-block-adapter)
+  - [📚Hybird Forward Pattern](#automatic-block-adapter)
+  - [📚Implement Patch Functor](#implement-patch-functor)
+  - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
