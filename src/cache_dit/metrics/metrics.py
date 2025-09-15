@@ -610,11 +610,15 @@ def entrypoint():
             ):
                 return
 
+            # img_true and img_test can be files or dirs
+            prompt_true_info = os.path.basename(prompt_true)
+            img_test_info = os.path.basename(img_test)
+
             def _logging_msg(value: float, name, n: int):
                 if value is None or n is None:
                     return
                 msg = (
-                    f"{img_true_info} vs {img_test_info}, "
+                    f"{prompt_true_info} vs {img_test_info}, "
                     f"Num: {n}, {name.upper()}: {value:.5f}"
                 )
                 METRICS_META[msg] = value
@@ -806,6 +810,7 @@ def entrypoint():
             _run_metric(
                 metric=metric,
                 img_true=args.img_true,
+                prompt_true=args.prompt_true,
                 img_test=args.img_test,
                 video_true=args.video_true,
                 video_test=args.video_test,

@@ -1,4 +1,5 @@
 import os
+import re
 import pathlib
 import numpy as np
 from PIL import Image
@@ -87,15 +88,18 @@ def compute_clip_score(
         )
 
     # compute dir metric
+    def natural_sort_key(filename):
+        match = re.search(r"(\d+)\D*$", filename)
+        return int(match.group(1)) if match else filename
+
     img_dir: pathlib.Path = pathlib.Path(img_dir)
-    img_files = sorted(
-        [
-            file
-            for ext in _IMAGE_EXTENSIONS
-            for file in img_dir.rglob("*.{}".format(ext))
-        ]
-    )
+    img_files = [
+        file
+        for ext in _IMAGE_EXTENSIONS
+        for file in img_dir.rglob("*.{}".format(ext))
+    ]
     img_files = [file.as_posix() for file in img_files]
+    img_files = sorted(img_files, key=natural_sort_key)
 
     if os.path.isfile(prompts):
         """Load prompts from file"""
