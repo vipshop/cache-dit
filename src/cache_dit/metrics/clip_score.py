@@ -73,19 +73,19 @@ def compute_clip_score_img(
 
 
 def compute_clip_score(
-    img: Image.Image | np.ndarray | str,
+    img_dir: Image.Image | np.ndarray | str,
     prompts: str | list[str],
     clip_model_path: str = None,
 ):
-    if not os.path.isdir(img) or not isinstance(prompts, list):
+    if not os.path.isdir(img_dir) or not isinstance(prompts, list):
         return compute_clip_score_img(
-            img,
+            img_dir,
             prompts,
             clip_model_path=clip_model_path,
         )
 
     # compute dir metric
-    img_dir: pathlib.Path = pathlib.Path(img)
+    img_dir: pathlib.Path = pathlib.Path(img_dir)
     img_files = sorted(
         [
             file
