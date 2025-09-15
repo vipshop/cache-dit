@@ -107,7 +107,9 @@ def compute_reward_score(
     prompts: str | list[str],
     imagereward_model_path: str = None,
 ):
-    if not os.path.isdir(img_dir) or not isinstance(prompts, list):
+    if not os.path.isdir(img_dir) or (
+        not isinstance(prompts, list) and not os.path.isfile(prompts)
+    ):
         return compute_reward_score_img(
             img_dir,
             prompts,
@@ -124,6 +126,12 @@ def compute_reward_score(
         ]
     )
     img_files = [file.as_posix() for file in img_files]
+
+    if os.path.isfile(prompts):
+        """Load prompts from file"""
+        with open(prompts, "r", encoding="utf-8") as f:
+            prompts_load = [line.strip() for line in f.readlines()]
+        prompts = prompts_load.copy()
 
     vaild_len = min(len(img_files), len(prompts))
     img_files = img_files[:vaild_len]
