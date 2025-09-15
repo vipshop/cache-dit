@@ -139,7 +139,7 @@
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
-- [🔥Supported Models](#supported)
+- [🔥Supported Pipelines](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#forward-pattern-matching)
   - [♥️Cache with One-line Code](#%EF%B8%8Fcache-acceleration-with-one-line-code)
@@ -168,7 +168,7 @@ Or you can install the latest develop version from GitHub:
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
-## 🔥Supported Models  
+## 🔥Supported Pipelines  
 
 <div id="supported"></div>
 
@@ -184,7 +184,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 ```
 
 <details>
-<summary> Show pipelines </summary>  
+<summary> Show all pipelines </summary>  
 
 - [🚀HunyuanImage-2.1](https://github.com/vipshop/cache-dit/raw/main/examples)  
 - [🚀Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/raw/main/examples)
