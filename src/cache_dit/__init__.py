@@ -21,9 +21,7 @@ from cache_dit.cache_factory import PatchFunctor
 from cache_dit.cache_factory import supported_pipelines
 from cache_dit.cache_factory import get_adapter
 from cache_dit.compile import set_compile_configs
-
-with disable_print():
-    from cache_dit.quantize import quantize
+from cache_dit.quantize import quantize
 
 
 NONE = CacheType.NONE
