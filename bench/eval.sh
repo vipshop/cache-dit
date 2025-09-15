@@ -29,7 +29,7 @@ cache-dit-metrics-cli \
   --perf-tag "Mean pipeline time" \
   --perf-log ./log/cache_dit_bench_default.log
 
-# DBCache_TaylorSeer
+# DBCache_TaylorSeer_O(1)
 # TFLOPs
 cache-dit-metrics-cli \
   clip_score image_reward --summary \
