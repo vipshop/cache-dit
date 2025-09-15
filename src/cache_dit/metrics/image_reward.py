@@ -1,6 +1,8 @@
 import os
 import re
 import pathlib
+import warnings
+
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
@@ -11,7 +13,11 @@ import torchvision.transforms.v2 as T
 
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
+
+warnings.filterwarnings("ignore")
+
 
 logger = init_logger(__name__)
 
@@ -96,9 +102,10 @@ def compute_reward_score_img(
 ) -> float:
     global image_reward_score_instance
     if image_reward_score_instance is None:
-        image_reward_score_instance = ImageRewardScore(
-            imagereward_model_path=imagereward_model_path
-        )
+        with disable_print():
+            image_reward_score_instance = ImageRewardScore(
+                imagereward_model_path=imagereward_model_path
+            )
     assert image_reward_score_instance is not None
     return image_reward_score_instance.compute_reward_score(img, prompt)
 

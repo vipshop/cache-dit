@@ -1,26 +1,14 @@
-import builtins as __builtin__
-import contextlib
 import warnings
 
 import lpips
 import torch
+from cache_dit.utils import disable_print
+
 
 warnings.filterwarnings("ignore")
 
 lpips_loss_fn_vgg = None
 lpips_loss_fn_alex = None
-
-
-def dummy_print(*args, **kwargs):
-    pass
-
-
-@contextlib.contextmanager
-def disable_print():
-    origin_print = __builtin__.print
-    __builtin__.print = dummy_print
-    yield
-    __builtin__.print = origin_print
 
 
 def compute_lpips_img(img0, img1, net: str = "alex"):
