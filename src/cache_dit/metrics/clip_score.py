@@ -116,7 +116,7 @@ def compute_clip_score(
     for img_file, prompt in tqdm(
         zip(img_files, prompts),
         total=vaild_len,
-        disable=DISABLE_VERBOSE,
+        disable=not get_metrics_verbose(),
     ):
         clip_scores.append(
             compute_clip_score_img(
