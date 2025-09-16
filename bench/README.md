@@ -28,10 +28,12 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
   - **Latency(s)**: Recorded compute time (eager mode) that **w/o** other optimizations
   - **TFLOPs**: Recorded compute FLOPs using [calflops](https://github.com/chengzegang/calculate-flops.pytorch.git)'s [calculate_flops](./utils.py) API.
 
-> [!Important]   
+> [!Note]   
 > Among all the accuracy indicators, the overall accuracy has slightly improved after using TaylorSeer.
 
 ### 🎉CLIP Score (↑)
+
+- 📖DBCache w/ configurable FnBn compute blocks
 
 | Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
@@ -52,6 +54,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | F1B0_W4M0MC4_T0O1_R0.12 | 32.8291 | 19.99 | 2.13 | 1401.61 | 2.66 |
 | F1B0_W4M0MC3_T0O1_R0.12 | 32.8236 | 20.58 | 2.07 | 1457.62 | 2.56 |  
 
+- 📖w/ TaylorSeer (DBCache_TaylorSeer)
 
 | Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
@@ -74,6 +77,8 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 
 ### 🎉Image Reward (↑)
 
+- 📖DBCache w/ configurable FnBn compute blocks
+
 | Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | 1.0412 | 42.63 | 1.00 | 3726.87 | 1.00 |
@@ -93,6 +98,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | F4B0_W4M0MC0_T0O1_R0.08 | 1.0065 | 22.69 | 1.88 | 1654.72 | 2.25 |
 | F4B0_W4M0MC4_T0O1_R0.12 | 1.0065 | 20.21 | 2.11 | 1400.08 | 2.66 |
 
+- 📖w/ TaylorSeer (DBCache_TaylorSeer)
 
 | Config | IMAGE_REWARD | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
 | --- | --- | --- | --- | --- | --- |
@@ -115,6 +121,8 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 
 ### 🎉PSNR (↑)
 
+- 📖DBCache w/ configurable FnBn compute blocks
+
 | Config | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
@@ -134,6 +142,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | F4B0_W4M0MC3_T0O1_R0.12 | 31.8031 | 21.27 | 2.00 | 1507.83 | 2.47 |
 | F4B0_W4M0MC4_T0O1_R0.12 | 31.5292 | 20.21 | 2.11 | 1400.08 | 2.66 |
 
+- 📖w/ TaylorSeer (DBCache_TaylorSeer)
 
 | Config | PSNR | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
 | --- | --- | --- | --- | --- | --- |
@@ -157,6 +166,8 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 
 ### 🎉SSIM (↑)
 
+- 📖DBCache w/ configurable FnBn compute blocks
+
 | Config | SSIM | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
@@ -175,6 +186,8 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | F4B0_W4M0MC2_T0O1_R0.12 | 0.8116 | 22.87 | 1.86 | 1678.98 | 2.22 |
 | F4B0_W4M0MC3_T0O1_R0.12 | 0.8094 | 21.27 | 2.00 | 1507.83 | 2.47 |
 | F4B0_W4M0MC4_T0O1_R0.12 | 0.7973 | 20.21 | 2.11 | 1400.08 | 2.66 |
+
+- 📖w/ TaylorSeer (DBCache_TaylorSeer)
 
 | Config | SSIM | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
 | --- | --- | --- | --- | --- | --- |
@@ -198,6 +211,8 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 
 ### 🎉LPIPS (↓)
 
+- 📖DBCache w/ configurable FnBn compute blocks
+
 | Config | LPIPS | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
@@ -217,6 +232,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | F4B0_W4M0MC3_T0O1_R0.12 | 0.1938 | 21.27 | 2.00 | 1507.83 | 2.47 |
 | F4B0_W4M0MC4_T0O1_R0.12 | 0.2108 | 20.21 | 2.11 | 1400.08 | 2.66 |
 
+- 📖w/ TaylorSeer (DBCache_TaylorSeer)
 
 | Config | LPIPS | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
 | --- | --- | --- | --- | --- | --- |
