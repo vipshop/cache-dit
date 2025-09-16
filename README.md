@@ -139,6 +139,7 @@
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
+- [🔥Benchmarks](#benchmarks)
 - [🔥Supported Pipelines](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#forward-pattern-matching)
@@ -222,6 +223,30 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - ...
 
 </details>
+
+## 🔥Benchmarks
+
+<div id="benchmarks"></div>
+
+Take FLUX.1-dev as an example. Here, only the results of some precision and performance benchmarks are presented. The test dataset is DrawBench. For a complete benchmark, please refer to [benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks.
+
+| Config | clip score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| FLUX.1-dev, 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
+| F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72 |
+| F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80 |
+| F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22 |
+| F8B0_W8MC3_R0.12 | 32.9613 | 1.0270 | 34.2834 | 1977.69 | 1.88 |
+| F8B0_W4MC2_R0.12 | 32.9535 | 1.0185 | 32.7346 | 1935.73 | 1.93 |
+| F8B0_W8MC2_R0.12 | 32.9302 | 1.0227 | 34.7449 | 2072.18 | 1.80 |
+| F8B0_W4MC3_R0.12 | 32.9234 | 1.0085 | 32.5385 | 1816.58 | 2.05 |
+| F8B0_W8MC4_R0.12 | 32.9041 | 1.0140 | 33.9466 | 1897.61 | 1.96 |
+| F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47 |
+| F4B0_W4MC0_R0.08 | 32.8544 | 1.0065 | 32.3555 | 1654.72 | 2.25 |
+| F8B0_W4MC4_R0.12 | 32.8443 | 1.0102 | 32.4231 | 1753.48 | 2.13 |
+| F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66 |
+| F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66 |
+| F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56 |
 
 ## 🎉Unified Cache APIs
 
@@ -534,13 +559,19 @@ You can utilize the APIs provided by cache-dit to quickly evaluate the accuracy 
 
 ```python
 from cache_dit.metrics import compute_psnr
-from cache_dit.metrics import compute_video_psnr
-from cache_dit.metrics import FrechetInceptionDistance  # FID
+from cache_dit.metrics import compute_ssim
+from cache_dit.metrics import compute_fid
+from cache_dit.metrics import compute_lpips
+from cache_dit.metrics import compute_clip_score
+from cache_dit.metrics import compute_image_reward
 
-FID = FrechetInceptionDistance()
-image_psnr, n = compute_psnr("true.png", "test.png") # Num: n
-image_fid,  n = FID.compute_fid("true_dir", "test_dir")
-video_psnr, n = compute_video_psnr("true.mp4", "test.mp4") # Frames: n
+psnr,       n = compute_psnr("true.png", "test.png") # Num: n
+psnr,       n = compute_psnr("true_dir", "test_dir")
+ssim,       n = compute_ssim("true_dir", "test_dir")
+fid,        n = compute_fid("true_dir", "test_dir")
+lpips,      n = compute_lpips("true_dir", "test_dir")
+clip_score, n = compute_clip_score("DrawBench200.txt", "test_dir")
+reward,     n = compute_image_reward("DrawBench200.txt", "test_dir")
 ```
 
 Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool. For examples: 

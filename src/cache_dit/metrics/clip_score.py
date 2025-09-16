@@ -7,6 +7,7 @@ from tqdm import tqdm
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
+from typing import Tuple, Union
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.logger import init_logger
@@ -58,7 +59,7 @@ class CLIPScore:
         return outputs.logits_per_image.item()
 
 
-clip_score_instance = None
+clip_score_instance: CLIPScore = None
 
 
 def compute_clip_score_img(
@@ -77,14 +78,17 @@ def compute_clip_score(
     img_dir: Image.Image | np.ndarray | str,
     prompts: str | list[str],
     clip_model_path: str = None,
-):
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     if not os.path.isdir(img_dir) or (
         not isinstance(prompts, list) and not os.path.isfile(prompts)
     ):
-        return compute_clip_score_img(
-            img_dir,
-            prompts,
-            clip_model_path=clip_model_path,
+        return (
+            compute_clip_score_img(
+                img_dir,
+                prompts,
+                clip_model_path=clip_model_path,
+            ),
+            1,
         )
 
     # compute dir metric

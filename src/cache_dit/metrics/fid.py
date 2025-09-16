@@ -1,6 +1,8 @@
 import os
 import cv2
 import pathlib
+import warnings
+
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
@@ -8,12 +10,20 @@ from scipy import linalg
 import torch
 import torchvision.transforms as TF
 from torch.nn.functional import adaptive_avg_pool2d
+
+from typing import Tuple, Union
 from cache_dit.metrics.inception import InceptionV3
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import _VIDEO_EXTENSIONS
+from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
 
+warnings.filterwarnings("ignore")
+
 logger = init_logger(__name__)
+
+DISABLE_VERBOSE = not get_metrics_verbose()
 
 
 # Adapted from: https://github.com/mseitzer/pytorch-fid/blob/master/src/pytorch_fid/fid_score.py
@@ -496,3 +506,35 @@ class FrechetInceptionDistance:
             return [], [], 0
 
         return video_true_frames, video_test_frames, valid_frames
+
+
+fid_instance: FrechetInceptionDistance = None
+
+
+def compute_fid(
+    image_true: np.ndarray | str,
+    image_test: np.ndarray | str,
+) -> Union[Tuple[float, int], Tuple[None, None]]:
+    global fid_instance
+    if fid_instance is None:
+        with disable_print():
+            fid_instance = FrechetInceptionDistance(
+                disable_tqdm=not get_metrics_verbose(),
+            )
+    assert fid_instance is not None
+    return fid_instance.compute_fid(image_true, image_test)
+
+
+def compute_video_fid(
+    # file or dir
+    video_true: str,
+    video_test: str,
+) -> Union[Tuple[float, int], Tuple[None, None]]:
+    global fid_instance
+    if fid_instance is None:
+        with disable_print():
+            fid_instance = FrechetInceptionDistance(
+                disable_tqdm=not get_metrics_verbose(),
+            )
+    assert fid_instance is not None
+    return fid_instance.compute_fid(video_true, video_test)

@@ -5,15 +5,17 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from functools import partial
+from typing import Callable, Union, Tuple, List
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
-from cache_dit.metrics.fid import FrechetInceptionDistance
 from cache_dit.metrics.config import set_metrics_verbose
 from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
+from cache_dit.metrics.fid import compute_fid
+from cache_dit.metrics.fid import compute_video_fid
 from cache_dit.metrics.lpips import compute_lpips_img
 from cache_dit.metrics.clip_score import compute_clip_score
 from cache_dit.metrics.image_reward import compute_reward_score
@@ -22,6 +24,7 @@ logger = init_logger(__name__)
 
 
 DISABLE_VERBOSE = not get_metrics_verbose()
+PSNR_TYPE = "custom"
 
 
 def compute_lpips_file(
@@ -53,6 +56,35 @@ def compute_lpips_file(
     )
 
 
+def set_psnr_type(psnr_type: str):
+    global PSNR_TYPE
+    PSNR_TYPE = psnr_type
+    assert PSNR_TYPE in ["skimage", "custom"]
+
+
+def get_psnr_type():
+    global PSNR_TYPE
+    return PSNR_TYPE
+
+
+def calculate_psnr(
+    image_true: np.ndarray,
+    image_test: np.ndarray,
+):
+    """Calculate PSNR (Peak Signal-to-Noise Ratio).
+
+    Ref: https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
+
+    Args:
+        image_true (ndarray): Images with range [0, 255].
+        image_test (ndarray): Images with range [0, 255].
+    """
+    mse = np.mean((image_true - image_test) ** 2)
+    if mse == 0:
+        return float("inf")
+    return 20 * np.log10(255.0 / np.sqrt(mse))
+
+
 def compute_psnr_file(
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
@@ -66,10 +98,13 @@ def compute_psnr_file(
         image_true = cv2.imread(image_true)
     if isinstance(image_test, str):
         image_test = cv2.imread(image_test)
-    return peak_signal_noise_ratio(
-        image_true,
-        image_test,
-    )
+    if get_psnr_type() == "skimage":
+        return peak_signal_noise_ratio(
+            image_true,
+            image_test,
+        )
+    else:
+        return calculate_psnr(image_true, image_test)
 
 
 def compute_mse_file(
@@ -116,7 +151,7 @@ def compute_dir_metric(
     image_true_dir: np.ndarray | str,
     image_test_dir: np.ndarray | str,
     compute_file_func: callable = compute_psnr_file,
-) -> float:
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     # Image
     if isinstance(image_true_dir, np.ndarray) or isinstance(
         image_test_dir, np.ndarray
@@ -237,7 +272,7 @@ def compute_video_metric(
     video_true: str,
     video_test: str,
     compute_frame_func: callable = compute_psnr_file,
-) -> float:
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     """
     video_true = "video_true.mp4"
     video_test = "video_test.mp4"
@@ -337,39 +372,55 @@ def compute_video_metric(
         return None, None
 
 
-compute_lpips = partial(
-    compute_dir_metric,
-    compute_file_func=compute_lpips_file,
+compute_lpips: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_lpips_file,
+    )
 )
 
-compute_psnr = partial(
-    compute_dir_metric,
-    compute_file_func=compute_psnr_file,
+compute_psnr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_psnr_file,
+    )
 )
 
-compute_ssim = partial(
-    compute_dir_metric,
-    compute_file_func=compute_ssim_file,
+compute_ssim: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_ssim_file,
+    )
 )
 
-compute_mse = partial(
-    compute_dir_metric,
-    compute_file_func=compute_mse_file,
+compute_mse: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_mse_file,
+    )
 )
 
-compute_video_lpips = partial(
+compute_video_lpips: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_lpips_file,
 )
-compute_video_psnr = partial(
+compute_video_psnr: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_psnr_file,
 )
-compute_video_ssim = partial(
+compute_video_ssim: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_ssim_file,
 )
-compute_video_mse = partial(
+compute_video_mse: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_mse_file,
 )
@@ -513,10 +564,11 @@ def get_args():
         help="Path to addtional perf log",
     )
     parser.add_argument(
-        "--perf-tag",
-        "-ptag",
+        "--perf-tags",
+        "-ptags",
+        nargs="+",
         type=str,
-        default=None,
+        default=[],
         help="Tag to parse perf time from perf log",
     )
     parser.add_argument(
@@ -525,6 +577,26 @@ def get_args():
         nargs="+",
         default=[],
         help="Extra tags to parse perf time from perf log",
+    )
+    parser.add_argument(
+        "--psnr-type",
+        type=str,
+        default="custom",
+        choices=["custom", "skimage"],
+        help="The compute type of PSNR, [custom, skimage]",
+    )
+    parser.add_argument(
+        "--cal-speedup",
+        action="store_true",
+        default=False,
+        help="Calculate performance speedup.",
+    )
+    parser.add_argument(
+        "--gen-markdown-table",
+        "-table",
+        action="store_true",
+        default=False,
+        help="Generate performance markdown table",
     )
     return parser.parse_args()
 
@@ -543,11 +615,7 @@ def entrypoint():
         set_metrics_verbose(True)
         DISABLE_VERBOSE = not get_metrics_verbose()
 
-    if "all" in args.metrics or "fid" in args.metrics:
-        FID = FrechetInceptionDistance(
-            disable_tqdm=DISABLE_VERBOSE,
-            batch_size=args.fid_batch_size,
-        )
+    set_psnr_type(args.psnr_type)
 
     METRICS_META: dict[str, float] = {}
 
@@ -560,7 +628,6 @@ def entrypoint():
         video_true: str = None,
         video_test: str = None,
     ) -> None:
-        nonlocal FID
         nonlocal METRICS_META
         metric = metric.lower()
         if img_true is not None and img_test is not None:
@@ -598,7 +665,7 @@ def entrypoint():
                 img_mse, n = compute_mse(img_true, img_test)
                 _logging_msg(img_mse, "mse", n)
             if metric == "fid" or metric == "all":
-                img_fid, n = FID.compute_fid(img_true, img_test)
+                img_fid, n = compute_fid(img_true, img_test)
                 _logging_msg(img_fid, "fid", n)
 
         if prompt_true is not None and img_test is not None:
@@ -667,7 +734,7 @@ def entrypoint():
                 video_mse, n = compute_video_mse(video_true, video_test)
                 _logging_msg(video_mse, "mse", n)
             if metric == "fid" or metric == "all":
-                video_fid, n = FID.compute_video_fid(video_true, video_test)
+                video_fid, n = compute_video_fid(video_true, video_test)
                 _logging_msg(video_fid, "fid", n)
 
     # run selected metrics
@@ -819,7 +886,7 @@ def entrypoint():
     if args.summary:
 
         def _fetch_perf():
-            if args.perf_log is None or args.perf_tag is None:
+            if args.perf_log is None or len(args.perf_tags) == 0:
                 return []
             if not os.path.exists(args.perf_log):
                 return []
@@ -828,17 +895,20 @@ def entrypoint():
                 perf_lines = file.readlines()
                 for line in perf_lines:
                     line = line.strip()
-                    if args.perf_tag.lower() in line.lower():
-                        if len(args.extra_perf_tags) == 0:
-                            perf_texts.append(line)
-                        else:
-                            has_all_extra_tag = True
-                            for ext_tag in args.extra_perf_tags:
-                                if ext_tag.lower() not in line.lower():
-                                    has_all_extra_tag = False
-                                    break
-                            if has_all_extra_tag:
+                    for perf_tag in args.perf_tags:
+                        if perf_tag.lower() in line.lower():
+                            if len(args.extra_perf_tags) == 0:
                                 perf_texts.append(line)
+                                break
+                            else:
+                                has_all_extra_tag = True
+                                for ext_tag in args.extra_perf_tags:
+                                    if ext_tag.lower() not in line.lower():
+                                        has_all_extra_tag = False
+                                        break
+                                if has_all_extra_tag:
+                                    perf_texts.append(line)
+                                    break
             return perf_texts
 
         PERF_TEXTS: list[str] = _fetch_perf()
@@ -865,8 +935,9 @@ def entrypoint():
             try:
                 if tag.lower() in METRICS_CHOICES:
                     return float(value_str)
-                if args.perf_tag is not None:
-                    if tag.lower() == args.perf_tag.lower():
+                if len(args.perf_tags) > 0:
+                    perf_tags = [tag.lower() for tag in args.perf_tags]
+                    if tag.lower() in perf_tags:
                         return float(value_str)
                 return int(value_str)
             except ValueError:
@@ -874,17 +945,37 @@ def entrypoint():
 
         def _parse_perf(
             compare_tag: str,
+            perf_tag: str,
         ) -> float | None:
             nonlocal PERF_TEXTS
-            perf_times = []
+            perf_values = []
             for line in PERF_TEXTS:
                 if compare_tag in line:
-                    perf_time = _parse_value(line, args.perf_tag)
-                    if perf_time is not None:
-                        perf_times.append(perf_time)
-            if len(perf_times) == 0:
+                    perf_value = _parse_value(line, perf_tag)
+                    if perf_value is not None:
+                        perf_values.append(perf_value)
+            if len(perf_values) == 0:
                 return None
-            return sum(perf_times) / len(perf_times)
+            return sum(perf_values) / len(perf_values)
+
+        def _ref_perf(
+            key: str,
+        ):
+            # U1-Q0-C0-NONE vs U4-Q1-C1-NONE
+            header = key.split(",")[0].strip()
+            reference_tag = None
+            if args.prompt_true is None:
+                reference_tag = header.split("vs")[0].strip()  # U1-Q0-C0-NONE
+
+            if reference_tag is None:
+                return []
+
+            ref_perf_values = []
+            for perf_tag in args.perf_tags:
+                perf_value = _parse_perf(reference_tag, perf_tag)
+                ref_perf_values.append(perf_value)
+
+            return ref_perf_values
 
         def _format_item(
             key: str,
@@ -897,40 +988,129 @@ def entrypoint():
             header = key.split(",")[0].strip()
             compare_tag = header.split("vs")[1].strip()  # U4-Q1-C1-NONE
             has_perf_texts = len(PERF_TEXTS) > 0
+
+            def _perf_msg(perf_tag: str):
+                if "time" in perf_tag.lower():
+                    perf_msg = "Latency(s)"
+                elif "tflops" in perf_tag.lower():
+                    perf_msg = "TFLOPs"
+                elif "flops" in perf_tag.lower():
+                    perf_msg = "FLOPs"
+                else:
+                    perf_msg = perf_tag.upper()
+                return perf_msg
+
             format_str = ""
             # Num / Frames
+            perf_values = []
+            perf_msgs = []
             if n := _parse_value(key, "Num"):
                 if not has_perf_texts:
                     format_str = (
-                        f"{header:<{max_key_len}}  Num: {n}  "
+                        f"{header:<{max_key_len}}, Num: {n}, "
                         f"{metric.upper()}: {value:<7.4f}"
                     )
                 else:
-                    perf_time = _parse_perf(compare_tag)
-                    perf_time = f"{perf_time:<.2f}" if perf_time else None
                     format_str = (
-                        f"{header:<{max_key_len}}  Num: {n}  "
-                        f"{metric.upper()}: {value:<7.4f}  "
-                        f"Perf: {perf_time}"
+                        f"{header:<{max_key_len}}, Num: {n}, "
+                        f"{metric.upper()}: {value:<7.4f}, "
                     )
+                    for perf_tag in args.perf_tags:
+                        perf_value = _parse_perf(compare_tag, perf_tag)
+                        perf_values.append(perf_value)
+
+                        perf_value = (
+                            f"{perf_value:<.2f}" if perf_value else None
+                        )
+                        perf_msg = _perf_msg(perf_tag)
+                        format_str += f"{perf_msg}: {perf_value}, "
+
+                        perf_msgs.append(perf_msg)
+
+                    if not args.cal_speedup:
+                        format_str = format_str.removesuffix(", ")
+
             elif n := _parse_value(key, "Frames"):
                 if not has_perf_texts:
                     format_str = (
-                        f"{header:<{max_key_len}}  Frames: {n}  "
+                        f"{header:<{max_key_len}}, Frames: {n}, "
                         f"{metric.upper()}: {value:<7.4f}"
                     )
                 else:
-                    perf_time = _parse_perf(compare_tag)
-                    perf_time = f"{perf_time:<.2f}" if perf_time else None
                     format_str = (
-                        f"{header:<{max_key_len}}  Frames: {n}  "
-                        f"{metric.upper()}: {value:<7.4f}  "
-                        f"Perf: {perf_time}"
+                        f"{header:<{max_key_len}}, Frames: {n}, "
+                        f"{metric.upper()}: {value:<7.4f}, "
                     )
+                    for perf_tag in args.perf_tags:
+                        perf_value = _parse_perf(compare_tag, perf_tag)
+                        perf_values.append(perf_value)
+
+                        perf_value = (
+                            f"{perf_value:<.2f}" if perf_value else None
+                        )
+                        perf_msg = _perf_msg(perf_tag)
+                        format_str += f"{perf_msg}: {perf_value}, "
+                        perf_msgs.append(perf_msg)
+
+                    if not args.cal_speedup:
+                        format_str = format_str.removesuffix(", ")
             else:
                 raise ValueError("Num or Frames can not be NoneType.")
 
-            return format_str
+            return format_str, perf_values, perf_msgs
+
+        def _format_table(format_strs: List[str], metric: str):
+            if not format_strs:
+                return ""
+
+            metric_upper = metric.upper()
+            all_headers = {"Config", metric_upper}
+            row_data = []
+
+            for line in format_strs:
+                parts = [p.strip() for p in line.split(",")]
+
+                config_part = parts[0].strip()
+                if "vs" in config_part:
+                    config = config_part.split("vs", 1)[1].strip()
+                    if "_DBCACHE_" in config:
+                        config = config.split("_DBCACHE_", 1)[1].strip()
+                else:
+                    config = config_part
+
+                metric_value = next(
+                    p.split(":")[1].strip()
+                    for p in parts
+                    if p.startswith(metric_upper)
+                )
+
+                perf_data = {}
+                for part in parts:
+                    if part.startswith(("Num:", "Frames:", metric_upper)):
+                        continue
+                    if ":" in part:
+                        key, value = part.split(":", 1)
+                        key = key.strip()
+                        value = value.strip()
+                        perf_data[key] = value
+                        all_headers.add(key)
+
+                row_data.append(
+                    {"Config": config, metric_upper: metric_value, **perf_data}
+                )
+
+            sorted_headers = ["Config", metric_upper] + sorted(
+                [h for h in all_headers if h not in ["Config", metric_upper]]
+            )
+
+            table = "| " + " | ".join(sorted_headers) + " |\n"
+            table += "| " + " | ".join(["---"] * len(sorted_headers)) + " |\n"
+
+            for row in row_data:
+                row_values = [row.get(header, "") for header in sorted_headers]
+                table += "| " + " | ".join(row_values) + " |\n"
+
+            return table.strip()
 
         selected_metrics = args.metrics
         if "all" in selected_metrics:
@@ -962,11 +1142,64 @@ def entrypoint():
             ]
             max_key_len = max(len(key) for key in selected_keys)
 
+            ref_perf_values = _ref_perf(key=selected_keys[0])
+            max_perf_values: List[float] = []
+
+            if ref_perf_values and None not in ref_perf_values:
+                max_perf_values = ref_perf_values.copy()
+
+            for key, value in sorted_items:
+                format_str, perf_values, perf_msgs = _format_item(
+                    key, metric, value, max_key_len
+                )
+                # skip 'None' msg but not 'NONE', 'NONE' means w/o cache
+                if "None" in format_str:
+                    continue
+
+                if (
+                    not perf_values
+                    or None in perf_values
+                    or not perf_msgs
+                    or not args.cal_speedup
+                ):
+                    continue
+
+                if not max_perf_values:
+                    max_perf_values = perf_values
+                else:
+                    for i in range(len(max_perf_values)):
+                        max_perf_values[i] = max(
+                            max_perf_values[i], perf_values[i]
+                        )
+
             format_strs = []
             for key, value in sorted_items:
-                format_strs.append(
-                    _format_item(key, metric, value, max_key_len)
+                format_str, perf_values, perf_msgs = _format_item(
+                    key, metric, value, max_key_len
                 )
+
+                # skip 'None' msg but not 'NONE', 'NONE' means w/o cache
+                if "None" in format_str:
+                    continue
+
+                if (
+                    not perf_values
+                    or None in perf_values
+                    or not perf_msgs
+                    or not max_perf_values
+                    or not args.cal_speedup
+                ):
+                    format_strs.append(format_str)
+                    continue
+
+                for perf_value, perf_msg, max_perf_value in zip(
+                    perf_values, perf_msgs, max_perf_values
+                ):
+                    perf_speedup = max_perf_value / perf_value
+                    format_str += f"{perf_msg}(↑): {perf_speedup:<.2f}, "
+
+                format_str = format_str.removesuffix(", ")
+                format_strs.append(format_str)
 
             format_len = max(len(format_str) for format_str in format_strs)
 
@@ -980,6 +1213,12 @@ def entrypoint():
             print("-" * format_len)
             for format_str in format_strs:
                 print(format_str)
+            print("-" * format_len)
+
+            if args.gen_markdown_table:
+                table = _format_table(format_strs, metric)
+                print("-" * format_len)
+                print(f"{table}")
             print("-" * format_len)
 
 

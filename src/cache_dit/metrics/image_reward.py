@@ -11,6 +11,7 @@ import ImageReward as RM
 import torchvision.transforms.v2.functional as TF
 import torchvision.transforms.v2 as T
 
+from typing import Tuple, Union
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.utils import disable_print
@@ -34,7 +35,7 @@ class ImageRewardScore:
         self.device = device
         if imagereward_model_path is None:
             imagereward_model_path = os.environ.get(
-                "IMAGEREWARD_MODEL_DIR", "zai-org/ImageReward"
+                "IMAGEREWARD_MODEL_DIR", None
             )
 
         # Load ImageReward model
@@ -44,11 +45,16 @@ class ImageRewardScore:
         self.imagereward_path = os.path.join(
             imagereward_model_path, "ImageReward.pt"
         )
-        self.imagereward_model = RM.load(
-            self.imagereward_path,
-            download_root=imagereward_model_path,
-            med_config=self.med_config,
-        ).to(self.device)
+        if imagereward_model_path is not None:
+            self.imagereward_model = RM.load(
+                self.imagereward_path,
+                download_root=imagereward_model_path,
+                med_config=self.med_config,
+            ).to(self.device)
+        else:
+            self.imagereward_model = RM.load(
+                "ImageReward-v1.0",  # download from huggingface
+            ).to(self.device)
 
         # ImageReward transform
         self.reward_transform = T.Compose(
@@ -92,7 +98,7 @@ class ImageRewardScore:
         return score.item()
 
 
-image_reward_score_instance = None
+image_reward_score_instance: ImageRewardScore = None
 
 
 def compute_reward_score_img(
@@ -114,14 +120,17 @@ def compute_reward_score(
     img_dir: Image.Image | np.ndarray | str,
     prompts: str | list[str],
     imagereward_model_path: str = None,
-):
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     if not os.path.isdir(img_dir) or (
         not isinstance(prompts, list) and not os.path.isfile(prompts)
     ):
-        return compute_reward_score_img(
-            img_dir,
-            prompts,
-            imagereward_model_path=imagereward_model_path,
+        return (
+            compute_reward_score_img(
+                img_dir,
+                prompts,
+                imagereward_model_path=imagereward_model_path,
+            ),
+            1,
         )
 
     # compute dir metric
