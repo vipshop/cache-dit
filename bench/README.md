@@ -10,7 +10,7 @@
   - [🎉LPIPS](#lpips-)
 - [📚How to Reproduce?](#reproduce)
   - [⚙️Installation](#installation)
-  - [📖Download models](#download-models)
+  - [📖Download](#download)
   - [📖Evaluation](#evaluation)
 
 ## 📚DrawBench
@@ -159,7 +159,7 @@ pip3 install image-reward
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
-### 📖Download models
+### 📖Download
 
 ```bash
 git clone https://github.com/vipshop/cache-dit.git
