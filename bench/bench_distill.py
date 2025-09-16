@@ -41,35 +41,38 @@ def apply_flops_hook(
     args: argparse.Namespace,
     transformer: QwenImageTransformer2DModel,
 ):
-
     old_forward = transformer.forward
 
     @functools.wraps(old_forward)
     def new_forward(self: QwenImageTransformer2DModel, **kwargs):
         global total_flops, total_steps, all_tflops
 
-        # reset original forward to avoid maximum recursion depth error.
         hook_forward = transformer.forward
-        transformer.forward = old_forward.__get__(transformer)
+        transformer.forward = old_forward  # Direct assignment without __get__
+
         step_flops, _, _, results = calculate_flops(
             model=transformer, kwargs=kwargs
         )
-        transformer.forward = hook_forward.__get__(transformer)
+
+        transformer.forward = hook_forward  # Direct assignment without __get__
 
         total_flops += step_flops
         total_steps += 1
 
-        # [1, 50]: one inference
+        # Periodically record and reset statistics
         if total_steps % args.steps == 0:
             if total_steps > 0:
                 total_tflops = total_flops * 10 ** (-12)
                 all_tflops.append(total_tflops)
                 logger.debug(f"Total FLOPs: {total_tflops} TFLOPs")
-            total_flops = 0  # reset
+            total_flops = 0  # Reset counter
 
         return results
 
-    transformer.forward = new_forward.__get__(transformer)
+    # Bind the new forward method to the transformer instance
+    transformer.forward = new_forward.__get__(
+        transformer, QwenImageTransformer2DModel
+    )
     logger.info("Applied FLOPs hook to transformer!")
 
     return transformer
