@@ -35,7 +35,7 @@ class ImageRewardScore:
         self.device = device
         if imagereward_model_path is None:
             imagereward_model_path = os.environ.get(
-                "IMAGEREWARD_MODEL_DIR", "zai-org/ImageReward"
+                "IMAGEREWARD_MODEL_DIR", None
             )
 
         # Load ImageReward model
@@ -45,11 +45,16 @@ class ImageRewardScore:
         self.imagereward_path = os.path.join(
             imagereward_model_path, "ImageReward.pt"
         )
-        self.imagereward_model = RM.load(
-            self.imagereward_path,
-            download_root=imagereward_model_path,
-            med_config=self.med_config,
-        ).to(self.device)
+        if imagereward_model_path is not None:
+            self.imagereward_model = RM.load(
+                self.imagereward_path,
+                download_root=imagereward_model_path,
+                med_config=self.med_config,
+            ).to(self.device)
+        else:
+            self.imagereward_model = RM.load(
+                "ImageReward-v1.0",  # download from huggingface
+            ).to(self.device)
 
         # ImageReward transform
         self.reward_transform = T.Compose(
