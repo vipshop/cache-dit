@@ -1072,7 +1072,7 @@ def entrypoint():
                     key, metric, value, max_key_len
                 )
 
-                # skip None msg
+                # skip 'None' msg but not 'NONE', 'NONE' means w/o cache
                 if "None" in format_str:
                     continue
 
