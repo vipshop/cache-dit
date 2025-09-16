@@ -984,12 +984,14 @@ def entrypoint():
                     )
                     for perf_tag in args.perf_tags:
                         perf_value = _parse_perf(compare_tag, perf_tag)
+                        perf_values.append(perf_value)
+
                         perf_value = (
                             f"{perf_value:<.2f}" if perf_value else None
                         )
                         perf_msg = _perf_msg(perf_tag)
                         format_str += f"{perf_msg}: {perf_value}, "
-                        perf_values.append(perf_value)
+
                         perf_msgs.append(perf_msg)
 
                     format_str = format_str.removesuffix(", ")
@@ -1006,12 +1008,13 @@ def entrypoint():
                     )
                     for perf_tag in args.perf_tags:
                         perf_value = _parse_perf(compare_tag, perf_tag)
+                        perf_values.append(perf_value)
+
                         perf_value = (
                             f"{perf_value:<.2f}" if perf_value else None
                         )
                         perf_msg = _perf_msg(perf_tag)
                         format_str += f"{perf_msg}: {perf_value}, "
-                        perf_values.append(perf_value)
                         perf_msgs.append(perf_msg)
 
                     format_str = format_str.removesuffix(", ")
@@ -1052,11 +1055,20 @@ def entrypoint():
 
             max_perf_values: List[float] = []
             for key, value in sorted_items:
-                _, perf_values, _ = _format_item(
+                format_str, perf_values, perf_msgs = _format_item(
                     key, metric, value, max_key_len
                 )
-                if not perf_values:
-                    break
+                # skip 'None' msg but not 'NONE', 'NONE' means w/o cache
+                if "None" in format_str:
+                    continue
+
+                if (
+                    not perf_values
+                    or None in perf_values
+                    or not perf_msgs
+                    or not args.cal_speedup
+                ):
+                    continue
 
                 if not max_perf_values:
                     max_perf_values = perf_values
@@ -1078,6 +1090,7 @@ def entrypoint():
 
                 if (
                     not perf_values
+                    or None in perf_values
                     or not perf_msgs
                     or not max_perf_values
                     or not args.cal_speedup
