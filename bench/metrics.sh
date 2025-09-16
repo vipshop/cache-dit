@@ -21,11 +21,11 @@ cache-dit-metrics-cli \
   --ref-prompt-true ./prompts/DrawBench200.txt \
   --img-source-dir ./tmp/DrawBench200_DBCache_TaylorSeer \
   --perf-tags "Mean pipeline TFLOPs" "Mean pipeline time" \
-  --perf-log ./log/cache_dit_bench_default.log
+  --perf-log ./log/cache_dit_bench_taylorseer.log
 
 cache-dit-metrics-cli \
   psnr ssim lpips --summary --cal-speedup \
   --ref-img-dir ./tmp/DrawBench200_DBCache_TaylorSeer/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache_TaylorSeer \
   --perf-tags "Mean pipeline TFLOPs" "Mean pipeline time" \
-  --perf-log ./log/cache_dit_bench_default.log
+  --perf-log ./log/cache_dit_bench_taylorseer.log
