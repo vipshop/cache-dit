@@ -584,6 +584,13 @@ def get_args():
         default=False,
         help="Calculate performance speedup.",
     )
+    parser.add_argument(
+        "--gen-markdown-table",
+        "-table",
+        action="store_true",
+        default=False,
+        help="Generate performance markdown table",
+    )
     return parser.parse_args()
 
 
@@ -994,7 +1001,9 @@ def entrypoint():
 
                         perf_msgs.append(perf_msg)
 
-                    format_str = format_str.removesuffix(", ")
+                    if not args.cal_speedup:
+                        format_str = format_str.removesuffix(", ")
+
             elif n := _parse_value(key, "Frames"):
                 if not has_perf_texts:
                     format_str = (
@@ -1017,11 +1026,65 @@ def entrypoint():
                         format_str += f"{perf_msg}: {perf_value}, "
                         perf_msgs.append(perf_msg)
 
-                    format_str = format_str.removesuffix(", ")
+                    if not args.cal_speedup:
+                        format_str = format_str.removesuffix(", ")
             else:
                 raise ValueError("Num or Frames can not be NoneType.")
 
             return format_str, perf_values, perf_msgs
+
+        def _format_table(format_strs: List[str], metric: str):
+            if not format_strs:
+                return ""
+
+            metric_upper = metric.upper()
+            all_headers = {"Config", metric_upper}
+            row_data = []
+
+            for line in format_strs:
+                parts = [p.strip() for p in line.split(",")]
+
+                config_part = parts[0].strip()
+                if "vs" in config_part:
+                    config = config_part.split("vs", 1)[1].strip()
+                    if "_DBCACHE_" in config:
+                        config = config.split("_DBCACHE_", 1)[1].strip()
+                else:
+                    config = config_part
+
+                metric_value = next(
+                    p.split(":")[1].strip()
+                    for p in parts
+                    if p.startswith(metric_upper)
+                )
+
+                perf_data = {}
+                for part in parts:
+                    if part.startswith(("Num:", "Frames:", metric_upper)):
+                        continue
+                    if ":" in part:
+                        key, value = part.split(":", 1)
+                        key = key.strip()
+                        value = value.strip()
+                        perf_data[key] = value
+                        all_headers.add(key)
+
+                row_data.append(
+                    {"Config": config, metric_upper: metric_value, **perf_data}
+                )
+
+            sorted_headers = ["Config", metric_upper] + sorted(
+                [h for h in all_headers if h not in ["Config", metric_upper]]
+            )
+
+            table = "| " + " | ".join(sorted_headers) + " |\n"
+            table += "| " + " | ".join(["---"] * len(sorted_headers)) + " |\n"
+
+            for row in row_data:
+                row_values = [row.get(header, "") for header in sorted_headers]
+                table += "| " + " | ".join(row_values) + " |\n"
+
+            return table.strip()
 
         selected_metrics = args.metrics
         if "all" in selected_metrics:
@@ -1119,6 +1182,12 @@ def entrypoint():
             print("-" * format_len)
             for format_str in format_strs:
                 print(format_str)
+            print("-" * format_len)
+
+            if args.gen_markdown_table:
+                table = _format_table(format_strs, metric)
+                print("-" * format_len)
+                print(f"{table}")
             print("-" * format_len)
 
 
