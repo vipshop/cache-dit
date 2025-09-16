@@ -125,21 +125,22 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
     pipe.unload_lora_weights()
 
     # Apply cache to the pipeline
-    cache_dit.enable_cache(
-        pipe,
-        # Cache context kwargs
-        Fn_compute_blocks=args.Fn_compute_blocks,
-        Bn_compute_blocks=args.Bn_compute_blocks,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        residual_diff_threshold=args.rdt,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_cache_type="residual",
-        taylorseer_order=args.taylorseer_order,
-        enable_separate_cfg=False,  # true_cfg_scale=1.0
-    )
+    if args.cache:
+        cache_dit.enable_cache(
+            pipe,
+            # Cache context kwargs
+            Fn_compute_blocks=args.Fn_compute_blocks,
+            Bn_compute_blocks=args.Bn_compute_blocks,
+            max_warmup_steps=args.max_warmup_steps,
+            max_cached_steps=args.max_cached_steps,
+            max_continuous_cached_steps=args.max_continuous_cached_steps,
+            residual_diff_threshold=args.rdt,
+            enable_taylorseer=args.taylorseer,
+            enable_encoder_taylorseer=args.taylorseer,
+            taylorseer_cache_type="residual",
+            taylorseer_order=args.taylorseer_order,
+            enable_separate_cfg=False,  # true_cfg_scale=1.0
+        )
 
     if torch.cuda.device_count() <= 1:
         # Enable memory savings
