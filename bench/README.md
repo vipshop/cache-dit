@@ -38,7 +38,6 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | 32.9217 | 42.63 | 1.00 | 3726.87 | 1.00 |
-| F1B0_W4M0MC0_T0O1_R0.08 | 33.0745 | 23.19 | 1.84 | 1729.60 | 2.15 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 33.0070 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F8B0_W4M0MC0_T0O1_R0.08 | 32.9871 | 26.91 | 1.58 | 2064.81 | 1.80 |
 | F4B0_W4M0MC2_T0O1_R0.12 | 32.9718 | 22.87 | 1.86 | 1678.98 | 2.22 |
@@ -59,7 +58,6 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | 32.9217 | 42.63 | 1.00 | 3726.87 | 1.00 |
-| F1B0_W4M0MC0_T1O1_R0.08 | 33.0398 | 23.18 | 1.84 | 1730.70 | 2.15 |
 | F8B0_W8M0MC3_T1O1_R0.12 | 33.0191 | 26.01 | 1.64 | 1974.49 | 1.89 |
 | F8B0_W4M0MC0_T1O1_R0.08 | 33.0037 | 27.09 | 1.58 | 2079.23 | 1.79 |
 | F4B0_W4M0MC3_T1O1_R0.12 | 32.9795 | 21.18 | 2.02 | 1499.51 | 2.49 |
@@ -82,7 +80,6 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | 1.0412 | 42.63 | 1.00 | 3726.87 | 1.00 |
-| F1B0_W4M0MC0_T0O1_R0.08 | 1.0418 | 23.19 | 1.84 | 1729.60 | 2.15 |
 | F8B0_W4M0MC0_T0O1_R0.08 | 1.0370 | 26.91 | 1.58 | 2064.81 | 1.80 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 1.0333 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F4B0_W4M0MC2_T0O1_R0.12 | 1.0301 | 22.87 | 1.86 | 1678.98 | 2.22 |
@@ -103,7 +100,6 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 | Config | IMAGE_REWARD | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
 | --- | --- | --- | --- | --- | --- |
 | Base: FLUX.1-dev, 50 steps | 1.0412 | 42.69 | 1.00 | 3726.87 | 1.00 |
-| F1B0_W4M0MC0_T1O1_R0.08 | 1.0591 | 23.18 | 1.84 | 1730.70 | 2.15 |
 | F8B0_W8M0MC0_T1O1_R0.08 | 1.0558 | 27.92 | 1.53 | 2172.76 | 1.72 |
 | F8B0_W4M0MC0_T1O1_R0.08 | 1.0497 | 27.09 | 1.58 | 2079.23 | 1.79 |
 | F4B0_W4M0MC2_T1O1_R0.12 | 1.0356 | 22.81 | 1.87 | 1668.58 | 2.23 |

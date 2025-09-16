@@ -233,7 +233,6 @@ Take FLUX.1-dev as an example. Here, only the results of some precision and perf
 | Config | clip score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | FLUX.1-dev, 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
-| F1B0_W4MC0_R0.08 | 33.0745 | 1.0418 | 33.9639 | 1729.60 | 2.15 |
 | F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72 |
 | F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80 |
 | F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22 |
