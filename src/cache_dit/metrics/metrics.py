@@ -1217,6 +1217,9 @@ def entrypoint():
 
             if args.gen_markdown_table:
                 table = _format_table(format_strs, metric)
+                table = table.replace("Latency(s)(↑)", "SpeedUp(↑)")
+                table = table.replace("TFLOPs(↑)", "SpeedUp(↑)")
+                table = table.replace("FLOPs(↑)", "SpeedUp(↑)")
                 print("-" * format_len)
                 print(f"{table}")
             print("-" * format_len)
