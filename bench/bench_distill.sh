@@ -8,12 +8,10 @@ function run_qwen_draw_bench_distill() {
   local save_dir="./tmp/DrawBench200_DBCache_Distill"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
-  # baseline
-  python3 bench_distill.py ${base_params}
-
   # steps 8
   local rdt=0.5
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench_distill.py ${base_params} --steps 8
   python3 bench_distill.py ${base_params} --cache --Fn 8 --Bn 8 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2
   python3 bench_distill.py ${base_params} --cache --Fn 12 --Bn 12 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2 
   python3 bench_distill.py ${base_params} --cache --Fn 16 --Bn 16 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2 
@@ -26,6 +24,7 @@ function run_qwen_draw_bench_distill() {
   # steps 4
   rdt=0.8
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench_distill.py ${base_params} --steps 4
   python3 bench_distill.py ${base_params} --cache --Fn 8 --Bn 8 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1
   python3 bench_distill.py ${base_params} --cache --Fn 12 --Bn 12 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1 
   python3 bench_distill.py ${base_params} --cache --Fn 16 --Bn 16 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1 
