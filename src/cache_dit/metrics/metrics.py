@@ -67,11 +67,18 @@ def get_psnr_type():
     return PSNR_TYPE
 
 
-def custom_psnr(
+def calculate_psnr(
     image_true: np.ndarray,
     image_test: np.ndarray,
 ):
-    """Another way to calculate PSNR"""
+    """Calculate PSNR (Peak Signal-to-Noise Ratio).
+
+    Ref: https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
+
+    Args:
+        image_true (ndarray): Images with range [0, 255].
+        image_test (ndarray): Images with range [0, 255].
+    """
     mse = np.mean((image_true - image_test) ** 2)
     if mse == 0:
         return float("inf")
@@ -97,7 +104,7 @@ def compute_psnr_file(
             image_test,
         )
     else:
-        return custom_psnr(image_true, image_test)
+        return calculate_psnr(image_true, image_test)
 
 
 def compute_mse_file(
@@ -951,6 +958,25 @@ def entrypoint():
                 return None
             return sum(perf_values) / len(perf_values)
 
+        def _ref_perf(
+            key: str,
+        ):
+            # U1-Q0-C0-NONE vs U4-Q1-C1-NONE
+            header = key.split(",")[0].strip()
+            reference_tag = None
+            if args.prompt_true is None:
+                reference_tag = header.split("vs")[0].strip()  # U1-Q0-C0-NONE
+
+            if reference_tag is None:
+                return []
+
+            ref_perf_values = []
+            for perf_tag in args.perf_tags:
+                perf_value = _parse_perf(reference_tag, perf_tag)
+                ref_perf_values.append(perf_value)
+
+            return ref_perf_values
+
         def _format_item(
             key: str,
             metric: str,
@@ -1116,7 +1142,12 @@ def entrypoint():
             ]
             max_key_len = max(len(key) for key in selected_keys)
 
+            ref_perf_values = _ref_perf(key=selected_keys[0])
             max_perf_values: List[float] = []
+
+            if ref_perf_values and None not in ref_perf_values:
+                max_perf_values = ref_perf_values.copy()
+
             for key, value in sorted_items:
                 format_str, perf_values, perf_msgs = _format_item(
                     key, metric, value, max_key_len
