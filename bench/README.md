@@ -15,7 +15,18 @@
 
 ## 📚DrawBench
 
-Device: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, **W**: max_warmup_steps, **M**: max_cached_steps, **MC**: max_continuous_cached_steps (namely, hybird dynamic cache and static cache), **T**: enable talyorseer or not (namely, hybrid taylorseer w/ dynamic cache - DBCache), **O**: taylorseer order, **R**: residual diff threshold. **Latency(s)**: Recorded compute time (eager mode) that **w/o** torch.compile and any other optimizations. **TFLOPs**: Recorded compute FLOPs using [calflops](https://github.com/chengzegang/calculate-flops.pytorch.git)'s [calculate_flops](./utils.py) API.
+The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_R0.08):  
+  - **Device**: NVIDIA L20. 
+  - **F**: Fn_compute_blocks 
+  - **B**: Bn_compute_blocks
+  - **W**: max_warmup_steps
+  - **M**: max_cached_steps
+  - **MC**: max_continuous_cached_steps (namely, hybird dynamic cache and static cache)
+  - **T**: enable talyorseer or not (namely, hybrid taylorseer w/ dynamic cache - DBCache) 
+  - **O**: taylorseer order, O1 means order 1.
+  - **R**: residual diff threshold, range [0, 1.0)
+  - **Latency(s)**: Recorded compute time (eager mode) that **w/o** other optimizations
+  - **TFLOPs**: Recorded compute FLOPs using [calflops](https://github.com/chengzegang/calculate-flops.pytorch.git)'s [calculate_flops](./utils.py) API.
 
 
 ### 🎉CLIP Score (↑)
@@ -136,7 +147,7 @@ Device: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, **W**: m
 | F4B0_W4M0MC4_T0O1_R0.12 | 0.2108 | 20.21 | 2.11 | 1400.08 | 2.66 |
 
 
-## 📚Reproduce
+## 📚How to Reproduce?
 
 ### ⚙️Installation
 
