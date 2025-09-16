@@ -1058,7 +1058,7 @@ def entrypoint():
                 if not perf_values:
                     break
 
-                if max_perf_values:
+                if not max_perf_values:
                     max_perf_values = perf_values
                 else:
                     for i in range(len(max_perf_values)):
