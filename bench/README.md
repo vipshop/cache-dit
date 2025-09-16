@@ -17,15 +17,12 @@
 
 Device: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, **W**: max_warmup_steps, **M**: max_cached_steps, **MC**: max_continuous_cached_steps (namely, hybird dynamic cache and static cache), **T**: enable talyorseer or not (namely, hybrid taylorseer w/ dynamic cache - DBCache), **O**: taylorseer order, **R**: residual diff threshold. **Latency(s)**: Recorded compute time (eager mode) that **w/o** torch.compile and any other optimizations. **TFLOPs**: Recorded compute FLOPs using [calflops](https://github.com/chengzegang/calculate-flops.pytorch.git)'s [calculate_flops](./utils.py) API.
 
-<!--
-Baseline(FLUX.1-dev, 50 steps)
---->
 
 ### 🎉CLIP Score (↑)
 
-| Config | CLIP_SCORE | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
+| Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | 32.9217 | 42.63 | 1.00 | 3726.87 | 1.00 |
+| Base: FLUX.1-dev, 50 steps | 32.9217 | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F1B0_W4M0MC0_T0O1_R0.08 | 33.0745 | 23.19 | 1.84 | 1729.60 | 2.15 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 33.0070 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F8B0_W4M0MC0_T0O1_R0.08 | 32.9871 | 26.91 | 1.58 | 2064.81 | 1.80 |
@@ -48,9 +45,9 @@ Baseline(FLUX.1-dev, 50 steps)
 
 ### 🎉Image Reward (↑)
 
-| Config | IMAGE_REWARD | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
+| Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | 1.0412 | 42.63 | 1.00 | 3726.87 | 1.00 |
+| Base: FLUX.1-dev, 50 steps | 1.0412 | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F1B0_W4M0MC0_T0O1_R0.08 | 1.0418 | 23.19 | 1.84 | 1729.60 | 2.15 |
 | F8B0_W4M0MC0_T0O1_R0.08 | 1.0370 | 26.91 | 1.58 | 2064.81 | 1.80 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 1.0333 | 27.80 | 1.53 | 2162.19 | 1.72 |
@@ -77,9 +74,9 @@ Baseline(FLUX.1-dev, 50 steps)
 
 ### 🎉PSNR (↑)
 
-| Config | PSNR | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
+| Config | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
+| Base: FLUX.1-dev, 50 steps | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 35.2008 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F8B0_W8M0MC2_T0O1_R0.12 | 34.7449 | 26.91 | 1.58 | 2072.18 | 1.80 |
 | F8B0_W8M0MC3_T0O1_R0.12 | 34.2834 | 26.04 | 1.64 | 1977.69 | 1.88 |
@@ -98,9 +95,9 @@ Baseline(FLUX.1-dev, 50 steps)
 
 ### 🎉SSIM (↑)
 
-| Config | SSIM | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
+| Config | SSIM | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
+| Base: FLUX.1-dev, 50 steps | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 0.9131 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F8B0_W8M0MC2_T0O1_R0.12 | 0.9017 | 26.91 | 1.58 | 2072.18 | 1.80 |
 | F8B0_W8M0MC3_T0O1_R0.12 | 0.8951 | 26.04 | 1.64 | 1977.69 | 1.88 |
@@ -119,9 +116,9 @@ Baseline(FLUX.1-dev, 50 steps)
 
 ### 🎉LPIPS (↓)
 
-| Config | LPIPS | Latency(s) | Latency(s)(↑) | TFLOPs | TFLOPs(↑) |
+| Config | LPIPS | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
+| Base: FLUX.1-dev, 50 steps | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 0.0786 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F8B0_W8M0MC2_T0O1_R0.12 | 0.0895 | 26.91 | 1.58 | 2072.18 | 1.80 |
 | F8B0_W8M0MC3_T0O1_R0.12 | 0.0978 | 26.04 | 1.64 | 1977.69 | 1.88 |
