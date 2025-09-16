@@ -248,6 +248,8 @@ Take FLUX.1-dev as an example. Here, only the results of some precision and perf
 | F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66 |
 | F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56 |
 
+The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy.
+
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
@@ -261,7 +263,9 @@ Take FLUX.1-dev as an example. Here, only the results of some precision and perf
 | **[DBCache+TaylorSeer(F=4,B=0)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[FoCa (N=5)](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
+| **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
+
+cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update.
 
 
 ## 🎉Unified Cache APIs
