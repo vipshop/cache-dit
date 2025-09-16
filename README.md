@@ -260,7 +260,7 @@ The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, Du
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache(F=4,B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
-| **[DBCache+TaylorSeer(F=4,B=0)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
+| **[DBCache+TaylorSeer(F=4,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
 | **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
