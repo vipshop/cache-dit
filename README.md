@@ -230,33 +230,33 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Take FLUX.1-dev as an example. Here, only the results of some precision and performance benchmarks are presented. The test dataset is DrawBench. For a complete benchmark, please refer to [benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks.
 
-| Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs | SpeedUp(↑) |
+| Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
-| F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72 |
-| F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80 |
-| F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22 |
-| F8B0_W8MC3_R0.12 | 32.9613 | 1.0270 | 34.2834 | 1977.69 | 1.88 |
-| F8B0_W4MC2_R0.12 | 32.9535 | 1.0185 | 32.7346 | 1935.73 | 1.93 |
-| F8B0_W8MC2_R0.12 | 32.9302 | 1.0227 | 34.7449 | 2072.18 | 1.80 |
-| F8B0_W4MC3_R0.12 | 32.9234 | 1.0085 | 32.5385 | 1816.58 | 2.05 |
-| F8B0_W8MC4_R0.12 | 32.9041 | 1.0140 | 33.9466 | 1897.61 | 1.96 |
-| F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47 |
-| F4B0_W4MC0_R0.08 | 32.8544 | 1.0065 | 32.3555 | 1654.72 | 2.25 |
-| F8B0_W4MC4_R0.12 | 32.8443 | 1.0102 | 32.4231 | 1753.48 | 2.13 |
-| F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66 |
-| F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66 |
-| F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56 |
+| F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72x |
+| F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80x |
+| F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22x |
+| F8B0_W8MC3_R0.12 | 32.9613 | 1.0270 | 34.2834 | 1977.69 | 1.88x |
+| F8B0_W4MC2_R0.12 | 32.9535 | 1.0185 | 32.7346 | 1935.73 | 1.93x |
+| F8B0_W8MC2_R0.12 | 32.9302 | 1.0227 | 34.7449 | 2072.18 | 1.80x |
+| F8B0_W4MC3_R0.12 | 32.9234 | 1.0085 | 32.5385 | 1816.58 | 2.05x |
+| F8B0_W8MC4_R0.12 | 32.9041 | 1.0140 | 33.9466 | 1897.61 | 1.96x |
+| F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47x |
+| F4B0_W4MC0_R0.08 | 32.8544 | 1.0065 | 32.3555 | 1654.72 | 2.25x |
+| F8B0_W4MC4_R0.12 | 32.8443 | 1.0102 | 32.4231 | 1753.48 | 2.13x |
+| F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
+| F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66x |
+| F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56x |
 
 The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy.
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
-| 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
+| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
 | Δ-DiT (N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
 | Δ-DiT (N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
-| 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
+| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache(F=4,B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
