@@ -1,6 +1,6 @@
-export FLUX_DIR="$HF_MODELS/FLUX.1-dev"
-export CLIP_MODEL_DIR="$HF_MODELS/cache-dit-eval/CLIP-ViT-g-14-laion2B-s12B-b42K"
-export IMAGEREWARD_MODEL_DIR="$HF_MODELS/cache-dit-eval/ImageReward"
+export FLUX_DIR="${FLUX_DIR:-$HF_MODELS/FLUX.1-dev}"
+export CLIP_MODEL_DIR="${CLIP_MODEL_DIR:-$HF_MODELS/cache-dit-eval/CLIP-ViT-g-14-laion2B-s12B-b42K}"
+export IMAGEREWARD_MODEL_DIR="${IMAGEREWARD_MODEL_DIR:-$HF_MODELS/cache-dit-eval/ImageReward}"
 
 function run_flux_draw_bench() {
   local test_num=200
