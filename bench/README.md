@@ -28,7 +28,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
   - **Latency(s)**: Recorded compute time (eager mode) that **w/o** other optimizations
   - **TFLOPs**: Recorded compute FLOPs using [calflops](https://github.com/chengzegang/calculate-flops.pytorch.git)'s [calculate_flops](./utils.py) API.
 
-> [!Tips]   
+> [!Important]   
 > Among all the accuracy indicators, the overall accuracy has slightly improved after using TaylorSeer.
 
 ### 🎉CLIP Score (↑)
