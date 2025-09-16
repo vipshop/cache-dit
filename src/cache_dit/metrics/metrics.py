@@ -24,6 +24,7 @@ logger = init_logger(__name__)
 
 
 DISABLE_VERBOSE = not get_metrics_verbose()
+PSNR_TYPE = "custom"
 
 
 def compute_lpips_file(
@@ -55,6 +56,28 @@ def compute_lpips_file(
     )
 
 
+def set_psnr_type(psnr_type: str):
+    global PSNR_TYPE
+    PSNR_TYPE = psnr_type
+    assert PSNR_TYPE in ["skimage", "custom"]
+
+
+def get_psnr_type():
+    global PSNR_TYPE
+    return PSNR_TYPE
+
+
+def custom_psnr(
+    image_true: np.ndarray,
+    image_test: np.ndarray,
+):
+    """Another way to calculate PSNR"""
+    mse = np.mean((image_true - image_test) ** 2)
+    if mse == 0:
+        return float("inf")
+    return 20 * np.log10(255.0 / np.sqrt(mse))
+
+
 def compute_psnr_file(
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
@@ -68,10 +91,13 @@ def compute_psnr_file(
         image_true = cv2.imread(image_true)
     if isinstance(image_test, str):
         image_test = cv2.imread(image_test)
-    return peak_signal_noise_ratio(
-        image_true,
-        image_test,
-    )
+    if get_psnr_type() == "skimage":
+        return peak_signal_noise_ratio(
+            image_true,
+            image_test,
+        )
+    else:
+        return custom_psnr(image_true, image_test)
 
 
 def compute_mse_file(
@@ -544,6 +570,13 @@ def get_args():
         default=[],
         help="Extra tags to parse perf time from perf log",
     )
+    parser.add_argument(
+        "--psnr-type",
+        type=str,
+        default="custom",
+        choices=["custom", "skimage"],
+        help="The compute type of PSNR, [custom, skimage]",
+    )
     return parser.parse_args()
 
 
@@ -560,6 +593,8 @@ def entrypoint():
         global DISABLE_VERBOSE
         set_metrics_verbose(True)
         DISABLE_VERBOSE = not get_metrics_verbose()
+
+    set_psnr_type(args.psnr_type)
 
     METRICS_META: dict[str, float] = {}
 
