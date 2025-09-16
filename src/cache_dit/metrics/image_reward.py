@@ -11,6 +11,7 @@ import ImageReward as RM
 import torchvision.transforms.v2.functional as TF
 import torchvision.transforms.v2 as T
 
+from typing import Tuple, Union
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.utils import disable_print
@@ -92,7 +93,7 @@ class ImageRewardScore:
         return score.item()
 
 
-image_reward_score_instance = None
+image_reward_score_instance: ImageRewardScore = None
 
 
 def compute_reward_score_img(
@@ -114,14 +115,17 @@ def compute_reward_score(
     img_dir: Image.Image | np.ndarray | str,
     prompts: str | list[str],
     imagereward_model_path: str = None,
-):
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     if not os.path.isdir(img_dir) or (
         not isinstance(prompts, list) and not os.path.isfile(prompts)
     ):
-        return compute_reward_score_img(
-            img_dir,
-            prompts,
-            imagereward_model_path=imagereward_model_path,
+        return (
+            compute_reward_score_img(
+                img_dir,
+                prompts,
+                imagereward_model_path=imagereward_model_path,
+            ),
+            1,
         )
 
     # compute dir metric

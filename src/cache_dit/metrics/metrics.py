@@ -5,15 +5,17 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from functools import partial
+from typing import Callable, Union, Tuple
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
-from cache_dit.metrics.fid import FrechetInceptionDistance
 from cache_dit.metrics.config import set_metrics_verbose
 from cache_dit.metrics.config import get_metrics_verbose
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.logger import init_logger
+from cache_dit.metrics.fid import compute_fid
+from cache_dit.metrics.fid import compute_video_fid
 from cache_dit.metrics.lpips import compute_lpips_img
 from cache_dit.metrics.clip_score import compute_clip_score
 from cache_dit.metrics.image_reward import compute_reward_score
@@ -116,7 +118,7 @@ def compute_dir_metric(
     image_true_dir: np.ndarray | str,
     image_test_dir: np.ndarray | str,
     compute_file_func: callable = compute_psnr_file,
-) -> float:
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     # Image
     if isinstance(image_true_dir, np.ndarray) or isinstance(
         image_test_dir, np.ndarray
@@ -237,7 +239,7 @@ def compute_video_metric(
     video_true: str,
     video_test: str,
     compute_frame_func: callable = compute_psnr_file,
-) -> float:
+) -> Union[Tuple[float, int], Tuple[None, None]]:
     """
     video_true = "video_true.mp4"
     video_test = "video_test.mp4"
@@ -337,39 +339,55 @@ def compute_video_metric(
         return None, None
 
 
-compute_lpips = partial(
-    compute_dir_metric,
-    compute_file_func=compute_lpips_file,
+compute_lpips: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_lpips_file,
+    )
 )
 
-compute_psnr = partial(
-    compute_dir_metric,
-    compute_file_func=compute_psnr_file,
+compute_psnr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_psnr_file,
+    )
 )
 
-compute_ssim = partial(
-    compute_dir_metric,
-    compute_file_func=compute_ssim_file,
+compute_ssim: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_ssim_file,
+    )
 )
 
-compute_mse = partial(
-    compute_dir_metric,
-    compute_file_func=compute_mse_file,
+compute_mse: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
+    partial(
+        compute_dir_metric,
+        compute_file_func=compute_mse_file,
+    )
 )
 
-compute_video_lpips = partial(
+compute_video_lpips: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_lpips_file,
 )
-compute_video_psnr = partial(
+compute_video_psnr: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_psnr_file,
 )
-compute_video_ssim = partial(
+compute_video_ssim: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_ssim_file,
 )
-compute_video_mse = partial(
+compute_video_mse: Callable[
+    ..., Union[Tuple[float, int], Tuple[None, None]]
+] = partial(
     compute_video_metric,
     compute_frame_func=compute_mse_file,
 )
@@ -543,12 +561,6 @@ def entrypoint():
         set_metrics_verbose(True)
         DISABLE_VERBOSE = not get_metrics_verbose()
 
-    if "all" in args.metrics or "fid" in args.metrics:
-        FID = FrechetInceptionDistance(
-            disable_tqdm=DISABLE_VERBOSE,
-            batch_size=args.fid_batch_size,
-        )
-
     METRICS_META: dict[str, float] = {}
 
     # run one metric
@@ -560,7 +572,6 @@ def entrypoint():
         video_true: str = None,
         video_test: str = None,
     ) -> None:
-        nonlocal FID
         nonlocal METRICS_META
         metric = metric.lower()
         if img_true is not None and img_test is not None:
@@ -598,7 +609,7 @@ def entrypoint():
                 img_mse, n = compute_mse(img_true, img_test)
                 _logging_msg(img_mse, "mse", n)
             if metric == "fid" or metric == "all":
-                img_fid, n = FID.compute_fid(img_true, img_test)
+                img_fid, n = compute_fid(img_true, img_test)
                 _logging_msg(img_fid, "fid", n)
 
         if prompt_true is not None and img_test is not None:
@@ -667,7 +678,7 @@ def entrypoint():
                 video_mse, n = compute_video_mse(video_true, video_test)
                 _logging_msg(video_mse, "mse", n)
             if metric == "fid" or metric == "all":
-                video_fid, n = FID.compute_video_fid(video_true, video_test)
+                video_fid, n = compute_video_fid(video_true, video_test)
                 _logging_msg(video_fid, "fid", n)
 
     # run selected metrics

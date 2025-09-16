@@ -534,13 +534,19 @@ You can utilize the APIs provided by cache-dit to quickly evaluate the accuracy 
 
 ```python
 from cache_dit.metrics import compute_psnr
-from cache_dit.metrics import compute_video_psnr
-from cache_dit.metrics import FrechetInceptionDistance  # FID
+from cache_dit.metrics import compute_ssim
+from cache_dit.metrics import compute_fid
+from cache_dit.metrics import compute_lpips
+from cache_dit.metrics import compute_clip_score
+from cache_dit.metrics import compute_image_reward
 
-FID = FrechetInceptionDistance()
-image_psnr, n = compute_psnr("true.png", "test.png") # Num: n
-image_fid,  n = FID.compute_fid("true_dir", "test_dir")
-video_psnr, n = compute_video_psnr("true.mp4", "test.mp4") # Frames: n
+psnr,       n = compute_psnr("true.png", "test.png") # Num: n
+psnr,       n = compute_psnr("true_dir", "test_dir")
+ssim,       n = compute_ssim("true_dir", "test_dir")
+fid,        n = compute_fid("true_dir", "test_dir")
+lpips,      n = compute_lpips("true_dir", "test_dir")
+clip_score, n = compute_clip_score("DrawBench200.txt", "test_dir")
+reward,     n = compute_image_reward("DrawBench200.txt", "test_dir")
 ```
 
 Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool. For examples: 
