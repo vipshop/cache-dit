@@ -139,6 +139,7 @@
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
+- [🔥Benchmarks](#benchmarks)
 - [🔥Supported Pipelines](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#forward-pattern-matching)
@@ -222,6 +223,32 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 - ...
 
 </details>
+
+## 🔥Benchmarks
+
+<div id="benchmarks"></div>
+
+Take FLUX.1-dev as an example. Here, only the results of some precision and performance benchmarks are presented. The test dataset is DrawBench. For a complete benchmark, please refer to [benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, **Latency(s)**: Recorded compute time (eager mode) that **w/o** other optimizations.
+
+| Config | CLIP_SCORE | IMAGE_REWARD | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Base: FLUX.1-dev, 50 steps | 32.9217 | 1.0412 | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
+| F1B0_W4M0MC0_T0O1_R0.08 | 33.0745 | 1.0418 | 33.9639 | 23.19 | 1.84 | 1729.60 | 2.15 |
+| F8B0_W8M0MC0_T0O1_R0.08 | 33.0070 | 1.0333 | 35.2008 | 27.80 | 1.53 | 2162.19 | 1.72 |
+| F8B0_W4M0MC0_T0O1_R0.08 | 32.9871 | 1.0370 | 33.8317 | 26.91 | 1.58 | 2064.81 | 1.80 |
+| F4B0_W4M0MC2_T0O1_R0.12 | 32.9718 | 1.0301 | 31.9394 | 22.87 | 1.86 | 1678.98 | 2.22 |
+| F8B0_W8M0MC3_T0O1_R0.12 | 32.9613 | 1.0270 | 34.2834 | 26.04 | 1.64 | 1977.69 | 1.88 |
+| F8B0_W4M0MC2_T0O1_R0.12 | 32.9535 | 1.0185 | 32.7346 | 25.72 | 1.66 | 1935.73 | 1.93 |
+| F8B0_W8M0MC2_T0O1_R0.12 | 32.9302 | 1.0227 | 34.7449 | 26.91 | 1.58 | 2072.18 | 1.80 |
+| F8B0_W4M0MC3_T0O1_R0.12 | 32.9234 | 1.0085 | 32.5385 | 24.53 | 1.74 | 1816.58 | 2.05 |
+| F8B0_W8M0MC4_T0O1_R0.12 | 32.9041 | 1.0140 | 33.9466 | 25.26 | 1.69 | 1897.61 | 1.96 |
+| F4B0_W4M0MC3_T0O1_R0.12 | 32.8981 | 1.0130 | 31.8031 | 21.27 | 2.00 | 1507.83 | 2.47 |
+| F4B0_W4M0MC0_T0O1_R0.08 | 32.8544 | 1.0065 | 32.3555 | 22.69 | 1.88 | 1654.72 | 2.25 |
+| F8B0_W4M0MC4_T0O1_R0.12 | 32.8443 | 1.0102 | 32.4231 | 23.84 | 1.79 | 1753.48 | 2.13 |
+| F4B0_W4M0MC4_T0O1_R0.12 | 32.8384 | 1.0065 | 31.5292 | 20.21 | 2.11 | 1400.08 | 2.66 |
+| F1B0_W4M0MC4_T0O1_R0.12 | 32.8291 | 1.0181 | 32.9462 | 19.99 | 2.13 | 1401.61 | 2.66 |
+| F1B0_W4M0MC3_T0O1_R0.12 | 32.8236 | 1.0166 | 33.0037 | 20.58 | 2.07 | 1457.62 | 2.56 |
+
 
 ## 🎉Unified Cache APIs
 
