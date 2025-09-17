@@ -299,10 +299,15 @@ cd ..
 ```bash
 # NOTE: The reported benchmark was run on NVIDIA L20 device.
 
-# FLUX.1-dev DrawBench
+# FLUX.1-dev DrawBench w/ low speedup ratio
 export CUDA_VISIBLE_DEVICES=0 && nohup bash bench.sh default > log/cache_dit_bench_default.log 2>&1 &
 export CUDA_VISIBLE_DEVICES=1 && nohup bash bench.sh taylorseer > log/cache_dit_bench_taylorseer.log 2>&1 &
 bash ./metrics.sh
+
+# FLUX.1-dev DrawBench w/ high speedup ratio
+export CUDA_VISIBLE_DEVICES=0 && nohup bash bench_fast.sh default > log/cache_dit_bench_fast.log 2>&1 &
+export CUDA_VISIBLE_DEVICES=1 && nohup bash bench_fast.sh taylorseer > log/cache_dit_bench_taylorseer_fast.log 2>&1 &
+bash ./metrics_fast.sh
 
 # Qwen-Image-Lightning DrawBench
 export CUDA_VISIBLE_DEVICES=0,1 && nohup bash bench_distill.sh 8_steps > log/cache_dit_bench_distill_8_steps.log 2>&1 &
