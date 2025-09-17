@@ -268,7 +268,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | **[DBCache(F=4,B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
 | **[DBCache+TaylorSeer(F=4,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
-| TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
+| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
 | **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
 | **[FoCa(N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
 
