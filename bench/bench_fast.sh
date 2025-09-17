@@ -7,16 +7,15 @@ function run_flux_draw_bench_fast() {
   local save_dir="./tmp/DrawBench200_DBCache_Fast"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
-  # rdt 0.32
-  rdt=0.32
+  rdt=1.0
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
   # baseline
   # python3 bench.py ${base_params}
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10
+  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 8 --max-warmup-steps 4 --rdt ${rdt} --mcc 10
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8
-  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8
-  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8
 }
 
 
@@ -26,16 +25,15 @@ function run_flux_draw_bench_with_taylorseer_fast() {
   local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer_Fast"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
-  # rdt 0.32
-  rdt=0.32
+  rdt=1.0
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
   # baseline
   # python3 bench.py ${base_params}
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 8 --max-warmup-steps 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8 ${taylorseer_params}
 }
 
 
@@ -43,10 +41,10 @@ bench_type=$1
 
 if [[ "${bench_type}" == "taylorseer" ]]; then
   echo "bench_type: ${bench_type}, DBCache + TaylorSeer"
-  run_flux_draw_bench_with_taylorseer
+  run_flux_draw_bench_with_taylorseer_fast
 else 
   echo "bench_type: ${bench_type}, DBCache"
-  run_flux_draw_bench
+  run_flux_draw_bench_fast
 fi
 
 # export CUDA_VISIBLE_DEVICES=6 && nohup bash bench_fast.sh default > log/cache_dit_bench_fast.log 2>&1 &
