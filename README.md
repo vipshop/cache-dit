@@ -15,7 +15,8 @@
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
-    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a>
+    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a><br>
+    <a href="#benchmarks">🎉Text2Image DrawBench</a> | <a href="#benchmarks">Text2Imag Distill Model's DrawBench🎉</a>
   </p>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
@@ -230,6 +231,8 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 Take FLUX.1-dev as an example. Here, only the results of some precision and performance benchmarks are presented. The test dataset is DrawBench. For a complete benchmark, please refer to [benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks.
 
+### 📚Text2Image DrawBench: FLUX.1-dev
+
 | Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
@@ -264,6 +267,8 @@ The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, Du
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
 | **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
+
+### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
 
 cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. 
 
