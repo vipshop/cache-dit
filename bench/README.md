@@ -8,8 +8,8 @@
   - [🎉PSNR](#psnr-)
   - [🎉SSIM](#ssim-)
   - [🎉LPIPS](#lpips-)
-- [📚How to Reproduce?](#reproduce)
-  - [⚙️Installation](#installation)
+- [📚How to Reproduce?](#how-to-reproduce)
+  - [⚙️Installation](#%EF%B8%8Finstallation)
   - [📖Download](#download)
   - [📖Evaluation](#evaluation)
 
