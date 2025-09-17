@@ -26,7 +26,6 @@ def set_rand_seeds(seed):
     torch.manual_seed(seed)
 
 
-# TODO: Support calculate_flops using functools
 total_flops = 0
 total_steps = 0
 all_tflops = []
