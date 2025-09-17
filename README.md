@@ -233,12 +233,12 @@ cache-dit will support more mainstream Cache acceleration algorithms in the futu
 
 ### 📚Text2Image DrawBench: FLUX.1-dev
 
-Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks. 
+Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks. [FLUX.1-dev]: 50 steps.
 
 
 | Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
+| [**FLUX.1**-dev] | 32.9217 | 1.0412 | INF | 3726.87 | 1.00x |
 | F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72x |
 | F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80x |
 | F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22x |
