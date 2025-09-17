@@ -15,7 +15,8 @@
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
-    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a>
+    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a><br>
+    <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
   </p>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
@@ -228,11 +229,16 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="benchmarks"></div>
 
-Take FLUX.1-dev as an example. Here, only the results of some precision and performance benchmarks are presented. The test dataset is DrawBench. For a complete benchmark, please refer to [benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks.
+cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](./bench/).
+
+### 📚Text2Image DrawBench: FLUX.1-dev
+
+Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, 50 steps.
+
 
 | Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
+| [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00x |
 | F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72x |
 | F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80x |
 | F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22x |
@@ -248,24 +254,39 @@ Take FLUX.1-dev as an example. Here, only the results of some precision and perf
 | F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66x |
 | F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56x |
 
-The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
+The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
 | [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
-| Δ-DiT (N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
-| Δ-DiT (N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
+| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
+| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache (F=4, B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
-| **[DBCache + TaylorSeer (F=4, B=0)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
+| **[DBCache(F=4,B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
+| **[DBCache+TaylorSeer(F=4,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
-| TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
+| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
+| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
+| **[FoCa(N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
 
-cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. 
+### 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
+
+Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
+
+| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↑)   | SpeedUp(↑) |
+|----------------------------|-----------|------------|--------------|----------|------------|
+| [**Lightning**]: 4 steps | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
+| F24B24_W2MC1_R0.8          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
+| F16B16_W2MC1_R0.8          | 34.8163   | 35.6109    | 1.2614       | 244.25   | 1.12x       |
+| F12B12_W2MC1_R0.8          | 33.8953   | 35.6535    | 1.2549       | 234.63   | 1.17x       |
+| F8B8_W2MC1_R0.8            | 33.1374   | 35.7284    | 1.2517       | 224.29   | 1.22x       |
+| F48B0_W2MC1_R0.8           | 30.0533   | 35.8483    | 1.1979       | 265.56   | 1.03x       |
+| F32B0_W2MC1_R0.8           | 29.6490   | 35.7684    | 1.2302       | 261.05   | 1.05x       |
+| F24B0_W2MC1_R0.8           | 29.6081   | 35.8599    | 1.1874       | 245.54   | 1.12x       |
+| F16B0_W2MC1_R0.8           | 29.4844   | 36.0810    | 1.1586       | 227.06   | 1.21x       |
 
 
 ## 🎉Unified Cache APIs
@@ -568,7 +589,7 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
-Please check [bench.py](./bench/bench.py) for more details.
+Please check [perf.py](./bench/perf.py) for more details.
 
 
 ## 🛠Metrics CLI
