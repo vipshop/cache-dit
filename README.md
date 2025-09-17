@@ -276,6 +276,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | ToCa(N=8) | 784.54 | 4.74× | 0.9451 | 31.993 |
 | DuCa(N=7) | 760.14 | 4.89× | 0.9757 | 32.066 |
 | TeaCache(l=0.8) | 892.35 | 4.17× | 0.8683 | 31.704 |
+| **[DBCache(F=4,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 816.65 | 4.56x | 0.8245 | 32.191 |
 | TaylorSeer(N=5,O=2) | 893.54 | 4.16× | 0.9768 | 32.467 |
 | **[FoCa(N=7) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **670.44** | **5.54×** | **0.9891** | **32.920** |
 | FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
