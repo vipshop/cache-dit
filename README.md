@@ -286,6 +286,8 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
 | **[FoCa(N=8) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **596.07** | **6.24×** | **0.9502** | **32.706** |
 
+NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
+
 ### 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
 Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR is 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
