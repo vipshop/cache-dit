@@ -4,12 +4,14 @@ export IMAGEREWARD_MODEL_DIR="${IMAGEREWARD_MODEL_DIR:-$HF_MODELS/cache-dit-eval
 
 function run_flux_draw_bench_fast() {
   local test_num=200
-  local save_dir="./tmp/DrawBench200_DBCache"
+  local save_dir="./tmp/DrawBench200_DBCache_Fast"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
   # rdt 0.32
   rdt=0.32
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  # baseline
+  # python3 bench.py ${base_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 8 --max-warmup-steps 4 --rdt ${rdt} --mcc 10
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8
@@ -21,12 +23,14 @@ function run_flux_draw_bench_fast() {
 function run_flux_draw_bench_with_taylorseer_fast() {
   local taylorseer_params="--taylorseer --order 1"
   local test_num=200
-  local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer"
+  local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer_Fast"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
 
   # rdt 0.32
   rdt=0.32
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  # baseline
+  # python3 bench.py ${base_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 8 --max-warmup-steps 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8 ${taylorseer_params}
   python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --mcc 8 ${taylorseer_params}
