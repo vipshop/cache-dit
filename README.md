@@ -16,7 +16,7 @@
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
     <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a><br>
-    <a href="#benchmarks">🎉Text2Image DrawBench</a> | <a href="#benchmarks">4/8 Steps Distill Model's DrawBench🎉</a>
+    <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distill Model's DrawBench</a>
   </p>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
@@ -272,7 +272,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
 | **[FoCa(N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
 
-### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
+### 📚Text2Image Distill Model's DrawBench: Qwen-Image-Lightning
 
 Surprisingly, cache-dit: DBCache still works in the extremely few-step distillation model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
 
