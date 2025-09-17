@@ -274,22 +274,20 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 
 ### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
 
-| Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
-| --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | 35.5797 | 3.92 | 1.00 | 274.33 | 1.00 |
-| F8B8_W2M0MC1_T0O1_R0.8 | 35.7284 | 3.34 | 1.17 | 224.29 | 1.22 |
-| F12B12_W2M0MC1_T0O1_R0.8 | 35.6535 | 3.48 | 1.13 | 234.63 | 1.17 |
-| F24B24_W2M0MC1_T0O1_R0.8 | 35.6224 | 3.83 | 1.02 | 264.74 | 1.04 |
-| F16B16_W2M0MC1_T0O1_R0.8 | 35.6109 | 3.58 | 1.09 | 244.25 | 1.12 |
+Surprisingly, cache-dit: DBCache still works in the extremely few-step distillation model. For example, in the distillation model of **Qwen-Image-Lightning 4 steps**, with the F16B16 configuration, the PSNR value is 34.8163, the Clip Score is 35.6109, and the ImageReward is ImageReward. It maintained a relatively high level of precision.
 
+| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↑)   | SpeedUp(↑) |
+|----------------------------|-----------|------------|--------------|----------|------------|
+| [Qwen-Image-Lightning]: 4 steps | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
+| F24B24_W2MC1_R0.8          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
+| F16B16_W2MC1_R0.8          | 34.8163   | 35.6109    | 1.2614       | 244.25   | 1.12x       |
+| F12B12_W2MC1_R0.8          | 33.8953   | 35.6535    | 1.2549       | 234.63   | 1.17x       |
+| F8B8_W2MC1_R0.8            | 33.1374   | 35.7284    | 1.2517       | 224.29   | 1.22x       |
+| F48B0_W2MC1_R0.8           | 30.0533   | 35.8483    | 1.1979       | 265.56   | 1.03x       |
+| F32B0_W2MC1_R0.8           | 29.6490   | 35.7684    | 1.2302       | 261.05   | 1.05x       |
+| F24B0_W2MC1_R0.8           | 29.6081   | 35.8599    | 1.1874       | 245.54   | 1.12x       |
+| F16B0_W2MC1_R0.8           | 29.4844   | 36.0810    | 1.1586       | 227.06   | 1.21x       |
 
-| Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
-| --- | --- | --- | --- | --- | --- |
-| C0_Q0_NONE | 1.2630 | 3.92 | 1.00 | 274.33 | 1.00 |
-| F24B24_W2M0MC1_T0O1_R0.8 | 1.2630 | 3.83 | 1.02 | 264.74 | 1.04 |
-| F16B16_W2M0MC1_T0O1_R0.8 | 1.2614 | 3.58 | 1.09 | 244.25 | 1.12 |
-| F12B12_W2M0MC1_T0O1_R0.8 | 1.2549 | 3.48 | 1.13 | 234.63 | 1.17 |
-| F8B8_W2M0MC1_T0O1_R0.8 | 1.2517 | 3.34 | 1.17 | 224.29 | 1.22 |
 
 ## 🎉Unified Cache APIs
 

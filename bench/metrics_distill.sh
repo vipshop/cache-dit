@@ -26,8 +26,9 @@ cache-dit-metrics-cli \
   --perf-tags "Mean pipeline TFLOPs" "Mean pipeline time" \
   --perf-log ./log/cache_dit_bench_distill_4_steps.log
 
+# psnr ssim lpips
 cache-dit-metrics-cli \
-  psnr ssim lpips --summary \
+  psnr --summary \
   --cal-speedup --gen-markdown-table \
   --ref-img-dir ./tmp/DrawBench200_DBCache_Distill_4_Steps/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache_Distill_4_Steps \
