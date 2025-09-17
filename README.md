@@ -14,7 +14,7 @@
       <img src=https://img.shields.io/badge/Release-v0.2-brightgreen.svg >
  </div>
   <p align="center">
-    <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Block Adapter</a><br>
+    <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
     <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a><br>
     <a href="#benchmarks">🎉Text2Image DrawBench</a> | <a href="#benchmarks">4/8 Steps Distill Model's DrawBench🎉</a>
   </p>
@@ -229,11 +229,13 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="benchmarks"></div>
 
-cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks. 
+cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](./bench/).
 
 ### 📚Text2Image DrawBench: FLUX.1-dev
 
-<!---
+Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks. 
+
+
 | Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
@@ -251,7 +253,8 @@ cache-dit will support more mainstream Cache acceleration algorithms in the futu
 | F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
 | F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66x |
 | F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56x |
---->
+
+The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
@@ -267,8 +270,6 @@ cache-dit will support more mainstream Cache acceleration algorithms in the futu
 | DuCa (N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
 | **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
-
-The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
 
 ### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
 
