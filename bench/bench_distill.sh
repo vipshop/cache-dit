@@ -20,6 +20,7 @@ function run_qwen_draw_bench_distill_8_steps() {
   python3 bench_distill.py ${base_params} --cache --Fn 24 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2 
   python3 bench_distill.py ${base_params} --cache --Fn 32 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2 
   python3 bench_distill.py ${base_params} --cache --Fn 48 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2 
+  python3 bench_distill.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 4 --rdt ${rdt} --steps 8 --mcc 2 
 }
 
 
@@ -40,6 +41,7 @@ function run_qwen_draw_bench_distill_4_steps() {
   python3 bench_distill.py ${base_params} --cache --Fn 24 --Bn 0 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1 
   python3 bench_distill.py ${base_params} --cache --Fn 32 --Bn 0 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1 
   python3 bench_distill.py ${base_params} --cache --Fn 48 --Bn 0 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1 
+  python3 bench_distill.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 2 --rdt ${rdt} --steps 4 --mcc 1 
 }
 
 bench_type=$1
