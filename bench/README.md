@@ -269,18 +269,27 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 git clone https://github.com/vipshop/cache-dit.git
 cd cache-dit/bench && mkdir tmp && mkdir log && mkdir hf_models && cd hf_models
 
-# download from modelscope
+# FLUX.1-dev
 modelscope download black-forest-labs/FLUX.1-dev --local_dir ./FLUX.1-dev
+hf download black-forest-labs/FLUX.1-dev --local-dir ./FLUX.1-dev
+export FLUX_DIR=$PWD/FLUX.1-dev
+
+# Qwen-Image-Lightning
+modelscope download Qwen/Qwen-Image --local_dir ./Qwen-Image
+modelscope download lightx2v/Qwen-Image-Lightning --local_dir ./Qwen-Image-Lightning
+hf download Qwen/Qwen-Image --local-dir ./Qwen-Image
+hf download lightx2v/Qwen-Image-Lightning --local-dir ./Qwen-Image-Lightning
+export QWEN_IMAGE_DIR=$PWD/Qwen-Image
+export QWEN_IMAGE_LIGHT_DIR=$PWD/Qwen-Image-Lightning
+
+# Clip Score & Image Reward
 modelscope download laion/CLIP-ViT-g-14-laion2B-s12B-b42K --local_dir ./CLIP-ViT-g-14-laion2B-s12B-b42K
 modelscope download ZhipuAI/ImageReward --local_dir ./ImageReward
-# download from huggingface
-hf download black-forest-labs/FLUX.1-dev --local-dir ./FLUX.1-dev
 hf download laion/CLIP-ViT-g-14-laion2B-s12B-b42K --local-dir ./CLIP-ViT-g-14-laion2B-s12B-b42K
 hf download ZhipuAI/ImageReward --local-dir ./ImageReward
-
-export FLUX_DIR=$PWD/FLUX.1-dev
 export CLIP_MODEL_DIR=$PWD/CLIP-ViT-g-14-laion2B-s12B-b42K
 export IMAGEREWARD_MODEL_DIR=$PWD/ImageReward
+
 cd ..
 ```
 
@@ -289,7 +298,14 @@ cd ..
 
 ```bash
 # NOTE: The reported benchmark was run on NVIDIA L20 device.
+
+# FLUX.1-dev DrawBench
 export CUDA_VISIBLE_DEVICES=0 && nohup bash bench.sh default > log/cache_dit_bench_default.log 2>&1 &
 export CUDA_VISIBLE_DEVICES=1 && nohup bash bench.sh taylorseer > log/cache_dit_bench_taylorseer.log 2>&1 &
 bash ./metrics.sh
+
+# Qwen-Image-Lightning DrawBench
+export CUDA_VISIBLE_DEVICES=0,1 && nohup bash bench_distill.sh 8_steps > log/cache_dit_bench_distill_8_steps.log 2>&1 &
+export CUDA_VISIBLE_DEVICES=2,3 && nohup bash bench_distill.sh 4_steps > log/cache_dit_bench_distill_4_steps.log 2>&1 &
+bash ./metrics_distill.sh
 ```
