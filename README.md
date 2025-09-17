@@ -278,7 +278,7 @@ Surprisingly, cache-dit: DBCache still works in the extremely few-step distillat
 
 | Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↑)   | SpeedUp(↑) |
 |----------------------------|-----------|------------|--------------|----------|------------|
-| [Qwen-Image-Lightning]: 4 steps | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
+| [Lightning]: 4 steps | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
 | F24B24_W2MC1_R0.8          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
 | F16B16_W2MC1_R0.8          | 34.8163   | 35.6109    | 1.2614       | 244.25   | 1.12x       |
 | F12B12_W2MC1_R0.8          | 33.8953   | 35.6535    | 1.2549       | 234.63   | 1.17x       |
