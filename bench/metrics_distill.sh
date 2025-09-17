@@ -28,7 +28,7 @@ cache-dit-metrics-cli \
 
 # psnr ssim lpips
 cache-dit-metrics-cli \
-  psnr --summary \
+  psnr ssim lpips --summary \
   --cal-speedup --gen-markdown-table \
   --ref-img-dir ./tmp/DrawBench200_DBCache_Distill_4_Steps/C0_Q0_NONE \
   --img-source-dir ./tmp/DrawBench200_DBCache_Distill_4_Steps \
