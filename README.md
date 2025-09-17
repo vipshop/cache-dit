@@ -229,10 +229,11 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="benchmarks"></div>
 
-Take FLUX.1-dev as an example. Here, only the results of some precision and performance benchmarks are presented. The test dataset is DrawBench. For a complete benchmark, please refer to [benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks.
+cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](./bench/). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks. 
 
 ### 📚Text2Image DrawBench: FLUX.1-dev
 
+<!---
 | Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00 |
@@ -250,8 +251,7 @@ Take FLUX.1-dev as an example. Here, only the results of some precision and perf
 | F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
 | F1B0_W4MC4_R0.12 | 32.8291 | 1.0181 | 32.9462 | 1401.61 | 2.66x |
 | F1B0_W4MC3_R0.12 | 32.8236 | 1.0166 | 33.0037 | 1457.62 | 2.56x |
-
-The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
+--->
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
@@ -264,13 +264,13 @@ The comparison between DBCache and algorithms such as Δ-DiT, Chipmunk, FORA, Du
 | FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache (F=4, B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
 | **[DBCache + TaylorSeer (F=4, B=0)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
-| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
+| DuCa (N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
 | **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
 
-### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
+The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
 
-cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. 
+### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
 
 
 ## 🎉Unified Cache APIs
@@ -573,7 +573,7 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
-Please check [bench.py](./bench/bench.py) for more details.
+Please check [perf.py](./bench/perf.py) for more details.
 
 
 ## 🛠Metrics CLI
