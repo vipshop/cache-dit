@@ -1,4 +1,5 @@
 import os
+import re
 import cv2
 import pathlib
 import argparse
@@ -160,25 +161,30 @@ def compute_dir_metric(
     # File
     if not os.path.isdir(image_true_dir) or not os.path.isdir(image_test_dir):
         return compute_file_func(image_true_dir, image_test_dir), 1
+
     # Dir
+    # compute dir metric
+    def natural_sort_key(filename):
+        match = re.search(r"(\d+)\D*$", filename)
+        return int(match.group(1)) if match else filename
+
     image_true_dir: pathlib.Path = pathlib.Path(image_true_dir)
-    image_true_files = sorted(
-        [
-            file
-            for ext in _IMAGE_EXTENSIONS
-            for file in image_true_dir.rglob("*.{}".format(ext))
-        ]
-    )
-    image_test_dir: pathlib.Path = pathlib.Path(image_test_dir)
-    image_test_files = sorted(
-        [
-            file
-            for ext in _IMAGE_EXTENSIONS
-            for file in image_test_dir.rglob("*.{}".format(ext))
-        ]
-    )
+    image_true_files = [
+        file
+        for ext in _IMAGE_EXTENSIONS
+        for file in image_true_dir.rglob("*.{}".format(ext))
+    ]
     image_true_files = [file.as_posix() for file in image_true_files]
+    image_true_files = sorted(image_true_files, key=natural_sort_key)
+
+    image_test_dir: pathlib.Path = pathlib.Path(image_test_dir)
+    image_test_files = [
+        file
+        for ext in _IMAGE_EXTENSIONS
+        for file in image_test_dir.rglob("*.{}".format(ext))
+    ]
     image_test_files = [file.as_posix() for file in image_test_files]
+    image_test_files = sorted(image_test_files, key=natural_sort_key)
 
     # select valid files
     image_true_files_selected = []
@@ -192,6 +198,7 @@ def compute_dir_metric(
         ):
             image_true_files_selected.append(selected_image_true)
             image_test_files_selected.append(selected_image_test)
+
     image_true_files = image_true_files_selected.copy()
     image_test_files = image_test_files_selected.copy()
     if len(image_true_files) == 0:
@@ -206,20 +213,22 @@ def compute_dir_metric(
 
     total_metric = 0.0
     valid_files = 0
+    total_files = 0
     for image_true, image_test in tqdm(
         zip(image_true_files, image_test_files),
         total=len(image_true_files),
         disable=DISABLE_VERBOSE,
     ):
         metric = compute_file_func(image_true, image_test)
-        if metric != float("inf"):
+        if metric != float("inf"):  # means no cache apply to image_test
             total_metric += metric
             valid_files += 1
+        total_files += 1
 
     if valid_files > 0:
         average_metric = total_metric / valid_files
         logger.debug(f"Average: {average_metric:.2f}")
-        return average_metric, valid_files
+        return average_metric, total_files
     else:
         logger.debug("No valid files to compare")
         return None, None

@@ -238,7 +238,7 @@ Comparisons between different FnBn compute block configurations show that **more
 
 | Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev] | 32.9217 | 1.0412 | INF | 3726.87 | 1.00x |
+| [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00x |
 | F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72x |
 | F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80x |
 | F4B0_W4MC2_R0.12 | 32.9718 | 1.0301 | 31.9394 | 1678.98 | 2.22x |
@@ -265,15 +265,31 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache (F=4, B=0)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
-| **[DBCache + TaylorSeer (F=4, B=0)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
+| **[DBCache (F4B0_W4MC4)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
+| **[DBCache + TaylorSeer (F4B0_W4MC4_O1)](https://github.com/vipshop/cache-dit)** | **1388.30** | **2.68×** | **1.0287** | **32.914** |
 | DuCa (N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer (N=4, O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache + TaylorSeer (F=1, B=0)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
+| **[DBCache + TaylorSeer (F1B0_W4MC4_O1)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
 | **[FoCa (N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
 
 ### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
 
+| Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | 35.5797 | 3.92 | 1.00 | 274.33 | 1.00 |
+| F8B8_W2M0MC1_T0O1_R0.8 | 35.7284 | 3.34 | 1.17 | 224.29 | 1.22 |
+| F12B12_W2M0MC1_T0O1_R0.8 | 35.6535 | 3.48 | 1.13 | 234.63 | 1.17 |
+| F24B24_W2M0MC1_T0O1_R0.8 | 35.6224 | 3.83 | 1.02 | 264.74 | 1.04 |
+| F16B16_W2M0MC1_T0O1_R0.8 | 35.6109 | 3.58 | 1.09 | 244.25 | 1.12 |
+
+
+| Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | 1.2630 | 3.92 | 1.00 | 274.33 | 1.00 |
+| F24B24_W2M0MC1_T0O1_R0.8 | 1.2630 | 3.83 | 1.02 | 264.74 | 1.04 |
+| F16B16_W2M0MC1_T0O1_R0.8 | 1.2614 | 3.58 | 1.09 | 244.25 | 1.12 |
+| F12B12_W2M0MC1_T0O1_R0.8 | 1.2549 | 3.48 | 1.13 | 234.63 | 1.17 |
+| F8B8_W2M0MC1_T0O1_R0.8 | 1.2517 | 3.34 | 1.17 | 224.29 | 1.22 |
 
 ## 🎉Unified Cache APIs
 
