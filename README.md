@@ -274,7 +274,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 
 ### 📚Text2Imag Distill Model's DrawBench: Qwen-Image-Lightning
 
-Surprisingly, cache-dit: DBCache still works in the extremely few-step distillation model. For example, in the distillation model of **Qwen-Image-Lightning 4 steps**, with the F16B16 configuration, the PSNR value is 34.8163, the Clip Score is 35.6109, and the ImageReward is ImageReward. It maintained a relatively high level of precision.
+Surprisingly, cache-dit: DBCache still works in the extremely few-step distillation model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
 
 | Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↑)   | SpeedUp(↑) |
 |----------------------------|-----------|------------|--------------|----------|------------|
