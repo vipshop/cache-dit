@@ -236,7 +236,7 @@ cache-dit will support more mainstream Cache acceleration algorithms in the futu
 Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, 50 steps.
 
 
-| Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↑) | SpeedUp(↑) |
+| Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↓) | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00x |
 | F8B0_W8MC0_R0.08 | 33.0070 | 1.0333 | 35.2008 | 2162.19 | 1.72x |
@@ -276,7 +276,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 
 Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
 
-| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↑)   | SpeedUp(↑) |
+| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
 |----------------------------|-----------|------------|--------------|----------|------------|
 | [**Lightning**]: 4 steps | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
 | F24B24_W2MC1_R0.8          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
