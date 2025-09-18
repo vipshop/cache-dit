@@ -255,12 +255,12 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
-| **[FoCa(N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
+| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
+| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
 
 <details>
 <summary> Show all comparison </summary>  
@@ -273,12 +273,13 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
 | **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | **1153.05** | **3.23×** | **1.0221** | **32.819** |
-| **[FoCa(N=5) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
+| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | **944.75** | **3.94×** | **0.9997** | **32.849** |
+| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **893.54** | **4.16×** | **1.0029** | **32.948** |
 | [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
 | FORA(N=4) | 967.91 | 3.84× | 0.9730 | 32.142 |
 | ToCa(N=8) | 784.54 | 4.74× | 0.9451 | 31.993 |
@@ -286,14 +287,14 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | TeaCache(l=0.8) | 892.35 | 4.17× | 0.8683 | 31.704 |
 | **[DBCache(F=4,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 816.65 | 4.56x | 0.8245 | 32.191 |
 | TaylorSeer(N=5,O=2) | 893.54 | 4.16× | 0.9768 | 32.467 |
-| **[FoCa(N=7) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **670.44** | **5.54×** | **0.9891** | **32.920** |
+| **[FoCa(N=7): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **670.44** | **5.54×** | **0.9891** | **32.920** |
 | FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
 | ToCa(N=12) | 644.70 | 5.77× | 0.7155 | 31.808 |
 | DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
 | TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
 | **[DBCache(F=1,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | **651.90** | **5.72x** | 0.8796 | **32.318** |
 | TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
-| **[FoCa(N=8) arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **596.07** | **6.24×** | **0.9502** | **32.706** |
+| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | **596.07** | **6.24×** | **0.9502** | **32.706** |
 
 NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
 
