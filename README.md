@@ -255,7 +255,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
@@ -273,7 +273,7 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA (N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | **1400.08** | **2.66×** | **1.0065** | **32.838** |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
