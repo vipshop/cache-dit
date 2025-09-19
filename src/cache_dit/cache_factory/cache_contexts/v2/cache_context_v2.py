@@ -9,6 +9,7 @@ from cache_dit.cache_factory.cache_contexts.v2.calibrators import (
     Calibrator,
     CalibratorBase,
     CalibratorConfig,
+    TaylorSeerCalibrator,
 )
 from cache_dit.logger import init_logger
 
@@ -52,10 +53,16 @@ class CachedContextV2:  # Internal CachedContext Impl class
     transformer_executed_steps: int = 0
 
     # Support calibrators in Dual Block Cache: TaylorSeer, FoCa, etc.
-    # TODO: Backward compatible with V1, then remove V1.
     calibrator_config: Optional[CalibratorConfig] = None
     calibrator: Optional[CalibratorBase] = None
     encoder_calibrator: Optional[CalibratorBase] = None
+
+    # TODO: Backward compatible with V1, then remove V1.
+    enable_taylorseer: bool = None
+    enable_encoder_taylorseer: bool = None
+    taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
+    taylorseer_order: int = 1  # The order for TaylorSeer
+    taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     # Support enable_separate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
@@ -95,15 +102,41 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     "cfg_diff_compute_separate is enabled."
                 )
 
-        if self.calibrator_config.enable_calibrator:
-            self.calibrator = Calibrator(self.calibrator_config)
-            if self.enable_separate_cfg:
-                self.cfg_calibrator = Calibrator(self.calibrator_config)
+        # TODO: Backward compatible with V1, then remove V1.
+        if (
+            self.enable_taylorseer is not None
+            and self.enable_encoder_taylorseer is not None
+        ):
+            # Overwrite the 'n_derivatives' by 'taylorseer_order', default: 2.
+            self.taylorseer_kwargs["n_derivatives"] = self.taylorseer_order
 
-        if self.calibrator_config.enable_encoder_calibrator:
-            self.encoder_calibrator = Calibrator(self.calibrator_config)
-            if self.enable_separate_cfg:
-                self.cfg_encoder_calibrator = Calibrator(self.calibrator_config)
+            if self.enable_taylorseer:
+                self.taylorseer = TaylorSeerCalibrator(**self.taylorseer_kwargs)
+                if self.enable_separate_cfg:
+                    self.cfg_taylorseer = TaylorSeerCalibrator(
+                        **self.taylorseer_kwargs
+                    )
+
+            if self.enable_encoder_taylorseer:
+                self.encoder_tarlorseer = TaylorSeerCalibrator(
+                    **self.taylorseer_kwargs
+                )
+                if self.enable_separate_cfg:
+                    self.cfg_encoder_taylorseer = TaylorSeerCalibrator(
+                        **self.taylorseer_kwargs
+                    )
+        else:
+            if self.calibrator_config.enable_calibrator:
+                self.calibrator = Calibrator(self.calibrator_config)
+                if self.enable_separate_cfg:
+                    self.cfg_calibrator = Calibrator(self.calibrator_config)
+
+            if self.calibrator_config.enable_encoder_calibrator:
+                self.encoder_calibrator = Calibrator(self.calibrator_config)
+                if self.enable_separate_cfg:
+                    self.cfg_encoder_calibrator = Calibrator(
+                        self.calibrator_config
+                    )
 
     def enable_calibrator(self):
         if self.calibrator_config is not None:
