@@ -141,17 +141,27 @@ class CachedContextV2:  # Internal CachedContext Impl class
     def enable_calibrator(self):
         if self.calibrator_config is not None:
             return self.calibrator_config.enable_calibrator
-        return False
+        return False if self.enable_taylorseer is None else True
 
     def enable_encoder_calibrator(self):
         if self.calibrator_config is not None:
             return self.calibrator_config.enable_encoder_calibrator
-        return False
+        return False if self.enable_encoder_taylorseer is None else True
 
     def calibrator_cache_type(self):
         if self.calibrator_config is not None:
             return self.calibrator_config.calibrator_cache_type
+        if self.enable_taylorseer or self.enable_encoder_taylorseer:
+            return self.taylorseer_cache_type
         return "residual"
+
+    def has_calibrators(self) -> bool:
+        if self.calibrator_config is not None:
+            return (
+                self.calibrator_config.enable_calibrator
+                or self.calibrator_config.enable_encoder_calibrator
+            )
+        return self.enable_taylorseer or self.enable_encoder_taylorseer
 
     def get_residual_diff_threshold(self):
         residual_diff_threshold = self.residual_diff_threshold
@@ -202,10 +212,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
             self.cfg_residual_diffs.clear()
             # Reset the calibrators cache at the beginning of each inference.
             # reset_cache will set the current step to -1 for calibrator,
-            if (
-                self.calibrator_config.enable_calibrator
-                or self.calibrator_config.enable_encoder_calibrator
-            ):
+            if self.has_calibrators():
                 calibrator, encoder_calibrator = self.get_calibrators()
                 if calibrator is not None:
                     calibrator.reset_cache()
@@ -220,10 +227,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     cfg_encoder_calibrator.reset_cache()
 
         # mark_step_begin of calibrator must be called after the cache is reset.
-        if (
-            self.calibrator_config.enable_calibrator
-            or self.calibrator_config.enable_encoder_calibrator
-        ):
+        if self.has_calibrators():
             if self.enable_separate_cfg:
                 # Assume non-CFG steps: 0, 2, 4, 6, ...
                 if not self.is_separate_cfg_step():

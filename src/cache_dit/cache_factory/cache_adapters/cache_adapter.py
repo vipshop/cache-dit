@@ -171,16 +171,9 @@ class CachedAdapter:
         # Different transformers (Wan2.2, etc) should shared the same
         # cache manager but with different cache context (according
         # to their unique instance id).
-        if cache_context_kwargs.get("calibrator_config", None) is not None:
-            logger.info("Using CachedContextManager V2.")
-            cache_manager = CachedContextManagerV2(
-                name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
-            )
-        else:
-            logger.info("Using CachedContextManager V1.")
-            cache_manager = CachedContextManager(
-                name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
-            )
+        cache_manager = CachedContextManagerV2(
+            name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
+        )
         block_adapter.pipe._cache_manager = cache_manager  # instance level
 
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
