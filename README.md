@@ -2,8 +2,8 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
 
 <p align="center">
-    A <b>Unified</b> and Training-free <b>Cache Acceleration</b> Framework for <b>Diffusion Transformers</b> <br>
-    ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
+    A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
+    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
   </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
@@ -19,7 +19,7 @@
     <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
   </p>
   <p align="center">
-    🎉Now, <b>cache-dit</b> covers <b>most</b> mainstream Diffusers' <b>DiT</b> Pipelines🎉<br>
+    🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
     🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
     🔥<a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">AuraFlow</a>🔥<br>
     🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">LTXVideo</a> | <a href="#supported">CogVideoX</a> | <a href="#supported">CogVideoX 1.5</a> | <a href="#supported">ConsisID</a>🔥<br>
@@ -678,7 +678,7 @@ The **cache-dit** codebase is adapted from FBCache. Over time its codebase diver
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A Unified and Training-free Cache Acceleration Framework for Diffusion Transformers},
+  title={cache-dit: A Unified, Flexible and Training-free Cache Acceleration Framework for 🤗Diffusers.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={vipshop.com},
