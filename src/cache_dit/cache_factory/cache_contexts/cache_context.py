@@ -111,18 +111,18 @@ class CachedContext:  # Internal CachedContext Impl class
             self.taylorseer_kwargs["n_derivatives"] = self.taylorseer_order
 
             if self.enable_taylorseer:
-                self.taylorseer = TaylorSeerCalibrator(**self.taylorseer_kwargs)
+                self.calibrator = TaylorSeerCalibrator(**self.taylorseer_kwargs)
                 if self.enable_separate_cfg:
-                    self.cfg_taylorseer = TaylorSeerCalibrator(
+                    self.cfg_calibrator = TaylorSeerCalibrator(
                         **self.taylorseer_kwargs
                     )
 
             if self.enable_encoder_taylorseer:
-                self.encoder_tarlorseer = TaylorSeerCalibrator(
+                self.encoder_calibrator = TaylorSeerCalibrator(
                     **self.taylorseer_kwargs
                 )
                 if self.enable_separate_cfg:
-                    self.cfg_encoder_taylorseer = TaylorSeerCalibrator(
+                    self.cfg_encoder_calibrator = TaylorSeerCalibrator(
                         **self.taylorseer_kwargs
                     )
         else:
