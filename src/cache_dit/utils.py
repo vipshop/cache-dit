@@ -181,27 +181,20 @@ def strify(
         return "NONE"
 
     def calibrator_str():
-        if getattr(adapter_or_others, "_is_v2_api", False):
+        if not getattr(adapter_or_others, "_is_v2_api", False):
             taylorseer_order = 0
             if "taylorseer_order" in cache_options:
                 taylorseer_order = cache_options["taylorseer_order"]
-            return f"T{int(cache_options.get('enable_taylorseer', False))}O{taylorseer_order}"
+            return (
+                f"T{int(cache_options.get('enable_taylorseer', False))}"
+                f"O{taylorseer_order}"
+            )
+
         calibrator_config: CalibratorConfig = cache_options.get(
             "calibrator_config", None
         )
-        if calibrator_config:
-            if calibrator_config.calibrator_type == "taylorseer":
-                taylorseer_order = calibrator_config.calibrator_kwargs.get(
-                    "n_derivatives", 0
-                )
-                if taylorseer_order:
-                    return f"T1O{taylorseer_order}"
-                return "T0O0"
-            else:
-                raise ValueError(
-                    f"calibrator {calibrator_config.calibrator_type} is not supported now!"
-                )
-        return "T0O0"
+
+        return calibrator_config.strify() if calibrator_config else "NONE"
 
     cache_type_str = (
         f"DBCACHE_F{cache_options.get('Fn_compute_blocks', 1)}"

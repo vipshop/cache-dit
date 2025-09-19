@@ -19,8 +19,19 @@ class CalibratorConfigV2:  # no V1
     enable_calibrator: bool = False
     enable_encoder_calibrator: bool = False
     calibrator_type: str = "taylorseer"  # taylorseer or foca, etc.
-    calibrator_cache_type: str = "hidden_states"  # residual or hidden_states
+    calibrator_cache_type: str = "residual"  # residual or hidden_states
     calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    def strify(self):
+        if self.calibrator_type == "taylorseer":
+            taylorseer_order = self.calibrator_kwargs.get("n_derivatives", 0)
+            if taylorseer_order:
+                return f"T1O{taylorseer_order}"
+            return "T0O0"
+        else:
+            raise ValueError(
+                f"calibrator {self.calibrator_type} is not supported now!"
+            )
 
 
 @dataclasses.dataclass
@@ -119,6 +130,21 @@ class CachedContextV2:  # Internal CachedContext Impl class
                 self.cfg_encoder_calibrator = Calibrator(
                     **self.calibrator_config.calibrator_kwargs
                 )
+
+    def enable_calibrator(self):
+        if self.calibrator_config is not None:
+            return self.calibrator_config.enable_calibrator
+        return False
+
+    def enable_encoder_calibrator(self):
+        if self.calibrator_config is not None:
+            return self.calibrator_config.enable_encoder_calibrator
+        return False
+
+    def calibrator_cache_type(self):
+        if self.calibrator_config is not None:
+            return self.calibrator_config.calibrator_cache_type
+        return "residual"
 
     def get_residual_diff_threshold(self):
         residual_diff_threshold = self.residual_diff_threshold

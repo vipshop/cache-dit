@@ -262,13 +262,13 @@ class CachedContextManagerV2:
     def is_calibrator_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.enable_calibrator
+        return cached_context.enable_calibrator()
 
     @torch.compiler.disable
     def is_encoder_calibrator_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.enable_encoder_calibrator
+        return cached_context.enable_encoder_calibrator()
 
     def get_calibrator(self) -> Tuple[CalibratorBase, CalibratorBase]:
         cached_context = self.get_context()
@@ -284,7 +284,7 @@ class CachedContextManagerV2:
     def is_calibrator_cache_residual(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.calibrator_cache_type == "residual"
+        return cached_context.calibrator_cache_type() == "residual"
 
     @torch.compiler.disable
     def is_cache_residual(self) -> bool:
