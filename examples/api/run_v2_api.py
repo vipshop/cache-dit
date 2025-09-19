@@ -24,17 +24,12 @@ pipe = FluxPipeline.from_pretrained(
 
 
 if args.cache:
-    from cache_dit import CalibratorConfig
+    from cache_dit import TaylorSeerCalibratorConfig
 
     cache_dit.enable_cache(
         pipe,
-        calibrator_config=CalibratorConfig(
-            enable_calibrator=True,
-            enable_encoder_calibrator=True,
-            calibrator_type="taylorseer",
-            calibrator_kwargs={
-                "n_derivatives": 1,
-            },
+        calibrator_config=TaylorSeerCalibratorConfig(
+            taylorseer_order=1,
         ),
     )
     print(cache_dit.strify(pipe))

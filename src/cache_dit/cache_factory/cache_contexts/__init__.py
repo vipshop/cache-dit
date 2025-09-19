@@ -5,6 +5,8 @@ from cache_dit.cache_factory.cache_contexts.cache_manager import (
 )
 from cache_dit.cache_factory.cache_contexts.v2 import (
     CachedContextV2,
-    CalibratorConfigV2,
     CachedContextManagerV2,
+    CalibratorConfig,
+    TaylorSeerCalibratorConfig,
+    FoCaCalibratorConfig,
 )

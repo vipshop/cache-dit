@@ -8,30 +8,11 @@ import torch
 from cache_dit.cache_factory.cache_contexts.v2.calibrators import (
     Calibrator,
     CalibratorBase,
+    CalibratorConfig,
 )
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
-
-
-@dataclasses.dataclass
-class CalibratorConfigV2:  # no V1
-    enable_calibrator: bool = False
-    enable_encoder_calibrator: bool = False
-    calibrator_type: str = "taylorseer"  # taylorseer or foca, etc.
-    calibrator_cache_type: str = "residual"  # residual or hidden_states
-    calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
-
-    def strify(self):
-        if self.calibrator_type == "taylorseer":
-            taylorseer_order = self.calibrator_kwargs.get("n_derivatives", 0)
-            if taylorseer_order:
-                return f"T1O{taylorseer_order}"
-            return "T0O0"
-        else:
-            raise ValueError(
-                f"calibrator {self.calibrator_type} is not supported now!"
-            )
 
 
 @dataclasses.dataclass
@@ -71,7 +52,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
     transformer_executed_steps: int = 0
 
     # Support calibrators in Dual Block Cache: TaylorSeer, FoCa, etc.
-    calibrator_config: Optional[CalibratorConfigV2] = None
+    calibrator_config: Optional[CalibratorConfig] = None
     calibrator: Optional[CalibratorBase] = None
     encoder_calibrator: Optional[CalibratorBase] = None
 
@@ -114,22 +95,14 @@ class CachedContextV2:  # Internal CachedContext Impl class
                 )
 
         if self.calibrator_config.enable_calibrator:
-            self.calibrator = Calibrator(
-                **self.calibrator_config.calibrator_kwargs
-            )
+            self.calibrator = Calibrator(self.calibrator_config)
             if self.enable_separate_cfg:
-                self.cfg_calibrator = Calibrator(
-                    **self.calibrator_config.calibrator_kwargs
-                )
+                self.cfg_calibrator = Calibrator(self.calibrator_config)
 
         if self.calibrator_config.enable_encoder_calibrator:
-            self.encoder_calibrator = Calibrator(
-                **self.calibrator_config.calibrator_kwargs
-            )
+            self.encoder_calibrator = Calibrator(self.calibrator_config)
             if self.enable_separate_cfg:
-                self.cfg_encoder_calibrator = Calibrator(
-                    **self.calibrator_config.calibrator_kwargs
-                )
+                self.cfg_encoder_calibrator = Calibrator(self.calibrator_config)
 
     def enable_calibrator(self):
         if self.calibrator_config is not None:

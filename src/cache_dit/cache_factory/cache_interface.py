@@ -5,9 +5,7 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 from cache_dit.cache_factory.cache_adapters import CachedAdapterV2
-from cache_dit.cache_factory.cache_contexts import (
-    CalibratorConfigV2 as CalibratorConfig,
-)
+from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 
 from cache_dit.logger import init_logger
 
