@@ -8,12 +8,12 @@ from typing import Dict, List, Tuple, Any, Union, Callable
 
 from diffusers import DiffusionPipeline
 
-from cache_dit.cache_factory import CacheType
-from cache_dit.cache_factory import BlockAdapter
-from cache_dit.cache_factory import ParamsModifier
-from cache_dit.cache_factory import BlockAdapterRegistry
-from cache_dit.cache_factory import CachedContextManager
-from cache_dit.cache_factory import CachedBlocks
+from cache_dit.cache_factory.cache_types import CacheType
+from cache_dit.cache_factory.block_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters import ParamsModifier
+from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
+from cache_dit.cache_factory.cache_contexts import CachedContextManager
+from cache_dit.cache_factory.cache_blocks import CachedBlocks
 from cache_dit.cache_factory.cache_blocks.utils import (
     patch_cached_stats,
     remove_cached_stats,

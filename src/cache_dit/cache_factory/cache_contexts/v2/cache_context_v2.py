@@ -15,6 +15,15 @@ logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
+class CalibratorConfigV2:  # no V1
+    enable_calibrator: bool = False
+    enable_encoder_calibrator: bool = False
+    calibrator_type: str = "taylorseer"  # taylorseer or foca, etc.
+    calibrator_cache_type: str = "hidden_states"  # residual or hidden_states
+    calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
 class CachedContextV2:  # Internal CachedContext Impl class
     name: str = "default"
     # Dual Block Cache with flexible FnBn configuration.
@@ -51,13 +60,9 @@ class CachedContextV2:  # Internal CachedContext Impl class
     transformer_executed_steps: int = 0
 
     # Support calibrators in Dual Block Cache: TaylorSeer, FoCa, etc.
-    enable_calibrator: bool = False
-    enable_encoder_calibrator: bool = False
-    calibrator_type: str = "taylorseer"  # taylorseer or foca, etc.
-    calibrator_cache_type: str = "hidden_states"  # residual or hidden_states
-    calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
     calibrator: Optional[CalibratorBase] = None
     encoder_tarlorseer: Optional[CalibratorBase] = None
+    calibrator_config: Optional[CalibratorConfigV2] = None
 
     # Support enable_separate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
@@ -97,23 +102,29 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     "cfg_diff_compute_separate is enabled."
                 )
 
-        if "max_warmup_steps" not in self.calibrator_kwargs:
+        if "max_warmup_steps" not in self.calibrator_config.calibrator_kwargs:
             # If max_warmup_steps is not set in calibrator_kwargs,
             # set the same as max_warmup_steps for DBCache
-            self.calibrator_kwargs["max_warmup_steps"] = (
+            self.calibrator_config.calibrator_kwargs["max_warmup_steps"] = (
                 self.max_warmup_steps if self.max_warmup_steps > 0 else 1
             )
 
-        if self.enable_calibrator:
-            self.calibrator = Calibrator(**self.calibrator_kwargs)
+        if self.calibrator_config.enable_calibrator:
+            self.calibrator = Calibrator(
+                **self.calibrator_config.calibrator_kwargs
+            )
             if self.enable_separate_cfg:
-                self.cfg_calibrator = Calibrator(**self.calibrator_kwargs)
+                self.cfg_calibrator = Calibrator(
+                    **self.calibrator_config.calibrator_kwargs
+                )
 
-        if self.enable_encoder_calibrator:
-            self.encoder_tarlorseer = Calibrator(**self.calibrator_kwargs)
+        if self.calibrator_config.enable_encoder_calibrator:
+            self.encoder_tarlorseer = Calibrator(
+                **self.calibrator_config.calibrator_kwargs
+            )
             if self.enable_separate_cfg:
                 self.cfg_encoder_calibrator = Calibrator(
-                    **self.calibrator_kwargs
+                    **self.calibrator_config.calibrator_kwargs
                 )
 
     def get_residual_diff_threshold(self):
@@ -165,7 +176,10 @@ class CachedContextV2:  # Internal CachedContext Impl class
             self.cfg_residual_diffs.clear()
             # Reset the calibrators cache at the beginning of each inference.
             # reset_cache will set the current step to -1 for calibrator,
-            if self.enable_calibrator or self.enable_encoder_calibrator:
+            if (
+                self.calibrator_config.enable_calibrator
+                or self.calibrator_config.enable_encoder_calibrator
+            ):
                 calibrator, encoder_calibrator = self.get_calibrators()
                 if calibrator is not None:
                     calibrator.reset_cache()
@@ -180,7 +194,10 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     cfg_encoder_calibrator.reset_cache()
 
         # mark_step_begin of calibrator must be called after the cache is reset.
-        if self.enable_calibrator or self.enable_encoder_calibrator:
+        if (
+            self.calibrator_config.enable_calibrator
+            or self.calibrator_config.enable_encoder_calibrator
+        ):
             if self.enable_separate_cfg:
                 # Assume non-CFG steps: 0, 2, 4, 6, ...
                 if not self.is_separate_cfg_step():

@@ -1,9 +1,13 @@
-from typing import Any, Tuple, List, Union
+from typing import Any, Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
+from cache_dit.cache_factory.cache_adapters import CachedAdapterV2
+from cache_dit.cache_factory.cache_contexts import (
+    CalibratorConfigV2 as CalibratorConfig,
+)
 
 from cache_dit.logger import init_logger
 
@@ -32,6 +36,10 @@ def enable_cache(
     enable_encoder_taylorseer: bool = False,
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 1,
+    # New param for v2 API, if calibrator_config is not None,
+    # means that user want to use CachedAdapterV2 with specific
+    # calibrator.
+    calibrator_config: Optional[CalibratorConfig] = None,
     **other_cache_context_kwargs,
 ) -> Union[
     DiffusionPipeline,
@@ -94,6 +102,9 @@ def enable_cache(
         taylorseer_order (`int`, *required*, defaults to 1):
             The order of taylorseer, higher values of n_derivatives will lead to longer computation time,
             the recommended value is 1 or 2.
+        calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
+            # config for calibrator, if calibrator_config is not None, means that user want to use CachedAdapterV2
+            # with specific calibrator, such as taylorseer, foca, and so on.
         other_cache_context_kwargs: (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
@@ -128,18 +139,32 @@ def enable_cache(
     cache_context_kwargs["cfg_diff_compute_separate"] = (
         cfg_diff_compute_separate
     )
-    cache_context_kwargs["enable_taylorseer"] = enable_taylorseer
-    cache_context_kwargs["enable_encoder_taylorseer"] = (
-        enable_encoder_taylorseer
-    )
-    cache_context_kwargs["taylorseer_cache_type"] = taylorseer_cache_type
-    cache_context_kwargs["taylorseer_order"] = taylorseer_order
+
+    # V1 only supports the Taylorseer calibrator. We have decided to
+    # keep this code for API compatibility reasons.
+    if calibrator_config is None:
+        cache_context_kwargs["enable_taylorseer"] = enable_taylorseer
+        cache_context_kwargs["enable_encoder_taylorseer"] = (
+            enable_encoder_taylorseer
+        )
+        cache_context_kwargs["taylorseer_cache_type"] = taylorseer_cache_type
+        cache_context_kwargs["taylorseer_order"] = taylorseer_order
+    else:
+        cache_context_kwargs["calibrator_config"] = calibrator_config
 
     if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
-        return CachedAdapter.apply(
-            pipe_or_adapter,
-            **cache_context_kwargs,
-        )
+        if calibrator_config is None:
+            return CachedAdapter.apply(
+                pipe_or_adapter,
+                **cache_context_kwargs,
+            )
+        else:
+            logger.warning("You are using the un-stable V2 API!")
+            pipe_or_adapter._is_v2_api = True
+            return CachedAdapterV2.apply(
+                pipe_or_adapter,
+                **cache_context_kwargs,
+            )
     else:
         raise ValueError(
             f"type: {type(pipe_or_adapter)} is not valid, "
@@ -154,7 +179,13 @@ def disable_cache(
         BlockAdapter,
     ],
 ):
-    CachedAdapter.maybe_release_hooks(pipe_or_adapter)
+    if getattr(pipe_or_adapter, "_is_v2_api", False):
+        logger.warning("You are using the un-stable V2 API!")
+        CachedAdapterV2.maybe_release_hooks(pipe_or_adapter)
+        del pipe_or_adapter._is_v2_api
+    else:
+        CachedAdapter.maybe_release_hooks(pipe_or_adapter)
+
     logger.warning(
         f"Cache Acceleration is disabled for: "
         f"{pipe_or_adapter.__class__.__name__}."
