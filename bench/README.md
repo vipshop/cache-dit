@@ -411,6 +411,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 
 | Config | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F8B0_W8M0MC0_T0O1_R0.08 | 35.2008 | 27.80 | 1.53 | 2162.19 | 1.72 |
 | F8B0_W8M0MC2_T0O1_R0.12 | 34.7449 | 26.91 | 1.58 | 2072.18 | 1.80 |
 | F8B0_W8M0MC2_T0O1_R0.16 | 34.6659 | 26.29 | 1.62 | 2002.67 | 1.86 |
@@ -488,6 +489,7 @@ The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_
 
 | Config | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
 | --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | INF | 42.63 | 1.00 | 3726.87 | 1.00 |
 | F8B0_W8M0MC0_T1O1_R0.08 | 36.7296 | 27.92 | 1.53 | 2172.76 | 1.72 |
 | F8B0_W8M0MC2_T1O1_R0.12 | 36.1337 | 27.00 | 1.58 | 2074.10 | 1.80 |
 | F8B0_W8M0MC2_T1O1_R0.16 | 36.1062 | 26.33 | 1.62 | 2005.56 | 1.86 |
