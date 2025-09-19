@@ -21,7 +21,6 @@ from cache_dit.cache_factory.cache_contexts import FoCaCalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
-from cache_dit.cache_factory.cache_adapters import CachedAdapterV2
 
 from cache_dit.cache_factory.cache_interface import enable_cache
 from cache_dit.cache_factory.cache_interface import disable_cache

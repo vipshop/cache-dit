@@ -4,7 +4,6 @@ from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
-from cache_dit.cache_factory.cache_adapters import CachedAdapterV2
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 
 from cache_dit.logger import init_logger
@@ -149,18 +148,10 @@ def enable_cache(
         cache_context_kwargs["calibrator_config"] = calibrator_config
 
     if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
-        if calibrator_config is None:
-            return CachedAdapter.apply(
-                pipe_or_adapter,
-                **cache_context_kwargs,
-            )
-        else:
-            logger.warning("You are using the un-stable V2 API!")
-            pipe_or_adapter._is_v2_api = True
-            return CachedAdapterV2.apply(
-                pipe_or_adapter,
-                **cache_context_kwargs,
-            )
+        return CachedAdapter.apply(
+            pipe_or_adapter,
+            **cache_context_kwargs,
+        )
     else:
         raise ValueError(
             f"type: {type(pipe_or_adapter)} is not valid, "
@@ -175,13 +166,7 @@ def disable_cache(
         BlockAdapter,
     ],
 ):
-    if getattr(pipe_or_adapter, "_is_v2_api", False):
-        logger.warning("You are using the un-stable V2 API!")
-        CachedAdapterV2.maybe_release_hooks(pipe_or_adapter)
-        del pipe_or_adapter._is_v2_api
-    else:
-        CachedAdapter.maybe_release_hooks(pipe_or_adapter)
-
+    CachedAdapter.maybe_release_hooks(pipe_or_adapter)
     logger.warning(
         f"Cache Acceleration is disabled for: "
         f"{pipe_or_adapter.__class__.__name__}."
