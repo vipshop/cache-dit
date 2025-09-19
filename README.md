@@ -2,7 +2,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
 
 <p align="center">
-    A <b>Unified</b> and Training-free <b>Cache Acceleration</b> Toolbox for <b>Diffusion Transformers</b> <br>
+    A <b>Unified</b> and Training-free <b>Cache Acceleration</b> Framework for <b>Diffusion Transformers</b> <br>
     ♥️ <b>Cache Acceleration</b> with <b>One-line</b> Code ~ ♥️
   </p>
   <div align='center'>
@@ -678,7 +678,7 @@ The **cache-dit** codebase is adapted from FBCache. Over time its codebase diver
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A Unified and Training-free Cache Acceleration Toolbox for Diffusion Transformers},
+  title={cache-dit: A Unified and Training-free Cache Acceleration Framework for Diffusion Transformers},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={vipshop.com},
