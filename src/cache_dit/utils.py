@@ -10,6 +10,7 @@ from diffusers import DiffusionPipeline
 
 from typing import Dict, Any, List, Union
 from cache_dit.cache_factory import BlockAdapter
+from cache_dit.cache_factory import CalibratorConfig
 from cache_dit.logger import init_logger
 
 
@@ -179,11 +180,28 @@ def strify(
     if not cache_options:
         return "NONE"
 
-    def get_taylorseer_order():
-        taylorseer_order = 0
-        if "taylorseer_order" in cache_options:
-            taylorseer_order = cache_options["taylorseer_order"]
-        return taylorseer_order
+    def calibrator_str():
+        if getattr(adapter_or_others, "_is_v2_api", False):
+            taylorseer_order = 0
+            if "taylorseer_order" in cache_options:
+                taylorseer_order = cache_options["taylorseer_order"]
+            return f"T{int(cache_options.get('enable_taylorseer', False))}O{taylorseer_order()}"
+        calibrator_config: CalibratorConfig = cache_options.get(
+            "calibrator_config", None
+        )
+        if calibrator_config:
+            if calibrator_config.calibrator_type == "taylorseer":
+                taylorseer_order = calibrator_config.calibrator_kwargs.get(
+                    "n_derivatives", 0
+                )
+                if taylorseer_order:
+                    return f"T1O{taylorseer_order}"
+                return "T0O0"
+            else:
+                raise ValueError(
+                    f"calibrator {calibrator_config.calibrator_type} is not supported now!"
+                )
+        return "T0O0"
 
     cache_type_str = (
         f"DBCACHE_F{cache_options.get('Fn_compute_blocks', 1)}"
@@ -191,8 +209,7 @@ def strify(
         f"W{cache_options.get('max_warmup_steps', 0)}"
         f"M{max(0, cache_options.get('max_cached_steps', -1))}"
         f"MC{max(0, cache_options.get('max_continuous_cached_steps', -1))}_"
-        f"T{int(cache_options.get('enable_taylorseer', False))}"
-        f"O{get_taylorseer_order()}_"
+        f"{calibrator_str()}_"
         f"R{cache_options.get('residual_diff_threshold', 0.08)}"
     )
 

@@ -21,3 +21,6 @@ class FoCaCalibrator(CalibratorBase):
 
     def update(self, *args, **kwargs):
         raise NotImplementedError("update method is not implemented.")
+
+    def __repr__(self):
+        return "FoCaCalibrator"

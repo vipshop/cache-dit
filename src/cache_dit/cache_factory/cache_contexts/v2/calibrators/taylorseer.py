@@ -9,7 +9,7 @@ from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
 class TaylorSeerCalibrator(CalibratorBase):
     def __init__(
         self,
-        n_derivatives=2,
+        n_derivatives=1,
         max_warmup_steps=1,
         skip_interval_steps=1,
         **kwargs,
@@ -95,3 +95,6 @@ class TaylorSeerCalibrator(CalibratorBase):
             return Y
         else:
             return self.approximate()
+
+    def __repr__(self):
+        return f"TaylorSeerCalibrator_O({self.n_derivatives})"

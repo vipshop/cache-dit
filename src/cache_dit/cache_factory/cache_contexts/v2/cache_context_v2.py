@@ -102,13 +102,6 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     "cfg_diff_compute_separate is enabled."
                 )
 
-        if "max_warmup_steps" not in self.calibrator_config.calibrator_kwargs:
-            # If max_warmup_steps is not set in calibrator_kwargs,
-            # set the same as max_warmup_steps for DBCache
-            self.calibrator_config.calibrator_kwargs["max_warmup_steps"] = (
-                self.max_warmup_steps if self.max_warmup_steps > 0 else 1
-            )
-
         if self.calibrator_config.enable_calibrator:
             self.calibrator = Calibrator(
                 **self.calibrator_config.calibrator_kwargs
