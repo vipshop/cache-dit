@@ -126,6 +126,7 @@ class CachedContext:  # Internal CachedContext Impl class
                         **self.taylorseer_kwargs
                     )
         else:
+            assert self.calibrator_config is not None
             if self.calibrator_config.enable_calibrator:
                 self.calibrator = Calibrator(self.calibrator_config)
                 if self.enable_separate_cfg:
