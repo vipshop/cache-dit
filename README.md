@@ -15,7 +15,7 @@
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
-    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚Hybrid TaylorSeer</a> | <a href="#cfg">📚Cache CFG</a><br>
+    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚TaylorSeer Calibrator</a> | <a href="#cfg">📚Cache CFG</a><br>
     <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
   </p>
   <p align="center">
@@ -150,7 +150,7 @@
   - [📚Implement Patch Functor](#implement-patch-functor)
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️Dual Block Cache](#dbcache)
-- [🔥Hybrid TaylorSeer](#taylorseer)
+- [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [⚙️Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
@@ -532,7 +532,7 @@ cache_dit.enable_cache(
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
-## 🔥Hybrid TaylorSeer
+## 🔥TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
 
@@ -545,17 +545,14 @@ $$
 **TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
+from cache_dit import TaylorSeerCalibratorConfig
+
 cache_dit.enable_cache(
     pipe,
-    enable_taylorseer=True,
-    enable_encoder_taylorseer=True,
-    # Taylorseer cache type cache be hidden_states or residual.
-    taylorseer_cache_type="residual",
-    # Higher values of order will lead to longer computation time
-    taylorseer_order=1, # default is 1.
-    max_warmup_steps=3, # prefer: >= order + 1
-    residual_diff_threshold=0.12
-)s
+    calibrator_config=TaylorSeerCalibratorConfig(
+        taylorseer_order=1,
+    ),
+)
 ``` 
 
 > [!Important]
