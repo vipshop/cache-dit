@@ -549,7 +549,14 @@ from cache_dit import TaylorSeerCalibratorConfig
 
 cache_dit.enable_cache(
     pipe,
-    # taylorseer_order: int, default is 1.
+    # Basic DBCache w/ FnBn configurations
+    max_warmup_steps=8,  # steps do not cache
+    max_cached_steps=-1, # -1 means no limit
+    Fn_compute_blocks=8, # Fn, F8, etc.
+    Bn_compute_blocks=8, # Bn, B8, etc.
+    residual_diff_threshold=0.12,
+    # Then, you can use the TaylorSeer Calibrator to approximate 
+    # the values in cached steps, taylorseer_order default is 1.
     calibrator_config=TaylorSeerCalibratorConfig(
         taylorseer_order=1,
     ),
