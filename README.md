@@ -549,6 +549,7 @@ from cache_dit import TaylorSeerCalibratorConfig
 
 cache_dit.enable_cache(
     pipe,
+    # taylorseer_order: int, default is 1.
     calibrator_config=TaylorSeerCalibratorConfig(
         taylorseer_order=1,
     ),
