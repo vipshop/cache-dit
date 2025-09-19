@@ -93,7 +93,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
 
     def __post_init__(self):
         if logger.isEnabledFor(logging.DEBUG):
-            logger.info(f"Created _CacheContext: {self.name}")
+            logger.info(f"Created _CacheContextV2: {self.name}")
         # Some checks for settings
         if self.enable_separate_cfg:
             if self.cfg_diff_compute_separate:

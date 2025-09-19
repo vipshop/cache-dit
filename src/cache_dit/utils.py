@@ -185,7 +185,7 @@ def strify(
             taylorseer_order = 0
             if "taylorseer_order" in cache_options:
                 taylorseer_order = cache_options["taylorseer_order"]
-            return f"T{int(cache_options.get('enable_taylorseer', False))}O{taylorseer_order()}"
+            return f"T{int(cache_options.get('enable_taylorseer', False))}O{taylorseer_order}"
         calibrator_config: CalibratorConfig = cache_options.get(
             "calibrator_config", None
         )
