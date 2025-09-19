@@ -14,7 +14,9 @@ from cache_dit.cache_factory.cache_contexts import CachedContext
 from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_contexts import CachedContextV2
 from cache_dit.cache_factory.cache_contexts import CachedContextManagerV2
-from cache_dit.cache_factory.cache_contexts import CalibratorConfig  # v2
+from cache_dit.cache_factory.cache_contexts import (
+    CalibratorConfigV2 as CalibratorConfig,
+)
 
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 
