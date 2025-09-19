@@ -6,7 +6,9 @@ from typing import Any, Dict, Optional, Tuple, Union, List
 import torch
 import torch.distributed as dist
 
-from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
+from cache_dit.cache_factory.cache_contexts.v2.calibrators import (
+    TaylorSeerCalibrator,
+)
 from cache_dit.cache_factory.cache_contexts.cache_context import CachedContext
 from cache_dit.logger import init_logger
 
@@ -268,12 +270,16 @@ class CachedContextManager:
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.enable_encoder_taylorseer
 
-    def get_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
+    def get_taylorseers(
+        self,
+    ) -> Tuple[TaylorSeerCalibrator, TaylorSeerCalibrator]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_taylorseers()
 
-    def get_cfg_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
+    def get_cfg_taylorseers(
+        self,
+    ) -> Tuple[TaylorSeerCalibrator, TaylorSeerCalibrator]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_cfg_taylorseers()
@@ -574,7 +580,7 @@ class CachedContextManager:
                 taylorseer, _ = self.get_taylorseers()
 
             if taylorseer is not None:
-                return taylorseer.approximate_value()
+                return taylorseer.approximate()
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
@@ -643,7 +649,7 @@ class CachedContextManager:
 
             if encoder_taylorseer is not None:
                 # Use TaylorSeer to approximate the value
-                return encoder_taylorseer.approximate_value()
+                return encoder_taylorseer.approximate()
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(

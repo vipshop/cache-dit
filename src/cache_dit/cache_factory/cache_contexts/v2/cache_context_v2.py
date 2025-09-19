@@ -52,6 +52,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
     transformer_executed_steps: int = 0
 
     # Support calibrators in Dual Block Cache: TaylorSeer, FoCa, etc.
+    # TODO: Backward compatible with V1, then remove V1.
     calibrator_config: Optional[CalibratorConfig] = None
     calibrator: Optional[CalibratorBase] = None
     encoder_calibrator: Optional[CalibratorBase] = None

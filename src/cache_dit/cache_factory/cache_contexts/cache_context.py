@@ -5,7 +5,9 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 
 import torch
 
-from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
+from cache_dit.cache_factory.cache_contexts.v2.calibrators import (
+    TaylorSeerCalibrator,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -55,8 +57,8 @@ class CachedContext:  # Internal CachedContext Impl class
     taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
     taylorseer_order: int = 1  # The order for TaylorSeer
     taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
-    taylorseer: Optional[TaylorSeer] = None
-    encoder_tarlorseer: Optional[TaylorSeer] = None
+    taylorseer: Optional[TaylorSeerCalibrator] = None
+    encoder_tarlorseer: Optional[TaylorSeerCalibrator] = None
 
     # Support enable_separate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
@@ -70,8 +72,8 @@ class CachedContext:  # Internal CachedContext Impl class
     # default True. If False, we will use the computed diff from
     # current non-CFG transformer step for current CFG step.
     cfg_diff_compute_separate: bool = True
-    cfg_taylorseer: Optional[TaylorSeer] = None
-    cfg_encoder_taylorseer: Optional[TaylorSeer] = None
+    cfg_taylorseer: Optional[TaylorSeerCalibrator] = None
+    cfg_encoder_taylorseer: Optional[TaylorSeerCalibrator] = None
 
     # CFG & non-CFG cached steps
     cached_steps: List[int] = dataclasses.field(default_factory=list)
@@ -107,14 +109,18 @@ class CachedContext:  # Internal CachedContext Impl class
         self.taylorseer_kwargs["n_derivatives"] = self.taylorseer_order
 
         if self.enable_taylorseer:
-            self.taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+            self.taylorseer = TaylorSeerCalibrator(**self.taylorseer_kwargs)
             if self.enable_separate_cfg:
-                self.cfg_taylorseer = TaylorSeer(**self.taylorseer_kwargs)
+                self.cfg_taylorseer = TaylorSeerCalibrator(
+                    **self.taylorseer_kwargs
+                )
 
         if self.enable_encoder_taylorseer:
-            self.encoder_tarlorseer = TaylorSeer(**self.taylorseer_kwargs)
+            self.encoder_tarlorseer = TaylorSeerCalibrator(
+                **self.taylorseer_kwargs
+            )
             if self.enable_separate_cfg:
-                self.cfg_encoder_taylorseer = TaylorSeer(
+                self.cfg_encoder_taylorseer = TaylorSeerCalibrator(
                     **self.taylorseer_kwargs
                 )
 
@@ -206,10 +212,14 @@ class CachedContext:  # Internal CachedContext Impl class
                 if encoder_taylorseer is not None:
                     encoder_taylorseer.mark_step_begin()
 
-    def get_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
+    def get_taylorseers(
+        self,
+    ) -> Tuple[TaylorSeerCalibrator, TaylorSeerCalibrator]:
         return self.taylorseer, self.encoder_tarlorseer
 
-    def get_cfg_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
+    def get_cfg_taylorseers(
+        self,
+    ) -> Tuple[TaylorSeerCalibrator, TaylorSeerCalibrator]:
         return self.cfg_taylorseer, self.cfg_encoder_taylorseer
 
     def add_residual_diff(self, diff):
