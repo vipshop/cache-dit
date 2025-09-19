@@ -1,10 +1,10 @@
-from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
+from cache_dit.cache_factory.cache_contexts.calibrators.base import (
     CalibratorBase,
 )
-from cache_dit.cache_factory.cache_contexts.v2.calibrators.taylorseer import (
+from cache_dit.cache_factory.cache_contexts.calibrators.taylorseer import (
     TaylorSeerCalibrator,
 )
-from cache_dit.cache_factory.cache_contexts.v2.calibrators.foca import (
+from cache_dit.cache_factory.cache_contexts.calibrators.foca import (
     FoCaCalibrator,
 )
 

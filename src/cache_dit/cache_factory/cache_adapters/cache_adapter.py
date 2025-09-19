@@ -13,7 +13,6 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_contexts import CachedContextManager
-from cache_dit.cache_factory.cache_contexts import CachedContextManagerV2
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 from cache_dit.cache_factory.cache_blocks.utils import (
     patch_cached_stats,
@@ -171,7 +170,7 @@ class CachedAdapter:
         # Different transformers (Wan2.2, etc) should shared the same
         # cache manager but with different cache context (according
         # to their unique instance id).
-        cache_manager = CachedContextManagerV2(
+        cache_manager = CachedContextManager(
             name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
         )
         block_adapter.pipe._cache_manager = cache_manager  # instance level
@@ -213,7 +212,7 @@ class CachedAdapter:
     def modify_context_params(
         cls,
         block_adapter: BlockAdapter,
-        cache_manager: Union[CachedContextManager, CachedContextManagerV2],
+        cache_manager: CachedContextManager,
         **cache_context_kwargs,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
 
@@ -337,7 +336,7 @@ class CachedAdapter:
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
             block_adapter.pipe._cache_manager,
-            (CachedContextManager, CachedContextManagerV2),
+            CachedContextManager,
         )
 
         for i in range(len(block_adapter.transformer)):
@@ -449,7 +448,7 @@ class CachedAdapter:
                 del pipe.__class__._original_call
             if hasattr(pipe, "_cache_manager"):
                 cache_manager = pipe._cache_manager
-                if isinstance(cache_manager, CachedContextManagerV2):
+                if isinstance(cache_manager, CachedContextManager):
                     cache_manager.clear_contexts()
                 del pipe._cache_manager
             if hasattr(pipe, "_is_cached"):
