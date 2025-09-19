@@ -36,9 +36,7 @@ def enable_cache(
     enable_encoder_taylorseer: bool = False,
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 1,
-    # New param for v2 API, if calibrator_config is not None,
-    # means that user want to use CachedAdapterV2 with specific
-    # calibrator.
+    # New param only for v2 API
     calibrator_config: Optional[CalibratorConfig] = None,
     **other_cache_context_kwargs,
 ) -> Union[
