@@ -71,9 +71,9 @@ class CachedContextV2:  # Internal CachedContext Impl class
     transformer_executed_steps: int = 0
 
     # Support calibrators in Dual Block Cache: TaylorSeer, FoCa, etc.
-    calibrator: Optional[CalibratorBase] = None
-    encoder_tarlorseer: Optional[CalibratorBase] = None
     calibrator_config: Optional[CalibratorConfigV2] = None
+    calibrator: Optional[CalibratorBase] = None
+    encoder_calibrator: Optional[CalibratorBase] = None
 
     # Support enable_separate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
@@ -123,7 +123,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
                 )
 
         if self.calibrator_config.enable_encoder_calibrator:
-            self.encoder_tarlorseer = Calibrator(
+            self.encoder_calibrator = Calibrator(
                 **self.calibrator_config.calibrator_kwargs
             )
             if self.enable_separate_cfg:
@@ -241,7 +241,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     encoder_calibrator.mark_step_begin()
 
     def get_calibrators(self) -> Tuple[CalibratorBase, CalibratorBase]:
-        return self.calibrator, self.encoder_tarlorseer
+        return self.calibrator, self.encoder_calibrator
 
     def get_cfg_calibrators(self) -> Tuple[CalibratorBase, CalibratorBase]:
         return self.cfg_calibrator, self.cfg_encoder_calibrator

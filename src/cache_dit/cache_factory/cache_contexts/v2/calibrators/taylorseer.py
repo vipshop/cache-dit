@@ -5,6 +5,10 @@ from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
     CalibratorBase,
 )
 
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
+
 
 class TaylorSeerCalibrator(CalibratorBase):
     def __init__(
@@ -19,6 +23,7 @@ class TaylorSeerCalibrator(CalibratorBase):
         self.max_warmup_steps = max_warmup_steps
         self.skip_interval_steps = skip_interval_steps
         self.reset_cache()
+        logger.info(f"Created {self.__repr__()}_{id(self)}")
 
     def reset_cache(self):  # NEED
         self.state: Dict[str, List[torch.Tensor]] = {
