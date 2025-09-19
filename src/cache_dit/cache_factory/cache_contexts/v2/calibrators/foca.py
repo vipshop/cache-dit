@@ -1,10 +1,10 @@
-from cache_dit.cache_factory.cache_contexts.calibrators.base import (
+from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
     CalibratorBase,
 )
 
 
-class FoCa(CalibratorBase):
-    # TODO: Support FoCa-Forecast then Calibrate: Feature Caching as ODE for
+class FoCaCalibrator(CalibratorBase):
+    # TODO: Support FoCa, Forecast then Calibrate: Feature Caching as ODE for
     # Efficient Diffusion Transformers, https://arxiv.org/pdf/2508.16211
 
     def __init__(self, *args, **kwargs):

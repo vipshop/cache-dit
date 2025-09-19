@@ -1,10 +1,12 @@
-from cache_dit.cache_factory.cache_contexts.calibrators.base import (
+from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
     CalibratorBase,
 )
-from cache_dit.cache_factory.cache_contexts.calibrators.taylorseer import (
-    TaylorSeer,
+from cache_dit.cache_factory.cache_contexts.v2.calibrators.taylorseer import (
+    TaylorSeerCalibrator,
 )
-from cache_dit.cache_factory.cache_contexts.calibrators.foca import FoCa
+from cache_dit.cache_factory.cache_contexts.v2.calibrators.foca import (
+    FoCaCalibrator,
+)
 
 from cache_dit.logger import init_logger
 
@@ -26,7 +28,7 @@ class Calibrator:
         ), f"Calibrator {calibrator_type} is not supported now!"
 
         if calibrator_type.lower() == "taylorseer":
-            return TaylorSeer(**kwargs)
+            return TaylorSeerCalibrator(**kwargs)
         else:
             raise ValueError(
                 f"Calibrator {calibrator_type} is not supported now!"

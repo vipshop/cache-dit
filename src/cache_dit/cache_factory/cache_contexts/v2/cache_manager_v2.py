@@ -6,33 +6,35 @@ from typing import Any, Dict, Optional, Tuple, Union, List
 import torch
 import torch.distributed as dist
 
-from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
-from cache_dit.cache_factory.cache_contexts.cache_context import CachedContext
+from cache_dit.cache_factory.cache_contexts.v2.calibrators import CalibratorBase
+from cache_dit.cache_factory.cache_contexts.v2.cache_context_v2 import (
+    CachedContextV2,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-class CachedContextManager:
+class CachedContextManagerV2:
     # Each Pipeline should have it's own context manager instance.
 
     def __init__(self, name: str = None):
         self.name = name
-        self._current_context: CachedContext = None
-        self._cached_context_manager: Dict[str, CachedContext] = {}
+        self._current_context: CachedContextV2 = None
+        self._cached_context_manager: Dict[str, CachedContextV2] = {}
 
-    def new_context(self, *args, **kwargs) -> CachedContext:
-        _context = CachedContext(*args, **kwargs)
+    def new_context(self, *args, **kwargs) -> CachedContextV2:
+        _context = CachedContextV2(*args, **kwargs)
         self._cached_context_manager[_context.name] = _context
         return _context
 
-    def set_context(self, cached_context: CachedContext | str):
-        if isinstance(cached_context, CachedContext):
+    def set_context(self, cached_context: CachedContextV2 | str):
+        if isinstance(cached_context, CachedContextV2):
             self._current_context = cached_context
         else:
             self._current_context = self._cached_context_manager[cached_context]
 
-    def get_context(self, name: str = None) -> CachedContext:
+    def get_context(self, name: str = None) -> CachedContextV2:
         if name is not None:
             if name not in self._cached_context_manager:
                 raise ValueError("Context not exist!")
@@ -41,11 +43,11 @@ class CachedContextManager:
 
     def reset_context(
         self,
-        cached_context: CachedContext | str,
+        cached_context: CachedContextV2 | str,
         *args,
         **kwargs,
-    ) -> CachedContext:
-        if isinstance(cached_context, CachedContext):
+    ) -> CachedContextV2:
+        if isinstance(cached_context, CachedContextV2):
             old_context_name = cached_context.name
             if cached_context.name in self._cached_context_manager:
                 cached_context.clear_buffers()
@@ -63,8 +65,8 @@ class CachedContextManager:
             _context = self.new_context(*args, **kwargs)
         return _context
 
-    def remove_context(self, cached_context: CachedContext | str):
-        if isinstance(cached_context, CachedContext):
+    def remove_context(self, cached_context: CachedContextV2 | str):
+        if isinstance(cached_context, CachedContextV2):
             cached_context.clear_buffers()
             if cached_context.name in self._cached_context_manager:
                 del self._cached_context_manager[cached_context.name]
@@ -78,9 +80,9 @@ class CachedContextManager:
             self.remove_context(context_name)
 
     @contextlib.contextmanager
-    def enter_context(self, cached_context: CachedContext | str):
+    def enter_context(self, cached_context: CachedContextV2 | str):
         old_cached_context = self._current_context
-        if isinstance(cached_context, CachedContext):
+        if isinstance(cached_context, CachedContextV2):
             self._current_context = cached_context
         else:
             self._current_context = self._cached_context_manager[cached_context]
@@ -95,19 +97,19 @@ class CachedContextManager:
     ) -> Tuple[Dict, Dict]:
         # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
         # default_attrs: specific settings for different pipelines
-        cache_attrs = dataclasses.fields(CachedContext)
+        cache_attrs = dataclasses.fields(CachedContextV2)
         cache_attrs = [
             attr
             for attr in cache_attrs
             if hasattr(
-                CachedContext,
+                CachedContextV2,
                 attr.name,
             )
         ]
         cache_kwargs = {
             attr.name: kwargs.pop(
                 attr.name,
-                getattr(CachedContext, attr.name),
+                getattr(CachedContextV2, attr.name),
             )
             for attr in cache_attrs
         }
@@ -123,7 +125,7 @@ class CachedContextManager:
                 )
 
         # Manually set sequence fields
-        _safe_set_sequence_field("taylorseer_kwargs", {})
+        _safe_set_sequence_field("calibrator_kwargs", {})
 
         for attr in cache_attrs:
             if attr.name in default_attrs:  # can be empty {}
@@ -257,45 +259,45 @@ class CachedContextManager:
         return cached_context.get_cfg_residual_diffs()
 
     @torch.compiler.disable
-    def is_taylorseer_enabled(self) -> bool:
+    def is_calibrator_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.enable_taylorseer
+        return cached_context.enable_calibrator
 
     @torch.compiler.disable
-    def is_encoder_taylorseer_enabled(self) -> bool:
+    def is_encoder_calibrator_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.enable_encoder_taylorseer
+        return cached_context.enable_encoder_calibrator
 
-    def get_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
+    def get_calibrator(self) -> Tuple[CalibratorBase, CalibratorBase]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.get_taylorseers()
+        return cached_context.get_calibrators()
 
-    def get_cfg_taylorseers(self) -> Tuple[TaylorSeer, TaylorSeer]:
+    def get_cfg_calibrator(self) -> Tuple[CalibratorBase, CalibratorBase]:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.get_cfg_taylorseers()
+        return cached_context.get_cfg_calibrators()
 
     @torch.compiler.disable
-    def is_taylorseer_cache_residual(self) -> bool:
+    def is_calibrator_cache_residual(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.taylorseer_cache_type == "residual"
+        return cached_context.calibrator_cache_type == "residual"
 
     @torch.compiler.disable
     def is_cache_residual(self) -> bool:
-        if self.is_taylorseer_enabled():
+        if self.is_calibrator_enabled():
             # residual or hidden_states
-            return self.is_taylorseer_cache_residual()
+            return self.is_calibrator_cache_residual()
         return True
 
     @torch.compiler.disable
     def is_encoder_cache_residual(self) -> bool:
-        if self.is_encoder_taylorseer_enabled():
+        if self.is_encoder_calibrator_enabled():
             # residual or hidden_states
-            return self.is_taylorseer_cache_residual()
+            return self.is_calibrator_cache_residual()
         return True
 
     @torch.compiler.disable
@@ -534,20 +536,20 @@ class CachedContextManager:
             return
         # Set hidden_states or residual for Bn blocks.
         # This buffer is use for hidden states approximation.
-        if self.is_taylorseer_enabled():
-            # taylorseer, encoder_taylorseer
+        if self.is_calibrator_enabled():
+            # calibrator, encoder_calibrator
             if self.is_separate_cfg_step():
-                taylorseer, _ = self.get_cfg_taylorseers()
+                calibrator, _ = self.get_cfg_calibrator()
             else:
-                taylorseer, _ = self.get_taylorseers()
+                calibrator, _ = self.get_calibrator()
 
-            if taylorseer is not None:
-                # Use TaylorSeer to update the buffer
-                taylorseer.update(buffer)
+            if calibrator is not None:
+                # Use calibrator to update the buffer
+                calibrator.update(buffer)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
-                        "TaylorSeer is enabled but not set in the cache context. "
+                        "calibrator is enabled but not set in the cache context. "
                         "Falling back to default buffer retrieval."
                     )
                 if self.is_separate_cfg_step():
@@ -566,19 +568,19 @@ class CachedContextManager:
 
     @torch.compiler.disable
     def get_Bn_buffer(self, prefix: str = "Bn") -> torch.Tensor:
-        if self.is_taylorseer_enabled():
-            # taylorseer, encoder_taylorseer
+        if self.is_calibrator_enabled():
+            # calibrator, encoder_calibrator
             if self.is_separate_cfg_step():
-                taylorseer, _ = self.get_cfg_taylorseers()
+                calibrator, _ = self.get_cfg_calibrator()
             else:
-                taylorseer, _ = self.get_taylorseers()
+                calibrator, _ = self.get_calibrator()
 
-            if taylorseer is not None:
-                return taylorseer.approximate_value()
+            if calibrator is not None:
+                return calibrator.approximate()
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
-                        "TaylorSeer is enabled but not set in the cache context. "
+                        "calibrator is enabled but not set in the cache context. "
                         "Falling back to default buffer retrieval."
                     )
                 # Fallback to default buffer retrieval
@@ -603,20 +605,20 @@ class CachedContextManager:
             return
 
         # This buffer is use for encoder hidden states approximation.
-        if self.is_encoder_taylorseer_enabled():
-            # taylorseer, encoder_taylorseer
+        if self.is_encoder_calibrator_enabled():
+            # calibrator, encoder_calibrator
             if self.is_separate_cfg_step():
-                _, encoder_taylorseer = self.get_cfg_taylorseers()
+                _, encoder_calibrator = self.get_cfg_calibrator()
             else:
-                _, encoder_taylorseer = self.get_taylorseers()
+                _, encoder_calibrator = self.get_calibrator()
 
-            if encoder_taylorseer is not None:
-                # Use TaylorSeer to update the buffer
-                encoder_taylorseer.update(buffer)
+            if encoder_calibrator is not None:
+                # Use CalibratorBase to update the buffer
+                encoder_calibrator.update(buffer)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
-                        "TaylorSeer is enabled but not set in the cache context. "
+                        "CalibratorBase is enabled but not set in the cache context. "
                         "Falling back to default buffer retrieval."
                     )
                 if self.is_separate_cfg_step():
@@ -635,19 +637,19 @@ class CachedContextManager:
 
     @torch.compiler.disable
     def get_Bn_encoder_buffer(self, prefix: str = "Bn") -> torch.Tensor:
-        if self.is_encoder_taylorseer_enabled():
+        if self.is_encoder_calibrator_enabled():
             if self.is_separate_cfg_step():
-                _, encoder_taylorseer = self.get_cfg_taylorseers()
+                _, encoder_calibrator = self.get_cfg_calibrator()
             else:
-                _, encoder_taylorseer = self.get_taylorseers()
+                _, encoder_calibrator = self.get_calibrator()
 
-            if encoder_taylorseer is not None:
-                # Use TaylorSeer to approximate the value
-                return encoder_taylorseer.approximate_value()
+            if encoder_calibrator is not None:
+                # Use calibrator to approximate the value
+                return encoder_calibrator.approximate()
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
-                        "TaylorSeer is enabled but not set in the cache context. "
+                        "calibrator is enabled but not set in the cache context. "
                         "Falling back to default buffer retrieval."
                     )
                 # Fallback to default buffer retrieval

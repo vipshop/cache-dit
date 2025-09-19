@@ -1,12 +1,12 @@
 import math
 import torch
 from typing import List, Dict
-from cache_dit.cache_factory.cache_contexts.calibrators.base import (
+from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
     CalibratorBase,
 )
 
 
-class TaylorSeer(CalibratorBase):
+class TaylorSeerCalibrator(CalibratorBase):
     def __init__(
         self,
         n_derivatives=2,
