@@ -667,7 +667,7 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 
 <div id="api-docs"></div>  
 
-Unified Cache API for almost Any Diffusion Transformers (with Transformer Blocks that match the specific Input and Output patterns). For a good balance between performance and precision, DBCache is configured by default with F8B0, 8 warmup steps, and unlimited cached steps. All the congurable params are listed beflows:
+Unified Cache API for almost Any Diffusion Transformers (with Transformer Blocks that match the specific Input and Output patterns). For a good balance between performance and precision, DBCache is configured by default with F8B0, 8 warmup steps, and unlimited cached steps. All the configurable params are listed beflows:
 
 ```python
 def enable_cache(...) -> Union[
