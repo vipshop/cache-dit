@@ -2,11 +2,11 @@ from typing import Any, Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
-from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
+from cache_dit.cache_factory.params_modifier import ParamsModifier
 
 from cache_dit.logger import init_logger
 

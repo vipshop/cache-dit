@@ -3,11 +3,10 @@ from cache_dit.cache_factory.cache_types import cache_type
 from cache_dit.cache_factory.cache_types import block_range
 
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
-
+from cache_dit.cache_factory.params_modifier import ParamsModifier
 from cache_dit.cache_factory.patch_functors import PatchFunctor
 
 from cache_dit.cache_factory.block_adapters import BlockAdapter
-from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 
 from cache_dit.cache_factory.cache_contexts import CachedContext
