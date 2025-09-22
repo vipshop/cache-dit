@@ -1,3 +1,5 @@
+<b><a href="./README.md">📚English</a></b> | <b><a href="./README_CN.md">📚中文阅读</a></b>
+
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
 
@@ -152,10 +154,12 @@
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
-- [📚Pattern Matching](#forward-pattern-matching)
 - [🔥Quick Start](#quick-start)
+- [📚Pattern Matching](#forward-pattern-matching)
+- [📚Dual Block Cache](#dbcache)
 - [🔥Benchmarks](#benchmarks)
 - [🎉User Guide](#user-guide)
+- [©️Citations](#citations)
 
 ## ⚙️Installation  
 
@@ -170,6 +174,31 @@ Or you can install the latest develop version from GitHub:
 
 ```bash
 pip3 install git+https://github.com/vipshop/cache-dit.git
+```
+
+## 🔥Quick Start 
+
+<div id="unified"></div>  
+
+<div id="quick-start"></div>
+
+In most cases, you only need to call ♥️**one-line**♥️ of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py) as an example. 
+
+```python
+import cache_dit
+from diffusers import DiffusionPipeline 
+
+# Can be any diffusion pipeline
+pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+
+# One-line code with default cache options.
+cache_dit.enable_cache(pipe) 
+
+# Just call the pipe as normal.
+output = pipe(...)
+
+# Disable cache and run original pipe.
+cache_dit.disable_cache(pipe)
 ```
 
 ## 📚Forward Pattern Matching 
@@ -233,34 +262,7 @@ Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examp
 
 </details>
 
-## 🔥Quick Start 
-
-<div id="unified"></div>  
-
-<div id="quick-start"></div>
-
-### ♥️Cache Acceleration with One-line Code
-
-In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py) as an example. 
-
-```python
-import cache_dit
-from diffusers import DiffusionPipeline 
-
-# Can be any diffusion pipeline
-pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-
-# One-line code with default cache options.
-cache_dit.enable_cache(pipe) 
-
-# Just call the pipe as normal.
-output = pipe(...)
-
-# Disable cache and run original pipe.
-cache_dit.disable_cache(pipe)
-```
-
-### ⚡️DBCache: Dual Block Cache  
+## ⚡️DBCache: Dual Block Cache  
 
 <div id="dbcache"></div>
 
