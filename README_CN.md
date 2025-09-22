@@ -353,6 +353,7 @@ cache_dit.enable_cache(
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md)
 - [⚙️Torch Compile](./docs/User_Guide.md)
 - [🛠Metrics CLI](./docs/User_Guide.md)
+- [📚API Documents](./docs/User_Guide.md)
 
 
 ## 👋Contribute 
