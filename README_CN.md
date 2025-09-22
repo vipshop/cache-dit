@@ -244,23 +244,23 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 **DBCache**：面向Diffusion Transformers的**双向对偶缓存（Dual Block Caching）** 技术。在DBCache中可自定义计算块的不同配置（如**F8B12**等），实现性能与精度之间的平衡权衡。此外，它完全可实现**无训练（training-free）** 部署。设计详情请查看文档 [🎉User_Guide.md](./docs/User_Guide.md)。
 
 ```python
-# Default options, F8B0, 8 warmup steps, and unlimited cached 
-# steps for good balance between performance and precision
-cache_dit.enable_cache(pipe_or_adapter)
+>>> import cache_dit
+>>> from cache_dit import BasicCacheConfig
+# Default options, F8B0, 8 warmup steps, and unlimited cached steps
+# for good balance between performance and precision
+>>> cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
-
-cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=BasicCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
-)
+>>> cache_dit.enable_cache(
+...     pipe_or_adapter,
+...     cache_config=BasicCacheConfig(
+...         max_warmup_steps=8,  # steps do not cache
+...         max_cached_steps=-1, # -1 means no limit
+...         Fn_compute_blocks=8, # Fn, F8, etc.
+...         Bn_compute_blocks=8, # Bn, B8, etc.
+...         residual_diff_threshold=0.12,
+...     ),
+... )
 ```  
 
 ## 🔥性能数据

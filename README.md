@@ -264,23 +264,23 @@ Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examp
 **DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [🎉User_Guide.md](./docs/User_Guide.md) docs for more design details.
 
 ```python
-# Default options, F8B0, 8 warmup steps, and unlimited cached 
-# steps for good balance between performance and precision
-cache_dit.enable_cache(pipe_or_adapter)
+>>> import cache_dit
+>>> from cache_dit import BasicCacheConfig
+# Default options, F8B0, 8 warmup steps, and unlimited cached steps
+# for good balance between performance and precision
+>>> cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
-
-cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=BasicCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
-)
+>>> cache_dit.enable_cache(
+...     pipe_or_adapter,
+...     cache_config=BasicCacheConfig(
+...         max_warmup_steps=8,  # steps do not cache
+...         max_cached_steps=-1, # -1 means no limit
+...         Fn_compute_blocks=8, # Fn, F8, etc.
+...         Bn_compute_blocks=8, # Bn, B8, etc.
+...         residual_diff_threshold=0.12,
+...     ),
+... )
 ```  
 
 ## 🔥Benchmarks
