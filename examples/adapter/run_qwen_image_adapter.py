@@ -29,7 +29,12 @@ pipe = QwenImagePipeline.from_pretrained(
 
 if args.cache:
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-    from cache_dit import BlockAdapter, ForwardPattern
+    from cache_dit import (
+        BlockAdapter,
+        ForwardPattern,
+        BasicCacheConfig,
+        TaylorSeerCalibratorConfig,
+    )
 
     cache_dit.enable_cache(
         BlockAdapter(
@@ -41,11 +46,13 @@ if args.cache:
             forward_pattern=ForwardPattern.Pattern_1,
         ),
         # Cache context kwargs
-        enable_separate_cfg=True,
-        enable_taylorseer=True,
-        enable_encoder_taylorseer=True,
-        taylorseer_order=4,
-        residual_diff_threshold=0.12,
+        cache_config=BasicCacheConfig(
+            residual_diff_threshold=0.12,
+            enable_separate_cfg=True,
+        ),
+        calibrator_config=TaylorSeerCalibratorConfig(
+            taylorseer_order=4,
+        ),
     )
 
 

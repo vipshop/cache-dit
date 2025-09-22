@@ -80,6 +80,7 @@ if args.cache:
     assert isinstance(pipe.dit, HYImageDiffusionTransformer)
 
     cachify(
+        args,
         BlockAdapter(
             pipe=pipe,
             transformer=pipe.dit,

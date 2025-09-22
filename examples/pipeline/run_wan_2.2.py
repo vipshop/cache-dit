@@ -46,6 +46,7 @@ if args.cache:
     from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
 
     cachify(
+        args,
         BlockAdapter(
             pipe=pipe,
             transformer=[
