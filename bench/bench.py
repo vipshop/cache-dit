@@ -212,7 +212,9 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--compile-all", action="store_true", default=False)
     parser.add_argument("--quantize", "--q", action="store_true", default=False)
     # Test data
-    parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200")
+    parser.add_argument(
+        "--save-dir", type=str, default="./tmp/DrawBench200_Default"
+    )
     parser.add_argument(
         "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
     )
@@ -270,6 +272,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # python3 bench.py # baseline
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt 0.08
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt 0.08
     # python3 bench.py --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt 0.08
