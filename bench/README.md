@@ -5,13 +5,13 @@
 - [📚DrawBench](#benchmark-flux)
 - [📚Distillation DrawBench](#benchmark-lightning)
 - [📚How to Reproduce?](#how-to-reproduce)
-  - [⚙️Installation](#%EF%B8%8Finstallation)
+  - [⚙️Installation](#installation)
   - [📖Download](#download)
   - [📖Evaluation](#evaluation)
 
 ## 📚Text2Image DrawBench: FLUX.1-dev
 
-<div id="benchmarks-flux"></div>
+<div id="benchmark-flux"></div>
 
 Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_R0.08): (**Device**: NVIDIA L20.) 
   - **F**: Fn_compute_blocks 
@@ -77,7 +77,7 @@ NOTE: Except for DBCache, other performance data are referenced from the paper [
 
 ## 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
-<div id="benchmarks-lightning"></div>
+<div id="benchmark-lightning"></div>
 
 Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR is 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
 
@@ -95,6 +95,8 @@ Surprisingly, cache-dit: DBCache still works in the extremely few-step distill m
 
 ### ⚙️Installation
 
+<div id="installation"></div>
+
 ```bash
 # install requirements
 pip3 install git+https://github.com/openai/CLIP.git
@@ -104,6 +106,8 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
 ### 📖Download
+
+<div id="donwload"></div>
 
 ```bash
 git clone https://github.com/vipshop/cache-dit.git
@@ -135,6 +139,8 @@ cd ..
 
 
 ### 📖Evaluation
+
+<div id="evaluation"></div>
 
 ```bash
 # NOTE: The reported benchmark was run on NVIDIA L20 device.

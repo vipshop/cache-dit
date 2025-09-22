@@ -12,8 +12,8 @@
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.3-brightgreen.svg >
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
@@ -165,20 +165,13 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 在大多数情况下，您只需调用 ♥️**一行**♥️ 代码，即 `cache_dit.enable_cache(...)`。调用该 API 后，您只需像往常一样调用管道（pipe）即可。其中，`pipe` 参数可以是 **任意** Diffusion Pipeline。示例可参考 [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py)。
 
 ```python
-import cache_dit
-from diffusers import DiffusionPipeline 
-
-# Can be any diffusion pipeline
-pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-
-# One-line code with default cache options.
-cache_dit.enable_cache(pipe) 
-
-# Just call the pipe as normal.
-output = pipe(...)
-
-# Disable cache and run original pipe.
-cache_dit.disable_cache(pipe)
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
+>>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> output = pipe(...) # Just call the pipe as normal.
+>>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+>>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```
 
 ## 📚前向模式匹配 
@@ -251,23 +244,23 @@ cache_dit.disable_cache(pipe)
 **DBCache**：面向Diffusion Transformers的**双向对偶缓存（Dual Block Caching）** 技术。在DBCache中可自定义计算块的不同配置（如**F8B12**等），实现性能与精度之间的平衡权衡。此外，它完全可实现**无训练（training-free）** 部署。设计详情请查看文档 [🎉User_Guide.md](./docs/User_Guide.md)。
 
 ```python
-# Default options, F8B0, 8 warmup steps, and unlimited cached 
-# steps for good balance between performance and precision
-cache_dit.enable_cache(pipe_or_adapter)
+>>> import cache_dit
+>>> from cache_dit import BasicCacheConfig
+# Default options, F8B0, 8 warmup steps, and unlimited cached steps
+# for good balance between performance and precision
+>>> cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
-
-cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=BasicCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
-)
+>>> cache_dit.enable_cache(
+...     pipe_or_adapter,
+...     cache_config=BasicCacheConfig(
+...         max_warmup_steps=8,  # steps do not cache
+...         max_cached_steps=-1, # -1 means no limit
+...         Fn_compute_blocks=8, # Fn, F8, etc.
+...         Bn_compute_blocks=8, # Bn, B8, etc.
+...         residual_diff_threshold=0.12,
+...     ),
+... )
 ```  
 
 ## 🔥性能数据
@@ -353,6 +346,7 @@ cache_dit.enable_cache(
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md)
 - [⚙️Torch Compile](./docs/User_Guide.md)
 - [🛠Metrics CLI](./docs/User_Guide.md)
+- [📚API Documents](./docs/User_Guide.md)
 
 
 ## 👋Contribute 

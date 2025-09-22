@@ -10,8 +10,8 @@
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.3-brightgreen.svg >
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
@@ -145,6 +145,7 @@
 - [⚡️Hybrid Cache CFG](#cfg)
 - [⚙️Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
+- [📚API Documents](#api-docs)
 
 ## ⚙️Installation  
 
@@ -309,6 +310,7 @@ Surprisingly, cache-dit: DBCache still works in the extremely few-step distill m
 
 ## 🎉Unified Cache APIs
 
+
 <div id="unified"></div>  
 
 ### 📚Forward Pattern Matching 
@@ -366,7 +368,7 @@ cache_dit.enable_cache(
     ), 
 )
 ```
-For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md) for more details.
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. 
 
 ### 📚Hybird Forward Pattern
 
@@ -659,4 +661,87 @@ cache-dit-metrics-cli -h  # show usage
 # all: PSNR, FID, SSIM, MSE, ..., etc.
 cache-dit-metrics-cli all  -i1 true.png -i2 test.png  # image
 cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
+```
+
+### 📚API Documentation
+
+<div id="api-docs"></div>  
+
+Unified Cache API for almost Any Diffusion Transformers (with Transformer Blocks that match the specific Input and Output patterns). For a good balance between performance and precision, DBCache is configured by default with F8B0, 8 warmup steps, and unlimited cached steps. All the congurable params are listed beflows:
+
+```python
+def enable_cache(...) -> Union[
+    DiffusionPipeline,
+    BlockAdapter,
+]:
+    r"""
+    Unified Cache API for  almost Any Diffusion Transformers (with Transformer Blocks
+    that match the specific Input and Output patterns).
+
+    For a good balance between performance and precision, DBCache is configured by default
+    with F8B0, 8 warmup steps, and unlimited cached steps.
+
+    Args:
+        pipe_or_adapter (`DiffusionPipeline` or `BlockAdapter`, *required*):
+            The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
+            For example: cache_dit.enable_cache(FluxPipeline(...)). Please check https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md
+            for the usgae of BlockAdapter.
+        cache_config (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
+            Basic DBCache config for cache context, defaults to BasicCacheConfig(). The configurable params listed belows:
+                Fn_compute_blocks: (`int`, *required*, defaults to 8):
+                    Specifies that `DBCache` uses the **first n** Transformer blocks to fit the information
+                    at time step t, enabling the calculation of a more stable L1 diff and delivering more
+                    accurate information to subsequent blocks. Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md
+                    for more details of DBCache.
+                Bn_compute_blocks: (`int`, *required*, defaults to 0):
+                    Further fuses approximate information in the **last n** Transformer blocks to enhance
+                    prediction accuracy. These blocks act as an auto-scaler for approximate hidden states
+                    that use residual cache.
+                residual_diff_threshold (`float`, *required*, defaults to 0.08):
+                    the value of residual diff threshold, a higher value leads to faster performance at the
+                    cost of lower precision.
+                max_warmup_steps (`int`, *required*, defaults to 8):
+                    DBCache does not apply the caching strategy when the number of running steps is less than
+                    or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+                max_cached_steps (`int`, *required*, defaults to -1):
+                    DBCache disables the caching strategy when the previous cached steps exceed this value to
+                    prevent precision degradation.
+                max_continuous_cached_steps (`int`, *required*, defaults to -1):
+                    DBCache disables the caching strategy when the previous continous cached steps exceed this value to
+                    prevent precision degradation.
+                enable_separate_cfg (`bool`, *required*,  defaults to None):
+                    Whether to do separate cfg or not, such as Wan 2.1, Qwen-Image. For model that fused CFG
+                    and non-CFG into single forward step, should set enable_separate_cfg as False, for example:
+                    CogVideoX, HunyuanVideo, Mochi, etc.
+                cfg_compute_first (`bool`, *required*,  defaults to False):
+                    Compute cfg forward first or not, default False, namely, 0, 2, 4, ..., -> non-CFG step;
+                    1, 3, 5, ... -> CFG step.
+                cfg_diff_compute_separate (`bool`, *required*,  defaults to True):
+                    Compute separate diff values for CFG and non-CFG step, default True. If False, we will
+                    use the computed diff from current non-CFG transformer step for current CFG step.
+        calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
+            Config for calibrator, if calibrator_config is not None, means that user want to use DBCache
+            with specific calibrator, such as taylorseer, foca, and so on.
+        params_modifiers ('ParamsModifier', *optional*, defaults to None):
+            Modify cache context params for specific blocks. The configurable params listed belows:
+                cache_config (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
+                    The same as 'cache_config' param in cache_dit.enable_cache() interface.
+                calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
+                    The same as 'calibrator_config' param in cache_dit.enable_cache() interface.
+                **kwargs: (`dict`, *optional*, defaults to {}):
+                    The same as 'kwargs' param in cache_dit.enable_cache() interface.
+        kwargs (`dict`, *optional*, defaults to {})
+            Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
+            for more details.
+```
+
+Examples:
+```python
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
+>>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> output = pipe(...) # Just call the pipe as normal.
+>>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+>>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```

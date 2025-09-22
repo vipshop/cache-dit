@@ -12,8 +12,8 @@
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v0.3-brightgreen.svg >
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
@@ -185,20 +185,13 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 In most cases, you only need to call ♥️**one-line**♥️ of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py) as an example. 
 
 ```python
-import cache_dit
-from diffusers import DiffusionPipeline 
-
-# Can be any diffusion pipeline
-pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-
-# One-line code with default cache options.
-cache_dit.enable_cache(pipe) 
-
-# Just call the pipe as normal.
-output = pipe(...)
-
-# Disable cache and run original pipe.
-cache_dit.disable_cache(pipe)
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
+>>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> output = pipe(...) # Just call the pipe as normal.
+>>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+>>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```
 
 ## 📚Forward Pattern Matching 
@@ -271,23 +264,23 @@ Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examp
 **DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [🎉User_Guide.md](./docs/User_Guide.md) docs for more design details.
 
 ```python
-# Default options, F8B0, 8 warmup steps, and unlimited cached 
-# steps for good balance between performance and precision
-cache_dit.enable_cache(pipe_or_adapter)
+>>> import cache_dit
+>>> from cache_dit import BasicCacheConfig
+# Default options, F8B0, 8 warmup steps, and unlimited cached steps
+# for good balance between performance and precision
+>>> cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
-
-cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=BasicCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
-)
+>>> cache_dit.enable_cache(
+...     pipe_or_adapter,
+...     cache_config=BasicCacheConfig(
+...         max_warmup_steps=8,  # steps do not cache
+...         max_cached_steps=-1, # -1 means no limit
+...         Fn_compute_blocks=8, # Fn, F8, etc.
+...         Bn_compute_blocks=8, # Bn, B8, etc.
+...         residual_diff_threshold=0.12,
+...     ),
+... )
 ```  
 
 ## 🔥Benchmarks
@@ -373,7 +366,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md)
 - [⚙️Torch Compile](./docs/User_Guide.md)
 - [🛠Metrics CLI](./docs/User_Guide.md)
-
+- [📚API Documents](./docs/User_Guide.md)
 
 ## 👋Contribute 
 <div id="contribute"></div>
