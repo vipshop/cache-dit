@@ -13,7 +13,7 @@ from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 
@@ -46,14 +46,7 @@ def prepare_pipeline(
     args: argparse.ArgumentParser,
 ):
     if args.cache:
-        cache_dit.enable_cache(
-            pipe,
-            # Cache context kwargs
-            enable_separate_cfg=True,
-            enable_taylorseer=True,
-            enable_encoder_taylorseer=True,
-            taylorseer_order=2,
-        )
+        cachify(args, pipe)
 
     # Enable memory savings
     pipe.enable_model_cpu_offload()

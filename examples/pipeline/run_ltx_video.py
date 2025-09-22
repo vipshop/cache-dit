@@ -8,7 +8,7 @@ import torch
 from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 
@@ -40,18 +40,7 @@ pipe_upsample.to("cuda")
 pipe.vae.enable_tiling()
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
+    cachify(args, pipe)
 
 
 def round_to_nearest_resolution_acceptable_by_vae(height, width):

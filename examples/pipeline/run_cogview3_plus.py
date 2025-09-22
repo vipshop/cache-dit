@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import CogView3PlusPipeline
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 args = get_args()
@@ -24,19 +24,7 @@ pipe = CogView3PlusPipeline.from_pretrained(
 pipe.to("cuda")
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
-
+    cachify(args, pipe)
 
 prompt = "A vibrant cherry red sports car sits proudly under the gleaming sun, its polished exterior smooth and flawless, casting a mirror-like reflection. The car features a low, aerodynamic body, angular headlights that gaze forward like predatory eyes, and a set of black, high-gloss racing rims that contrast starkly with the red. A subtle hint of chrome embellishes the grille and exhaust, while the tinted windows suggest a luxurious and private interior. The scene conveys a sense of speed and elegance, the car appearing as if it's about to burst into a sprint along a coastal road, with the ocean's azure waves crashing in the background."
 

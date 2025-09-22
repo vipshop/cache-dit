@@ -55,6 +55,43 @@ def get_args() -> argparse.ArgumentParser:
     return parser.parse_args()
 
 
+def cachify(
+    args,
+    pipe_or_adapter,
+    **kwargs,
+):
+    if args.cache:
+        from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
+
+        specific_cache_config = kwargs.get("cache_config", None)
+
+        cache_dit.enable_cache(
+            pipe_or_adapter,
+            cache_config=(
+                BasicCacheConfig(
+                    Fn_compute_blocks=args.Fn,
+                    Bn_compute_blocks=args.Bn,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                    **kwargs,
+                )
+                if specific_cache_config is None
+                else specific_cache_config
+            ),
+            calibrator_config=(
+                TaylorSeerCalibratorConfig(
+                    taylorseer_order=args.taylorseer_order,
+                )
+                if args.taylorseer
+                else None
+            ),
+        )
+
+    return pipe_or_adapter
+
+
 def strify(args, pipe_or_stats):
     return (
         f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}"

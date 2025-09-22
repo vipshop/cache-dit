@@ -7,7 +7,7 @@ import time
 import torch
 
 from diffusers import StableDiffusion3Pipeline
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 args = get_args()
@@ -25,18 +25,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
 )
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
+    cachify(args, pipe)
 
 start = time.time()
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
