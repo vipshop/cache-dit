@@ -87,8 +87,8 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
                 pipe,
                 # Cache context kwargs
                 cache_config=BasicCacheConfig(
-                    Fn_compute_blocks=args.Fn,
-                    Bn_compute_blocks=args.Bn,
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
                     max_warmup_steps=args.max_warmup_steps,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
@@ -128,8 +128,8 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
                 ),
                 # Cache context kwargs
                 cache_config=BasicCacheConfig(
-                    Fn_compute_blocks=args.Fn,
-                    Bn_compute_blocks=args.Bn,
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
                     max_warmup_steps=args.max_warmup_steps,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
