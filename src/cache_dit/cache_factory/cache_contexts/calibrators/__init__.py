@@ -25,7 +25,7 @@ class CalibratorConfig:  # no V1
     calibrator_cache_type: str = "residual"  # residual or hidden_states
     calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
-    def strify(self) -> str:
+    def strify(self, **kwargs) -> str:
         return "CalibratorBase"
 
     def to_kwargs(self) -> Dict:
@@ -39,10 +39,15 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
     calibrator_type: str = "taylorseer"
     taylorseer_order: int = 1
 
-    def strify(self) -> str:
+    def strify(self, **kwargs) -> str:
+        if kwargs.get("details", False):
+            if self.taylorseer_order:
+                return f"TaylorSeer_O({self.taylorseer_order})"
+            return "NONE"
+
         if self.taylorseer_order:
             return f"T1O{self.taylorseer_order}"
-        return "T0O0"
+        return "NONE"
 
     def to_kwargs(self) -> Dict:
         kwargs = self.calibrator_kwargs.copy()
@@ -56,7 +61,7 @@ class FoCaCalibratorConfig(CalibratorConfig):
     enable_encoder_calibrator: bool = True
     calibrator_type: str = "foca"
 
-    def strify(self) -> str:
+    def strify(self, **kwargs) -> str:
         return "FoCa"
 
 

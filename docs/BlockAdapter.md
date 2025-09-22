@@ -107,12 +107,16 @@ cache_dit.enable_cache(
         # value will be overwrite by the new one.
         params_modifiers=[
             ParamsModifier(
-                max_warmup_steps=4,
-                max_cached_steps=8,
+                cache_config=BasicCacheConfig(
+                    max_warmup_steps=4,
+                    max_cached_steps=8,
+                ),
             ),
             ParamsModifier(
-                max_warmup_steps=2,
-                max_cached_steps=20,
+                cache_config=BasicCacheConfig(
+                    max_warmup_steps=2,
+                    max_cached_steps=20,
+                ),
             ),
         ],
         has_separate_cfg=True,

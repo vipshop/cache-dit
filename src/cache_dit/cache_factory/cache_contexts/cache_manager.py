@@ -1,6 +1,5 @@
 import logging
 import contextlib
-import dataclasses
 from typing import Dict, Optional, Tuple, Union, List
 
 import torch
@@ -90,38 +89,6 @@ class CachedContextManager:
             yield
         finally:
             self._current_context = old_cached_context
-
-    @staticmethod
-    def collect_cache_kwargs(
-        default_attrs: dict, **kwargs
-    ) -> Tuple[Dict, Dict]:
-        # NOTE: This API will split kwargs into cache_kwargs and other_kwargs
-        # default_attrs: specific settings for different pipelines
-        cache_attrs = dataclasses.fields(CachedContext)
-        cache_attrs = [
-            attr
-            for attr in cache_attrs
-            if hasattr(
-                CachedContext,
-                attr.name,
-            )
-        ]
-        cache_kwargs = {
-            attr.name: kwargs.pop(
-                attr.name,
-                getattr(CachedContext, attr.name),
-            )
-            for attr in cache_attrs
-        }
-
-        for attr in cache_attrs:
-            if attr.name in default_attrs:  # can be empty {}
-                cache_kwargs[attr.name] = default_attrs[attr.name]
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Collected Cache kwargs: {cache_kwargs}")
-
-        return cache_kwargs, kwargs
 
     @torch.compiler.disable
     def get_residual_diff_threshold(self) -> float:

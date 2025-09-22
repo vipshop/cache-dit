@@ -2,6 +2,7 @@ from typing import Any, Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
@@ -22,6 +23,14 @@ def enable_cache(
     cache_config: BasicCacheConfig = BasicCacheConfig(),
     # Calibrator config: TaylorSeerCalibratorConfig, etc.
     calibrator_config: Optional[CalibratorConfig] = None,
+    # Modify cache context params for specific blocks.
+    params_modifiers: Optional[
+        Union[
+            ParamsModifier,
+            List[ParamsModifier],
+            List[List[ParamsModifier]],
+        ]
+    ] = None,
     # Other cache context kwargs: Deprecated cache kwargs
     **kwargs,
 ) -> Union[
@@ -76,6 +85,8 @@ def enable_cache(
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator, if calibrator_config is not None, means that user want to use DBCache
             with specific calibrator, such as taylorseer, foca, and so on.
+        params_modifiers ('ParamsModifier', *optional*, defaults to None):
+            Modify cache context params for specific blocks.
         kwargs: (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
@@ -95,8 +106,6 @@ def enable_cache(
     if (cache_type := cache_context_kwargs.get("cache_type", None)) is not None:
         if cache_type == CacheType.NONE:
             return pipe_or_adapter
-
-    cache_context_kwargs["cache_type"] = CacheType.DBCache
 
     # WARNING: Deprecated cache config params. These parameters are now retained
     # for backward compatibility but will be removed in the future.
@@ -160,6 +169,9 @@ def enable_cache(
 
     if calibrator_config is not None:
         cache_context_kwargs["calibrator_config"] = calibrator_config
+
+    if params_modifiers is not None:
+        cache_context_kwargs["params_modifiers"] = params_modifiers
 
     if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
         return CachedAdapter.apply(

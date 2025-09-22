@@ -43,7 +43,12 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 
 if args.cache:
-    from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
+    from cache_dit import (
+        ForwardPattern,
+        BlockAdapter,
+        ParamsModifier,
+        BasicCacheConfig,
+    )
 
     cachify(
         args,
@@ -64,12 +69,16 @@ if args.cache:
             params_modifiers=[
                 # high-noise transformer only have 30% steps
                 ParamsModifier(
-                    max_warmup_steps=4,
-                    max_cached_steps=8,
+                    cache_config=BasicCacheConfig(
+                        max_warmup_steps=4,
+                        max_cached_steps=8,
+                    ),
                 ),
                 ParamsModifier(
-                    max_warmup_steps=2,
-                    max_cached_steps=20,
+                    cache_config=BasicCacheConfig(
+                        max_warmup_steps=2,
+                        max_cached_steps=20,
+                    ),
                 ),
             ],
             has_separate_cfg=True,

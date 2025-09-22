@@ -14,6 +14,7 @@ from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
+from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 from cache_dit.cache_factory.cache_blocks.utils import (
     patch_cached_stats,
@@ -56,6 +57,12 @@ class CachedAdapter:
                 block_adapter = BlockAdapterRegistry.get_adapter(
                     pipe_or_adapter
                 )
+                if params_modifiers := cache_context_kwargs.get(
+                    "params_modifiers",
+                    None,
+                ):
+                    block_adapter.params_modifiers = params_modifiers
+
                 return cls.cachify(
                     block_adapter,
                     **cache_context_kwargs,
@@ -143,9 +150,8 @@ class CachedAdapter:
                 f"Pipeline: {block_adapter.pipe.__class__.__name__}."
             )
 
-        if (
-            cache_type := cache_context_kwargs.pop("cache_type", None)
-        ) is not None:
+        cache_type = cache_context_kwargs.pop("cache_type", None)
+        if cache_type is not None:
             assert (
                 cache_type == CacheType.DBCache
             ), "Custom cache setting only support for DBCache now!"
@@ -181,7 +187,7 @@ class CachedAdapter:
         block_adapter.pipe._cache_manager = cache_manager  # instance level
 
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
-            block_adapter, cache_manager, **cache_context_kwargs
+            block_adapter, **cache_context_kwargs
         )
 
         original_call = block_adapter.pipe.__class__.__call__
@@ -217,7 +223,6 @@ class CachedAdapter:
     def modify_context_params(
         cls,
         block_adapter: BlockAdapter,
-        cache_manager: CachedContextManager,
         **cache_context_kwargs,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
 
@@ -247,11 +252,25 @@ class CachedAdapter:
             contexts_kwargs[i].update(
                 flatten_modifiers[i]._context_kwargs,
             )
-            contexts_kwargs[i], _ = cache_manager.collect_cache_kwargs(
-                default_attrs={}, **contexts_kwargs[i]
-            )
+            cls._config_messages(**contexts_kwargs[i])
 
         return flatten_contexts, contexts_kwargs
+
+    @classmethod
+    def _config_messages(cls, **contexts_kwargs):
+        cache_config: BasicCacheConfig = contexts_kwargs.get(
+            "cache_config", None
+        )
+        calibrator_config: CalibratorConfig = contexts_kwargs.get(
+            "calibrator_config", None
+        )
+        if cache_config is not None:
+            message = f"Collected Cache Config: {cache_config.strify()}"
+            if calibrator_config is not None:
+                message += f", Calibrator Config: {calibrator_config.strify(details=True)}"
+            else:
+                message += ", Calibrator Config: None"
+            logger.info(message)
 
     @classmethod
     def mock_blocks(

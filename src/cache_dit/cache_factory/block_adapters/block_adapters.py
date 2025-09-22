@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from typing import Any, Tuple, List, Optional, Union
 
 from diffusers import DiffusionPipeline
-from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.patch_functors import PatchFunctor
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
@@ -29,7 +28,6 @@ class ParamsModifier:
         **kwargs,
     ):
         self._context_kwargs = {}
-        self._context_kwargs["cache_type"] = CacheType.DBCache
 
         # WARNING: Deprecated cache config params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
