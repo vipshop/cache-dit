@@ -733,15 +733,15 @@ def enable_cache(...) -> Union[
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
+```
 
-    Examples:
-    ```py
-    >>> import cache_dit
-    >>> from diffusers import DiffusionPipeline
-    >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
-    >>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
-    >>> output = pipe(...) # Just call the pipe as normal.
-    >>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
-    >>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
-    """
+Examples:
+```python
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
+>>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> output = pipe(...) # Just call the pipe as normal.
+>>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+>>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```
