@@ -144,9 +144,9 @@ def enable_cache(
         )
 
         calibrator_config = TaylorSeerCalibrator(
-            enable_taylorseer=enable_taylorseer,
-            enable_encoder_taylorseer=enable_encoder_taylorseer,
-            taylorseer_cache_type=taylorseer_cache_type,
+            enable_calibrator=enable_taylorseer,
+            enable_encoder_calibrator=enable_encoder_taylorseer,
+            calibrator_type=taylorseer_cache_type,
             taylorseer_order=taylorseer_order,
         )
 

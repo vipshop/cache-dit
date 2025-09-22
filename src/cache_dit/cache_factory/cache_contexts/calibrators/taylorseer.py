@@ -22,6 +22,12 @@ class TaylorSeerCalibrator(CalibratorBase):
         self.order = n_derivatives + 1
         self.max_warmup_steps = max_warmup_steps
         self.skip_interval_steps = skip_interval_steps
+        self.current_step = -1
+        self.last_non_approximated_step = -1
+        self.state: Dict[str, List[torch.Tensor]] = {
+            "dY_prev": [None] * self.order,
+            "dY_current": [None] * self.order,
+        }
         self.reset_cache()
 
     def reset_cache(self):  # NEED

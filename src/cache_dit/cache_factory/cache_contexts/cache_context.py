@@ -33,9 +33,6 @@ class CachedContext:  # Internal CachedContext Impl class
 
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
-    incremental_name_counters: DefaultDict[str, int] = dataclasses.field(
-        default_factory=lambda: defaultdict(int),
-    )
 
     # Other settings
     downsample_factor: int = 1
