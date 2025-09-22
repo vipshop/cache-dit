@@ -25,41 +25,26 @@ class ParamsModifier:
         cache_config: BasicCacheConfig = None,
         # Calibrator config: TaylorSeerCalibratorConfig, etc.
         calibrator_config: Optional[CalibratorConfig] = None,
-        # WARNING: Deprecated cache config params. These parameters are now retained
-        # for backward compatibility but will be removed in the future.
-        Fn_compute_blocks: int = None,
-        Bn_compute_blocks: int = None,
-        max_warmup_steps: int = None,
-        max_cached_steps: int = None,
-        max_continuous_cached_steps: int = None,
-        residual_diff_threshold: float = None,
-        enable_separate_cfg: bool = None,
-        cfg_compute_first: bool = None,
-        cfg_diff_compute_separate: bool = None,
-        # WARNING: Deprecated taylorseer params. These parameters are now retained
-        # for backward compatibility but will be removed in the future.
-        enable_taylorseer: bool = None,
-        enable_encoder_taylorseer: bool = None,
-        taylorseer_cache_type: str = "residual",
-        taylorseer_order: int = 1,
-        # Other cache context kwargs
-        **other_cache_context_kwargs,
+        # Other cache context kwargs: Deprecated cache kwargs
+        **kwargs,
     ):
-        self._context_kwargs = other_cache_context_kwargs.copy()
+        self._context_kwargs = {}
         self._context_kwargs["cache_type"] = CacheType.DBCache
 
         # WARNING: Deprecated cache config params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
         deprecated_cache_kwargs = {
-            "Fn_compute_blocks": Fn_compute_blocks,
-            "Bn_compute_blocks": Bn_compute_blocks,
-            "max_warmup_steps": max_warmup_steps,
-            "max_cached_steps": max_cached_steps,
-            "max_continuous_cached_steps": max_continuous_cached_steps,
-            "residual_diff_threshold": residual_diff_threshold,
-            "enable_separate_cfg": enable_separate_cfg,
-            "cfg_compute_first": cfg_compute_first,
-            "cfg_diff_compute_separate": cfg_diff_compute_separate,
+            "Fn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
+            "Bn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
+            "max_warmup_steps": kwargs.get("Fn_compute_blocks", None),
+            "max_cached_steps": kwargs.get("Fn_compute_blocks", None),
+            "max_continuous_cached_steps": kwargs.get(
+                "Fn_compute_blocks", None
+            ),
+            "residual_diff_threshold": kwargs.get("Fn_compute_blocks", None),
+            "enable_separate_cfg": kwargs.get("Fn_compute_blocks", None),
+            "cfg_compute_first": kwargs.get("Fn_compute_blocks", None),
+            "cfg_diff_compute_separate": kwargs.get("Fn_compute_blocks", None),
         }
 
         deprecated_cache_kwargs = {
@@ -82,8 +67,8 @@ class ParamsModifier:
         # WARNING: Deprecated taylorseer params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
         if (
-            enable_taylorseer is not None
-            or enable_encoder_taylorseer is not None
+            kwargs.get("enable_taylorseer", None) is not None
+            or kwargs.get("enable_encoder_taylorseer", None) is not None
         ):
             logger.warning(
                 "Manually settup TaylorSeer calibrator without TaylorSeerCalibratorConfig is "
@@ -95,10 +80,14 @@ class ParamsModifier:
             )
 
             calibrator_config = TaylorSeerCalibratorConfig(
-                enable_calibrator=enable_taylorseer,
-                enable_encoder_calibrator=enable_encoder_taylorseer,
-                calibrator_cache_type=taylorseer_cache_type,
-                taylorseer_order=taylorseer_order,
+                enable_calibrator=kwargs.get("enable_taylorseer"),
+                enable_encoder_calibrator=kwargs.get(
+                    "enable_encoder_taylorseer"
+                ),
+                calibrator_cache_type=kwargs.get(
+                    "taylorseer_cache_type", "residual"
+                ),
+                taylorseer_order=kwargs.get("taylorseer_order", 1),
             )
 
         if calibrator_config is not None:
