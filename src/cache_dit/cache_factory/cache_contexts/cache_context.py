@@ -59,13 +59,11 @@ class BasicCacheConfig:
     #     use the computed diff from current non-CFG transformer step for current CFG step.
     cfg_diff_compute_separate: bool = True
 
-    # Some other not very important settings
-    max_Fn_compute_blocks: int = -1
-    max_Bn_compute_blocks: int = -1
+    # Some other not very important settings (NOTE: maybe deprecated in the future)
     l1_hidden_states_diff_threshold: float = None
     important_condition_threshold: float = 0.0
     downsample_factor: int = 1
-    num_inference_steps: int = -1  # for future use
+    num_inference_steps: int = -1
 
     def update(self, **kwargs) -> "BasicCacheConfig":
         for key, value in kwargs.items():

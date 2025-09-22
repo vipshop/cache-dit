@@ -317,16 +317,6 @@ class CachedContextManager:
         assert (
             cached_context.cache_config.Fn_compute_blocks >= 1
         ), "Fn_compute_blocks must be >= 1"
-        if cached_context.cache_config.max_Fn_compute_blocks > 0:
-            # NOTE: Fn_compute_blocks can be 1, which means FB Cache
-            # but it must be less than or equal to max_Fn_compute_blocks
-            assert (
-                cached_context.cache_config.Fn_compute_blocks
-                <= cached_context.cache_config.max_Fn_compute_blocks
-            ), (
-                f"Fn_compute_blocks must be <= {cached_context.cache_config.max_Fn_compute_blocks}, "
-                f"but got {cached_context.cache_config.Fn_compute_blocks}"
-            )
         return cached_context.cache_config.Fn_compute_blocks
 
     @torch.compiler.disable
@@ -336,16 +326,6 @@ class CachedContextManager:
         assert (
             cached_context.cache_config.Bn_compute_blocks >= 0
         ), "Bn_compute_blocks must be >= 0"
-        if cached_context.cache_config.max_Bn_compute_blocks > 0:
-            # NOTE: Bn_compute_blocks can be 0, which means FB Cache
-            # but it must be less than or equal to max_Bn_compute_blocks
-            assert (
-                cached_context.cache_config.Bn_compute_blocks
-                <= cached_context.cache_config.max_Bn_compute_blocks
-            ), (
-                f"Bn_compute_blocks must be <= {cached_context.cache_config.max_Bn_compute_blocks}, "
-                f"but got {cached_context.cache_config.Bn_compute_blocks}"
-            )
         return cached_context.cache_config.Bn_compute_blocks
 
     @torch.compiler.disable
