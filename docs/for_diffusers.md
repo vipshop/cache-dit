@@ -10,12 +10,6 @@ Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports near
 - [🔥Benchmarks](#benchmarks)
 - [🔥Supported Pipelines](#supported)
 - [🎉Unified Cache APIs](#unified)
-  - [📚Forward Pattern Matching](#forward-pattern-matching)
-  - [♥️Cache with One-line Code](#%EF%B8%8Fcache-acceleration-with-one-line-code)
-  - [🔥Automatic Block Adapter](#automatic-block-adapter)
-  - [📚Hybird Forward Pattern](#automatic-block-adapter)
-  - [📚Implement Patch Functor](#implement-patch-functor)
-  - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
@@ -412,11 +406,7 @@ cache_dit.enable_cache(
 
 We have supported the [TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers](https://arxiv.org/pdf/2503.06923) algorithm to further improve the precision of DBCache in cases where the cached steps are large, namely, **Hybrid TaylorSeer + DBCache**. At timesteps with significant intervals, the feature similarity in diffusion models decreases substantially, significantly harming the generation quality. 
 
-$$
-\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)=\mathcal{F}\left(x_t^l\right)+\sum_{i=1}^m \frac{\Delta^i \mathcal{F}\left(x_t^l\right)}{i!\cdot N^i}(-k)^i
-$$
-
-**TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
+**TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is F_pred can be a residual cache or a hidden-state cache.
 
 ```python
 from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
