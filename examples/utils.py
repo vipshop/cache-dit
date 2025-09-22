@@ -63,7 +63,7 @@ def cachify(
     if args.cache:
         from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
 
-        specific_cache_config = kwargs.get("cache_config", None)
+        specific_cache_config = kwargs.pop("cache_config", None)
 
         cache_dit.enable_cache(
             pipe_or_adapter,
