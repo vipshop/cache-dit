@@ -77,6 +77,12 @@ class CachedAdapter:
             logger.info(
                 "Adapting Cache Acceleration using custom BlockAdapter!"
             )
+            if pipe_or_adapter.params_modifiers is None:
+                if params_modifiers := cache_context_kwargs.get(
+                    "params_modifiers", None
+                ):
+                    pipe_or_adapter.params_modifiers = params_modifiers
+
             return cls.cachify(
                 pipe_or_adapter,
                 **cache_context_kwargs,
@@ -240,6 +246,8 @@ class CachedAdapter:
             contexts_kwargs[i]["name"] = flatten_contexts[i]
 
         if block_adapter.params_modifiers is None:
+            for i in range(len(contexts_kwargs)):
+                cls._config_messages(**contexts_kwargs[i])
             return flatten_contexts, contexts_kwargs
 
         flatten_modifiers: List[ParamsModifier] = BlockAdapter.flatten(

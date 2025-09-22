@@ -25,7 +25,12 @@ pipe = FluxPipeline.from_pretrained(
 
 if args.cache:
 
-    from cache_dit import ForwardPattern, BlockAdapter
+    from cache_dit import (
+        ForwardPattern,
+        BlockAdapter,
+        ParamsModifier,
+        BasicCacheConfig,
+    )
     from cache_dit.utils import is_diffusers_at_least_0_3_5
     from diffusers import FluxTransformer2DModel
 
@@ -46,6 +51,19 @@ if args.cache:
                     ForwardPattern.Pattern_1,
                 ],
             ),
+            params_modifiers=[
+                ParamsModifier(
+                    cache_config=BasicCacheConfig(
+                        residual_diff_threshold=0.12,
+                    ),
+                ),
+                ParamsModifier(
+                    cache_config=BasicCacheConfig(
+                        Fn_compute_blocks=1,
+                        residual_diff_threshold=0.25,
+                    ),
+                ),
+            ],
         )
 
     else:
@@ -64,6 +82,19 @@ if args.cache:
                     ForwardPattern.Pattern_3,
                 ],
             ),
+            params_modifiers=[
+                ParamsModifier(
+                    cache_config=BasicCacheConfig(
+                        residual_diff_threshold=0.12,
+                    ),
+                ),
+                ParamsModifier(
+                    cache_config=BasicCacheConfig(
+                        Fn_compute_blocks=1,
+                        residual_diff_threshold=0.25,
+                    ),
+                ),
+            ],
         )
 
 

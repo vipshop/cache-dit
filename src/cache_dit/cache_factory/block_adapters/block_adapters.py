@@ -145,10 +145,12 @@ class BlockAdapter:
     ] = None
 
     # modify cache context params for specific blocks.
-    params_modifiers: Union[
-        ParamsModifier,
-        List[ParamsModifier],
-        List[List[ParamsModifier]],
+    params_modifiers: Optional[
+        Union[
+            ParamsModifier,
+            List[ParamsModifier],
+            List[List[ParamsModifier]],
+        ]
     ] = None
 
     check_forward_pattern: bool = True
