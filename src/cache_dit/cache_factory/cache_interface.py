@@ -93,7 +93,7 @@ def enable_cache(
                     The same as 'calibrator_config' param in cache_dit.enable_cache() interface.
                 **kwargs: (`dict`, *optional*, defaults to {}):
                     The same as 'kwargs' param in cache_dit.enable_cache() interface.
-        kwargs: (`dict`, *optional*, defaults to {})
+        kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
 
