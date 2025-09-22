@@ -38,7 +38,6 @@
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [⚙️Torch Compile](#compile)
-- [🛠Metrics CLI](#metrics)
 
 ## ⚙️Installation  
 
