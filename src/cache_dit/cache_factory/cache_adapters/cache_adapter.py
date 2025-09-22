@@ -57,7 +57,7 @@ class CachedAdapter:
                 block_adapter = BlockAdapterRegistry.get_adapter(
                     pipe_or_adapter
                 )
-                if params_modifiers := cache_context_kwargs.get(
+                if params_modifiers := cache_context_kwargs.pop(
                     "params_modifiers",
                     None,
                 ):
@@ -78,7 +78,7 @@ class CachedAdapter:
                 "Adapting Cache Acceleration using custom BlockAdapter!"
             )
             if pipe_or_adapter.params_modifiers is None:
-                if params_modifiers := cache_context_kwargs.get(
+                if params_modifiers := cache_context_kwargs.pop(
                     "params_modifiers", None
                 ):
                     pipe_or_adapter.params_modifiers = params_modifiers

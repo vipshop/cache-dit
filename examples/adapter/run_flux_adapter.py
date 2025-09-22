@@ -107,8 +107,7 @@ image = pipe(
 
 end = time.time()
 
-cache_dit.summary(pipe.transformer.transformer_blocks)
-cache_dit.summary(pipe.transformer.single_transformer_blocks)
+cache_dit.summary(pipe)
 
 time_cost = end - start
 save_path = f"flux.adapter.{cache_dit.strify(pipe)}.png"
