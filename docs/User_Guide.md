@@ -145,7 +145,7 @@
 - [⚡️Hybrid Cache CFG](#cfg)
 - [⚙️Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
-- [📚API Documents](./docs/User_Guide.md)
+- [📚API Documents](#api-docs)
 
 ## ⚙️Installation  
 
