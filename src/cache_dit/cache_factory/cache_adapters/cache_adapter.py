@@ -13,6 +13,8 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_contexts import CachedContextManager
+from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
+from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 from cache_dit.cache_factory.cache_blocks.utils import (
     patch_cached_stats,
@@ -55,6 +57,12 @@ class CachedAdapter:
                 block_adapter = BlockAdapterRegistry.get_adapter(
                     pipe_or_adapter
                 )
+                if params_modifiers := cache_context_kwargs.pop(
+                    "params_modifiers",
+                    None,
+                ):
+                    block_adapter.params_modifiers = params_modifiers
+
                 return cls.cachify(
                     block_adapter,
                     **cache_context_kwargs,
@@ -69,6 +77,12 @@ class CachedAdapter:
             logger.info(
                 "Adapting Cache Acceleration using custom BlockAdapter!"
             )
+            if pipe_or_adapter.params_modifiers is None:
+                if params_modifiers := cache_context_kwargs.pop(
+                    "params_modifiers", None
+                ):
+                    pipe_or_adapter.params_modifiers = params_modifiers
+
             return cls.cachify(
                 pipe_or_adapter,
                 **cache_context_kwargs,
@@ -114,33 +128,36 @@ class CachedAdapter:
         **cache_context_kwargs,
     ):
         # Check cache_context_kwargs
-        if cache_context_kwargs["enable_separate_cfg"] is None:
+        cache_config: BasicCacheConfig = cache_context_kwargs[
+            "cache_config"
+        ]  # ref
+        assert cache_config is not None, "cache_config can not be None."
+        if cache_config.enable_separate_cfg is None:
             # Check cfg for some specific case if users don't set it as True
             if BlockAdapterRegistry.has_separate_cfg(block_adapter):
-                cache_context_kwargs["enable_separate_cfg"] = True
+                cache_config.enable_separate_cfg = True
                 logger.info(
                     f"Use custom 'enable_separate_cfg' from BlockAdapter: True. "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
             else:
-                cache_context_kwargs["enable_separate_cfg"] = (
+                cache_config.enable_separate_cfg = (
                     BlockAdapterRegistry.has_separate_cfg(block_adapter.pipe)
                 )
                 logger.info(
                     f"Use default 'enable_separate_cfg' from block adapter "
-                    f"register: {cache_context_kwargs['enable_separate_cfg']}, "
+                    f"register: {cache_config.enable_separate_cfg}, "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
         else:
             logger.info(
                 f"Use custom 'enable_separate_cfg' from cache context "
-                f"kwargs: {cache_context_kwargs['enable_separate_cfg']}. "
+                f"kwargs: {cache_config.enable_separate_cfg}. "
                 f"Pipeline: {block_adapter.pipe.__class__.__name__}."
             )
 
-        if (
-            cache_type := cache_context_kwargs.pop("cache_type", None)
-        ) is not None:
+        cache_type = cache_context_kwargs.pop("cache_type", None)
+        if cache_type is not None:
             assert (
                 cache_type == CacheType.DBCache
             ), "Custom cache setting only support for DBCache now!"
@@ -176,7 +193,7 @@ class CachedAdapter:
         block_adapter.pipe._cache_manager = cache_manager  # instance level
 
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
-            block_adapter, cache_manager, **cache_context_kwargs
+            block_adapter, **cache_context_kwargs
         )
 
         original_call = block_adapter.pipe.__class__.__call__
@@ -212,7 +229,6 @@ class CachedAdapter:
     def modify_context_params(
         cls,
         block_adapter: BlockAdapter,
-        cache_manager: CachedContextManager,
         **cache_context_kwargs,
     ) -> Tuple[List[str], List[Dict[str, Any]]]:
 
@@ -230,6 +246,8 @@ class CachedAdapter:
             contexts_kwargs[i]["name"] = flatten_contexts[i]
 
         if block_adapter.params_modifiers is None:
+            for i in range(len(contexts_kwargs)):
+                cls._config_messages(**contexts_kwargs[i])
             return flatten_contexts, contexts_kwargs
 
         flatten_modifiers: List[ParamsModifier] = BlockAdapter.flatten(
@@ -242,11 +260,25 @@ class CachedAdapter:
             contexts_kwargs[i].update(
                 flatten_modifiers[i]._context_kwargs,
             )
-            contexts_kwargs[i], _ = cache_manager.collect_cache_kwargs(
-                default_attrs={}, **contexts_kwargs[i]
-            )
+            cls._config_messages(**contexts_kwargs[i])
 
         return flatten_contexts, contexts_kwargs
+
+    @classmethod
+    def _config_messages(cls, **contexts_kwargs):
+        cache_config: BasicCacheConfig = contexts_kwargs.get(
+            "cache_config", None
+        )
+        calibrator_config: CalibratorConfig = contexts_kwargs.get(
+            "calibrator_config", None
+        )
+        if cache_config is not None:
+            message = f"Collected Cache Config: {cache_config.strify()}"
+            if calibrator_config is not None:
+                message += f", Calibrator Config: {calibrator_config.strify(details=True)}"
+            else:
+                message += ", Calibrator Config: None"
+            logger.info(message)
 
     @classmethod
     def mock_blocks(
@@ -335,7 +367,8 @@ class CachedAdapter:
         total_cached_blocks: List[Dict[str, torch.nn.ModuleList]] = []
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
-            block_adapter.pipe._cache_manager, CachedContextManager
+            block_adapter.pipe._cache_manager,
+            CachedContextManager,
         )
 
         for i in range(len(block_adapter.transformer)):

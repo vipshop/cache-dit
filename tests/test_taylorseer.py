@@ -1,7 +1,9 @@
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from cache_dit.cache_factory.cache_contexts.taylorseer import TaylorSeer
+from cache_dit.cache_factory.cache_contexts.calibrators import (
+    TaylorSeerCalibrator,
+)
 
 
 def get_args():
@@ -34,7 +36,7 @@ def get_args():
 args = get_args()
 
 
-taylor_seer = TaylorSeer(
+taylor_seer = TaylorSeerCalibrator(
     n_derivatives=args.n_derivatives,
     max_warmup_steps=args.max_warmup_steps,
     skip_interval_steps=args.skip_interval_steps,

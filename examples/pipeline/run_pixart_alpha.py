@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import PixArtAlphaPipeline
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 
@@ -25,19 +25,7 @@ pipe = PixArtAlphaPipeline.from_pretrained(
 pipe.to("cuda")
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        # Cache context kwargs
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
+    cachify(args, pipe)
 
 start = time.time()
 prompt = "A small cactus with a happy face in the Sahara desert."

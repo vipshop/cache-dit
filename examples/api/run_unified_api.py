@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline
-from utils import get_args
+from utils import get_args, cachify
 import cache_dit
 
 
@@ -24,14 +24,7 @@ pipe = FluxPipeline.from_pretrained(
 
 
 if args.cache:
-    from cache_dit import TaylorSeerCalibratorConfig
-
-    cache_dit.enable_cache(
-        pipe,
-        calibrator_config=TaylorSeerCalibratorConfig(
-            taylorseer_order=1,
-        ),
-    )
+    cachify(args, pipe)
     print(cache_dit.strify(pipe))
 
 

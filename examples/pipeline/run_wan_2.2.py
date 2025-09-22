@@ -11,7 +11,7 @@ from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
 )
-from utils import get_args, GiB, strify
+from utils import get_args, GiB, strify, cachify
 import cache_dit
 
 
@@ -43,9 +43,15 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
 
 
 if args.cache:
-    from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
+    from cache_dit import (
+        ForwardPattern,
+        BlockAdapter,
+        ParamsModifier,
+        BasicCacheConfig,
+    )
 
-    adapter = cache_dit.enable_cache(
+    cachify(
+        args,
         BlockAdapter(
             pipe=pipe,
             transformer=[
@@ -63,23 +69,20 @@ if args.cache:
             params_modifiers=[
                 # high-noise transformer only have 30% steps
                 ParamsModifier(
-                    max_warmup_steps=4,
-                    max_cached_steps=8,
+                    cache_config=BasicCacheConfig(
+                        max_warmup_steps=4,
+                        max_cached_steps=8,
+                    ),
                 ),
                 ParamsModifier(
-                    max_warmup_steps=2,
-                    max_cached_steps=20,
+                    cache_config=BasicCacheConfig(
+                        max_warmup_steps=2,
+                        max_cached_steps=20,
+                    ),
                 ),
             ],
             has_separate_cfg=True,
         ),
-        # Common cache params
-        Fn_compute_blocks=1,
-        Bn_compute_blocks=0,
-        max_continuous_cached_steps=2,
-        residual_diff_threshold=0.08,
-        enable_taylorseer=True,
-        enable_encoder_taylorseer=True,
     )
 
 # Wan currently requires installing diffusers from source

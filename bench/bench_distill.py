@@ -128,20 +128,29 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
 
     # Apply cache to the pipeline
     if args.cache:
+        from cache_dit import (
+            BasicCacheConfig,
+            TaylorSeerCalibratorConfig,
+        )
+
         cache_dit.enable_cache(
             pipe,
             # Cache context kwargs
-            Fn_compute_blocks=args.Fn_compute_blocks,
-            Bn_compute_blocks=args.Bn_compute_blocks,
-            max_warmup_steps=args.max_warmup_steps,
-            max_cached_steps=args.max_cached_steps,
-            max_continuous_cached_steps=args.max_continuous_cached_steps,
-            residual_diff_threshold=args.rdt,
-            enable_taylorseer=args.taylorseer,
-            enable_encoder_taylorseer=args.taylorseer,
-            taylorseer_cache_type="residual",
-            taylorseer_order=args.taylorseer_order,
-            enable_separate_cfg=False,  # true_cfg_scale=1.0
+            cache_config=BasicCacheConfig(
+                Fn_compute_blocks=args.Fn_compute_blocks,
+                Bn_compute_blocks=args.Bn_compute_blocks,
+                max_warmup_steps=args.max_warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                max_continuous_cached_steps=args.max_continuous_cached_steps,
+                residual_diff_threshold=args.rdt,
+            ),
+            calibrator_config=(
+                TaylorSeerCalibratorConfig(
+                    taylorseer_order=args.taylorseer_order,
+                )
+                if args.taylorseer
+                else None
+            ),
         )
 
     if torch.cuda.device_count() <= 1:

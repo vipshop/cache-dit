@@ -7,7 +7,7 @@ import time
 import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 
@@ -26,19 +26,7 @@ pipe = VisualClozePipeline.from_pretrained(
 pipe.to("cuda")
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
-
+    cachify(args, pipe)
 
 # Load in-context images (make sure the paths are correct and accessible)
 # The images are from the VITON-HD dataset at https://github.com/shadow2496/VITON-HD

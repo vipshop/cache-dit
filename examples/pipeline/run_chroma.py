@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import ChromaPipeline
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 
@@ -25,19 +25,7 @@ pipe = ChromaPipeline.from_pretrained(
 pipe.to("cuda")
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        # Cache context kwargs
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
+    cachify(args, pipe)
 
 prompt = [
     "A high-fashion close-up portrait of a blonde woman in clear sunglasses. The image uses a bold teal and red color split for dramatic lighting. The background is a simple teal-green. The photo is sharp and well-composed, and is designed for viewing with anaglyph 3D glasses for optimal effect. It looks professionally done."

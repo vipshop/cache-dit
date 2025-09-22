@@ -1,7 +1,7 @@
 import math
 import torch
 from typing import List, Dict
-from cache_dit.cache_factory.cache_contexts.v2.calibrators.base import (
+from cache_dit.cache_factory.cache_contexts.calibrators.base import (
     CalibratorBase,
 )
 
@@ -22,8 +22,13 @@ class TaylorSeerCalibrator(CalibratorBase):
         self.order = n_derivatives + 1
         self.max_warmup_steps = max_warmup_steps
         self.skip_interval_steps = skip_interval_steps
+        self.current_step = -1
+        self.last_non_approximated_step = -1
+        self.state: Dict[str, List[torch.Tensor]] = {
+            "dY_prev": [None] * self.order,
+            "dY_current": [None] * self.order,
+        }
         self.reset_cache()
-        logger.info(f"Created {self.__repr__()}_{id(self)}")
 
     def reset_cache(self):  # NEED
         self.state: Dict[str, List[torch.Tensor]] = {

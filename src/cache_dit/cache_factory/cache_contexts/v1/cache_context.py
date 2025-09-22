@@ -6,9 +6,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 import torch
 
 from cache_dit.cache_factory.cache_contexts.v2.calibrators import (
-    Calibrator,
-    CalibratorBase,
-    CalibratorConfig,
+    TaylorSeerCalibrator,
 )
 from cache_dit.logger import init_logger
 
@@ -16,7 +14,7 @@ logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
-class CachedContextV2:  # Internal CachedContext Impl class
+class CachedContext:  # Internal CachedContext Impl class
     name: str = "default"
     # Dual Block Cache with flexible FnBn configuration.
     Fn_compute_blocks: int = 1
@@ -51,10 +49,16 @@ class CachedContextV2:  # Internal CachedContext Impl class
     # be double of executed_steps.
     transformer_executed_steps: int = 0
 
-    # Support calibrators in Dual Block Cache: TaylorSeer, FoCa, etc.
-    calibrator_config: Optional[CalibratorConfig] = None
-    calibrator: Optional[CalibratorBase] = None
-    encoder_calibrator: Optional[CalibratorBase] = None
+    # Support TaylorSeers in Dual Block Cache
+    # Title: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
+    # Url: https://arxiv.org/pdf/2503.06923
+    enable_taylorseer: bool = False
+    enable_encoder_taylorseer: bool = False
+    taylorseer_cache_type: str = "hidden_states"  # residual or hidden_states
+    taylorseer_order: int = 1  # The order for TaylorSeer
+    taylorseer_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    taylorseer: Optional[TaylorSeerCalibrator] = None
+    encoder_tarlorseer: Optional[TaylorSeerCalibrator] = None
 
     # Support enable_separate_cfg, such as Wan 2.1,
     # Qwen-Image. For model that fused CFG and non-CFG into single
@@ -68,8 +72,8 @@ class CachedContextV2:  # Internal CachedContext Impl class
     # default True. If False, we will use the computed diff from
     # current non-CFG transformer step for current CFG step.
     cfg_diff_compute_separate: bool = True
-    cfg_calibrator: Optional[CalibratorBase] = None
-    cfg_encoder_calibrator: Optional[CalibratorBase] = None
+    cfg_taylorseer: Optional[TaylorSeerCalibrator] = None
+    cfg_encoder_taylorseer: Optional[TaylorSeerCalibrator] = None
 
     # CFG & non-CFG cached steps
     cached_steps: List[int] = dataclasses.field(default_factory=list)
@@ -85,7 +89,7 @@ class CachedContextV2:  # Internal CachedContext Impl class
 
     def __post_init__(self):
         if logger.isEnabledFor(logging.DEBUG):
-            logger.info(f"Created _CacheContextV2: {self.name}")
+            logger.info(f"Created _CacheContext: {self.name}")
         # Some checks for settings
         if self.enable_separate_cfg:
             if self.cfg_diff_compute_separate:
@@ -94,30 +98,31 @@ class CachedContextV2:  # Internal CachedContext Impl class
                     "cfg_diff_compute_separate is enabled."
                 )
 
-        if self.calibrator_config.enable_calibrator:
-            self.calibrator = Calibrator(self.calibrator_config)
+        if "max_warmup_steps" not in self.taylorseer_kwargs:
+            # If max_warmup_steps is not set in taylorseer_kwargs,
+            # set the same as max_warmup_steps for DBCache
+            self.taylorseer_kwargs["max_warmup_steps"] = (
+                self.max_warmup_steps if self.max_warmup_steps > 0 else 1
+            )
+
+        # Overwrite the 'n_derivatives' by 'taylorseer_order', default: 2.
+        self.taylorseer_kwargs["n_derivatives"] = self.taylorseer_order
+
+        if self.enable_taylorseer:
+            self.taylorseer = TaylorSeerCalibrator(**self.taylorseer_kwargs)
             if self.enable_separate_cfg:
-                self.cfg_calibrator = Calibrator(self.calibrator_config)
+                self.cfg_taylorseer = TaylorSeerCalibrator(
+                    **self.taylorseer_kwargs
+                )
 
-        if self.calibrator_config.enable_encoder_calibrator:
-            self.encoder_calibrator = Calibrator(self.calibrator_config)
+        if self.enable_encoder_taylorseer:
+            self.encoder_tarlorseer = TaylorSeerCalibrator(
+                **self.taylorseer_kwargs
+            )
             if self.enable_separate_cfg:
-                self.cfg_encoder_calibrator = Calibrator(self.calibrator_config)
-
-    def enable_calibrator(self):
-        if self.calibrator_config is not None:
-            return self.calibrator_config.enable_calibrator
-        return False
-
-    def enable_encoder_calibrator(self):
-        if self.calibrator_config is not None:
-            return self.calibrator_config.enable_encoder_calibrator
-        return False
-
-    def calibrator_cache_type(self):
-        if self.calibrator_config is not None:
-            return self.calibrator_config.calibrator_cache_type
-        return "residual"
+                self.cfg_encoder_taylorseer = TaylorSeerCalibrator(
+                    **self.taylorseer_kwargs
+                )
 
     def get_residual_diff_threshold(self):
         residual_diff_threshold = self.residual_diff_threshold
@@ -166,58 +171,56 @@ class CachedContextV2:  # Internal CachedContext Impl class
             self.residual_diffs.clear()
             self.cfg_cached_steps.clear()
             self.cfg_residual_diffs.clear()
-            # Reset the calibrators cache at the beginning of each inference.
-            # reset_cache will set the current step to -1 for calibrator,
-            if (
-                self.calibrator_config.enable_calibrator
-                or self.calibrator_config.enable_encoder_calibrator
-            ):
-                calibrator, encoder_calibrator = self.get_calibrators()
-                if calibrator is not None:
-                    calibrator.reset_cache()
-                if encoder_calibrator is not None:
-                    encoder_calibrator.reset_cache()
-                cfg_calibrator, cfg_encoder_calibrator = (
-                    self.get_cfg_calibrators()
+            # Reset the TaylorSeers cache at the beginning of each inference.
+            # reset_cache will set the current step to -1 for TaylorSeer,
+            if self.enable_taylorseer or self.enable_encoder_taylorseer:
+                taylorseer, encoder_taylorseer = self.get_taylorseers()
+                if taylorseer is not None:
+                    taylorseer.reset_cache()
+                if encoder_taylorseer is not None:
+                    encoder_taylorseer.reset_cache()
+                cfg_taylorseer, cfg_encoder_taylorseer = (
+                    self.get_cfg_taylorseers()
                 )
-                if cfg_calibrator is not None:
-                    cfg_calibrator.reset_cache()
-                if cfg_encoder_calibrator is not None:
-                    cfg_encoder_calibrator.reset_cache()
+                if cfg_taylorseer is not None:
+                    cfg_taylorseer.reset_cache()
+                if cfg_encoder_taylorseer is not None:
+                    cfg_encoder_taylorseer.reset_cache()
 
-        # mark_step_begin of calibrator must be called after the cache is reset.
-        if (
-            self.calibrator_config.enable_calibrator
-            or self.calibrator_config.enable_encoder_calibrator
-        ):
+        # mark_step_begin of TaylorSeer must be called after the cache is reset.
+        if self.enable_taylorseer or self.enable_encoder_taylorseer:
             if self.enable_separate_cfg:
                 # Assume non-CFG steps: 0, 2, 4, 6, ...
                 if not self.is_separate_cfg_step():
-                    calibrator, encoder_calibrator = self.get_calibrators()
-                    if calibrator is not None:
-                        calibrator.mark_step_begin()
-                    if encoder_calibrator is not None:
-                        encoder_calibrator.mark_step_begin()
+                    taylorseer, encoder_taylorseer = self.get_taylorseers()
+                    if taylorseer is not None:
+                        taylorseer.mark_step_begin()
+                    if encoder_taylorseer is not None:
+                        encoder_taylorseer.mark_step_begin()
                 else:
-                    cfg_calibrator, cfg_encoder_calibrator = (
-                        self.get_cfg_calibrators()
+                    cfg_taylorseer, cfg_encoder_taylorseer = (
+                        self.get_cfg_taylorseers()
                     )
-                    if cfg_calibrator is not None:
-                        cfg_calibrator.mark_step_begin()
-                    if cfg_encoder_calibrator is not None:
-                        cfg_encoder_calibrator.mark_step_begin()
+                    if cfg_taylorseer is not None:
+                        cfg_taylorseer.mark_step_begin()
+                    if cfg_encoder_taylorseer is not None:
+                        cfg_encoder_taylorseer.mark_step_begin()
             else:
-                calibrator, encoder_calibrator = self.get_calibrators()
-                if calibrator is not None:
-                    calibrator.mark_step_begin()
-                if encoder_calibrator is not None:
-                    encoder_calibrator.mark_step_begin()
+                taylorseer, encoder_taylorseer = self.get_taylorseers()
+                if taylorseer is not None:
+                    taylorseer.mark_step_begin()
+                if encoder_taylorseer is not None:
+                    encoder_taylorseer.mark_step_begin()
 
-    def get_calibrators(self) -> Tuple[CalibratorBase, CalibratorBase]:
-        return self.calibrator, self.encoder_calibrator
+    def get_taylorseers(
+        self,
+    ) -> Tuple[TaylorSeerCalibrator, TaylorSeerCalibrator]:
+        return self.taylorseer, self.encoder_tarlorseer
 
-    def get_cfg_calibrators(self) -> Tuple[CalibratorBase, CalibratorBase]:
-        return self.cfg_calibrator, self.cfg_encoder_calibrator
+    def get_cfg_taylorseers(
+        self,
+    ) -> Tuple[TaylorSeerCalibrator, TaylorSeerCalibrator]:
+        return self.cfg_taylorseer, self.cfg_encoder_taylorseer
 
     def add_residual_diff(self, diff):
         # step: executed_steps - 1, not transformer_steps - 1

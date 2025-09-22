@@ -62,22 +62,29 @@ def main():
     if args.cache or args.cache_config:
         if not args.use_block_adapter:
             if args.cache_config is None:
+                from cache_dit import (
+                    BasicCacheConfig,
+                    TaylorSeerCalibratorConfig,
+                )
+
                 cache_dit.enable_cache(
                     pipe,
                     # Cache context kwargs
-                    Fn_compute_blocks=args.Fn_compute_blocks,
-                    Bn_compute_blocks=args.Bn_compute_blocks,
-                    max_warmup_steps=args.max_warmup_steps,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
-                    l1_hidden_states_diff_threshold=(
-                        None if not args.l1_diff else args.rdt
+                    cache_config=BasicCacheConfig(
+                        Fn_compute_blocks=args.Fn_compute_blocks,
+                        Bn_compute_blocks=args.Bn_compute_blocks,
+                        max_warmup_steps=args.max_warmup_steps,
+                        max_cached_steps=args.max_cached_steps,
+                        max_continuous_cached_steps=args.max_continuous_cached_steps,
+                        residual_diff_threshold=args.rdt,
                     ),
-                    enable_taylorseer=args.taylorseer,
-                    enable_encoder_taylorseer=args.taylorseer,
-                    taylorseer_cache_type="residual",
-                    taylorseer_order=args.taylorseer_order,
+                    calibrator_config=(
+                        TaylorSeerCalibratorConfig(
+                            taylorseer_order=args.taylorseer_order,
+                        )
+                        if args.taylorseer
+                        else None
+                    ),
                 )
             else:
                 cache_dit.enable_cache(
@@ -85,7 +92,12 @@ def main():
                 )
         else:
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
-            from cache_dit import ForwardPattern, BlockAdapter
+            from cache_dit import (
+                ForwardPattern,
+                BlockAdapter,
+                BasicCacheConfig,
+                TaylorSeerCalibratorConfig,
+            )
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
             if args.cache_config is None:
@@ -115,19 +127,21 @@ def main():
                         )
                     ),
                     # Cache context kwargs
-                    Fn_compute_blocks=args.Fn_compute_blocks,
-                    Bn_compute_blocks=args.Bn_compute_blocks,
-                    max_warmup_steps=args.max_warmup_steps,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
-                    l1_hidden_states_diff_threshold=(
-                        None if not args.l1_diff else args.rdt
+                    cache_config=BasicCacheConfig(
+                        Fn_compute_blocks=args.Fn_compute_blocks,
+                        Bn_compute_blocks=args.Bn_compute_blocks,
+                        max_warmup_steps=args.max_warmup_steps,
+                        max_cached_steps=args.max_cached_steps,
+                        max_continuous_cached_steps=args.max_continuous_cached_steps,
+                        residual_diff_threshold=args.rdt,
                     ),
-                    enable_taylorseer=args.taylorseer,
-                    enable_encoder_taylorseer=args.taylorseer,
-                    taylorseer_cache_type="residual",
-                    taylorseer_order=args.taylorseer_order,
+                    calibrator_config=(
+                        TaylorSeerCalibratorConfig(
+                            taylorseer_order=args.taylorseer_order,
+                        )
+                        if args.taylorseer
+                        else None
+                    ),
                 )
             else:
                 cache_dit.enable_cache(
@@ -207,10 +221,10 @@ def main():
     mean_time = sum(all_times) / len(all_times)
     logger.info(f"Mean Time: {mean_time:.2f}s")
 
-    stats = cache_dit.summary(pipe, details=True)
+    cache_dit.summary(pipe, details=True)
     save_name = (
         f"C{int(args.compile)}_Q{int(args.quantize)}_"
-        f"{cache_dit.strify(stats)}_"
+        f"{cache_dit.strify(pipe)}_"
         f"T{mean_time:.2f}s.png"
     )
 

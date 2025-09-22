@@ -2,7 +2,7 @@ import os
 import argparse
 from cache_dit.metrics import compute_psnr
 from cache_dit.metrics import compute_video_psnr
-from cache_dit.metrics import FrechetInceptionDistance  # FID
+from cache_dit.metrics import compute_fid  # FID
 
 
 def get_args():
@@ -60,8 +60,7 @@ def main():
         img_psnr, n = compute_psnr(args.img_true, args.img_test)
         print(f"{args.img_true} vs {args.img_test}, Num: {n}, PSNR: {img_psnr}")
         if args.compute_fid:
-            FID = FrechetInceptionDistance()
-            img_fid, n = FID.compute_fid(args.img_true, args.img_test)
+            img_fid, n = compute_fid(args.img_true, args.img_test)
             print(
                 f"{args.img_true} vs {args.img_test}, Num: {n}, FID: {img_fid}"
             )

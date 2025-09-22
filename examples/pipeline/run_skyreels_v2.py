@@ -8,7 +8,7 @@ import torch
 from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
-from utils import get_args, strify
+from utils import get_args, strify, cachify
 import cache_dit
 
 
@@ -49,19 +49,7 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(
 )
 
 if args.cache:
-    cache_dit.enable_cache(
-        pipe,
-        # Cache context kwargs
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
-    )
+    cachify(args, pipe)
 
 prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
 

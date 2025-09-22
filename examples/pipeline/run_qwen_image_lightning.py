@@ -11,7 +11,7 @@ from diffusers import (
     QwenImageTransformer2DModel,
     FlowMatchEulerDiscreteScheduler,
 )
-from utils import GiB, get_args, strify
+from utils import GiB, get_args, strify, cachify
 import cache_dit
 
 
@@ -72,16 +72,20 @@ if args.fuse_lora:
 
 
 if args.cache:
-    cache_dit.enable_cache(
+    from cache_dit import BasicCacheConfig
+
+    cachify(
+        args,
         pipe,
-        # Cache context kwargs
-        Fn_compute_blocks=16,
-        Bn_compute_blocks=16,
-        max_warmup_steps=4 if steps > 4 else 2,
-        max_cached_steps=2 if steps > 4 else 1,
-        max_continuous_cached_steps=1,
-        enable_separate_cfg=False,  # true_cfg_scale=1.0
-        residual_diff_threshold=0.50 if steps > 4 else 0.8,
+        cache_config=BasicCacheConfig(
+            Fn_compute_blocks=16,
+            Bn_compute_blocks=16,
+            max_warmup_steps=4 if steps > 4 else 2,
+            max_cached_steps=2 if steps > 4 else 1,
+            max_continuous_cached_steps=1,
+            enable_separate_cfg=False,  # true_cfg_scale=1.0
+            residual_diff_threshold=0.50 if steps > 4 else 0.8,
+        ),
     )
 
 

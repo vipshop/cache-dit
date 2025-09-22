@@ -78,23 +78,38 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
     # Apply cache to the pipeline
     if args.cache:
         if args.disable_block_adapter:
+            from cache_dit import (
+                BasicCacheConfig,
+                TaylorSeerCalibratorConfig,
+            )
+
             cache_dit.enable_cache(
                 pipe,
                 # Cache context kwargs
-                Fn_compute_blocks=args.Fn_compute_blocks,
-                Bn_compute_blocks=args.Bn_compute_blocks,
-                max_warmup_steps=args.max_warmup_steps,
-                max_cached_steps=args.max_cached_steps,
-                max_continuous_cached_steps=args.max_continuous_cached_steps,
-                residual_diff_threshold=args.rdt,
-                enable_taylorseer=args.taylorseer,
-                enable_encoder_taylorseer=args.taylorseer,
-                taylorseer_cache_type="residual",
-                taylorseer_order=args.taylorseer_order,
+                cache_config=BasicCacheConfig(
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                ),
+                calibrator_config=(
+                    TaylorSeerCalibratorConfig(
+                        taylorseer_order=args.taylorseer_order,
+                    )
+                    if args.taylorseer
+                    else None
+                ),
             )
         else:
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
-            from cache_dit import ForwardPattern, BlockAdapter
+            from cache_dit import (
+                ForwardPattern,
+                BlockAdapter,
+                BasicCacheConfig,
+                TaylorSeerCalibratorConfig,
+            )
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
             cache_dit.enable_cache(
@@ -112,16 +127,21 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
                     forward_pattern=ForwardPattern.Pattern_1,
                 ),
                 # Cache context kwargs
-                Fn_compute_blocks=args.Fn_compute_blocks,
-                Bn_compute_blocks=args.Bn_compute_blocks,
-                max_warmup_steps=args.max_warmup_steps,
-                max_cached_steps=args.max_cached_steps,
-                max_continuous_cached_steps=args.max_continuous_cached_steps,
-                residual_diff_threshold=args.rdt,
-                enable_taylorseer=args.taylorseer,
-                enable_encoder_taylorseer=args.taylorseer,
-                taylorseer_cache_type="residual",
-                taylorseer_order=args.taylorseer_order,
+                cache_config=BasicCacheConfig(
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                ),
+                calibrator_config=(
+                    TaylorSeerCalibratorConfig(
+                        taylorseer_order=args.taylorseer_order,
+                    )
+                    if args.taylorseer
+                    else None
+                ),
             )
 
     if args.quantize:
@@ -192,7 +212,9 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--compile-all", action="store_true", default=False)
     parser.add_argument("--quantize", "--q", action="store_true", default=False)
     # Test data
-    parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200")
+    parser.add_argument(
+        "--save-dir", type=str, default="./tmp/DrawBench200_Default"
+    )
     parser.add_argument(
         "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
     )
@@ -250,6 +272,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # python3 bench.py # baseline
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 8 --rdt 0.08
     # python3 bench.py --cache --Fn 8 --Bn 0 --max-warmup-steps 4 --rdt 0.08
     # python3 bench.py --cache --Fn 4 --Bn 0 --max-warmup-steps 4 --rdt 0.08

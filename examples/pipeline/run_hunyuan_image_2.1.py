@@ -13,7 +13,7 @@ from hyimage.diffusion.pipelines.hunyuanimage_pipeline import (
 from hyimage.models.hunyuan.modules.hunyuanimage_dit import (
     HYImageDiffusionTransformer,
 )
-from utils import get_args, strify, GiB
+from utils import get_args, strify, cachify, GiB
 import cache_dit
 
 args = get_args()
@@ -79,7 +79,8 @@ if args.cache:
 
     assert isinstance(pipe.dit, HYImageDiffusionTransformer)
 
-    cache_dit.enable_cache(
+    cachify(
+        args,
         BlockAdapter(
             pipe=pipe,
             transformer=pipe.dit,
@@ -100,16 +101,6 @@ if args.cache:
             check_forward_pattern=False,
             check_num_outputs=False,
         ),
-        # Cache context kwargs
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
-        max_warmup_steps=args.max_warmup_steps,
-        max_cached_steps=args.max_cached_steps,
-        max_continuous_cached_steps=args.max_continuous_cached_steps,
-        enable_taylorseer=args.taylorseer,
-        enable_encoder_taylorseer=args.taylorseer,
-        taylorseer_order=args.taylorseer_order,
-        residual_diff_threshold=args.rdt,
     )
 
 prompt = "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, standing in a painting studio, wearing a red knitted scarf and a red beret with the word “Tencent” on it, holding a paintbrush with a focused expression as it paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."

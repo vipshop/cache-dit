@@ -47,23 +47,27 @@ For a good balance between performance and precision, DBCache is configured by d
 import cache_dit
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained(
+pipe_or_adapter = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
 # steps for good balance between performance and precision
-cache_dit.enable_cache(pipe)
+cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
+from cache_dit import BasicCacheConfig
+
 cache_dit.enable_cache(
-    pipe,
-    max_warmup_steps=8,  # steps do not cache
-    max_cached_steps=-1, # -1 means no limit
-    Fn_compute_blocks=8, # Fn, F8, etc.
-    Bn_compute_blocks=8, # Bn, B8, etc.
-    residual_diff_threshold=0.12,
+    pipe_or_adapter,
+    cache_config=BasicCacheConfig(
+        max_warmup_steps=8,  # steps do not cache
+        max_cached_steps=-1, # -1 means no limit
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc.
+        residual_diff_threshold=0.12,
+    ),
 )
 ```
 <div align="center">
@@ -77,7 +81,7 @@ cache_dit.enable_cache(
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
-## 🔥Hybrid TaylorSeer
+## 🔥TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
 
@@ -90,16 +94,23 @@ $$
 **TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
+from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
+
 cache_dit.enable_cache(
-    pipe,
-    enable_taylorseer=True,
-    enable_encoder_taylorseer=True,
-    # Taylorseer cache type cache be hidden_states or residual.
-    taylorseer_cache_type="residual",
-    # Higher values of order will lead to longer computation time
-    taylorseer_order=1, # default is 1.
-    max_warmup_steps=3, # prefer: >= order + 1
-    residual_diff_threshold=0.12
+    pipe_or_adapter,
+    # Basic DBCache w/ FnBn configurations
+    cache_config=BasicCacheConfig(
+        max_warmup_steps=8,  # steps do not cache
+        max_cached_steps=-1, # -1 means no limit
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc.
+        residual_diff_threshold=0.12,
+    ),
+    # Then, you can use the TaylorSeer Calibrator to approximate 
+    # the values in cached steps, taylorseer_order default is 1.
+    calibrator_config=TaylorSeerCalibratorConfig(
+        taylorseer_order=1,
+    ),
 )
 ``` 
 
@@ -124,21 +135,25 @@ cache_dit.enable_cache(
 cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
+from cache_dit import BasicCacheConfig
+
 cache_dit.enable_cache(
-    pipe, 
-    ...,
-    # CFG: classifier free guidance or not
-    # For model that fused CFG and non-CFG into single forward step,
-    # should set enable_separate_cfg as False. For example, set it as True 
-    # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-    # CogVideoX, Mochi, etc.
-    enable_separate_cfg=True, # Wan 2.1, Qwen-Image
-    # Compute cfg forward first or not, default False, namely, 
-    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-    cfg_compute_first=False,
-    # Compute separate diff values for CFG and non-CFG step, 
-    # default True. If False, we will use the computed diff from 
-    # current non-CFG transformer step for current CFG step.
-    cfg_diff_compute_separate=True,
+    pipe_or_adapter, 
+    cache_config=BasicCacheConfig(
+        ...,
+        # CFG: classifier free guidance or not
+        # For model that fused CFG and non-CFG into single forward step,
+        # should set enable_separate_cfg as False. For example, set it as True 
+        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
+        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
+        # Compute cfg forward first or not, default False, namely, 
+        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
+        cfg_compute_first=False,
+        # Compute separate diff values for CFG and non-CFG step, 
+        # default True. If False, we will use the computed diff from 
+        # current non-CFG transformer step for current CFG step.
+        cfg_diff_compute_separate=True,
+    ),
 )
 ```
