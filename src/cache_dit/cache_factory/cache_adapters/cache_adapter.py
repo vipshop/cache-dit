@@ -13,6 +13,7 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_contexts import CachedContextManager
+from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
 from cache_dit.cache_factory.cache_blocks.utils import (
     patch_cached_stats,
@@ -114,27 +115,31 @@ class CachedAdapter:
         **cache_context_kwargs,
     ):
         # Check cache_context_kwargs
-        if cache_context_kwargs["enable_separate_cfg"] is None:
+        cache_config: BasicCacheConfig = cache_context_kwargs[
+            "cache_config"
+        ]  # ref
+        assert cache_config is not None, "cache_config can not be None."
+        if cache_config.enable_separate_cfg is None:
             # Check cfg for some specific case if users don't set it as True
             if BlockAdapterRegistry.has_separate_cfg(block_adapter):
-                cache_context_kwargs["enable_separate_cfg"] = True
+                cache_config.enable_separate_cfg = True
                 logger.info(
                     f"Use custom 'enable_separate_cfg' from BlockAdapter: True. "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
             else:
-                cache_context_kwargs["enable_separate_cfg"] = (
+                cache_config.enable_separate_cfg = (
                     BlockAdapterRegistry.has_separate_cfg(block_adapter.pipe)
                 )
                 logger.info(
                     f"Use default 'enable_separate_cfg' from block adapter "
-                    f"register: {cache_context_kwargs['enable_separate_cfg']}, "
+                    f"register: {cache_config.enable_separate_cfg}, "
                     f"Pipeline: {block_adapter.pipe.__class__.__name__}."
                 )
         else:
             logger.info(
                 f"Use custom 'enable_separate_cfg' from cache context "
-                f"kwargs: {cache_context_kwargs['enable_separate_cfg']}. "
+                f"kwargs: {cache_config.enable_separate_cfg}. "
                 f"Pipeline: {block_adapter.pipe.__class__.__name__}."
             )
 

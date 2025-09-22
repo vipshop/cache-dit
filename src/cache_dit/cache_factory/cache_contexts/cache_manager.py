@@ -1,7 +1,7 @@
 import logging
 import contextlib
 import dataclasses
-from typing import Any, Dict, Optional, Tuple, Union, List
+from typing import Dict, Optional, Tuple, Union, List
 
 import torch
 import torch.distributed as dist
@@ -114,19 +114,6 @@ class CachedContextManager:
             for attr in cache_attrs
         }
 
-        def _safe_set_sequence_field(
-            field_name: str,
-            default_value: Any = None,
-        ):
-            if field_name not in cache_kwargs:
-                cache_kwargs[field_name] = kwargs.pop(
-                    field_name,
-                    default_value,
-                )
-
-        # Manually set sequence fields
-        _safe_set_sequence_field("calibrator_kwargs", {})
-
         for attr in cache_attrs:
             if attr.name in default_attrs:  # can be empty {}
                 cache_kwargs[attr.name] = default_attrs[attr.name]
@@ -214,13 +201,13 @@ class CachedContextManager:
     def get_max_cached_steps(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.max_cached_steps
+        return cached_context.cache_config.max_cached_steps
 
     @torch.compiler.disable
     def get_max_continuous_cached_steps(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.max_continuous_cached_steps
+        return cached_context.cache_config.max_continuous_cached_steps
 
     @torch.compiler.disable
     def get_continuous_cached_steps(self) -> int:
@@ -311,65 +298,61 @@ class CachedContextManager:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return (
-            cached_context.l1_hidden_states_diff_threshold is not None
-            and cached_context.l1_hidden_states_diff_threshold > 0.0
+            cached_context.cache_config.l1_hidden_states_diff_threshold
+            is not None
+            and cached_context.cache_config.l1_hidden_states_diff_threshold
+            > 0.0
         )
 
     @torch.compiler.disable
     def get_important_condition_threshold(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.important_condition_threshold
-
-    @torch.compiler.disable
-    def non_compute_blocks_diff_threshold(self) -> float:
-        cached_context = self.get_context()
-        assert cached_context is not None, "cached_context must be set before"
-        return cached_context.non_compute_blocks_diff_threshold
+        return cached_context.cache_config.important_condition_threshold
 
     @torch.compiler.disable
     def Fn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         assert (
-            cached_context.Fn_compute_blocks >= 1
+            cached_context.cache_config.Fn_compute_blocks >= 1
         ), "Fn_compute_blocks must be >= 1"
-        if cached_context.max_Fn_compute_blocks > 0:
+        if cached_context.cache_config.max_Fn_compute_blocks > 0:
             # NOTE: Fn_compute_blocks can be 1, which means FB Cache
             # but it must be less than or equal to max_Fn_compute_blocks
             assert (
-                cached_context.Fn_compute_blocks
-                <= cached_context.max_Fn_compute_blocks
+                cached_context.cache_config.Fn_compute_blocks
+                <= cached_context.cache_config.max_Fn_compute_blocks
             ), (
-                f"Fn_compute_blocks must be <= {cached_context.max_Fn_compute_blocks}, "
-                f"but got {cached_context.Fn_compute_blocks}"
+                f"Fn_compute_blocks must be <= {cached_context.cache_config.max_Fn_compute_blocks}, "
+                f"but got {cached_context.cache_config.Fn_compute_blocks}"
             )
-        return cached_context.Fn_compute_blocks
+        return cached_context.cache_config.Fn_compute_blocks
 
     @torch.compiler.disable
     def Bn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         assert (
-            cached_context.Bn_compute_blocks >= 0
+            cached_context.cache_config.Bn_compute_blocks >= 0
         ), "Bn_compute_blocks must be >= 0"
-        if cached_context.max_Bn_compute_blocks > 0:
+        if cached_context.cache_config.max_Bn_compute_blocks > 0:
             # NOTE: Bn_compute_blocks can be 0, which means FB Cache
             # but it must be less than or equal to max_Bn_compute_blocks
             assert (
-                cached_context.Bn_compute_blocks
-                <= cached_context.max_Bn_compute_blocks
+                cached_context.cache_config.Bn_compute_blocks
+                <= cached_context.cache_config.max_Bn_compute_blocks
             ), (
-                f"Bn_compute_blocks must be <= {cached_context.max_Bn_compute_blocks}, "
-                f"but got {cached_context.Bn_compute_blocks}"
+                f"Bn_compute_blocks must be <= {cached_context.cache_config.max_Bn_compute_blocks}, "
+                f"but got {cached_context.cache_config.Bn_compute_blocks}"
             )
-        return cached_context.Bn_compute_blocks
+        return cached_context.cache_config.Bn_compute_blocks
 
     @torch.compiler.disable
     def enable_separate_cfg(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.enable_separate_cfg
+        return cached_context.cache_config.enable_separate_cfg
 
     @torch.compiler.disable
     def is_separate_cfg_step(self) -> bool:
@@ -381,7 +364,7 @@ class CachedContextManager:
     def cfg_diff_compute_separate(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.cfg_diff_compute_separate
+        return cached_context.cache_config.cfg_diff_compute_separate
 
     @torch.compiler.disable
     def similarity(
@@ -719,7 +702,7 @@ class CachedContextManager:
     def get_downsample_factor(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.downsample_factor
+        return cached_context.cache_config.downsample_factor
 
     @torch.compiler.disable
     def can_cache(

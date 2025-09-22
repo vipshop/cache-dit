@@ -9,7 +9,9 @@ from pprint import pprint
 from diffusers import DiffusionPipeline
 
 from typing import Dict, Any, List, Union
+from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import BlockAdapter
+from cache_dit.cache_factory import BasicCacheConfig
 from cache_dit.cache_factory import CalibratorConfig
 from cache_dit.logger import init_logger
 
@@ -162,7 +164,6 @@ def strify(
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, dict):
-        from cache_dit.cache_factory import CacheType
 
         # Assume cache_context_kwargs
         cache_options = adapter_or_others
@@ -180,29 +181,21 @@ def strify(
     if not cache_options:
         return "NONE"
 
+    def basic_cache_str():
+        cache_config: BasicCacheConfig = cache_options.get("cache_config", None)
+        if cache_config is not None:
+            return cache_config.strify()
+        return "NONE"
+
     def calibrator_str():
         calibrator_config: CalibratorConfig = cache_options.get(
             "calibrator_config", None
         )
         if calibrator_config is not None:
             return calibrator_config.strify()
-        taylorseer_order = 0
-        if "taylorseer_order" in cache_options:
-            taylorseer_order = cache_options["taylorseer_order"]
-        return (
-            f"T{int(cache_options.get('enable_taylorseer', False))}"
-            f"O{taylorseer_order}"
-        )
+        return "T0O0"
 
-    cache_type_str = (
-        f"DBCACHE_F{cache_options.get('Fn_compute_blocks', 1)}"
-        f"B{cache_options.get('Bn_compute_blocks', 0)}_"
-        f"W{cache_options.get('max_warmup_steps', 0)}"
-        f"M{max(0, cache_options.get('max_cached_steps', -1))}"
-        f"MC{max(0, cache_options.get('max_continuous_cached_steps', -1))}_"
-        f"{calibrator_str()}_"
-        f"R{cache_options.get('residual_diff_threshold', 0.08)}"
-    )
+    cache_type_str = f"{basic_cache_str()}_{calibrator_str()}"
 
     if cached_steps:
         cache_type_str += f"_S{cached_steps}"

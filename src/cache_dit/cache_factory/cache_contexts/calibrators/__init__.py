@@ -41,8 +41,8 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
 
     def strify(self) -> str:
         if self.taylorseer_order:
-            return f"TaylorSeer_O({self.taylorseer_order})"
-        return "TaylorSeer_O(0)"
+            return f"T1O{self.taylorseer_order}"
+        return "T0O0"
 
     def to_kwargs(self) -> Dict:
         kwargs = self.calibrator_kwargs.copy()

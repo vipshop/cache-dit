@@ -11,6 +11,7 @@ from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 
 from cache_dit.cache_factory.cache_contexts import CachedContext
+from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_contexts import TaylorSeerCalibratorConfig
