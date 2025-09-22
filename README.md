@@ -375,7 +375,7 @@ cache_dit.enable_cache(
     ), 
 )
 ```
-For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](https://github.com/vipshop/cache-dit/raw/main/docs/BlockAdapter.md) for more details.
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md) for more details.
 
 ### 📚Hybird Forward Pattern
 
@@ -447,7 +447,7 @@ For any PATTERN not in {0...5}, we introduced the simple abstract concept of **P
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
@@ -496,7 +496,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
-**DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](https://github.com/vipshop/cache-dit/raw/main/docs/DBCache.md) docs for more design details.
+**DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md) docs for more design details.
 
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
