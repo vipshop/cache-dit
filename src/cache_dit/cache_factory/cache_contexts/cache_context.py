@@ -17,7 +17,8 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class BasicCacheConfig:
-    # Dual Block Cache with flexible FnBn configuration.
+    # Dual Block Cache with Flexible FnBn configuration.
+
     # Fn_compute_blocks: (`int`, *required*, defaults to 8):
     #     Specifies that `DBCache` uses the **first n** Transformer blocks to fit the information
     #     at time step t, enabling the calculation of a more stable L1 diff and delivering more
@@ -78,12 +79,22 @@ class BasicCacheConfig:
 
 @dataclasses.dataclass
 class ExtraCacheConfig:
-    # Some other not very important settings, NOTE: These flags maybe
-    # deprecated in the future and users should never use these extra
-    # configurations.
+    # Some other not very important settings for Dual Block Cache.
+    # NOTE: These flags maybe deprecated in the future and users
+    # should never use these extra configurations in their cases.
+
+    # l1_hidden_states_diff_threshold (`float`, *optional*, defaults to None):
+    #     The hidden states diff threshold for DBCache if use hidden_states as
+    #     cache (not residual).
     l1_hidden_states_diff_threshold: float = None
+    # important_condition_threshold (`float`, *optional*, defaults to 0.0):
+    #     Only select the most important tokens while calculating the l1 diff.
     important_condition_threshold: float = 0.0
+    # downsample_factor (`int`, *optional*, defaults to 1):
+    #     Downsample factor for Fn buffer, in order the save GPU memory.
     downsample_factor: int = 1
+    # num_inference_steps (`int`, *optional*, defaults to -1):
+    #     num_inference_steps for DiffusionPipeline, for future use.
     num_inference_steps: int = -1
 
 

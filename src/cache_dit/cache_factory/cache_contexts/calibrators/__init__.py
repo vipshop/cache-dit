@@ -18,11 +18,25 @@ logger = init_logger(__name__)
 
 
 @dataclasses.dataclass
-class CalibratorConfig:  # no V1
+class CalibratorConfig:
+    # enable_calibrator (`bool`, *required*,  defaults to False):
+    #     Whether to enable calibrator, if True. means that user want to use DBCache
+    #     with specific calibrator for hidden_states (or hidden_states redisual),
+    #     such as taylorseer, foca, and so on.
     enable_calibrator: bool = False
+    # enable_encoder_calibrator (`bool`, *required*,  defaults to False):
+    #     Whether to enable calibrator, if True. means that user want to use DBCache
+    #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
+    #     redisual), such as taylorseer, foca, and so on.
     enable_encoder_calibrator: bool = False
-    calibrator_type: str = "taylorseer"  # taylorseer or foca, etc.
-    calibrator_cache_type: str = "residual"  # residual or hidden_states
+    # calibrator_type (`str`, *required*,  defaults to 'taylorseer'):
+    #    The specific type for calibrator, taylorseer or foca, etc.
+    calibrator_type: str = "taylorseer"
+    # calibrator_cache_type (`str`, *required*,  defaults to 'residual'):
+    #    The specific cache type for calibrator, residual or hidden_states.
+    calibrator_cache_type: str = "residual"
+    # calibrator_kwargs (`dict`, *optional*, defaults to {}):
+    #    Init kwargs for specific calibrator, taylorseer or foca, etc.
     calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def strify(self, **kwargs) -> str:
@@ -34,9 +48,27 @@ class CalibratorConfig:  # no V1
 
 @dataclasses.dataclass
 class TaylorSeerCalibratorConfig(CalibratorConfig):
+    # TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
+    # link: https://arxiv.org/pdf/2503.06923
+
+    # enable_calibrator (`bool`, *required*,  defaults to True):
+    #     Whether to enable calibrator, if True. means that user want to use DBCache
+    #     with specific calibrator for hidden_states (or hidden_states redisual),
+    #     such as taylorseer, foca, and so on.
     enable_calibrator: bool = True
+    # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
+    #     Whether to enable calibrator, if True. means that user want to use DBCache
+    #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
+    #     redisual), such as taylorseer, foca, and so on.
     enable_encoder_calibrator: bool = True
+    # calibrator_type (`str`, *required*,  defaults to 'taylorseer'):
+    #    The specific type for calibrator, taylorseer or foca, etc.
     calibrator_type: str = "taylorseer"
+    # taylorseer_order (`int`, *required*, defaults to 1):
+    #    The order of taylorseer, higher values of n_derivatives will lead to longer computation time,
+    #    the recommended value is 1 or 2. Please check [TaylorSeers: From Reusing to Forecasting:
+    #    Accelerating Diffusion Models with TaylorSeers](https://arxiv.org/pdf/2503.06923) for
+    #    more details.
     taylorseer_order: int = 1
 
     def strify(self, **kwargs) -> str:
@@ -57,8 +89,21 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
 
 @dataclasses.dataclass
 class FoCaCalibratorConfig(CalibratorConfig):
+    # FoCa: Forecast then Calibrate: Feature Caching as ODE for Efficient Diffusion Transformers
+    # link: https://arxiv.org/pdf/2508.16211
+
+    # enable_calibrator (`bool`, *required*,  defaults to True):
+    #     Whether to enable calibrator, if True. means that user want to use DBCache
+    #     with specific calibrator for hidden_states (or hidden_states redisual),
+    #     such as taylorseer, foca, and so on.
     enable_calibrator: bool = True
+    # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
+    #     Whether to enable calibrator, if True. means that user want to use DBCache
+    #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
+    #     redisual), such as taylorseer, foca, and so on.
     enable_encoder_calibrator: bool = True
+    # calibrator_type (`str`, *required*,  defaults to 'taylorseer'):
+    #    The specific type for calibrator, taylorseer or foca, etc.
     calibrator_type: str = "foca"
 
     def strify(self, **kwargs) -> str:
@@ -68,6 +113,7 @@ class FoCaCalibratorConfig(CalibratorConfig):
 class Calibrator:
     _supported_calibrators = [
         "taylorseer",
+        # TODO: FoCa
     ]
 
     def __new__(
