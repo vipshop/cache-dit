@@ -78,23 +78,38 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
     # Apply cache to the pipeline
     if args.cache:
         if args.disable_block_adapter:
+            from cache_dit import (
+                BasicCacheConfig,
+                TaylorSeerCalibratorConfig,
+            )
+
             cache_dit.enable_cache(
                 pipe,
                 # Cache context kwargs
-                Fn_compute_blocks=args.Fn_compute_blocks,
-                Bn_compute_blocks=args.Bn_compute_blocks,
-                max_warmup_steps=args.max_warmup_steps,
-                max_cached_steps=args.max_cached_steps,
-                max_continuous_cached_steps=args.max_continuous_cached_steps,
-                residual_diff_threshold=args.rdt,
-                enable_taylorseer=args.taylorseer,
-                enable_encoder_taylorseer=args.taylorseer,
-                taylorseer_cache_type="residual",
-                taylorseer_order=args.taylorseer_order,
+                cache_config=BasicCacheConfig(
+                    Fn_compute_blocks=args.Fn,
+                    Bn_compute_blocks=args.Bn,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                ),
+                calibrator_config=(
+                    TaylorSeerCalibratorConfig(
+                        taylorseer_order=args.taylorseer_order,
+                    )
+                    if args.taylorseer
+                    else None
+                ),
             )
         else:
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
-            from cache_dit import ForwardPattern, BlockAdapter
+            from cache_dit import (
+                ForwardPattern,
+                BlockAdapter,
+                BasicCacheConfig,
+                TaylorSeerCalibratorConfig,
+            )
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
 
             cache_dit.enable_cache(
@@ -112,16 +127,21 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
                     forward_pattern=ForwardPattern.Pattern_1,
                 ),
                 # Cache context kwargs
-                Fn_compute_blocks=args.Fn_compute_blocks,
-                Bn_compute_blocks=args.Bn_compute_blocks,
-                max_warmup_steps=args.max_warmup_steps,
-                max_cached_steps=args.max_cached_steps,
-                max_continuous_cached_steps=args.max_continuous_cached_steps,
-                residual_diff_threshold=args.rdt,
-                enable_taylorseer=args.taylorseer,
-                enable_encoder_taylorseer=args.taylorseer,
-                taylorseer_cache_type="residual",
-                taylorseer_order=args.taylorseer_order,
+                cache_config=BasicCacheConfig(
+                    Fn_compute_blocks=args.Fn,
+                    Bn_compute_blocks=args.Bn,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                ),
+                calibrator_config=(
+                    TaylorSeerCalibratorConfig(
+                        taylorseer_order=args.taylorseer_order,
+                    )
+                    if args.taylorseer
+                    else None
+                ),
             )
 
     if args.quantize:

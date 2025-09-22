@@ -62,17 +62,22 @@ def main():
     if args.cache or args.cache_config:
         if not args.use_block_adapter:
             if args.cache_config is None:
-                from cache_dit import TaylorSeerCalibratorConfig
+                from cache_dit import (
+                    BasicCacheConfig,
+                    TaylorSeerCalibratorConfig,
+                )
 
                 cache_dit.enable_cache(
                     pipe,
                     # Cache context kwargs
-                    Fn_compute_blocks=args.Fn_compute_blocks,
-                    Bn_compute_blocks=args.Bn_compute_blocks,
-                    max_warmup_steps=args.max_warmup_steps,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
+                    cache_config=BasicCacheConfig(
+                        Fn_compute_blocks=args.Fn,
+                        Bn_compute_blocks=args.Bn,
+                        max_warmup_steps=args.max_warmup_steps,
+                        max_cached_steps=args.max_cached_steps,
+                        max_continuous_cached_steps=args.max_continuous_cached_steps,
+                        residual_diff_threshold=args.rdt,
+                    ),
                     calibrator_config=(
                         TaylorSeerCalibratorConfig(
                             taylorseer_order=args.taylorseer_order,
@@ -90,6 +95,7 @@ def main():
             from cache_dit import (
                 ForwardPattern,
                 BlockAdapter,
+                BasicCacheConfig,
                 TaylorSeerCalibratorConfig,
             )
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
@@ -121,12 +127,14 @@ def main():
                         )
                     ),
                     # Cache context kwargs
-                    Fn_compute_blocks=args.Fn_compute_blocks,
-                    Bn_compute_blocks=args.Bn_compute_blocks,
-                    max_warmup_steps=args.max_warmup_steps,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
+                    cache_config=BasicCacheConfig(
+                        Fn_compute_blocks=args.Fn,
+                        Bn_compute_blocks=args.Bn,
+                        max_warmup_steps=args.max_warmup_steps,
+                        max_cached_steps=args.max_cached_steps,
+                        max_continuous_cached_steps=args.max_continuous_cached_steps,
+                        residual_diff_threshold=args.rdt,
+                    ),
                     calibrator_config=(
                         TaylorSeerCalibratorConfig(
                             taylorseer_order=args.taylorseer_order,

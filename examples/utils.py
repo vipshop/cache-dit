@@ -75,7 +75,7 @@ def cachify(
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,
-                    **kwargs,
+                    enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                 )
                 if specific_cache_config is None
                 else specific_cache_config
