@@ -88,7 +88,9 @@ class CachedContext:
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
     # Basic Dual Block Cache Config
-    cache_config: BasicCacheConfig = BasicCacheConfig()
+    cache_config: BasicCacheConfig = dataclasses.field(
+        default_factory=BasicCacheConfig,
+    )
     # Calibrator config for Dual Block Cache: TaylorSeer, FoCa, etc.
     calibrator_config: Optional[CalibratorConfig] = None
 

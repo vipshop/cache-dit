@@ -24,10 +24,19 @@ pipe = FluxPipeline.from_pretrained(
 
 
 if args.cache:
-    from cache_dit import TaylorSeerCalibratorConfig
+    from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
 
     cache_dit.enable_cache(
         pipe,
+        cache_config=BasicCacheConfig(
+            Fn_compute_blocks=args.Fn,
+            Bn_compute_blocks=args.Bn,
+            max_warmup_steps=args.max_warmup_steps,
+            max_cached_steps=args.max_cached_steps,
+            max_continuous_cached_steps=args.max_continuous_cached_steps,
+            residual_diff_threshold=args.rdt,
+            enable_separate_cfg=False,
+        ),
         calibrator_config=TaylorSeerCalibratorConfig(
             taylorseer_order=1,
         ),

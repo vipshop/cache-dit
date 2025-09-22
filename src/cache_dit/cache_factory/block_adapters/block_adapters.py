@@ -25,7 +25,7 @@ class ParamsModifier:
         cache_config: BasicCacheConfig = None,
         # Calibrator config: TaylorSeerCalibratorConfig, etc.
         calibrator_config: Optional[CalibratorConfig] = None,
-        # Deprecated cache config params. These parameters are now retained
+        # WARNING: Deprecated cache config params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
         Fn_compute_blocks: int = None,
         Bn_compute_blocks: int = None,
@@ -36,7 +36,7 @@ class ParamsModifier:
         enable_separate_cfg: bool = None,
         cfg_compute_first: bool = None,
         cfg_diff_compute_separate: bool = None,
-        # Deprecated taylorseer params. These parameters are now retained
+        # WARNING: Deprecated taylorseer params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
         enable_taylorseer: bool = None,
         enable_encoder_taylorseer: bool = None,
@@ -48,7 +48,7 @@ class ParamsModifier:
         self._context_kwargs = other_cache_context_kwargs.copy()
         self._context_kwargs["cache_type"] = CacheType.DBCache
 
-        # Deprecated cache config params. These parameters are now retained
+        # WARNING: Deprecated cache config params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
         deprecated_cache_kwargs = {
             "Fn_compute_blocks": Fn_compute_blocks,
@@ -67,6 +67,11 @@ class ParamsModifier:
         }
 
         if deprecated_cache_kwargs:
+            logger.warning(
+                "Manually settup DBCache context without BasicCacheConfig is "
+                "deprecated and will be removed in the future, please use "
+                "`cache_config` parameter instead!"
+            )
             if cache_config is not None:
                 cache_config.update(**deprecated_cache_kwargs)
             else:
@@ -74,12 +79,17 @@ class ParamsModifier:
 
         if cache_config is not None:
             self._context_kwargs["cache_config"] = cache_config
-        # Deprecated taylorseer params. These parameters are now retained
+        # WARNING: Deprecated taylorseer params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
         if (
             enable_taylorseer is not None
             or enable_encoder_taylorseer is not None
         ):
+            logger.warning(
+                "Manually settup TaylorSeer calibrator without TaylorSeerCalibratorConfig is "
+                "deprecated and will be removed in the future, please use "
+                "`calibrator_config` parameter instead!"
+            )
             from cache_dit.cache_factory.cache_contexts.calibrators import (
                 TaylorSeerCalibratorConfig,
             )

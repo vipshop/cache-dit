@@ -18,6 +18,7 @@ from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import ParamsModifier
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory import PatchFunctor
+from cache_dit.cache_factory import BasicCacheConfig
 from cache_dit.cache_factory import CalibratorConfig
 from cache_dit.cache_factory import TaylorSeerCalibratorConfig
 from cache_dit.cache_factory import FoCaCalibratorConfig

@@ -116,11 +116,11 @@
 
 ## 🔥News  
 
-- [2025-09-10] 🎉Day 1 support [**HunyuanImage-2.1**](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with **1.7x↑🎉** speedup! Check this [example](./examples/pipeline/run_hunyuan_image_2.1.py).
-- [2025-09-08] 🔥[**Qwen-Image-Lightning**](./examples/pipeline/run_qwen_image_lightning.py) **7.1/3.5 steps🎉** inference with **[DBCache: F16B16](https://github.com/vipshop/cache-dit)**.
-- [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](./examples/pipeline/run_wan_2.2.py) as an example.
-- [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](./examples/pipeline/run_qwen_image_edit.py).
-- [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x↑🎉** speedup! Please refer to [run_qwen_image.py](./examples/pipeline/run_qwen_image.py) as an example.
+- [2025-09-10] 🎉Day 1 support [**HunyuanImage-2.1**](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with **1.7x↑🎉** speedup! Check this [example](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_hunyuan_image_2.1.py).
+- [2025-09-08] 🔥[**Qwen-Image-Lightning**](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_qwen_image_lightning.py) **7.1/3.5 steps🎉** inference with **[DBCache: F16B16](https://github.com/vipshop/cache-dit)**.
+- [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_wan_2.2.py) as an example.
+- [2025-08-19] 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_qwen_image_edit.py).
+- [2025-08-11] 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x↑🎉** speedup! Please refer to [run_qwen_image.py](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_qwen_image.py) as an example.
 - [2025-07-13] 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
 
 <details>
@@ -129,8 +129,8 @@
 - [2025-09-08] 🎉First caching mechanism in [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/ModelTC/Qwen-Image-Lightning/pull/35). 
 - [2025-09-08] 🎉First caching mechanism in [Wan2.2](https://github.com/Wan-Video/Wan2.2) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/Wan-Video/Wan2.2/pull/127) for more details. 
 - [2025-08-12] 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
-- [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](./examples/run_flux_adapter.py) as an example.
-- [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](./examples/pipeline/run_flux_kontext.py) as an example.
+- [2025-09-01] 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples/run_flux_adapter.py) as an example.
+- [2025-08-10] 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_flux_kontext.py) as an example.
 - [2025-07-18] 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 
 </details>
@@ -174,7 +174,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
-Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](./examples/pipeline) for more details. Here are just some of the tested models listed.
+Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline) for more details. Here are just some of the tested models listed.
 
 ```python
 >>> import cache_dit
@@ -229,7 +229,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="benchmarks"></div>
 
-cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](./bench/).
+cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/).
 
 ### 📚Text2Image DrawBench: FLUX.1-dev
 
@@ -245,7 +245,7 @@ Comparisons between different FnBn compute block configurations show that **more
 | F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47x |
 | F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
 
-The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](./bench/) for more details.
+The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](https://github.com/vipshop/cache-dit/raw/main/bench/) for more details.
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
@@ -328,7 +328,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ### ♥️Cache Acceleration with One-line Code
 
-In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](./examples/pipeline/run_qwen_image.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_qwen_image.py) as an example. 
 
 ```python
 import cache_dit
@@ -349,7 +349,7 @@ cache_dit.disable_cache(pipe)
 
 ### 🔥Automatic Block Adapter
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](./examples/adapter/run_qwen_image_adapter.py) as an example.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/raw/main/examples/adapter/run_qwen_image_adapter.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
@@ -375,11 +375,11 @@ cache_dit.enable_cache(
     ), 
 )
 ```
-For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](./docs/BlockAdapter.md) for more details.
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](https://github.com/vipshop/cache-dit/raw/main/docs/BlockAdapter.md) for more details.
 
 ### 📚Hybird Forward Pattern
 
-Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](./examples/adapter/run_flux_adapter.py) as an example.
+Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples/adapter/run_flux_adapter.py) as an example.
 
 ```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
@@ -400,7 +400,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](./examples/pipeline/run_wan_2.2.py) as an example.
+Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_wan_2.2.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier
@@ -439,11 +439,11 @@ cache_dit.enable_cache(
 ```
 ### 📚Implement Patch Functor
 
-For any PATTERN not {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
+For any PATTERN not in {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](./src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
@@ -492,7 +492,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
-**DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](./docs/DBCache.md) docs for more design details.
+**DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](https://github.com/vipshop/cache-dit/raw/main/docs/DBCache.md) docs for more design details.
 
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
@@ -501,23 +501,27 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 import cache_dit
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained(
+pipe_or_adapter = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
 # steps for good balance between performance and precision
-cache_dit.enable_cache(pipe)
+cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
+from cache_dit import BasicCacheConfig
+
 cache_dit.enable_cache(
-    pipe,
-    max_warmup_steps=8,  # steps do not cache
-    max_cached_steps=-1, # -1 means no limit
-    Fn_compute_blocks=8, # Fn, F8, etc.
-    Bn_compute_blocks=8, # Bn, B8, etc.
-    residual_diff_threshold=0.12,
+    pipe_or_adapter,
+    cache_config=BasicCacheConfig(
+        max_warmup_steps=8,  # steps do not cache
+        max_cached_steps=-1, # -1 means no limit
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc.
+        residual_diff_threshold=0.12,
+    ),
 )
 ```  
 
@@ -545,16 +549,18 @@ $$
 **TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
-from cache_dit import TaylorSeerCalibratorConfig
+from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
 
 cache_dit.enable_cache(
-    pipe,
+    pipe_or_adapter,
     # Basic DBCache w/ FnBn configurations
-    max_warmup_steps=8,  # steps do not cache
-    max_cached_steps=-1, # -1 means no limit
-    Fn_compute_blocks=8, # Fn, F8, etc.
-    Bn_compute_blocks=8, # Bn, B8, etc.
-    residual_diff_threshold=0.12,
+    cache_config=BasicCacheConfig(
+        max_warmup_steps=8,  # steps do not cache
+        max_cached_steps=-1, # -1 means no limit
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc.
+        residual_diff_threshold=0.12,
+    ),
     # Then, you can use the TaylorSeer Calibrator to approximate 
     # the values in cached steps, taylorseer_order default is 1.
     calibrator_config=TaylorSeerCalibratorConfig(
@@ -584,22 +590,26 @@ cache_dit.enable_cache(
 cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default, None)**. Otherwise, set it to True. For examples:
 
 ```python
+from cache_dit import BasicCacheConfig
+
 cache_dit.enable_cache(
-    pipe, 
-    ...,
-    # CFG: classifier free guidance or not
-    # For model that fused CFG and non-CFG into single forward step,
-    # should set enable_separate_cfg as False. For example, set it as True 
-    # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-    # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
-    enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
-    # Compute cfg forward first or not, default False, namely, 
-    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-    cfg_compute_first=False,
-    # Compute separate diff values for CFG and non-CFG step, 
-    # default True. If False, we will use the computed diff from 
-    # current non-CFG transformer step for current CFG step.
-    cfg_diff_compute_separate=True,
+    pipe_or_adapter, 
+    cache_config=BasicCacheConfig(
+        ...,
+        # CFG: classifier free guidance or not
+        # For model that fused CFG and non-CFG into single forward step,
+        # should set enable_separate_cfg as False. For example, set it as True 
+        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
+        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
+        # Compute cfg forward first or not, default False, namely, 
+        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
+        cfg_compute_first=False,
+        # Compute separate diff values for CFG and non-CFG step, 
+        # default True. If False, we will use the computed diff from 
+        # current non-CFG transformer step for current CFG step.
+        cfg_diff_compute_separate=True,
+    ),
 )
 ```
 
@@ -621,7 +631,7 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
-Please check [perf.py](./bench/perf.py) for more details.
+Please check [perf.py](https://github.com/vipshop/cache-dit/raw/main/bench/perf.py) for more details.
 
 
 ## 🛠Metrics CLI
@@ -638,16 +648,16 @@ from cache_dit.metrics import compute_lpips
 from cache_dit.metrics import compute_clip_score
 from cache_dit.metrics import compute_image_reward
 
-psnr,       n = compute_psnr("true.png", "test.png") # Num: n
-psnr,       n = compute_psnr("true_dir", "test_dir")
-ssim,       n = compute_ssim("true_dir", "test_dir")
-fid,        n = compute_fid("true_dir", "test_dir")
-lpips,      n = compute_lpips("true_dir", "test_dir")
-clip_score, n = compute_clip_score("DrawBench200.txt", "test_dir")
-reward,     n = compute_image_reward("DrawBench200.txt", "test_dir")
+psnr,   n = compute_psnr("true.png", "test.png") # Num: n
+psnr,   n = compute_psnr("true_dir", "test_dir")
+ssim,   n = compute_ssim("true_dir", "test_dir")
+fid,    n = compute_fid("true_dir", "test_dir")
+lpips,  n = compute_lpips("true_dir", "test_dir")
+clip,   n = compute_clip_score("DrawBench200.txt", "test_dir")
+reward, n = compute_image_reward("DrawBench200.txt", "test_dir")
 ```
 
-Please check [test_metrics.py](./tests/test_metrics.py) for more details. Or, you can use `cache-dit-metrics-cli` tool. For examples: 
+Or, you can use `cache-dit-metrics-cli` tool. For examples: 
 
 ```bash
 cache-dit-metrics-cli -h  # show usage
@@ -659,7 +669,7 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 ## 👋Contribute 
 <div id="contribute"></div>
 
-How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](./CONTRIBUTE.md).
+How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/raw/main/CONTRIBUTE.md).
 
 <div align='center'>
 <a href="https://star-history.com/#vipshop/cache-dit&Date">
