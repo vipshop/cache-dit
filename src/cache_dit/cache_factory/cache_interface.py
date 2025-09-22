@@ -17,24 +17,25 @@ def enable_cache(
         DiffusionPipeline,
         BlockAdapter,
     ],
-    # Cache context kwargs
+    # Basic cache context kwargs
     Fn_compute_blocks: int = 8,
     Bn_compute_blocks: int = 0,
     max_warmup_steps: int = 8,
     max_cached_steps: int = -1,
     max_continuous_cached_steps: int = -1,
     residual_diff_threshold: float = 0.08,
-    # Cache CFG or not
     enable_separate_cfg: bool = None,
     cfg_compute_first: bool = False,
     cfg_diff_compute_separate: bool = True,
-    # Hybird TaylorSeer
-    enable_taylorseer: bool = False,
-    enable_encoder_taylorseer: bool = False,
+    # calibrator config: TaylorSeerCalibratorConfig, etc.
+    calibrator_config: Optional[CalibratorConfig] = None,
+    # Deprecated taylorseer params. These parameters are now retained
+    # for backward compatibility but will be removed in the future.
+    enable_taylorseer: bool = None,
+    enable_encoder_taylorseer: bool = None,
     taylorseer_cache_type: str = "residual",
     taylorseer_order: int = 1,
-    # New param only for v2 API
-    calibrator_config: Optional[CalibratorConfig] = None,
+    # Other cache context kwargs
     **other_cache_context_kwargs,
 ) -> Union[
     DiffusionPipeline,
@@ -137,14 +138,19 @@ def enable_cache(
 
     # V1 only supports the Taylorseer calibrator. We have decided to
     # keep this code for API compatibility reasons.
-    if calibrator_config is None:
-        cache_context_kwargs["enable_taylorseer"] = enable_taylorseer
-        cache_context_kwargs["enable_encoder_taylorseer"] = (
-            enable_encoder_taylorseer
+    if enable_taylorseer is not None or enable_encoder_taylorseer is not None:
+        from cache_dit.cache_factory.cache_contexts.calibrators import (
+            TaylorSeerCalibrator,
         )
-        cache_context_kwargs["taylorseer_cache_type"] = taylorseer_cache_type
-        cache_context_kwargs["taylorseer_order"] = taylorseer_order
-    else:
+
+        calibrator_config = TaylorSeerCalibrator(
+            enable_taylorseer=enable_taylorseer,
+            enable_encoder_taylorseer=enable_encoder_taylorseer,
+            taylorseer_cache_type=taylorseer_cache_type,
+            taylorseer_order=taylorseer_order,
+        )
+
+    if calibrator_config is not None:
         cache_context_kwargs["calibrator_config"] = calibrator_config
 
     if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
