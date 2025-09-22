@@ -12,8 +12,8 @@
       <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
-      <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg >
  </div>
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
