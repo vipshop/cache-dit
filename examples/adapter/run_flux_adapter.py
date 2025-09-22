@@ -50,20 +50,20 @@ if args.cache:
                     ForwardPattern.Pattern_1,
                     ForwardPattern.Pattern_1,
                 ],
+                params_modifiers=[
+                    ParamsModifier(
+                        cache_config=BasicCacheConfig(
+                            residual_diff_threshold=0.12,
+                        ),
+                    ),
+                    ParamsModifier(
+                        cache_config=BasicCacheConfig(
+                            Fn_compute_blocks=1,
+                            residual_diff_threshold=0.25,
+                        ),
+                    ),
+                ],
             ),
-            params_modifiers=[
-                ParamsModifier(
-                    cache_config=BasicCacheConfig(
-                        residual_diff_threshold=0.12,
-                    ),
-                ),
-                ParamsModifier(
-                    cache_config=BasicCacheConfig(
-                        Fn_compute_blocks=1,
-                        residual_diff_threshold=0.25,
-                    ),
-                ),
-            ],
         )
 
     else:
@@ -81,20 +81,20 @@ if args.cache:
                     ForwardPattern.Pattern_1,
                     ForwardPattern.Pattern_3,
                 ],
+                params_modifiers=[
+                    ParamsModifier(
+                        cache_config=BasicCacheConfig(
+                            residual_diff_threshold=0.12,
+                        ),
+                    ),
+                    ParamsModifier(
+                        cache_config=BasicCacheConfig(
+                            Fn_compute_blocks=1,
+                            residual_diff_threshold=0.25,
+                        ),
+                    ),
+                ],
             ),
-            params_modifiers=[
-                ParamsModifier(
-                    cache_config=BasicCacheConfig(
-                        residual_diff_threshold=0.12,
-                    ),
-                ),
-                ParamsModifier(
-                    cache_config=BasicCacheConfig(
-                        Fn_compute_blocks=1,
-                        residual_diff_threshold=0.25,
-                    ),
-                ),
-            ],
         )
 
 
