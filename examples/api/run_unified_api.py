@@ -35,10 +35,13 @@ if args.cache:
             max_cached_steps=args.max_cached_steps,
             max_continuous_cached_steps=args.max_continuous_cached_steps,
             residual_diff_threshold=args.rdt,
-            enable_separate_cfg=False,
         ),
-        calibrator_config=TaylorSeerCalibratorConfig(
-            taylorseer_order=1,
+        calibrator_config=(
+            TaylorSeerCalibratorConfig(
+                taylorseer_order=args.taylorseer_order,
+            )
+            if args.taylorseer
+            else None
         ),
     )
     print(cache_dit.strify(pipe))

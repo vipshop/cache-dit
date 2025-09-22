@@ -35,16 +35,20 @@ class ParamsModifier:
         # for backward compatibility but will be removed in the future.
         deprecated_cache_kwargs = {
             "Fn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
-            "Bn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
-            "max_warmup_steps": kwargs.get("Fn_compute_blocks", None),
-            "max_cached_steps": kwargs.get("Fn_compute_blocks", None),
+            "Bn_compute_blocks": kwargs.get("Bn_compute_blocks", None),
+            "max_warmup_steps": kwargs.get("max_warmup_steps", None),
+            "max_cached_steps": kwargs.get("max_cached_steps", None),
             "max_continuous_cached_steps": kwargs.get(
-                "Fn_compute_blocks", None
+                "max_continuous_cached_steps", None
             ),
-            "residual_diff_threshold": kwargs.get("Fn_compute_blocks", None),
-            "enable_separate_cfg": kwargs.get("Fn_compute_blocks", None),
-            "cfg_compute_first": kwargs.get("Fn_compute_blocks", None),
-            "cfg_diff_compute_separate": kwargs.get("Fn_compute_blocks", None),
+            "residual_diff_threshold": kwargs.get(
+                "residual_diff_threshold", None
+            ),
+            "enable_separate_cfg": kwargs.get("enable_separate_cfg", None),
+            "cfg_compute_first": kwargs.get("cfg_compute_first", None),
+            "cfg_diff_compute_separate": kwargs.get(
+                "cfg_diff_compute_separate", None
+            ),
         }
 
         deprecated_cache_kwargs = {
