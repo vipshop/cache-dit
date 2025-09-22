@@ -265,9 +265,9 @@ class CachedContextManager:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return (
-            cached_context.cache_config.l1_hidden_states_diff_threshold
+            cached_context.extra_cache_config.l1_hidden_states_diff_threshold
             is not None
-            and cached_context.cache_config.l1_hidden_states_diff_threshold
+            and cached_context.extra_cache_config.l1_hidden_states_diff_threshold
             > 0.0
         )
 
@@ -275,7 +275,7 @@ class CachedContextManager:
     def get_important_condition_threshold(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.cache_config.important_condition_threshold
+        return cached_context.extra_cache_config.important_condition_threshold
 
     @torch.compiler.disable
     def Fn_compute_blocks(self) -> int:
@@ -649,7 +649,7 @@ class CachedContextManager:
     def get_downsample_factor(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.cache_config.downsample_factor
+        return cached_context.extra_cache_config.downsample_factor
 
     @torch.compiler.disable
     def can_cache(

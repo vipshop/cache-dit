@@ -59,12 +59,6 @@ class BasicCacheConfig:
     #     use the computed diff from current non-CFG transformer step for current CFG step.
     cfg_diff_compute_separate: bool = True
 
-    # Some other not very important settings (NOTE: maybe deprecated in the future)
-    l1_hidden_states_diff_threshold: float = None
-    important_condition_threshold: float = 0.0
-    downsample_factor: int = 1
-    num_inference_steps: int = -1
-
     def update(self, **kwargs) -> "BasicCacheConfig":
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -83,6 +77,17 @@ class BasicCacheConfig:
 
 
 @dataclasses.dataclass
+class ExtraCacheConfig:
+    # Some other not very important settings, NOTE: These flags maybe
+    # deprecated in the future and users should never use these extra
+    # configurations.
+    l1_hidden_states_diff_threshold: float = None
+    important_condition_threshold: float = 0.0
+    downsample_factor: int = 1
+    num_inference_steps: int = -1
+
+
+@dataclasses.dataclass
 class CachedContext:
     name: str = "default"
     # Buffer for storing the residuals and other tensors
@@ -91,9 +96,14 @@ class CachedContext:
     cache_config: BasicCacheConfig = dataclasses.field(
         default_factory=BasicCacheConfig,
     )
+    # NOTE: Users should never use these extra configurations.
+    extra_cache_config: ExtraCacheConfig = dataclasses.field(
+        default_factory=ExtraCacheConfig,
+    )
     # Calibrator config for Dual Block Cache: TaylorSeer, FoCa, etc.
     calibrator_config: Optional[CalibratorConfig] = None
 
+    # Calibrators for both CFG and non-CFG
     calibrator: Optional[CalibratorBase] = None
     encoder_calibrator: Optional[CalibratorBase] = None
     cfg_calibrator: Optional[CalibratorBase] = None
@@ -166,10 +176,10 @@ class CachedContext:
 
     def get_residual_diff_threshold(self):
         residual_diff_threshold = self.cache_config.residual_diff_threshold
-        if self.cache_config.l1_hidden_states_diff_threshold is not None:
+        if self.extra_cache_config.l1_hidden_states_diff_threshold is not None:
             # Use the L1 hidden states diff threshold if set
             residual_diff_threshold = (
-                self.cache_config.l1_hidden_states_diff_threshold
+                self.extra_cache_config.l1_hidden_states_diff_threshold
             )
         if isinstance(residual_diff_threshold, torch.Tensor):
             residual_diff_threshold = residual_diff_threshold.item()

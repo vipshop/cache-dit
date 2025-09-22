@@ -86,7 +86,13 @@ def enable_cache(
             Config for calibrator, if calibrator_config is not None, means that user want to use DBCache
             with specific calibrator, such as taylorseer, foca, and so on.
         params_modifiers ('ParamsModifier', *optional*, defaults to None):
-            Modify cache context params for specific blocks.
+            Modify cache context params for specific blocks. The configurable params listed belows:
+                cache_config (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
+                    The same as 'cache_config' param in cache_dit.enable_cache() interface.
+                calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
+                    The same as 'calibrator_config' param in cache_dit.enable_cache() interface.
+                **kwargs: (`dict`, *optional*, defaults to {}):
+                    The same as 'kwargs' param in cache_dit.enable_cache() interface.
         kwargs: (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
