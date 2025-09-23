@@ -9,10 +9,6 @@ from cache_dit.cache_factory.cache_contexts.cache_manager import (
     CachedContextManager,
 )
 from cache_dit.cache_factory import ForwardPattern
-from cache_dit.cache_factory.cache_blocks.offload_utils import (
-    maybe_onload,
-    maybe_offload,
-)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -320,21 +316,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         **kwargs,
     ):
         for block in self._Fn_blocks():
-            # hidden_states = block(
-            #     hidden_states,
-            #     encoder_hidden_states,
-            #     *args,
-            #     **kwargs,
-            # )
-            with maybe_onload(
-                block, hidden_states, self.pending_tasks
-            ) as synced_block:
-                hidden_states = synced_block(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
+            hidden_states = block(
+                hidden_states,
+                encoder_hidden_states,
+                *args,
+                **kwargs,
+            )
             if not isinstance(hidden_states, torch.Tensor):
                 hidden_states, encoder_hidden_states = hidden_states
                 if not self.forward_pattern.Return_H_First:
@@ -343,7 +330,6 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                         hidden_states,
                     )
 
-        maybe_offload(self.pending_tasks)
         return hidden_states, encoder_hidden_states
 
     def call_Mn_blocks(
@@ -356,21 +342,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
         for block in self._Mn_blocks():
-            # hidden_states = block(
-            #     hidden_states,
-            #     encoder_hidden_states,
-            #     *args,
-            #     **kwargs,
-            # )
-            with maybe_onload(
-                block, hidden_states, self.pending_tasks
-            ) as synced_block:
-                hidden_states = synced_block(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
+            hidden_states = block(
+                hidden_states,
+                encoder_hidden_states,
+                *args,
+                **kwargs,
+            )
             if not isinstance(hidden_states, torch.Tensor):
                 hidden_states, encoder_hidden_states = hidden_states
                 if not self.forward_pattern.Return_H_First:
@@ -395,7 +372,6 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         else:
             encoder_hidden_states_residual = None
 
-        maybe_offload(self.pending_tasks)
         return (
             hidden_states,
             encoder_hidden_states,
@@ -414,21 +390,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             return hidden_states, encoder_hidden_states
 
         for block in self._Bn_blocks():
-            # hidden_states = block(
-            #     hidden_states,
-            #     encoder_hidden_states,
-            #     *args,
-            #     **kwargs,
-            # )
-            with maybe_onload(
-                block, hidden_states, self.pending_tasks
-            ) as synced_block:
-                hidden_states = synced_block(
-                    hidden_states,
-                    encoder_hidden_states,
-                    *args,
-                    **kwargs,
-                )
+            hidden_states = block(
+                hidden_states,
+                encoder_hidden_states,
+                *args,
+                **kwargs,
+            )
             if not isinstance(hidden_states, torch.Tensor):
                 hidden_states, encoder_hidden_states = hidden_states
                 if not self.forward_pattern.Return_H_First:
@@ -437,5 +404,4 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                         hidden_states,
                     )
 
-        maybe_offload(self.pending_tasks)
         return hidden_states, encoder_hidden_states

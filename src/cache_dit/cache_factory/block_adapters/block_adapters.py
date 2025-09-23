@@ -73,7 +73,7 @@ class BlockAdapter:
         ]
     ] = None
 
-    check_forward_pattern: bool = True
+    check_forward_pattern: bool = False
     check_num_outputs: bool = False
 
     # Pipeline Level Flags
@@ -113,6 +113,13 @@ class BlockAdapter:
         if any((self.pipe is not None, self.transformer is not None)):
             self.maybe_fill_attrs()
             self.maybe_patchify()
+            self.maybe_skip_checks()
+
+    def maybe_skip_checks(self):
+        if getattr(self.transformer, "_hf_hook", None) is not None:
+            logger.warning("_hf_hook is not None, force skip pattern check!")
+            self.check_forward_pattern = False
+            self.check_num_outputs = False
 
     def maybe_fill_attrs(self):
         # NOTE: This func should be call before normalize.

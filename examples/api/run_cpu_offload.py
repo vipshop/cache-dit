@@ -48,12 +48,16 @@ if torch.cuda.device_count() <= 1:
         pipe.enable_sequential_cpu_offload()
     elif args.offload_type == "group":
         print("Enabled Group Offload")
-        # NOTE: cache-dit is not compatible with group offload now.
         pipe.enable_group_offload(
             onload_device=torch.device("cuda"),
             offload_device=torch.device("cpu"),
-            offload_type="leaf_level",
+            offload_type="block_level",
+            num_blocks_per_group=1,
             use_stream=True,
+            record_stream=True,
+            exclude_modules=[
+                "vae",
+            ],
         )
 
 if args.cache and args.cache_after_offload:

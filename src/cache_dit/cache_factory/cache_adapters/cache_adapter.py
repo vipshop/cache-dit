@@ -330,8 +330,18 @@ class CachedAdapter:
 
         assert isinstance(dummy_blocks_names, list)
 
+        _hf_hook = None
+        if getattr(transformer, "_hf_hook", None) is not None:
+            _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
+
         @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
+            # Compatible with model cpu offload
+            if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
+                args, kwargs = _hf_hook.pre_forward(
+                    transformer, *args, **kwargs
+                )
+
             with ExitStack() as stack:
                 for name, context_name in zip(
                     blocks_name,
@@ -348,7 +358,13 @@ class CachedAdapter:
                             self, dummy_name, dummy_blocks
                         )
                     )
-                return original_forward(*args, **kwargs)
+                outputs = original_forward(*args, **kwargs)
+
+            # Compatible with model cpu offload
+            if _hf_hook is not None and hasattr(_hf_hook, "post_forward"):
+                outputs = _hf_hook.post_forward(transformer, outputs)
+
+            return outputs
 
         transformer.forward = new_forward.__get__(
             transformer, transformer.__class__

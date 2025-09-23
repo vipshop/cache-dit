@@ -1,19 +1,26 @@
 import torch
-from contextlib import contextmanager
 import asyncio
-from typing import Generator, Optional, Tuple, List
+import logging
+from contextlib import contextmanager
+from typing import Generator, Optional, List
+from diffusers.hooks.group_offloading import _is_group_offload_enabled
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
+@torch.compiler.disable
 @contextmanager
 def maybe_onload(
     block: torch.nn.Module,
     reference_tensor: torch.Tensor,
     pending_tasks: List[asyncio.Task] = [],
-) -> Generator[Tuple[torch.nn.Module, Optional[asyncio.Task]], None, None]:
-    # TODO: Support fine-grained async block onload/offload
+) -> Generator:
+
+    if not _is_group_offload_enabled(block):
+        yield block
+        return
+
     original_devices: Optional[List[torch.device]] = None
     if hasattr(block, "parameters"):
         params = list(block.parameters())
@@ -27,10 +34,19 @@ def maybe_onload(
     try:
         if original_devices is not None:
             unique_devices = list(set(original_devices))
-            print(unique_devices, target_device)
             if len(unique_devices) > 1 or unique_devices[0] != target_device:
-                print("Onloading")
-                block = block.to(target_device, non_blocking=False)
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        f"Onloading from {unique_devices} to {target_device}"
+                    )
+
+                has_meta_params = any(
+                    dev.type == "meta" for dev in original_devices
+                )
+                if has_meta_params:  # compatible with sequential cpu offload
+                    block = block.to_empty(device=target_device)
+                else:
+                    block = block.to(target_device, non_blocking=False)
                 need_restore = True
         yield block
     finally:
@@ -78,6 +94,7 @@ def get_event_loop() -> asyncio.AbstractEventLoop:
     return loop
 
 
+@torch.compiler.disable
 def maybe_offload(
     pending_tasks: List[asyncio.Task],
 ) -> None:
