@@ -6,8 +6,12 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
-from utils import get_args, strify, cachify
+from utils import GiB, get_args, strify, cachify
 import cache_dit
+
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
 
 
 parser = get_args(parse=False)
@@ -23,7 +27,7 @@ parser.add_argument(
     default=False,
 )
 args = parser.parse_args()
-print(args)
+logger.info(args)
 
 
 pipe = QwenImagePipeline.from_pretrained(
@@ -32,22 +36,26 @@ pipe = QwenImagePipeline.from_pretrained(
         "Qwen/Qwen-Image",
     ),
     torch_dtype=torch.bfloat16,
+    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
+    device_map=(
+        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
+    ),
 )
 
 if args.cache and not args.cache_after_offload:
-    print("Enabled Cache before offload")
+    logger.info("Enabled Cache before offload")
     cachify(args, pipe)
 
 if torch.cuda.device_count() <= 1:
     # Enable memory savings
     if args.offload_type == "model":
-        print("Enabled Model CPU Offload")
+        logger.info("Enabled Model CPU Offload")
         pipe.enable_model_cpu_offload()
     elif args.offload_type == "sequential":
-        print("Enabled Sequential CPU Offload")
+        logger.info("Enabled Sequential CPU Offload")
         pipe.enable_sequential_cpu_offload()
     elif args.offload_type == "group":
-        print("Enabled Group Offload")
+        logger.info("Enabled Group Offload")
         pipe.enable_group_offload(
             onload_device=torch.device("cuda"),
             offload_device=torch.device("cpu"),
@@ -61,7 +69,8 @@ if torch.cuda.device_count() <= 1:
         )
 
 if args.cache and args.cache_after_offload:
-    print("Enabled Cache after offload")
+    logger.info("Enabled Cache after offload")
+    # WARN: cache after group offload still not work.
     cachify(args, pipe)
 
 positive_magic = {
@@ -140,6 +149,6 @@ stats = cache_dit.summary(pipe)
 
 time_cost = end - start
 save_path = f"qwen-image.{strify(args, stats)}.png"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving image to {save_path}")
+logger.info(f"Time cost: {time_cost:.2f}s")
+logger.info(f"Saving image to {save_path}")
 image.save(save_path)

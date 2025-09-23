@@ -73,7 +73,7 @@ class BlockAdapter:
         ]
     ] = None
 
-    check_forward_pattern: bool = False
+    check_forward_pattern: bool = True
     check_num_outputs: bool = False
 
     # Pipeline Level Flags
@@ -118,6 +118,12 @@ class BlockAdapter:
     def maybe_skip_checks(self):
         if getattr(self.transformer, "_hf_hook", None) is not None:
             logger.warning("_hf_hook is not None, force skip pattern check!")
+            self.check_forward_pattern = False
+            self.check_num_outputs = False
+        elif getattr(self.transformer, "_diffusers_hook", None) is not None:
+            logger.warning(
+                "_diffusers_hook is not None, force skip pattern check!"
+            )
             self.check_forward_pattern = False
             self.check_num_outputs = False
 

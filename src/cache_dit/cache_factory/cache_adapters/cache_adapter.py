@@ -1,10 +1,8 @@
 import torch
-
 import unittest
 import functools
-
 from contextlib import ExitStack
-from typing import Dict, List, Tuple, Any, Union, Callable
+from typing import Dict, List, Tuple, Any, Union, Callable, Optional
 
 from diffusers import DiffusionPipeline
 
@@ -330,18 +328,14 @@ class CachedAdapter:
 
         assert isinstance(dummy_blocks_names, list)
 
-        _hf_hook = None
+        from accelerate import hooks
+
+        _hf_hook: Optional[hooks.ModelHook] = None
+
         if getattr(transformer, "_hf_hook", None) is not None:
             _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
 
-        @functools.wraps(original_forward)
         def new_forward(self, *args, **kwargs):
-            # Compatible with model cpu offload
-            if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
-                args, kwargs = _hf_hook.pre_forward(
-                    transformer, *args, **kwargs
-                )
-
             with ExitStack() as stack:
                 for name, context_name in zip(
                     blocks_name,
@@ -359,16 +353,26 @@ class CachedAdapter:
                         )
                     )
                 outputs = original_forward(*args, **kwargs)
+            return outputs
 
+        def new_forward_with_hf_hook(self, *args, **kwargs):
             # Compatible with model cpu offload
+            if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
+                args, kwargs = _hf_hook.pre_forward(self, *args, **kwargs)
+
+            outputs = new_forward(self, *args, **kwargs)
+
             if _hf_hook is not None and hasattr(_hf_hook, "post_forward"):
-                outputs = _hf_hook.post_forward(transformer, outputs)
+                outputs = _hf_hook.post_forward(self, outputs)
 
             return outputs
 
-        transformer.forward = new_forward.__get__(
-            transformer, transformer.__class__
+        # NOTE: Still can't fully compatible with group offloading
+        transformer.forward = functools.update_wrapper(
+            functools.partial(new_forward_with_hf_hook, transformer),
+            new_forward_with_hf_hook,
         )
+
         transformer._original_forward = original_forward
         transformer._is_cached = True
 
