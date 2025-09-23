@@ -27,7 +27,9 @@ def maybe_onload(
     try:
         if original_devices is not None:
             unique_devices = list(set(original_devices))
+            print(unique_devices, target_device)
             if len(unique_devices) > 1 or unique_devices[0] != target_device:
+                print("Onloading")
                 block = block.to(target_device, non_blocking=False)
                 need_restore = True
         yield block
@@ -68,11 +70,9 @@ def get_event_loop() -> asyncio.AbstractEventLoop:
 
         import threading
 
-        if not any(
-            t.name == "_async_cache_loop" for t in threading.enumerate()
-        ):
+        if not any(t.name == "_my_loop" for t in threading.enumerate()):
             threading.Thread(
-                target=run_loop, name="_async_cache_loop", daemon=True
+                target=run_loop, name="_my_loop", daemon=True
             ).start()
 
     return loop

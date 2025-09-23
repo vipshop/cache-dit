@@ -350,7 +350,9 @@ class CachedAdapter:
                     )
                 return original_forward(*args, **kwargs)
 
-        transformer.forward = new_forward.__get__(transformer)
+        transformer.forward = new_forward.__get__(
+            transformer, transformer.__class__
+        )
         transformer._original_forward = original_forward
         transformer._is_cached = True
 
