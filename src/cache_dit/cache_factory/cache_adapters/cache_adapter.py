@@ -335,6 +335,12 @@ class CachedAdapter:
         if getattr(transformer, "_hf_hook", None) is not None:
             _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
 
+        # TODO: remove group offload hooks the re-apply after cache applied.
+        # hooks = _diffusers_hook.hooks.copy(); _diffusers_hook.hooks.clear()
+        # re-apply hooks to transformer after cache applied.
+        # from diffusers.hooks.hooks import HookFunctionReference, HookRegistry
+        # from diffusers.hooks.group_offloading import apply_group_offloading
+
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
                 for name, context_name in zip(
