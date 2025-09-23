@@ -39,6 +39,7 @@ For a complete benchmark, please refer to [Benchmarks](https://github.com/vipsho
 ## Unified Cache API
 
 CacheDiT works by matching specific input/output patterns as shown below.
+
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
 
