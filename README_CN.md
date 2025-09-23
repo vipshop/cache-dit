@@ -243,7 +243,7 @@ cache-dit 的工作原理是匹配如下所示的特定输入/输出模式。
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
-**DBCache**：面向Diffusion Transformers的**双向对偶缓存（Dual Block Caching）** 技术。在DBCache中可自定义计算块的不同配置（如**F8B12**等），实现性能与精度之间的平衡权衡。此外，它完全可实现**无训练（training-free）** 部署。设计详情请查看文档 [🎉User_Guide.md](./docs/User_Guide.md)。
+**DBCache**：面向Diffusion Transformers的**双向对偶缓存（Dual Block Caching）** 技术。在DBCache中可自定义计算块的不同配置（如**F8B12**等），实现性能与精度之间的平衡权衡。此外，它完全可实现**无训练（training-free）** 部署。查阅 [DBCache](https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md) 和 [User Guide](https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md#dbcache) 文档以获取更多设计细节。
 
 ```python
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
@@ -265,7 +265,6 @@ cache_dit.enable_cache(
 )
 ```  
 
-查阅 [DBCache](https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md) 和 [User Guide](https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md#dbcache) 文档以获取更多设计细节。
 
 ## 🔥泰勒展开校准器
 
