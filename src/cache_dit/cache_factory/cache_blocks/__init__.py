@@ -12,6 +12,10 @@ from cache_dit.cache_factory.cache_blocks.pattern_0_1_2 import (
 from cache_dit.cache_factory.cache_blocks.pattern_3_4_5 import (
     CachedBlocks_Pattern_3_4_5,
 )
+from cache_dit.cache_factory.cache_blocks.pattern_utils import (
+    patch_cached_stats,
+    remove_cached_stats,
+)
 
 from cache_dit.logger import init_logger
 
