@@ -136,7 +136,9 @@
 - [⚙️安装依赖](#️installation)
 - [🔥快速开始](#quick-start)
 - [📚前向模式匹配](#forward-pattern-matching)
-- [📚双向对偶缓存](#dbcache)
+- [⚡️双向对偶缓存](#dbcache)
+- [🔥泰勒展开校准器](#taylorseer)
+- [📚混合CFG缓存](#cfg)
 - [🔥性能数据](#benchmarks)
 - [🎉用户指引](#user-guide)
 - [©️引用我们](#citations)
@@ -180,7 +182,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="forward-pattern-matching"></div>  
 
-目前，对于任何带有符合特定**输入/输出模式**的**Transformer块**的**Diffusion**模型，都可以使用**cache-dit**提供的**统一缓存API**，即`cache_dit.enable_cache(...)`接口。**统一缓存API**目前处于实验阶段，敬请关注后续更新。支持的模式如下：
+cache-dit 的工作原理是匹配如下所示的特定输入/输出模式。
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
@@ -244,30 +246,82 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 **DBCache**：面向Diffusion Transformers的**双向对偶缓存（Dual Block Caching）** 技术。在DBCache中可自定义计算块的不同配置（如**F8B12**等），实现性能与精度之间的平衡权衡。此外，它完全可实现**无训练（training-free）** 部署。设计详情请查看文档 [🎉User_Guide.md](./docs/User_Guide.md)。
 
 ```python
->>> import cache_dit
->>> from cache_dit import BasicCacheConfig
-# Default options, F8B0, 8 warmup steps, and unlimited cached steps
-# for good balance between performance and precision
->>> cache_dit.enable_cache(pipe_or_adapter)
+# Default options, F8B0, 8 warmup steps, and unlimited cached 
+# steps for good balance between performance and precision
+cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
->>> cache_dit.enable_cache(
-...     pipe_or_adapter,
-...     cache_config=BasicCacheConfig(
-...         max_warmup_steps=8,  # steps do not cache
-...         max_cached_steps=-1, # -1 means no limit
-...         Fn_compute_blocks=8, # Fn, F8, etc.
-...         Bn_compute_blocks=8, # Bn, B8, etc.
-...         residual_diff_threshold=0.12,
-...     ),
-... )
+from cache_dit import BasicCacheConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter,
+    cache_config=BasicCacheConfig(
+        max_warmup_steps=8,  # steps do not cache
+        max_cached_steps=-1, # -1 means no limit
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc.
+        residual_diff_threshold=0.12,
+    ),
+)
 ```  
+
+查阅 [DBCache](https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md) 和 [User Guide](https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md#dbcache) 文档以获取更多设计细节。
+
+## 🔥泰勒展开校准器
+
+<div id="taylorseer"></div>
+
+[TaylorSeers](https://huggingface.co/papers/2503.06923) 算法可在缓存步长较大的场景下进一步提升 DBCache 的精度（即混合 TaylorSeer + DBCache 方案）；由于在时间步间隔较大时，扩散模型中的特征相似度会大幅下降，严重影响生成质量，TaylorSeers 遂采用微分方法近似特征的高阶导数，并通过泰勒级数展开来预测未来时间步的特征，且 CacheDiT 中实现的 TaylorSeers 支持隐藏状态和残差两种缓存类型，F_pred 既可以是残差缓存，也可以是隐藏状态缓存。
+
+```python
+from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter,
+    # Basic DBCache w/ FnBn configurations
+    cache_config=BasicCacheConfig(
+        max_warmup_steps=8,  # steps do not cache
+        max_cached_steps=-1, # -1 means no limit
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc.
+        residual_diff_threshold=0.12,
+    ),
+    # Then, you can use the TaylorSeer Calibrator to approximate 
+    # the values in cached steps, taylorseer_order default is 1.
+    calibrator_config=TaylorSeerCalibratorConfig(
+        taylorseer_order=1,
+    ),
+)
+``` 
+
+> [!TIP]  
+> 若使用 TaylorSeer 作为校准器来近似隐藏状态，可将 DBCache 的 `Bn_compute_blocks` 参数设为 `0`；DBCache 的 `Bn_compute_blocks` 本身也可充当校准器，因此你可选择 `Bn_compute_blocks` > 0 的模式，或选择 TaylorSeer。我们建议采用 TaylorSeer + DBCache FnB0 的配置方案。
+
+## 📚混合CFG缓存
+
+<div id="cfg"></div>
+
+cache-dit 支持对 CFG（classifier-free guidance）的缓存功能。对于将 CFG 与非 CFG 融合在单个前向传播步骤中的模型，或在前向传播步骤中不包含 CFG（classifier-free guidance）的模型，请将 `enable_separate_cfg` 参数设置为 `False（默认值，或 None）`；否则，请将其设置为 `True`。
+
+```python
+from cache_dit import BasicCacheConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=BasicCacheConfig(
+        ...,
+        # For example, set it as True for Wan 2.1/Qwen-Image 
+        # and set it as False for FLUX.1, HunyuanVideo, CogVideoX, etc.
+        enable_separate_cfg=True,
+    ),
+)
+```
 
 ## 🔥性能数据
 
 <div id="benchmarks"></div>
 
-**cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/)。
+**cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/)。
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
@@ -331,28 +385,27 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 对于更高级的功能，如**Unified Cache APIs**、**Forward Pattern Matching**、**Automatic Block Adapter**、**Hybrid Forward Pattern**、**DBCache**、**TaylorSeer Calibrator**和**Hybrid Cache CFG**，详情请参考[🎉User_Guide.md](./docs/User_Guide.md)。
 
-- [⚙️Installation](./docs/User_Guide.md)
-- [🔥Benchmarks](./docs/User_Guide.md)
-- [🔥Supported Pipelines](./docs/User_Guide.md)
-- [🎉Unified Cache APIs](./docs/User_Guide.md)
-  - [📚Forward Pattern Matching](./docs/User_Guide.md)
-  - [📚Cache with One-line Code](./docs/User_Guide.md)
-  - [🔥Automatic Block Adapter](./docs/User_Guide.md)
-  - [📚Hybird Forward Pattern](./docs/User_Guide.md)
-  - [📚Implement Patch Functor](./docs/User_Guide.md)
-  - [🤖Cache Acceleration Stats](./docs/User_Guide.md)
-- [⚡️Dual Block Cache](./docs/User_Guide.md)
-- [🔥TaylorSeer Calibrator](./docs/User_Guide.md)
-- [⚡️Hybrid Cache CFG](./docs/User_Guide.md)
-- [⚙️Torch Compile](./docs/User_Guide.md)
-- [🛠Metrics CLI](./docs/User_Guide.md)
-- [📚API Documents](./docs/User_Guide.md)
-
+- [⚙️Installation](./docs/User_Guide.md#️installation)
+- [🔥Benchmarks](./docs/User_Guide.md#benchmarks)
+- [🔥Supported Pipelines](./docs/User_Guide.md#supported-pipelines)
+- [🎉Unified Cache APIs](./docs/User_Guide.md#unified-cache-apis)
+  - [📚Forward Pattern Matching](./docs/User_Guide.md#forward-pattern-matching)
+  - [📚Cache with One-line Code](./docs/User_Guide.md#%EF%B8%8Fcache-acceleration-with-one-line-code)
+  - [🔥Automatic Block Adapter](./docs/User_Guide.md#automatic-block-adapter)
+  - [📚Hybird Forward Pattern](./docs/User_Guide.md#hybird-forward-pattern)
+  - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
+  - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
+- [⚡️Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
+- [🔥TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
+- [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
+- [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
+- [🛠Metrics CLI](./docs/User_Guide.md#metrics-cli)
+- [📚API Documents](./docs/User_Guide.md#api-documentation)
 
 ## 👋Contribute 
 <div id="contribute"></div>
 
-如何贡献？点亮星标 ⭐️ 支持我们，或查看 [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/raw/main/CONTRIBUTE.md)。
+如何贡献？点亮星标 ⭐️ 支持我们，或查看 [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/blob/main/CONTRIBUTE.md)。
 
 <div align='center'>
 <a href="https://star-history.com/#vipshop/cache-dit&Date">
