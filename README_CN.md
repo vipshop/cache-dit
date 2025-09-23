@@ -1,4 +1,4 @@
-<b><a href="./README.md">📚English</a></b> | <b><a href="./README_CN.md">📚中文阅读</a></b>
+<a href="./README.md">📚English</a></b> | <b><a href="./README_CN.md">📚中文阅读</a>
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
