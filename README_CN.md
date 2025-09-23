@@ -401,7 +401,8 @@ cache_dit.enable_cache(
 - [🛠Metrics CLI](./docs/User_Guide.md#metrics-cli)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
 
-## 👋Contribute 
+## 👋参与贡献
+ 
 <div id="contribute"></div>
 
 如何贡献？点亮星标 ⭐️ 支持我们，或查看 [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/blob/main/CONTRIBUTE.md)。
