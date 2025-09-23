@@ -1,7 +1,9 @@
 import inspect
+import asyncio
 import torch
 import torch.distributed as dist
 
+from typing import List
 from cache_dit.cache_factory.cache_contexts.cache_context import CachedContext
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
     CachedContextManager,
@@ -45,6 +47,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         self.cache_prefix = cache_prefix
         self.cache_context = cache_context
         self.cache_manager = cache_manager
+        self.pending_tasks: List[asyncio.Task] = []
 
         self._check_forward_pattern()
         logger.info(

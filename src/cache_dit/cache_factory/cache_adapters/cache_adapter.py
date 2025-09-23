@@ -1,10 +1,8 @@
 import torch
-
 import unittest
 import functools
-
 from contextlib import ExitStack
-from typing import Dict, List, Tuple, Any, Union, Callable
+from typing import Dict, List, Tuple, Any, Union, Callable, Optional
 
 from diffusers import DiffusionPipeline
 
@@ -16,7 +14,7 @@ from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
-from cache_dit.cache_factory.cache_blocks.utils import (
+from cache_dit.cache_factory.cache_blocks import (
     patch_cached_stats,
     remove_cached_stats,
 )
@@ -330,7 +328,19 @@ class CachedAdapter:
 
         assert isinstance(dummy_blocks_names, list)
 
-        @functools.wraps(original_forward)
+        from accelerate import hooks
+
+        _hf_hook: Optional[hooks.ModelHook] = None
+
+        if getattr(transformer, "_hf_hook", None) is not None:
+            _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
+
+        # TODO: remove group offload hooks the re-apply after cache applied.
+        # hooks = _diffusers_hook.hooks.copy(); _diffusers_hook.hooks.clear()
+        # re-apply hooks to transformer after cache applied.
+        # from diffusers.hooks.hooks import HookFunctionReference, HookRegistry
+        # from diffusers.hooks.group_offloading import apply_group_offloading
+
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
                 for name, context_name in zip(
@@ -348,9 +358,27 @@ class CachedAdapter:
                             self, dummy_name, dummy_blocks
                         )
                     )
-                return original_forward(*args, **kwargs)
+                outputs = original_forward(*args, **kwargs)
+            return outputs
 
-        transformer.forward = new_forward.__get__(transformer)
+        def new_forward_with_hf_hook(self, *args, **kwargs):
+            # Compatible with model cpu offload
+            if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
+                args, kwargs = _hf_hook.pre_forward(self, *args, **kwargs)
+
+            outputs = new_forward(self, *args, **kwargs)
+
+            if _hf_hook is not None and hasattr(_hf_hook, "post_forward"):
+                outputs = _hf_hook.post_forward(self, outputs)
+
+            return outputs
+
+        # NOTE: Still can't fully compatible with group offloading
+        transformer.forward = functools.update_wrapper(
+            functools.partial(new_forward_with_hf_hook, transformer),
+            new_forward_with_hf_hook,
+        )
+
         transformer._original_forward = original_forward
         transformer._is_cached = True
 
