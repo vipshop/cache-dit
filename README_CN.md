@@ -420,7 +420,7 @@ cache_dit.enable_cache(
 
 <div id="Acknowledgements"></div>
 
-**cache-dit** 代码库基于 FBCache 改编而成。随着时间推移，其代码库已发生较大差异，且 **cache-dit** 的 API 不再与 FBCache 兼容。
+**cache-dit** 代码库基于 FBCache 开发而成。但随着时间推移，其代码库已发生较大差异，且 **cache-dit** 的 API 不再与 FBCache 兼容。
 
 ## ©️引用我们
 
