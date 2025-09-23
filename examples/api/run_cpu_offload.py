@@ -10,15 +10,19 @@ from utils import get_args, strify, cachify
 import cache_dit
 
 
-args = get_args()
-args.add_argument(
+parser = get_args(parse=False)
+parser.add_argument(
     "--offload-type",
     type=str,
     choices=["model", "sequential", "group"],
     default="model",
 )
-args.add_argument("--cache-after-offload", action="store_true", default=False)
-args = args.parse_args()
+parser.add_argument(
+    "--cache-after-offload",
+    action="store_true",
+    default=False,
+)
+args = parser.parse_args()
 print(args)
 
 
@@ -31,6 +35,7 @@ pipe = QwenImagePipeline.from_pretrained(
 )
 
 if args.cache and not args.cache_after_offload:
+    print("Enabled Cache before offload")
     cachify(args, pipe)
 
 if torch.cuda.device_count() <= 1:
@@ -51,6 +56,7 @@ if torch.cuda.device_count() <= 1:
         )
 
 if args.cache and args.cache_after_offload:
+    print("Enabled Cache after offload")
     cachify(args, pipe)
 
 positive_magic = {

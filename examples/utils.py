@@ -20,7 +20,9 @@ def GiB():
         return 0
 
 
-def get_args() -> argparse.ArgumentParser:
+def get_args(
+    parse: bool = True,
+) -> argparse.ArgumentParser | argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
@@ -52,7 +54,7 @@ def get_args() -> argparse.ArgumentParser:
     )
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
-    return parser.parse_args()
+    return parser.parse_args() if parse else parser
 
 
 def cachify(
