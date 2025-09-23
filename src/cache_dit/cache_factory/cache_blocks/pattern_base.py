@@ -10,9 +10,8 @@ from cache_dit.cache_factory.cache_contexts.cache_manager import (
 )
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_blocks.offload_utils import (
-    sync_block_device,
-    get_or_create_event_loop,
-    wait_for_async_tasks,
+    maybe_onload,
+    maybe_offload,
 )
 from cache_dit.logger import init_logger
 
@@ -53,7 +52,6 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         self.cache_context = cache_context
         self.cache_manager = cache_manager
         self.pending_tasks: List[asyncio.Task] = []
-        self.loop = get_or_create_event_loop()
 
         self._check_forward_pattern()
         logger.info(
@@ -328,7 +326,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             #     *args,
             #     **kwargs,
             # )
-            with sync_block_device(
+            with maybe_onload(
                 block, hidden_states, self.pending_tasks
             ) as synced_block:
                 hidden_states = synced_block(
@@ -345,7 +343,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                         hidden_states,
                     )
 
-        wait_for_async_tasks(self.pending_tasks, self.loop)
+        maybe_offload(self.pending_tasks)
         return hidden_states, encoder_hidden_states
 
     def call_Mn_blocks(
@@ -364,7 +362,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             #     *args,
             #     **kwargs,
             # )
-            with sync_block_device(
+            with maybe_onload(
                 block, hidden_states, self.pending_tasks
             ) as synced_block:
                 hidden_states = synced_block(
@@ -397,7 +395,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         else:
             encoder_hidden_states_residual = None
 
-        wait_for_async_tasks(self.pending_tasks, self.loop)
+        maybe_offload(self.pending_tasks)
         return (
             hidden_states,
             encoder_hidden_states,
@@ -422,7 +420,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             #     *args,
             #     **kwargs,
             # )
-            with sync_block_device(
+            with maybe_onload(
                 block, hidden_states, self.pending_tasks
             ) as synced_block:
                 hidden_states = synced_block(
@@ -439,5 +437,5 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                         hidden_states,
                     )
 
-        wait_for_async_tasks(self.pending_tasks, self.loop)
+        maybe_offload(self.pending_tasks)
         return hidden_states, encoder_hidden_states

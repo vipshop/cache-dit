@@ -16,7 +16,7 @@ from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
-from cache_dit.cache_factory.cache_blocks.utils import (
+from cache_dit.cache_factory.cache_blocks import (
     patch_cached_stats,
     remove_cached_stats,
 )
