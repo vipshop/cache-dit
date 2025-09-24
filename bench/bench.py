@@ -1,6 +1,5 @@
 import os
 import argparse
-import functools
 import torch
 import random
 import time
@@ -9,11 +8,12 @@ from tqdm import tqdm
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 try:
-    from utils import calculate_flops
+    from utils import apply_flops_hook, _flops_meta
 
     CALFLOPS_AVAILABLE = True
 except ImportError:
-    calculate_flops = None
+    apply_flops_hook = None
+    _flops_meta = None
     CALFLOPS_AVAILABLE = False
 
 import cache_dit
@@ -24,49 +24,6 @@ logger = cache_dit.init_logger(__name__)
 def set_rand_seeds(seed):
     random.seed(seed)
     torch.manual_seed(seed)
-
-
-total_flops = 0
-total_steps = 0
-all_tflops = []
-
-
-def apply_flops_hook(
-    args: argparse.Namespace,
-    transformer: FluxTransformer2DModel,
-):
-
-    old_forward = transformer.forward
-
-    @functools.wraps(old_forward)
-    def new_forward(self: FluxTransformer2DModel, **kwargs):
-        global total_flops, total_steps, all_tflops
-
-        # reset original forward to avoid maximum recursion depth error.
-        hook_forward = transformer.forward
-        transformer.forward = old_forward.__get__(transformer)
-        step_flops, _, _, results = calculate_flops(
-            model=transformer, kwargs=kwargs
-        )
-        transformer.forward = hook_forward.__get__(transformer)
-
-        total_flops += step_flops
-        total_steps += 1
-
-        # [1, 50]: one inference
-        if total_steps % args.steps == 0:
-            if total_steps > 0:
-                total_tflops = total_flops * 10 ** (-12)
-                all_tflops.append(total_tflops)
-                logger.debug(f"Total FLOPs: {total_tflops} TFLOPs")
-            total_flops = 0  # reset
-
-        return results
-
-    transformer.forward = new_forward.__get__(transformer)
-    logger.info("Applied FLOPs hook to transformer!")
-
-    return transformer
 
 
 def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
@@ -166,8 +123,11 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
         else:
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
 
-    if args.cal_flops:
-        pipe.transformer = apply_flops_hook(args, pipe.transformer)
+    if args.cal_flops and CALFLOPS_AVAILABLE:
+        pipe.transformer = apply_flops_hook(
+            pipe.transformer,
+            num_inference_steps=args.steps,
+        )
 
     return pipe
 
@@ -264,8 +224,8 @@ def main():
         all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)
     perf_msg = f"Perf. {perf_tag}, Mean pipeline time: {mean_time:.2f}s"
-    if args.cal_flops and len(all_tflops) > 0:
-        mean_tflops = sum(all_tflops) / len(all_tflops)
+    if args.cal_flops and len(_flops_meta.all_tflops) > 0:
+        mean_tflops = sum(_flops_meta.all_tflops) / len(_flops_meta.all_tflops)
         perf_msg += f", Mean pipeline TFLOPs: {mean_tflops:.2f}"
     logger.info(perf_msg)
 

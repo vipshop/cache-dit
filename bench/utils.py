@@ -11,7 +11,7 @@ Date         : 2023-08-19 10:28:55
 LastEditTime : 2023-09-07 23:39:17
 Copyright (C) 2023 mryxj. All rights reserved.
 """
-
+import functools
 import torch
 import torch.nn as nn
 
@@ -20,6 +20,10 @@ from calflops.utils import flops_to_string
 from calflops.utils import generate_transformer_input
 from calflops.utils import macs_to_string
 from calflops.utils import params_to_string
+
+import cache_dit
+
+logger = cache_dit.init_logger(__name__)
 
 
 # Adapted from: https://github.com/chengzegang/calculate-flops.pytorch
@@ -181,7 +185,7 @@ def calculate_flops(
     params = calculate_flops_pipline.get_total_params()
 
     if print_results:
-        return_print = calculate_flops_pipline.print_model_pipline(
+        _ = calculate_flops_pipline.print_model_pipline(
             units=output_unit,
             precision=output_precision,
             print_detailed=print_detailed,
@@ -205,3 +209,53 @@ def calculate_flops(
         )
 
     return flops, macs, params, results
+
+
+class FlopsMeta:
+    total_flops = 0
+    total_steps = 0
+    all_tflops = []
+
+
+_flops_meta = FlopsMeta()
+
+
+def apply_flops_hook(
+    transformer: torch.nn.Module,
+    num_inference_steps: int,
+):
+    old_forward = transformer.forward
+
+    @functools.wraps(old_forward)
+    def new_forward(self: torch.nn.Module, **kwargs):
+        global _flops_meta
+
+        hook_forward = transformer.forward
+        transformer.forward = old_forward  # Direct assignment without __get__
+
+        step_flops, _, _, results = calculate_flops(
+            model=transformer, kwargs=kwargs
+        )
+
+        transformer.forward = hook_forward  # Direct assignment without __get__
+
+        _flops_meta.total_flops += step_flops
+        _flops_meta.total_steps += 1
+
+        # Periodically record and reset statistics
+        if _flops_meta.total_steps % num_inference_steps == 0:
+            if _flops_meta.total_steps > 0:
+                total_tflops = _flops_meta.total_flops * 10 ** (-12)
+                _flops_meta.all_tflops.append(total_tflops)
+                logger.debug(f"Total FLOPs: {total_tflops} TFLOPs")
+            _flops_meta.total_flops = 0  # Reset counter
+
+        return results
+
+    # Bind the new forward method to the transformer instance
+    transformer.forward = new_forward.__get__(
+        transformer, transformer.__class__
+    )
+    logger.info(f"Applied FLOPs hook to {transformer.__class__.__name__}!")
+
+    return transformer
