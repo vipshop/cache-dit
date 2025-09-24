@@ -334,6 +334,13 @@ class CachedAdapter:
 
         if getattr(transformer, "_hf_hook", None) is not None:
             _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
+            if hasattr(transformer, "_old_forward"):
+                logger.warning(
+                    "_hf_hook is not None, re-direct "
+                    f"original_forward({id(original_forward)}) to "
+                    f"transformer._old_forward({id(transformer._old_forward)})"
+                )
+                original_forward = transformer._old_forward
 
         # TODO: remove group offload hooks the re-apply after cache applied.
         # hooks = _diffusers_hook.hooks.copy(); _diffusers_hook.hooks.clear()
