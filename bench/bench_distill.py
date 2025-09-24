@@ -134,7 +134,7 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
         else:
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
 
-    if args.cal_flops:
+    if args.cal_flops and CALFLOPS_AVAILABLE:
         pipe.transformer = apply_flops_hook(
             pipe.transformer,
             num_inference_steps=args.steps,
