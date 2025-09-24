@@ -580,7 +580,7 @@ The default configuration (`F8B0, 8 warmup steps, unlimited cached steps`) is ca
 
 This function seamlessly integrates with both standard diffusion pipelines and custom block adapters, making it versatile for various deployment scenarios—from research prototyping to production environments where inference speed is critical. By abstracting the complexity of caching logic behind a simple interface, it enables developers to enhance model performance with minimal code changes.
 
-### Examples
+### Quick Start
 
 ```python
 >>> import cache_dit
