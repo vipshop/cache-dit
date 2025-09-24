@@ -564,13 +564,13 @@ cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 
 Unified Cache API for almost Any Diffusion Transformers (with Transformer Blocks that match the specific Input and Output patterns). For a good balance between performance and precision, DBCache is configured by default with F8B0, 8 warmup steps, and unlimited cached steps. All the configurable params are listed beflows.
 
-### API: enable_cache
+### 👏API: enable_cache
 
 ```python
 def enable_cache(...) -> Union[DiffusionPipeline, BlockAdapter]
 ```
 
-### Function Description
+### 🌟Function Description
 
 The `enable_cache` function serves as a unified caching interface designed to optimize the performance of diffusion transformer models by implementing an intelligent caching mechanism known as `DBCache`. This API is engineered to be compatible with nearly `all` diffusion transformer architectures that feature transformer blocks adhering to standard input-output patterns, eliminating the need for architecture-specific modifications.  
 
@@ -580,7 +580,7 @@ The default configuration (`F8B0, 8 warmup steps, unlimited cached steps`) is ca
 
 This function seamlessly integrates with both standard diffusion pipelines and custom block adapters, making it versatile for various deployment scenarios—from research prototyping to production environments where inference speed is critical. By abstracting the complexity of caching logic behind a simple interface, it enables developers to enhance model performance with minimal code changes.
 
-### Quick Start
+### 👇Quick Start
 
 ```python
 >>> import cache_dit
@@ -592,7 +592,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 >>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```
 
-### Parameter Description
+### 👇Parameter Description
 
 - **pipe_or_adapter**(`DiffusionPipeline` or `BlockAdapter`, *required*):
   The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
