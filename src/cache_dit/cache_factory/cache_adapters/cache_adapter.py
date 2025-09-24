@@ -336,9 +336,9 @@ class CachedAdapter:
             _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
             if hasattr(transformer, "_old_forward"):
                 logger.warning(
-                    "_hf_hook is not None, re-direct "
-                    f"original_forward({id(original_forward)}) to "
-                    f"transformer._old_forward({id(transformer._old_forward)})"
+                    "_hf_hook is not None, so, we have to re-direct transformer's "
+                    f"original_forward({id(original_forward)}) to transformer's "
+                    f"_old_forward({id(transformer._old_forward)})"
                 )
                 original_forward = transformer._old_forward
 
