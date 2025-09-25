@@ -1,4 +1,4 @@
-<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读</a>
+<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Docs in Diffusers🔥</a>
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
@@ -20,6 +20,9 @@
     <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
     <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
   </p>
+  <div align='center'>
+        <img src="./assets/image-reward-bench.png" width=510px >
+  </div>
   <p align="center">
     🎉目前, <b>cache-dit</b> 支持Diffusers中几乎<b>所有</b>DiT</b>模型🎉<br>
     🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
@@ -134,12 +137,12 @@
 <div id="contents"></div>  
 
 - [⚙️安装依赖](#️installation)
+- [🔥性能数据](#benchmarks)
 - [🔥快速开始](#quick-start)
 - [📚前向模式匹配](#forward-pattern-matching)
 - [⚡️双向对偶缓存](#dbcache)
 - [🔥泰勒展开校准器](#taylorseer)
 - [📚混合CFG缓存](#cfg)
-- [🔥性能数据](#benchmarks)
 - [🎉用户指引](#user-guide)
 - [©️引用我们](#citations)
 
@@ -157,6 +160,70 @@ pip3 install -U cache-dit
 ```bash
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
+
+## 🔥性能数据
+
+<div id="benchmarks"></div>
+
+![image-reward-bench](./assets/image-reward-bench.png)
+
+**cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/)。
+
+| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
+| --- | --- | --- | --- | --- |
+| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
+| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
+| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
+| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
+| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
+| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
+| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
+| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
+| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
+| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
+| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
+| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | **1.0029** | **32.948** |
+
+<details>
+<summary> 点击展开完整的对比 </summary>  
+
+| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
+| --- | --- | --- | --- | --- |
+| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
+| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
+| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
+| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
+| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
+| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
+| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
+| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
+| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
+| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
+| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
+| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | **1.0029** | **32.948** |
+| [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
+| FORA(N=4) | 967.91 | 3.84× | 0.9730 | 32.142 |
+| ToCa(N=8) | 784.54 | 4.74× | 0.9451 | 31.993 |
+| DuCa(N=7) | 760.14 | 4.89× | 0.9757 | 32.066 |
+| TeaCache(l=0.8) | 892.35 | 4.17× | 0.8683 | 31.704 |
+| **[DBCache(F=4,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 816.65 | 4.56x | 0.8245 | 32.191 |
+| TaylorSeer(N=5,O=2) | 893.54 | 4.16× | 0.9768 | 32.467 |
+| **[FoCa(N=7): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 670.44 | **5.54×** | **0.9891** | **32.920** |
+| FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
+| ToCa(N=12) | 644.70 | 5.77× | 0.7155 | 31.808 |
+| DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
+| TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
+| **[DBCache(F=1,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.8796 | **32.318** |
+| TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
+| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | **6.24×** | **0.9502** | **32.706** |
+
+注：除 DBCache 外，其他性能数据均引用自论文 [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)。
+
+</details>
 
 ## 🔥快速开始 
 
@@ -316,68 +383,6 @@ cache_dit.enable_cache(
 )
 ```
 
-## 🔥性能数据
-
-<div id="benchmarks"></div>
-
-**cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/)。
-
-| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
-| --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
-| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
-| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
-| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
-| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
-| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
-| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
-| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
-| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | **1.0029** | **32.948** |
-
-<details>
-<summary> 点击展开完整的对比 </summary>  
-
-| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
-| --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
-| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
-| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
-| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
-| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
-| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
-| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
-| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
-| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
-| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | **1.0029** | **32.948** |
-| [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
-| FORA(N=4) | 967.91 | 3.84× | 0.9730 | 32.142 |
-| ToCa(N=8) | 784.54 | 4.74× | 0.9451 | 31.993 |
-| DuCa(N=7) | 760.14 | 4.89× | 0.9757 | 32.066 |
-| TeaCache(l=0.8) | 892.35 | 4.17× | 0.8683 | 31.704 |
-| **[DBCache(F=4,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 816.65 | 4.56x | 0.8245 | 32.191 |
-| TaylorSeer(N=5,O=2) | 893.54 | 4.16× | 0.9768 | 32.467 |
-| **[FoCa(N=7): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 670.44 | **5.54×** | **0.9891** | **32.920** |
-| FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
-| ToCa(N=12) | 644.70 | 5.77× | 0.7155 | 31.808 |
-| DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
-| TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
-| **[DBCache(F=1,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.8796 | **32.318** |
-| TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
-| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | **6.24×** | **0.9502** | **32.706** |
-
-注：除 DBCache 外，其他性能数据均引用自论文 [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)。
-
-</details>
-
 ## 🎉用户指引
 
 <div id="user-guide"></div>
@@ -422,6 +427,10 @@ cache_dit.enable_cache(
 <div id="Acknowledgements"></div>
 
 **cache-dit** 代码库基于 FBCache 开发而成。但随着时间推移，其代码库已发生较大差异，且 **cache-dit** 的 API 不再与 FBCache 兼容。
+
+## ©️特别鸣谢
+
+本项目的顺利推进与落地，离不开 唯品会-计算机视觉算法团队 的鼎力支持。特别鸣谢该团队在文档建设、功能测试及生产级应用落地等关键环节提供的专业指导与全面协助。
 
 ## ©️引用我们
 
