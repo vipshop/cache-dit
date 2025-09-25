@@ -129,7 +129,7 @@
 
 ## 🔥重点
 
-我们非常兴奋地宣布，cache-dit 的**首个 API 稳定版本**终于正式发布！
+我们非常兴奋地宣布，cache-dit 的**首个 API 稳定版本 (v1.0.0)**终于正式发布！
 
 **[cache-dit](https://github.com/vipshop/cache-dit)** 是一款为 🤗 Diffusers 打造的**统一化（Unified）、高灵活（Flexible）、无需训练（Training-free）** 的缓存加速框架，仅需**一行代码**即可实现缓存加速。核心特性包括**统一缓存接口（Unified Cache APIs）**、**前向模式匹配（Forward Pattern Matching）**、**自动块适配（Automatic Block Adapter）**、**混合前向模式（Hybrid Forward Pattern）**、**DBCache 机制**、**TaylorSeer 校准器（TaylorSeer Calibrator）** 及**Cache CFG**。
 
