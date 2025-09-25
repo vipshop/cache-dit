@@ -17,7 +17,7 @@
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
   </div>
   <div align='center'>
-      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Docs in Diffusers🔥</a>
+      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs🔥</a>
   </div>
  <!--
    <p align="center">
@@ -168,8 +168,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="benchmarks"></div>
 
-![image-reward-bench](./assets/image-reward-bench.png)
-![clip-score-bench](./assets/clip-score-bench.png)
+![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
 
 **cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/)。
 
@@ -192,6 +191,8 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <details>
 <summary> 点击展开完整的对比 </summary>  
+
+![clip-score-bench](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
