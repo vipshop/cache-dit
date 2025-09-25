@@ -136,7 +136,7 @@
 
 ## 🔥News  
 
-- [2025-09-24] 🔥**cache-dit** has now joined the <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> as the first cache acceleration framework for DiTs! Check out the documentation here: **[Diffusers Docs](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**. 
+- [2025-09-24] 🔥**cache-dit** has now joined the 🤗 Diffusers community ecosystem as the **first** cache acceleration framework for DiTs! Check out the documentation here: **[Diffusers Docs](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**. 
 - [2025-09-10] 🎉Day 1 support [**HunyuanImage-2.1**](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with **1.7x↑🎉** speedup! Check this [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_hunyuan_image_2.1.py).
 - [2025-09-08] 🔥[**Qwen-Image-Lightning**](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_lightning.py) **7.1/3.5 steps🎉** inference with **[DBCache: F16B16](https://github.com/vipshop/cache-dit)**.
 - [2025-09-03] 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
