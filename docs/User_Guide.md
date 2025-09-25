@@ -1,4 +1,4 @@
-## 📖Contents of User Guide
+## 📖User Guide
 
 <div id="contents"></div>  
 
