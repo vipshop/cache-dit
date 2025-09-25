@@ -1,15 +1,10 @@
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
-
   <p align="center">
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
-    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
+    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
+    <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </p>
-<!--  
-  <div align='center'>
-      <img src="./assets/image-reward-bench.png" width=580px >
-  </div>
--->
   <div align='center'>
       <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
@@ -17,9 +12,6 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-  </div>
-  <div align='center'>
-      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </div>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>

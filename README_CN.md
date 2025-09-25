@@ -3,13 +3,9 @@
 
   <p align="center">
     一个专门为🤗Diffusers而开发的，<b>统一</b>、灵活以及无需训练的<b>缓存加速框架</b> <br>
-    ♥️ <b>一行代码</b>实现DiT缓存加速 ~ ♥️
+    ♥️ <b>一行代码</b>实现DiT缓存加速 ~ ♥️<br>
+    <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </p>
-<!--  
-  <div align='center'>
-       <img src="./assets/image-reward-bench.png" width=580px >
-  </div>
--->
   <div align='center'>
       <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
@@ -17,9 +13,6 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-  </div>
-  <div align='center'>
-      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </div>
   <p align="center">
     🎉目前, <b>cache-dit</b> 支持Diffusers中几乎<b>所有</b>DiT</b>模型🎉<br>
