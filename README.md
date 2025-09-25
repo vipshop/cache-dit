@@ -142,7 +142,7 @@ We are excited to announce that the **first API-stable version (v1.0.0)** of cac
 - **Support for 4/8-Step Distilled Models**: Surprisingly, cache-dit's DBCache works for extremely few-step distilled models—something many other methods fail to do.  
 - **Compatibility with Other Optimizations**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, etc.  
 - **Hybrid Cache Acceleration**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache + TaylorSeerCalibrator). DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
-- **🤗 Diffusers Ecosystem Integration**: 🔥 **cache-dit** has joined the 🤗 Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: **[Diffusers Docs](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**. <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
+- **🤗 Diffusers Ecosystem Integration**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 
 ## 🔥News  
