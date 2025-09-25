@@ -26,6 +26,24 @@ pipe = FluxFillPipeline.from_pretrained(
 if args.cache:
     cachify(args, pipe)
 
+if args.compile:
+    from diffusers import FluxTransformer2DModel
+
+    cache_dit.set_compile_configs()
+    assert isinstance(pipe.transformer, FluxTransformer2DModel)
+    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+
+    # warmup
+    image = pipe(
+        prompt="a white paper cup",
+        image=load_image("../data/cup.png"),
+        mask_image=load_image("../data/cup_mask.png"),
+        guidance_scale=30,
+        num_inference_steps=28,
+        max_sequence_length=512,
+        generator=torch.Generator("cpu").manual_seed(0),
+    ).images[0]
+
 start = time.time()
 image = pipe(
     prompt="a white paper cup",
@@ -36,7 +54,6 @@ image = pipe(
     max_sequence_length=512,
     generator=torch.Generator("cpu").manual_seed(0),
 ).images[0]
-
 end = time.time()
 
 cache_dit.summary(pipe)
