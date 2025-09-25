@@ -129,7 +129,7 @@
 
 ## 🔥Hightlight
 
-We are excited to announce that the **first API-stable version** of cache-dit has finally been released!
+We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
 
