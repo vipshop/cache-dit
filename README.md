@@ -1,28 +1,31 @@
-<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Docs in Diffusers🔥</a>
-
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
 
-<p align="center">
+  <p align="center">
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
   </p>
   <div align='center'>
+      <img src="./assets/image-reward-bench.png" width=580px >
+  </div>
+  <div align='center'>
+      <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
-      <img src=https://img.shields.io/badge/PRs-welcome-9cf.svg >
+      <img src=https://img.shields.io/badge/PRs-welcome-blue.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-      <img src=https://img.shields.io/badge/Python-3.10|3.11|3.12-9cf.svg >
- </div>
+  </div>
+  <div align='center'>
+      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Docs in Diffusers🔥</a>
+  </div>
+<!--
   <p align="center">
     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
     <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
     <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
   </p>
-  <div align='center'>
-      <img src="./assets/image-reward-bench.png" width=510px >
-  </div>
+-->
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
     🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
