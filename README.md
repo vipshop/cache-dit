@@ -17,15 +17,8 @@
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
   </div>
   <div align='center'>
-      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Documentation</a>
+      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </div>
-<!--
-  <p align="center">
-    <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
-    <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
-    <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
-  </p>
--->
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
     🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
@@ -133,6 +126,24 @@
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
 </details>
+
+## 🔥Hightlight
+
+We are excited to announce that the **first API-stable version** of cache-dit has finally been released!
+
+**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
+
+### 📚Core Features
+
+- **Full 🤗 Diffusers Support**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, such as Qwen-Image, FLUX.1, Qwen-Image-Lightning, Wan 2.1/2.2, HunyuanImage-2.1, HunyuanVideo, HunyuanDiT, HiDream, AuraFlow, CogView3Plus, CogView4, LTXVideo, CogVideoX/X 1.5, ConsisID, Cosmos, SkyReelsV2, VisualCloze, OmniGen 1/2, Lumina 1/2, PixArt, Chroma, Sana, Allegro, Mochi, SD 3/3.5, Amused, and DiT-XL.  
+- **Extremely Easy to Use**: In most cases, you only need **♥️ one line ♥️** of code: `cache_dit.enable_cache(...)`. After calling this API, just use the pipeline as normal.   
+- **Easy New Model Integration**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1)—even before it was available in the Diffusers library.  
+- **State-of-the-Art Performance**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer, and FoCa, cache-dit's DBCache achieves the best accuracy when the speedup ratio is below 3x.  
+- **Support for 4/8-Step Distilled Models**: Surprisingly, cache-dit's DBCache works for extremely few-step distilled models—something many other methods fail to do.  
+- **Compatibility with Other Optimizations**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, etc.  
+- **Hybrid Cache Acceleration**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache + TaylorSeerCalibrator). DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
+- **🤗 Diffusers Ecosystem Integration**: 🔥 **cache-dit** has joined the 🤗 Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: **[Diffusers Docs](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**. <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
+
 
 ## 🔥News  
 
