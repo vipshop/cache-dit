@@ -6,18 +6,12 @@
     ♥️ <b>一行代码</b>实现DiT缓存加速 ~ ♥️
   </p>
   <div align='center'>
-       <img src="./assets/image-reward-bench.png" width=580px >
-  </div>
-  <div align='center'>
       <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-blue.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-  </div>
-  <div align='center'>
-      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </div>
   <p align="center">
     🎉目前, <b>cache-dit</b> 支持Diffusers中几乎<b>所有</b>DiT</b>模型🎉<br>
@@ -51,6 +45,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S18.png width=125px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S24.png width=125px>
   <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 
+  <br> <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️
   </p>
 </div>
@@ -144,6 +139,7 @@
 - **混合缓存加速**：目前已支持 **DBCache + 校准器** 混合方案（例如 DBCache + TaylorSeerCalibrator）。其中 DBCache 作为**指示器（Indicator）** 决定*何时（when）* 缓存，校准器则负责决定*如何（how）* 缓存。未来将支持更多主流缓存加速算法（如 FoCa 等）及更多基准测试，敬请期待更新！  
 - **🤗 Diffusers 生态集成**：🔥 **cache-dit** 已正式加入 🤗 Diffusers 社区生态，成为**首个**针对 DiT 的缓存加速框架！查看文档：**[Diffusers 官方文档](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**。 <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
+![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
 
 ## 📖目录
 
@@ -177,8 +173,6 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 ## 🔥性能数据
 
 <div id="benchmarks"></div>
-
-![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
 
 **cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/)。
 
