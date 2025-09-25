@@ -1,4 +1,4 @@
-<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Docs in Diffusers🔥</a>
+<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Docs in Diffusers🔥</a>
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
