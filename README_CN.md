@@ -166,6 +166,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 <div id="benchmarks"></div>
 
 ![image-reward-bench](./assets/image-reward-bench.png)
+![clip-score-bench](./assets/clip-score-bench.png)
 
 **cache-dit: DBCache** 与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法的对比情况如下。在加速比低于 **3倍（3x）** 的对比场景中，cache-dit 实现了最佳精度。值得注意的是，在极少量步数的蒸馏模型中，cache-dit: DBCache 仍能正常工作。完整的基准测试数据请参考 [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/)。
 
