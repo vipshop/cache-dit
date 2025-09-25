@@ -17,15 +17,8 @@
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
   </div>
   <div align='center'>
-      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Documentation</a>
+      <a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> | <a href="./docs/User_Guide.md#api-documentation"> 📚API Documentation </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit">🤗Diffusers' Docs</a>
   </div>
- <!--
-   <p align="center">
-     <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
-     <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
-     <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
-   </p>
- -->
   <p align="center">
     🎉目前, <b>cache-dit</b> 支持Diffusers中几乎<b>所有</b>DiT</b>模型🎉<br>
     🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
@@ -133,6 +126,23 @@
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
 </details>
+
+## 🔥重点
+
+我们非常兴奋地宣布，cache-dit 的**首个 API 稳定版本 (v1.0.0)**终于正式发布！
+
+**[cache-dit](https://github.com/vipshop/cache-dit)** 是一款为 🤗 Diffusers 打造的**统一化（Unified）、高灵活（Flexible）、无需训练（Training-free）** 的缓存加速框架，仅需**一行代码**即可实现缓存加速。核心特性包括**统一缓存接口（Unified Cache APIs）**、**前向模式匹配（Forward Pattern Matching）**、**自动块适配（Automatic Block Adapter）**、**混合前向模式（Hybrid Forward Pattern）**、**DBCache 机制**、**TaylorSeer 校准器（TaylorSeer Calibrator）** 及**Cache CFG**。
+
+### 📚核心特性
+
+- **全面支持 🤗 Diffusers**：值得注意的是，**[cache-dit](https://github.com/vipshop/cache-dit)** 目前已支持 Diffusers 中几乎**所有**基于 DiT（Transformer 扩散模型）的流水线，例如 Qwen-Image、FLUX.1、Qwen-Image-Lightning、Wan 2.1/2.2、HunyuanImage-2.1、HunyuanVideo、HunyuanDiT、HiDream、AuraFlow、CogView3Plus、CogView4、LTXVideo、CogVideoX/X 1.5、ConsisID、Cosmos、SkyReelsV2、VisualCloze、OmniGen 1/2、Lumina 1/2、PixArt、Chroma、Sana、Allegro、Mochi、SD 3/3.5、Amused 以及 DiT-XL 等。  
+- **极致易用**：在大多数场景下，仅需**♥️ 一行 ♥️** 代码即可启用：`cache_dit.enable_cache(...)`。调用该接口后，正常使用流水线即可享受加速。  
+- **轻松集成新模型**：统一缓存接口、前向模式匹配、自动块适配、混合前向模式及 Patch Functor 等特性，使其具备极强的功能性与灵活性。例如，我们实现了对 [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) 的 🎉 首日支持（Day 1 Support）——即便该模型当时尚未在 Diffusers 库中正式发布。  
+- **业界领先性能**：与 Δ-DiT、Chipmunk、FORA、DuCa、TaylorSeer、FoCa 等算法相比，在加速比低于 3 倍的场景下，cache-dit 的 DBCache 机制实现了最优精度。  
+- **支持 4/8 步蒸馏模型**：令人惊喜的是，cache-dit 的 DBCache 机制可适配极少量步数的蒸馏模型，而这是许多其他方法无法实现的。  
+- **兼容多种优化方案**：设计上可与 torch.compile、模型 CPU 卸载、顺序 CPU 卸载、分组卸载等优化方案无缝协同。  
+- **混合缓存加速**：目前已支持 **DBCache + 校准器** 混合方案（例如 DBCache + TaylorSeerCalibrator）。其中 DBCache 作为**指示器（Indicator）** 决定*何时（when）* 缓存，校准器则负责决定*如何（how）* 缓存。未来将支持更多主流缓存加速算法（如 FoCa 等）及更多基准测试，敬请期待更新！  
+- **🤗 Diffusers 生态集成**：🔥 **cache-dit** 已正式加入 🤗 Diffusers 社区生态，成为**首个**针对 DiT 的缓存加速框架！查看文档：**[Diffusers 官方文档](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**。 <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 
 ## 📖目录
