@@ -1,6 +1,7 @@
 # 🤖Benchmarks
 
 ![](./image-reward-bench.png)
+![](./clip-score-bench.png)
 
 ## 📖Contents
 

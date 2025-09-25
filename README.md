@@ -187,6 +187,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 <div id="benchmarks"></div>
 
 ![image-reward-bench](./assets/image-reward-bench.png)
+![clip-score-bench](./assets/clip-score-bench.png)
 
 The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/). 
 
