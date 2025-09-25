@@ -449,6 +449,10 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 The **cache-dit** codebase is adapted from FBCache. Over time its codebase diverged a lot, and **cache-dit** API is no longer compatible with FBCache. 
 
+## ©️Special Acknowledgements
+
+Special thanks to vipshop's Vision AI Team for supporting document, testing and production-level deployment of this project.
+
 ## ©️Citations
 
 <div id="citations"></div>
