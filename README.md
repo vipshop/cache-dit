@@ -451,7 +451,7 @@ The **cache-dit** codebase is adapted from FBCache. Over time its codebase diver
 
 ## ©️Special Acknowledgements
 
-Special thanks to vipshop's Vision AI Team for supporting document, testing and production-level deployment of this project.
+Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and production-level deployment of this project.
 
 ## ©️Citations
 
