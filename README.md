@@ -24,7 +24,6 @@
   </p>
 </div>
 
-
 <div align='center'>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C0_Q0_NONE.gif width=124px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=124px>
@@ -52,7 +51,7 @@
 
 <details align='center'>
 
-<summary>Click here to show more Image/Video cases</summary>
+<summary>🔥<b>Click</b> here to show more <b>Image/Video</b> cases🔥</summary>
 
 <div  align='center'>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext-cat.C0_L0_Q0_NONE.png width=100px>
@@ -155,31 +154,28 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
 
-<!--
-## 🔥News  
-
-- 2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-- 2025.09.25: 🔥**cache-dit** has joined the Diffusers community ecosystem: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
-- 2025.09.10: 🎉Day 1 support [**HunyuanImage-2.1**](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with **1.7x↑🎉** speedup! Check this [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_hunyuan_image_2.1.py).
-- 2025.09.08: 🎉First caching mechanism in [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/ModelTC/Qwen-Image-Lightning/pull/35). 
-- 2025.09.08: 🎉First caching mechanism in [Wan2.2](https://github.com/Wan-Video/Wan2.2) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/Wan-Video/Wan2.2/pull/127) for more details. 
-- 2025.09.08: 🔥[**Qwen-Image-Lightning**](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_lightning.py) **7.1/3.5 steps🎉** inference with **[DBCache: F16B16](https://github.com/vipshop/cache-dit)**.
-- 2025.09.03: 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
-- 2025.08.12: 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61). 
-- 2025.08.11: 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x↑🎉** speedup! Please refer to [run_qwen_image.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py) as an example.
-
+<div align='center'>
 <details>
-<summary> More News </summary>  
+<summary> 🔥<b>Click</b> here to show <b>Important News</b>🔥 </summary>  
 
-- 2025.08.19: 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit.py).
-- 2025.09.01: 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples/run_flux_adapter.py) as an example.
-- 2025.08.10: 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_flux_kontext.py) as an example.
-- 2025.07.18: 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
-- 2025.07.13: 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
+2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!<br>
+2025.09.25: 🔥**cache-dit** has joined the Diffusers community ecosystem: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a><br>
+2025.09.10: 🎉Day 1 support [**HunyuanImage-2.1**](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with **1.7x↑🎉** speedup! Check this [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_hunyuan_image_2.1.py).<br>
+2025.09.08: 🔥[**Qwen-Image-Lightning**](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_lightning.py) **7.1/3.5 steps🎉** inference with **[DBCache: F16B16](https://github.com/vipshop/cache-dit)**.<br>
+2025.09.03: 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.<br>
+2025.08.12: 🎉First caching mechanism in [QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/QwenLM/Qwen-Image/pull/61).<br>
+2025.08.11: 🔥[**Qwen-Image**](https://github.com/QwenLM/Qwen-Image) **1.8x↑🎉** speedup! Please refer to [run_qwen_image.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py) as an example.<br>
+2025.09.08: 🎉First caching mechanism in [Wan2.2](https://github.com/Wan-Video/Wan2.2) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/Wan-Video/Wan2.2/pull/127) for more details.<br>
+2025.09.08: 🎉First caching mechanism in [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/ModelTC/Qwen-Image-Lightning/pull/35).<br>
+2025.08.19: 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit.py).<br>
+2025.09.01: 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples/run_flux_adapter.py) as an example.<br>
+2025.08.10: 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_flux_kontext.py) as an example.<br>
+2025.07.18: 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13).<br>
+2025.07.13: 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.<br>
 
 </details>
 
--->
+</div>
 
 ## 📚User Guide
 
