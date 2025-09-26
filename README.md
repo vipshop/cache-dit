@@ -155,6 +155,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
 
+<!--
 ## 🔥News  
 
 - 2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!
@@ -177,6 +178,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - 2025.07.13: 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
 
 </details>
+
+-->
 
 ## 📚User Guide
 
