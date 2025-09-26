@@ -27,9 +27,9 @@
 
 ## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
-<div align='left'>
+<div align='center'>
 <details>
-<summary> 🔥<b>Click</b> here to show <b>Important News</b>🔥 </summary>  
+<summary> 🔥<b>Click</b> here to show <b>Important News</b>: First API-stable (v1.0.0) Release🔥 </summary>  
 
 2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!<br>
 2025.09.25: 🔥**cache-dit** has joined the Diffusers community ecosystem: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a><br>
@@ -49,7 +49,7 @@
 </details>
 </div>
 
-We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!   
+We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
 
 ```bash
