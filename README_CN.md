@@ -13,20 +13,46 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <img src=https://static.pepy.tech/badge/cache-dit >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
+      <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg >
   </div>
   <p align="center">
-    🎉目前, <b>cache-dit</b> 支持Diffusers中几乎<b>所有</b>DiT</b>模型🎉<br>
-    🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
-    🔥<a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">AuraFlow</a>🔥<br>
-    🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">LTXVideo</a> | <a href="#supported">CogVideoX</a> | <a href="#supported">CogVideoX 1.5</a> | <a href="#supported">ConsisID</a>🔥<br>
-    🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported">OmniGen 1/2</a> | <a href="#supported">Lumina 1/2</a> | <a href="#supported">PixArt</a>🔥<br>
-    🔥<a href="#supported">Chroma</a> | <a href="#supported">Sana</a> | <a href="#supported">Allegro</a> | <a href="#supported">Mochi</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported">Amused</a> | <a href="#supported"> ... </a> | <a href="#supported">DiT-XL</a>🔥
+      🎉目前, <b>cache-dit</b> 支持Diffusers中几乎<b>所有</b>DiT</b>模型🎉<br>
+      🔥<a href="./examples/">Qwen-Image</a> | <a href="./examples/">FLUX.1</a> | <a href="./examples/">Qwen-Image-Lightning</a> | <a href="./examples/"> Wan 2.1 </a> | <a href="./examples/"> Wan 2.2 </a>🔥<br>
+      🔥<a href="./examples/">HunyuanImage-2.1</a> | <a href="./examples/">HunyuanVideo</a> | <a href="./examples/">HunyuanDiT</a> | <a href="./examples/">HiDream</a> | <a href="./examples/">AuraFlow</a>🔥<br>
+      🔥<a href="./examples/">CogView3Plus</a> | <a href="./examples/">CogView4</a> | <a href="./examples/">LTXVideo</a> | <a href="./examples/">CogVideoX</a> | <a href="./examples/">CogVideoX 1.5</a> | <a href="./examples/">ConsisID</a>🔥<br>
+      🔥<a href="./examples/">Cosmos</a> | <a href="./examples/">SkyReelsV2</a> | <a href="./examples/">VisualCloze</a> | <a href="./examples/">OmniGen 1/2</a> | <a href="./examples/">Lumina 1/2</a> | <a href="./examples/">PixArt</a>🔥<br>
+      🔥<a href="./examples/">Chroma</a> | <a href="./examples/">Sana</a> | <a href="./examples/">Allegro</a> | <a href="./examples/">Mochi</a> | <a href="./examples/">SD 3/3.5</a> | <a href="./examples/">Amused</a> | <a href="./examples/"> ... </a> | <a href="./examples/">DiT-XL</a>🔥
   </p>
 </div>
 
+## 🔥重点 <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
-<div align='center'>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C0_Q0_NONE.gif width=124px>
+我们非常兴奋地宣布，cache-dit 的**首个 API 稳定版本 (v1.0.0)**终于正式发布！
+
+**[cache-dit](https://github.com/vipshop/cache-dit)** 是一款为 🤗 Diffusers 打造的**统一化（Unified）、高灵活（Flexible）、无需训练（Training-free）** 的缓存加速框架，仅需**一行代码**即可实现缓存加速。核心特性包括**统一缓存接口（Unified Cache APIs）**、**前向模式匹配（Forward Pattern Matching）**、**自动块适配（Automatic Block Adapter）**、**混合前向模式（Hybrid Forward Pattern）**、**DBCache 机制**、**TaylorSeer 校准器（TaylorSeer Calibrator）** 及**Cache CFG**。
+
+```bash
+pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
+```
+
+您可以从 PyPI 安装 cache-dit 的稳定版本，或从 GitHub 安装最新的开发版本。然后，只需一行代码即可体验 ♥️ 缓存加速～♥️
+
+```python
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
+>>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> output = pipe(...) # Just call the pipe as normal.
+>>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+>>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
+```
+
+<details align='center'>
+
+<summary>点击这里查看更多Image/Video加速示例</summary>
+
+<div  align='center'>
+ <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C0_Q0_NONE.gif width=124px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=124px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/hunyuan_video.C0_L0_Q0_NONE.gif width=126px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/hunyuan_video.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S27.gif width=126px>
@@ -45,16 +71,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_NONE.png width=125px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S18.png width=125px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S24.png width=125px>
-  <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 
-  <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️
-  </p>
-</div>
-
-<details align='center'>
-
-<summary>点击这里查看更多Image/Video加速示例</summary>
-
-<div  align='center'>
+  <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 </p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext-cat.C0_L0_Q0_NONE.png width=100px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext.C0_L0_Q0_NONE.png width=100px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S10.png width=100px>
@@ -121,28 +138,6 @@
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
 </details>
-
-## 🔥重点 <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
-
-我们非常兴奋地宣布，cache-dit 的**首个 API 稳定版本 (v1.0.0)**终于正式发布！
-
-**[cache-dit](https://github.com/vipshop/cache-dit)** 是一款为 🤗 Diffusers 打造的**统一化（Unified）、高灵活（Flexible）、无需训练（Training-free）** 的缓存加速框架，仅需**一行代码**即可实现缓存加速。核心特性包括**统一缓存接口（Unified Cache APIs）**、**前向模式匹配（Forward Pattern Matching）**、**自动块适配（Automatic Block Adapter）**、**混合前向模式（Hybrid Forward Pattern）**、**DBCache 机制**、**TaylorSeer 校准器（TaylorSeer Calibrator）** 及**Cache CFG**。
-
-```bash
-pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
-```
-
-您可以从 PyPI 安装 cache-dit 的稳定版本，或从 GitHub 安装最新的开发版本。然后，只需一行代码即可体验 ♥️ 缓存加速～♥️
-
-```python
->>> import cache_dit
->>> from diffusers import DiffusionPipeline
->>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
->>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
->>> output = pipe(...) # Just call the pipe as normal.
->>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
->>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
-```
 
 ### 📚核心特性
 
