@@ -646,6 +646,7 @@ def entrypoint():
                     not os.path.exists(img_test),
                 )
             ):
+                logger.error(f"Not exist: {img_true} or {img_test}, skip.")
                 return
             # img_true and img_test can be files or dirs
             img_true_info = os.path.basename(img_true)
@@ -684,6 +685,7 @@ def entrypoint():
                     not os.path.exists(img_test),  # dir
                 )
             ):
+                logger.error(f"Not exist: {prompt_true} or {img_test}, skip.")
                 return
 
             # img_true and img_test can be files or dirs
@@ -714,6 +716,7 @@ def entrypoint():
                     not os.path.exists(video_test),
                 )
             ):
+                logger.error(f"Not exist: {video_true} or {video_test}, skip.")
                 return
 
             # video_true and video_test can be files or dirs
