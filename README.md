@@ -128,16 +128,26 @@ We are excited to announce that the **first API-stable version (v1.0.0)** of cac
 
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
 
+```python
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
+>>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> output = pipe(...) # Just call the pipe as normal.
+>>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
+>>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
+```
+
 ### 📚Core Features
 
-- **Full 🤗 Diffusers Support**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, such as Qwen-Image, FLUX.1, Qwen-Image-Lightning, HunyuanImage-2.1, HunyuanVideo, HunyuanDiT, Wan 2.1/2.2, HiDream, AuraFlow, CogView3Plus, CogView4, LTXVideo, CogVideoX 1.5, ConsisID, SkyReelsV2, VisualCloze, OmniGen, Lumina, PixArt, Chroma, Sana, Allegro, Mochi, SD 3.5, Amused, and DiT-XL.  
-- **Extremely Easy to Use**: In most cases, you only need **♥️ one line ♥️** of code: `enable_cache(...)`. After calling this API, just use the pipeline as normal.   
-- **Easy New Model Integration**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1)—even before it was available in the Diffusers library.  
-- **State-of-the-Art Performance**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieves the best accuracy when the speedup ratio is below 3x.  
-- **Support for 4/8-Step Distilled Models**: Surprisingly, cache-dit's DBCache works for extremely few-step distilled models—something many other methods fail to do.  
-- **Compatibility with Other Optimizations**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, etc.  
-- **Hybrid Cache Acceleration**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache + TaylorSeerCalibrator). DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
-- **🤗 Diffusers Ecosystem Integration**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
+- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, such as Qwen-Image, FLUX.1, Qwen-Image-Lightning, HunyuanImage-2.1, HunyuanVideo, HunyuanDiT, Wan 2.1/2.2, HiDream, AuraFlow, CogView3Plus, CogView4, LTXVideo, CogVideoX 1.5, ConsisID, SkyReelsV2, VisualCloze, OmniGen, Lumina, PixArt, Chroma, Sana, Allegro, Mochi, SD 3.5, Amused, and DiT-XL.  
+- **[🎉Extremely Easy to Use](./docs/User_Guide.md#unified-cache-apis)**: In most cases, you only need **♥️ one line ♥️** of code: `enable_cache(...)`. After calling this API, just use the pipeline as normal.   
+- **[🎉Easy New Model Integration](./docs/User_Guide.md#automatic-block-adapter)**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1)—even before it was available in the Diffusers library.  
+- **[🎉State-of-the-Art Performance](./bench/)**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieves the best accuracy when the speedup ratio is below 4x.  
+- **[🎉Support for 4/8-Steps Distilled Models](./bench/)**: Surprisingly, cache-dit's **DBCache** works for extremely few-step distilled models—something many other methods fail to do.  
+- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, etc.  
+- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache + TaylorSeerCalibrator). DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
+- **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 ![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
 
