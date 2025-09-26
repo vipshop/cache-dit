@@ -15,8 +15,8 @@
 - [⚡️Dual Block Cache](#dbcache)
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [⚙️Torch Compile](#compile)
 - [🛠Metrics CLI](#metrics)
+- [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
 
 ## ⚙️Installation  
@@ -109,7 +109,11 @@ Comparisons between different FnBn compute block configurations show that **more
 | F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47x |
 | F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
 
+### 📚Compare with Other Methods: Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa
+
 ![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
+
+![clip-score-bench](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
 The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/). 
 
@@ -132,8 +136,6 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 
 <details>
 <summary> Show all comparison </summary>  
-
-![clip-score-bench](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
@@ -185,7 +187,6 @@ Surprisingly, cache-dit: DBCache still works in the extremely few-step distill m
 | F1B0_W2MC1_R0.8            | 31.8317   | 35.6651    | 1.2397       | 206.90   | 1.33x       |
 
 ## 🎉Unified Cache APIs
-
 
 <div id="unified"></div>  
 
@@ -486,27 +487,6 @@ cache_dit.enable_cache(
 )
 ```
 
-## ⚙️Torch Compile
-
-<div id="compile"></div>  
-
-By the way, **cache-dit** is designed to work compatibly with **torch.compile.** You can easily use cache-dit with torch.compile to further achieve a better performance. For example:
-
-```python
-cache_dit.enable_cache(pipe)
-
-# Compile the Transformer module
-pipe.transformer = torch.compile(pipe.transformer)
-```
-However, users intending to use **cache-dit** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo`. Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
-```python
-torch._dynamo.config.recompile_limit = 96  # default is 8
-torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
-```
-
-Please check [perf.py](https://github.com/vipshop/cache-dit/blob/main/bench/perf.py) for more details.
-
-
 ## 🛠Metrics CLI
 
 <div id="metrics"></div>    
@@ -538,6 +518,28 @@ cache-dit-metrics-cli -h  # show usage
 cache-dit-metrics-cli all  -i1 true.png -i2 test.png  # image
 cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 ```
+
+## ⚙️Torch Compile
+
+<div id="compile"></div>  
+
+By the way, **cache-dit** is designed to work compatibly with **torch.compile.** You can easily use cache-dit with torch.compile to further achieve a better performance. For example:
+
+```python
+cache_dit.enable_cache(pipe)
+
+# Compile the Transformer module
+pipe.transformer = torch.compile(pipe.transformer)
+```
+However, users intending to use **cache-dit** for DiT with **dynamic input shapes** should consider increasing the **recompile** **limit** of `torch._dynamo`. Otherwise, the recompile_limit error may be triggered, causing the module to fall back to eager mode. 
+```python
+torch._dynamo.config.recompile_limit = 96  # default is 8
+torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
+```
+
+Please check [perf.py](https://github.com/vipshop/cache-dit/blob/main/bench/perf.py) for more details.
+
+---
 
 ## 📚API Documentation
 
