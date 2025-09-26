@@ -121,7 +121,7 @@
 </div>
 </details>
 
-## 🔥Hightlight
+## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 
