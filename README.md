@@ -132,8 +132,7 @@ We are excited to announce that the **first API-stable version (v1.0.0)** of cac
 
 You can install the stable release of `cache-dit` from PyPI, Or you can install the latest develop version from GitHub:
 ```bash
-pip3 install -U cache-dit
-pip3 install git+https://github.com/vipshop/cache-dit.git
+pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
 #### 🔥Quick Start: ♥️ Cache Acceleration with One-line Code ~ ♥️
