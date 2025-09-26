@@ -15,15 +15,19 @@
   </div>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
-    🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
-    🔥<a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">AuraFlow</a>🔥<br>
-    🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">LTXVideo</a> | <a href="#supported">CogVideoX</a> | <a href="#supported">CogVideoX 1.5</a> | <a href="#supported">ConsisID</a>🔥<br>
-    🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported">OmniGen 1/2</a> | <a href="#supported">Lumina 1/2</a> | <a href="#supported">PixArt</a>🔥<br>
-    🔥<a href="#supported">Chroma</a> | <a href="#supported">Sana</a> | <a href="#supported">Allegro</a> | <a href="#supported">Mochi</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported">Amused</a> | <a href="#supported"> ... </a> | <a href="#supported">DiT-XL</a>🔥
+    🔥<a href="./examples/">Qwen-Image</a> | <a href="./examples/">FLUX.1</a> | <a href="./examples/">Qwen-Image-Lightning</a> | <a href="./examples/"> Wan 2.1 </a> | <a href="./examples/"> Wan 2.2 </a>🔥<br>
+    🔥<a href="./examples/">HunyuanImage-2.1</a> | <a href="./examples/">HunyuanVideo</a> | <a href="./examples/">HunyuanDiT</a> | <a href="./examples/">HiDream</a> | <a href="./examples/">AuraFlow</a>🔥<br>
+    🔥<a href="./examples/">CogView3Plus</a> | <a href="./examples/">CogView4</a> | <a href="./examples/">LTXVideo</a> | <a href="./examples/">CogVideoX</a> | <a href="./examples/">CogVideoX 1.5</a> | <a href="./examples/">ConsisID</a>🔥<br>
+    🔥<a href="./examples/">Cosmos</a> | <a href="./examples/">SkyReelsV2</a> | <a href="./examples/">VisualCloze</a> | <a href="./examples/">OmniGen 1/2</a> | <a href="./examples/">Lumina 1/2</a> | <a href="./examples/">PixArt</a>🔥<br>
+    🔥<a href="./examples/">Chroma</a> | <a href="./examples/">Sana</a> | <a href="./examples/">Allegro</a> | <a href="./examples/">Mochi</a> | <a href="./examples/">SD 3/3.5</a> | <a href="./examples/">Amused</a> | <a href="./examples/"> ... </a> | <a href="./examples/">DiT-XL</a>🔥
+    <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️ 
   </p>
 </div>
 
-<div align='center'>
+<details align='center'>
+<summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
+
+<div  align='center'>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C0_Q0_NONE.gif width=124px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=124px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/hunyuan_video.C0_L0_Q0_NONE.gif width=126px>
@@ -43,16 +47,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_NONE.png width=125px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S18.png width=125px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/qwen-image-edit.C0_L0_Q0_DBCACHE_F1B0_W8M0MC2_T0O2_R0.12_S24.png width=125px>
-  <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 
-  <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️
-  </p>
-</div>
-
-<details align='center'>
-
-<summary>🔥<b>Click</b> here to show more <b>Image/Video</b> cases🔥</summary>
-
-<div  align='center'>
+  <p><b>🔥Qwen-Image-Edit</b> | Input w/o Edit | Baseline | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.6x↑🎉 | 1.9x↑🎉 </p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext-cat.C0_L0_Q0_NONE.png width=100px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext.C0_L0_Q0_NONE.png width=100px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/flux-kontext.C0_L0_Q0_DBCACHE_F8B0_W8M0MC0_T0O2_R0.08_S10.png width=100px>
@@ -118,6 +113,7 @@
   <p><b>🔥Asumed</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.1x↑🎉 | 1.2x↑🎉 | <b>DiT-XL-256</b> | <a href="https://github.com/vipshop/cache-dit">+cache-dit</a>:1.8x↑🎉
   <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️</p>
 </div>
+
 </details>
 
 ## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
