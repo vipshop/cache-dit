@@ -1,7 +1,7 @@
 # 🤖Benchmarks
 
-![](./image-reward-bench.png)
-![](./clip-score-bench.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
 ## 📖Contents
 
