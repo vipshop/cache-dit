@@ -362,9 +362,7 @@ def __patch_transformer_forward__(
     )
     if hidden_states_masks is not None:
         # NOTE: Patched
-        cur_llama31_encoder_hidden_states = llama31_encoder_hidden_states[
-            self.double_stream_blocks[-1].block._block_id
-        ]
+        cur_llama31_encoder_hidden_states = llama31_encoder_hidden_states[0]
         encoder_attention_mask_ones = torch.ones(
             (
                 batch_size,
