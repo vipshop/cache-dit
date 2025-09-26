@@ -128,6 +128,18 @@ We are excited to announce that the **first API-stable version (v1.0.0)** of cac
 
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
 
+<div id="installation"></div>
+
+You can install the stable release of `cache-dit` from PyPI, Or you can install the latest develop version from GitHub:
+```bash
+pip3 install -U cache-dit
+pip3 install git+https://github.com/vipshop/cache-dit.git
+```
+
+#### 🔥Quick Start: ♥️ Cache Acceleration with One-line Code ~ ♥️
+
+<div id="quick-start"></div>
+
 ```python
 >>> import cache_dit
 >>> from diffusers import DiffusionPipeline
@@ -168,6 +180,7 @@ We are excited to announce that the **first API-stable version (v1.0.0)** of cac
 - 2025.07.18: 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13). 
 - 2025.07.13: 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
 
+<!--
 ## 📖Contents 
 
 <div id="contents"></div>  
@@ -419,6 +432,7 @@ cache_dit.enable_cache(
     ),
 )
 ```
+-->
 
 ## 🎉User Guide
 
