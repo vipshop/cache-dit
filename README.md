@@ -128,17 +128,10 @@ We are excited to announce that the **first API-stable version (v1.0.0)** of cac
 
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
 
-<div id="installation"></div>
-
-You can install the stable release of `cache-dit` from PyPI, Or you can install the latest develop version from GitHub:
 ```bash
 pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
-
-#### 🔥Quick Start: ♥️ Cache Acceleration with One-line Code ~ ♥️
-
-<div id="quick-start"></div>
-
+You can install the stable release of cache-dit from PyPI, or the latest development version from GitHub. Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ```python
 >>> import cache_dit
 >>> from diffusers import DiffusionPipeline
