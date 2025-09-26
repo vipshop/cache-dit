@@ -54,6 +54,8 @@ def get_args(
     )
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
+    parser.add_argument("--height", type=int, default=None)
+    parser.add_argument("--width", type=int, default=None)
     return parser.parse_args() if parse else parser
 
 

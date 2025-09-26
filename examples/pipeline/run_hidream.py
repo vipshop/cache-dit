@@ -63,8 +63,8 @@ if args.cache:
 start = time.time()
 image = pipe(
     'A cute girl holding a sign that says "Hi-Dreams.ai".',
-    height=1024,
-    width=1024,
+    height=1024 if args.height is None else args.height,
+    width=1024 if args.width is None else args.width,
     guidance_scale=5.0,
     num_inference_steps=50,
     generator=torch.Generator("cpu").manual_seed(0),
