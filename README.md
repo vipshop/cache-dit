@@ -7,7 +7,6 @@
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
   </p>
   <div align='center'>
-      <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-blue.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
