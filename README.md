@@ -14,11 +14,13 @@
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg >
   </div>
+<!--
   <p align="center">
     <b><a href="./docs/User_Guide.md">📚Unified Cache APIs</a></b> | <a href="./docs/User_Guide.md">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
     <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="./docs/User_Guide.md">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
     <a href="./docs/User_Guide.md">📚Patch Functor</a> | <a href="./docs/User_Guide.md">📚T2I DrawBench</a> | <a href="./docs/User_Guide.md">📚T2I Distillation DrawBench</a>
   </p>
+-->
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
     🔥<a href="./examples/pipeline">Qwen-Image</a> | <a href="./examples/pipeline">Qwen-Image-Edit</a> | <a href="./examples/pipeline">Qwen-Image-Edit-Plus </a> 🔥<br>
