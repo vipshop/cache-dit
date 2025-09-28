@@ -15,13 +15,18 @@
       <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg >
   </div>
   <p align="center">
+    <b><a href="./docs/User_Guide.md">📚Unified Cache APIs</a></b> | <a href="./docs/User_Guide.md">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
+    <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="./docs/User_Guide.md">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
+    <a href="./docs/User_Guide.md">📚Patch Functor</a> | <a href="./docs/User_Guide.md">📚T2I DrawBench</a> | <a href="./docs/User_Guide.md">📚T2I Distillation DrawBench</a>
+  </p>
+  <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
-    🔥<a href="./examples/">Qwen-Image</a> | <a href="./examples/">Qwen-Image-Edit</a> | <a href="./examples/">Qwen-Image-Edit-Plus </a> 🔥<br>
-    🔥<a href="./examples/">FLUX.1</a> | <a href="./examples/">Qwen-Image-Lightning 4/8 Steps</a> | <a href="./examples/"> Wan 2.1 </a> | <a href="./examples/"> Wan 2.2 </a>🔥<br>
-    🔥<a href="./examples/">HunyuanImage-2.1</a> | <a href="./examples/">HunyuanVideo</a> | <a href="./examples/">HunyuanDiT</a> | <a href="./examples/">HiDream</a> | <a href="./examples/">AuraFlow</a>🔥<br>
-    🔥<a href="./examples/">CogView3Plus</a> | <a href="./examples/">CogView4</a> | <a href="./examples/">LTXVideo</a> | <a href="./examples/">CogVideoX</a> | <a href="./examples/">CogVideoX 1.5</a> | <a href="./examples/">ConsisID</a>🔥<br>
-    🔥<a href="./examples/">Cosmos</a> | <a href="./examples/">SkyReelsV2</a> | <a href="./examples/">VisualCloze</a> | <a href="./examples/">OmniGen 1/2</a> | <a href="./examples/">Lumina 1/2</a> | <a href="./examples/">PixArt</a>🔥<br>
-    🔥<a href="./examples/">Chroma</a> | <a href="./examples/">Sana</a> | <a href="./examples/">Allegro</a> | <a href="./examples/">Mochi</a> | <a href="./examples/">SD 3/3.5</a> | <a href="./examples/">Amused</a> | <a href="./examples/"> ... </a> | <a href="./examples/">DiT-XL</a>🔥
+    🔥<a href="./examples/pipeline">Qwen-Image</a> | <a href="./examples/pipeline">Qwen-Image-Edit</a> | <a href="./examples/pipeline">Qwen-Image-Edit-Plus </a> 🔥<br>
+    🔥<a href="./examples/pipeline">FLUX.1</a> | <a href="./examples/pipeline">Qwen-Image-Lightning 4/8 Steps</a> | <a href="./examples/pipeline"> Wan 2.1 </a> | <a href="./examples/pipeline"> Wan 2.2 </a>🔥<br>
+    🔥<a href="./examples/pipeline">HunyuanImage-2.1</a> | <a href="./examples/pipeline">HunyuanVideo</a> | <a href="./examples/pipeline">HunyuanDiT</a> | <a href="./examples/pipeline">HiDream</a> | <a href="./examples/pipeline">AuraFlow</a>🔥<br>
+    🔥<a href="./examples/pipeline">CogView3Plus</a> | <a href="./examples/pipeline">CogView4</a> | <a href="./examples/pipeline">LTXVideo</a> | <a href="./examples/pipeline">CogVideoX</a> | <a href="./examples/">CogVideoX 1.5</a> | <a href="./examples/">ConsisID</a>🔥<br>
+    🔥<a href="./examples/pipeline">Cosmos</a> | <a href="./examples/pipeline">SkyReelsV2</a> | <a href="./examples/pipeline">VisualCloze</a> | <a href="./examples/pipeline">OmniGen 1/2</a> | <a href="./examples/pipeline">Lumina 1/2</a> | <a href="./examples/pipeline">PixArt</a>🔥<br>
+    🔥<a href="./examples/pipeline">Chroma</a> | <a href="./examples/pipeline">Sana</a> | <a href="./examples/pipeline">Allegro</a> | <a href="./examples/pipeline">Mochi</a> | <a href="./examples/pipeline">SD 3/3.5</a> | <a href="./examples/pipeline">Amused</a> | <a href="./examples/pipeline"> ... </a> | <a href="./examples/pipeline">DiT-XL</a>🔥
     <br>♥️ Please consider to leave a <b>⭐️ Star</b> to support us ~ ♥️ 
   </p>
 </div>
@@ -120,6 +125,7 @@
 </div>
 
 </details>
+
 ## 🔥Important News
 
 - 2025.09.26: 🔥[**Qwen-Image-Edit-Plus(2509)**](https://github.com/QwenLM/Qwen-Image) **2.1x↑🎉** speedup! Please check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit_plus.py).
@@ -133,7 +139,7 @@
 - 2025.09.08: 🎉First caching mechanism in [Wan2.2](https://github.com/Wan-Video/Wan2.2) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/Wan-Video/Wan2.2/pull/127) for more details.
 - 2025.09.08: 🎉First caching mechanism in [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/ModelTC/Qwen-Image-Lightning/pull/35).
 - 2025.08.19: 🔥[**Qwen-Image-Edit**](https://github.com/QwenLM/Qwen-Image) **2x↑🎉** speedup! Check the example: [run_qwen_image_edit.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit.py).
-- 2025.09.01: 📚[**Hybird Forward Pattern**](#unified) is supported! Please check [FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples/run_flux_adapter.py) as an example.
+- 2025.09.01: 📚[**Hybird Forward Pattern**](./docs/User_Guide.md) is supported! Please check [FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_flux_adapter.py) as an example.
 - 2025.08.10: 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_flux_kontext.py) as an example.
 - 2025.07.18: 🎉First caching mechanism in [🤗huggingface/flux-fast](https://github.com/huggingface/flux-fast) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check the [PR](https://github.com/huggingface/flux-fast/pull/13).
 - 2025.07.13: 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
