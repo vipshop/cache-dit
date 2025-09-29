@@ -18,11 +18,13 @@ sys.path.append("..")
 sys.path.append(os.environ.get("HYIMAGE_3_PKG_DIR", "."))
 
 import time
-
+import torch
 from hunyuan_image_3.hunyuan import HunyuanImage3ForCausalMM
 from utils import strify, cachify
 from utils import get_args as get_cache_args
 import cache_dit
+
+torch.set_grad_enabled(False)
 
 
 def parse_args():
@@ -41,7 +43,7 @@ def parse_args():
     parser.add_argument(
         "--attn-impl",
         type=str,
-        default="sdpa",
+        default="flash_attention_2",
         choices=["sdpa", "flash_attention_2"],
         help="Attention implementation. 'flash_attention_2' requires flash attention to be installed.",
     )
@@ -147,6 +149,7 @@ def set_reproducibility(enable, global_seed=None, benchmark=None):
     torch.use_deterministic_algorithms(enable)
 
 
+@torch.no_grad()
 def main(args):
     if args.reproduce:
         set_reproducibility(args.reproduce, global_seed=args.seed)
@@ -156,14 +159,26 @@ def main(args):
     if not Path(args.model_id).exists():
         raise ValueError(f"Model path {args.model_id} does not exist")
 
+    max_memory = {i: "22GB" for i in range(torch.cuda.device_count())}
+    print(f"max_memory: {max_memory}")
     kwargs = dict(
         attn_implementation=args.attn_impl,
-        torch_dtype="auto",
+        torch_dtype=torch.bfloat16,
         device_map="auto",
+        max_memory=max_memory,
         moe_impl=args.moe_impl,
     )
     model = HunyuanImage3ForCausalMM.from_pretrained(args.model_id, **kwargs)
     model.load_tokenizer(args.model_id)
+
+    # from hunyuan_image_3.autoencoder_kl_3d import AutoencoderKLConv3D
+    # pipeline = model.pipeline
+    # assert isinstance(pipeline.vae, AutoencoderKLConv3D)
+    # pipeline.vae.enable_tiling()
+
+    pipeline = model.pipeline
+    assert model._pipeline is not None, "Pipeline is not initialized"
+    assert pipeline is not None, "Pipeline is None"
 
     if args.cache:
         from hunyuan_image_3.hunyuan import HunyuanImage3Model
@@ -197,7 +212,7 @@ def main(args):
         stream=True,
     )
     end = time.time()
-    stats = cache_dit.summary(model._pipeline)
+    stats = cache_dit.summary(model._pipeline.model)
 
     time_cost = end - start
     print(f"Time cost: {time_cost:.2f}s")
