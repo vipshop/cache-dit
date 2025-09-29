@@ -183,14 +183,14 @@ def main(args):
     if args.cache:
         from cache_dit import BlockAdapter, ForwardPattern
 
-        assert isinstance(model._pipeline.model, HunyuanImage3ForCausalMM)
+        assert isinstance(model, HunyuanImage3ForCausalMM)
 
         cachify(
             args,
             BlockAdapter(
                 pipe=model._pipeline,
-                transformer=model._pipeline.model.model,
-                blocks=model._pipeline.model.model.layers,
+                transformer=model.model,
+                blocks=model.model.layers,
                 forward_pattern=ForwardPattern.Pattern_3,
                 check_forward_pattern=False,
                 check_num_outputs=False,
