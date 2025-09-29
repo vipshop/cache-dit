@@ -181,17 +181,16 @@ def main(args):
     assert pipeline is not None, "Pipeline is None"
 
     if args.cache:
-        from hunyuan_image_3.hunyuan import HunyuanImage3Model
         from cache_dit import BlockAdapter, ForwardPattern
 
-        assert isinstance(model._pipeline.model, HunyuanImage3Model)
+        assert isinstance(model._pipeline.model, HunyuanImage3ForCausalMM)
 
         cachify(
             args,
             BlockAdapter(
                 pipe=model._pipeline,
-                transformer=model._pipeline.model,
-                blocks=model._pipeline.model.layers,
+                transformer=model._pipeline.model.model,
+                blocks=model._pipeline.model.model.layers,
                 forward_pattern=ForwardPattern.Pattern_3,
                 check_forward_pattern=False,
                 check_num_outputs=False,
