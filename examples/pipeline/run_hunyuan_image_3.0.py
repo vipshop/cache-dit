@@ -214,6 +214,9 @@ def main(args):
         diff_infer_steps=args.diff_infer_steps,
         verbose=args.verbose,
         stream=True,
+        use_cache=False,
+        output_hidden_states=False,
+        output_attentions=False,
     )
     end = time.time()
     stats = cache_dit.summary(model._pipeline.model)
