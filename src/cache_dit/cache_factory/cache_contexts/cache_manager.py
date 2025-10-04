@@ -14,6 +14,10 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+class CacheNotExistError(Exception):
+    pass
+
+
 class CachedContextManager:
     # Each Pipeline should have it's own context manager instance.
 
@@ -27,18 +31,19 @@ class CachedContextManager:
         self._cached_context_manager[_context.name] = _context
         return _context
 
-    def set_context(self, cached_context: CachedContext | str):
+    def set_context(self, cached_context: CachedContext | str) -> CachedContext:
         if isinstance(cached_context, CachedContext):
             self._current_context = cached_context
         else:
             if cached_context not in self._cached_context_manager:
-                raise ValueError("Context not exist!")
+                raise CacheNotExistError("Context not exist!")
             self._current_context = self._cached_context_manager[cached_context]
+        return self._current_context
 
     def get_context(self, name: str = None) -> CachedContext:
         if name is not None:
             if name not in self._cached_context_manager:
-                raise ValueError("Context not exist!")
+                raise CacheNotExistError("Context not exist!")
             return self._cached_context_manager[name]
         return self._current_context
 
