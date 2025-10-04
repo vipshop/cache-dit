@@ -31,6 +31,8 @@ class CachedContextManager:
         if isinstance(cached_context, CachedContext):
             self._current_context = cached_context
         else:
+            if cached_context not in self._cached_context_manager:
+                raise ValueError("Context not exist!")
             self._current_context = self._cached_context_manager[cached_context]
 
     def get_context(self, name: str = None) -> CachedContext:
