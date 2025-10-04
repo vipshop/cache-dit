@@ -167,7 +167,7 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
         **cache_context_kwargs,
-    ) -> DiffusionPipeline:
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
 
         BlockAdapter.assert_normalized(block_adapter)
 
@@ -221,7 +221,7 @@ class CachedAdapter:
 
         cls.apply_params_hooks(block_adapter, contexts_kwargs)
 
-        return block_adapter.pipe
+        return flatten_contexts, contexts_kwargs
 
     @classmethod
     def modify_context_params(
