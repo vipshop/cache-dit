@@ -185,10 +185,10 @@ def main(args):
 
         transformer = model.model
         assert isinstance(transformer, HunyuanImage3Model)
-        from hunyuan_image_3.autoencoder_kl_3d import AutoencoderKLConv3D
 
-        assert isinstance(pipeline.vae, AutoencoderKLConv3D)
-        pipeline.vae.enable_tiling()
+        # from hunyuan_image_3.autoencoder_kl_3d import AutoencoderKLConv3D
+        # assert isinstance(pipeline.vae, AutoencoderKLConv3D)
+        # pipeline.vae.enable_tiling()
 
         cachify(
             args,
