@@ -171,26 +171,30 @@ def main(args):
     model = HunyuanImage3ForCausalMM.from_pretrained(args.model_id, **kwargs)
     model.load_tokenizer(args.model_id)
 
-    # from hunyuan_image_3.autoencoder_kl_3d import AutoencoderKLConv3D
-    # pipeline = model.pipeline
-    # assert isinstance(pipeline.vae, AutoencoderKLConv3D)
-    # pipeline.vae.enable_tiling()
-
-    pipeline = model.pipeline
-    assert model._pipeline is not None, "Pipeline is not initialized"
-    assert pipeline is not None, "Pipeline is None"
-
     if args.cache:
         from cache_dit import BlockAdapter, ForwardPattern
 
+        pipeline = model.pipeline
+        assert model._pipeline is not None, "Pipeline is not initialized"
+        assert pipeline is not None, "Pipeline is None"
+
+        model = pipeline.model
         assert isinstance(model, HunyuanImage3ForCausalMM)
+        from hunyuan_image_3.hunyuan import HunyuanImage3Model
+
+        transformer = model.model
+        assert isinstance(transformer, HunyuanImage3Model)
+        from hunyuan_image_3.autoencoder_kl_3d import AutoencoderKLConv3D
+
+        assert isinstance(pipeline.vae, AutoencoderKLConv3D)
+        pipeline.vae.enable_tiling()
 
         cachify(
             args,
             BlockAdapter(
-                pipe=model._pipeline,
-                transformer=model.model,
-                blocks=model.model.layers,
+                pipe=pipeline,
+                transformer=transformer,
+                blocks=transformer.layers,
                 forward_pattern=ForwardPattern.Pattern_3,
                 check_forward_pattern=False,
                 check_num_outputs=False,
