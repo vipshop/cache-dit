@@ -98,7 +98,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             **kwargs,
         )
 
-        Fn_hidden_states_residual = hidden_states - original_hidden_states
+        Fn_hidden_states_residual = hidden_states - original_hidden_states.to(
+            hidden_states.device
+        )
         del original_hidden_states
 
         self.cache_manager.mark_step_begin()
@@ -260,7 +262,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
 
         # compute hidden_states residual
         hidden_states = hidden_states.contiguous()
-        hidden_states_residual = hidden_states - original_hidden_states
+        hidden_states_residual = hidden_states - original_hidden_states.to(
+            hidden_states.device
+        )
 
         return (
             hidden_states,
