@@ -177,6 +177,7 @@ def main(args):
         pipeline = model.pipeline
         assert model._pipeline is not None, "Pipeline is not initialized"
         assert pipeline is not None, "Pipeline is None"
+        pipeline = model._pipeline
 
         model = pipeline.model
         assert isinstance(model, HunyuanImage3ForCausalMM)
