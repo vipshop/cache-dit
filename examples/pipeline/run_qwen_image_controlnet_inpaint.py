@@ -11,8 +11,6 @@ from diffusers import (
     QwenImageControlNetInpaintPipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.quantizers import PipelineQuantizationConfig
-
 from utils import GiB, get_args, strify, cachify
 
 import cache_dit
@@ -39,33 +37,10 @@ pipe = QwenImageControlNetInpaintPipeline.from_pretrained(
     base_model,
     controlnet=controlnet,
     torch_dtype=torch.bfloat16,
-    quantization_config=(
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            components_to_quantize=[
-                "transformer",
-                "controlnet",
-                "text_encoder",
-            ],
-        )
-        if GiB() < 96
-        else None
-    ),
 )
-
-pipe.to("cuda")
 
 assert isinstance(pipe.controlnet, QwenImageControlNetModel)
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-
-if args.cache:
-    cachify(args, pipe)
-
 
 control_image = load_image(
     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/images/image1.png"
@@ -74,20 +49,64 @@ mask_image = load_image(
     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/masks/mask1.png"
 )
 prompt = "一辆绿色的出租车行驶在路上"
+negative_prompt = (
+    "worst quality, low quality, blurry, text, watermark, logo"  # or " "
+)
+
+
+if GiB() < 96:
+    # FP8 weight only
+    if args.quantize:
+        # Minimum VRAM required: 42 GiB
+        args.quantize_type = "fp8_w8a16_wo"  # force
+        pipe.transformer = cache_dit.quantize(
+            pipe.transformer,
+            quant_type="fp8_w8a16_wo",
+            exclude_layers=[
+                "img_in",
+                "txt_in",
+                "embedder",
+                "embed",
+                "norm_out",
+                "proj_out",
+            ],
+        )
+        pipe.text_encoder = cache_dit.quantize(
+            pipe.text_encoder,
+            quant_type="int4_w4a16_wo",  # fp8_w8a16_wo
+        )
+
+        pipe.to("cuda")
+    else:
+        print("Enable Model CPU Offload ...")
+        pipe.enable_model_cpu_offload()
+    pipe.enable_vae_tiling()
+else:
+    pipe.to("cuda")
+
+if args.cache:
+
+    cachify(
+        args,
+        pipe,
+        # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+        # (negative_prompt is not None, default None)
+        enable_separate_cfg=False if negative_prompt is None else True,
+    )
+
 
 start = time.time()
-# do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
 image = pipe(
     prompt=prompt,
-    negative_prompt=" ",
-    control_image=control_image,
+    negative_prompt=negative_prompt,
+    control_image=control_image.convert("RGB"),
     control_mask=mask_image,
     controlnet_conditioning_scale=1.0,
-    width=control_image.size[0],
-    height=control_image.size[1],
-    num_inference_steps=30,
+    width=mask_image.size[0],
+    height=mask_image.size[1],
+    num_inference_steps=50,
     true_cfg_scale=4.0,
-    generator=torch.Generator(device="cpu").manual_seed(42),
+    generator=torch.Generator(device="cpu").manual_seed(0),
 ).images[0]
 end = time.time()
 
