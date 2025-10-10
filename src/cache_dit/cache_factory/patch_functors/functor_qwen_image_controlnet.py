@@ -134,7 +134,7 @@ def __patch_block_forward__(
         # Add ControlNet conditioning
         num_blocks = self._num_blocks
         index_block = self._index_block
-        interval_control = len(num_blocks) / len(controlnet_block_samples)
+        interval_control = num_blocks / len(controlnet_block_samples)
         interval_control = int(np.ceil(interval_control))
         hidden_states = (
             hidden_states

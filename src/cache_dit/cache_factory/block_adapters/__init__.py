@@ -143,14 +143,30 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import QwenImageTransformer2DModel
 
     assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.transformer_blocks,
-        forward_pattern=ForwardPattern.Pattern_1,
-        has_separate_cfg=True,
-        **kwargs,
-    )
+
+    pipe_cls_name: str = pipe.__class__.__name__
+    if pipe_cls_name.startswith("QwenImageControlNet"):
+        from cache_dit.cache_factory.patch_functors import (
+            QwenImageControlNetPatchFunctor,
+        )
+
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.transformer_blocks,
+            forward_pattern=ForwardPattern.Pattern_1,
+            patch_functor=QwenImageControlNetPatchFunctor(),
+            has_separate_cfg=True,
+        )
+    else:
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.transformer_blocks,
+            forward_pattern=ForwardPattern.Pattern_1,
+            has_separate_cfg=True,
+            **kwargs,
+        )
 
 
 @BlockAdapterRegistry.register("LTX")
