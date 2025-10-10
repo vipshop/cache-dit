@@ -182,12 +182,16 @@ def quantize_ao(
     force_empty_cache()
 
     logger.info(
+        f"Quantized        Module: {module.__class__.__name__:>5}\n"
         f"Quantized        Method: {quant_type:>5}\n"
         f"Quantized Linear Layers: {num_quant_linear:>5}\n"
         f"Skipped   Linear Layers: {num_skip_linear:>5}\n"
         f"Total     Linear Layers: {num_linear_layers:>5}\n"
         f"Total     (all)  Layers: {num_layers:>5}"
     )
+
+    module._quantize_type = quant_type
+    module._is_quantized = True
     return module
 
 

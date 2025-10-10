@@ -14,13 +14,6 @@
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg >
   </div>
-<!--
-  <p align="center">
-    <b><a href="./docs/User_Guide.md">📚Unified Cache APIs</a></b> | <a href="./docs/User_Guide.md">📚Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">📚Automatic Block Adapter</a><br>
-    <a href="./docs/User_Guide.md">📚Hybrid Forward Pattern</a> | <a href="./docs/User_Guide.md">📚DBCache</a> | <a href="./docs/User_Guide.md">📚TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">📚Cache CFG</a><br>
-    <a href="./docs/User_Guide.md">📚Patch Functor</a> | <a href="./docs/User_Guide.md">📚T2I DrawBench</a> | <a href="./docs/User_Guide.md">📚T2I Distillation DrawBench</a>
-  </p>
--->
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
     🔥<a href="./examples/pipeline">Qwen-Image</a> | <a href="./examples/pipeline">Qwen-Image-Edit</a> | <a href="./examples/pipeline">Qwen-Image-Edit-Plus </a> 🔥<br>
@@ -162,6 +155,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
+- 2025.10.10: 🔥[**Qwen-Image-ControlNet-Inpainting**](https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting) **2.3x↑🎉** speedup! Check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_controlnet_inpaint.py).
 - 2025.09.26: 🔥[**Qwen-Image-Edit-Plus(2509)**](https://github.com/QwenLM/Qwen-Image) **2.1x↑🎉** speedup! Please check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit_plus.py).
 - 2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 - 2025.09.25: 🔥**cache-dit** has joined the Diffusers community ecosystem: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>

@@ -10,3 +10,6 @@ from cache_dit.cache_factory.patch_functors.functor_hidream import (
 from cache_dit.cache_factory.patch_functors.functor_hunyuan_dit import (
     HunyuanDiTPatchFunctor,
 )
+from cache_dit.cache_factory.patch_functors.functor_qwen_image_controlnet import (
+    QwenImageControlNetPatchFunctor,
+)

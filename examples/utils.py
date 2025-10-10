@@ -98,7 +98,6 @@ def cachify(
 
 def strify(args, pipe_or_stats):
     return (
-        f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}"
-        f"{'' if not args.quantize else ('_' + args.quantize_type)}_"
+        f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
