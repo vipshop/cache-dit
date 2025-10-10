@@ -164,7 +164,7 @@ def main(args):
     kwargs = dict(
         attn_implementation=args.attn_impl,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
+        device_map="auto" if not args.cache else "balanced",
         max_memory=max_memory,
         moe_impl=args.moe_impl,
     )
