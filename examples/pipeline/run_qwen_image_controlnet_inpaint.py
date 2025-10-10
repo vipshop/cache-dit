@@ -58,7 +58,6 @@ if GiB() < 96:
     # FP8 weight only
     if args.quantize:
         # Minimum VRAM required: 42 GiB
-        args.quantize_type = "fp8_w8a16_wo"  # force
         pipe.transformer = cache_dit.quantize(
             pipe.transformer,
             quant_type="fp8_w8a16_wo",
@@ -73,7 +72,7 @@ if GiB() < 96:
         )
         pipe.text_encoder = cache_dit.quantize(
             pipe.text_encoder,
-            quant_type="int4_w4a16_wo",  # fp8_w8a16_wo
+            quant_type="fp8_w8a16_wo",
         )
 
         pipe.to("cuda")
