@@ -159,12 +159,12 @@ def main(args):
     if not Path(args.model_id).exists():
         raise ValueError(f"Model path {args.model_id} does not exist")
 
-    max_memory = {i: "22GB" for i in range(torch.cuda.device_count())}
+    max_memory = {i: "16GB" for i in range(torch.cuda.device_count())}
     print(f"max_memory: {max_memory}")
     kwargs = dict(
         attn_implementation=args.attn_impl,
         torch_dtype=torch.bfloat16,
-        device_map="auto" if not args.cache else "balanced",
+        device_map="auto",
         max_memory=max_memory,
         moe_impl=args.moe_impl,
     )
@@ -185,10 +185,6 @@ def main(args):
 
         transformer = model.model
         assert isinstance(transformer, HunyuanImage3Model)
-
-        # from hunyuan_image_3.autoencoder_kl_3d import AutoencoderKLConv3D
-        # assert isinstance(pipeline.vae, AutoencoderKLConv3D)
-        # pipeline.vae.enable_tiling()
 
         cachify(
             args,
@@ -214,7 +210,7 @@ def main(args):
         diff_infer_steps=args.diff_infer_steps,
         verbose=args.verbose,
         stream=True,
-        use_cache=False,
+        use_cache=True,
         output_hidden_states=False,
         output_attentions=False,
     )
