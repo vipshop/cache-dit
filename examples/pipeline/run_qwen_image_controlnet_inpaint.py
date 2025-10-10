@@ -84,10 +84,20 @@ else:
     pipe.to("cuda")
 
 if args.cache:
+    from cache_dit import BlockAdapter, ForwardPattern
+    from cache_dit.cache_factory.patch_functors import (
+        QwenImageControlNetPatchFunctor,
+    )
 
     cachify(
         args,
-        pipe,
+        BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.transformer_blocks,
+            forward_pattern=ForwardPattern.Pattern_1,
+            patch_functor=QwenImageControlNetPatchFunctor(),
+        ),
         # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         # (negative_prompt is not None, default None)
         enable_separate_cfg=False if negative_prompt is None else True,
