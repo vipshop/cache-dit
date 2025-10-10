@@ -94,6 +94,25 @@ if args.cache:
     )
 
 
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer.compile_repeated_blocks(mode="default")
+
+    # warmup
+    image = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        control_image=control_image.convert("RGB"),
+        control_mask=mask_image,
+        controlnet_conditioning_scale=1.0,
+        width=mask_image.size[0],
+        height=mask_image.size[1],
+        num_inference_steps=50,
+        true_cfg_scale=4.0,
+        generator=torch.Generator(device="cpu").manual_seed(0),
+    ).images[0]
+
+
 start = time.time()
 image = pipe(
     prompt=prompt,
