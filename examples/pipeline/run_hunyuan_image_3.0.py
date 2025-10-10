@@ -210,9 +210,7 @@ def main(args):
         diff_infer_steps=args.diff_infer_steps,
         verbose=args.verbose,
         stream=True,
-        use_cache=(
-            True if not args.cache else False
-        ),  # not compatible with cache-dit
+        use_cache=True,
         output_hidden_states=False,
         output_attentions=False,
     )
