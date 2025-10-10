@@ -14,10 +14,6 @@ from cache_dit.cache_factory.cache_contexts import CachedContextManager
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
-from cache_dit.cache_factory.cache_blocks import (
-    patch_cached_stats,
-    remove_cached_stats,
-)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -167,7 +163,7 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
         **cache_context_kwargs,
-    ) -> DiffusionPipeline:
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
 
         BlockAdapter.assert_normalized(block_adapter)
 
@@ -221,7 +217,7 @@ class CachedAdapter:
 
         cls.apply_params_hooks(block_adapter, contexts_kwargs)
 
-        return block_adapter.pipe
+        return flatten_contexts, contexts_kwargs
 
     @classmethod
     def modify_context_params(
@@ -470,6 +466,10 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
     ):
+        from cache_dit.cache_factory.cache_blocks import (
+            patch_cached_stats,
+        )
+
         cache_manager = block_adapter.pipe._cache_manager
 
         for i in range(len(block_adapter.transformer)):
@@ -557,6 +557,10 @@ class CachedAdapter:
         )
 
         # release stats hooks
+        from cache_dit.cache_factory.cache_blocks import (
+            remove_cached_stats,
+        )
+
         cls.release_hooks(
             pipe_or_adapter,
             remove_cached_stats,

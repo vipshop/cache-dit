@@ -38,23 +38,43 @@ def enable_cache(
     BlockAdapter,
 ]:
     r"""
-    Unified Cache API for  almost Any Diffusion Transformers (with Transformer Blocks
-    that match the specific Input and Output patterns).
+    The `enable_cache` function serves as a unified caching interface designed to optimize the performance
+    of diffusion transformer models by implementing an intelligent caching mechanism known as `DBCache`.
+    This API is engineered to be compatible with nearly `all` diffusion transformer architectures that
+    feature transformer blocks adhering to standard input-output patterns, eliminating the need for
+    architecture-specific modifications.
 
-    For a good balance between performance and precision, DBCache is configured by default
-    with F8B0, 8 warmup steps, and unlimited cached steps.
+    By strategically caching intermediate outputs of transformer blocks during the diffusion process,
+    `DBCache` significantly reduces redundant computations without compromising generation quality.
+    The caching mechanism works by tracking residual differences between consecutive steps, allowing
+    the model to reuse previously computed features when these differences fall below a configurable
+    threshold. This approach maintains a balance between computational efficiency and output precision.
+
+    The default configuration (`F8B0, 8 warmup steps, unlimited cached steps`) is carefully tuned to
+    provide an optimal tradeoff for most common use cases. The "F8B0" configuration indicates that
+    the first 8 transformer blocks are used to compute stable feature differences, while no final
+    blocks are employed for additional fusion. The warmup phase ensures the model establishes
+    sufficient feature representation before caching begins, preventing potential degradation of
+    output quality.
+
+    This function seamlessly integrates with both standard diffusion pipelines and custom block
+    adapters, making it versatile for various deployment scenarios—from research prototyping to
+    production environments where inference speed is critical. By abstracting the complexity of
+    caching logic behind a simple interface, it enables developers to enhance model performance
+    with minimal code changes.
 
     Args:
         pipe_or_adapter (`DiffusionPipeline` or `BlockAdapter`, *required*):
             The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
             For example: cache_dit.enable_cache(FluxPipeline(...)). Please check https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md
             for the usgae of BlockAdapter.
+
         cache_config (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
             Basic DBCache config for cache context, defaults to BasicCacheConfig(). The configurable params listed belows:
                 Fn_compute_blocks: (`int`, *required*, defaults to 8):
-                    Specifies that `DBCache` uses the **first n** Transformer blocks to fit the information
-                    at time step t, enabling the calculation of a more stable L1 diff and delivering more
-                    accurate information to subsequent blocks. Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md
+                    Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t,
+                    enabling the calculation of a more stable L1 difference and delivering more accurate information
+                    to subsequent blocks. Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md
                     for more details of DBCache.
                 Bn_compute_blocks: (`int`, *required*, defaults to 0):
                     Further fuses approximate information in the **last n** Transformer blocks to enhance
@@ -77,14 +97,18 @@ def enable_cache(
                     and non-CFG into single forward step, should set enable_separate_cfg as False, for example:
                     CogVideoX, HunyuanVideo, Mochi, etc.
                 cfg_compute_first (`bool`, *required*,  defaults to False):
-                    Compute cfg forward first or not, default False, namely, 0, 2, 4, ..., -> non-CFG step;
+                    Whether to compute cfg forward first, default is False, meaning:
+                    0, 2, 4, ..., -> non-CFG step;
                     1, 3, 5, ... -> CFG step.
                 cfg_diff_compute_separate (`bool`, *required*,  defaults to True):
-                    Compute separate diff values for CFG and non-CFG step, default True. If False, we will
-                    use the computed diff from current non-CFG transformer step for current CFG step.
+                    Whether to compute separate difference values for CFG and non-CFG steps, default is True.
+                    If False, we will use the computed difference from the current non-CFG transformer step
+                    for the current CFG step.
+
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
-            Config for calibrator, if calibrator_config is not None, means that user want to use DBCache
-            with specific calibrator, such as taylorseer, foca, and so on.
+            Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
+            with a specific calibrator, such as taylorseer, foca, and so on.
+
         params_modifiers ('ParamsModifier', *optional*, defaults to None):
             Modify cache context params for specific blocks. The configurable params listed belows:
                 cache_config (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
@@ -93,6 +117,7 @@ def enable_cache(
                     The same as 'calibrator_config' param in cache_dit.enable_cache() interface.
                 **kwargs: (`dict`, *optional*, defaults to {}):
                     The same as 'kwargs' param in cache_dit.enable_cache() interface.
+
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.

@@ -1,6 +1,9 @@
 import torch
 
 from cache_dit.cache_factory import ForwardPattern
+from cache_dit.cache_factory.cache_contexts.cache_manager import (
+    CacheNotExistError,
+)
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
     CachedBlocks_Pattern_Base,
 )
@@ -16,6 +19,70 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         ForwardPattern.Pattern_5,
     ]
 
+    def call_blocks(
+        self,
+        hidden_states: torch.Tensor,
+        *args,
+        **kwargs,
+    ):
+        # Call all blocks to process the hidden states without cache.
+        new_encoder_hidden_states = None
+        for block in self.transformer_blocks:
+            hidden_states = block(
+                hidden_states,
+                *args,
+                **kwargs,
+            )
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
+            )
+
+        return hidden_states, new_encoder_hidden_states
+
+    @torch.compiler.disable
+    def _process_outputs(
+        self, hidden_states: torch.Tensor | tuple
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        # Process the outputs for the block.
+        new_encoder_hidden_states = None
+        if not isinstance(hidden_states, torch.Tensor):  # Pattern 4, 5
+            if len(hidden_states) == 2:
+                if isinstance(hidden_states[1], torch.Tensor):
+                    hidden_states, new_encoder_hidden_states = hidden_states
+                    if not self.forward_pattern.Return_H_First:
+                        hidden_states, new_encoder_hidden_states = (
+                            new_encoder_hidden_states,
+                            hidden_states,
+                        )
+                elif isinstance(hidden_states[0], torch.Tensor):
+                    hidden_states = hidden_states[0]
+                else:
+                    raise ValueError("Unexpected hidden_states format.")
+            else:
+                assert (
+                    len(hidden_states) == 1
+                ), f"Unexpected output length: {len(hidden_states)}"
+                hidden_states = hidden_states[0]
+        return hidden_states, new_encoder_hidden_states
+
+    @torch.compiler.disable
+    def _forward_outputs(
+        self,
+        hidden_states: torch.Tensor,
+        new_encoder_hidden_states: torch.Tensor | None,
+    ) -> (
+        torch.Tensor
+        | tuple[torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, None]
+    ):
+        if self.forward_pattern.Return_H_Only:
+            return hidden_states
+        else:
+            if self.forward_pattern.Return_H_First:
+                return (hidden_states, new_encoder_hidden_states)
+            else:
+                return (new_encoder_hidden_states, hidden_states)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -23,8 +90,19 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         **kwargs,
     ):
         # Use it's own cache context.
-        self.cache_manager.set_context(self.cache_context)
-        self._check_cache_params()
+        try:
+            self.cache_manager.set_context(self.cache_context)
+            self._check_cache_params()
+        except CacheNotExistError as e:
+            logger.warning(f"Cache context not exist: {e}, skip cache.")
+            hidden_states, new_encoder_hidden_states = self.call_blocks(
+                hidden_states,
+                *args,
+                **kwargs,
+            )
+            return self._forward_outputs(
+                hidden_states, new_encoder_hidden_states
+            )
 
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
@@ -35,7 +113,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             **kwargs,
         )
 
-        Fn_hidden_states_residual = hidden_states - original_hidden_states
+        Fn_hidden_states_residual = hidden_states - original_hidden_states.to(
+            hidden_states.device
+        )
         del original_hidden_states
 
         self.cache_manager.mark_step_begin()
@@ -147,15 +227,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
 
         torch._dynamo.graph_break()
 
-        return (
-            hidden_states
-            if self.forward_pattern.Return_H_Only
-            else (
-                (hidden_states, new_encoder_hidden_states)
-                if self.forward_pattern.Return_H_First
-                else (new_encoder_hidden_states, hidden_states)
-            )
-        )
+        return self._forward_outputs(hidden_states, new_encoder_hidden_states)
 
     def call_Fn_blocks(
         self,
@@ -170,13 +242,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            if not isinstance(hidden_states, torch.Tensor):  # Pattern 4, 5
-                hidden_states, new_encoder_hidden_states = hidden_states
-                if not self.forward_pattern.Return_H_First:
-                    hidden_states, new_encoder_hidden_states = (
-                        new_encoder_hidden_states,
-                        hidden_states,
-                    )
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
+            )
 
         return hidden_states, new_encoder_hidden_states
 
@@ -194,16 +262,16 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            if not isinstance(hidden_states, torch.Tensor):  # Pattern 4, 5
-                hidden_states, new_encoder_hidden_states = hidden_states
-                if not self.forward_pattern.Return_H_First:
-                    hidden_states, new_encoder_hidden_states = (
-                        new_encoder_hidden_states,
-                        hidden_states,
-                    )
+
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
+            )
+
         # compute hidden_states residual
         hidden_states = hidden_states.contiguous()
-        hidden_states_residual = hidden_states - original_hidden_states
+        hidden_states_residual = hidden_states - original_hidden_states.to(
+            hidden_states.device
+        )
 
         return (
             hidden_states,
@@ -227,12 +295,9 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            if not isinstance(hidden_states, torch.Tensor):  # Pattern 4,5
-                hidden_states, new_encoder_hidden_states = hidden_states
-                if not self.forward_pattern.Return_H_First:
-                    hidden_states, new_encoder_hidden_states = (
-                        new_encoder_hidden_states,
-                        hidden_states,
-                    )
+
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
+            )
 
         return hidden_states, new_encoder_hidden_states
