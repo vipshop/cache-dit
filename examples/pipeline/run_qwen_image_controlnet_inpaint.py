@@ -9,7 +9,10 @@ from diffusers.utils import load_image
 from diffusers import (
     QwenImageControlNetModel,
     QwenImageControlNetInpaintPipeline,
+    QwenImageTransformer2DModel,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
+
 from utils import GiB, get_args, strify, cachify
 
 import cache_dit
@@ -27,28 +30,41 @@ controlnet_model = os.environ.get(
     "InstantX/Qwen-Image-ControlNet-Inpainting",
 )
 
-
 controlnet = QwenImageControlNetModel.from_pretrained(
-    controlnet_model, torch_dtype=torch.bfloat16
+    controlnet_model,
+    torch_dtype=torch.bfloat16,
 )
 
 pipe = QwenImageControlNetInpaintPipeline.from_pretrained(
     base_model,
     controlnet=controlnet,
     torch_dtype=torch.bfloat16,
-    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=[
+                "transformer",
+                "controlnet",
+                "text_encoder",
+            ],
+        )
+        if GiB() < 96
+        else None
     ),
 )
 
+pipe.to("cuda")
+
+assert isinstance(pipe.controlnet, QwenImageControlNetModel)
+assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 if args.cache:
     cachify(args, pipe)
-
-if torch.cuda.device_count() <= 1:
-    # Enable memory savings
-    pipe.enable_model_cpu_offload()
 
 
 control_image = load_image(
