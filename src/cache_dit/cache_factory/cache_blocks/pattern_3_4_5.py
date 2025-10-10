@@ -33,13 +33,17 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = (
-                self._postprocess_hidden_states(hidden_states)
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
             )
 
         return hidden_states, new_encoder_hidden_states
 
-    def _postprocess_hidden_states(self, hidden_states):
+    @torch.compiler.disable
+    def _process_outputs(
+        self, hidden_states: torch.Tensor | tuple
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        # Process the outputs for the block.
         new_encoder_hidden_states = None
         if not isinstance(hidden_states, torch.Tensor):  # Pattern 4, 5
             if len(hidden_states) == 2:
@@ -61,6 +65,24 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 hidden_states = hidden_states[0]
         return hidden_states, new_encoder_hidden_states
 
+    @torch.compiler.disable
+    def _forward_outputs(
+        self,
+        hidden_states: torch.Tensor,
+        new_encoder_hidden_states: torch.Tensor | None,
+    ) -> (
+        torch.Tensor
+        | tuple[torch.Tensor, torch.Tensor]
+        | tuple[torch.Tensor, None]
+    ):
+        if self.forward_pattern.Return_H_Only:
+            return hidden_states
+        else:
+            if self.forward_pattern.Return_H_First:
+                return (hidden_states, new_encoder_hidden_states)
+            else:
+                return (new_encoder_hidden_states, hidden_states)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -78,15 +100,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-
-            return (
-                hidden_states
-                if self.forward_pattern.Return_H_Only
-                else (
-                    (hidden_states, new_encoder_hidden_states)
-                    if self.forward_pattern.Return_H_First
-                    else (new_encoder_hidden_states, hidden_states)
-                )
+            return self._forward_outputs(
+                hidden_states, new_encoder_hidden_states
             )
 
         original_hidden_states = hidden_states
@@ -212,15 +227,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
 
         torch._dynamo.graph_break()
 
-        return (
-            hidden_states
-            if self.forward_pattern.Return_H_Only
-            else (
-                (hidden_states, new_encoder_hidden_states)
-                if self.forward_pattern.Return_H_First
-                else (new_encoder_hidden_states, hidden_states)
-            )
-        )
+        return self._forward_outputs(hidden_states, new_encoder_hidden_states)
 
     def call_Fn_blocks(
         self,
@@ -235,8 +242,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = (
-                self._postprocess_hidden_states(hidden_states)
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
             )
 
         return hidden_states, new_encoder_hidden_states
@@ -256,8 +263,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            hidden_states, new_encoder_hidden_states = (
-                self._postprocess_hidden_states(hidden_states)
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
             )
 
         # compute hidden_states residual
@@ -289,8 +296,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            hidden_states, new_encoder_hidden_states = (
-                self._postprocess_hidden_states(hidden_states)
+            hidden_states, new_encoder_hidden_states = self._process_outputs(
+                hidden_states
             )
 
         return hidden_states, new_encoder_hidden_states
