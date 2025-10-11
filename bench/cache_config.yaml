@@ -1,4 +1,3 @@
-cache_type: DBCache
 max_warmup_steps: 0
 max_cached_steps: -1
 max_continuous_cached_steps: 2
@@ -8,5 +7,4 @@ residual_diff_threshold: 0.12
 enable_taylorseer: true
 enable_encoder_taylorseer: true
 taylorseer_cache_type: residual
-taylorseer_kwargs:
-  n_derivatives: 2
+taylorseer_order: 2

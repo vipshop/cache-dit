@@ -1,14 +1,12 @@
 import yaml
-from cache_dit.cache_factory import CacheType
 
 
 def load_cache_options_from_yaml(yaml_file_path):
     try:
         with open(yaml_file_path, "r") as f:
-            config = yaml.safe_load(f)
+            kwargs: dict = yaml.safe_load(f)
 
         required_keys = [
-            "cache_type",
             "max_warmup_steps",
             "max_cached_steps",
             "Fn_compute_blocks",
@@ -16,34 +14,36 @@ def load_cache_options_from_yaml(yaml_file_path):
             "residual_diff_threshold",
         ]
         for key in required_keys:
-            if key not in config:
+            if key not in kwargs:
                 raise ValueError(
                     f"Configuration file missing required item: {key}"
                 )
 
-        # Convert cache_type to CacheType enum
-        if isinstance(config["cache_type"], str):
-            try:
-                config["cache_type"] = CacheType[config["cache_type"]]
-            except KeyError:
-                valid_types = [ct.name for ct in CacheType]
-                raise ValueError(
-                    f"Invalid cache_type value: {config['cache_type']}, "
-                    f"valid values are: {valid_types}"
-                )
-        elif not isinstance(config["cache_type"], CacheType):
-            raise ValueError(
-                f"cache_type must be a string or CacheType enum, "
-                f"got: {type(config['cache_type'])}"
+        cache_context_kwargs = {}
+        if kwargs.get("enable_taylorseer", False):
+            from cache_dit.cache_factory.cache_contexts.calibrators import (
+                TaylorSeerCalibratorConfig,
             )
 
-        # Handle default value for taylorseer_kwargs
-        if "taylorseer_kwargs" not in config and config.get(
-            "enable_taylorseer", False
-        ):
-            config["taylorseer_kwargs"] = {"n_derivatives": 2}
+            cache_context_kwargs["calibrator_config"] = (
+                TaylorSeerCalibratorConfig(
+                    enable_calibrator=kwargs.pop("enable_taylorseer"),
+                    enable_encoder_calibrator=kwargs.pop(
+                        "enable_encoder_taylorseer", False
+                    ),
+                    calibrator_cache_type=kwargs.pop(
+                        "taylorseer_cache_type", "residual"
+                    ),
+                    taylorseer_order=kwargs.pop("taylorseer_order", 1),
+                )
+            )
 
-        return config
+        from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
+
+        cache_context_kwargs["cache_config"] = BasicCacheConfig()
+        cache_context_kwargs["cache_config"].update(**kwargs)
+
+        return cache_context_kwargs
 
     except FileNotFoundError:
         raise FileNotFoundError(
