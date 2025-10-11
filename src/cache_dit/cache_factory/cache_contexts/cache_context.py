@@ -38,6 +38,10 @@ class BasicCacheConfig:
     #     DBCache does not apply the caching strategy when the number of running steps is less than
     #     or equal to this value, ensuring the model sufficiently learns basic features during warmup.
     max_warmup_steps: int = 8  # DON'T Cache in warmup steps
+    # warmup_interval (`int`, *required*, defaults to 1):
+    #     Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps
+    #     in warmup steps will be computed, others will use dynamic cache.
+    warmup_interval: int = 1  # skip interval in warmup steps
     # max_cached_steps (`int`, *required*, defaults to -1):
     #     DBCache disables the caching strategy when the previous cached steps exceed this value to
     #     prevent precision degradation.
@@ -71,6 +75,7 @@ class BasicCacheConfig:
             f"DBCACHE_F{self.Fn_compute_blocks}"
             f"B{self.Bn_compute_blocks}_"
             f"W{self.max_warmup_steps}"
+            f"I{self.warmup_interval}"
             f"M{max(0, self.max_cached_steps)}"
             f"MC{max(0, self.max_continuous_cached_steps)}_"
             f"R{self.residual_diff_threshold}"
@@ -346,5 +351,15 @@ class CachedContext:
         # CFG steps: 1, 3, 5, 7, ...
         return self.get_current_transformer_step() % 2 != 0
 
+    @property
+    def warmup_steps(self) -> List[int]:
+        return list(
+            range(
+                0,
+                self.cache_config.max_warmup_steps,
+                self.cache_config.warmup_interval,
+            )
+        )
+
     def is_in_warmup(self):
-        return self.get_current_step() < self.cache_config.max_warmup_steps
+        return self.get_current_step() in self.warmup_steps

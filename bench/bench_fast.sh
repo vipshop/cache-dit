@@ -10,12 +10,12 @@ function run_flux_draw_bench_fast() {
   rdt=0.8 # 0.64 0.8 1.0
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
   python3 bench.py ${base_params} # baseline
-  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 10
-  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 10
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 10
-  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 7
-  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 7
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 7
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 2 --rdt ${rdt} --mcc 10
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 2 --rdt ${rdt} --mcc 8
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 4 --rdt ${rdt} --mcc 10
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 4 --rdt ${rdt} --mcc 8
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 10
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 8
 }
 
 
@@ -28,12 +28,12 @@ function run_flux_draw_bench_with_taylorseer_fast() {
   rdt=0.8 # 0.64 0.8 1.0
   echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
   python3 bench.py ${base_params} # baseline
-  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 10 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 10 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 10 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 7 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 4 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 7 ${taylorseer_params}
-  python3 bench.py ${base_params} --cache --Fn 8 --Bn 0 --max-warmup-steps 1 --rdt ${rdt} --mcc 7 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 2 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 2 --rdt ${rdt} --mcc 8  ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 4 --rdt ${rdt} --mcc 8  ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 8  ${taylorseer_params}
 }
 
 
