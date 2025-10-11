@@ -135,7 +135,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         return hidden_states, encoder_hidden_states
 
     @torch.compiler.disable
-    def _process_outputs(
+    def _process_block_outputs(
         self,
         hidden_states: torch.Tensor | tuple,
         encoder_hidden_states: torch.Tensor | None,
@@ -150,7 +150,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         return hidden_states, encoder_hidden_states
 
     @torch.compiler.disable
-    def _forward_outputs(
+    def _process_forward_outputs(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor | None,
@@ -185,7 +185,10 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            return self._forward_outputs(hidden_states, encoder_hidden_states)
+            return self._process_forward_outputs(
+                hidden_states,
+                encoder_hidden_states,
+            )
 
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
@@ -304,7 +307,10 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         # patch cached stats for blocks or remove it.
         torch._dynamo.graph_break()
 
-        return self._forward_outputs(hidden_states, encoder_hidden_states)
+        return self._process_forward_outputs(
+            hidden_states,
+            encoder_hidden_states,
+        )
 
     @torch.compiler.disable
     def _is_parallelized(self):
@@ -379,7 +385,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            hidden_states, encoder_hidden_states = self._process_outputs(
+            hidden_states, encoder_hidden_states = self._process_block_outputs(
                 hidden_states, encoder_hidden_states
             )
 
@@ -401,7 +407,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            hidden_states, encoder_hidden_states = self._process_outputs(
+            hidden_states, encoder_hidden_states = self._process_block_outputs(
                 hidden_states, encoder_hidden_states
             )
 
@@ -445,7 +451,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            hidden_states, encoder_hidden_states = self._process_outputs(
+            hidden_states, encoder_hidden_states = self._process_block_outputs(
                 hidden_states, encoder_hidden_states
             )
 
