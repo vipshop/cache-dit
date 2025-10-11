@@ -200,9 +200,6 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
 
-## 🎉Projects Using CacheDiT
-
-Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), and [sdnext](https://github.com/vladmandic/sdnext/blob/dev/modules/cachedit.py) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg). **CacheDiT** has also been **recommended** by [Wan2.2](https://github.com/Wan-Video/Wan2.2) ![](https://img.shields.io/github/stars/Wan-Video/Wan2.2.svg), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) ![](https://img.shields.io/github/stars/ModelTC/Qwen-Image-Lightning.svg), [Qwen-Image](https://github.com/QwenLM/Qwen-Image) ![](https://img.shields.io/github/stars/QwenLM/Qwen-Image.svg), and <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src="https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg"></a> ![](https://img.shields.io/github/stars/huggingface/diffusers.svg), among others. We would be grateful if you could let us know if you have used CacheDiT.
 
 
 ## 👋Contribute 
@@ -218,7 +215,12 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
     <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=vipshop/cache-dit&type=Date" width=400px />
   </picture>
 </a>
+
 </div>
+
+## 🎉Projects Using CacheDiT
+
+Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), and [sdnext](https://github.com/vladmandic/sdnext/blob/dev/modules/cachedit.py) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg). **CacheDiT** has also been **recommended** by [Wan2.2](https://github.com/Wan-Video/Wan2.2) ![](https://img.shields.io/github/stars/Wan-Video/Wan2.2.svg), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) ![](https://img.shields.io/github/stars/ModelTC/Qwen-Image-Lightning.svg), [Qwen-Image](https://github.com/QwenLM/Qwen-Image) ![](https://img.shields.io/github/stars/QwenLM/Qwen-Image.svg), and <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src="https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg"></a> ![](https://img.shields.io/github/stars/huggingface/diffusers.svg), among others. We would be grateful if you could let us know if you have used CacheDiT.
 
 ## ©️Acknowledgements
 
