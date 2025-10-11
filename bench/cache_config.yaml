@@ -1,4 +1,5 @@
-max_warmup_steps: 0
+max_warmup_steps: 8
+warmup_interval: 2
 max_cached_steps: -1
 max_continuous_cached_steps: 2
 Fn_compute_blocks: 1

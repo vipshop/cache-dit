@@ -86,6 +86,9 @@ def enable_cache(
                 max_warmup_steps (`int`, *required*, defaults to 8):
                     DBCache does not apply the caching strategy when the number of running steps is less than
                     or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+                warmup_interval (`int`, *required*, defaults to 1):
+                    Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps
+                    in warmup steps will be computed, others will use dynamic cache.
                 max_cached_steps (`int`, *required*, defaults to -1):
                     DBCache disables the caching strategy when the previous cached steps exceed this value to
                     prevent precision degradation.
