@@ -1,5 +1,6 @@
 # 🤖Benchmarks
 
+- [🔥Hightlight](#hightlight)
 - [📚DrawBench](#benchmark-flux)
 - [📚Distillation DrawBench](#benchmark-lightning)
 - [📚How to Reproduce?](#how-to-reproduce)
