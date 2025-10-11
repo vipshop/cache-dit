@@ -33,14 +33,14 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = self._process_outputs(
-                hidden_states
+            hidden_states, new_encoder_hidden_states = (
+                self._process_block_outputs(hidden_states)
             )
 
         return hidden_states, new_encoder_hidden_states
 
     @torch.compiler.disable
-    def _process_outputs(
+    def _process_block_outputs(
         self, hidden_states: torch.Tensor | tuple
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         # Process the outputs for the block.
@@ -66,7 +66,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         return hidden_states, new_encoder_hidden_states
 
     @torch.compiler.disable
-    def _forward_outputs(
+    def _process_forward_outputs(
         self,
         hidden_states: torch.Tensor,
         new_encoder_hidden_states: torch.Tensor | None,
@@ -100,7 +100,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            return self._forward_outputs(
+            return self._process_forward_outputs(
                 hidden_states, new_encoder_hidden_states
             )
 
@@ -227,7 +227,10 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
 
         torch._dynamo.graph_break()
 
-        return self._forward_outputs(hidden_states, new_encoder_hidden_states)
+        return self._process_forward_outputs(
+            hidden_states,
+            new_encoder_hidden_states,
+        )
 
     def call_Fn_blocks(
         self,
@@ -242,8 +245,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = self._process_outputs(
-                hidden_states
+            hidden_states, new_encoder_hidden_states = (
+                self._process_block_outputs(hidden_states)
             )
 
         return hidden_states, new_encoder_hidden_states
@@ -263,8 +266,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            hidden_states, new_encoder_hidden_states = self._process_outputs(
-                hidden_states
+            hidden_states, new_encoder_hidden_states = (
+                self._process_block_outputs(hidden_states)
             )
 
         # compute hidden_states residual
@@ -296,8 +299,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            hidden_states, new_encoder_hidden_states = self._process_outputs(
-                hidden_states
+            hidden_states, new_encoder_hidden_states = (
+                self._process_block_outputs(hidden_states)
             )
 
         return hidden_states, new_encoder_hidden_states
