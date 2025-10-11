@@ -227,7 +227,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
 
 ## 🔥Projects Using CacheDiT
 
-A curated list of open-source projects integrating CacheDiT, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), [sdnext](https://github.com/vladmandic/sdnext/blob/dev/modules/cachedit.py) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg), etc. We would be grateful if you could let us know that you have used CacheDiT.
+Here is a curated list of open-source projects integrating CacheDiT, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), [sdnext](https://github.com/vladmandic/sdnext/blob/dev/modules/cachedit.py) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg), etc. We would be grateful if you could let us know that you have used CacheDiT.
 
 ## ©️Citations
 
