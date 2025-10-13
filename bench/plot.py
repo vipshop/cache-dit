@@ -76,7 +76,7 @@ def plot_metric(
     plt.ylabel(y_label)
 
     if y_label == "ImageReward":
-        plt.ylim(bottom=0.8, top=1.05)
+        plt.ylim(bottom=0.85, top=1.05)
         plt.xlim(right=6.3)
 
     if y_label == "ImageReward":
