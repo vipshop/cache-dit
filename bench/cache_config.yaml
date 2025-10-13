@@ -6,7 +6,7 @@ max_continuous_cached_steps: -1
 Fn_compute_blocks: 1
 Bn_compute_blocks: 0
 residual_diff_threshold: 0.12
-enable_taylorseer: true
-enable_encoder_taylorseer: true
+enable_taylorseer: false
+enable_encoder_taylorseer: false
 taylorseer_cache_type: residual
 taylorseer_order: 2
