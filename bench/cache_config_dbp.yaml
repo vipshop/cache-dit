@@ -1,7 +1,11 @@
 cache_type: DBPrune
-max_warmup_steps: 16
-warmup_interval: 4
+max_warmup_steps: 8
+warmup_interval: 1
 max_continuous_cached_steps: 2
 residual_diff_threshold: 0.12
 enable_dynamic_prune_threshold: true
 dynamic_prune_threshold_relax_ratio: 1.25
+enable_taylorseer: false
+enable_encoder_taylorseer: false
+taylorseer_cache_type: residual
+taylorseer_order: 1
