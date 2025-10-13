@@ -1,6 +1,6 @@
 cache_type: DBCache
-max_warmup_steps: 8
-warmup_interval: 1
+max_warmup_steps: 8 # 1
+warmup_interval: 1 # 1
 max_cached_steps: -1
 max_continuous_cached_steps: -1
 Fn_compute_blocks: 1
