@@ -145,7 +145,6 @@ class TaylorSeerCalibrator(CalibratorBase):
 
     def approximate(self, name="default") -> torch.Tensor:  # NEED
         assert name in self.states, f"State '{name}' not found."
-        logger.debug(f"Approximating for state '{name}'")
         state = self.states[name]
         return state.approximate()
 
