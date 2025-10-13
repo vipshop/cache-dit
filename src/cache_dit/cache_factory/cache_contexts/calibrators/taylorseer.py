@@ -114,7 +114,6 @@ class TaylorSeerCalibrator(CalibratorBase):
         **kwargs,
     ):
         self.n_derivatives = n_derivatives
-        self.order = n_derivatives + 1
         self.max_warmup_steps = max_warmup_steps
         self.skip_interval_steps = skip_interval_steps
 
