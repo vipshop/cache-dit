@@ -5,5 +5,5 @@ enable_dynamic_prune_threshold: true
 dynamic_prune_threshold_relax_ratio: 1.25
 enable_taylorseer: true
 enable_encoder_taylorseer: true
-taylorseer_cache_type: residual
+taylorseer_cache_type: hidden_states
 taylorseer_order: 1
