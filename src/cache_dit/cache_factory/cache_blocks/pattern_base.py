@@ -535,13 +535,13 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
     def _maybe_prune(
         self,
         hidden_states: torch.Tensor,  # hidden_states or residual
-        name: str = "Bn_original",  # prev step name for single blocks
+        prefix: str = "Bn_original",  # prev step name for single blocks
     ):
         # Wrap for non compiled mode.
         can_use_prune = self.cache_manager.can_cache(
             hidden_states,  # curr step
             parallelized=self._is_parallelized(),
-            name=name,  # prev step
+            prefix=prefix,  # prev step
         )
         self.pruned_blocks_step += int(can_use_prune)
         return can_use_prune
@@ -561,19 +561,29 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
 
         can_use_prune = self._maybe_prune(
             hidden_states,
-            name=f"{self.cache_prefix}_{block_id}_original",
+            prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
         )
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
+        # NOTE: Reuse DBCache API here.
+        torch._dynamo.graph_break()
         if can_use_prune:
             self.cache_manager.add_pruned_step()
             hidden_states, encoder_hidden_states = (
                 self.cache_manager.apply_cache(
                     hidden_states,
                     encoder_hidden_states,
-                    prefix=f"{self.cache_prefix}_{block_id}_residual",
-                    encoder_prefix=f"{self.cache_prefix}_{block_id}_encoder_residual",
+                    prefix=(
+                        f"{self.cache_prefix}_{block_id}_Bn_residual"
+                        if self.cache_manager.is_cache_residual()
+                        else f"{self.cache_prefix}_{block_id}_Bn_hidden_states"
+                    ),
+                    encoder_prefix=(
+                        f"{self.cache_prefix}_{block_id}_Bn_encoder_residual"
+                        if self.cache_manager.is_encoder_cache_residual()
+                        else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
+                    ),
                 )
             )
             torch._dynamo.graph_break()
@@ -602,19 +612,32 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
             else:
                 encoder_hidden_states_residual = None
 
+            # Update cache
             self.cache_manager.set_Fn_buffer(
                 original_hidden_states,
-                prefix=f"{self.cache_prefix}_{block_id}_original",
+                prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
             )
-            self.cache_manager.set_Bn_buffer(
-                hidden_states_residual,
-                prefix=f"{self.cache_prefix}_{block_id}_residual",
-            )
-            if encoder_hidden_states_residual is not None:
+            if self.cache_manager.is_cache_residual():
                 self.cache_manager.set_Bn_buffer(
-                    encoder_hidden_states_residual,
-                    prefix=f"{self.cache_prefix}_{block_id}_encoder_residual",
+                    hidden_states_residual,
+                    prefix=f"{self.cache_prefix}_{block_id}_Bn_residual",
                 )
+            else:
+                self.cache_manager.set_Bn_buffer(
+                    hidden_states,
+                    prefix=f"{self.cache_prefix}_{block_id}_Bn_hidden_states",
+                )
+            if encoder_hidden_states_residual is not None:
+                if self.cache_manager.is_encoder_cache_residual():
+                    self.cache_manager.set_Bn_encoder_buffer(
+                        encoder_hidden_states_residual,
+                        prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_residual",
+                    )
+                else:
+                    self.cache_manager.set_Bn_encoder_buffer(
+                        encoder_hidden_states_residual,
+                        prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states",
+                    )
             torch._dynamo.graph_break()
 
         return hidden_states, encoder_hidden_states

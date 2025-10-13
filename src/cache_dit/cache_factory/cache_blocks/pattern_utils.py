@@ -31,14 +31,17 @@ def patch_cached_stats(
     module._actual_blocks = cache_manager.get_actual_blocks()
     module._cfg_actual_blocks = cache_manager.get_cfg_actual_blocks()
     # Caculate pruned ratio
-    if len(module._pruned_steps) > 0 and sum(module._actual_blocks) > 0:
-        module._pruned_ratio = sum(module._pruned_steps) / sum(
+    if len(module._pruned_blocks) > 0 and sum(module._actual_blocks) > 0:
+        module._pruned_ratio = sum(module._pruned_blocks) / sum(
             module._actual_blocks
         )
     else:
         module._pruned_ratio = None
-    if len(module._cfg_pruned_steps) > 0 and sum(module._cfg_actual_blocks) > 0:
-        module._cfg_pruned_ratio = sum(module._cfg_pruned_steps) / sum(
+    if (
+        len(module._cfg_pruned_blocks) > 0
+        and sum(module._cfg_actual_blocks) > 0
+    ):
+        module._cfg_pruned_ratio = sum(module._cfg_pruned_blocks) / sum(
             module._cfg_actual_blocks
         )
     else:

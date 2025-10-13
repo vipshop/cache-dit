@@ -10,13 +10,12 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class TaylorSeerCalibrator(CalibratorBase):
+class TaylorSeerState:
     def __init__(
         self,
         n_derivatives=1,
         max_warmup_steps=1,
         skip_interval_steps=1,
-        **kwargs,
     ):
         self.n_derivatives = n_derivatives
         self.order = n_derivatives + 1
@@ -28,15 +27,17 @@ class TaylorSeerCalibrator(CalibratorBase):
             "dY_prev": [None] * self.order,
             "dY_current": [None] * self.order,
         }
-        self.reset_cache()
 
-    def reset_cache(self):  # NEED
+    def reset(self):
         self.state: Dict[str, List[torch.Tensor]] = {
             "dY_prev": [None] * self.order,
             "dY_current": [None] * self.order,
         }
         self.current_step = -1
         self.last_non_approximated_step = -1
+
+    def mark_step_begin(self):  # NEED
+        self.current_step += 1
 
     def should_compute(self, step=None):
         step = self.current_step if step is None else step
@@ -56,7 +57,7 @@ class TaylorSeerCalibrator(CalibratorBase):
         window = self.current_step - self.last_non_approximated_step
         if self.state["dY_prev"][0] is not None:
             if dY_current[0].shape != self.state["dY_prev"][0].shape:
-                self.reset_cache()
+                self.reset()
 
         for i in range(self.n_derivatives):
             if self.state["dY_prev"][i] is not None and self.current_step > 1:
@@ -76,9 +77,6 @@ class TaylorSeerCalibrator(CalibratorBase):
             else:
                 break
         return output
-
-    def mark_step_begin(self):  # NEED
-        self.current_step += 1
 
     def update(self, Y: torch.Tensor):  # NEED
         # Directly call this method will ingnore the warmup
@@ -105,6 +103,58 @@ class TaylorSeerCalibrator(CalibratorBase):
             return Y
         else:
             return self.approximate()
+
+
+class TaylorSeerCalibrator(CalibratorBase):
+    def __init__(
+        self,
+        n_derivatives=1,
+        max_warmup_steps=1,
+        skip_interval_steps=1,
+        **kwargs,
+    ):
+        self.n_derivatives = n_derivatives
+        self.order = n_derivatives + 1
+        self.max_warmup_steps = max_warmup_steps
+        self.skip_interval_steps = skip_interval_steps
+
+        self.states: Dict[str, TaylorSeerState] = {}
+        self.reset_cache()
+
+    def reset_cache(self):  # NEED
+        if self.states:
+            for state in self.states.values():
+                state.reset()
+
+    def mark_step_begin(self, *args, **kwargs):
+        if self.states:
+            for state in self.states.values():
+                state.mark_step_begin()
+
+    def derivative(self, Y: torch.Tensor, name="default") -> List[torch.Tensor]:
+        if name not in self.states:
+            self.states[name] = TaylorSeerState(
+                n_derivatives=self.n_derivatives,
+                max_warmup_steps=self.max_warmup_steps,
+                skip_interval_steps=self.skip_interval_steps,
+            )
+        state = self.states[name]
+        state.derivative(Y)
+        return state.state["dY_current"]
+
+    def approximate(self, name="default") -> torch.Tensor:  # NEED
+        assert name in self.states, f"State '{name}' not found."
+        state = self.states[name]
+        return state.approximate()
+
+    def update(self, Y: torch.Tensor, name="default"):  # NEED
+        assert name in self.states, f"State '{name}' not found."
+        state = self.states[name]
+        state.update(Y)
+
+    def step(self, Y: torch.Tensor, name="default"):
+        state = self.states[name]
+        return state.step(Y)
 
     def __repr__(self):
         return f"TaylorSeerCalibrator_O({self.n_derivatives})"

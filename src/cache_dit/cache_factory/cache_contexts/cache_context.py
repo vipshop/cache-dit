@@ -260,8 +260,8 @@ class CachedContext:
             if self.cache_config.enable_dynamic_prune_threshold:
                 # Compute the dynamic prune threshold based on the mean of the
                 # residual diffs of the previous computed or pruned blocks.
-                step = self.get_current_step()
-                if step >= 0 and step in self.residual_diffs:
+                step = str(self.get_current_step())
+                if int(step) >= 0 and str(step) in self.residual_diffs:
                     assert isinstance(self.residual_diffs[step], list)
                     # Use all the recorded diffs for this step
                     # NOTE: Should we only use the last 5 diffs?
@@ -467,7 +467,14 @@ class CachedContext:
             self.cfg_cached_steps.append(curr_cached_step)
 
     def add_pruned_step(self):
-        self.add_cached_step()
+        curr_cached_step = self.get_current_step()
+        # Avoid adding the same step multiple times
+        if not self.is_separate_cfg_step():
+            if curr_cached_step not in self.cached_steps:
+                self.add_cached_step()
+        else:
+            if curr_cached_step not in self.cfg_cached_steps:
+                self.add_cached_step()
 
     def add_pruned_block(self, num_blocks):
         if not self.is_separate_cfg_step():

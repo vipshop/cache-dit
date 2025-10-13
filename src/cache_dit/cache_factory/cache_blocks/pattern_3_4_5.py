@@ -376,13 +376,13 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
     def _maybe_prune(
         self,
         hidden_states: torch.Tensor,  # hidden_states or residual
-        name: str = "Bn_original",  # prev step name for single blocks
+        prefix: str = "Bn_original",  # prev step name for single blocks
     ):
         # Wrap for non compiled mode.
         can_use_prune = self.cache_manager.can_cache(
             hidden_states,  # curr step
             parallelized=self._is_parallelized(),
-            name=name,  # prev step
+            prefix=prefix,  # prev step
         )
         self.pruned_blocks_step += int(can_use_prune)
         return can_use_prune
@@ -402,7 +402,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
 
         can_use_prune = self._maybe_prune(
             hidden_states,
-            name=f"{self.cache_prefix}_{block_id}_original",
+            prefix=f"{self.cache_prefix}_{block_id}_original",
         )
 
         # Prune steps: Prune current block and reuse the cached
