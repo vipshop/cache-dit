@@ -605,7 +605,7 @@ class CachedContextManager:
 
             if encoder_calibrator is not None:
                 # Use CalibratorBase to update the buffer
-                encoder_calibrator.update(buffer)
+                encoder_calibrator.update(buffer, name=prefix)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
@@ -636,7 +636,7 @@ class CachedContextManager:
 
             if encoder_calibrator is not None:
                 # Use calibrator to approximate the value
-                return encoder_calibrator.approximate()
+                return encoder_calibrator.approximate(name=prefix)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
@@ -673,8 +673,6 @@ class CachedContextManager:
         assert (
             hidden_states_prev is not None
         ), f"{prefix}_buffer must be set before"
-
-        logger.debug(f"hidden_states_prev: {hidden_states_prev.float().mean()}")
 
         if self.is_cache_residual():
             hidden_states = hidden_states_prev + hidden_states

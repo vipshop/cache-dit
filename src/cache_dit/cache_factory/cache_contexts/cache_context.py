@@ -228,6 +228,13 @@ class CachedContext:
                         self.calibrator_config
                     )
 
+        if self.cache_config.cache_type == CacheType.DBPrune:
+            if self.calibrator_config is not None:
+                # Reduce VRAM usage for Dynamic Block Prune
+                self.extra_cache_config.downsample_factor = max(
+                    2, self.extra_cache_config.downsample_factor
+                )
+
     def enable_calibrator(self):
         if self.calibrator_config is not None:
             return self.calibrator_config.enable_calibrator

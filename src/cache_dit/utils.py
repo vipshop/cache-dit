@@ -279,22 +279,40 @@ def _summary(
             q4 = np.percentile(diffs_values, 95)
             qmax = np.max(diffs_values)
 
-            print(
-                f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n"
-            )
+            if pruned_ratio is not None:
+                print(
+                    f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n"
+                )
 
-            print(
-                "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
-            )
-            print(
-                "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
-            )
-            print(
-                f"| {len(cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
-                f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
-            )
-            print("")
+                print(
+                    "| Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                )
+                print(
+                    "|---------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                )
+                print(
+                    f"| {sum(pruned_blocks):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                )
+                print("")
+            else:
+                print(
+                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n"
+                )
+
+                print(
+                    "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                )
+                print(
+                    "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                )
+                print(
+                    f"| {len(cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                )
+                print("")
 
             if pruned_ratio is not None:
                 print(
@@ -302,14 +320,31 @@ def _summary(
                 )
 
             if details:
-                print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
-                pprint(
-                    f"Cache Steps: {len(cached_steps)}, {cached_steps}",
-                )
-                pprint(
-                    f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
-                    compact=True,
-                )
+                if pruned_ratio is not None:
+                    print(
+                        f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n"
+                    )
+                    pprint(
+                        f"Pruned Blocks: {len(pruned_blocks)}, {pruned_blocks}",
+                    )
+                    pprint(
+                        f"Actual Blocks: {len(actual_blocks)}, {actual_blocks}",
+                    )
+                    pprint(
+                        f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
+                        compact=True,
+                    )
+                else:
+                    print(
+                        f"📚Cache Steps and Residual Diffs Details: {cls_name}\n"
+                    )
+                    pprint(
+                        f"Cache Steps: {len(cached_steps)}, {cached_steps}",
+                    )
+                    pprint(
+                        f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
+                        compact=True,
+                    )
 
     if hasattr(module, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = module._cfg_cached_steps
@@ -342,22 +377,40 @@ def _summary(
             q4 = np.percentile(cfg_diffs_values, 95)
             qmax = np.max(cfg_diffs_values)
 
-            print(
-                f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n"
-            )
+            if cfg_pruned_ratio is not None:
+                print(
+                    f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n"
+                )
 
-            print(
-                "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
-            )
-            print(
-                "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
-            )
-            print(
-                f"| {len(cfg_cached_steps):<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
-                f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
-            )
-            print("")
+                print(
+                    "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                )
+                print(
+                    "|------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                )
+                print(
+                    f"| {sum(cfg_pruned_blocks):<16} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                )
+                print("")
+            else:
+                print(
+                    f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n"
+                )
+
+                print(
+                    "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                )
+                print(
+                    "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                )
+                print(
+                    f"| {len(cfg_cached_steps):<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                )
+                print("")
 
             if cfg_pruned_ratio is not None:
                 print(
@@ -365,15 +418,30 @@ def _summary(
                 )
 
             if details:
-                print(
-                    f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n"
-                )
-                pprint(
-                    f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
-                )
-                pprint(
-                    f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
-                    compact=True,
-                )
+                if cfg_pruned_ratio is not None:
+                    print(
+                        f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n"
+                    )
+                    pprint(
+                        f"CFG Pruned Blocks: {len(cfg_pruned_blocks)}, {cfg_pruned_blocks}",
+                    )
+                    pprint(
+                        f"CFG Actual Blocks: {len(cfg_actual_blocks)}, {cfg_actual_blocks}",
+                    )
+                    pprint(
+                        f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
+                        compact=True,
+                    )
+                else:
+                    print(
+                        f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n"
+                    )
+                    pprint(
+                        f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
+                    )
+                    pprint(
+                        f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
+                        compact=True,
+                    )
 
     return cache_stats

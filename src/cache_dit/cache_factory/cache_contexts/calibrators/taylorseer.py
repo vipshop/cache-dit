@@ -116,7 +116,6 @@ class TaylorSeerCalibrator(CalibratorBase):
         self.n_derivatives = n_derivatives
         self.max_warmup_steps = max_warmup_steps
         self.skip_interval_steps = skip_interval_steps
-
         self.states: Dict[str, TaylorSeerState] = {}
         self.reset_cache()
 
@@ -125,33 +124,38 @@ class TaylorSeerCalibrator(CalibratorBase):
             for state in self.states.values():
                 state.reset()
 
-    def mark_step_begin(self, *args, **kwargs):
-        if self.states:
-            for state in self.states.values():
-                state.mark_step_begin()
-
-    def derivative(self, Y: torch.Tensor, name="default") -> List[torch.Tensor]:
+    def maybe_init_state(self, name="default"):
         if name not in self.states:
             self.states[name] = TaylorSeerState(
                 n_derivatives=self.n_derivatives,
                 max_warmup_steps=self.max_warmup_steps,
                 skip_interval_steps=self.skip_interval_steps,
             )
+
+    def mark_step_begin(self, *args, **kwargs):
+        if self.states:
+            for state in self.states.values():
+                state.mark_step_begin()
+
+    def derivative(self, Y: torch.Tensor, name="default") -> List[torch.Tensor]:
+        self.maybe_init_state(name)
         state = self.states[name]
         state.derivative(Y)
         return state.state["dY_current"]
 
     def approximate(self, name="default") -> torch.Tensor:  # NEED
         assert name in self.states, f"State '{name}' not found."
+        logger.debug(f"Approximating for state '{name}'")
         state = self.states[name]
         return state.approximate()
 
     def update(self, Y: torch.Tensor, name="default"):  # NEED
-        assert name in self.states, f"State '{name}' not found."
+        self.maybe_init_state(name)
         state = self.states[name]
         state.update(Y)
 
     def step(self, Y: torch.Tensor, name="default"):
+        self.maybe_init_state(name)
         state = self.states[name]
         return state.step(Y)
 
