@@ -137,7 +137,7 @@ def enable_cache(
     """
     # Collect cache context kwargs
     cache_context_kwargs = {}
-    if (cache_type := cache_context_kwargs.pop("cache_type", None)) is not None:
+    if (cache_type := cache_context_kwargs.get("cache_type", None)) is not None:
         if cache_type == CacheType.NONE:
             return pipe_or_adapter
 

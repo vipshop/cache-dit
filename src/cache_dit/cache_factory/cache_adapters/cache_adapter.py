@@ -153,9 +153,10 @@ class CachedAdapter:
 
         cache_type = cache_context_kwargs.pop("cache_type", None)
         if cache_type is not None:
-            assert (
-                cache_type == CacheType.DBCache
-            ), "Custom cache setting only support for DBCache now!"
+            assert isinstance(
+                cache_type, CacheType
+            ), f"cache_type must be CacheType Enum, but got {type(cache_type)}."
+            cache_config.cache_type = cache_type
 
         return cache_context_kwargs
 
@@ -409,9 +410,9 @@ class CachedAdapter:
 
             cached_blocks_bind_context = {}
             for j in range(len(block_adapter.blocks[i])):
-                context_kwargs = contexts_kwargs[
+                cache_config: BasicCacheConfig = contexts_kwargs[
                     i * len(block_adapter.blocks[i]) + j
-                ]
+                ]["cache_config"]
                 cached_blocks_bind_context[
                     block_adapter.unique_blocks_name[i][j]
                 ] = torch.nn.ModuleList(
@@ -429,9 +430,7 @@ class CachedAdapter:
                                 j
                             ],
                             cache_manager=block_adapter.pipe._cache_manager,
-                            cache_type=context_kwargs.get(
-                                "cache_type", CacheType.DBCache
-                            ),
+                            cache_type=cache_config.cache_type,
                         )
                     ]
                 )

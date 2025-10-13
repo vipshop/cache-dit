@@ -313,7 +313,9 @@ def _summary(
 
     if hasattr(module, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = module._cfg_cached_steps
-        cfg_residual_diffs: dict[str, float] = dict(module._cfg_residual_diffs)
+        cfg_residual_diffs: dict[str, list | float] = dict(
+            module._cfg_residual_diffs
+        )
         cfg_pruned_steps: list[int] = module._cfg_pruned_steps
         cfg_pruned_blocks: list[int] = module._cfg_pruned_blocks
         cfg_actual_blocks: list[int] = module._cfg_actual_blocks

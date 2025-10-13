@@ -8,6 +8,7 @@ from cache_dit.cache_factory.cache_contexts.cache_manager import (
     CacheNotExistError,
 )
 from cache_dit.cache_factory import ForwardPattern
+from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -32,6 +33,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         cache_prefix: str = None,  # maybe un-need.
         cache_context: CachedContext | str = None,
         cache_manager: CachedContextManager = None,
+        cache_type: CacheType = CacheType.DBCache,
         **kwargs,
     ):
         super().__init__()
@@ -46,8 +48,10 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         self.cache_prefix = cache_prefix
         self.cache_context = cache_context
         self.cache_manager = cache_manager
+        self.cache_type = cache_type
 
         self._check_forward_pattern()
+        self._check_cache_type()
         logger.info(
             f"Match Cached Blocks: {self.__class__.__name__}, for "
             f"{self.cache_prefix}, cache_context: {self.cache_context}, "
@@ -95,7 +99,14 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                     ), f"The input parameters must contains: {required_param}."
 
     @torch.compiler.disable
+    def _check_cache_type(self):
+        assert (
+            self.cache_type == CacheType.DBCache
+        ), f"Cache type {self.cache_type} is not supported for CachedBlocks."
+
+    @torch.compiler.disable
     def _check_cache_params(self):
+        self._check_cache_type()
         assert self.cache_manager.Fn_compute_blocks() <= len(
             self.transformer_blocks
         ), (
@@ -460,6 +471,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
 
 class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
     pruned_blocks_step: int = 0  # number of pruned blocks in current step
+
+    @torch.compiler.disable
+    def _check_cache_type(self):
+        assert (
+            self.cache_type == CacheType.DBPrune
+        ), f"Cache type {self.cache_type} is not supported for PrunedBlocks."
 
     def forward(
         self,

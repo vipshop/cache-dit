@@ -7,6 +7,8 @@ from cache_dit.cache_factory.cache_contexts.cache_manager import (
 from cache_dit.cache_factory.cache_blocks.pattern_base import (
     CachedBlocks_Pattern_Base,
 )
+from cache_dit.cache_factory.cache_types import CacheType
+
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -313,6 +315,12 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
         ForwardPattern.Pattern_5,
     ]
     pruned_blocks_step: int = 0  # number of pruned blocks in current step
+
+    @torch.compiler.disable
+    def _check_cache_type(self):
+        assert (
+            self.cache_type == CacheType.DBPrune
+        ), f"Cache type {self.cache_type} is not supported for PrunedBlocks."
 
     def forward(
         self,

@@ -7,10 +7,6 @@ def load_cache_options_from_yaml(yaml_file_path):
             kwargs: dict = yaml.safe_load(f)
 
         required_keys = [
-            "max_warmup_steps",
-            "max_cached_steps",
-            "Fn_compute_blocks",
-            "Bn_compute_blocks",
             "residual_diff_threshold",
         ]
         for key in required_keys:

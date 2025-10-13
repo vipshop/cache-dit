@@ -144,8 +144,6 @@ class DBPruneConfig(BasicCacheConfig):
     def strify(self) -> str:
         return (
             f"{self.cache_type}_"
-            f"F{self.Fn_compute_blocks}"
-            f"B{self.Bn_compute_blocks}_"
             f"W{self.max_warmup_steps}"
             f"I{self.warmup_interval}"
             f"M{max(0, self.max_cached_steps)}"

@@ -61,6 +61,7 @@ class CachedBlocks:
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
                     cache_manager=cache_manager,
+                    cache_type=cache_type,
                     **kwargs,
                 )
             elif cache_type == CacheType.DBCache:
@@ -75,6 +76,7 @@ class CachedBlocks:
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
                     cache_manager=cache_manager,
+                    cache_type=cache_type,
                     **kwargs,
                 )
             else:
@@ -94,6 +96,7 @@ class CachedBlocks:
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
                     cache_manager=cache_manager,
+                    cache_type=cache_type,
                     **kwargs,
                 )
             elif cache_type == CacheType.DBCache:
@@ -108,6 +111,7 @@ class CachedBlocks:
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
                     cache_manager=cache_manager,
+                    cache_type=cache_type,
                     **kwargs,
                 )
             else:
