@@ -36,12 +36,31 @@ function run_flux_draw_bench_with_taylorseer_fast() {
   python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 8  ${taylorseer_params}
 }
 
+function run_flux_draw_bench_with_taylorseer_fast_O2() {
+  local taylorseer_params="--taylorseer --order 2"
+  local test_num=200
+  local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer_Fast_O2"
+  local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
+
+  rdt=0.8 # 0.64 0.8 1.0
+  echo "Running residual diff threshold: ${rdt}, test_num: ${test_num}"
+  python3 bench.py ${base_params} # baseline
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 2 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 2 --rdt ${rdt} --mcc 8  ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 8  --warmup-interval 4 --rdt ${rdt} --mcc 8  ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 10 ${taylorseer_params}
+  python3 bench.py ${base_params} --cache --Fn 1 --Bn 0 --max-warmup-steps 16 --warmup-interval 4 --rdt ${rdt} --mcc 8  ${taylorseer_params}
+}
 
 bench_type=$1
 
 if [[ "${bench_type}" == "taylorseer" ]]; then
   echo "bench_type: ${bench_type}, DBCache Fast + TaylorSeer"
   run_flux_draw_bench_with_taylorseer_fast
+elif [[ "${bench_type}" == "taylorseer_O2" ]]; then
+  echo "bench_type: ${bench_type}, DBCache Fast + TaylorSeer O(2)"
+  run_flux_draw_bench_with_taylorseer_fast_O2
 else 
   echo "bench_type: ${bench_type}, DBCache Fast"
   run_flux_draw_bench_fast
@@ -49,3 +68,4 @@ fi
 
 # export CUDA_VISIBLE_DEVICES=0 && nohup bash bench_fast.sh default > log/cache_dit_bench_fast.log 2>&1 &
 # export CUDA_VISIBLE_DEVICES=1 && nohup bash bench_fast.sh taylorseer > log/cache_dit_bench_taylorseer_fast.log 2>&1 &
+# export CUDA_VISIBLE_DEVICES=2 && nohup bash bench_fast.sh taylorseer_O2 > log/cache_dit_bench_taylorseer_fast_O2.log 2>&1 &
