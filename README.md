@@ -153,8 +153,9 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](./assets/clip-score-bench.png)
 
+<!--
 ![](./assets/image-reward-bench.png)
-
+-->
 
 ## 🔥Important News
 
