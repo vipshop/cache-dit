@@ -59,12 +59,12 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(Slow)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
+| **[DBCache(S)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache(Slow)+TaylorSeer(O=1)](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
-| **[DBCache(Medium)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
-| **[DBCache(Medium)+TaylorSeer(O=1)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
+| **[DBCache(S)+TS](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
+| **[DBCache(M)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
+| **[DBCache(M)+TS](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
 | **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
 | [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
 | FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
@@ -72,19 +72,19 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
 | TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
 | TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
-| **[DBCache(Fast)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.9271 | 32.552 |
+| **[DBCache(F)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.9271 | 32.552 |
 | **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | 6.24× | 0.9502 | 32.706 |
-| **[DBCache(Fast)+TaylorSeer(O=1)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
-| **[DBCache(Ultra)+TaylorSeer(O=1)](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
+| **[DBCache(F)+TS](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
+| **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
 
 NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211). The configurations of DBCache are listed as belows: 
 
 |Algo|Configuration|Algo|Configuration|
 |---|---|---|---|
-|**DBCache(Slow)**| F=4,B=0,W=4,I=1,MC=4 |DBCache(Slow)+TaylorSeer(O=1)|F=1,B=0,W=4,I=1,MC=4,O=1|
-|**DBCache(Medium)**|F=1,B=0,W=4,I=1,MC=6|DBCache(Medium)+TaylorSeer(O=1)|F=1,B=0,W=4,I=1,MC=6,O=1|
-|**DBCache(Fast)**|F=1,B=0,W=8,I=2,MC=8|DBCache(Fast)+TaylorSeer(O=1)|F=1,B=0,W=8,I=2,MC=8,O=1|
-|**DBCache(Ultra)**|F=1,B=0,W=8,I=4,MC=10,|DBCache(Ultra)+TaylorSeer(O=1)|F=1,B=0,W=8,I=4,MC=10,O=1
+|**DBCache(S:Slow)**| F=4,B=0,W=4,I=1,MC=4 |DBCache(S:Slow)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=4,O=1|
+|**DBCache(M:Medium)**|F=1,B=0,W=4,I=1,MC=6|DBCache(M:Medium)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=6,O=1|
+|**DBCache(F:Fast)**|F=1,B=0,W=8,I=2,MC=8|DBCache(F:Fast)+TS:TaylorSeer|F=1,B=0,W=8,I=2,MC=8,O=1|
+|**DBCache(U:Ultra)**|F=1,B=0,W=8,I=4,MC=10,|DBCache(U:Ultra)+TS:TaylorSeer|F=1,B=0,W=8,I=4,MC=10,O=1|
 
 ## 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
