@@ -612,7 +612,6 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
             else:
                 encoder_hidden_states_residual = None
 
-            # Update cache
             self.cache_manager.set_Fn_buffer(
                 original_hidden_states,
                 prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
