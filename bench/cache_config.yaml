@@ -1,12 +1,12 @@
 cache_type: DBCache
 max_warmup_steps: 8 # 1
-warmup_interval: 1 # 1
+warmup_interval: 2 # 1
 max_cached_steps: -1
 max_continuous_cached_steps: -1
 Fn_compute_blocks: 1
 Bn_compute_blocks: 0
 residual_diff_threshold: 0.12
-enable_taylorseer: false
-enable_encoder_taylorseer: false
+enable_taylorseer: true # false
+enable_encoder_taylorseer: true # false
 taylorseer_cache_type: residual
 taylorseer_order: 2
