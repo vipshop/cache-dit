@@ -17,14 +17,15 @@
 ## 🔥Hightlight  
 
 Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). The meaning of parameter configuration is as follows (such as F8B0_W8M0MC0_T0O1_R0.08): (**Device**: NVIDIA L20.) 
-  - **F**: Fn_compute_blocks 
-  - **B**: Bn_compute_blocks
-  - **W**: max_warmup_steps
-  - **M**: max_cached_steps
-  - **MC**: max_continuous_cached_steps (namely, hybird dynamic cache and static cache)
-  - **T**: enable talyorseer or not (namely, hybrid taylorseer w/ dynamic cache - DBCache) 
-  - **O**: taylorseer order, O1 means order 1.
-  - **R**: residual diff threshold, range [0, 1.0)
+  - **F**: Fn_compute_blocks, `int`, Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.
+  - **B**: Bn_compute_blocks, `int`, Further fuses approximate information in the**last n**Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
+  - **W**: max_warmup_steps, `int`, DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+  - **I**: warmup_interval, `int`, defaults to 1, Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps in warmup steps will be computed, others will use dynamic cache.
+  - **M**: max_cached_steps, `int`, DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
+  - **MC**: max_continuous_cached_steps, `int`, DBCache disables the caching strategy when the previous continuous cached steps exceed this value to prevent precision degradation. (namely, hybird dynamic cache and static cache)
+  - **T**: enable talyorseer or not (namely, hybrid taylorseer w/ dynamic cache - DBCache). DBCache acts as the Indicator to decide when to cache, while the Calibrator decides how to cache. 
+  - **O**: The taylorseer order, `int`, e.g., O1 means order 1.
+  - **R**: The residual diff threshold of DBCache, range [0, 1.0)
   - **Latency(s)**: Recorded compute time (eager mode) that **w/o** other optimizations
   - **TFLOPs**: Recorded compute FLOPs using [calflops](https://github.com/chengzegang/calculate-flops.pytorch.git)'s [calculate_flops](./utils.py) API.
 
@@ -58,12 +59,12 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(F=4,B=0,W=4,MC=4)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
+| **[DBCache(S)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
 | DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
 | TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
-| **[DBCache(F=1,B=0,W=4,MC=6)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
-| **[DBCache+TaylorSeer(F=1,B=0,O=1)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
+| **[DBCache(S)+TS](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
+| **[DBCache(M)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
+| **[DBCache(M)+TS](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
 | **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
 | [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
 | FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
@@ -71,10 +72,19 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
 | TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
 | TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
-| **[DBCache(F=1,B=0,W=4,MC=10)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.8796 | 32.318 |
-| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | **6.24×** | **0.9502** | **32.706** |
+| **[DBCache(F)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.9271 | 32.552 |
+| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | 6.24× | 0.9502 | 32.706 |
+| **[DBCache(F)+TS](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
+| **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
 
-NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
+NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211). The configurations of DBCache are listed as belows: 
+
+|Algo|Configuration|Algo|Configuration|
+|---|---|---|---|
+|**DBCache(S:Slow)**| F=4,B=0,W=4,I=1,MC=4 |DBCache(S:Slow)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=4,O=1|
+|**DBCache(M:Medium)**|F=1,B=0,W=4,I=1,MC=6|DBCache(M:Medium)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=6,O=1|
+|**DBCache(F:Fast)**|F=1,B=0,W=8,I=2,MC=8|DBCache(F:Fast)+TS:TaylorSeer|F=1,B=0,W=8,I=2,MC=8,O=1|
+|**DBCache(U:Ultra)**|F=1,B=0,W=8,I=4,MC=10,|DBCache(U:Ultra)+TS:TaylorSeer|F=1,B=0,W=8,I=4,MC=10,O=1|
 
 ## 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
@@ -197,6 +207,30 @@ bash ./metrics_distill.sh
 | F4B0_W4M0MC3_R0.12_T1O1 | 32.9795 | 21.36 | 2.01 | 1499.51 | 2.49 |
 | F1B0_W4M0MC6_R0.32_T1O1 | 32.9589 | 15.70 | 2.73 | 944.02 | 3.95 |
 
+### 📖ClipScore: DBCache(Fast) FnBn
+
+| Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | 32.9616 | 44.61 | 1.00 | 3726.87 | 1.00 |
+| F1B0_W16I4M0MC10_R0.8_T0O0 | 32.6306 | 10.48 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T0O0 | 32.5522 | 11.26 | 3.96 | 651.90 | 5.72 |
+| F1B0_W8I4M0MC8_R0.8_T0O0 | 32.5420 | 10.46 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T0O0 | 32.4479 | 9.71 | 4.59 | 505.47 | 7.37 |
+| F1B0_W8I2M0MC8_R0.8_T0O0 | 32.4395 | 11.40 | 3.91 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T0O0 | 32.4207 | 10.62 | 4.20 | 578.69 | 6.44 |
+
+### 📖ClipScore: DBCache(Fast) FnBn + TaylorSeer O(1)
+
+| Config | CLIP_SCORE | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | 32.9616 | 44.94 | 1.00 | 3726.87 | 1.00 |
+| F1B0_W16I4M0MC8_R0.8_T1O1 | 33.0988 | 11.42 | 3.94 | 651.90 | 5.72 |
+| F1B0_W16I4M0MC10_R0.8_T1O1 | 32.9764 | 10.65 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T1O1 | 32.7195 | 9.83 | 4.57 | 505.47 | 7.37 |
+| F1B0_W8I4M0MC8_R0.8_T1O1 | 32.6448 | 10.56 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I2M0MC8_R0.8_T1O1 | 32.5682 | 11.44 | 3.93 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T1O1 | 32.3999 | 10.66 | 4.22 | 578.69 | 6.44 |
+
 ### 📖ImageReward: DBCache(Slow) FnBn
 
 <div id="imagereward"></div>
@@ -233,6 +267,30 @@ bash ./metrics_distill.sh
 | F1B0_W4M0MC4_R0.32_T1O1 | 1.0149 | 16.33 | 2.63 | 1017.97 | 3.66 |
 | F1B0_W4M0MC6_R0.24_T1O1 | 1.0107 | 15.61 | 2.75 | 944.75 | 3.94 |
 | F1B0_W4M0MC6_R0.32_T1O1 | 1.0025 | 15.70 | 2.73 | 944.02 | 3.95 |
+
+### 📖ImageReward: DBCache(Fast) FnBn
+
+| Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | 1.0445 | 44.61 | 1.00 | 3726.87 | 1.00 |
+| F1B0_W8I2M0MC8_R0.8_T0O0 | 0.9271 | 11.40 | 3.91 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T0O0 | 0.9234 | 10.62 | 4.20 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T0O0 | 0.9115 | 11.26 | 3.96 | 651.90 | 5.72 |
+| F1B0_W16I4M0MC10_R0.8_T0O0 | 0.8644 | 10.48 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC8_R0.8_T0O0 | 0.8301 | 10.46 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T0O0 | 0.8092 | 9.71 | 4.59 | 505.47 | 7.37 |
+
+### 📖ImageReward: DBCache(Fast) FnBn + TaylorSeer O(1)
+
+| Config | IMAGE_REWARD | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| C0_Q0_NONE | 1.0445 | 44.94 | 1.00 | 3726.87 | 1.00 |
+| F1B0_W8I2M0MC8_R0.8_T1O1 | 0.9526 | 11.44 | 3.93 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T1O1 | 0.9360 | 10.66 | 4.22 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T1O1 | 0.9285 | 11.42 | 3.94 | 651.90 | 5.72 |
+| F1B0_W8I4M0MC8_R0.8_T1O1 | 0.9088 | 10.56 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC10_R0.8_T1O1 | 0.8941 | 10.65 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T1O1 | 0.8645 | 9.83 | 4.57 | 505.47 | 7.37 |
 
 ### 📖PSNR: DBCache(Slow) FnBn
 
@@ -285,6 +343,28 @@ bash ./metrics_distill.sh
 | F1B0_W4M0MC4_R0.24_T1O1 | 30.8172 | 17.04 | 2.52 | 1091.18 | 3.42 |
 | F1B0_W4M0MC6_R0.24_T1O1 | 30.5131 | 15.61 | 2.75 | 944.75 | 3.94 |
 | F1B0_W4M0MC6_R0.32_T1O1 | 29.8860 | 15.70 | 2.73 | 944.02 | 3.95 |
+
+### 📖PSNR: DBCache(Fast) FnBn
+
+| Config | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| F1B0_W8I2M0MC8_R0.8_T0O0 | 29.3428 | 11.40 | 3.91 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T0O0 | 29.2732 | 10.62 | 4.20 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T0O0 | 28.5724 | 11.26 | 3.96 | 651.90 | 5.72 |
+| F1B0_W16I4M0MC10_R0.8_T0O0 | 28.5644 | 10.48 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC8_R0.8_T0O0 | 28.5440 | 10.46 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T0O0 | 28.5201 | 9.71 | 4.59 | 505.47 | 7.37 |
+
+### 📖PSNR: DBCache(Fast) FnBn + TaylorSeer O(1)
+
+| Config | PSNR | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| F1B0_W8I2M0MC8_R0.8_T1O1 | 29.2251 | 11.44 | 3.93 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T1O1 | 28.9526 | 10.66 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC8_R0.8_T1O1 | 28.7110 | 10.56 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T1O1 | 28.6300 | 11.42 | 3.94 | 651.90 | 5.72 |
+| F1B0_W16I4M0MC10_R0.8_T1O1 | 28.5842 | 10.65 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T1O1 | 28.5654 | 9.83 | 4.57 | 505.47 | 7.37 |
 
 ### 📖SSIM: DBCache(Slow) FnBn
 
@@ -343,6 +423,29 @@ bash ./metrics_distill.sh
 | F1B0_W4M0MC6_R0.24_T1O1 | 0.7718 | 15.61 | 2.75 | 944.75 | 3.94 |
 | F1B0_W4M0MC6_R0.32_T1O1 | 0.7423 | 15.70 | 2.73 | 944.02 | 3.95 |
 
+
+### 📖SSIM: DBCache(Fast) FnBn
+
+| Config | SSIM | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| F1B0_W8I2M0MC8_R0.8_T0O0 | 0.6681 | 11.40 | 3.91 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T0O0 | 0.6528 | 10.62 | 4.20 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC8_R0.8_T0O0 | 0.6161 | 10.46 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T0O0 | 0.6066 | 11.26 | 3.96 | 651.90 | 5.72 |
+| F1B0_W8I4M0MC10_R0.8_T0O0 | 0.6065 | 9.71 | 4.59 | 505.47 | 7.37 |
+| F1B0_W16I4M0MC10_R0.8_T0O0 | 0.5977 | 10.48 | 4.26 | 578.69 | 6.44 |
+
+### 📖SSIM: DBCache(Fast) FnBn + TaylorSeer O(1)
+
+| Config | SSIM | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| F1B0_W8I2M0MC8_R0.8_T1O1 | 0.6653 | 11.44 | 3.93 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T1O1 | 0.6219 | 10.66 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC8_R0.8_T1O1 | 0.6194 | 10.56 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T1O1 | 0.6076 | 11.42 | 3.94 | 651.90 | 5.72 |
+| F1B0_W8I4M0MC10_R0.8_T1O1 | 0.5947 | 9.83 | 4.57 | 505.47 | 7.37 |
+| F1B0_W16I4M0MC10_R0.8_T1O1 | 0.5944 | 10.65 | 4.22 | 578.69 | 6.44 |
+
 ### 📖LPIPS: DBCache(Slow) FnBn
 
 <div id="lpips"></div>
@@ -397,3 +500,25 @@ bash ./metrics_distill.sh
 | F1B0_W4M0MC4_R0.24_T1O1 | 0.2155 | 17.04 | 2.52 | 1091.18 | 3.42 |
 | F1B0_W4M0MC6_R0.24_T1O1 | 0.2310 | 15.61 | 2.75 | 944.75 | 3.94 |
 | F1B0_W4M0MC6_R0.32_T1O1 | 0.2677 | 15.70 | 2.73 | 944.02 | 3.95 |
+
+### 📖LPIPS: DBCache(Fast) FnBn
+
+| Config | LPIPS | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| F1B0_W8I2M0MC8_R0.8_T0O0 | 0.3899 | 11.40 | 3.91 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T0O0 | 0.4180 | 10.62 | 4.20 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T0O0 | 0.4703 | 11.26 | 3.96 | 651.90 | 5.72 |
+| F1B0_W8I4M0MC8_R0.8_T0O0 | 0.4829 | 10.46 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC10_R0.8_T0O0 | 0.4850 | 10.48 | 4.26 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T0O0 | 0.5024 | 9.71 | 4.59 | 505.47 | 7.37 |
+
+### 📖LPIPS: DBCache(Fast) FnBn + TaylorSeer O(1)
+
+| Config | LPIPS | Latency(s) | SpeedUp(↑) | TFLOPs | SpeedUp(↑) |
+| --- | --- | --- | --- | --- | --- |
+| F1B0_W8I2M0MC8_R0.8_T1O1 | 0.3620 | 11.44 | 3.93 | 651.90 | 5.72 |
+| F1B0_W8I2M0MC10_R0.8_T1O1 | 0.4248 | 10.66 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC8_R0.8_T1O1 | 0.4463 | 10.56 | 4.26 | 578.69 | 6.44 |
+| F1B0_W16I4M0MC8_R0.8_T1O1 | 0.4478 | 11.42 | 3.94 | 651.90 | 5.72 |
+| F1B0_W16I4M0MC10_R0.8_T1O1 | 0.4662 | 10.65 | 4.22 | 578.69 | 6.44 |
+| F1B0_W8I4M0MC10_R0.8_T1O1 | 0.4855 | 9.83 | 4.57 | 505.47 | 7.37 |
