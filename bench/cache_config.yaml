@@ -2,7 +2,7 @@ cache_type: DBCache
 max_warmup_steps: 8 # 1
 warmup_interval: 2 # 1
 max_cached_steps: -1
-max_continuous_cached_steps: -1
+max_continuous_cached_steps: 2 # -1
 Fn_compute_blocks: 1
 Bn_compute_blocks: 0
 residual_diff_threshold: 0.12
