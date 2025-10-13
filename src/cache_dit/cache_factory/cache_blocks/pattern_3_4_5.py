@@ -304,3 +304,153 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             )
 
         return hidden_states, new_encoder_hidden_states
+
+
+class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
+    _supported_patterns = [
+        ForwardPattern.Pattern_3,
+        ForwardPattern.Pattern_4,
+        ForwardPattern.Pattern_5,
+    ]
+    pruned_blocks_step: int = 0  # number of pruned blocks in current step
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        *args,
+        **kwargs,
+    ):
+        self.pruned_blocks_step: int = 0  # reset for each step
+
+        # Use it's own cache context.
+        try:
+            self.cache_manager.set_context(self.cache_context)
+            self._check_cache_params()
+        except CacheNotExistError as e:
+            logger.warning(f"Cache context not exist: {e}, skip prune.")
+            hidden_states, new_encoder_hidden_states = self.call_blocks(
+                hidden_states,
+                *args,
+                **kwargs,
+            )
+            return self._process_forward_outputs(
+                hidden_states, new_encoder_hidden_states
+            )
+
+        self.cache_manager.mark_step_begin()
+
+        # Call all blocks with prune strategy to process the hidden states.
+        new_encoder_hidden_states = None
+        for i, block in enumerate(self.transformer_blocks):
+            hidden_states, new_encoder_hidden_states = self.compute_or_prune(
+                i,
+                block,
+                hidden_states,
+                new_encoder_hidden_states,
+                *args,
+                **kwargs,
+            )
+
+        self.cache_manager.add_pruned_block(self.pruned_blocks_step)
+        self.cache_manager.add_actual_block(self.num_blocks)
+
+        return self._process_forward_outputs(
+            hidden_states,
+            new_encoder_hidden_states,
+        )
+
+    @property
+    @torch.compiler.disable
+    def num_blocks(self):
+        return len(self.transformer_blocks)
+
+    @torch.compiler.disable
+    def _maybe_prune(
+        self,
+        hidden_states: torch.Tensor,  # hidden_states or residual
+        name: str = "Bn_original",  # prev step name for single blocks
+    ):
+        # Wrap for non compiled mode.
+        can_use_prune = self.cache_manager.can_cache(
+            hidden_states,  # curr step
+            parallelized=self._is_parallelized(),
+            name=name,  # prev step
+        )
+        self.pruned_blocks_step += int(can_use_prune)
+        return can_use_prune
+
+    def compute_or_prune(
+        self,
+        block_id: int,  # Block index in the transformer blocks
+        # Below are the inputs to the block
+        block,  # The transformer block to be executed
+        hidden_states: torch.Tensor,
+        new_encoder_hidden_states: torch.Tensor | None,
+        *args,
+        **kwargs,
+    ):
+        original_hidden_states = hidden_states
+        original_encoder_hidden_states = new_encoder_hidden_states
+
+        can_use_prune = self._maybe_prune(
+            hidden_states,
+            name=f"{self.cache_prefix}_{block_id}_original",
+        )
+
+        # Prune steps: Prune current block and reuse the cached
+        # residuals for hidden states approximate.
+        if can_use_prune:
+            self.cache_manager.add_pruned_step()
+            hidden_states, new_encoder_hidden_states = (
+                self.cache_manager.apply_cache(
+                    hidden_states,
+                    new_encoder_hidden_states,
+                    prefix=f"{self.cache_prefix}_{block_id}_residual",
+                    encoder_prefix=f"{self.cache_prefix}_{block_id}_encoder_residual",
+                )
+            )
+            torch._dynamo.graph_break()
+        else:
+            # Normal steps: Compute the block and cache the residuals.
+            hidden_states = block(
+                hidden_states,
+                *args,
+                **kwargs,
+            )
+            hidden_states, new_encoder_hidden_states = (
+                self._process_block_outputs(
+                    hidden_states, new_encoder_hidden_states
+                )
+            )
+            hidden_states = hidden_states.contiguous()
+            hidden_states_residual = hidden_states - original_hidden_states
+
+            if (
+                new_encoder_hidden_states is not None
+                and original_encoder_hidden_states is not None
+            ):
+                new_encoder_hidden_states = (
+                    new_encoder_hidden_states.contiguous()
+                )
+                new_encoder_hidden_states_residual = (
+                    new_encoder_hidden_states - original_encoder_hidden_states
+                )
+            else:
+                new_encoder_hidden_states_residual = None
+
+            self.cache_manager.set_Fn_buffer(
+                original_hidden_states,
+                prefix=f"{self.cache_prefix}_{block_id}_original",
+            )
+            self.cache_manager.set_Bn_buffer(
+                hidden_states_residual,
+                prefix=f"{self.cache_prefix}_{block_id}_residual",
+            )
+            if new_encoder_hidden_states_residual is not None:
+                self.cache_manager.set_Bn_buffer(
+                    new_encoder_hidden_states_residual,
+                    prefix=f"{self.cache_prefix}_{block_id}_encoder_residual",
+                )
+            torch._dynamo.graph_break()
+
+        return hidden_states, new_encoder_hidden_states
