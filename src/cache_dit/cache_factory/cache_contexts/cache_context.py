@@ -5,6 +5,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 
 import torch
 
+from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.cache_contexts.calibrators import (
     Calibrator,
     CalibratorBase,
@@ -17,7 +18,8 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class BasicCacheConfig:
-    # Dual Block Cache with Flexible FnBn configuration.
+    # Default: Dual Block Cache with Flexible FnBn configuration.
+    cache_type: CacheType = CacheType.DBCache  # DBCache, DBPrune, NONE
 
     # Fn_compute_blocks: (`int`, *required*, defaults to 8):
     #     Specifies that `DBCache` uses the **first n** Transformer blocks to fit the information
@@ -72,7 +74,8 @@ class BasicCacheConfig:
 
     def strify(self) -> str:
         return (
-            f"DBCACHE_F{self.Fn_compute_blocks}"
+            f"{self.cache_type}_"
+            f"F{self.Fn_compute_blocks}"
             f"B{self.Bn_compute_blocks}_"
             f"W{self.max_warmup_steps}"
             f"I{self.warmup_interval}"
@@ -104,12 +107,66 @@ class ExtraCacheConfig:
 
 
 @dataclasses.dataclass
+class DBCacheConfig(BasicCacheConfig):
+    pass  # Just an alias for BasicCacheConfig
+
+
+@dataclasses.dataclass
+class DBPruneConfig(BasicCacheConfig):
+    # Dyanamic Block Prune specific configurations
+    cache_type: CacheType = CacheType.DBPrune  # DBPrune
+
+    # enable_dynamic_prune_threshold (`bool`, *required*, defaults to False):
+    #     Whether to enable the dynamic prune threshold or not. If True, we will
+    #     compute the dynamic prune threshold based on the mean of the residual
+    #     diffs of the previous computed or pruned blocks.
+    #     But, also limit mean_diff to be at least 2x the residual_diff_threshold
+    #     to avoid too aggressive pruning.
+    enable_dynamic_prune_threshold: bool = False
+    # max_dynamic_prune_threshold (`float`, *optional*, defaults to None):
+    #     The max dynamic prune threshold, if not None, the dynamic prune threshold
+    #     will not exceed this value. If None, we will limit it to be at least 2x
+    #     the residual_diff_threshold to avoid too aggressive pruning.
+    max_dynamic_prune_threshold: float = None
+    # dynamic_prune_threshold_relax_ratio (`float`, *optional*, defaults to 1.25):
+    #     The relax ratio for dynamic prune threshold, the dynamic prune threshold
+    #     will be set as:
+    #         dynamic_prune_threshold = mean_diff * dynamic_prune_threshold_relax_ratio
+    #     to avoid too aggressive pruning.
+    #     The default value is 1.25, which means the dynamic prune threshold will
+    #     be 1.25 times the mean of the residual diffs of the previous computed
+    #     or pruned blocks.
+    #     Users can tune this value to achieve a better trade-off between speedup
+    #     and precision. A higher value leads to more aggressive pruning
+    #     and faster speedup, but may also lead to lower precision.
+    dynamic_prune_threshold_relax_ratio: float = 1.25
+
+    def strify(self) -> str:
+        return (
+            f"{self.cache_type}_"
+            f"F{self.Fn_compute_blocks}"
+            f"B{self.Bn_compute_blocks}_"
+            f"W{self.max_warmup_steps}"
+            f"I{self.warmup_interval}"
+            f"M{max(0, self.max_cached_steps)}"
+            f"MC{max(0, self.max_continuous_cached_steps)}_"
+            f"R{self.residual_diff_threshold}_"
+            f"DPT{int(self.enable_dynamic_prune_threshold)}"
+            f"D{self.dynamic_prune_threshold_relax_ratio}"
+        )
+
+
+@dataclasses.dataclass
 class CachedContext:
     name: str = "default"
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
     # Basic Dual Block Cache Config
-    cache_config: BasicCacheConfig = dataclasses.field(
+    cache_config: Union[
+        BasicCacheConfig,
+        DBCacheConfig,
+        DBPruneConfig,
+    ] = dataclasses.field(
         default_factory=BasicCacheConfig,
     )
     # NOTE: Users should never use these extra configurations.
@@ -131,17 +188,23 @@ class CachedContext:
     # be double of executed_steps.
     transformer_executed_steps: int = 0
 
-    # CFG & non-CFG cached steps
+    # CFG & non-CFG cached/pruned steps
     cached_steps: List[int] = dataclasses.field(default_factory=list)
-    residual_diffs: DefaultDict[str, float] = dataclasses.field(
+    residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
     continuous_cached_steps: int = 0
     cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
-    cfg_residual_diffs: DefaultDict[str, float] = dataclasses.field(
+    cfg_residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
     cfg_continuous_cached_steps: int = 0
+
+    # Specially for Dynamic Block Prune
+    pruned_blocks: List[int] = dataclasses.field(default_factory=list)
+    actual_blocks: List[int] = dataclasses.field(default_factory=list)
+    cfg_pruned_blocks: List[int] = dataclasses.field(default_factory=list)
+    cfg_actual_blocks: List[int] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         if logger.isEnabledFor(logging.DEBUG):
@@ -191,15 +254,70 @@ class CachedContext:
         return False
 
     def get_residual_diff_threshold(self):
-        residual_diff_threshold = self.cache_config.residual_diff_threshold
-        if self.extra_cache_config.l1_hidden_states_diff_threshold is not None:
-            # Use the L1 hidden states diff threshold if set
-            residual_diff_threshold = (
+        # Dynamic Block Prune
+        if self.cache_config.cache_type == CacheType.DBPrune:
+            residual_diff_threshold = self.cache_config.residual_diff_threshold
+            if isinstance(residual_diff_threshold, torch.Tensor):
+                residual_diff_threshold = residual_diff_threshold.item()
+            if self.cache_config.enable_dynamic_prune_threshold:
+                # Compute the dynamic prune threshold based on the mean of the
+                # residual diffs of the previous computed or pruned blocks.
+                step = self.get_current_step()
+                if step >= 0 and step in self.residual_diffs:
+                    assert isinstance(self.residual_diffs[step], list)
+                    # Use all the recorded diffs for this step
+                    # NOTE: Should we only use the last 5 diffs?
+                    diffs = self.residual_diffs[step][:5]
+                    diffs = [d for d in diffs if d > 0.0]
+                    if diffs:
+                        mean_diff = sum(diffs) / len(diffs)
+                        relaxed_diff = (
+                            mean_diff
+                            * self.cache_config.dynamic_prune_threshold_relax_ratio
+                        )
+                        if (
+                            self.cache_config.max_dynamic_prune_threshold
+                            is None
+                        ):
+                            max_dynamic_prune_threshold = (
+                                2 * residual_diff_threshold
+                            )
+                        else:
+                            max_dynamic_prune_threshold = (
+                                self.cache_config.max_dynamic_prune_threshold
+                            )
+                        if relaxed_diff < max_dynamic_prune_threshold:
+                            # If the mean diff is less than twice the threshold,
+                            # we can use it as the dynamic prune threshold.
+                            residual_diff_threshold = (
+                                relaxed_diff
+                                if relaxed_diff > residual_diff_threshold
+                                else residual_diff_threshold
+                            )
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug(
+                                f"Dynamic prune threshold for step {step}: "
+                                f"{residual_diff_threshold:.6f}"
+                            )
+            return residual_diff_threshold
+        # Dual Block Cache
+        elif self.cache_config.cache_type == CacheType.DBCache:
+            residual_diff_threshold = self.cache_config.residual_diff_threshold
+            if (
                 self.extra_cache_config.l1_hidden_states_diff_threshold
+                is not None
+            ):
+                # Use the L1 hidden states diff threshold if set
+                residual_diff_threshold = (
+                    self.extra_cache_config.l1_hidden_states_diff_threshold
+                )
+            if isinstance(residual_diff_threshold, torch.Tensor):
+                residual_diff_threshold = residual_diff_threshold.item()
+            return residual_diff_threshold
+        else:
+            raise ValueError(
+                f"Unsupported cache type: {self.cache_config.cache_type}"
             )
-        if isinstance(residual_diff_threshold, torch.Tensor):
-            residual_diff_threshold = residual_diff_threshold.item()
-        return residual_diff_threshold
 
     def get_buffer(self, name):
         return self.buffers.get(name)
@@ -239,6 +357,8 @@ class CachedContext:
             self.residual_diffs.clear()
             self.cfg_cached_steps.clear()
             self.cfg_residual_diffs.clear()
+            self.pruned_blocks.clear()
+            self.actual_blocks.clear()
             # Reset the calibrators cache at the beginning of each inference.
             # reset_cache will set the current step to -1 for calibrator,
             if self.has_calibrators():
@@ -286,16 +406,34 @@ class CachedContext:
     def get_cfg_calibrators(self) -> Tuple[CalibratorBase, CalibratorBase]:
         return self.cfg_calibrator, self.cfg_encoder_calibrator
 
-    def add_residual_diff(self, diff):
+    def add_residual_diff(self, diff: float | torch.Tensor):
+        if isinstance(diff, torch.Tensor):
+            diff = diff.item()
         # step: executed_steps - 1, not transformer_steps - 1
         step = str(self.get_current_step())
-        # Only add the diff if it is not already recorded for this step
-        if not self.is_separate_cfg_step():
-            if step not in self.residual_diffs:
-                self.residual_diffs[step] = diff
+        if self.cache_config.cache_type == CacheType.DBPrune:
+            # For Dynamic Block Prune, we will record all the diffs for this step
+            # Only add the diff if it is not already recorded for this step
+            if not self.is_separate_cfg_step():
+                if step not in self.residual_diffs:
+                    self.residual_diffs[step] = []
+                self.residual_diffs[step].append(diff)
+            else:
+                if step not in self.cfg_residual_diffs:
+                    self.cfg_residual_diffs[step] = []
+                self.cfg_residual_diffs[step].append(diff)
+        elif self.cache_config.cache_type == CacheType.DBCache:
+            # Only add the diff if it is not already recorded for this step
+            if not self.is_separate_cfg_step():
+                if step not in self.residual_diffs:
+                    self.residual_diffs[step] = diff
+            else:
+                if step not in self.cfg_residual_diffs:
+                    self.cfg_residual_diffs[step] = diff
         else:
-            if step not in self.cfg_residual_diffs:
-                self.cfg_residual_diffs[step] = diff
+            raise ValueError(
+                f"Unsupported cache type: {self.cache_config.cache_type}"
+            )
 
     def get_residual_diffs(self):
         return self.residual_diffs.copy()
@@ -330,11 +468,44 @@ class CachedContext:
 
             self.cfg_cached_steps.append(curr_cached_step)
 
+    def add_pruned_step(self):
+        self.add_cached_step()
+
+    def add_pruned_block(self, num_blocks):
+        if not self.is_separate_cfg_step():
+            self.pruned_blocks.append(num_blocks)
+        else:
+            self.cfg_pruned_blocks.append(num_blocks)
+
+    def add_actual_block(self, num_blocks):
+        if not self.is_separate_cfg_step():
+            self.actual_blocks.append(num_blocks)
+        else:
+            self.cfg_actual_blocks.append(num_blocks)
+
+    def get_pruned_blocks(self):
+        return self.pruned_blocks.copy()
+
+    def get_cfg_pruned_blocks(self):
+        return self.cfg_pruned_blocks.copy()
+
+    def get_actual_blocks(self):
+        return self.actual_blocks.copy()
+
+    def get_cfg_actual_blocks(self):
+        return self.cfg_actual_blocks.copy()
+
     def get_cached_steps(self):
         return self.cached_steps.copy()
 
     def get_cfg_cached_steps(self):
         return self.cfg_cached_steps.copy()
+
+    def get_pruned_steps(self):
+        return self.get_cached_steps()
+
+    def get_cfg_pruned_steps(self):
+        return self.get_cfg_cached_steps()
 
     def get_current_step(self):
         return self.executed_steps - 1

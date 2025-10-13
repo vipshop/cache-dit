@@ -30,6 +30,7 @@ from cache_dit.quantize import quantize
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
+DBPrune = CacheType.DBPrune
 
 Pattern_0 = ForwardPattern.Pattern_0
 Pattern_1 = ForwardPattern.Pattern_1

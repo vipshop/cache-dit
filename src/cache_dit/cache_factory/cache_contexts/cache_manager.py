@@ -279,6 +279,60 @@ class CachedContextManager:
         )
 
     @torch.compiler.disable
+    def add_pruned_step(self):
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        cached_context.add_pruned_step()
+
+    @torch.compiler.disable
+    def add_pruned_block(self, num_blocks):
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        cached_context.add_pruned_block(num_blocks)
+
+    @torch.compiler.disable
+    def add_actual_block(self, num_blocks):
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        cached_context.add_actual_block(num_blocks)
+
+    @torch.compiler.disable
+    def get_pruned_steps(self) -> List[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_pruned_steps()
+
+    @torch.compiler.disable
+    def get_cfg_pruned_steps(self) -> List[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_cfg_pruned_steps()
+
+    @torch.compiler.disable
+    def get_pruned_blocks(self) -> List[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_pruned_blocks()
+
+    @torch.compiler.disable
+    def get_actual_blocks(self) -> List[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_actual_blocks()
+
+    @torch.compiler.disable
+    def get_cfg_pruned_blocks(self) -> List[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_cfg_pruned_blocks()
+
+    @torch.compiler.disable
+    def get_cfg_actual_blocks(self) -> List[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_cfg_actual_blocks()
+
+    @torch.compiler.disable
     def get_important_condition_threshold(self) -> float:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
