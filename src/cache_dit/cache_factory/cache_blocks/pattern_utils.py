@@ -36,13 +36,13 @@ def patch_cached_stats(
             module._actual_blocks
         )
     else:
-        module._pruned_ratio = 0.0
+        module._pruned_ratio = None
     if len(module._cfg_pruned_steps) > 0 and sum(module._cfg_actual_blocks) > 0:
         module._cfg_pruned_ratio = sum(module._cfg_pruned_steps) / sum(
             module._cfg_actual_blocks
         )
     else:
-        module._cfg_pruned_ratio = 0.0
+        module._cfg_pruned_ratio = None
 
 
 def remove_cached_stats(

@@ -103,7 +103,7 @@ class CachedAdapter:
 
             # 1. Apply cache on pipeline: wrap cache context, must
             # call create_context before mock_blocks.
-            cls.create_context(
+            _, contexts_kwargs = cls.create_context(
                 block_adapter,
                 **cache_context_kwargs,
             )
@@ -111,6 +111,7 @@ class CachedAdapter:
             # 2. Apply cache on transformer: mock cached blocks
             cls.mock_blocks(
                 block_adapter,
+                contexts_kwargs,
             )
 
         return block_adapter
@@ -278,6 +279,7 @@ class CachedAdapter:
     def mock_blocks(
         cls,
         block_adapter: BlockAdapter,
+        contexts_kwargs: List[Dict],
     ) -> List[torch.nn.Module]:
 
         BlockAdapter.assert_normalized(block_adapter)
@@ -293,7 +295,7 @@ class CachedAdapter:
             unique_blocks_name,
             dummy_blocks_names,
         ) in zip(
-            cls.collect_cached_blocks(block_adapter),
+            cls.collect_cached_blocks(block_adapter, contexts_kwargs),
             block_adapter.transformer,
             block_adapter.blocks_name,
             block_adapter.unique_blocks_name,
@@ -391,6 +393,7 @@ class CachedAdapter:
     def collect_cached_blocks(
         cls,
         block_adapter: BlockAdapter,
+        contexts_kwargs: List[Dict],
     ) -> List[Dict[str, torch.nn.ModuleList]]:
 
         BlockAdapter.assert_normalized(block_adapter)
@@ -406,6 +409,9 @@ class CachedAdapter:
 
             cached_blocks_bind_context = {}
             for j in range(len(block_adapter.blocks[i])):
+                context_kwargs = contexts_kwargs[
+                    i * len(block_adapter.blocks[i]) + j
+                ]
                 cached_blocks_bind_context[
                     block_adapter.unique_blocks_name[i][j]
                 ] = torch.nn.ModuleList(
@@ -423,6 +429,9 @@ class CachedAdapter:
                                 j
                             ],
                             cache_manager=block_adapter.pipe._cache_manager,
+                            cache_type=context_kwargs.get(
+                                "cache_type", CacheType.DBCache
+                            ),
                         )
                     ]
                 )

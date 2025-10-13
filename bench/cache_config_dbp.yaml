@@ -1,12 +1,12 @@
-cache_type: DBCache
+cache_type: DBPrune
 max_warmup_steps: 8
 warmup_interval: 2
 max_cached_steps: -1
 max_continuous_cached_steps: 2
-Fn_compute_blocks: 1
-Bn_compute_blocks: 0
 residual_diff_threshold: 0.12
 enable_taylorseer: true
 enable_encoder_taylorseer: true
 taylorseer_cache_type: residual
 taylorseer_order: 2
+enable_dynamic_prune_threshold: true
+dynamic_prune_threshold_relax_ratio: 1.25

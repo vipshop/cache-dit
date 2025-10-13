@@ -38,10 +38,25 @@ def load_cache_options_from_yaml(yaml_file_path):
                 )
             )
 
-        from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
+        if "cache_type" not in kwargs:
+            from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 
-        cache_context_kwargs["cache_config"] = BasicCacheConfig()
-        cache_context_kwargs["cache_config"].update(**kwargs)
+            cache_context_kwargs["cache_config"] = BasicCacheConfig()
+            cache_context_kwargs["cache_config"].update(**kwargs)
+        else:
+            cache_type = kwargs.pop("cache_type")
+            if cache_type == "DBCache":
+                from cache_dit.cache_factory.cache_contexts import DBCacheConfig
+
+                cache_context_kwargs["cache_config"] = DBCacheConfig()
+                cache_context_kwargs["cache_config"].update(**kwargs)
+            elif cache_type == "DBPrune":
+                from cache_dit.cache_factory.cache_contexts import DBPruneConfig
+
+                cache_context_kwargs["cache_config"] = DBPruneConfig()
+                cache_context_kwargs["cache_config"].update(**kwargs)
+            else:
+                raise ValueError(f"Unsupported cache_type: {cache_type}.")
 
         return cache_context_kwargs
 

@@ -39,12 +39,22 @@ def is_diffusers_at_least_0_3_5() -> bool:
 @dataclasses.dataclass
 class CacheStats:
     cache_options: dict = dataclasses.field(default_factory=dict)
+    # Dual Block Cache
     cached_steps: list[int] = dataclasses.field(default_factory=list)
     residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
     cfg_cached_steps: list[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: dict[str, float] = dataclasses.field(
         default_factory=dict
     )
+    # Dynamic Block Prune
+    pruned_steps: list[int] = dataclasses.field(default_factory=list)
+    pruned_blocks: list[int] = dataclasses.field(default_factory=list)
+    actual_blocks: list[int] = dataclasses.field(default_factory=list)
+    pruned_ratio: float = None
+    cfg_pruned_steps: list[int] = dataclasses.field(default_factory=list)
+    cfg_pruned_blocks: list[int] = dataclasses.field(default_factory=list)
+    cfg_actual_blocks: list[int] = dataclasses.field(default_factory=list)
+    cfg_pruned_ratio: float = None
 
 
 def summary(
@@ -181,10 +191,18 @@ def strify(
     if not cache_options:
         return "NONE"
 
-    def basic_cache_str():
+    def cache_str():
         cache_config: BasicCacheConfig = cache_options.get("cache_config", None)
         if cache_config is not None:
-            return cache_config.strify()
+            if cache_config.cache_type == CacheType.NONE:
+                return "NONE"
+            elif cache_config.cache_type == CacheType.DBCache:
+                return cache_config.strify()
+            elif cache_config.cache_type == CacheType.DBPrune:
+                pruned_ratio = stats.pruned_ratio
+                if pruned_ratio is not None:
+                    return f"{cache_config.strify()}_P{round(pruned_ratio * 100, 2)}"
+                return cache_config.strify()
         return "NONE"
 
     def calibrator_str():
@@ -195,7 +213,7 @@ def strify(
             return calibrator_config.strify()
         return "T0O0"
 
-    cache_type_str = f"{basic_cache_str()}_{calibrator_str()}"
+    cache_type_str = f"{cache_str()}_{calibrator_str()}"
 
     if cached_steps:
         cache_type_str += f"_S{cached_steps}"
@@ -236,12 +254,23 @@ def _summary(
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
-        residual_diffs: dict[str, float] = dict(module._residual_diffs)
+        residual_diffs: dict[str, list | float] = dict(module._residual_diffs)
+        pruned_steps: list[int] = module._pruned_steps
+        pruned_blocks: list[int] = module._pruned_blocks
+        actual_blocks: list[int] = module._actual_blocks
+        pruned_ratio: float = module._pruned_ratio
+
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
+        cache_stats.pruned_steps = pruned_steps
+        cache_stats.pruned_blocks = pruned_blocks
+        cache_stats.actual_blocks = actual_blocks
+        cache_stats.pruned_ratio = pruned_ratio
 
         if residual_diffs and logging:
             diffs_values = list(residual_diffs.values())
+            if isinstance(diffs_values[0], list):
+                diffs_values = [v for sublist in diffs_values for v in sublist]
             qmin = np.min(diffs_values)
             q0 = np.percentile(diffs_values, 0)
             q1 = np.percentile(diffs_values, 25)
@@ -267,6 +296,11 @@ def _summary(
             )
             print("")
 
+            if pruned_ratio is not None:
+                print(
+                    f"Dynamic Block Prune Ratio: {round(pruned_ratio * 100, 2)}% ({sum(pruned_blocks)}/{sum(actual_blocks)})\n"
+                )
+
             if details:
                 print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
                 pprint(
@@ -280,11 +314,24 @@ def _summary(
     if hasattr(module, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = module._cfg_cached_steps
         cfg_residual_diffs: dict[str, float] = dict(module._cfg_residual_diffs)
+        cfg_pruned_steps: list[int] = module._cfg_pruned_steps
+        cfg_pruned_blocks: list[int] = module._cfg_pruned_blocks
+        cfg_actual_blocks: list[int] = module._cfg_actual_blocks
+        cfg_pruned_ratio: float = module._cfg_pruned_ratio
+
         cache_stats.cfg_cached_steps = cfg_cached_steps
         cache_stats.cfg_residual_diffs = cfg_residual_diffs
+        cache_stats.cfg_pruned_steps = cfg_pruned_steps
+        cache_stats.cfg_pruned_blocks = cfg_pruned_blocks
+        cache_stats.cfg_actual_blocks = cfg_actual_blocks
+        cache_stats.cfg_pruned_ratio = cfg_pruned_ratio
 
         if cfg_residual_diffs and logging:
             cfg_diffs_values = list(cfg_residual_diffs.values())
+            if isinstance(cfg_diffs_values[0], list):
+                cfg_diffs_values = [
+                    v for sublist in cfg_diffs_values for v in sublist
+                ]
             qmin = np.min(cfg_diffs_values)
             q0 = np.percentile(cfg_diffs_values, 0)
             q1 = np.percentile(cfg_diffs_values, 25)
@@ -309,6 +356,11 @@ def _summary(
                 f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
             )
             print("")
+
+            if cfg_pruned_ratio is not None:
+                print(
+                    f"CFG Dynamic Block Prune Ratio: {round(cfg_pruned_ratio * 100, 2)}% ({sum(cfg_pruned_blocks)}/{sum(cfg_actual_blocks)})\n"
+                )
 
             if details:
                 print(
