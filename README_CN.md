@@ -150,7 +150,8 @@ pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-di
 - **混合缓存加速**：目前已支持 **DBCache + 校准器** 混合方案（例如 DBCache + TaylorSeerCalibrator）。其中 DBCache 作为**指示器（Indicator）** 决定*何时（when）* 缓存，校准器则负责决定*如何（how）* 缓存。未来将支持更多主流缓存加速算法（如 FoCa 等）及更多基准测试，敬请期待更新！  
 - **🤗 Diffusers 生态集成**：🔥 **cache-dit** 已正式加入 🤗 Diffusers 社区生态，成为**首个**针对 DiT 的缓存加速框架！查看文档：**[Diffusers 官方文档](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**。 <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
-![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
+
 
 ## 🎉用户指引
 
