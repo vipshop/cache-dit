@@ -77,11 +77,14 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | **[DBCache(Fast)+TaylorSeer(O=1)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
 | **[DBCache(Ultra)+TaylorSeer(O=1)](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
 
-NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211). The configurations of DBCache listed as belows: 
-- **DBCache(Slow)**: F=4,B=0,W=4,I=1,MC=4; DBCache(Slow)+TaylorSeer(O=1): F=1,B=0,W=4,I=1,MC=4,O=1; 
-- **DBCache(Medium)**: F=1,B=0,W=4,I=1,MC=6; DBCache(Medium)+TaylorSeer(O=1): F=1,B=0,W=4,I=1,MC=6,O=1;
-- **DBCache(Fast)**: F=1,B=0,W=8,I=2,MC=8; DBCache(Fast)+TaylorSeer(O=1): F=1,B=0,W=8,I=2,MC=8,O=1; 
-- **DBCache(Ultra)**: F=1,B=0,W=8,I=4,MC=10,O=1.
+NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211). The configurations of DBCache are listed as belows: 
+
+|Algo|Configuration|Algo|Configuration|
+|---|---|---|---|
+|**DBCache(Slow)**| F=4,B=0,W=4,I=1,MC=4 |DBCache(Slow)+TaylorSeer(O=1)|F=1,B=0,W=4,I=1,MC=4,O=1|
+|**DBCache(Medium)**|F=1,B=0,W=4,I=1,MC=6|DBCache(Medium)+TaylorSeer(O=1)|F=1,B=0,W=4,I=1,MC=6,O=1|
+|**DBCache(Fast)**|F=1,B=0,W=8,I=2,MC=8|DBCache(Fast)+TaylorSeer(O=1)|F=1,B=0,W=8,I=2,MC=8,O=1|
+|**DBCache(Ultra)**|F=1,B=0,W=8,I=4,MC=10,|DBCache(Ultra)+TaylorSeer(O=1)|F=1,B=0,W=8,I=4,MC=10,O=1
 
 ## 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
