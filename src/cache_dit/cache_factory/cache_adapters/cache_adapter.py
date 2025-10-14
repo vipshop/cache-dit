@@ -13,7 +13,7 @@ from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_contexts import ContextManager
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
-from cache_dit.cache_factory.cache_blocks import CachedBlocks
+from cache_dit.cache_factory.cache_blocks import UnifiedBlocks
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -295,20 +295,20 @@ class CachedAdapter:
 
         # Apply cache on transformer: mock cached transformer blocks
         for (
-            cached_blocks,
+            unified_blocks,
             transformer,
             blocks_name,
             unique_blocks_name,
             dummy_blocks_names,
         ) in zip(
-            cls.collect_cached_blocks(block_adapter, contexts_kwargs),
+            cls.collect_unified_blocks(block_adapter, contexts_kwargs),
             block_adapter.transformer,
             block_adapter.blocks_name,
             block_adapter.unique_blocks_name,
             block_adapter.dummy_blocks_names,
         ):
             cls.mock_transformer(
-                cached_blocks,
+                unified_blocks,
                 transformer,
                 blocks_name,
                 unique_blocks_name,
@@ -320,7 +320,7 @@ class CachedAdapter:
     @classmethod
     def mock_transformer(
         cls,
-        cached_blocks: Dict[str, torch.nn.ModuleList],
+        unified_blocks: Dict[str, torch.nn.ModuleList],
         transformer: torch.nn.Module,
         blocks_name: List[str],
         unique_blocks_name: List[str],
@@ -360,7 +360,7 @@ class CachedAdapter:
                 ):
                     stack.enter_context(
                         unittest.mock.patch.object(
-                            self, name, cached_blocks[context_name]
+                            self, name, unified_blocks[context_name]
                         )
                     )
                 for dummy_name in dummy_blocks_names:
@@ -396,7 +396,7 @@ class CachedAdapter:
         return transformer
 
     @classmethod
-    def collect_cached_blocks(
+    def collect_unified_blocks(
         cls,
         block_adapter: BlockAdapter,
         contexts_kwargs: List[Dict],
@@ -413,23 +413,23 @@ class CachedAdapter:
 
         for i in range(len(block_adapter.transformer)):
 
-            cached_blocks_bind_context = {}
+            unified_blocks_bind_context = {}
             for j in range(len(block_adapter.blocks[i])):
                 cache_config: BasicCacheConfig = contexts_kwargs[
                     i * len(block_adapter.blocks[i]) + j
                 ]["cache_config"]
-                cached_blocks_bind_context[
+                unified_blocks_bind_context[
                     block_adapter.unique_blocks_name[i][j]
                 ] = torch.nn.ModuleList(
                     [
-                        CachedBlocks(
+                        UnifiedBlocks(
                             # 0. Transformer blocks configuration
                             block_adapter.blocks[i][j],
                             transformer=block_adapter.transformer[i],
                             forward_pattern=block_adapter.forward_pattern[i][j],
                             check_forward_pattern=block_adapter.check_forward_pattern,
                             check_num_outputs=block_adapter.check_num_outputs,
-                            # 1. Cache context configuration
+                            # 1. Cache/Prune context configuration
                             cache_prefix=block_adapter.blocks_name[i][j],
                             cache_context=block_adapter.unique_blocks_name[i][
                                 j
@@ -440,7 +440,7 @@ class CachedAdapter:
                     ]
                 )
 
-            total_cached_blocks.append(cached_blocks_bind_context)
+            total_cached_blocks.append(unified_blocks_bind_context)
 
         return total_cached_blocks
 

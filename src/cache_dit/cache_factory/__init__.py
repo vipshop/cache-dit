@@ -22,6 +22,8 @@ from cache_dit.cache_factory.cache_contexts import TaylorSeerCalibratorConfig
 from cache_dit.cache_factory.cache_contexts import FoCaCalibratorConfig
 
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
+from cache_dit.cache_factory.cache_blocks import PrunedBlocks
+from cache_dit.cache_factory.cache_blocks import UnifiedBlocks
 
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 
