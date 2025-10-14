@@ -255,13 +255,21 @@ def _summary(
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
         residual_diffs: dict[str, list | float] = dict(module._residual_diffs)
-        pruned_steps: list[int] = module._pruned_steps
-        pruned_blocks: list[int] = module._pruned_blocks
-        actual_blocks: list[int] = module._actual_blocks
-        pruned_ratio: float = module._pruned_ratio
+
+        if hasattr(module, "_pruned_steps"):
+            pruned_steps: list[int] = module._pruned_steps
+            pruned_blocks: list[int] = module._pruned_blocks
+            actual_blocks: list[int] = module._actual_blocks
+            pruned_ratio: float = module._pruned_ratio
+        else:
+            pruned_steps = []
+            pruned_blocks = []
+            actual_blocks = []
+            pruned_ratio = None
 
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
+
         cache_stats.pruned_steps = pruned_steps
         cache_stats.pruned_blocks = pruned_blocks
         cache_stats.actual_blocks = actual_blocks
@@ -351,10 +359,17 @@ def _summary(
         cfg_residual_diffs: dict[str, list | float] = dict(
             module._cfg_residual_diffs
         )
-        cfg_pruned_steps: list[int] = module._cfg_pruned_steps
-        cfg_pruned_blocks: list[int] = module._cfg_pruned_blocks
-        cfg_actual_blocks: list[int] = module._cfg_actual_blocks
-        cfg_pruned_ratio: float = module._cfg_pruned_ratio
+
+        if hasattr(module, "_cfg_pruned_steps"):
+            cfg_pruned_steps: list[int] = module._cfg_pruned_steps
+            cfg_pruned_blocks: list[int] = module._cfg_pruned_blocks
+            cfg_actual_blocks: list[int] = module._cfg_actual_blocks
+            cfg_pruned_ratio: float = module._cfg_pruned_ratio
+        else:
+            cfg_pruned_steps = []
+            cfg_pruned_blocks = []
+            cfg_actual_blocks = []
+            cfg_pruned_ratio = None
 
         cache_stats.cfg_cached_steps = cfg_cached_steps
         cache_stats.cfg_residual_diffs = cfg_residual_diffs
