@@ -13,5 +13,5 @@ from cache_dit.cache_factory.cache_contexts.cache_context import (
 )
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
     CachedContextManager,
-    CacheNotExistError,
+    ContextNotExistError,
 )

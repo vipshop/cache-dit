@@ -3,9 +3,13 @@ import torch
 import torch.distributed as dist
 
 from cache_dit.cache_factory.cache_contexts.cache_context import CachedContext
+from cache_dit.cache_factory.cache_contexts.prune_context import PrunedContext
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
     CachedContextManager,
-    CacheNotExistError,
+    ContextNotExistError,
+)
+from cache_dit.cache_factory.cache_contexts.prune_manager import (
+    PrunedContextManager,
 )
 from cache_dit.cache_factory import ForwardPattern
 from cache_dit.cache_factory.cache_types import CacheType
@@ -187,7 +191,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         try:
             self.cache_manager.set_context(self.cache_context)
             self._check_cache_params()
-        except CacheNotExistError as e:
+        except ContextNotExistError as e:
             logger.warning(f"Cache context not exist: {e}, skip cache.")
             # Call all blocks to process the hidden states.
             hidden_states, encoder_hidden_states = self.call_blocks(
@@ -472,6 +476,42 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
 class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
     pruned_blocks_step: int = 0  # number of pruned blocks in current step
 
+    def __init__(
+        self,
+        # 0. Transformer blocks configuration
+        transformer_blocks: torch.nn.ModuleList,
+        transformer: torch.nn.Module = None,
+        forward_pattern: ForwardPattern = ForwardPattern.Pattern_0,
+        check_forward_pattern: bool = True,
+        check_num_outputs: bool = True,
+        # 1. Prune context configuration
+        cache_prefix: str = None,  # maybe un-need.
+        cache_context: PrunedContext | str = None,
+        cache_manager: PrunedContextManager = None,
+        cache_type: CacheType = CacheType.DBPrune,
+        **kwargs,
+    ):
+        super().__init__(
+            # 0. Transformer blocks configuration
+            transformer_blocks,
+            transformer=transformer,
+            forward_pattern=forward_pattern,
+            check_forward_pattern=check_forward_pattern,
+            check_num_outputs=check_num_outputs,
+            # 1. Cache context configuration
+            cache_prefix=cache_prefix,
+            cache_context=cache_context,
+            cache_manager=cache_manager,
+            cache_type=cache_type,
+            **kwargs,
+        )
+        assert isinstance(
+            self.cache_manager, PrunedContextManager
+        ), "cache_manager must be PrunedContextManager for PrunedBlocks."
+        self.cache_manager: PrunedContextManager = (
+            self.cache_manager
+        )  # For type hint
+
     @torch.compiler.disable
     def _check_cache_type(self):
         assert (
@@ -491,7 +531,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         try:
             self.cache_manager.set_context(self.cache_context)
             self._check_cache_params()
-        except CacheNotExistError as e:
+        except ContextNotExistError as e:
             logger.warning(f"Cache context not exist: {e}, skip prune.")
             # Fallback to call all blocks to process the hidden states w/o prune.
             hidden_states, encoder_hidden_states = self.call_blocks(
