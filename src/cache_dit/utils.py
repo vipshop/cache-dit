@@ -247,10 +247,10 @@ def _summary(
         cache_options = module._context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
-            print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")
+            print(f"\n🤗Context Options: {cls_name}\n\n{cache_options}")
     else:
         if logging:
-            logger.warning(f"Can't find Cache Options for: {cls_name}")
+            logger.warning(f"Can't find Context Options for: {cls_name}")
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
