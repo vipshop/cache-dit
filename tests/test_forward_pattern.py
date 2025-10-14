@@ -7,7 +7,7 @@ import torch.nn as nn
 from typing import Tuple, Union
 from diffusers import DiffusionPipeline
 import cache_dit
-from cache_dit import ForwardPattern, BlockAdapter, BasicCacheConfig
+from cache_dit import ForwardPattern, BlockAdapter, DBCacheConfig
 
 
 RATIO = 0.7
@@ -368,7 +368,7 @@ if __name__ == "__main__":
             blocks_name="transformer_blocks",
             forward_pattern=pipe.pattern,
         ),
-        cache_config=BasicCacheConfig(
+        cache_config=DBCacheConfig(
             Fn_compute_blocks=1,
             Bn_compute_blocks=0,
             residual_diff_threshold=0.05,

@@ -3,12 +3,13 @@ import torch
 from typing import Any
 from cache_dit.cache_factory import CachedContext
 from cache_dit.cache_factory import CachedContextManager
+from cache_dit.cache_factory import PrunedContextManager
 
 
 def patch_cached_stats(
     module: torch.nn.Module | Any,
     cache_context: CachedContext | str = None,
-    cache_manager: CachedContextManager = None,
+    cache_manager: CachedContextManager | PrunedContextManager = None,
 ):
     # Patch the cached stats to the module, the cached stats
     # will be reset for each calling of pipe.__call__(**kwargs).
@@ -24,6 +25,8 @@ def patch_cached_stats(
     module._cfg_cached_steps = cache_manager.get_cfg_cached_steps()
     module._cfg_residual_diffs = cache_manager.get_cfg_residual_diffs()
     # Pruned stats for Dynamic Block Prune
+    if not isinstance(cache_manager, PrunedContextManager):
+        return
     module._pruned_steps = cache_manager.get_pruned_steps()
     module._cfg_pruned_steps = cache_manager.get_cfg_pruned_steps()
     module._pruned_blocks = cache_manager.get_pruned_blocks()

@@ -65,14 +65,14 @@ def cachify(
     **kwargs,
 ):
     if args.cache:
-        from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
+        from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
         specific_cache_config = kwargs.pop("cache_config", None)
 
         cache_dit.enable_cache(
             pipe_or_adapter,
             cache_config=(
-                BasicCacheConfig(
+                DBCacheConfig(
                     Fn_compute_blocks=args.Fn,
                     Bn_compute_blocks=args.Bn,
                     max_warmup_steps=args.max_warmup_steps,

@@ -248,7 +248,7 @@ cache_dit.enable_cache(
 Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
 
 ```python
-from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, BasicCacheConfig
+from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, DBCacheConfig
 
 cache_dit.enable_cache(
     BlockAdapter(
@@ -270,13 +270,13 @@ cache_dit.enable_cache(
         # value will be overwrite by the new one.
         params_modifiers=[
             ParamsModifier(
-                cache_config=BasicCacheConfig(
+                cache_config=DBCacheConfig(
                     max_warmup_steps=4,
                     max_cached_steps=8,
                 ),
             ),
             ParamsModifier(
-                cache_config=BasicCacheConfig(
+                cache_config=DBCacheConfig(
                     max_warmup_steps=2,
                     max_cached_steps=20,
                 ),
@@ -360,11 +360,11 @@ pipe_or_adapter = FluxPipeline.from_pretrained(
 cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
+from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter,
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         max_warmup_steps=8,  # steps do not cache
         max_cached_steps=-1, # -1 means no limit
         Fn_compute_blocks=8, # Fn, F8, etc.
@@ -398,12 +398,12 @@ $$
 **TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
-from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
+from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter,
     # Basic DBCache w/ FnBn configurations
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         max_warmup_steps=8,  # steps do not cache
         max_cached_steps=-1, # -1 means no limit
         Fn_compute_blocks=8, # Fn, F8, etc.
@@ -439,11 +439,11 @@ cache_dit.enable_cache(
 cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default, None)**. Otherwise, set it to True. For examples:
 
 ```python
-from cache_dit import BasicCacheConfig
+from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         ...,
         # CFG: classifier free guidance or not
         # For model that fused CFG and non-CFG into single forward step,
@@ -557,8 +557,8 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   For example: `cache_dit.enable_cache(FluxPipeline(...))`.
   Please check https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md for the usage of BlockAdapter.
 
-- **cache_config**(`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
-  Basic DBCache config for cache context, defaults to BasicCacheConfig(). The configurable parameters are listed below:
+- **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):
+  Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
   - `Fn_compute_blocks`: (`int`, *required*, defaults to 8):
     Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.
     Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md for more details of DBCache.
@@ -589,7 +589,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 
 - **params_modifiers** ('ParamsModifier', *optional*, defaults to None):
   Modify cache context parameters for specific blocks. The configurable parameters are listed below:
-  - `cache_config`: (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
+  - `cache_config`: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):
     The same as the 'cache_config' parameter in the cache_dit.enable_cache() interface.
   - `calibrator_config`: (`CalibratorConfig`, *optional*, defaults to None):
     The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.

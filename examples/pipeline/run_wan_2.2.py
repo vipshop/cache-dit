@@ -47,7 +47,7 @@ if args.cache:
         ForwardPattern,
         BlockAdapter,
         ParamsModifier,
-        BasicCacheConfig,
+        DBCacheConfig,
     )
 
     cachify(
@@ -69,13 +69,13 @@ if args.cache:
             params_modifiers=[
                 # high-noise transformer only have 30% steps
                 ParamsModifier(
-                    cache_config=BasicCacheConfig(
+                    cache_config=DBCacheConfig(
                         max_warmup_steps=4,
                         max_cached_steps=8,
                     ),
                 ),
                 ParamsModifier(
-                    cache_config=BasicCacheConfig(
+                    cache_config=DBCacheConfig(
                         max_warmup_steps=2,
                         max_cached_steps=20,
                     ),

@@ -11,6 +11,11 @@ logger = init_logger(__name__)
 
 
 class ContextManager:
+    _supported_managers = (
+        CachedContextManager,
+        PrunedContextManager,
+    )
+
     def __new__(
         cls,
         cache_type: CacheType,

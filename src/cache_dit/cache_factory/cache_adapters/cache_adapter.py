@@ -10,7 +10,7 @@ from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
-from cache_dit.cache_factory.cache_contexts import CachedContextManager
+from cache_dit.cache_factory.cache_contexts import ContextManager
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.cache_blocks import CachedBlocks
@@ -183,8 +183,13 @@ class CachedAdapter:
         # Different transformers (Wan2.2, etc) should shared the same
         # cache manager but with different cache context (according
         # to their unique instance id).
-        cache_manager = CachedContextManager(
+        cache_config: BasicCacheConfig = cache_context_kwargs.get(
+            "cache_config", None
+        )
+        assert cache_config is not None, "cache_config can not be None."
+        cache_manager = ContextManager(
             name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
+            cache_type=cache_config.cache_type,
         )
         block_adapter.pipe._cache_manager = cache_manager  # instance level
 
@@ -403,7 +408,7 @@ class CachedAdapter:
         assert hasattr(block_adapter.pipe, "_cache_manager")
         assert isinstance(
             block_adapter.pipe._cache_manager,
-            CachedContextManager,
+            ContextManager._supported_managers,
         )
 
         for i in range(len(block_adapter.transformer)):
@@ -523,7 +528,9 @@ class CachedAdapter:
                 del pipe.__class__._original_call
             if hasattr(pipe, "_cache_manager"):
                 cache_manager = pipe._cache_manager
-                if isinstance(cache_manager, CachedContextManager):
+                if isinstance(
+                    cache_manager, ContextManager._supported_managers
+                ):
                     cache_manager.clear_contexts()
                 del pipe._cache_manager
             if hasattr(pipe, "_is_cached"):
