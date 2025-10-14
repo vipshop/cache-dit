@@ -19,10 +19,8 @@ from cache_dit.cache_factory.cache_blocks.pattern_3_4_5 import (
     CachedBlocks_Pattern_3_4_5,
     PrunedBlocks_Pattern_3_4_5,
 )
-from cache_dit.cache_factory.cache_blocks.pattern_utils import (
-    patch_cached_stats,
-    remove_cached_stats,
-)
+from cache_dit.cache_factory.cache_blocks.pattern_utils import apply_stats
+from cache_dit.cache_factory.cache_blocks.pattern_utils import remove_stats
 
 from cache_dit.logger import init_logger
 

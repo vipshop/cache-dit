@@ -482,13 +482,13 @@ class CachedAdapter:
         block_adapter: BlockAdapter,
     ):
         from cache_dit.cache_factory.cache_blocks import (
-            patch_cached_stats,
+            apply_stats,
         )
 
         context_manager = block_adapter.pipe._context_manager
 
         for i in range(len(block_adapter.transformer)):
-            patch_cached_stats(
+            apply_stats(
                 block_adapter.transformer[i],
                 cache_context=block_adapter.unique_blocks_name[i][-1],
                 context_manager=context_manager,
@@ -497,7 +497,7 @@ class CachedAdapter:
                 block_adapter.blocks[i],
                 block_adapter.unique_blocks_name[i],
             ):
-                patch_cached_stats(
+                apply_stats(
                     blocks,
                     cache_context=unique_name,
                     context_manager=context_manager,
@@ -575,14 +575,11 @@ class CachedAdapter:
 
         # release stats hooks
         from cache_dit.cache_factory.cache_blocks import (
-            remove_cached_stats,
+            remove_stats,
         )
 
         cls.release_hooks(
-            pipe_or_adapter,
-            remove_cached_stats,
-            remove_cached_stats,
-            remove_cached_stats,
+            pipe_or_adapter, remove_stats, remove_stats, remove_stats
         )
 
     @classmethod
