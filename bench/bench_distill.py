@@ -83,14 +83,14 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
     # Apply cache to the pipeline
     if args.cache:
         from cache_dit import (
-            BasicCacheConfig,
+            DBCacheConfig,
             TaylorSeerCalibratorConfig,
         )
 
         cache_dit.enable_cache(
             pipe,
             # Cache context kwargs
-            cache_config=BasicCacheConfig(
+            cache_config=DBCacheConfig(
                 Fn_compute_blocks=args.Fn_compute_blocks,
                 Bn_compute_blocks=args.Bn_compute_blocks,
                 max_warmup_steps=args.max_warmup_steps,

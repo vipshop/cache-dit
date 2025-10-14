@@ -124,7 +124,7 @@
 ## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features include **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
+**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **DBPrune**, **TaylorSeer Calibrator**, and **Cache CFG**.   
 
 ```bash
 pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
@@ -142,20 +142,16 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ### 📚Core Features
 
-- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, such as Qwen-Image, FLUX.1, Qwen-Image-Lightning, HunyuanImage-2.1, HunyuanVideo, HunyuanDiT, Wan 2.1/2.2, HiDream, AuraFlow, CogView3Plus, CogView4, LTXVideo, CogVideoX 1.5, ConsisID, SkyReelsV2, VisualCloze, OmniGen, Lumina, PixArt, Chroma, Sana, Allegro, Mochi, SD 3.5, Amused, and DiT-XL.  
+- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, include **[30+](./examples/pipeline/)** series, nearly **[100+](./examples/pipeline/)** pipelines, such as FLUX.1, Qwen-Image, Qwen-Image-Lightning, Wan 2.1/2.2, HunyuanImage-2.1, HunyuanVideo, HiDream, AuraFlow, CogView3Plus, CogView4, CogVideoX, LTXVideo, ConsisID, SkyReelsV2, VisualCloze, PixArt, Chroma, Mochi, SD 3.5, DiT-XL, etc.  
 - **[🎉Extremely Easy to Use](./docs/User_Guide.md#unified-cache-apis)**: In most cases, you only need **one line** of code: `cache_dit.enable_cache(...)`. After calling this API, just use the pipeline as normal.   
 - **[🎉Easy New Model Integration](./docs/User_Guide.md#automatic-block-adapter)**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with 1.7x speedup w/o precision loss—even before it was available in the Diffusers library.  
 - **[🎉State-of-the-Art Performance](./bench/)**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
 - **[🎉Support for 4/8-Steps Distilled Models](./bench/)**: Surprisingly, cache-dit's **DBCache** works for extremely few-step distilled models—something many other methods fail to do.  
 - **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, etc.  
-- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache + TaylorSeerCalibrator). DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
+- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes (e.g., DBCache or DBPrune + TaylorSeerCalibrator). DBCache or DBPrune acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
 - **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
-
-<!--
-![](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
--->
 
 ## 🔥Important News
 
@@ -198,14 +194,13 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
   - [📚Hybird Forward Pattern](./docs/User_Guide.md#hybird-forward-pattern)
   - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
-- [⚡️Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
+- [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
+- [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
 - [🔥TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
 - [🛠Metrics CLI](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
-
-
 
 ## 👋Contribute 
 <div id="contribute"></div>

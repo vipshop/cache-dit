@@ -36,14 +36,14 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
     if args.cache:
         if args.disable_block_adapter:
             from cache_dit import (
-                BasicCacheConfig,
+                DBCacheConfig,
                 TaylorSeerCalibratorConfig,
             )
 
             cache_dit.enable_cache(
                 pipe,
                 # Cache context kwargs
-                cache_config=BasicCacheConfig(
+                cache_config=DBCacheConfig(
                     Fn_compute_blocks=args.Fn_compute_blocks,
                     Bn_compute_blocks=args.Bn_compute_blocks,
                     max_warmup_steps=args.max_warmup_steps,
@@ -65,7 +65,7 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
             from cache_dit import (
                 ForwardPattern,
                 BlockAdapter,
-                BasicCacheConfig,
+                DBCacheConfig,
                 TaylorSeerCalibratorConfig,
             )
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
@@ -85,7 +85,7 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
                     forward_pattern=ForwardPattern.Pattern_1,
                 ),
                 # Cache context kwargs
-                cache_config=BasicCacheConfig(
+                cache_config=DBCacheConfig(
                     Fn_compute_blocks=args.Fn_compute_blocks,
                     Bn_compute_blocks=args.Bn_compute_blocks,
                     max_warmup_steps=args.max_warmup_steps,

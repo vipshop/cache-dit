@@ -14,7 +14,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class CacheNotExistError(Exception):
+class ContextNotExistError(Exception):
     pass
 
 
@@ -36,14 +36,14 @@ class CachedContextManager:
             self._current_context = cached_context
         else:
             if cached_context not in self._cached_context_manager:
-                raise CacheNotExistError("Context not exist!")
+                raise ContextNotExistError("Context not exist!")
             self._current_context = self._cached_context_manager[cached_context]
         return self._current_context
 
     def get_context(self, name: str = None) -> CachedContext:
         if name is not None:
             if name not in self._cached_context_manager:
-                raise CacheNotExistError("Context not exist!")
+                raise ContextNotExistError("Context not exist!")
             return self._cached_context_manager[name]
         return self._current_context
 
@@ -482,7 +482,7 @@ class CachedContextManager:
 
             if calibrator is not None:
                 # Use calibrator to update the buffer
-                calibrator.update(buffer)
+                calibrator.update(buffer, name=prefix)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
@@ -513,7 +513,7 @@ class CachedContextManager:
                 calibrator, _ = self.get_calibrator()
 
             if calibrator is not None:
-                return calibrator.approximate()
+                return calibrator.approximate(name=prefix)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
@@ -551,7 +551,7 @@ class CachedContextManager:
 
             if encoder_calibrator is not None:
                 # Use CalibratorBase to update the buffer
-                encoder_calibrator.update(buffer)
+                encoder_calibrator.update(buffer, name=prefix)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
@@ -582,7 +582,7 @@ class CachedContextManager:
 
             if encoder_calibrator is not None:
                 # Use calibrator to approximate the value
-                return encoder_calibrator.approximate()
+                return encoder_calibrator.approximate(name=prefix)
             else:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(

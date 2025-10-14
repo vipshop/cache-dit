@@ -12,7 +12,8 @@
   - [📚Hybird Forward Pattern](#automatic-block-adapter)
   - [📚Implement Patch Functor](#implement-patch-functor)
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
-- [⚡️Dual Block Cache](#dbcache)
+- [⚡️DBCache: Dual Block Cache](#dbcache)
+- [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [🛠Metrics CLI](#metrics)
@@ -248,7 +249,7 @@ cache_dit.enable_cache(
 Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
 
 ```python
-from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, BasicCacheConfig
+from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, DBCacheConfig
 
 cache_dit.enable_cache(
     BlockAdapter(
@@ -270,13 +271,13 @@ cache_dit.enable_cache(
         # value will be overwrite by the new one.
         params_modifiers=[
             ParamsModifier(
-                cache_config=BasicCacheConfig(
+                cache_config=DBCacheConfig(
                     max_warmup_steps=4,
                     max_cached_steps=8,
                 ),
             ),
             ParamsModifier(
-                cache_config=BasicCacheConfig(
+                cache_config=DBCacheConfig(
                     max_warmup_steps=2,
                     max_cached_steps=20,
                 ),
@@ -360,11 +361,11 @@ pipe_or_adapter = FluxPipeline.from_pretrained(
 cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
+from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter,
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         max_warmup_steps=8,  # steps do not cache
         max_cached_steps=-1, # -1 means no limit
         Fn_compute_blocks=8, # Fn, F8, etc.
@@ -385,6 +386,53 @@ cache_dit.enable_cache(
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
 
+## ⚡️DBPrune: Dynamic Block Prune
+
+<div id="dbprune"></div>  
+
+![](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
+
+
+We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
+
+```python
+from cache_dit import DBPruneConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter,
+    cache_config=DBPruneConfig(
+        max_warmup_steps=8,  # steps do not apply prune
+        residual_diff_threshold=0.12,
+        enable_dynamic_prune_threshold=True,
+    ),
+)
+```
+We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_block_ids** to avoid aggressive pruning. For example:
+
+```python
+cache_dit.enable_cache(
+    pipe_or_adapter,
+    cache_config=DBPruneConfig(
+        max_warmup_steps=8,  # steps do not apply prune
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc
+        residual_diff_threshold=0.12,
+        enable_dynamic_prune_threshold=True,
+        non_prune_block_ids=list(range(16)),
+    ),
+)
+```
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+
 ## 🔥TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
@@ -398,12 +446,12 @@ $$
 **TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
 
 ```python
-from cache_dit import BasicCacheConfig, TaylorSeerCalibratorConfig
+from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter,
     # Basic DBCache w/ FnBn configurations
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         max_warmup_steps=8,  # steps do not cache
         max_cached_steps=-1, # -1 means no limit
         Fn_compute_blocks=8, # Fn, F8, etc.
@@ -439,11 +487,11 @@ cache_dit.enable_cache(
 cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default, None)**. Otherwise, set it to True. For examples:
 
 ```python
-from cache_dit import BasicCacheConfig
+from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         ...,
         # CFG: classifier free guidance or not
         # For model that fused CFG and non-CFG into single forward step,
@@ -557,8 +605,8 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   For example: `cache_dit.enable_cache(FluxPipeline(...))`.
   Please check https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md for the usage of BlockAdapter.
 
-- **cache_config**(`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
-  Basic DBCache config for cache context, defaults to BasicCacheConfig(). The configurable parameters are listed below:
+- **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):
+  Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
   - `Fn_compute_blocks`: (`int`, *required*, defaults to 8):
     Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.
     Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md for more details of DBCache.
@@ -589,7 +637,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 
 - **params_modifiers** ('ParamsModifier', *optional*, defaults to None):
   Modify cache context parameters for specific blocks. The configurable parameters are listed below:
-  - `cache_config`: (`BasicCacheConfig`, *required*, defaults to BasicCacheConfig()):
+  - `cache_config`: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):
     The same as the 'cache_config' parameter in the cache_dit.enable_cache() interface.
   - `calibrator_config`: (`CalibratorConfig`, *optional*, defaults to None):
     The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.

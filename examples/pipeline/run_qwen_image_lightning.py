@@ -72,12 +72,12 @@ if args.fuse_lora:
 
 
 if args.cache:
-    from cache_dit import BasicCacheConfig
+    from cache_dit import DBCacheConfig
 
     cachify(
         args,
         pipe,
-        cache_config=BasicCacheConfig(
+        cache_config=DBCacheConfig(
             Fn_compute_blocks=16,
             Bn_compute_blocks=16,
             max_warmup_steps=4 if steps > 4 else 2,

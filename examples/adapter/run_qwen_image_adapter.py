@@ -32,7 +32,7 @@ if args.cache:
     from cache_dit import (
         BlockAdapter,
         ForwardPattern,
-        BasicCacheConfig,
+        DBCacheConfig,
         TaylorSeerCalibratorConfig,
     )
 
@@ -46,7 +46,7 @@ if args.cache:
             forward_pattern=ForwardPattern.Pattern_1,
         ),
         # Cache context kwargs
-        cache_config=BasicCacheConfig(
+        cache_config=DBCacheConfig(
             residual_diff_threshold=0.12,
             enable_separate_cfg=True,
         ),

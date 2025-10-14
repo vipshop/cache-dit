@@ -5,6 +5,8 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
+from cache_dit.cache_factory.cache_contexts import DBCacheConfig
+from cache_dit.cache_factory.cache_contexts import DBPruneConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.params_modifier import ParamsModifier
 
@@ -19,8 +21,12 @@ def enable_cache(
         DiffusionPipeline,
         BlockAdapter,
     ],
-    # Basic DBCache config: BasicCacheConfig
-    cache_config: BasicCacheConfig = BasicCacheConfig(),
+    # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
+    cache_config: Union[
+        BasicCacheConfig,
+        DBCacheConfig,
+        DBPruneConfig,
+    ] = DBCacheConfig(),
     # Calibrator config: TaylorSeerCalibratorConfig, etc.
     calibrator_config: Optional[CalibratorConfig] = None,
     # Modify cache context params for specific blocks.
@@ -136,14 +142,14 @@ def enable_cache(
     >>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
     """
     # Collect cache context kwargs
-    cache_context_kwargs = {}
-    if (cache_type := cache_context_kwargs.pop("cache_type", None)) is not None:
+    context_kwargs = {}
+    if (cache_type := context_kwargs.get("cache_type", None)) is not None:
         if cache_type == CacheType.NONE:
             return pipe_or_adapter
 
     # WARNING: Deprecated cache config params. These parameters are now retained
     # for backward compatibility but will be removed in the future.
-    deprecated_cache_kwargs = {
+    deprecated_kwargs = {
         "Fn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
         "Bn_compute_blocks": kwargs.get("Bn_compute_blocks", None),
         "max_warmup_steps": kwargs.get("max_warmup_steps", None),
@@ -159,23 +165,23 @@ def enable_cache(
         ),
     }
 
-    deprecated_cache_kwargs = {
-        k: v for k, v in deprecated_cache_kwargs.items() if v is not None
+    deprecated_kwargs = {
+        k: v for k, v in deprecated_kwargs.items() if v is not None
     }
 
-    if deprecated_cache_kwargs:
+    if deprecated_kwargs:
         logger.warning(
             "Manually settup DBCache context without BasicCacheConfig is "
             "deprecated and will be removed in the future, please use "
             "`cache_config` parameter instead!"
         )
         if cache_config is not None:
-            cache_config.update(**deprecated_cache_kwargs)
+            cache_config.update(**deprecated_kwargs)
         else:
-            cache_config = BasicCacheConfig(**deprecated_cache_kwargs)
+            cache_config = BasicCacheConfig(**deprecated_kwargs)
 
     if cache_config is not None:
-        cache_context_kwargs["cache_config"] = cache_config
+        context_kwargs["cache_config"] = cache_config
 
     # WARNING: Deprecated taylorseer params. These parameters are now retained
     # for backward compatibility but will be removed in the future.
@@ -202,15 +208,15 @@ def enable_cache(
         )
 
     if calibrator_config is not None:
-        cache_context_kwargs["calibrator_config"] = calibrator_config
+        context_kwargs["calibrator_config"] = calibrator_config
 
     if params_modifiers is not None:
-        cache_context_kwargs["params_modifiers"] = params_modifiers
+        context_kwargs["params_modifiers"] = params_modifiers
 
     if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
         return CachedAdapter.apply(
             pipe_or_adapter,
-            **cache_context_kwargs,
+            **context_kwargs,
         )
     else:
         raise ValueError(

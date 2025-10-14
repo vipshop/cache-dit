@@ -29,7 +29,7 @@ if args.cache:
         ForwardPattern,
         BlockAdapter,
         ParamsModifier,
-        BasicCacheConfig,
+        DBCacheConfig,
     )
     from cache_dit.utils import is_diffusers_at_least_0_3_5
     from diffusers import FluxTransformer2DModel
@@ -52,12 +52,12 @@ if args.cache:
                 ],
                 params_modifiers=[
                     ParamsModifier(
-                        cache_config=BasicCacheConfig(
+                        cache_config=DBCacheConfig(
                             residual_diff_threshold=0.12,
                         ),
                     ),
                     ParamsModifier(
-                        cache_config=BasicCacheConfig(
+                        cache_config=DBCacheConfig(
                             Fn_compute_blocks=1,
                             residual_diff_threshold=0.25,
                         ),
@@ -83,12 +83,12 @@ if args.cache:
                 ],
                 params_modifiers=[
                     ParamsModifier(
-                        cache_config=BasicCacheConfig(
+                        cache_config=DBCacheConfig(
                             residual_diff_threshold=0.12,
                         ),
                     ),
                     ParamsModifier(
-                        cache_config=BasicCacheConfig(
+                        cache_config=DBCacheConfig(
                             Fn_compute_blocks=1,
                             residual_diff_threshold=0.25,
                         ),

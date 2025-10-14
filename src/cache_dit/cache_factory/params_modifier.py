@@ -11,7 +11,7 @@ logger = init_logger(__name__)
 class ParamsModifier:
     def __init__(
         self,
-        # Basic DBCache config: BasicCacheConfig
+        # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
         cache_config: BasicCacheConfig = None,
         # Calibrator config: TaylorSeerCalibratorConfig, etc.
         calibrator_config: Optional[CalibratorConfig] = None,
@@ -22,7 +22,7 @@ class ParamsModifier:
 
         # WARNING: Deprecated cache config params. These parameters are now retained
         # for backward compatibility but will be removed in the future.
-        deprecated_cache_kwargs = {
+        deprecated_kwargs = {
             "Fn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
             "Bn_compute_blocks": kwargs.get("Bn_compute_blocks", None),
             "max_warmup_steps": kwargs.get("max_warmup_steps", None),
@@ -40,20 +40,20 @@ class ParamsModifier:
             ),
         }
 
-        deprecated_cache_kwargs = {
-            k: v for k, v in deprecated_cache_kwargs.items() if v is not None
+        deprecated_kwargs = {
+            k: v for k, v in deprecated_kwargs.items() if v is not None
         }
 
-        if deprecated_cache_kwargs:
+        if deprecated_kwargs:
             logger.warning(
                 "Manually settup DBCache context without BasicCacheConfig is "
                 "deprecated and will be removed in the future, please use "
                 "`cache_config` parameter instead!"
             )
             if cache_config is not None:
-                cache_config.update(**deprecated_cache_kwargs)
+                cache_config.update(**deprecated_kwargs)
             else:
-                cache_config = BasicCacheConfig(**deprecated_cache_kwargs)
+                cache_config = BasicCacheConfig(**deprecated_kwargs)
 
         if cache_config is not None:
             self._context_kwargs["cache_config"] = cache_config

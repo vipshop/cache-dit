@@ -64,14 +64,14 @@ def main():
         if not args.use_block_adapter:
             if args.cache_config is None:
                 from cache_dit import (
-                    BasicCacheConfig,
+                    DBCacheConfig,
                     TaylorSeerCalibratorConfig,
                 )
 
                 cache_dit.enable_cache(
                     pipe,
                     # Cache context kwargs
-                    cache_config=BasicCacheConfig(
+                    cache_config=DBCacheConfig(
                         Fn_compute_blocks=args.Fn_compute_blocks,
                         Bn_compute_blocks=args.Bn_compute_blocks,
                         max_warmup_steps=args.max_warmup_steps,
@@ -97,7 +97,7 @@ def main():
             from cache_dit import (
                 ForwardPattern,
                 BlockAdapter,
-                BasicCacheConfig,
+                DBCacheConfig,
                 TaylorSeerCalibratorConfig,
             )
             from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
@@ -129,7 +129,7 @@ def main():
                         )
                     ),
                     # Cache context kwargs
-                    cache_config=BasicCacheConfig(
+                    cache_config=DBCacheConfig(
                         Fn_compute_blocks=args.Fn_compute_blocks,
                         Bn_compute_blocks=args.Bn_compute_blocks,
                         max_warmup_steps=args.max_warmup_steps,

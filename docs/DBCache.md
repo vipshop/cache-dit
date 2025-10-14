@@ -57,11 +57,11 @@ pipe_or_adapter = FluxPipeline.from_pretrained(
 cache_dit.enable_cache(pipe_or_adapter)
 
 # Custom options, F8B8, higher precision
-from cache_dit import BasicCacheConfig
+from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter,
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         max_warmup_steps=8,  # steps do not cache
         max_cached_steps=-1, # -1 means no limit
         Fn_compute_blocks=8, # Fn, F8, etc.
@@ -88,11 +88,11 @@ cache_dit.enable_cache(
 cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
-from cache_dit import BasicCacheConfig
+from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=BasicCacheConfig(
+    cache_config=DBCacheConfig(
         ...,
         # CFG: classifier free guidance or not
         # For model that fused CFG and non-CFG into single forward step,
