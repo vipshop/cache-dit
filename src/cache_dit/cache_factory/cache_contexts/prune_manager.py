@@ -1,5 +1,5 @@
 import torch
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union
 
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
     CachedContextManager,
@@ -90,3 +90,55 @@ class PrunedContextManager(CachedContextManager):
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_cfg_actual_blocks()
+
+    @torch.compiler.disable
+    def get_non_prune_blocks_ids(self, num_blocks: int) -> List[int]:
+        assert num_blocks is not None, "num_blocks must be provided"
+        assert num_blocks > 0, "num_blocks must be greater than 0"
+        # Get the non-prune block ids for current context
+        # Never prune the first `Fn` and last `Bn` blocks.
+        Fn_compute_blocks_ids = list(
+            range(
+                self.Fn_compute_blocks()
+                if self.Fn_compute_blocks() < num_blocks
+                else num_blocks
+            )
+        )
+
+        Bn_compute_blocks_ids = list(
+            range(
+                num_blocks
+                - (
+                    self.Bn_compute_blocks()
+                    if self.Bn_compute_blocks() < num_blocks
+                    else num_blocks
+                ),
+                num_blocks,
+            )
+        )
+        context = self.get_context()
+        assert context is not None, "cached_context must be set before"
+
+        non_prune_blocks_ids = list(
+            set(
+                Fn_compute_blocks_ids
+                + Bn_compute_blocks_ids
+                + context.cache_config.non_prune_block_ids
+            )
+        )
+        non_prune_blocks_ids = [
+            d for d in non_prune_blocks_ids if d < num_blocks
+        ]
+        return sorted(non_prune_blocks_ids)
+
+    @torch.compiler.disable
+    def can_prune(self, *args, **kwargs) -> bool:
+        # Directly reuse can_cache for Dynamic Block Prune
+        return self.can_cache(*args, **kwargs)
+
+    @torch.compiler.disable
+    def apply_prune(
+        self, *args, **kwargs
+    ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
+        # Directly reuse apply_cache for Dynamic Block Prune
+        return self.apply_cache(*args, **kwargs)

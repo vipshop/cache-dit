@@ -574,15 +574,20 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
     @torch.compiler.disable
     def _maybe_prune(
         self,
+        block_id: int,  # Block index in the transformer blocks
         hidden_states: torch.Tensor,  # hidden_states or residual
         prefix: str = "Bn_original",  # prev step name for single blocks
     ):
         # Wrap for non compiled mode.
-        can_use_prune = self.context_manager.can_cache(
-            hidden_states,  # curr step
-            parallelized=self._is_parallelized(),
-            prefix=prefix,  # prev step
-        )
+        can_use_prune = False
+        if block_id not in self.context_manager.get_non_prune_blocks_ids(
+            self.num_blocks
+        ):
+            can_use_prune = self.context_manager.can_prune(
+                hidden_states,  # curr step
+                parallelized=self._is_parallelized(),
+                prefix=prefix,  # prev step
+            )
         self.pruned_blocks_step += int(can_use_prune)
         return can_use_prune
 
@@ -600,6 +605,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         original_encoder_hidden_states = encoder_hidden_states
 
         can_use_prune = self._maybe_prune(
+            block_id,
             hidden_states,
             prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
         )
@@ -611,7 +617,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         if can_use_prune:
             self.context_manager.add_pruned_step()
             hidden_states, encoder_hidden_states = (
-                self.context_manager.apply_cache(
+                self.context_manager.apply_prune(
                     hidden_states,
                     encoder_hidden_states,
                     prefix=(
