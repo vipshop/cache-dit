@@ -572,6 +572,13 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         return len(self.transformer_blocks)
 
     @torch.compiler.disable
+    def _skip_prune(self, block_id: int) -> bool:
+        # Wrap for non compiled mode.
+        return block_id in self.context_manager.get_non_prune_blocks_ids(
+            self.num_blocks
+        )
+
+    @torch.compiler.disable
     def _maybe_prune(
         self,
         block_id: int,  # Block index in the transformer blocks
@@ -580,9 +587,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
     ):
         # Wrap for non compiled mode.
         can_use_prune = False
-        if block_id not in self.context_manager.get_non_prune_blocks_ids(
-            self.num_blocks
-        ):
+        if not self._skip_prune(block_id):
             can_use_prune = self.context_manager.can_prune(
                 hidden_states,  # curr step
                 parallelized=self._is_parallelized(),
@@ -612,7 +617,6 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
-        # NOTE: Reuse DBCache API here.
         torch._dynamo.graph_break()
         if can_use_prune:
             self.context_manager.add_pruned_step()
@@ -644,45 +648,46 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
             hidden_states, encoder_hidden_states = self._process_block_outputs(
                 hidden_states, encoder_hidden_states
             )
-            hidden_states = hidden_states.contiguous()
-            hidden_states_residual = hidden_states - original_hidden_states
+            if not self._skip_prune(block_id):
+                hidden_states = hidden_states.contiguous()
+                hidden_states_residual = hidden_states - original_hidden_states
 
-            if (
-                encoder_hidden_states is not None
-                and original_encoder_hidden_states is not None
-            ):
-                encoder_hidden_states = encoder_hidden_states.contiguous()
-                encoder_hidden_states_residual = (
-                    encoder_hidden_states - original_encoder_hidden_states
-                )
-            else:
-                encoder_hidden_states_residual = None
-
-            self.context_manager.set_Fn_buffer(
-                original_hidden_states,
-                prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
-            )
-            if self.context_manager.is_cache_residual():
-                self.context_manager.set_Bn_buffer(
-                    hidden_states_residual,
-                    prefix=f"{self.cache_prefix}_{block_id}_Bn_residual",
-                )
-            else:
-                self.context_manager.set_Bn_buffer(
-                    hidden_states,
-                    prefix=f"{self.cache_prefix}_{block_id}_Bn_hidden_states",
-                )
-            if encoder_hidden_states_residual is not None:
-                if self.context_manager.is_encoder_cache_residual():
-                    self.context_manager.set_Bn_encoder_buffer(
-                        encoder_hidden_states_residual,
-                        prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_residual",
+                if (
+                    encoder_hidden_states is not None
+                    and original_encoder_hidden_states is not None
+                ):
+                    encoder_hidden_states = encoder_hidden_states.contiguous()
+                    encoder_hidden_states_residual = (
+                        encoder_hidden_states - original_encoder_hidden_states
                     )
                 else:
-                    self.context_manager.set_Bn_encoder_buffer(
-                        encoder_hidden_states_residual,
-                        prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states",
+                    encoder_hidden_states_residual = None
+
+                self.context_manager.set_Fn_buffer(
+                    original_hidden_states,
+                    prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
+                )
+                if self.context_manager.is_cache_residual():
+                    self.context_manager.set_Bn_buffer(
+                        hidden_states_residual,
+                        prefix=f"{self.cache_prefix}_{block_id}_Bn_residual",
                     )
+                else:
+                    self.context_manager.set_Bn_buffer(
+                        hidden_states,
+                        prefix=f"{self.cache_prefix}_{block_id}_Bn_hidden_states",
+                    )
+                if encoder_hidden_states_residual is not None:
+                    if self.context_manager.is_encoder_cache_residual():
+                        self.context_manager.set_Bn_encoder_buffer(
+                            encoder_hidden_states_residual,
+                            prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_residual",
+                        )
+                    else:
+                        self.context_manager.set_Bn_encoder_buffer(
+                            encoder_hidden_states_residual,
+                            prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states",
+                        )
             torch._dynamo.graph_break()
 
         return hidden_states, encoder_hidden_states
