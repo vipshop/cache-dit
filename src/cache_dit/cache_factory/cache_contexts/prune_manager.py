@@ -28,14 +28,22 @@ class PrunedContextManager(CachedContextManager):
         self._cached_context_manager[_context.name] = _context
         return _context
 
-    def set_context(self, cached_context) -> PrunedContext:
+    def set_context(
+        self,
+        cached_context: PrunedContext | str,
+    ) -> PrunedContext:
         return super().set_context(cached_context)
 
     def get_context(self, name: str = None) -> PrunedContext:
         return super().get_context(name)
 
-    def reset_context(self, name: str = None) -> PrunedContext:
-        return super().reset_context(name)
+    def reset_context(
+        self,
+        cached_context: PrunedContext | str,
+        *args,
+        **kwargs,
+    ) -> PrunedContext:
+        return super().reset_context(cached_context, *args, **kwargs)
 
     # Specially for Dynamic Block Prune
     @torch.compiler.disable
