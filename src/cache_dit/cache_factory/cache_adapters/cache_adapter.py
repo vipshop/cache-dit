@@ -275,7 +275,7 @@ class CachedAdapter:
             "calibrator_config", None
         )
         if cache_config is not None:
-            message = f"Collected Cache Config: {cache_config.strify()}"
+            message = f"Collected Context Config: {cache_config.strify()}"
             if calibrator_config is not None:
                 message += f", Calibrator Config: {calibrator_config.strify(details=True)}"
             else:
