@@ -5,6 +5,8 @@ from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_adapters import CachedAdapter
 from cache_dit.cache_factory.cache_contexts import BasicCacheConfig
+from cache_dit.cache_factory.cache_contexts import DBCacheConfig
+from cache_dit.cache_factory.cache_contexts import DBPruneConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.params_modifier import ParamsModifier
 
@@ -19,8 +21,12 @@ def enable_cache(
         DiffusionPipeline,
         BlockAdapter,
     ],
-    # Basic DBCache config: BasicCacheConfig
-    cache_config: BasicCacheConfig = BasicCacheConfig(),
+    # Basic DBCache config: BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
+    cache_config: Union[
+        BasicCacheConfig,
+        DBCacheConfig,
+        DBPruneConfig,
+    ] = BasicCacheConfig(),
     # Calibrator config: TaylorSeerCalibratorConfig, etc.
     calibrator_config: Optional[CalibratorConfig] = None,
     # Modify cache context params for specific blocks.
