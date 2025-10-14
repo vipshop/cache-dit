@@ -299,7 +299,7 @@ def _summary(
                     "|---------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
                 )
                 print(
-                    f"| {sum(pruned_blocks):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {sum(pruned_blocks):<13} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
                 )
@@ -404,7 +404,7 @@ def _summary(
                     "|-------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
                 )
                 print(
-                    f"| {sum(cfg_pruned_blocks):<16} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {sum(cfg_pruned_blocks):<18} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
                 )
