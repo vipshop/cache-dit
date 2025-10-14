@@ -175,7 +175,7 @@ def strify(
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, dict):
 
-        # Assume cache_context_kwargs
+        # Assume context_kwargs
         cache_options = adapter_or_others
         cached_steps = None
         cache_type = cache_options.get("cache_type", CacheType.NONE)
@@ -243,8 +243,8 @@ def _summary(
     if isinstance(module, torch.nn.ModuleList):
         cls_name = module[0].__class__.__name__
 
-    if hasattr(module, "_cache_context_kwargs"):
-        cache_options = module._cache_context_kwargs
+    if hasattr(module, "_context_kwargs"):
+        cache_options = module._context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
             print(f"\n🤗Cache Options: {cls_name}\n\n{cache_options}")

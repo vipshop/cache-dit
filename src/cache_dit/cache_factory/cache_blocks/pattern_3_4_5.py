@@ -97,7 +97,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
     ):
         # Use it's own cache context.
         try:
-            self.cache_manager.set_context(self.cache_context)
+            self.context_manager.set_context(self.cache_context)
             self._check_cache_params()
         except ContextNotExistError as e:
             logger.warning(f"context not exist: {e}, skip cache.")
@@ -124,38 +124,38 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         )
         del original_hidden_states
 
-        self.cache_manager.mark_step_begin()
+        self.context_manager.mark_step_begin()
         # Residual L1 diff or Hidden States L1 diff
-        can_use_cache = self.cache_manager.can_cache(
+        can_use_cache = self.context_manager.can_cache(
             (
                 Fn_hidden_states_residual
-                if not self.cache_manager.is_l1_diff_enabled()
+                if not self.context_manager.is_l1_diff_enabled()
                 else hidden_states
             ),
             parallelized=self._is_parallelized(),
             prefix=(
                 f"{self.cache_prefix}_Fn_residual"
-                if not self.cache_manager.is_l1_diff_enabled()
+                if not self.context_manager.is_l1_diff_enabled()
                 else f"{self.cache_prefix}_Fn_hidden_states"
             ),
         )
 
         torch._dynamo.graph_break()
         if can_use_cache:
-            self.cache_manager.add_cached_step()
+            self.context_manager.add_cached_step()
             del Fn_hidden_states_residual
             hidden_states, new_encoder_hidden_states = (
-                self.cache_manager.apply_cache(
+                self.context_manager.apply_cache(
                     hidden_states,
                     new_encoder_hidden_states,  # encoder_hidden_states not use cache
                     prefix=(
                         f"{self.cache_prefix}_Bn_residual"
-                        if self.cache_manager.is_cache_residual()
+                        if self.context_manager.is_cache_residual()
                         else f"{self.cache_prefix}_Bn_hidden_states"
                     ),
                     encoder_prefix=(
                         f"{self.cache_prefix}_Bn_residual"
-                        if self.cache_manager.is_encoder_cache_residual()
+                        if self.context_manager.is_encoder_cache_residual()
                         else f"{self.cache_prefix}_Bn_hidden_states"
                     ),
                 )
@@ -163,20 +163,20 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
-            if self.cache_manager.Bn_compute_blocks() > 0:
+            if self.context_manager.Bn_compute_blocks() > 0:
                 hidden_states, new_encoder_hidden_states = self.call_Bn_blocks(
                     hidden_states,
                     *args,
                     **kwargs,
                 )
         else:
-            self.cache_manager.set_Fn_buffer(
+            self.context_manager.set_Fn_buffer(
                 Fn_hidden_states_residual,
                 prefix=f"{self.cache_prefix}_Fn_residual",
             )
-            if self.cache_manager.is_l1_diff_enabled():
+            if self.context_manager.is_l1_diff_enabled():
                 # for hidden states L1 diff
-                self.cache_manager.set_Fn_buffer(
+                self.context_manager.set_Fn_buffer(
                     hidden_states,
                     f"{self.cache_prefix}_Fn_hidden_states",
                 )
@@ -194,13 +194,13 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             )
 
             torch._dynamo.graph_break()
-            if self.cache_manager.is_cache_residual():
-                self.cache_manager.set_Bn_buffer(
+            if self.context_manager.is_cache_residual():
+                self.context_manager.set_Bn_buffer(
                     hidden_states_residual,
                     prefix=f"{self.cache_prefix}_Bn_residual",
                 )
             else:
-                self.cache_manager.set_Bn_buffer(
+                self.context_manager.set_Bn_buffer(
                     hidden_states,
                     prefix=f"{self.cache_prefix}_Bn_hidden_states",
                 )
@@ -209,22 +209,22 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 new_encoder_hidden_states_residual = (
                     new_encoder_hidden_states - old_encoder_hidden_states
                 )
-            if self.cache_manager.is_encoder_cache_residual():
+            if self.context_manager.is_encoder_cache_residual():
                 if new_encoder_hidden_states is not None:
-                    self.cache_manager.set_Bn_encoder_buffer(
+                    self.context_manager.set_Bn_encoder_buffer(
                         new_encoder_hidden_states_residual,
                         prefix=f"{self.cache_prefix}_Bn_residual",
                     )
             else:
                 if new_encoder_hidden_states is not None:
-                    self.cache_manager.set_Bn_encoder_buffer(
+                    self.context_manager.set_Bn_encoder_buffer(
                         new_encoder_hidden_states_residual,
                         prefix=f"{self.cache_prefix}_Bn_hidden_states",
                     )
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
-            if self.cache_manager.Bn_compute_blocks() > 0:
+            if self.context_manager.Bn_compute_blocks() > 0:
                 hidden_states, new_encoder_hidden_states = self.call_Bn_blocks(
                     hidden_states,
                     *args,
@@ -295,7 +295,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         **kwargs,
     ):
         new_encoder_hidden_states = None
-        if self.cache_manager.Bn_compute_blocks() == 0:
+        if self.context_manager.Bn_compute_blocks() == 0:
             return hidden_states, new_encoder_hidden_states
 
         for block in self._Bn_blocks():
@@ -331,7 +331,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
         # 1. Prune context configuration
         cache_prefix: str = None,  # maybe un-need.
         cache_context: PrunedContext | str = None,
-        cache_manager: PrunedContextManager = None,
+        context_manager: PrunedContextManager = None,
         cache_type: CacheType = CacheType.DBPrune,
         **kwargs,
     ):
@@ -345,15 +345,15 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
             # 1. Cache context configuration
             cache_prefix=cache_prefix,
             cache_context=cache_context,
-            cache_manager=cache_manager,
+            context_manager=context_manager,
             cache_type=cache_type,
             **kwargs,
         )
         assert isinstance(
-            self.cache_manager, PrunedContextManager
-        ), "cache_manager must be PrunedContextManager for PrunedBlocks."
-        self.cache_manager: PrunedContextManager = (
-            self.cache_manager
+            self.context_manager, PrunedContextManager
+        ), "context_manager must be PrunedContextManager for PrunedBlocks."
+        self.context_manager: PrunedContextManager = (
+            self.context_manager
         )  # For type hint
 
     @torch.compiler.disable
@@ -372,7 +372,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
 
         # Use it's own cache context.
         try:
-            self.cache_manager.set_context(self.cache_context)
+            self.context_manager.set_context(self.cache_context)
             self._check_cache_params()
         except ContextNotExistError as e:
             logger.warning(f"context not exist: {e}, skip prune.")
@@ -385,7 +385,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                 hidden_states, new_encoder_hidden_states
             )
 
-        self.cache_manager.mark_step_begin()
+        self.context_manager.mark_step_begin()
 
         # Call all blocks with prune strategy to process the hidden states.
         new_encoder_hidden_states = None
@@ -399,8 +399,8 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                 **kwargs,
             )
 
-        self.cache_manager.add_pruned_block(self.pruned_blocks_step)
-        self.cache_manager.add_actual_block(self.num_blocks)
+        self.context_manager.add_pruned_block(self.pruned_blocks_step)
+        self.context_manager.add_actual_block(self.num_blocks)
 
         return self._process_forward_outputs(
             hidden_states,
@@ -419,7 +419,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
         prefix: str = "Bn_original",  # prev step name for single blocks
     ):
         # Wrap for non compiled mode.
-        can_use_prune = self.cache_manager.can_cache(
+        can_use_prune = self.context_manager.can_cache(
             hidden_states,  # curr step
             parallelized=self._is_parallelized(),
             prefix=prefix,  # prev step
@@ -450,19 +450,19 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
         # NOTE: Reuse DBCache API here.
         torch._dynamo.graph_break()
         if can_use_prune:
-            self.cache_manager.add_pruned_step()
+            self.context_manager.add_pruned_step()
             hidden_states, new_encoder_hidden_states = (
-                self.cache_manager.apply_cache(
+                self.context_manager.apply_cache(
                     hidden_states,
                     new_encoder_hidden_states,
                     prefix=(
                         f"{self.cache_prefix}_{block_id}_Bn_residual"
-                        if self.cache_manager.is_cache_residual()
+                        if self.context_manager.is_cache_residual()
                         else f"{self.cache_prefix}_{block_id}_Bn_hidden_states"
                     ),
                     encoder_prefix=(
                         f"{self.cache_prefix}_{block_id}_Bn_encoder_residual"
-                        if self.cache_manager.is_encoder_cache_residual()
+                        if self.context_manager.is_encoder_cache_residual()
                         else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
                     ),
                 )
@@ -496,28 +496,28 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
             else:
                 new_encoder_hidden_states_residual = None
 
-            self.cache_manager.set_Fn_buffer(
+            self.context_manager.set_Fn_buffer(
                 original_hidden_states,
                 prefix=f"{self.cache_prefix}_{block_id}_Fn_original",
             )
-            if self.cache_manager.is_cache_residual():
-                self.cache_manager.set_Bn_buffer(
+            if self.context_manager.is_cache_residual():
+                self.context_manager.set_Bn_buffer(
                     hidden_states_residual,
                     prefix=f"{self.cache_prefix}_{block_id}_Bn_residual",
                 )
             else:
-                self.cache_manager.set_Bn_buffer(
+                self.context_manager.set_Bn_buffer(
                     hidden_states,
                     prefix=f"{self.cache_prefix}_{block_id}_Bn_hidden_states",
                 )
             if new_encoder_hidden_states_residual is not None:
-                if self.cache_manager.is_encoder_cache_residual():
-                    self.cache_manager.set_Bn_encoder_buffer(
+                if self.context_manager.is_encoder_cache_residual():
+                    self.context_manager.set_Bn_encoder_buffer(
                         new_encoder_hidden_states_residual,
                         prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_residual",
                     )
                 else:
-                    self.cache_manager.set_Bn_encoder_buffer(
+                    self.context_manager.set_Bn_encoder_buffer(
                         new_encoder_hidden_states_residual,
                         prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states",
                     )

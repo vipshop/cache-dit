@@ -1,6 +1,7 @@
 import torch
 
 from cache_dit.cache_factory import ForwardPattern
+from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.cache_contexts.cache_context import CachedContext
 from cache_dit.cache_factory.cache_contexts.prune_context import PrunedContext
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
@@ -22,7 +23,6 @@ from cache_dit.cache_factory.cache_blocks.pattern_utils import (
     patch_cached_stats,
     remove_cached_stats,
 )
-from cache_dit.cache_factory.cache_types import CacheType
 
 from cache_dit.logger import init_logger
 
@@ -44,7 +44,7 @@ class UnifiedBlocks:
         cache_prefix: str = None,  # cache_prefix maybe un-need.
         # Usually, blocks_name, etc.
         cache_context: CachedContext | PrunedContext | str = None,
-        cache_manager: CachedContextManager | PrunedContextManager = None,
+        context_manager: CachedContextManager | PrunedContextManager = None,
         cache_type: CacheType = CacheType.DBCache,
         **kwargs,
     ):
@@ -59,7 +59,7 @@ class UnifiedBlocks:
                 # 1. Cache context configuration
                 cache_prefix=cache_prefix,
                 cache_context=cache_context,
-                cache_manager=cache_manager,
+                context_manager=context_manager,
                 cache_type=cache_type,
                 **kwargs,
             )
@@ -74,7 +74,7 @@ class UnifiedBlocks:
                 # 1. Cache context configuration
                 cache_prefix=cache_prefix,
                 cache_context=cache_context,
-                cache_manager=cache_manager,
+                context_manager=context_manager,
                 cache_type=cache_type,
                 **kwargs,
             )
@@ -97,19 +97,19 @@ class CachedBlocks:
         cache_prefix: str = None,  # cache_prefix maybe un-need.
         # Usually, blocks_name, etc.
         cache_context: CachedContext | PrunedContext | str = None,
-        cache_manager: CachedContextManager | PrunedContextManager = None,
+        context_manager: CachedContextManager | PrunedContextManager = None,
         cache_type: CacheType = CacheType.DBCache,
         **kwargs,
     ):
         assert transformer is not None, "transformer can't be None."
         assert forward_pattern is not None, "forward_pattern can't be None."
         assert cache_context is not None, "cache_context can't be None."
-        assert cache_manager is not None, "cache_manager can't be None."
+        assert context_manager is not None, "context_manager can't be None."
         if forward_pattern in CachedBlocks_Pattern_0_1_2._supported_patterns:
             if cache_type == CacheType.DBCache:
                 assert isinstance(
-                    cache_manager, CachedContextManager
-                ), "cache_manager must be CachedContextManager for DBCache."
+                    context_manager, CachedContextManager
+                ), "context_manager must be CachedContextManager for DBCache."
                 return CachedBlocks_Pattern_0_1_2(
                     # 0. Transformer blocks configuration
                     transformer_blocks,
@@ -120,7 +120,7 @@ class CachedBlocks:
                     # 1. Cache context configuration
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
-                    cache_manager=cache_manager,
+                    context_manager=context_manager,
                     cache_type=cache_type,
                     **kwargs,
                 )
@@ -131,8 +131,8 @@ class CachedBlocks:
         elif forward_pattern in CachedBlocks_Pattern_3_4_5._supported_patterns:
             if cache_type == CacheType.DBCache:
                 assert isinstance(
-                    cache_manager, CachedContextManager
-                ), "cache_manager must be CachedContextManager for DBCache."
+                    context_manager, CachedContextManager
+                ), "context_manager must be CachedContextManager for DBCache."
                 return CachedBlocks_Pattern_3_4_5(
                     # 0. Transformer blocks configuration
                     transformer_blocks,
@@ -143,7 +143,7 @@ class CachedBlocks:
                     # 1. Cache context configuration
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
-                    cache_manager=cache_manager,
+                    context_manager=context_manager,
                     cache_type=cache_type,
                     **kwargs,
                 )
@@ -170,19 +170,19 @@ class PrunedBlocks:
         cache_prefix: str = None,  # cache_prefix maybe un-need.
         # Usually, blocks_name, etc.
         cache_context: CachedContext | PrunedContext | str = None,
-        cache_manager: CachedContextManager | PrunedContextManager = None,
+        context_manager: CachedContextManager | PrunedContextManager = None,
         cache_type: CacheType = CacheType.DBCache,
         **kwargs,
     ):
         assert transformer is not None, "transformer can't be None."
         assert forward_pattern is not None, "forward_pattern can't be None."
         assert cache_context is not None, "cache_context can't be None."
-        assert cache_manager is not None, "cache_manager can't be None."
+        assert context_manager is not None, "context_manager can't be None."
         if forward_pattern in PrunedBlocks_Pattern_0_1_2._supported_patterns:
             if cache_type == CacheType.DBPrune:
                 assert isinstance(
-                    cache_manager, PrunedContextManager
-                ), "cache_manager must be PrunedContextManager for DBPrune."
+                    context_manager, PrunedContextManager
+                ), "context_manager must be PrunedContextManager for DBPrune."
                 return PrunedBlocks_Pattern_0_1_2(
                     # 0. Transformer blocks configuration
                     transformer_blocks,
@@ -193,7 +193,7 @@ class PrunedBlocks:
                     # 1. Cache context configuration
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
-                    cache_manager=cache_manager,
+                    context_manager=context_manager,
                     cache_type=cache_type,
                     **kwargs,
                 )
@@ -204,8 +204,8 @@ class PrunedBlocks:
         elif forward_pattern in PrunedBlocks_Pattern_3_4_5._supported_patterns:
             if cache_type == CacheType.DBPrune:
                 assert isinstance(
-                    cache_manager, PrunedContextManager
-                ), "cache_manager must be PrunedContextManager for DBPrune."
+                    context_manager, PrunedContextManager
+                ), "context_manager must be PrunedContextManager for DBPrune."
                 return PrunedBlocks_Pattern_3_4_5(
                     # 0. Transformer blocks configuration
                     transformer_blocks,
@@ -216,7 +216,7 @@ class PrunedBlocks:
                     # 1. Cache context configuration
                     cache_prefix=cache_prefix,
                     cache_context=cache_context,
-                    cache_manager=cache_manager,
+                    context_manager=context_manager,
                     cache_type=cache_type,
                     **kwargs,
                 )
