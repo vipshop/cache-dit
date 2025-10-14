@@ -124,7 +124,10 @@ class TaylorSeerCalibrator(CalibratorBase):
             for state in self.states.values():
                 state.reset()
 
-    def maybe_init_state(self, name="default"):
+    def maybe_init_state(
+        self,
+        name: str = "default",
+    ):
         if name not in self.states:
             self.states[name] = TaylorSeerState(
                 n_derivatives=self.n_derivatives,
@@ -137,23 +140,38 @@ class TaylorSeerCalibrator(CalibratorBase):
             for state in self.states.values():
                 state.mark_step_begin()
 
-    def derivative(self, Y: torch.Tensor, name="default") -> List[torch.Tensor]:
+    def derivative(
+        self,
+        Y: torch.Tensor,
+        name: str = "default",
+    ) -> List[torch.Tensor]:
         self.maybe_init_state(name)
         state = self.states[name]
         state.derivative(Y)
         return state.state["dY_current"]
 
-    def approximate(self, name="default") -> torch.Tensor:  # NEED
+    def approximate(
+        self,
+        name: str = "default",
+    ) -> torch.Tensor:  # NEED
         assert name in self.states, f"State '{name}' not found."
         state = self.states[name]
         return state.approximate()
 
-    def update(self, Y: torch.Tensor, name="default"):  # NEED
+    def update(
+        self,
+        Y: torch.Tensor,
+        name: str = "default",
+    ):  # NEED
         self.maybe_init_state(name)
         state = self.states[name]
         state.update(Y)
 
-    def step(self, Y: torch.Tensor, name="default"):
+    def step(
+        self,
+        Y: torch.Tensor,
+        name: str = "default",
+    ):
         self.maybe_init_state(name)
         state = self.states[name]
         return state.step(Y)
