@@ -1,6 +1,5 @@
 import os
 import sys
-import gc
 
 sys.path.append("..")
 sys.path.append(os.environ.get("HYIMAGE_PKG_DIR", "."))
@@ -67,10 +66,6 @@ if args.quantize:
         pipe.text_encoder,
         quant_type=args.quantize_type,
     )
-    time.sleep(0.5)
-    torch.cuda.empty_cache()
-    gc.collect()
-
 
 pipe.to("cuda")
 
