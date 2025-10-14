@@ -148,7 +148,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - **[🎉State-of-the-Art Performance](./bench/)**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
 - **[🎉Support for 4/8-Steps Distilled Models](./bench/)**: Surprisingly, cache-dit's **DBCache** works for extremely few-step distilled models—something many other methods fail to do.  
 - **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, etc.  
-- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache + TaylorSeerCalibrator). DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
+- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **DBCache + Calibrator** schemes (e.g., DBCache/DBPrune + TaylorSeerCalibrator). DBCache/DBPrune acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
 - **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
@@ -198,14 +198,13 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
   - [📚Hybird Forward Pattern](./docs/User_Guide.md#hybird-forward-pattern)
   - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
-- [⚡️Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
+- [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache)
+- [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune)
 - [🔥TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
 - [🛠Metrics CLI](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
-
-
 
 ## 👋Contribute 
 <div id="contribute"></div>

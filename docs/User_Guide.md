@@ -12,7 +12,8 @@
   - [📚Hybird Forward Pattern](#automatic-block-adapter)
   - [📚Implement Patch Functor](#implement-patch-functor)
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
-- [⚡️Dual Block Cache](#dbcache)
+- [⚡️DBCache: Dual Block Cache](#dbcache)
+- [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [🛠Metrics CLI](#metrics)
@@ -384,6 +385,53 @@ cache_dit.enable_cache(
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
+
+## ⚡️DBPrune: Dynamic Block Prune
+
+<div id="dbprune"></div>  
+
+![](https://github.com/user-attachments/assets/932b6360-9533-4352-b176-4c4d84bd4695)
+
+
+We have further implemented a new **Dynamic Block Prune** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **DBPrune**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
+
+```python
+from cache_dit import DBPruneConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter,
+    cache_config=DBPruneConfig(
+        max_warmup_steps=8,  # steps do not apply prune
+        residual_diff_threshold=0.12,
+        enable_dynamic_prune_threshold=True,
+    ),
+)
+```
+We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_block_ids** to avoid aggressive pruning. For example:
+
+```python
+cache_dit.enable_cache(
+    pipe_or_adapter,
+    cache_config=DBPruneConfig(
+        max_warmup_steps=8,  # steps do not apply prune
+        Fn_compute_blocks=8, # Fn, F8, etc.
+        Bn_compute_blocks=8, # Bn, B8, etc
+        residual_diff_threshold=0.12,
+        enable_dynamic_prune_threshold=True,
+        non_prune_block_ids=list(range(16)),
+    ),
+)
+```
+<div align="center">
+  <p align="center">
+    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  </p>
+</div>
+
+|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
+|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
 ## 🔥TaylorSeer Calibrator
 
