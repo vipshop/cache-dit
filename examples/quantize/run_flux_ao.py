@@ -22,8 +22,10 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
+
 if args.cache:
     cachify(args, pipe)
+
 
 if args.quantize:
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
