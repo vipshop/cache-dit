@@ -1,4 +1,5 @@
 import torch
+import functools
 from typing import Dict, List, Tuple, Union
 
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
@@ -92,6 +93,7 @@ class PrunedContextManager(CachedContextManager):
         return cached_context.get_cfg_actual_blocks()
 
     @torch.compiler.disable
+    @functools.lru_cache(maxsize=8)
     def get_non_prune_blocks_ids(self, num_blocks: int) -> List[int]:
         assert num_blocks is not None, "num_blocks must be provided"
         assert num_blocks > 0, "num_blocks must be greater than 0"
