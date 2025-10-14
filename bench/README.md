@@ -168,8 +168,6 @@ export CUDA_VISIBLE_DEVICES=0
 nohup bash bench_fast.sh default > log/cache_dit_bench_fast.log 2>&1 &
 export CUDA_VISIBLE_DEVICES=1
 nohup bash bench_fast.sh taylorseer > log/cache_dit_bench_taylorseer_fast.log 2>&1 &
-export CUDA_VISIBLE_DEVICES=2
-nohup bash bench_fast.sh taylorseer_O2 > log/cache_dit_bench_taylorseer_fast_O2.log 2>&1 &
 bash ./metrics_fast.sh
 
 # Qwen-Image-Lightning DrawBench
