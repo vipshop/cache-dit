@@ -26,7 +26,7 @@ def enable_cache(
         BasicCacheConfig,
         DBCacheConfig,
         DBPruneConfig,
-    ] = BasicCacheConfig(),
+    ] = DBCacheConfig(),
     # Calibrator config: TaylorSeerCalibratorConfig, etc.
     calibrator_config: Optional[CalibratorConfig] = None,
     # Modify cache context params for specific blocks.
