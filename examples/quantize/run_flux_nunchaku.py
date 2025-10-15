@@ -10,7 +10,7 @@ from diffusers import FluxPipeline, FluxTransformer2DModel
 from nunchaku.models.transformers.transformer_flux_v2 import (
     NunchakuFluxTransformer2DModelV2,
 )
-from utils import get_args, strify, cachify
+from utils import get_args, strify
 import cache_dit
 
 args = get_args()
@@ -36,10 +36,10 @@ if args.cache:
         ForwardPattern,
         ParamsModifier,
         DBCacheConfig,
+        TaylorSeerCalibratorConfig,
     )
 
-    cachify(
-        args,
+    cache_dit.enable_cache(
         BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
@@ -51,19 +51,37 @@ if args.cache:
                 ForwardPattern.Pattern_1,
                 ForwardPattern.Pattern_3,
             ],
-            params_modifiers=[
-                ParamsModifier(
-                    cache_config=DBCacheConfig(
-                        residual_diff_threshold=args.rdt,
-                    ),
-                ),
-                ParamsModifier(
-                    cache_config=DBCacheConfig(
-                        residual_diff_threshold=0.35,
-                    ),
-                ),
-            ],
         ),
+        cache_config=DBCacheConfig(),
+        calibrator_config=(
+            TaylorSeerCalibratorConfig(
+                taylorseer_order=args.taylorseer_order,
+            )
+            if args.taylorseer
+            else None
+        ),
+        params_modifiers=[
+            ParamsModifier(
+                cache_config=DBCacheConfig(
+                    Fn_compute_blocks=args.Fn,
+                    Bn_compute_blocks=args.Bn,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=args.rdt,
+                ),
+            ),
+            ParamsModifier(
+                cache_config=DBCacheConfig(
+                    Fn_compute_blocks=args.Fn,
+                    Bn_compute_blocks=args.Bn,
+                    max_warmup_steps=args.max_warmup_steps,
+                    max_cached_steps=args.max_cached_steps,
+                    max_continuous_cached_steps=args.max_continuous_cached_steps,
+                    residual_diff_threshold=0.35,
+                ),
+            ),
+        ],
     )
 
 
