@@ -262,6 +262,41 @@ class CachedAdapter:
             contexts_kwargs[i].update(
                 flatten_modifiers[i]._context_kwargs,
             )
+            if "cache_config" in flatten_modifiers[i]._context_kwargs:
+                modifier_cache_config = flatten_modifiers[
+                    i
+                ]._context_kwargs.get("cache_config", None)
+                modifier_calibrator_config = flatten_modifiers[
+                    i
+                ]._context_kwargs.get("calibrator_config", None)
+                if modifier_cache_config is not None:
+                    assert isinstance(
+                        modifier_cache_config, BasicCacheConfig
+                    ), (
+                        f"cache_config must be BasicCacheConfig, but got "
+                        f"{type(modifier_cache_config)}."
+                    )
+                    contexts_kwargs[i]["cache_config"].update(
+                        **modifier_cache_config.asdict()
+                    )
+                if modifier_calibrator_config is not None:
+                    assert isinstance(
+                        modifier_calibrator_config, CalibratorConfig
+                    ), (
+                        f"calibrator_config must be CalibratorConfig, but got "
+                        f"{type(modifier_calibrator_config)}."
+                    )
+                    if (
+                        contexts_kwargs[i].get("calibrator_config", None)
+                        is None
+                    ):
+                        contexts_kwargs[i][
+                            "calibrator_config"
+                        ] = modifier_calibrator_config
+                    else:
+                        contexts_kwargs[i]["calibrator_config"].update(
+                            **modifier_calibrator_config.asdict()
+                        )
             cls._config_messages(**contexts_kwargs[i])
 
         return flatten_contexts, contexts_kwargs

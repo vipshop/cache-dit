@@ -50,12 +50,6 @@ class DBPruneConfig(BasicCacheConfig):
     #     to at least 2 to reduce the VRAM usage of the calibrator.
     force_reduce_calibrator_vram: bool = False
 
-    def update(self, **kwargs) -> "DBPruneConfig":
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-        return self
-
     def strify(self) -> str:
         return (
             f"{self.cache_type}_"

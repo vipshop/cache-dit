@@ -32,27 +32,21 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
 
 if args.cache:
     from cache_dit import (
-        BlockAdapter,
-        ForwardPattern,
         ParamsModifier,
         DBCacheConfig,
         TaylorSeerCalibratorConfig,
     )
 
     cache_dit.enable_cache(
-        BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_3,
-            ],
+        pipe,
+        cache_config=DBCacheConfig(
+            Fn_compute_blocks=args.Fn,
+            Bn_compute_blocks=args.Bn,
+            max_warmup_steps=args.max_warmup_steps,
+            max_cached_steps=args.max_cached_steps,
+            max_continuous_cached_steps=args.max_continuous_cached_steps,
+            residual_diff_threshold=args.rdt,
         ),
-        cache_config=DBCacheConfig(),
         calibrator_config=(
             TaylorSeerCalibratorConfig(
                 taylorseer_order=args.taylorseer_order,
@@ -62,23 +56,13 @@ if args.cache:
         ),
         params_modifiers=[
             ParamsModifier(
-                cache_config=DBCacheConfig(
-                    Fn_compute_blocks=args.Fn,
-                    Bn_compute_blocks=args.Bn,
-                    max_warmup_steps=args.max_warmup_steps,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
+                cache_config=DBCacheConfig().reset(
+                    residual_diff_threshold=args.rdt
                 ),
             ),
             ParamsModifier(
-                cache_config=DBCacheConfig(
-                    Fn_compute_blocks=args.Fn,
-                    Bn_compute_blocks=args.Bn,
-                    max_warmup_steps=args.max_warmup_steps,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt * 3,
+                cache_config=DBCacheConfig().reset(
+                    residual_diff_threshold=args.rdt * 3
                 ),
             ),
         ],

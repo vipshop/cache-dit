@@ -60,8 +60,24 @@ class BasicCacheConfig:
     def update(self, **kwargs) -> "BasicCacheConfig":
         for key, value in kwargs.items():
             if hasattr(self, key):
-                setattr(self, key, value)
+                if value is not None:
+                    setattr(self, key, value)
         return self
+
+    def empty(self, **kwargs) -> "BasicCacheConfig":
+        # Set all fields to None
+        for field in dataclasses.fields(self):
+            if hasattr(self, field.name):
+                setattr(self, field.name, None)
+        if kwargs:
+            self.update(**kwargs)
+        return self
+
+    def reset(self, **kwargs) -> "BasicCacheConfig":
+        return self.empty(**kwargs)
+
+    def asdict(self) -> dict:
+        return dataclasses.asdict(self)
 
     def strify(self) -> str:
         return (
