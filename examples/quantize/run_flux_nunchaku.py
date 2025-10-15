@@ -45,7 +45,8 @@ def run_pipe(pipe: FluxPipeline):
 
 if args.compile:
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
 
     # warmup
     _ = run_pipe(pipe)
