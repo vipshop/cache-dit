@@ -11,7 +11,7 @@ from nunchaku.models.transformers.transformer_qwenimage import (
     NunchakuQwenImageTransformer2DModel,
 )
 
-from utils import get_args, strify, cachify
+from utils import get_args, strify
 import cache_dit
 
 
@@ -47,7 +47,29 @@ pipe = QwenImagePipeline.from_pretrained(
 
 
 if args.cache:
-    cachify(args, pipe)
+    from cache_dit import (
+        DBCacheConfig,
+        TaylorSeerCalibratorConfig,
+    )
+
+    cache_dit.enable_cache(
+        pipe,
+        cache_config=DBCacheConfig(
+            Fn_compute_blocks=args.Fn,
+            Bn_compute_blocks=args.Bn,
+            max_warmup_steps=args.max_warmup_steps,
+            max_cached_steps=args.max_cached_steps,
+            max_continuous_cached_steps=args.max_continuous_cached_steps,
+            residual_diff_threshold=args.rdt,
+        ),
+        calibrator_config=(
+            TaylorSeerCalibratorConfig(
+                taylorseer_order=args.taylorseer_order,
+            )
+            if args.taylorseer
+            else None
+        ),
+    )
 
 
 positive_magic = {
