@@ -78,11 +78,8 @@ width, height = aspect_ratios["16:9"]
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
-
-    # warmup
+def run_pipe():
+    # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
     image = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
@@ -92,19 +89,19 @@ if args.compile:
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
+    return image
+
+
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
+
+    # warmup
+    run_pipe()
 
 
 start = time.time()
-# do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
-image = pipe(
-    prompt=prompt + positive_magic["en"],
-    negative_prompt=negative_prompt,
-    width=width,
-    height=height,
-    num_inference_steps=50,
-    true_cfg_scale=4.0,
-    generator=torch.Generator(device="cpu").manual_seed(42),
-).images[0]
+image = run_pipe()
 end = time.time()
 
 stats = cache_dit.summary(pipe)
