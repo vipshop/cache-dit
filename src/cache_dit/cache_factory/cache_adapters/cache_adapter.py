@@ -259,9 +259,6 @@ class CachedAdapter:
         for i in range(
             min(len(contexts_kwargs), len(flatten_modifiers)),
         ):
-            contexts_kwargs[i].update(
-                flatten_modifiers[i]._context_kwargs,
-            )
             if "cache_config" in flatten_modifiers[i]._context_kwargs:
                 modifier_cache_config = flatten_modifiers[
                     i
