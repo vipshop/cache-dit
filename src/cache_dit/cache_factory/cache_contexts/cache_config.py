@@ -76,7 +76,7 @@ class BasicCacheConfig:
     def reset(self, **kwargs) -> "BasicCacheConfig":
         return self.empty(**kwargs)
 
-    def asdict(self) -> dict:
+    def as_dict(self) -> dict:
         return dataclasses.asdict(self)
 
     def strify(self) -> str:

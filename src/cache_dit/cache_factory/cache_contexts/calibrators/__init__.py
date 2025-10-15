@@ -45,7 +45,7 @@ class CalibratorConfig:
     def to_kwargs(self) -> Dict:
         return self.calibrator_kwargs.copy()
 
-    def asdict(self) -> dict:
+    def as_dict(self) -> dict:
         return dataclasses.asdict(self)
 
     def update(self, **kwargs) -> "CalibratorConfig":

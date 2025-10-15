@@ -277,7 +277,7 @@ class CachedAdapter:
                         f"{type(modifier_cache_config)}."
                     )
                     contexts_kwargs[i]["cache_config"].update(
-                        **modifier_cache_config.asdict()
+                        **modifier_cache_config.as_dict()
                     )
                 if modifier_calibrator_config is not None:
                     assert isinstance(
@@ -295,7 +295,7 @@ class CachedAdapter:
                         ] = modifier_calibrator_config
                     else:
                         contexts_kwargs[i]["calibrator_config"].update(
-                            **modifier_calibrator_config.asdict()
+                            **modifier_calibrator_config.as_dict()
                         )
             cls._config_messages(**contexts_kwargs[i])
 
