@@ -1,3 +1,4 @@
+import copy
 import torch
 import unittest
 import functools
@@ -197,7 +198,6 @@ class CachedAdapter:
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
             block_adapter, **context_kwargs
         )
-
         original_call = block_adapter.pipe.__class__.__call__
 
         @functools.wraps(original_call)
@@ -238,7 +238,7 @@ class CachedAdapter:
             block_adapter.unique_blocks_name
         )
         contexts_kwargs = [
-            context_kwargs.copy()
+            copy.deepcopy(context_kwargs)  # must deep copy
             for _ in range(
                 len(flatten_contexts),
             )
@@ -259,9 +259,41 @@ class CachedAdapter:
         for i in range(
             min(len(contexts_kwargs), len(flatten_modifiers)),
         ):
-            contexts_kwargs[i].update(
-                flatten_modifiers[i]._context_kwargs,
-            )
+            if "cache_config" in flatten_modifiers[i]._context_kwargs:
+                modifier_cache_config = flatten_modifiers[
+                    i
+                ]._context_kwargs.get("cache_config", None)
+                modifier_calibrator_config = flatten_modifiers[
+                    i
+                ]._context_kwargs.get("calibrator_config", None)
+                if modifier_cache_config is not None:
+                    assert isinstance(
+                        modifier_cache_config, BasicCacheConfig
+                    ), (
+                        f"cache_config must be BasicCacheConfig, but got "
+                        f"{type(modifier_cache_config)}."
+                    )
+                    contexts_kwargs[i]["cache_config"].update(
+                        **modifier_cache_config.as_dict()
+                    )
+                if modifier_calibrator_config is not None:
+                    assert isinstance(
+                        modifier_calibrator_config, CalibratorConfig
+                    ), (
+                        f"calibrator_config must be CalibratorConfig, but got "
+                        f"{type(modifier_calibrator_config)}."
+                    )
+                    if (
+                        contexts_kwargs[i].get("calibrator_config", None)
+                        is None
+                    ):
+                        contexts_kwargs[i][
+                            "calibrator_config"
+                        ] = modifier_calibrator_config
+                    else:
+                        contexts_kwargs[i]["calibrator_config"].update(
+                            **modifier_calibrator_config.as_dict()
+                        )
             cls._config_messages(**contexts_kwargs[i])
 
         return flatten_contexts, contexts_kwargs

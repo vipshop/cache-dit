@@ -45,6 +45,28 @@ class CalibratorConfig:
     def to_kwargs(self) -> Dict:
         return self.calibrator_kwargs.copy()
 
+    def as_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+    def update(self, **kwargs) -> "CalibratorConfig":
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                if value is not None:
+                    setattr(self, key, value)
+        return self
+
+    def empty(self, **kwargs) -> "CalibratorConfig":
+        # Set all fields to None
+        for field in dataclasses.fields(self):
+            if hasattr(self, field.name):
+                setattr(self, field.name, None)
+        if kwargs:
+            self.update(**kwargs)
+        return self
+
+    def reset(self, **kwargs) -> "CalibratorConfig":
+        return self.empty(**kwargs)
+
 
 @dataclasses.dataclass
 class TaylorSeerCalibratorConfig(CalibratorConfig):

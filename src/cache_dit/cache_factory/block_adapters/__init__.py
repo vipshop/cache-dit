@@ -12,7 +12,10 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     from cache_dit.utils import is_diffusers_at_least_0_3_5
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
-    if is_diffusers_at_least_0_3_5():
+    transformer_cls_name: str = pipe.transformer.__class__.__name__
+    if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith(
+        "Nunchaku"
+    ):
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
