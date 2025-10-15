@@ -78,7 +78,7 @@ if args.cache:
                     max_warmup_steps=args.max_warmup_steps,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=0.35,
+                    residual_diff_threshold=args.rdt * 3,
                 ),
             ),
         ],
