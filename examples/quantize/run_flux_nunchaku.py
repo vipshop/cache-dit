@@ -31,7 +31,40 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
 
 
 if args.cache:
-    cachify(args, pipe)
+    from cache_dit import (
+        BlockAdapter,
+        ForwardPattern,
+        ParamsModifier,
+        DBCacheConfig,
+    )
+
+    cachify(
+        args,
+        BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_3,
+            ],
+            params_modifiers=[
+                ParamsModifier(
+                    cache_config=DBCacheConfig(
+                        residual_diff_threshold=args.rdt,
+                    ),
+                ),
+                ParamsModifier(
+                    cache_config=DBCacheConfig(
+                        residual_diff_threshold=0.35,
+                    ),
+                ),
+            ],
+        ),
+    )
 
 
 def run_pipe(pipe: FluxPipeline):
