@@ -155,6 +155,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
+- 2025.10.15: 🎉cache-dit now supported [🔥nunchaku](https://github.com/nunchaku-tech/nunchaku): Qwen-Image/FLUX.1 4-bits [examples](./examples/quantize/)
 - 2025.10.13: 🎉cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
 - 2025.10.10: 🔥[**Qwen-Image-ControlNet-Inpainting**](https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting) **2.3x↑🎉** speedup! Check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_controlnet_inpaint.py).
 - 2025.09.26: 🔥[**Qwen-Image-Edit-Plus(2509)**](https://github.com/QwenLM/Qwen-Image) **2.1x↑🎉** speedup! Please check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit_plus.py).
