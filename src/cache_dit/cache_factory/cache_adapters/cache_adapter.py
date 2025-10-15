@@ -1,3 +1,4 @@
+import copy
 import torch
 import unittest
 import functools
@@ -197,7 +198,6 @@ class CachedAdapter:
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
             block_adapter, **context_kwargs
         )
-
         original_call = block_adapter.pipe.__class__.__call__
 
         @functools.wraps(original_call)
@@ -238,7 +238,7 @@ class CachedAdapter:
             block_adapter.unique_blocks_name
         )
         contexts_kwargs = [
-            context_kwargs.copy()
+            copy.deepcopy(context_kwargs)  # must deep copy
             for _ in range(
                 len(flatten_contexts),
             )

@@ -56,11 +56,13 @@ if args.cache:
         ),
         params_modifiers=[
             ParamsModifier(
+                # transformer_blocks
                 cache_config=DBCacheConfig().reset(
                     residual_diff_threshold=args.rdt
                 ),
             ),
             ParamsModifier(
+                # single_transformer_blocks
                 cache_config=DBCacheConfig().reset(
                     residual_diff_threshold=args.rdt * 3
                 ),
