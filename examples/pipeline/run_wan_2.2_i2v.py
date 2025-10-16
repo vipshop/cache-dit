@@ -133,8 +133,8 @@ def run_pipe():
         width=width,
         num_frames=81,  # pipe.vae_scale_factor_temporal=4
         guidance_scale=3.5,
-        num_inference_steps=40,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        num_inference_steps=50,
+        generator=torch.Generator(device="cpu").manual_seed(0),
     ).frames[0]
 
     return video
