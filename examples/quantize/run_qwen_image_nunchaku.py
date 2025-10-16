@@ -26,7 +26,8 @@ transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
     f"{nunchaku_qwen_image_dir}/svdq-int4_r32-qwen-image.safetensors"
 )
 
-# Minimize VRAM required: 20GiB
+# Minimize VRAM required: 20GiB if use w4a16_text_encoder else 30GiB
+w4a16_text_encoder = False
 pipe = QwenImagePipeline.from_pretrained(
     os.environ.get(
         "QWEN_IMAGE_DIR",
@@ -34,14 +35,18 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
     transformer=transformer,
     torch_dtype=torch.bfloat16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["text_encoder"],
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder"],
+        )
+        if w4a16_text_encoder
+        else None
     ),
 ).to("cuda")
 
