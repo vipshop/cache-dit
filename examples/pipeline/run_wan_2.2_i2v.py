@@ -6,24 +6,26 @@ sys.path.append("..")
 import time
 import torch
 import diffusers
-from diffusers import WanPipeline, AutoencoderKLWan, WanTransformer3DModel
-from diffusers.utils import export_to_video
+from diffusers import (
+    AutoencoderKLWan,
+    WanTransformer3DModel,
+    WanImageToVideoPipeline,
+)
+from diffusers.utils import export_to_video, load_image
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
 )
 from utils import get_args, GiB, strify, cachify
 import cache_dit
-
+import numpy as np
 
 args = get_args()
 print(args)
 
-
-height, width = 480, 832
-pipe = WanPipeline.from_pretrained(
+pipe = WanImageToVideoPipeline.from_pretrained(
     os.environ.get(
-        "WAN_2_2_DIR",
-        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        "WAN_2_2_I2V_DIR",
+        "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
     ),
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
@@ -31,6 +33,18 @@ pipe = WanPipeline.from_pretrained(
         "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
     ),
 )
+
+# image = load_image("./img.png")
+image = load_image("../data/flf2v_input_first_frame.png")
+
+max_area = 480 * 832
+aspect_ratio = image.height / image.width
+mod_value = (
+    pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+)
+height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+image = image.resize((width, height))
 
 # flow shift should be 3.0 for 480p images, 5.0 for 720p images
 if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
@@ -40,7 +54,6 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
         pipe.scheduler.config,
         flow_shift=flow_shift,
     )
-
 
 if args.cache:
     from cache_dit import (
@@ -115,44 +128,38 @@ if args.quantize:
         quant_type=args.quantize_type,
     )
 
+
+def run_pipe():
+    video = pipe(
+        prompt=(
+            "镜头先聚焦到脚步，然后脚踢到石头，然后人往前摔倒，手中的素描本向上方飞出，镜头瞬间聚焦至素描本，随着素描本飞向远方"
+        ),
+        height=height,
+        width=width,
+        image=image,
+        num_frames=81,
+        num_inference_steps=20,
+        generator=torch.Generator("cpu").manual_seed(0),
+    ).frames[0]
+    return video
+
+
 if args.compile or args.quantize:
     cache_dit.set_compile_configs()
     pipe.transformer.compile_repeated_blocks(fullgraph=True)
     pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
 
     # warmup
-    video = pipe(
-        prompt=(
-            "An astronaut dancing vigorously on the moon with earth "
-            "flying past in the background, hyperrealistic"
-        ),
-        height=height,
-        width=width,
-        num_frames=81,
-        num_inference_steps=50,
-        generator=torch.Generator("cpu").manual_seed(0),
-    ).frames[0]
-
+    run_pipe()
 
 start = time.time()
-video = pipe(
-    prompt=(
-        "An astronaut dancing vigorously on the moon with earth "
-        "flying past in the background, hyperrealistic"
-    ),
-    negative_prompt="",
-    height=height,
-    width=width,
-    num_frames=81,
-    num_inference_steps=50,
-    generator=torch.Generator("cpu").manual_seed(0),
-).frames[0]
+video = run_pipe()
 end = time.time()
 
 cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = f"wan2.2.{strify(args, pipe)}.mp4"
+save_path = f"wan2.2-i2v.{strify(args, pipe)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)
