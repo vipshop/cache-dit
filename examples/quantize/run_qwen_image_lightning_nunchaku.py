@@ -55,7 +55,8 @@ transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
     f"{lightning_version}-{steps}steps.safetensors"
 )
 
-# Minimize VRAM required: 25GiB
+# Minimize VRAM required: 25GiB if use w4a16_text_encoder else 35GiB
+w4a16_text_encoder = False
 pipe = QwenImagePipeline.from_pretrained(
     os.environ.get(
         "QWEN_IMAGE_DIR",
@@ -64,14 +65,18 @@ pipe = QwenImagePipeline.from_pretrained(
     transformer=transformer,
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["text_encoder"],
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder"],
+        )
+        if w4a16_text_encoder
+        else None
     ),
 ).to("cuda")
 
@@ -88,6 +93,7 @@ if args.cache:
             Fn_compute_blocks=16,
             Bn_compute_blocks=16,
             max_warmup_steps=4 if steps > 4 else 2,
+            warmup_interval=2 if steps > 4 else 1,
             max_cached_steps=2 if steps > 4 else 1,
             max_continuous_cached_steps=1,
             enable_separate_cfg=False,  # true_cfg_scale=1.0
