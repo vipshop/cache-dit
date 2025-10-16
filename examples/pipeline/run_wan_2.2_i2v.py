@@ -17,6 +17,8 @@ from utils import get_args, GiB, strify, cachify
 import cache_dit
 import numpy as np
 
+# Based this fix: https://github.com/huggingface/diffusers/pull/12496
+
 args = get_args()
 print(args)
 
