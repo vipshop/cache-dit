@@ -131,10 +131,10 @@ def run_pipe():
         negative_prompt=negative_prompt,
         height=height,
         width=width,
-        num_frames=81,
+        num_frames=81,  # pipe.vae_scale_factor_temporal=4
         guidance_scale=3.5,
         num_inference_steps=40,
-        generator=torch.Generator(device="cpu").manual_seed(0),
+        generator=torch.Generator(device="cuda").manual_seed(0),
     ).frames[0]
 
     return video
@@ -155,7 +155,7 @@ end = time.time()
 cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = f"wan2.2-i2v.{strify(args, pipe)}.mp4"
+save_path = f"wan2.2-i2v.frame{len(video)}.{strify(args, pipe)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)
