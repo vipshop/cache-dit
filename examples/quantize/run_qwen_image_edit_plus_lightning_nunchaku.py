@@ -145,7 +145,7 @@ start = time.time()
 image = run_pipe()
 end = time.time()
 
-stats = cache_dit.summary(pipe)
+stats = cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
 save_path = f"qwen-image-edit-plus-lightning.{steps}steps.nunchaku.{strify(args, stats)}.png"
