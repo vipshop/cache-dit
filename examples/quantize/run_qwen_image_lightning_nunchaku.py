@@ -49,8 +49,10 @@ nunchaku_qwen_image_dir = os.environ.get(
     "NUNCHAKA_QWEN_IMAGE_DIR",
     "nunchaku-tech/nunchaku-qwen-image",
 )
+lightning_version = "v1.1" if steps == 8 else "v1.0"
 transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
-    f"{nunchaku_qwen_image_dir}/svdq-int4_r32-qwen-image-lightning{'v1.1' if steps == 8 else 'v1.0'}-{steps}steps.safetensors"
+    f"{nunchaku_qwen_image_dir}/svdq-int4_r32-qwen-image-lightning"
+    f"{lightning_version}-{steps}steps.safetensors"
 )
 
 # Minimize VRAM required: 25GiB
