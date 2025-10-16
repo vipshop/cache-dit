@@ -138,7 +138,7 @@ def run_pipe():
         width=width,
         image=image,
         num_frames=81,
-        num_inference_steps=20,
+        num_inference_steps=50,
         generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     return video
