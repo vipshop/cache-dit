@@ -22,7 +22,7 @@ print(args)
 
 nunchaku_qwen_image_edit_plus_dir = os.environ.get(
     "NUNCHAKA_QWEN_IMAGE_EDIT_2509_DIR",
-    "nunchaku-tech/nunchaku-qwen-image",
+    "nunchaku-tech/nunchaku-qwen-image-edit-2509",
 )
 
 transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
