@@ -102,27 +102,12 @@ if args.parallel_type != "none":
 #     and torch.distributed.get_world_size() > 1
 # ):
 #     world_size = torch.distributed.get_world_size()
-
-#     seq_len = key.shape[1]
-#     if seq_len > 100:
-#         key_chunk_size = key.size(1) // world_size
-#         value_chunk_size = value.size(1) // world_size
-
-#         key_send = list(torch.split(key.contiguous(), key_chunk_size, dim=1))
-#         value_send = list(
-#             torch.split(value.contiguous(), value_chunk_size, dim=1)
-#         )
-
-#         key_recv = [torch.empty_like(key_send[0]) for _ in range(world_size)]
-#         value_recv = [
-#             torch.empty_like(value_send[0]) for _ in range(world_size)
-#         ]
-
-#         torch.distributed.all_to_all(key_recv, key_send)
-#         torch.distributed.all_to_all(value_recv, value_send)
-
-#         key = torch.cat(key_recv, dim=1)
-#         value = torch.cat(value_recv, dim=1)
+#     key_list = [torch.empty_like(key) for _ in range(world_size)]
+#     value_list = [torch.empty_like(value) for _ in range(world_size)]
+#     torch.distributed.all_gather(key_list, key.contiguous())
+#     torch.distributed.all_gather(value_list, value.contiguous())
+#     key = torch.cat(key_list, dim=1)
+#     value = torch.cat(value_list, dim=1)
 
 
 if args.parallel_type == "ulysses":
