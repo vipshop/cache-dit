@@ -27,7 +27,7 @@ model_id = os.environ.get(
     "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
 )
 
-pipe = WanImageToVideoPipeline.from_pretrained(
+pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
@@ -113,6 +113,7 @@ if args.quantize:
 image = load_image(
     "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
 )
+
 max_area = 480 * 832
 aspect_ratio = image.height / image.width
 mod_value = (
@@ -157,7 +158,9 @@ end = time.time()
 cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = f"wan2.2-i2v.frame{len(video)}.{strify(args, pipe)}.mp4"
+save_path = (
+    f"wan2.2-i2v.frame{len(video)}.{height}x{width}.{strify(args, pipe)}.mp4"
+)
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)
