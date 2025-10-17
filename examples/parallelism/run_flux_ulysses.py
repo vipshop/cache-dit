@@ -61,18 +61,26 @@ elif args.parallel_type == "ring":
 else:
     print("No parallelism is enabled.")
 
+
+def run_pipe(pipe: FluxPipeline):
+    image = pipe(
+        "A cat holding a sign that says hello world",
+        num_inference_steps=28,
+        generator=torch.Generator("cpu").manual_seed(0),
+    ).images[0]
+    return image
+
+
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
 
+    # warmup
+    _ = run_pipe(pipe)
+
 
 start = time.time()
-image = pipe(
-    "A cat holding a sign that says hello world",
-    num_inference_steps=28,
-    generator=torch.Generator("cpu").manual_seed(0),
-).images[0]
-
+image = run_pipe(pipe)
 end = time.time()
 
 if args.parallel_type != "none":
@@ -80,7 +88,10 @@ if args.parallel_type != "none":
         cache_dit.summary(pipe)
 
         time_cost = end - start
-        save_path = f"flux.{args.parallel_type}{dist.get_world_size()}.{strify(args, pipe)}.png"
+        save_path = (
+            f"flux.{args.parallel_type}{dist.get_world_size()}."
+            f"{strify(args, pipe)}.png"
+        )
         print(f"Time cost: {time_cost:.2f}s")
         print(f"Saving image to {save_path}")
         image.save(save_path)
