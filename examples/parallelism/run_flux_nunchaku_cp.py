@@ -126,8 +126,6 @@ def run_pipe(pipe: FluxPipeline):
     image = pipe(
         "A cat holding a sign that says hello world",
         num_inference_steps=28,
-        height=960,
-        width=1440 + 480,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
