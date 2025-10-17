@@ -6,41 +6,35 @@ sys.path.append("..")
 import time
 import torch
 import diffusers
-from diffusers import WanPipeline, AutoencoderKLWan, WanTransformer3DModel
-from diffusers.utils import export_to_video
-from diffusers.schedulers.scheduling_unipc_multistep import (
-    UniPCMultistepScheduler,
+from diffusers import (
+    AutoencoderKLWan,
+    WanTransformer3DModel,
+    WanImageToVideoPipeline,
 )
+from diffusers.utils import export_to_video, load_image
+
 from utils import get_args, GiB, strify, cachify
 import cache_dit
+import numpy as np
 
+# Based this fix: https://github.com/huggingface/diffusers/pull/12496
 
 args = get_args()
 print(args)
 
+model_id = os.environ.get(
+    "WAN_2_2_I2V_DIR",
+    "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+)
 
-height, width = 480, 832
-pipe = WanPipeline.from_pretrained(
-    os.environ.get(
-        "WAN_2_2_DIR",
-        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
-    ),
+pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
+    model_id,
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
     device_map=(
         "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
     ),
 )
-
-# flow shift should be 3.0 for 480p images, 5.0 for 720p images
-if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
-    # Use the UniPCMultistepScheduler with the specified flow shift
-    flow_shift = 3.0 if height == 480 else 5.0
-    pipe.scheduler = UniPCMultistepScheduler.from_config(
-        pipe.scheduler.config,
-        flow_shift=flow_shift,
-    )
-
 
 if args.cache:
     from cache_dit import (
@@ -115,44 +109,58 @@ if args.quantize:
         quant_type=args.quantize_type,
     )
 
+
+image = load_image(
+    "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
+)
+
+max_area = 480 * 832
+aspect_ratio = image.height / image.width
+mod_value = (
+    pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+)
+height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+image = image.resize((width, height))
+
+prompt = "Summer beach vacation style, a white cat wearing sunglasses sits on a surfboard. The fluffy-furred feline gazes directly at the camera with a relaxed expression. Blurred beach scenery forms the background featuring crystal-clear waters, distant green hills, and a blue sky dotted with white clouds. The cat assumes a naturally relaxed posture, as if savoring the sea breeze and warm sunlight. A close-up shot highlights the feline's intricate details and the refreshing atmosphere of the seaside."
+negative_prompt = "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+
+
+def run_pipe():
+    video = pipe(
+        image=image,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=height,
+        width=width,
+        num_frames=81,  # pipe.vae_scale_factor_temporal=4
+        guidance_scale=3.5,
+        num_inference_steps=50,
+        generator=torch.Generator(device="cpu").manual_seed(0),
+    ).frames[0]
+
+    return video
+
+
 if args.compile or args.quantize:
     cache_dit.set_compile_configs()
     pipe.transformer.compile_repeated_blocks(fullgraph=True)
     pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
 
     # warmup
-    video = pipe(
-        prompt=(
-            "An astronaut dancing vigorously on the moon with earth "
-            "flying past in the background, hyperrealistic"
-        ),
-        height=height,
-        width=width,
-        num_frames=81,
-        num_inference_steps=50,
-        generator=torch.Generator("cpu").manual_seed(0),
-    ).frames[0]
-
+    run_pipe()
 
 start = time.time()
-video = pipe(
-    prompt=(
-        "An astronaut dancing vigorously on the moon with earth "
-        "flying past in the background, hyperrealistic"
-    ),
-    negative_prompt="",
-    height=height,
-    width=width,
-    num_frames=81,
-    num_inference_steps=50,
-    generator=torch.Generator("cpu").manual_seed(0),
-).frames[0]
+video = run_pipe()
 end = time.time()
 
 cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = f"wan2.2.{strify(args, pipe)}.mp4"
+save_path = (
+    f"wan2.2-i2v.frame{len(video)}.{height}x{width}.{strify(args, pipe)}.mp4"
+)
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)
