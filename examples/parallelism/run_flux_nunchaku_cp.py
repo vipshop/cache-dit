@@ -94,6 +94,23 @@ if args.parallel_type != "none":
     # issue: https://github.com/huggingface/diffusers/pull/12443
     pipe.transformer.set_attention_backend("_native_cudnn")
 
+# Patch: https://github.com/nunchaku-tech/nunchaku/blob/main/nunchaku/models/attention_processors/flux.py#L87
+# to support distributed context parallelism for Flux in nunchaku please add below code:
+# if (
+#     torch.distributed.is_initialized()
+#     and torch.distributed.get_world_size() > 1
+# ):
+#     world_size = torch.distributed.get_world_size()
+
+#     seq_len = key.shape[1]
+#     if seq_len > 100:
+#         key_list = [torch.empty_like(key) for _ in range(world_size)]
+#         value_list = [torch.empty_like(value) for _ in range(world_size)]
+#         torch.distributed.all_gather(key_list, key.contiguous())
+#         torch.distributed.all_gather(value_list, value.contiguous())
+#         key = torch.cat(key_list, dim=1)
+#         value = torch.cat(value_list, dim=1)
+
 if args.parallel_type == "ulysses":
     pipe.transformer.enable_parallelism(
         config=ContextParallelConfig(ulysses_degree=dist.get_world_size()),
