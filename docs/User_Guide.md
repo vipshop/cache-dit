@@ -16,7 +16,7 @@
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [⚡️Hybrid Context Parallelism](#️context-paralleism)
+- [⚡️Hybrid Context Parallelism](#context-paralleism)
 - [🛠Metrics CLI](#metrics)
 - [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
