@@ -9,6 +9,8 @@ from cache_dit.cache_factory.cache_contexts import DBCacheConfig
 from cache_dit.cache_factory.cache_contexts import DBPruneConfig
 from cache_dit.cache_factory.cache_contexts import CalibratorConfig
 from cache_dit.cache_factory.params_modifier import ParamsModifier
+from cache_dit.parallelism import ParallelismConfig
+from cache_dit.parallelism import enable_parallelism
 
 from cache_dit.logger import init_logger
 
@@ -37,6 +39,8 @@ def enable_cache(
             List[List[ParamsModifier]],
         ]
     ] = None,
+    # Config for Parallelism
+    parallelism_config: Optional[ParallelismConfig] = None,
     # Other cache context kwargs: Deprecated cache kwargs
     **kwargs,
 ) -> Union[
@@ -127,6 +131,15 @@ def enable_cache(
                 **kwargs: (`dict`, *optional*, defaults to {}):
                     The same as 'kwargs' param in cache_dit.enable_cache() interface.
 
+        parallelism_config (`ParallelismConfig`, *optional*, defaults to None):
+            Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
+            parallelism for cache-dit. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/parallel_config.py
+            for more details of ParallelismConfig.
+                ulysses_size: (`int`, *optional*, defaults to None):
+                    The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
+                ring_size: (`int`, *optional*, defaults to None):
+                    The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
+
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py
             for more details.
@@ -214,7 +227,7 @@ def enable_cache(
         context_kwargs["params_modifiers"] = params_modifiers
 
     if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
-        return CachedAdapter.apply(
+        pipe_or_adapter = CachedAdapter.apply(
             pipe_or_adapter,
             **context_kwargs,
         )
@@ -224,6 +237,19 @@ def enable_cache(
             "Please pass DiffusionPipeline or BlockAdapter"
             "for the 1's position param: pipe_or_adapter"
         )
+
+    # NOTE: Users should always enable parallelism after applying
+    # cache to avoid hooks conflict.
+    if parallelism_config is not None:
+        assert isinstance(
+            parallelism_config, ParallelismConfig
+        ), "parallelism_config should be of type ParallelismConfig."
+        pipe_or_adapter.transformer = enable_parallelism(
+            pipe_or_adapter.transformer,
+            parallelism_config,
+        )
+
+    return pipe_or_adapter
 
 
 def disable_cache(

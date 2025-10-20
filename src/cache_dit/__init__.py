@@ -4,8 +4,7 @@ except ImportError:
     __version__ = "unknown version"
     version_tuple = (0, 0, "unknown version")
 
-from cache_dit.utils import summary
-from cache_dit.utils import strify
+
 from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
 from cache_dit.cache_factory import load_options
@@ -28,7 +27,10 @@ from cache_dit.cache_factory import supported_pipelines
 from cache_dit.cache_factory import get_adapter
 from cache_dit.compile import set_compile_configs
 from cache_dit.quantize import quantize
-
+from cache_dit.parallelism import ParallelismBackend
+from cache_dit.parallelism import ParallelismConfig
+from cache_dit.utils import summary
+from cache_dit.utils import strify
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
