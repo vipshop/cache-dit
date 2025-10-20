@@ -665,7 +665,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 
 - **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):
     Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
-    parallelism for cache-dit. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/parallel_config.py for more details of ParallelismConfig.
+    parallelism for cache-dit.
     - `ulysses_size`: (`int`, *optional*, defaults to None):
       The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
     - `ring_size`: (`int`, *optional*, defaults to None):
