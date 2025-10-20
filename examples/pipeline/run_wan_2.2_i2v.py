@@ -30,11 +30,11 @@ model_id = os.environ.get(
 pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
-    # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
-    ),
 )
+
+if GiB() <= 96:
+    # issue: https://github.com/huggingface/diffusers/issues/12499
+    pipe.enable_model_cpu_offload()
 
 if args.cache:
     from cache_dit import (

@@ -13,9 +13,13 @@ dtype = torch.bfloat16
 device = "cuda"
 
 pipe = WanImageToVideoPipeline.from_pretrained(
-    model_id, torch_dtype=dtype, device_map="balanced"
+    model_id,
+    torch_dtype=dtype,
+    # device_map="balanced"
 )
 
+# issue: https://github.com/huggingface/diffusers/issues/12499
+pipe.enable_model_cpu_offload()
 
 image = load_image(
     "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
