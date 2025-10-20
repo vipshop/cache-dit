@@ -47,18 +47,18 @@ def get_args(
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "-w", type=int, default=8)
-    parser.add_argument("--max-cached-steps", "-mc", type=int, default=-1)
+    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
+    parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
     parser.add_argument(
-        "--max-continuous-cached-steps", "-mcc", type=int, default=-1
+        "--max-continuous-cached-steps", "--mcc", type=int, default=-1
     )
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument(
-        "--parallel-type", type=str, default=None
-    )  # none, ulysses, ring
+        "--parallel-type", "--parallel", type=str, default=None
+    )  # ulysses, ring
     return parser.parse_args() if parse else parser
 
 
