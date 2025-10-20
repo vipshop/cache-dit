@@ -14,24 +14,18 @@ from diffusers import (
 from nunchaku.models.transformers.transformer_flux_v2 import (
     NunchakuFluxTransformer2DModelV2,
 )
-from utils import get_args, strify
+from utils import (
+    get_args,
+    strify,
+    maybe_init_distributed,
+    maybe_destroy_distributed,
+)
 import cache_dit
 
-parser = get_args(parse=False)
-parser.add_argument(
-    "--parallel-type",
-    type=str,
-    default="none",
-    choices=["ulysses", "ring", "none"],
-)
-args = parser.parse_args()
+args = get_args(parse=False)
 print(args)
 
-if args.parallel_type != "none":
-    dist.init_process_group("nccl")
-    rank = dist.get_rank()
-    device = torch.device("cuda", rank % torch.cuda.device_count())
-    torch.cuda.set_device(device)
+rank, device = maybe_init_distributed(args)
 
 nunchaku_flux_dir = os.environ.get(
     "NUNCHAKA_FLUX_DIR",
@@ -52,6 +46,7 @@ if args.cache:
         ParamsModifier,
         DBCacheConfig,
         TaylorSeerCalibratorConfig,
+        ParallelismConfig,
     )
 
     cache_dit.enable_cache(
@@ -85,6 +80,22 @@ if args.cache:
                 ),
             ),
         ],
+        parallelism_config=(
+            ParallelismConfig(
+                ulysses_size=(
+                    dist.get_world_size()
+                    if args.parallel_type == "ulysses"
+                    else None
+                ),
+                ring_size=(
+                    dist.get_world_size()
+                    if args.parallel_type == "ring"
+                    else None
+                ),
+            )
+            if args.parallel_type in ["ulysses", "ring"]
+            else None
+        ),
     )
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
@@ -136,9 +147,6 @@ if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
 
-    # warmup
-    _ = run_pipe(pipe)
-
 # warmup
 _ = run_pipe(pipe)
 
@@ -148,19 +156,7 @@ end = time.time()
 
 cache_dit.summary(pipe)
 
-if args.parallel_type != "none":
-    if rank == 0:
-        cache_dit.summary(pipe)
-
-        time_cost = end - start
-        save_path = (
-            f"flux.nunchaku.{args.parallel_type}"
-            f"{dist.get_world_size()}.{strify(args, pipe)}.png"
-        )
-        print(f"Time cost: {time_cost:.2f}s")
-        print(f"Saving image to {save_path}")
-        image.save(save_path)
-else:
+if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
@@ -169,5 +165,5 @@ else:
     print(f"Saving image to {save_path}")
     image.save(save_path)
 
-if dist.is_initialized():
-    dist.destroy_process_group()
+
+maybe_destroy_distributed(args)
