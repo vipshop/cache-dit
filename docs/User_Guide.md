@@ -14,10 +14,10 @@
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](#dbcache)
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
-- [🔥TaylorSeer Calibrator](#taylorseer)
+- [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [⚡️Hybrid Context Parallelism](#context-paralleism)
-- [🛠Metrics CLI](#metrics)
+- [🛠Metrics Command Line](#metrics)
 - [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
 
@@ -434,7 +434,7 @@ cache_dit.enable_cache(
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
-## 🔥TaylorSeer Calibrator
+## 🔥Hybrid TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
 
@@ -529,7 +529,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## 🛠Metrics CLI
+## 🛠Metrics Command Line
 
 <div id="metrics"></div>    
 
