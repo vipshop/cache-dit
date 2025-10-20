@@ -1,0 +1,56 @@
+import torch
+
+from typing import Optional
+
+try:
+    from diffusers import ContextParallelConfig
+
+    def native_diffusers_parallelism_available() -> bool:
+        return True
+
+except ImportError:
+    ContextParallelConfig = None
+
+    def native_diffusers_parallelism_available() -> bool:
+        return False
+
+
+from diffusers.models.modeling_utils import ModelMixin
+from cache_dit.parallelism.parallel_backend import ParallelismBackend
+from cache_dit.parallelism.parallel_config import ParallelismConfig
+
+
+def maybe_enable_parallelism(
+    transformer: torch.nn.Module,
+    parallelism_config: Optional[ParallelismConfig],
+) -> torch.nn.Module:
+    assert isinstance(transformer, ModelMixin)
+    if parallelism_config is None:
+        return transformer
+
+    if (
+        parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER
+        and native_diffusers_parallelism_available()
+    ):
+        cp_config = None
+        if (
+            parallelism_config.ulysses_size is not None
+            or parallelism_config.ring_size is not None
+        ):
+            cp_config = ContextParallelConfig(
+                ulysses_degree=parallelism_config.ulysses_size,
+                ring_degree=parallelism_config.ring_size,
+            )
+        if cp_config is not None:
+            if hasattr(transformer, "enable_parallelism"):
+                if hasattr(transformer, "set_attention_backend"):  # type: ignore[attr-defined]
+                    # Now only _native_cudnn is supported for parallelism
+                    # issue: https://github.com/huggingface/diffusers/pull/12443
+                    transformer.set_attention_backend("_native_cudnn")  # type: ignore[attr-defined]
+                transformer.enable_parallelism(config=cp_config)
+            else:
+                raise ValueError(
+                    f"{transformer.__class__.__name__} does not support context parallelism."
+                )
+
+    return transformer

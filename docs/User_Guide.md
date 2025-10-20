@@ -14,9 +14,10 @@
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](#dbcache)
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
-- [🔥TaylorSeer Calibrator](#taylorseer)
+- [🔥Hybrid TaylorSeer](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
-- [🛠Metrics CLI](#metrics)
+- [⚡️Hybrid Context Parallelism](#context-paralleism)
+- [🛠Metrics Command Line](#metrics)
 - [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
 
@@ -433,7 +434,7 @@ cache_dit.enable_cache(
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
-## 🔥TaylorSeer Calibrator
+## 🔥Hybrid TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
 
@@ -510,7 +511,26 @@ cache_dit.enable_cache(
 )
 ```
 
-## 🛠Metrics CLI
+## ⚡️Hybrid Context Parallelism
+
+<div id="context-paralleism"></div>
+
+cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+
+```python3
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set ulysses_size > 1 to enable ulysses style context parallelism.
+    parallelism_config=ParallelismConfig(ulysses_size=2),
+)
+# Then, run with torchrun cmd:
+# torchrun --nproc_per_node=2 parallel_cache.py
+```
+
+## 🛠Metrics Command Line
 
 <div id="metrics"></div>    
 
@@ -643,6 +663,14 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.
   - `**kwargs`: (`dict`, *optional*, defaults to {}):
     The same as the 'kwargs' parameter in the cache_dit.enable_cache() interface.
+
+- **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):
+    Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
+    parallelism for cache-dit.
+    - `ulysses_size`: (`int`, *optional*, defaults to None):
+      The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
+    - `ring_size`: (`int`, *optional*, defaults to None):
+      The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):
   Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py for more details.

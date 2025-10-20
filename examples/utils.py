@@ -47,15 +47,18 @@ def get_args(
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "-w", type=int, default=8)
-    parser.add_argument("--max-cached-steps", "-mc", type=int, default=-1)
+    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
+    parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
     parser.add_argument(
-        "--max-continuous-cached-steps", "-mcc", type=int, default=-1
+        "--max-continuous-cached-steps", "--mcc", type=int, default=-1
     )
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
+    parser.add_argument(
+        "--parallel-type", "--parallel", type=str, default=None
+    )  # ulysses, ring
     return parser.parse_args() if parse else parser
 
 
@@ -64,10 +67,16 @@ def cachify(
     pipe_or_adapter,
     **kwargs,
 ):
-    if args.cache:
-        from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
+    if args.cache or args.parallel_type is not None:
+        import torch.distributed as dist
+        from cache_dit import (
+            DBCacheConfig,
+            TaylorSeerCalibratorConfig,
+            ParallelismConfig,
+        )
 
-        specific_cache_config = kwargs.pop("cache_config", None)
+        cache_config = kwargs.pop("cache_config", None)
+        parallelism_config = kwargs.pop("parallelism_config", None)
 
         cache_dit.enable_cache(
             pipe_or_adapter,
@@ -81,8 +90,8 @@ def cachify(
                     residual_diff_threshold=args.rdt,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                 )
-                if specific_cache_config is None
-                else specific_cache_config
+                if cache_config is None
+                else cache_config
             ),
             calibrator_config=(
                 TaylorSeerCalibratorConfig(
@@ -90,6 +99,23 @@ def cachify(
                 )
                 if args.taylorseer
                 else None
+            ),
+            parallelism_config=(
+                ParallelismConfig(
+                    ulysses_size=(
+                        dist.get_world_size()
+                        if args.parallel_type == "ulysses"
+                        else None
+                    ),
+                    ring_size=(
+                        dist.get_world_size()
+                        if args.parallel_type == "ring"
+                        else None
+                    ),
+                )
+                if parallelism_config is None
+                and args.parallel_type in ["ulysses", "ring"]
+                else parallelism_config
             ),
         )
 
@@ -101,3 +127,23 @@ def strify(args, pipe_or_stats):
         f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
+
+
+def maybe_init_distributed(args):
+    import torch.distributed as dist
+
+    if args.parallel_type is not None:
+        dist.init_process_group("nccl")
+        rank = dist.get_rank()
+        device = torch.device("cuda", rank % torch.cuda.device_count())
+        torch.cuda.set_device(device)
+        return rank, device
+    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def maybe_destroy_distributed(args):
+    import torch.distributed as dist
+
+    if args.parallel_type is not None:
+        if dist.is_initialized():
+            dist.destroy_process_group()

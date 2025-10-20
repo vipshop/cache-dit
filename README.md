@@ -6,6 +6,10 @@
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
   </p>
+  <p align="center">
+    🔥<b><a href="./docs/User_Guide.md">DBCache</a> | <a href="./docs/User_Guide.md">DBPrune</a> | <a href="./docs/User_Guide.md">Hybird TaylorSeer</a> | <a href="./docs/User_Guide.md">Hybird Cache CFG</a></b>🔥 <br> 
+    🔥<b><a href="./docs/User_Guide.md">Hybrid Context Paralleism</a> | <a href="./docs/User_Guide.md">PyTorch Native</a> | <a href="./docs/User_Guide.md">SOTA</a></b>🔥
+  </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PRs-welcome-blue.svg >
@@ -147,7 +151,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - **[🎉Easy New Model Integration](./docs/User_Guide.md#automatic-block-adapter)**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with 1.7x speedup w/o precision loss—even before it was available in the Diffusers library.  
 - **[🎉State-of-the-Art Performance](./bench/)**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
 - **[🎉Support for 4/8-Steps Distilled Models](./bench/)**: Surprisingly, cache-dit's **DBCache** works for extremely few-step distilled models—something many other methods fail to do.  
-- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, model CPU offload, sequential CPU offload, group offloading, Quantization(**[torchao](./examples/quantize/)**, **[🔥nunchaku](./examples/quantize/)**), etc.  
+- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Offloading, Quantization([torchao](./examples/quantize/), [🔥nunchaku](./examples/quantize/)), [🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism), etc.  
 - **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes (e.g., DBCache or DBPrune + TaylorSeerCalibrator). DBCache or DBPrune acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
 - **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
@@ -155,6 +159,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
+- 2025.10.20: 🔥Now cache-dit supported the [Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism) scheme!🔥
 - 2025.10.16: 🎉cache-dit + [**🔥nunchaku 4-bits**](https://github.com/nunchaku-tech/nunchaku) supported: [Qwen-Image-Lightning 4/8 steps](./examples/quantize/).
 - 2025.10.15: 🎉cache-dit now supported [**🔥nunchaku**](https://github.com/nunchaku-tech/nunchaku): Qwen-Image/FLUX.1 [4-bits examples](./examples/quantize/)
 - 2025.10.13: 🎉cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
@@ -198,9 +203,10 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
 - [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
-- [🔥TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
+- [🔥Hybrid TaylorSeer](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
-- [🛠Metrics CLI](./docs/User_Guide.md#metrics-cli)
+- [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-paralleism)
+- [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
 

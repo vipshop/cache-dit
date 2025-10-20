@@ -13,6 +13,7 @@ from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import BasicCacheConfig
 from cache_dit.cache_factory import CalibratorConfig
+from cache_dit.parallelism import ParallelismConfig
 from cache_dit.logger import init_logger
 
 
@@ -55,6 +56,8 @@ class CacheStats:
     cfg_pruned_blocks: list[int] = dataclasses.field(default_factory=list)
     cfg_actual_blocks: list[int] = dataclasses.field(default_factory=list)
     cfg_pruned_ratio: float = None
+    # Parallelism Stats
+    parallelism_config: ParallelismConfig = None
 
 
 def summary(
@@ -213,7 +216,13 @@ def strify(
             return calibrator_config.strify()
         return "T0O0"
 
-    cache_type_str = f"{cache_str()}_{calibrator_str()}"
+    def parallelism_str():
+        parallelism_config: ParallelismConfig = stats.parallelism_config
+        if parallelism_config is not None:
+            return f"_{parallelism_config.strify()}"
+        return ""
+
+    cache_type_str = f"{cache_str()}_{calibrator_str()}{parallelism_str()}"
 
     if cached_steps:
         cache_type_str += f"_S{cached_steps}"
@@ -251,6 +260,17 @@ def _summary(
     else:
         if logging:
             logger.warning(f"Can't find Context Options for: {cls_name}")
+
+    if hasattr(module, "_parallelism_config"):
+        parallelism_config: ParallelismConfig = module._parallelism_config
+        cache_stats.parallelism_config = parallelism_config
+        if logging:
+            print(
+                f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}"
+            )
+    else:
+        if logging:
+            logger.warning(f"Can't find Parallelism Config for: {cls_name}")
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
