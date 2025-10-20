@@ -113,7 +113,7 @@ def cachify(
                         else None
                     ),
                 )
-                if parallelism_config is None
+                if parallelism_config is None and args.parallel_type is not None
                 else parallelism_config
             ),
         )
