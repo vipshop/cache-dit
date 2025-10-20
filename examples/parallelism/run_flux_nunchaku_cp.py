@@ -9,7 +9,6 @@ import torch.distributed as dist
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
-    ContextParallelConfig,
 )
 from nunchaku.models.transformers.transformer_flux_v2 import (
     NunchakuFluxTransformer2DModelV2,
@@ -80,6 +79,20 @@ if args.cache or args.parallel_type is not None:
                 ),
             ),
         ],
+        # Patch: https://github.com/nunchaku-tech/nunchaku/blob/main/nunchaku/models/attention_processors/flux.py#L87
+        # to support distributed context parallelism for Flux in nunchaku please add below code:
+        # query, key, value = qkv.chunk(3, dim=-1)
+        # if (
+        #     torch.distributed.is_initialized()
+        #     and torch.distributed.get_world_size() > 1
+        # ):
+        #     world_size = torch.distributed.get_world_size()
+        #     key_list = [torch.empty_like(key) for _ in range(world_size)]
+        #     value_list = [torch.empty_like(value) for _ in range(world_size)]
+        #     torch.distributed.all_gather(key_list, key.contiguous())
+        #     torch.distributed.all_gather(value_list, value.contiguous())
+        #     key = torch.cat(key_list, dim=1)
+        #     value = torch.cat(value_list, dim=1)
         parallelism_config=(
             ParallelismConfig(
                 ulysses_size=(
@@ -99,38 +112,6 @@ if args.cache or args.parallel_type is not None:
     )
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
-
-if args.parallel_type != "none":
-    # Now only _native_cudnn is supported for parallelism
-    # issue: https://github.com/huggingface/diffusers/pull/12443
-    pipe.transformer.set_attention_backend("_native_cudnn")
-
-# Patch: https://github.com/nunchaku-tech/nunchaku/blob/main/nunchaku/models/attention_processors/flux.py#L87
-# to support distributed context parallelism for Flux in nunchaku please add below code:
-# query, key, value = qkv.chunk(3, dim=-1)
-# if (
-#     torch.distributed.is_initialized()
-#     and torch.distributed.get_world_size() > 1
-# ):
-#     world_size = torch.distributed.get_world_size()
-#     key_list = [torch.empty_like(key) for _ in range(world_size)]
-#     value_list = [torch.empty_like(value) for _ in range(world_size)]
-#     torch.distributed.all_gather(key_list, key.contiguous())
-#     torch.distributed.all_gather(value_list, value.contiguous())
-#     key = torch.cat(key_list, dim=1)
-#     value = torch.cat(value_list, dim=1)
-
-
-if args.parallel_type == "ulysses":
-    pipe.transformer.enable_parallelism(
-        config=ContextParallelConfig(ulysses_degree=dist.get_world_size()),
-    )
-elif args.parallel_type == "ring":
-    pipe.transformer.enable_parallelism(
-        config=ContextParallelConfig(ring_degree=dist.get_world_size()),
-    )
-else:
-    print("No parallelism is enabled.")
 
 
 def run_pipe(pipe: FluxPipeline):
