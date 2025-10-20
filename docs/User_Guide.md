@@ -515,7 +515,7 @@ cache_dit.enable_cache(
 
 <div id="context-paralleism"></div>
 
-cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache + Context Parallelism` (ParallelismBackend.NATIVE_DIFFUSER) in cache-dit. For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` (via NATIVE_DIFFUSER parallelism backend) scheme in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
 
 ```python3
 from cache_dit import ParallelismConfig
@@ -523,6 +523,7 @@ from cache_dit import ParallelismConfig
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
+    # Set ulysses_size > 1 to enable ulysses style context parallelism.
     parallelism_config=ParallelismConfig(ulysses_size=2),
 )
 # Then, run with torchrun cmd:
