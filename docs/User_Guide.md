@@ -16,6 +16,7 @@
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [🔥TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Cache CFG](#cfg)
+- [⚡️Hybrid Context Parallelism](#️context-paralleism)
 - [🛠Metrics CLI](#metrics)
 - [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
@@ -510,6 +511,24 @@ cache_dit.enable_cache(
 )
 ```
 
+## ⚡️Hybrid Context Parallelism
+
+<div id="context-paralleism"></div>
+
+cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache + Context Parallelism` (ParallelismBackend.NATIVE_DIFFUSER) in cache-dit. For more details, please refer to examples/parallelism.
+
+```python3
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    parallelism_config=ParallelismConfig(ulysses_size=2),
+)
+# Then, run with torchrun cmd:
+# torchrun --nproc_per_node=2 parallel_cache.py
+```
+
 ## 🛠Metrics CLI
 
 <div id="metrics"></div>    
@@ -643,6 +662,14 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.
   - `**kwargs`: (`dict`, *optional*, defaults to {}):
     The same as the 'kwargs' parameter in the cache_dit.enable_cache() interface.
+
+- **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):
+    Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
+    parallelism for cache-dit. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/parallel_config.py for more details of ParallelismConfig.
+    - `ulysses_size`: (`int`, *optional*, defaults to None):
+      The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
+    - `ring_size`: (`int`, *optional*, defaults to None):
+      The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):
   Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py for more details.
