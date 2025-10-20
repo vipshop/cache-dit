@@ -155,7 +155,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
-- 2025.10.20: 🔥Now cache-dit supports the [Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism) schemes!
+- 2025.10.20: 🔥Now cache-dit supports the [Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)! Try it out!
 - 2025.10.16: 🎉cache-dit + [**🔥nunchaku 4-bits**](https://github.com/nunchaku-tech/nunchaku) supported: [Qwen-Image-Lightning 4/8 steps](./examples/quantize/).
 - 2025.10.15: 🎉cache-dit now supported [**🔥nunchaku**](https://github.com/nunchaku-tech/nunchaku): Qwen-Image/FLUX.1 [4-bits examples](./examples/quantize/)
 - 2025.10.13: 🎉cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
