@@ -515,7 +515,7 @@ cache_dit.enable_cache(
 
 <div id="context-paralleism"></div>
 
-cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache + Context Parallelism` (ParallelismBackend.NATIVE_DIFFUSER) in cache-dit. For more details, please refer to [examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache + Context Parallelism` (ParallelismBackend.NATIVE_DIFFUSER) in cache-dit. For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
 
 ```python3
 from cache_dit import ParallelismConfig
