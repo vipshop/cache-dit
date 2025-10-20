@@ -51,9 +51,8 @@ if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
 
-    # warmup
-    _ = run_pipe(pipe)
-
+# warmup
+_ = run_pipe(pipe)
 
 start = time.time()
 image = run_pipe(pipe)
