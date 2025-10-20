@@ -10,6 +10,10 @@ def enable_parallelism(
     transformer: torch.nn.Module,
     parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
+    assert isinstance(transformer, torch.nn.Module), (
+        "transformer must be an instance of torch.nn.Module, "
+        f"but got {type(transformer)}"
+    )
     if getattr(transformer, "_is_parallelized", False):
         logger.warning(
             "The transformer is already parallelized. "
@@ -35,25 +39,9 @@ def enable_parallelism(
             f"Parallel backend {parallelism_config.backend} is not supported yet."
         )
 
-    apply_parallelism_stats(transformer)
-    logger.info(
-        f"Enabled parallelism with config: {parallelism_config.strify(True)}"
-    )
-    return transformer
-
-
-def apply_parallelism_stats(
-    transformer: torch.nn.Module,
-) -> torch.nn.Module:
-    if not getattr(transformer, "_is_parallelized", False):
-        logger.warning(
-            "The transformer is not parallelized. "
-            "Skipping applying parallelism statistics."
-        )
-        return transformer
-
     transformer._is_parallelized = True  # type: ignore[attr-defined]
     transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
+    logger.info(f"Enabled parallelism: {parallelism_config.strify(True)}")
     return transformer
 
 

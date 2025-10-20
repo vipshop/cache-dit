@@ -244,11 +244,19 @@ def enable_cache(
         assert isinstance(
             parallelism_config, ParallelismConfig
         ), "parallelism_config should be of type ParallelismConfig."
-        pipe_or_adapter.transformer = enable_parallelism(
-            pipe_or_adapter.transformer,
-            parallelism_config,
-        )
-
+        if isinstance(pipe_or_adapter, DiffusionPipeline):
+            transformer = pipe_or_adapter.transformer
+        else:
+            assert BlockAdapter.assert_normalized(pipe_or_adapter)
+            assert (
+                len(BlockAdapter.flatten(pipe_or_adapter.transformer)) == 1
+            ), (
+                "Only single transformer is supported to enable parallelism "
+                "currently for BlockAdapter."
+            )
+            transformer = BlockAdapter.flatten(pipe_or_adapter.transformer)[0]
+        # Enable parallelism for the transformer inplace
+        transformer = enable_parallelism(transformer, parallelism_config)
     return pipe_or_adapter
 
 

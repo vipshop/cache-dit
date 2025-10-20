@@ -5,32 +5,24 @@ sys.path.append("..")
 
 import time
 import torch
-import torch.distributed as dist
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
-    ContextParallelConfig,
 )
-from utils import get_args, strify, cachify
+from utils import (
+    get_args,
+    strify,
+    cachify,
+    maybe_init_distributed,
+    maybe_destroy_distributed,
+)
 import cache_dit
 
 
-parser = get_args(parse=False)
-parser.add_argument(
-    "--parallel-type",
-    type=str,
-    default="none",
-    choices=["ulysses", "ring", "none"],
-)
-args = parser.parse_args()
+args = get_args()
 print(args)
 
-if args.parallel_type != "none":
-    dist.init_process_group("nccl")
-    rank = dist.get_rank()
-    device = torch.device("cuda", rank % torch.cuda.device_count())
-    torch.cuda.set_device(device)
-
+rank, device = maybe_init_distributed(args)
 
 pipe: FluxPipeline = FluxPipeline.from_pretrained(
     os.environ.get(
@@ -40,26 +32,10 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 ).to("cuda")
 
-if args.cache:
+if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
-
-if args.parallel_type != "none":
-    # Now only _native_cudnn is supported for parallelism
-    # issue: https://github.com/huggingface/diffusers/pull/12443
-    pipe.transformer.set_attention_backend("_native_cudnn")
-
-if args.parallel_type == "ulysses":
-    pipe.transformer.enable_parallelism(
-        config=ContextParallelConfig(ulysses_degree=dist.get_world_size()),
-    )
-elif args.parallel_type == "ring":
-    pipe.transformer.enable_parallelism(
-        config=ContextParallelConfig(ring_degree=dist.get_world_size()),
-    )
-else:
-    print("No parallelism is enabled.")
 
 
 def run_pipe(pipe: FluxPipeline):
@@ -83,19 +59,7 @@ start = time.time()
 image = run_pipe(pipe)
 end = time.time()
 
-if args.parallel_type != "none":
-    if rank == 0:
-        cache_dit.summary(pipe)
-
-        time_cost = end - start
-        save_path = (
-            f"flux.{args.parallel_type}{dist.get_world_size()}."
-            f"{strify(args, pipe)}.png"
-        )
-        print(f"Time cost: {time_cost:.2f}s")
-        print(f"Saving image to {save_path}")
-        image.save(save_path)
-else:
+if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
@@ -104,5 +68,4 @@ else:
     print(f"Saving image to {save_path}")
     image.save(save_path)
 
-if dist.is_initialized():
-    dist.destroy_process_group()
+maybe_destroy_distributed(args)

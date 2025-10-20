@@ -44,3 +44,4 @@ class ParallelismConfig:
                 parallel_str += f"Ring{self.ring_size}"
             if self.tp_size is not None:
                 parallel_str += f"TP{self.tp_size}"
+            return parallel_str
