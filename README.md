@@ -205,7 +205,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
 - [🔥Hybrid TaylorSeer](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
-- [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#️hybrid-context-paralleism)
+- [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-paralleism)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
