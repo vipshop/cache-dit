@@ -113,7 +113,8 @@ def cachify(
                         else None
                     ),
                 )
-                if parallelism_config is None and args.parallel_type is not None
+                if parallelism_config is None
+                and args.parallel_type in ["ulysses", "ring"]
                 else parallelism_config
             ),
         )
@@ -137,11 +138,12 @@ def maybe_init_distributed(args):
         device = torch.device("cuda", rank % torch.cuda.device_count())
         torch.cuda.set_device(device)
         return rank, device
-    return None, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def maybe_destroy_distributed(args):
     import torch.distributed as dist
 
     if args.parallel_type is not None:
-        dist.destroy_process_group()
+        if dist.is_initialized():
+            dist.destroy_process_group()
