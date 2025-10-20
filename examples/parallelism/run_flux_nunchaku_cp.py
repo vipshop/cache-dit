@@ -22,7 +22,7 @@ from utils import (
 )
 import cache_dit
 
-args = get_args(parse=False)
+args = get_args()
 print(args)
 
 rank, device = maybe_init_distributed(args)
