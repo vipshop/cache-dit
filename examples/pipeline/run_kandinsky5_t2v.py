@@ -5,7 +5,7 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import Kandinsky5T2VPipeline
+from diffusers import Kandinsky5T2VPipeline, AutoencoderKLHunyuanVideo
 from diffusers.utils import export_to_video
 from utils import get_args, strify, cachify
 import cache_dit
@@ -31,6 +31,10 @@ if args.cache:
 
 prompt = "A cat and a dog baking a cake together in a kitchen."
 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
+
+assert isinstance(pipe.vae, AutoencoderKLHunyuanVideo)
+
+pipe.vae.enable_tiling()
 
 
 def run_pipe():
