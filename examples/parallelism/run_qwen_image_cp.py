@@ -55,7 +55,9 @@ if GiB() < 96:
         )
         pipe.to(device)
     else:
-        pipe.enable_model_cpu_offload(device=device)
+        raise RuntimeError(
+            "Not enough memory to run Qwen-Image model, please enable quantization."
+        )
 else:
     pipe.to(device)
 
@@ -92,9 +94,8 @@ def run_pipe():
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
 
-    if GiB() < 96 and not args.quantize:
-        pipe.reset_device_map()
-        pipe.enable_model_cpu_offload(device=device)
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
 
     return image
 
