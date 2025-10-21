@@ -38,22 +38,26 @@ pipe = QwenImagePipeline.from_pretrained(
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 if GiB() < 96:
-    print("Apply FP8 Weight Only Quantize ...")
-    args.quantize_type = "fp8_w8a16_wo"  # force
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-        ],
-    )
-    pipe.text_encoder = cache_dit.quantize(
-        pipe.text_encoder,
-        quant_type=args.quantize_type,
-    )
-
-pipe.to(device)
+    if args.quantize:
+        print("Apply FP8 Weight Only Quantize ...")
+        args.quantize_type = "fp8_w8a16_wo"  # force
+        pipe.transformer = cache_dit.quantize(
+            pipe.transformer,
+            quant_type=args.quantize_type,
+            exclude_layers=[
+                "img_in",
+                "txt_in",
+            ],
+        )
+        pipe.text_encoder = cache_dit.quantize(
+            pipe.text_encoder,
+            quant_type=args.quantize_type,
+        )
+        pipe.to(device)
+    else:
+        pipe.enable_model_cpu_offload()
+else:
+    pipe.to(device)
 
 assert isinstance(pipe.vae, AutoencoderKLQwenImage)
 pipe.vae.enable_tiling()
@@ -101,11 +105,11 @@ start = time.time()
 image = run_pipe()
 end = time.time()
 
-stats = cache_dit.summary(pipe)
+cache_dit.summary(pipe)
 
 if rank == 0:
     time_cost = end - start
-    save_path = f"qwen-image.{strify(args, stats)}.png"
+    save_path = f"qwen-image.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     image.save(save_path)
