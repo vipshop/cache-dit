@@ -46,10 +46,6 @@ if GiB() < 96:
         exclude_layers=[
             "img_in",
             "txt_in",
-            "time_in",
-            "time_r_in",
-            "guidance_in",
-            "final_layer",
         ],
     )
     pipe.text_encoder = cache_dit.quantize(
