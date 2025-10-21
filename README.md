@@ -1,4 +1,4 @@
-<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> 
+📚English | <a href="./README_CN.md">📚中文阅读 </a> 
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
@@ -7,7 +7,7 @@
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
   </p>
   <p align="center">
-    🔥<b><a href="./docs/User_Guide.md">DBCache</a> | <a href="./docs/User_Guide.md">DBPrune</a> | <a href="./docs/User_Guide.md">Hybird TaylorSeer</a> | <a href="./docs/User_Guide.md">Hybird Cache CFG</a></b>🔥 <br> 
+    🔥<b><a href="./docs/User_Guide.md">DBCache</a> | <a href="./docs/User_Guide.md">DBPrune</a> | <a href="./docs/User_Guide.md">Hybrid TaylorSeer</a> | <a href="./docs/User_Guide.md">Hybrid Cache CFG</a></b>🔥 <br> 
     🔥<b><a href="./docs/User_Guide.md">Hybrid Context Paralleism</a> | <a href="./docs/User_Guide.md">PyTorch Native</a> | <a href="./docs/User_Guide.md">SOTA</a></b>🔥
   </p>
   <div align='center'>
@@ -151,7 +151,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - **[🎉Easy New Model Integration](./docs/User_Guide.md#automatic-block-adapter)**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with 1.7x speedup w/o precision loss—even before it was available in the Diffusers library.  
 - **[🎉State-of-the-Art Performance](./bench/)**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
 - **[🎉Support for 4/8-Steps Distilled Models](./bench/)**: Surprisingly, cache-dit's **DBCache** works for extremely few-step distilled models—something many other methods fail to do.  
-- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Offloading, Quantization([torchao](./examples/quantize/), [🔥nunchaku](./examples/quantize/)), [🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism), etc.  
+- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Quantization ([torchao](./examples/quantize/), [🔥nunchaku](./examples/quantize/)), CPU or Sequential Offloading, **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)**, Tensor Parallelism, etc.  
 - **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes (e.g., DBCache or DBPrune + TaylorSeerCalibrator). DBCache or DBPrune acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
 - **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
@@ -159,14 +159,12 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
-- 2025.10.20: 🔥Now cache-dit supported the [Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism) scheme!🔥
+- 2025.10.20: 🔥Now cache-dit supported the **[Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)** scheme!🔥
 - 2025.10.16: 🎉cache-dit + [**🔥nunchaku 4-bits**](https://github.com/nunchaku-tech/nunchaku) supported: [Qwen-Image-Lightning 4/8 steps](./examples/quantize/).
 - 2025.10.15: 🎉cache-dit now supported [**🔥nunchaku**](https://github.com/nunchaku-tech/nunchaku): Qwen-Image/FLUX.1 [4-bits examples](./examples/quantize/)
 - 2025.10.13: 🎉cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
 - 2025.10.10: 🔥[**Qwen-Image-ControlNet-Inpainting**](https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting) **2.3x↑🎉** speedup! Check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_controlnet_inpaint.py).
 - 2025.09.26: 🔥[**Qwen-Image-Edit-Plus(2509)**](https://github.com/QwenLM/Qwen-Image) **2.1x↑🎉** speedup! Please check the [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_edit_plus.py).
-- 2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-- 2025.09.25: 🔥**cache-dit** has joined the Diffusers community ecosystem: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 - 2025.09.10: 🎉Day 1 support [**HunyuanImage-2.1**](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with **1.7x↑🎉** speedup! Check this [example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_hunyuan_image_2.1.py).
 - 2025.09.08: 🔥[**Qwen-Image-Lightning**](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image_lightning.py) **7.1/3.5 steps🎉** inference with **[DBCache: F16B16](https://github.com/vipshop/cache-dit)**.
 - 2025.09.03: 🎉[**Wan2.2-MoE**](https://github.com/Wan-Video) **2.4x↑🎉** speedup! Please refer to [run_wan_2.2.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
@@ -176,6 +174,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 <details>
 <summary>Previous News</summary>
 
+- 2025.09.25: 🎉The **first API-stable version (v1.0.0)** of cache-dit has finally been released!
+- 2025.09.25: 🔥**cache-dit** has joined the Diffusers community ecosystem: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 - 2025.09.08: 🎉First caching mechanism in [Wan2.2](https://github.com/Wan-Video/Wan2.2) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/Wan-Video/Wan2.2/pull/127) for more details.
 - 2025.09.08: 🎉First caching mechanism in [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) with **[cache-dit](https://github.com/vipshop/cache-dit)**, check this [PR](https://github.com/ModelTC/Qwen-Image-Lightning/pull/35).
 - 2025.08.10: 🔥[**FLUX.1-Kontext-dev**](https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev) is supported! Please refer [run_flux_kontext.py](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_flux_kontext.py) as an example.
@@ -198,13 +198,13 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
   - [📚Forward Pattern Matching](./docs/User_Guide.md#forward-pattern-matching)
   - [📚Cache with One-line Code](./docs/User_Guide.md#%EF%B8%8Fcache-acceleration-with-one-line-code)
   - [🔥Automatic Block Adapter](./docs/User_Guide.md#automatic-block-adapter)
-  - [📚Hybird Forward Pattern](./docs/User_Guide.md#hybird-forward-pattern)
+  - [📚Hybrid Forward Pattern](./docs/User_Guide.md#hybrid-forward-pattern)
   - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
 - [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
-- [🔥Hybrid TaylorSeer](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
+- [🔥Hybrid TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-paralleism)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
@@ -228,7 +228,7 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 ## 🎉Projects Using CacheDiT
 
-Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), and [sdnext](https://github.com/vladmandic/sdnext/blob/dev/modules/cachedit.py) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg). **CacheDiT** has also been **recommended** by [Wan2.2](https://github.com/Wan-Video/Wan2.2) ![](https://img.shields.io/github/stars/Wan-Video/Wan2.2.svg), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) ![](https://img.shields.io/github/stars/ModelTC/Qwen-Image-Lightning.svg), [Qwen-Image](https://github.com/QwenLM/Qwen-Image) ![](https://img.shields.io/github/stars/QwenLM/Qwen-Image.svg), and <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src="https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg"></a> ![](https://img.shields.io/github/stars/huggingface/diffusers.svg), among others. We would be grateful if you could let us know if you have used CacheDiT.
+Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), and [sdnext](https://github.com/vladmandic/sdnext/discussions/4269) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg). **CacheDiT** has also been **recommended** by [Wan2.2](https://github.com/Wan-Video/Wan2.2) ![](https://img.shields.io/github/stars/Wan-Video/Wan2.2.svg), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) ![](https://img.shields.io/github/stars/ModelTC/Qwen-Image-Lightning.svg), [Qwen-Image](https://github.com/QwenLM/Qwen-Image) ![](https://img.shields.io/github/stars/QwenLM/Qwen-Image.svg), and <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src="https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg"></a> ![](https://img.shields.io/github/stars/huggingface/diffusers.svg), among others. We would be grateful if you could let us know if you have used CacheDiT.
 
 ## ©️Acknowledgements
 

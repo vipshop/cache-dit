@@ -22,7 +22,7 @@ Comparisons between different FnBn compute block configurations show that **more
   - **W**: max_warmup_steps, `int`, DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
   - **I**: warmup_interval, `int`, defaults to 1, Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps in warmup steps will be computed, others will use dynamic cache.
   - **M**: max_cached_steps, `int`, DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
-  - **MC**: max_continuous_cached_steps, `int`, DBCache disables the caching strategy when the previous continuous cached steps exceed this value to prevent precision degradation. (namely, hybird dynamic cache and static cache)
+  - **MC**: max_continuous_cached_steps, `int`, DBCache disables the caching strategy when the previous continuous cached steps exceed this value to prevent precision degradation. (namely, hybrid dynamic cache and static cache)
   - **T**: enable talyorseer or not (namely, hybrid taylorseer w/ dynamic cache - DBCache). DBCache acts as the Indicator to decide when to cache, while the Calibrator decides how to cache. 
   - **O**: The taylorseer order, `int`, e.g., O1 means order 1.
   - **R**: The residual diff threshold of DBCache, range [0, 1.0)

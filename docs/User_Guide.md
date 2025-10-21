@@ -9,13 +9,13 @@
   - [📚Forward Pattern Matching](#forward-pattern-matching)
   - [📚Cache with One-line Code](#%EF%B8%8Fcache-acceleration-with-one-line-code)
   - [🔥Automatic Block Adapter](#automatic-block-adapter)
-  - [📚Hybird Forward Pattern](#automatic-block-adapter)
+  - [📚Hybrid Forward Pattern](#automatic-block-adapter)
   - [📚Implement Patch Functor](#implement-patch-functor)
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](#dbcache)
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
-- [🔥Hybrid TaylorSeer](#taylorseer)
-- [⚡️Hybrid Cache CFG](#cfg)
+- [⚡️Hybrid Hybrid Cache CFG](#cfg)
+- [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Context Parallelism](#context-paralleism)
 - [🛠Metrics Command Line](#metrics)
 - [⚙️Torch Compile](#compile)
@@ -224,7 +224,7 @@ cache_dit.enable_cache(
 ```
 For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. 
 
-### 📚Hybird Forward Pattern
+### 📚Hybrid Forward Pattern
 
 Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_flux_adapter.py) as an example.
 
@@ -434,6 +434,36 @@ cache_dit.enable_cache(
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
 
+## ⚡️Hybrid Cache CFG
+
+<div id="cfg"></div>
+
+cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default, None)**. Otherwise, set it to True. For examples:
+
+```python
+from cache_dit import DBCacheConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(
+        ...,
+        # CFG: classifier free guidance or not
+        # For model that fused CFG and non-CFG into single forward step,
+        # should set enable_separate_cfg as False. For example, set it as True 
+        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
+        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
+        # Compute cfg forward first or not, default False, namely, 
+        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
+        cfg_compute_first=False,
+        # Compute separate diff values for CFG and non-CFG step, 
+        # default True. If False, we will use the computed diff from 
+        # current non-CFG transformer step for current CFG step.
+        cfg_diff_compute_separate=True,
+    ),
+)
+```
+
 ## 🔥Hybrid TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
@@ -481,35 +511,6 @@ cache_dit.enable_cache(
 |24.85s|12.85s|12.86s|10.27s|10.28s|8.48s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=105px>|
 
-## ⚡️Hybrid Cache CFG
-
-<div id="cfg"></div>
-
-cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default, None)**. Otherwise, set it to True. For examples:
-
-```python
-from cache_dit import DBCacheConfig
-
-cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(
-        ...,
-        # CFG: classifier free guidance or not
-        # For model that fused CFG and non-CFG into single forward step,
-        # should set enable_separate_cfg as False. For example, set it as True 
-        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
-        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
-        # Compute cfg forward first or not, default False, namely, 
-        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-        cfg_compute_first=False,
-        # Compute separate diff values for CFG and non-CFG step, 
-        # default True. If False, we will use the computed diff from 
-        # current non-CFG transformer step for current CFG step.
-        cfg_diff_compute_separate=True,
-    ),
-)
-```
 
 ## ⚡️Hybrid Context Parallelism
 
