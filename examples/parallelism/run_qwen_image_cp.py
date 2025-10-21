@@ -54,6 +54,8 @@ if GiB() < 96:
             quant_type=args.quantize_type,
         )
         pipe.to(device)
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
     else:
         raise RuntimeError(
             "Not enough memory to run Qwen-Image model, please enable quantization."
