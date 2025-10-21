@@ -1,4 +1,4 @@
-<a href="./README.md">📚English</a> | <a href="./README_CN.md">📚中文阅读 </a> 
+<a href="./README.md">📚English</a> | 📚中文阅读
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
@@ -166,14 +166,16 @@ pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-di
   - [📚Forward Pattern Matching](./docs/User_Guide.md#forward-pattern-matching)
   - [📚Cache with One-line Code](./docs/User_Guide.md#%EF%B8%8Fcache-acceleration-with-one-line-code)
   - [🔥Automatic Block Adapter](./docs/User_Guide.md#automatic-block-adapter)
-  - [📚Hybird Forward Pattern](./docs/User_Guide.md#hybird-forward-pattern)
+  - [📚Hybrid Forward Pattern](./docs/User_Guide.md#hybrid-forward-pattern)
   - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
-- [⚡️Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
-- [🔥TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
+- [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
+- [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
+- [🔥Hybrid TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
+- [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-paralleism)
+- [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
-- [🛠Metrics CLI](./docs/User_Guide.md#metrics-cli)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
 
 ## 👋参与贡献

@@ -24,9 +24,17 @@ def maybe_enable_parallelism(
     transformer: torch.nn.Module,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
-    assert isinstance(transformer, ModelMixin)
+    assert isinstance(transformer, ModelMixin), (
+        "transformer must be an instance of diffusers' ModelMixin, "
+        f"but got {type(transformer)}"
+    )
     if parallelism_config is None:
         return transformer
+
+    assert isinstance(parallelism_config, ParallelismConfig), (
+        "parallelism_config must be an instance of ParallelismConfig"
+        f" but got {type(parallelism_config)}"
+    )
 
     if (
         parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER
@@ -43,10 +51,10 @@ def maybe_enable_parallelism(
             )
         if cp_config is not None:
             if hasattr(transformer, "enable_parallelism"):
-                if hasattr(transformer, "set_attention_backend"):  # type: ignore[attr-defined]
+                if hasattr(transformer, "set_attention_backend"):
                     # Now only _native_cudnn is supported for parallelism
                     # issue: https://github.com/huggingface/diffusers/pull/12443
-                    transformer.set_attention_backend("_native_cudnn")  # type: ignore[attr-defined]
+                    transformer.set_attention_backend("_native_cudnn")
                 transformer.enable_parallelism(config=cp_config)
             else:
                 raise ValueError(
