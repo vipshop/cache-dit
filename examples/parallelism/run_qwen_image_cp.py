@@ -91,6 +91,11 @@ def run_pipe():
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
+
+    if GiB() < 96 and not args.quantize:
+        pipe.reset_device_map()
+        pipe.enable_model_cpu_offload(device=device)
+
     return image
 
 
