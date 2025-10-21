@@ -55,7 +55,7 @@ if GiB() < 96:
         )
         pipe.to(device)
     else:
-        pipe.enable_model_cpu_offload()
+        pipe.enable_model_cpu_offload(device=device)
 else:
     pipe.to(device)
 
