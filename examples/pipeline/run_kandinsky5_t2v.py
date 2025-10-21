@@ -27,11 +27,7 @@ pipe = Kandinsky5T2VPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 
 if args.cache:
-    cachify(
-        args,
-        pipe,
-        enable_separate_cfg=(True if "nocfg" not in model_id else False),
-    )
+    cachify(args, pipe, enable_separate_cfg=not ("nocfg" in model_id))
 
 prompt = "A cat and a dog baking a cake together in a kitchen."
 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
