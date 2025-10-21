@@ -73,20 +73,6 @@ prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coff
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
 
-
-# Generate with different aspect ratios
-aspect_ratios = {
-    "1:1": (1328, 1328),
-    "16:9": (1664, 928),
-    "9:16": (928, 1664),
-    "4:3": (1472, 1140),
-    "3:4": (1140, 1472),
-    "3:2": (1584, 1056),
-    "2:3": (1056, 1584),
-}
-
-width, height = aspect_ratios["16:9"]
-
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 
@@ -95,9 +81,9 @@ def run_pipe():
     image = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
-        width=width,
-        height=height,
-        num_inference_steps=50,
+        width=1024 if args.width is None else args.width,
+        height=1024 if args.height is None else args.height,
+        num_inference_steps=50 if args.steps is None else args.steps,
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
