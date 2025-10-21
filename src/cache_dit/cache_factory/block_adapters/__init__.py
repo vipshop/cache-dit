@@ -590,6 +590,7 @@ def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
             transformer=pipe.transformer,
             blocks=pipe.transformer.visual_transformer_blocks,
             forward_pattern=ForwardPattern.Pattern_3,
+            has_separate_cfg=True,
             check_forward_pattern=False,
             check_num_outputs=False,
             **kwargs,
