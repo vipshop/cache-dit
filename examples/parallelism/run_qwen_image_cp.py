@@ -55,7 +55,7 @@ if GiB() < 96:
 
 pipe.to(device)
 
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
