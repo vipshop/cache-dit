@@ -5,7 +5,11 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
+from diffusers import (
+    QwenImagePipeline,
+    QwenImageTransformer2DModel,
+    AutoencoderKLQwenImage,
+)
 
 from utils import (
     GiB,
@@ -55,6 +59,7 @@ if GiB() < 96:
 
 pipe.to(device)
 
+assert isinstance(pipe.vae, AutoencoderKLQwenImage)
 pipe.vae.enable_tiling()
 
 if args.cache or args.parallel_type is not None:
