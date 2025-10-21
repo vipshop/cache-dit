@@ -1,6 +1,10 @@
 import torch
 
 from typing import Optional
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
+
 
 try:
     from diffusers import ContextParallelConfig
@@ -55,6 +59,11 @@ def maybe_enable_parallelism(
                     # Now only _native_cudnn is supported for parallelism
                     # issue: https://github.com/huggingface/diffusers/pull/12443
                     transformer.set_attention_backend("_native_cudnn")
+                    logger.warning(
+                        "Set attention backend to _native_cudnn for parallelism because of "
+                        "the issue: https://github.com/huggingface/diffusers/pull/12443"
+                    )
+
                 transformer.enable_parallelism(config=cp_config)
             else:
                 raise ValueError(
