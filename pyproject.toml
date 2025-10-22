@@ -16,6 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+
 quantization = [
     "torchao>=0.12.0",
 ]
@@ -50,8 +51,9 @@ all = [
 
 [project.urls]
 
-Repository = "https://github.com/vipshop/cache-dit.git"
-Homepage = "https://github.com/vipshop/cache-dit.git" 
+Repository = "https://github.com/vipshop/cache-dit"
+Homepage = "https://github.com/vipshop/cache-dit" 
+GitHub = "https://github.com/vipshop/cache-dit"
 
 [project.scripts]
 
