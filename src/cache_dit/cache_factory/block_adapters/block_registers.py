@@ -18,6 +18,7 @@ class BlockAdapterRegistry:
         "SkyReelsV2",
         "Chroma",
         "Lumina2",
+        "Kandinsky5",
     ]
 
     @classmethod

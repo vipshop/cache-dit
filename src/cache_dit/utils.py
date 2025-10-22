@@ -183,6 +183,8 @@ def strify(
         cached_steps = None
         cache_type = cache_options.get("cache_type", CacheType.NONE)
 
+        stats = None
+
         if cache_type == CacheType.NONE:
             return "NONE"
     else:
@@ -217,6 +219,8 @@ def strify(
         return "T0O0"
 
     def parallelism_str():
+        if stats is None:
+            return ""
         parallelism_config: ParallelismConfig = stats.parallelism_config
         if parallelism_config is not None:
             return f"_{parallelism_config.strify()}"

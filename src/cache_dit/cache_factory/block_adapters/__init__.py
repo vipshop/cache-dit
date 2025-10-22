@@ -577,3 +577,26 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
         patch_functor=HunyuanDiTPatchFunctor(),
         **kwargs,
     )
+
+
+@BlockAdapterRegistry.register("Kandinsky5")
+def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import Kandinsky5Transformer3DModel
+
+        assert isinstance(pipe.transformer, Kandinsky5Transformer3DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.visual_transformer_blocks,
+            forward_pattern=ForwardPattern.Pattern_3,  # or Pattern_2
+            has_separate_cfg=True,
+            check_forward_pattern=False,
+            check_num_outputs=False,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "Kandinsky5 is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )

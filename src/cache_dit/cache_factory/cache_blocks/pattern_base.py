@@ -139,14 +139,9 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                 *args,
                 **kwargs,
             )
-            if not isinstance(hidden_states, torch.Tensor):
-                hidden_states, encoder_hidden_states = hidden_states
-                if not self.forward_pattern.Return_H_First:
-                    hidden_states, encoder_hidden_states = (
-                        encoder_hidden_states,
-                        hidden_states,
-                    )
-
+            hidden_states, encoder_hidden_states = self._process_block_outputs(
+                hidden_states, encoder_hidden_states
+            )
         return hidden_states, encoder_hidden_states
 
     @torch.compiler.disable
