@@ -1,7 +1,7 @@
 [project]
 
 name = "cache_dit"
-dynamic = ["version", "dependencies", "optional-dependencies"]
+dynamic = ["version"]
 requires-python = ">=3.10"
 authors = [{name = "DefTruth, vipshop.com, etc."}]
 description = "A Unified, Flexible and Training-free Cache Acceleration Framework for 🤗Diffusers."

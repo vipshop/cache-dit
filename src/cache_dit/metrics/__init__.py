@@ -1,3 +1,14 @@
+try:
+    import ImageReward
+    import lpips
+    import skimage
+    import scipy
+except ImportError:
+    raise ImportError(
+        "Metrics functionality requires the 'metrics' extra dependencies. "
+        "Install with:\npip install cache-dit[metrics]"
+    )
+
 from cache_dit.metrics.metrics import compute_psnr
 from cache_dit.metrics.metrics import compute_ssim
 from cache_dit.metrics.metrics import compute_mse

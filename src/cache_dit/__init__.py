@@ -26,11 +26,22 @@ from cache_dit.cache_factory import FoCaCalibratorConfig
 from cache_dit.cache_factory import supported_pipelines
 from cache_dit.cache_factory import get_adapter
 from cache_dit.compile import set_compile_configs
-from cache_dit.quantize import quantize
 from cache_dit.parallelism import ParallelismBackend
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.utils import summary
 from cache_dit.utils import strify
+
+try:
+    from cache_dit.quantize import quantize
+except ImportError as e:  # noqa: F841
+
+    def quantize(*args, **kwargs):
+        raise ImportError(
+            "Quantization requires additional dependencies. "
+            "Please install cache-dit[quantization] or cache-dit[all] "
+            "with the 'quantize' extra to use this feature."
+        ) from e
+
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
