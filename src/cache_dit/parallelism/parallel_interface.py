@@ -22,7 +22,7 @@ def enable_parallelism(
         return transformer
 
     if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
-        from cache_dit.parallelism.backends.parallel_difffusers import (
+        from cache_dit.parallelism.backends.native_diffusers import (
             maybe_enable_parallelism,
             native_diffusers_parallelism_available,
         )
