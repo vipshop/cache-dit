@@ -31,6 +31,7 @@ def run_pipe():
         "A digital painting of a rusty, vintage tram on a sandy beach",
         num_inference_steps=28,
         guidance_scale=5.0,
+        generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
 
