@@ -28,11 +28,17 @@ model_id = os.environ.get(
 pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
+    # Based on: https://github.com/huggingface/diffusers/pull/12523
+    device_map=(
+        "balanced" if GiB() < 96 and torch.cuda.device_count() > 1 else None
+    ),
 )
 
-if GiB() <= 96:
+if GiB() < 96 and torch.cuda.device_count() <= 1:
     # issue: https://github.com/huggingface/diffusers/issues/12499
+    print("Enable model cpu offload for low memory device.")
     pipe.enable_model_cpu_offload()
+
 
 if args.cache:
     from cache_dit import (
