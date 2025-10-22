@@ -597,6 +597,27 @@ def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
         )
     except ImportError:
         raise ImportError(
-            "Kandinsky5 is not available in the current diffusers version. "
+            "Kandinsky5Transformer3DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
+
+
+@BlockAdapterRegistry.register("PRX")
+def prx_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import PRXTransformer2DModel
+
+        assert isinstance(pipe.transformer, PRXTransformer2DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.blocks,
+            forward_pattern=ForwardPattern.Pattern_3,
+            check_num_outputs=False,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "PRXTransformer2DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )

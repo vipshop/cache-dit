@@ -46,6 +46,7 @@ def run_pipe():
         num_frames=121,
         num_inference_steps=50,
         guidance_scale=5.0,
+        generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     return video
 
