@@ -1,4 +1,0 @@
-scikit-image
-scipy
-lpips==0.1.4
-image-reward

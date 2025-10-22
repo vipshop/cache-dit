@@ -8,6 +8,46 @@ description = "A Unified, Flexible and Training-free Cache Acceleration Framewor
 maintainers = [{name="DefTruth, vipshop.com, etc"}] 
 readme = "README.md" 
 
+dependencies = [
+    "pyyaml",
+    "torch>=2.7.1",
+    "diffusers>=0.35.1",
+    "transformers>=4.55.2",
+]
+
+[project.optional-dependencies]
+quantization = [
+    "torchao>=0.12.0",
+]
+
+metrics = [
+    "scipy",
+    "scikit-image",
+    "image-reward",
+    "lpips==0.1.4",
+]
+
+dev = [
+    "packaging",
+    "pre-commit",
+    "pytest>=7.0.0,<8.0.0",
+    "pytest-html",
+    "expecttest",
+    "hypothesis",
+    "accelerate",
+    "peft",
+    "protobuf",
+    "sentencepiece",
+    "opencv-python-headless",
+    "ftfy",
+    "scikit-image",
+]
+
+all = [
+    "cache-dit[quantization]",
+    "cache-dit[metrics]",
+]
+
 [project.urls]
 
 Repository = "https://github.com/vipshop/cache-dit.git"

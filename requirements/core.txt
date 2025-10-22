@@ -1,5 +1,0 @@
-packaging
-pyyaml
-torch>=2.7.1
-transformers>=4.55.2
-diffusers>=0.35.1
