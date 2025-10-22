@@ -34,13 +34,14 @@ from cache_dit.utils import strify
 try:
     from cache_dit.quantize import quantize
 except ImportError as e:  # noqa: F841
+    err_msg = str(e)
 
     def quantize(*args, **kwargs):
         raise ImportError(
             "Quantization requires additional dependencies. "
             "Please install cache-dit[quantization] or cache-dit[all] "
-            "with the 'quantize' extra to use this feature."
-        ) from e
+            f"to use this feature. Error message: {err_msg}"
+        )
 
 
 NONE = CacheType.NONE
