@@ -93,8 +93,6 @@ setup(
             "scikit-image",
         ],
         # pip3 install 'cache-dit[all]'
-        "all": fetch_core_requirements()
-        + fetch_quantization_requirements()
-        + fetch_metrics_requirements(),
+        "all": fetch_metrics_requirements(),
     },
 )
