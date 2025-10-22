@@ -36,59 +36,20 @@ def my_local_scheme(version):
     return f"+{local_version}"
 
 
-def fetch_requirements():
-    with open("requirements.txt") as f:
-        reqs = f.read().strip().split("\n")
-    return reqs
-
-
 setup(
     name=PACKAGE_NAME,
     description="A Unified, Flexible and Training-free Cache Acceleration Framework for 🤗Diffusers.",
-    author="vipshop.com",
+    author="DefTruth, vipshop.com",
     use_scm_version={
         "write_to": path.join("src", "cache_dit", "_version.py"),
         "local_scheme": my_local_scheme,
     },
-    package_dir={
-        "": "src",
-    },
+    package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.10",
     entry_points={
         "console_scripts": [
             "cache-dit-metrics-cli = cache_dit.metrics:main",
-        ],
-    },
-    install_requires=fetch_requirements(),
-    extras_require={
-        "all": [],
-        # dev dependencies. Install them by `pip3 install 'cache-dit[metrics]'`
-        "metrics": [
-            "image-reward",
-            "pytorch-fid",
-            "lpips==0.1.4",
-            # "CLIP @ git+https://github.com/openai/CLIP.git",
-            # "calflops @ git+https://github.com/chengzegang/calculate-flops.pytorch.git",
-        ],
-        # dev dependencies. Install them by `pip3 install 'cache-dit[dev]'`
-        "dev": [
-            "pre-commit",
-            "pytest>=7.0.0,<8.0.0",
-            "pytest-html",
-            "expecttest",
-            "hypothesis",
-            "transformers",
-            # "diffusers @ git+https://github.com/huggingface/diffusers",  # wan currently requires installing from source
-            "diffusers",
-            "accelerate",
-            "peft",
-            "protobuf",
-            "sentencepiece",
-            "opencv-python-headless",
-            "ftfy",
-            "scikit-image",
-            "pytorch-fid",
         ],
     },
 )
