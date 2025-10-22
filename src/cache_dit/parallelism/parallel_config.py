@@ -1,4 +1,5 @@
 import dataclasses
+from typing import Optional, Dict, Any
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.logger import init_logger
 
@@ -20,6 +21,13 @@ class ParallelismConfig:
     # tp_size (`int`, *optional*):
     #     The degree of tensor parallelism.
     tp_size: int = None
+    # parallel_kwargs (`dict`, *optional*):
+    #     Additional kwargs for parallelism backends. For example, for
+    #     NATIVE_DIFFUSER backend, it can include `cp_plan` and other
+    #     arguments for `Context Parallelism`.
+    parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(
+        default_factory=dict
+    )
 
     def __post_init__(self):
         assert ParallelismBackend.is_supported(self.backend), (
