@@ -63,8 +63,16 @@ def maybe_enable_parallelism(
                         "Set attention backend to _native_cudnn for parallelism because of "
                         "the issue: https://github.com/huggingface/diffusers/pull/12443"
                     )
-
-                transformer.enable_parallelism(config=cp_config)
+                cp_plan = parallelism_config.parallel_kwargs.get(
+                    "cp_plan", None
+                )
+                if cp_plan is not None:
+                    logger.info(
+                        f"Using custom context parallelism plan: {cp_plan}"
+                    )
+                transformer.enable_parallelism(
+                    config=cp_config, cp_plan=cp_plan
+                )
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."
