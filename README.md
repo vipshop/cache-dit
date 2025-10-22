@@ -4,11 +4,9 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
   <p align="center">
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
-    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
-  </p>
-  <p align="center">
+    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
     🔥<b><a href="./docs/User_Guide.md">DBCache</a> | <a href="./docs/User_Guide.md">DBPrune</a> | <a href="./docs/User_Guide.md">Hybrid TaylorSeer</a> | <a href="./docs/User_Guide.md">Hybrid Cache CFG</a></b>🔥 <br> 
-    🔥<b><a href="./docs/User_Guide.md">Hybrid Context Paralleism</a> | <a href="./docs/User_Guide.md">PyTorch Native</a> | <a href="./docs/User_Guide.md">SOTA</a></b>🔥
+    🔥<b><a href="./docs/User_Guide.md">Hybrid Context Paralleism</a> | <a href="./docs/User_Guide.md">Diffusers Native</a> | <a href="./docs/User_Guide.md">SOTA</a></b>🔥
   </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
