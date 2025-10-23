@@ -84,8 +84,10 @@ def summary(
                 transformer_2 = adapter_or_others.transformer_2
 
         if all(
-            not BlockAdapter.is_cached(transformer),
-            not BlockAdapter.is_parallelized(transformer),
+            (
+                not BlockAdapter.is_cached(transformer),
+                not BlockAdapter.is_parallelized(transformer),
+            )
         ):
             return [CacheStats()]
 
