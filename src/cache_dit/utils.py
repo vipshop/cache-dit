@@ -132,7 +132,11 @@ def summary(
                 )
             )
 
-        blocks_stats = [stats for stats in blocks_stats if stats.cache_options]
+        blocks_stats = [
+            stats
+            for stats in blocks_stats
+            if (stats.cache_options or stats.parallelism_config)
+        ]
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
 
