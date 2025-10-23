@@ -1,6 +1,7 @@
 import torch
 import argparse
 import cache_dit
+import torch.distributed as dist
 from cache_dit import init_logger
 
 logger = init_logger(__name__)
@@ -129,11 +130,18 @@ def strify(args, pipe_or_stats):
     )
 
 
-def maybe_init_distributed(args):
-    import torch.distributed as dist
-
-    if args.parallel_type is not None:
-        dist.init_process_group("nccl")
+def maybe_init_distributed(args=None):
+    if args is not None:
+        if args.parallel_type is not None:
+            dist.init_process_group("nccl")
+            rank = dist.get_rank()
+            device = torch.device("cuda", rank % torch.cuda.device_count())
+            torch.cuda.set_device(device)
+            return rank, device
+    else:
+        # always init distributed for other examples
+        if not dist.is_initialized():
+            dist.init_process_group("nccl")
         rank = dist.get_rank()
         device = torch.device("cuda", rank % torch.cuda.device_count())
         torch.cuda.set_device(device)
@@ -141,9 +149,6 @@ def maybe_init_distributed(args):
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def maybe_destroy_distributed(args):
-    import torch.distributed as dist
-
-    if args.parallel_type is not None:
-        if dist.is_initialized():
-            dist.destroy_process_group()
+def maybe_destroy_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()

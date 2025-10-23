@@ -5,27 +5,18 @@ sys.path.append("..")
 
 import time
 import torch
+import torch.distributed as dist
 from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
     AutoencoderKLQwenImage,
+    ContextParallelConfig,
 )
 
-from utils import (
-    GiB,
-    get_args,
-    strify,
-    cachify,
-    maybe_init_distributed,
-    maybe_destroy_distributed,
-)
-import cache_dit
+from utils import maybe_init_distributed, maybe_destroy_distributed
 
 
-args = get_args()
-print(args)
-
-rank, device = maybe_init_distributed(args)
+rank, device = maybe_init_distributed()
 
 pipe = QwenImagePipeline.from_pretrained(
     os.environ.get(
@@ -35,38 +26,10 @@ pipe = QwenImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-
-if GiB() < 96:
-    if args.quantize:
-        print("Apply FP8 Weight Only Quantize ...")
-        args.quantize_type = "fp8_w8a16_wo"  # force
-        pipe.transformer = cache_dit.quantize(
-            pipe.transformer,
-            quant_type=args.quantize_type,
-            exclude_layers=[
-                "img_in",
-                "txt_in",
-            ],
-        )
-        pipe.text_encoder = cache_dit.quantize(
-            pipe.text_encoder,
-            quant_type=args.quantize_type,
-        )
-        pipe.to(device)
-        if torch.distributed.is_initialized():
-            torch.distributed.barrier()
-    else:
-        print("Enable Model CPU Offload ...")
-        pipe.enable_model_cpu_offload(device=device)
-else:
-    pipe.to(device)
+pipe.enable_model_cpu_offload(device=device)
 
 assert isinstance(pipe.vae, AutoencoderKLQwenImage)
 pipe.vae.enable_tiling()
-
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
 
 
 positive_magic = {
@@ -83,27 +46,27 @@ negative_prompt = " "
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 
+pipe.transformer.enable_parallelism(
+    config=ContextParallelConfig(ulysses_degree=dist.get_world_size())
+)
+pipe.transformer.set_attention_backend("_native_cudnn")
+# pipe.transformer.set_attention_backend("flash")
+
+
 def run_pipe():
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
     image = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
-        width=1024 if args.width is None else args.width,
-        height=1024 if args.height is None else args.height,
-        num_inference_steps=50 if args.steps is None else args.steps,
+        width=1024,
+        height=1024,
+        num_inference_steps=50,
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
 
-    if torch.distributed.is_initialized():
-        torch.distributed.barrier()
-
     return image
 
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe()
@@ -112,11 +75,10 @@ start = time.time()
 image = run_pipe()
 end = time.time()
 
-cache_dit.summary(pipe)
 
 if rank == 0:
     time_cost = end - start
-    save_path = f"qwen-image.{strify(args, pipe)}.png"
+    save_path = f"qwen-image.cp{dist.get_world_size()}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     image.save(save_path)
