@@ -54,15 +54,26 @@ def maybe_enable_parallelism(
                 ring_degree=parallelism_config.ring_size,
             )
         if cp_config is not None:
+            attention_backend = parallelism_config.parallel_kwargs.get(
+                "attention_backend", None
+            )
             if hasattr(transformer, "enable_parallelism"):
                 if hasattr(transformer, "set_attention_backend"):
-                    # Now only _native_cudnn is supported for parallelism
-                    # issue: https://github.com/huggingface/diffusers/pull/12443
-                    transformer.set_attention_backend("_native_cudnn")
-                    logger.warning(
-                        "Set attention backend to _native_cudnn for parallelism because of "
-                        "the issue: https://github.com/huggingface/diffusers/pull/12443"
-                    )
+                    # _native_cudnn, flash, etc.
+                    if attention_backend is None:
+                        # Now only _native_cudnn is supported for parallelism
+                        # issue: https://github.com/huggingface/diffusers/pull/12443
+                        transformer.set_attention_backend("_native_cudnn")
+                        logger.warning(
+                            "attention_backend is None, set default attention backend "
+                            "to _native_cudnn for parallelism because of the issue: "
+                            "https://github.com/huggingface/diffusers/pull/12443"
+                        )
+                    else:
+                        transformer.set_attention_backend(attention_backend)
+                        logger.info(
+                            f"Found attention_backend from config, set it to {attention_backend}"
+                        )
                 cp_plan = parallelism_config.parallel_kwargs.get(
                     "cp_plan", None
                 )

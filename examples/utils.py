@@ -60,6 +60,12 @@ def get_args(
     parser.add_argument(
         "--parallel-type", "--parallel", type=str, default=None
     )  # ulysses, ring
+    parser.add_argument(
+        "--attn",
+        type=str,
+        default=None,
+        choices=[None, "flash", "_native_cudnn"],
+    )
     return parser.parse_args() if parse else parser
 
 
@@ -113,6 +119,11 @@ def cachify(
                         if args.parallel_type == "ring"
                         else None
                     ),
+                    parallel_kwargs={
+                        "attention_backend": (
+                            "_native_cudnn" if not args.attn else args.attn
+                        )
+                    },
                 )
                 if parallelism_config is None
                 and args.parallel_type in ["ulysses", "ring"]
