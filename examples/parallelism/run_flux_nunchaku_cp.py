@@ -97,20 +97,8 @@ if args.cache or args.parallel_type is not None:
                 ),
             ),
         ],
-        # Patch: https://github.com/nunchaku-tech/nunchaku/blob/main/nunchaku/models/attention_processors/flux.py#L87
-        # to support distributed context parallelism for Flux in nunchaku please add below code:
-        # query, key, value = qkv.chunk(3, dim=-1)
-        # if (
-        #     torch.distributed.is_initialized()
-        #     and torch.distributed.get_world_size() > 1
-        # ):
-        #     world_size = torch.distributed.get_world_size()
-        #     key_list = [torch.empty_like(key) for _ in range(world_size)]
-        #     value_list = [torch.empty_like(value) for _ in range(world_size)]
-        #     torch.distributed.all_gather(key_list, key.contiguous())
-        #     torch.distributed.all_gather(value_list, value.contiguous())
-        #     key = torch.cat(key_list, dim=1)
-        #     value = torch.cat(value_list, dim=1)
+        # In order to enable parallelism for nunchaku flux transformer,
+        # please use our modified fork: https://github.com/vipshop/nunchaku
         parallelism_config=(
             ParallelismConfig(
                 ulysses_size=(
@@ -128,6 +116,10 @@ if args.cache or args.parallel_type is not None:
             else None
         ),
     )
+
+    if args.parallel_type in ["ulysses", "ring"]:
+        assert isinstance(pipe.transformer, NunchakuFluxTransformer2DModelV2)
+        pipe.transformer.set_native_parallel_flag(True)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
