@@ -72,7 +72,8 @@ def maybe_enable_parallelism(
                     else:
                         transformer.set_attention_backend(attention_backend)
                         logger.info(
-                            f"Found attention_backend from config, set it to {attention_backend}"
+                            "Found attention_backend from config, set attention "
+                            f"backend to: {attention_backend}"
                         )
                 cp_plan = parallelism_config.parallel_kwargs.get(
                     "cp_plan", None
