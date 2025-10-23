@@ -247,6 +247,7 @@ def _summary(
 ) -> CacheStats:
     cache_stats = CacheStats()
 
+    # Get stats from transformer
     if not isinstance(pipe_or_module, torch.nn.Module):
         assert hasattr(pipe_or_module, "transformer")
         module = pipe_or_module.transformer
