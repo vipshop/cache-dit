@@ -89,7 +89,7 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe():
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
-    image = pipe(
+    output = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
@@ -98,8 +98,8 @@ def run_pipe():
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
         output_type="latent" if args.perf else "pil",
-    ).images[0]
-
+    )
+    image = output.images[0] if not args.perf else None
     return image
 
 
