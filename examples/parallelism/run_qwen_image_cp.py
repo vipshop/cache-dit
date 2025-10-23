@@ -66,7 +66,6 @@ if args.cache or args.parallel_type is not None:
 
 
 if GiB() < 96 and not enable_quatization:
-    print("Enable Model CPU Offload ...")
     # NOTE: Enable cpu offload before enabling parallelism will
     # raise shape error after first pipe call, so we enable it after.
     # It seems a bug of diffusers that cpu offload is not fully
