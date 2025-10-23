@@ -127,7 +127,7 @@
 ## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. The key features of cache-dit includes: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
+**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
 
 ```bash
 pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
