@@ -5,8 +5,9 @@
   <p align="center">
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
-    🔥<b><a href="./docs/User_Guide.md">DBCache</a> | <a href="./docs/User_Guide.md">DBPrune</a> | <a href="./docs/User_Guide.md">Hybrid TaylorSeer</a> | <a href="./docs/User_Guide.md">Hybrid Cache CFG</a></b>🔥 <br> 
-    🔥<b><a href="./docs/User_Guide.md">Hybrid Context Paralleism</a> | <a href="./docs/User_Guide.md">Diffusers Native</a> | <a href="./docs/User_Guide.md">SOTA</a></b>🔥
+    🔥<b><a href="./docs/User_Guide.md">Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">Automatic Block Adapter</a> </b>🔥 <br>
+    🔥<b><a href="./docs/User_Guide.md">DBCache</a> | <a href="./docs/User_Guide.md">DBPrune</a> | <a href="./docs/User_Guide.md">Hybrid TaylorSeer Calibrator</a> | <a href="./docs/User_Guide.md">Cache CFG</a></b>🔥<br>
+    🔥<b><a href="./docs/User_Guide.md">Context Parallelism</a> | <a href="./docs/User_Guide.md">Torch Compile Compatible</a> | <a href="./docs/User_Guide.md">SOTA</a></b>🔥 
   </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
@@ -126,7 +127,7 @@
 ## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **DBPrune**, **TaylorSeer Calibrator**, and **Cache CFG**.   
+**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. The key features includes: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **DBPrune**, **TaylorSeer Calibrator**, **Cache CFG** and **Context Parallelism**.   
 
 ```bash
 pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
@@ -157,6 +158,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
+- 2025.10.23: 🎉Now cache-dit supported the [Kandinsky5 T2V](https://github.com/ai-forever/Kandinsky-5) and [Photoroom/PRX](https://github.com/huggingface/diffusers/pull/12456) pipelines.
 - 2025.10.20: 🔥Now cache-dit supported the **[Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)** scheme!🔥
 - 2025.10.16: 🎉cache-dit + [**🔥nunchaku 4-bits**](https://github.com/nunchaku-tech/nunchaku) supported: [Qwen-Image-Lightning 4/8 steps](./examples/quantize/).
 - 2025.10.15: 🎉cache-dit now supported [**🔥nunchaku**](https://github.com/nunchaku-tech/nunchaku): Qwen-Image/FLUX.1 [4-bits examples](./examples/quantize/)
