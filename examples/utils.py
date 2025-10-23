@@ -92,7 +92,7 @@ def cachify(
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                 )
                 if cache_config is None and args.cache
-                else (cache_config if args.cache else None)
+                else cache_config
             ),
             calibrator_config=(
                 TaylorSeerCalibratorConfig(
