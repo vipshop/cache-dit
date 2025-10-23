@@ -10,14 +10,12 @@ from diffusers import (
 
 
 def maybe_init_distributed():
-    # always init distributed for other examples
     if not dist.is_initialized():
         dist.init_process_group("nccl")
-        rank = dist.get_rank()
-        device = torch.device("cuda", rank % torch.cuda.device_count())
-        torch.cuda.set_device(device)
-        return rank, device
-    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    rank = dist.get_rank()
+    device = torch.device("cuda", rank % torch.cuda.device_count())
+    torch.cuda.set_device(device)
+    return rank, device
 
 
 def maybe_destroy_distributed():
