@@ -84,6 +84,8 @@ prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coff
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
 
+pipe.set_progress_bar_config(disable=rank != 0)
+
 
 def run_pipe():
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt

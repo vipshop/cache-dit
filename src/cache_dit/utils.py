@@ -79,7 +79,7 @@ def summary(
             transformer_2 = None
         else:
             transformer = adapter_or_others.transformer
-            transformer_2 = None
+            transformer_2 = None  # Only for Wan2.2
             if hasattr(adapter_or_others, "transformer_2"):
                 transformer_2 = adapter_or_others.transformer_2
 
