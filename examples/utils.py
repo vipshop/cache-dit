@@ -66,6 +66,7 @@ def get_args(
         default=None,
         choices=[None, "flash", "_native_cudnn"],
     )
+    parser.add_argument("--perf", action="store_true", default=False)
     return parser.parse_args() if parse else parser
 
 
