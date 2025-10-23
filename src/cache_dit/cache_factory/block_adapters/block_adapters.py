@@ -489,6 +489,7 @@ class BlockAdapter:
     @staticmethod
     def normalize(
         adapter: "BlockAdapter",
+        unique: bool = True,
     ) -> "BlockAdapter":
 
         if getattr(adapter, "_is_normalized", False):
@@ -523,7 +524,10 @@ class BlockAdapter:
         adapter.forward_pattern = _normalize_attr(adapter.forward_pattern)
         adapter.dummy_blocks_names = _normalize_attr(adapter.dummy_blocks_names)
         adapter.params_modifiers = _normalize_attr(adapter.params_modifiers)
-        BlockAdapter.unique(adapter)
+        # Some times, the cache_config will be None.
+        # So we do not perform unique check here.
+        if unique:
+            BlockAdapter.unique(adapter)
 
         adapter._is_normalized = True
 
@@ -572,6 +576,10 @@ class BlockAdapter:
             raise RuntimeError("block_adapter must be normailzed.")
 
     @classmethod
+    def is_normalized(cls, adapter: "BlockAdapter") -> bool:
+        return getattr(adapter, "_is_normalized", False)
+
+    @classmethod
     def is_cached(cls, adapter: Any) -> bool:
         if isinstance(adapter, cls):
             cls.assert_normalized(adapter)
@@ -591,6 +599,21 @@ class BlockAdapter:
             return getattr(adapter[0], "_is_cached", False)
         else:
             return getattr(adapter, "_is_cached", False)
+
+    @classmethod
+    def is_parallelized(cls, adapter: Any) -> bool:
+        if isinstance(adapter, cls):
+            cls.assert_normalized(adapter)
+            return getattr(adapter.transformer[0], "_is_parallelized", False)
+        elif isinstance(adapter, DiffusionPipeline):
+            return getattr(adapter.transformer, "_is_parallelized", False)
+        elif isinstance(adapter, torch.nn.Module):
+            return getattr(adapter, "_is_parallelized", False)
+        elif isinstance(adapter, list):  # [TRN_0,...]
+            assert isinstance(adapter[0], torch.nn.Module)
+            return getattr(adapter[0], "_is_parallelized", False)
+        else:
+            return getattr(adapter, "_is_parallelized", False)
 
     @classmethod
     def nested_depth(cls, obj: Any):

@@ -8,7 +8,6 @@ import torch
 from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
-    AutoencoderKLQwenImage,
 )
 
 from utils import (
@@ -37,8 +36,9 @@ pipe = QwenImagePipeline.from_pretrained(
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
+enable_quatization = args.quantize and GiB() < 96
 if GiB() < 96:
-    if args.quantize:
+    if enable_quatization:
         print("Apply FP8 Weight Only Quantize ...")
         args.quantize_type = "fp8_w8a16_wo"  # force
         pipe.transformer = cache_dit.quantize(
@@ -54,20 +54,23 @@ if GiB() < 96:
             quant_type=args.quantize_type,
         )
         pipe.to(device)
-        if torch.distributed.is_initialized():
-            torch.distributed.barrier()
-    else:
-        raise RuntimeError(
-            "Not enough memory to run Qwen-Image model, please enable quantization."
-        )
 else:
     pipe.to(device)
 
-assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-pipe.vae.enable_tiling()
+# assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+# pipe.vae.enable_tiling()
 
+# Apply cache and context parallelism here
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
+
+
+if GiB() < 96 and not enable_quatization:
+    # NOTE: Enable cpu offload before enabling parallelism will
+    # raise shape error after first pipe call, so we enable it after.
+    # It seems a bug of diffusers that cpu offload is not fully
+    # compatible with context parallelism, visa versa.
+    pipe.enable_model_cpu_offload(device=device)
 
 
 positive_magic = {
@@ -81,7 +84,7 @@ prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coff
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
 
-assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+pipe.set_progress_bar_config(disable=rank != 0)
 
 
 def run_pipe():
@@ -95,9 +98,6 @@ def run_pipe():
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
-
-    if torch.distributed.is_initialized():
-        torch.distributed.barrier()
 
     return image
 
@@ -122,4 +122,4 @@ if rank == 0:
     print(f"Saving image to {save_path}")
     image.save(save_path)
 
-maybe_destroy_distributed(args)
+maybe_destroy_distributed()

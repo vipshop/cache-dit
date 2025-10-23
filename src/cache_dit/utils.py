@@ -79,25 +79,31 @@ def summary(
             transformer_2 = None
         else:
             transformer = adapter_or_others.transformer
-            transformer_2 = None
+            transformer_2 = None  # Only for Wan2.2
             if hasattr(adapter_or_others, "transformer_2"):
                 transformer_2 = adapter_or_others.transformer_2
 
-        if not BlockAdapter.is_cached(transformer):
+        if all(
+            (
+                not BlockAdapter.is_cached(transformer),
+                not BlockAdapter.is_parallelized(transformer),
+            )
+        ):
             return [CacheStats()]
 
         blocks_stats: List[CacheStats] = []
-        for blocks in BlockAdapter.find_blocks(transformer):
-            blocks_stats.append(
-                _summary(
-                    blocks,
-                    details=details,
-                    logging=logging,
-                    **kwargs,
+        if BlockAdapter.is_cached(transformer):
+            for blocks in BlockAdapter.find_blocks(transformer):
+                blocks_stats.append(
+                    _summary(
+                        blocks,
+                        details=details,
+                        logging=logging,
+                        **kwargs,
+                    )
                 )
-            )
 
-        if transformer_2 is not None:
+        if transformer_2 is not None and BlockAdapter.is_cached(transformer_2):
             for blocks in BlockAdapter.find_blocks(transformer_2):
                 blocks_stats.append(
                     _summary(
@@ -126,7 +132,11 @@ def summary(
                 )
             )
 
-        blocks_stats = [stats for stats in blocks_stats if stats.cache_options]
+        blocks_stats = [
+            stats
+            for stats in blocks_stats
+            if (stats.cache_options or stats.parallelism_config)
+        ]
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
 
@@ -160,6 +170,8 @@ def strify(
         Dict[str, Any],
     ],
 ) -> str:
+
+    parallelism_config: ParallelismConfig = None
     if isinstance(adapter_or_others, BlockAdapter):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
@@ -182,8 +194,8 @@ def strify(
         cache_options = adapter_or_others
         cached_steps = None
         cache_type = cache_options.get("cache_type", CacheType.NONE)
-
         stats = None
+        parallelism_config = cache_options.get("parallelism_config", None)
 
         if cache_type == CacheType.NONE:
             return "NONE"
@@ -193,7 +205,10 @@ def strify(
             "DiffusionPipeline | CacheStats | Dict[str, Any]"
         )
 
-    if not cache_options:
+    if stats is not None:
+        parallelism_config = stats.parallelism_config
+
+    if not cache_options and parallelism_config is None:
         return "NONE"
 
     def cache_str():
@@ -219,14 +234,14 @@ def strify(
         return "T0O0"
 
     def parallelism_str():
-        if stats is None:
-            return ""
-        parallelism_config: ParallelismConfig = stats.parallelism_config
         if parallelism_config is not None:
             return f"_{parallelism_config.strify()}"
         return ""
 
-    cache_type_str = f"{cache_str()}_{calibrator_str()}{parallelism_str()}"
+    cache_type_str = f"{cache_str()}"
+    if cache_type_str != "NONE":
+        cache_type_str += f"_{calibrator_str()}"
+    cache_type_str += f"{parallelism_str()}"
 
     if cached_steps:
         cache_type_str += f"_S{cached_steps}"
@@ -245,6 +260,7 @@ def _summary(
 ) -> CacheStats:
     cache_stats = CacheStats()
 
+    # Get stats from transformer
     if not isinstance(pipe_or_module, torch.nn.Module):
         assert hasattr(pipe_or_module, "transformer")
         module = pipe_or_module.transformer

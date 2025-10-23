@@ -9,6 +9,7 @@ import torch.distributed as dist
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
+    PipelineQuantizationConfig,
 )
 from nunchaku.models.transformers.transformer_flux_v2 import (
     NunchakuFluxTransformer2DModelV2,
@@ -37,6 +38,19 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
     os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
     transformer=transformer,
     torch_dtype=torch.bfloat16,
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder_2"],
+        )
+        if args.quantize
+        else None
+    ),
 ).to("cuda")
 
 
@@ -50,13 +64,17 @@ if args.cache or args.parallel_type is not None:
 
     cache_dit.enable_cache(
         pipe,
-        cache_config=DBCacheConfig(
-            Fn_compute_blocks=args.Fn,
-            Bn_compute_blocks=args.Bn,
-            max_warmup_steps=args.max_warmup_steps,
-            max_cached_steps=args.max_cached_steps,
-            max_continuous_cached_steps=args.max_continuous_cached_steps,
-            residual_diff_threshold=args.rdt,
+        cache_config=(
+            DBCacheConfig(
+                Fn_compute_blocks=args.Fn,
+                Bn_compute_blocks=args.Bn,
+                max_warmup_steps=args.max_warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                max_continuous_cached_steps=args.max_continuous_cached_steps,
+                residual_diff_threshold=args.rdt,
+            )
+            if args.cache
+            else None
         ),
         calibrator_config=(
             TaylorSeerCalibratorConfig(
@@ -113,6 +131,8 @@ if args.cache or args.parallel_type is not None:
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
+pipe.set_progress_bar_config(disable=rank != 0)
+
 
 def run_pipe(pipe: FluxPipeline):
     image = pipe(
@@ -149,4 +169,4 @@ if rank == 0:
     image.save(save_path)
 
 
-maybe_destroy_distributed(args)
+maybe_destroy_distributed()

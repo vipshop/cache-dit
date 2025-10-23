@@ -1,6 +1,7 @@
 import torch
 import argparse
 import cache_dit
+import torch.distributed as dist
 from cache_dit import init_logger
 
 logger = init_logger(__name__)
@@ -59,6 +60,12 @@ def get_args(
     parser.add_argument(
         "--parallel-type", "--parallel", type=str, default=None
     )  # ulysses, ring
+    parser.add_argument(
+        "--attn",
+        type=str,
+        default=None,
+        choices=[None, "flash", "_native_cudnn"],
+    )
     return parser.parse_args() if parse else parser
 
 
@@ -90,7 +97,7 @@ def cachify(
                     residual_diff_threshold=args.rdt,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                 )
-                if cache_config is None
+                if cache_config is None and args.cache
                 else cache_config
             ),
             calibrator_config=(
@@ -112,6 +119,11 @@ def cachify(
                         if args.parallel_type == "ring"
                         else None
                     ),
+                    parallel_kwargs={
+                        "attention_backend": (
+                            "_native_cudnn" if not args.attn else args.attn
+                        )
+                    },
                 )
                 if parallelism_config is None
                 and args.parallel_type in ["ulysses", "ring"]
@@ -129,11 +141,18 @@ def strify(args, pipe_or_stats):
     )
 
 
-def maybe_init_distributed(args):
-    import torch.distributed as dist
-
-    if args.parallel_type is not None:
-        dist.init_process_group("nccl")
+def maybe_init_distributed(args=None):
+    if args is not None:
+        if args.parallel_type is not None:
+            dist.init_process_group("nccl")
+            rank = dist.get_rank()
+            device = torch.device("cuda", rank % torch.cuda.device_count())
+            torch.cuda.set_device(device)
+            return rank, device
+    else:
+        # always init distributed for other examples
+        if not dist.is_initialized():
+            dist.init_process_group("nccl")
         rank = dist.get_rank()
         device = torch.device("cuda", rank % torch.cuda.device_count())
         torch.cuda.set_device(device)
@@ -141,9 +160,6 @@ def maybe_init_distributed(args):
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def maybe_destroy_distributed(args):
-    import torch.distributed as dist
-
-    if args.parallel_type is not None:
-        if dist.is_initialized():
-            dist.destroy_process_group()
+def maybe_destroy_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()

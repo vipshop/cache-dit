@@ -8,6 +8,7 @@ import torch
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
+    PipelineQuantizationConfig,
 )
 from utils import (
     get_args,
@@ -30,12 +31,27 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
         "black-forest-labs/FLUX.1-dev",
     ),
     torch_dtype=torch.bfloat16,
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder_2"],
+        )
+        if args.quantize
+        else None
+    ),
 ).to("cuda")
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
+
+pipe.set_progress_bar_config(disable=rank != 0)
 
 
 def run_pipe(pipe: FluxPipeline):
@@ -69,4 +85,4 @@ if rank == 0:
     print(f"Saving image to {save_path}")
     image.save(save_path)
 
-maybe_destroy_distributed(args)
+maybe_destroy_distributed()

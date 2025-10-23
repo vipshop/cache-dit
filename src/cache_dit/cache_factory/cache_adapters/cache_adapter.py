@@ -52,6 +52,10 @@ class CachedAdapter:
                 block_adapter = BlockAdapterRegistry.get_adapter(
                     pipe_or_adapter
                 )
+                assert block_adapter is not None, (
+                    f"BlockAdapter for {pipe_or_adapter.__class__.__name__} "
+                    "should not be None!"
+                )
                 if params_modifiers := context_kwargs.pop(
                     "params_modifiers",
                     None,
