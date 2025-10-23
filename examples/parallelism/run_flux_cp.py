@@ -37,6 +37,8 @@ if args.cache or args.parallel_type is not None:
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
+pipe.set_progress_bar_config(disable=rank != 0)
+
 
 def run_pipe(pipe: FluxPipeline):
     image = pipe(
