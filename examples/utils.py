@@ -91,8 +91,8 @@ def cachify(
                     residual_diff_threshold=args.rdt,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                 )
-                if cache_config is None
-                else cache_config
+                if cache_config is None and args.cache
+                else (cache_config if args.cache else None)
             ),
             calibrator_config=(
                 TaylorSeerCalibratorConfig(
