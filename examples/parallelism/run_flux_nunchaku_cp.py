@@ -9,6 +9,7 @@ import torch.distributed as dist
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
+    PipelineQuantizationConfig,
 )
 from nunchaku.models.transformers.transformer_flux_v2 import (
     NunchakuFluxTransformer2DModelV2,
@@ -37,6 +38,19 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
     os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
     transformer=transformer,
     torch_dtype=torch.bfloat16,
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder_2"],
+        )
+        if args.quantize
+        else None
+    ),
 ).to("cuda")
 
 

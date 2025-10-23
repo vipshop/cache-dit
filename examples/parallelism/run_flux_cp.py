@@ -8,6 +8,7 @@ import torch
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
+    PipelineQuantizationConfig,
 )
 from utils import (
     get_args,
@@ -30,6 +31,19 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
         "black-forest-labs/FLUX.1-dev",
     ),
     torch_dtype=torch.bfloat16,
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder_2"],
+        )
+        if args.quantize
+        else None
+    ),
 ).to("cuda")
 
 if args.cache or args.parallel_type is not None:
