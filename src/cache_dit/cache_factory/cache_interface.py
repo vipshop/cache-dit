@@ -24,11 +24,13 @@ def enable_cache(
         BlockAdapter,
     ],
     # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
-    cache_config: Union[
-        BasicCacheConfig,
-        DBCacheConfig,
-        DBPruneConfig,
-    ] = DBCacheConfig(),
+    cache_config: Optional[
+        Union[
+            BasicCacheConfig,
+            DBCacheConfig,
+            DBPruneConfig,
+        ]
+    ] = None,
     # Calibrator config: TaylorSeerCalibratorConfig, etc.
     calibrator_config: Optional[CalibratorConfig] = None,
     # Modify cache context params for specific blocks.
@@ -154,13 +156,26 @@ def enable_cache(
     >>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
     >>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
     """
+    # Precheck for compatibility of different configurations
+    if cache_config is None:
+        if parallelism_config is None:
+            # Set default cache config only when parallelism is not enabled
+            logger.info("Using default DBCacheConfig for cache context.")
+            cache_config = DBCacheConfig()
+        else:
+            # Allow empty cache_config when parallelism is enabled
+            logger.info(
+                "Parallelism is enabled, please manually set cache_config "
+                "to avoid potential compatibility issues."
+            )
+
     # Collect cache context kwargs
     context_kwargs = {}
     if (cache_type := context_kwargs.get("cache_type", None)) is not None:
         if cache_type == CacheType.NONE:
             return pipe_or_adapter
 
-    # WARNING: Deprecated cache config params. These parameters are now retained
+    # NOTE: Deprecated cache config params. These parameters are now retained
     # for backward compatibility but will be removed in the future.
     deprecated_kwargs = {
         "Fn_compute_blocks": kwargs.get("Fn_compute_blocks", None),
@@ -196,9 +211,9 @@ def enable_cache(
     if cache_config is not None:
         context_kwargs["cache_config"] = cache_config
 
-    # WARNING: Deprecated taylorseer params. These parameters are now retained
+    # NOTE: Deprecated taylorseer params. These parameters are now retained
     # for backward compatibility but will be removed in the future.
-    if (
+    if cache_config is not None and (
         kwargs.get("enable_taylorseer", None) is not None
         or kwargs.get("enable_encoder_taylorseer", None) is not None
     ):
@@ -226,16 +241,22 @@ def enable_cache(
     if params_modifiers is not None:
         context_kwargs["params_modifiers"] = params_modifiers
 
-    if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
-        pipe_or_adapter = CachedAdapter.apply(
-            pipe_or_adapter,
-            **context_kwargs,
-        )
+    if cache_config is not None:
+        if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
+            pipe_or_adapter = CachedAdapter.apply(
+                pipe_or_adapter,
+                **context_kwargs,
+            )
+        else:
+            raise ValueError(
+                f"type: {type(pipe_or_adapter)} is not valid, "
+                "Please pass DiffusionPipeline or BlockAdapter"
+                "for the 1's position param: pipe_or_adapter"
+            )
     else:
-        raise ValueError(
-            f"type: {type(pipe_or_adapter)} is not valid, "
-            "Please pass DiffusionPipeline or BlockAdapter"
-            "for the 1's position param: pipe_or_adapter"
+        logger.warning(
+            "cache_config is None, skip enabling cache for "
+            f"{pipe_or_adapter.__class__.__name__}."
         )
 
     # NOTE: Users should always enable parallelism after applying
@@ -248,15 +269,18 @@ def enable_cache(
             transformer = pipe_or_adapter.transformer
         else:
             assert BlockAdapter.assert_normalized(pipe_or_adapter)
-            assert (
-                len(BlockAdapter.flatten(pipe_or_adapter.transformer)) == 1
-            ), (
-                "Only single transformer is supported to enable parallelism "
-                "currently for BlockAdapter."
-            )
-            transformer = BlockAdapter.flatten(pipe_or_adapter.transformer)[0]
-        # Enable parallelism for the transformer inplace
-        transformer = enable_parallelism(transformer, parallelism_config)
+            transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
+            if len(transformers) > 1:
+                logger.warning(
+                    "Multiple transformers are detected in the "
+                    "BlockAdapter, all transfomers will be "
+                    "enabled for parallelism."
+                )
+            for i, transformer in enumerate(transformers):
+                # Enable parallelism for the transformer inplace
+                transformers[i] = enable_parallelism(
+                    transformer, parallelism_config
+                )
     return pipe_or_adapter
 
 

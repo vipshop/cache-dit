@@ -9,7 +9,6 @@ import torch.distributed as dist
 from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
-    AutoencoderKLQwenImage,
     ContextParallelConfig,
 )
 
@@ -26,11 +25,24 @@ pipe = QwenImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
+# NOTE: Enable cpu offload before enabling parallelism will
+# raise shape error after first pipe call, so we enable it after.
+# It seems a bug of diffusers that cpu offload is not fully
+# compatible with context parallelism, visa versa.
+# pipe.enable_model_cpu_offload(device=device)
+
+assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+# pipe.transformer.set_attention_backend("flash")
+pipe.transformer.set_attention_backend("_native_cudnn")
+pipe.transformer.enable_parallelism(
+    config=ContextParallelConfig(ulysses_degree=dist.get_world_size())
+)
+
+# NOTE: Enable cpu offload after enabling parallelism
 pipe.enable_model_cpu_offload(device=device)
 
-assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-pipe.vae.enable_tiling()
-
+# assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+# pipe.vae.enable_tiling()
 
 positive_magic = {
     "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
@@ -42,15 +54,6 @@ prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coff
 
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
-
-assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
-
-
-pipe.transformer.enable_parallelism(
-    config=ContextParallelConfig(ulysses_degree=dist.get_world_size())
-)
-pipe.transformer.set_attention_backend("_native_cudnn")
-# pipe.transformer.set_attention_backend("flash")
 
 
 def run_pipe():

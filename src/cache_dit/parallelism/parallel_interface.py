@@ -40,8 +40,12 @@ def enable_parallelism(
         )
 
     transformer._is_parallelized = True  # type: ignore[attr-defined]
+    # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
     transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-    logger.info(f"Enabled parallelism: {parallelism_config.strify(True)}")
+    logger.info(
+        f"Enabled parallelism: {parallelism_config.strify(True)}, "
+        f"transformer id:{id(transformer)}"
+    )
     return transformer
 
 
