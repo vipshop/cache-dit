@@ -1,8 +1,4 @@
 import os
-import sys
-
-sys.path.append("..")
-
 import time
 import torch
 import torch.distributed as dist
@@ -12,7 +8,21 @@ from diffusers import (
     ContextParallelConfig,
 )
 
-from utils import maybe_init_distributed, maybe_destroy_distributed
+
+def maybe_init_distributed():
+    # always init distributed for other examples
+    if not dist.is_initialized():
+        dist.init_process_group("nccl")
+        rank = dist.get_rank()
+        device = torch.device("cuda", rank % torch.cuda.device_count())
+        torch.cuda.set_device(device)
+        return rank, device
+    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def maybe_destroy_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 rank, device = maybe_init_distributed()
@@ -74,10 +84,12 @@ def run_pipe():
 
 
 # warmup
-_ = run_pipe()
+_ = run_pipe()  # always work
 
 start = time.time()
-image = run_pipe()
+image = (
+    run_pipe()
+)  # raise error here if cpu offload is enabled before parallelism
 end = time.time()
 
 
