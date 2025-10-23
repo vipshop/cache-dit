@@ -96,4 +96,4 @@ if rank == 0:
     print(f"Saving video to {save_path}")
     export_to_video(video, save_path, fps=24, quality=9)
 
-maybe_destroy_distributed(args)
+maybe_destroy_distributed()

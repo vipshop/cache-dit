@@ -71,4 +71,4 @@ if rank == 0:
     print(f"Saving image to {save_path}")
     image.save(save_path)
 
-maybe_destroy_distributed(args)
+maybe_destroy_distributed()

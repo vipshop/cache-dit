@@ -155,4 +155,4 @@ if rank == 0:
     image.save(save_path)
 
 
-maybe_destroy_distributed(args)
+maybe_destroy_distributed()
