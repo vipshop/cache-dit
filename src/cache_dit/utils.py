@@ -238,7 +238,10 @@ def strify(
             return f"_{parallelism_config.strify()}"
         return ""
 
-    cache_type_str = f"{cache_str()}_{calibrator_str()}{parallelism_str()}"
+    cache_type_str = f"{cache_str()}"
+    if cache_type_str != "NONE":
+        cache_type_str += f"_{calibrator_str()}"
+    cache_type_str += f"{parallelism_str()}"
 
     if cached_steps:
         cache_type_str += f"_S{cached_steps}"
