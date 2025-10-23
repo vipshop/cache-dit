@@ -83,21 +83,25 @@ def summary(
             if hasattr(adapter_or_others, "transformer_2"):
                 transformer_2 = adapter_or_others.transformer_2
 
-        if not BlockAdapter.is_cached(transformer):
+        if all(
+            not BlockAdapter.is_cached(transformer),
+            not BlockAdapter.is_parallelized(transformer),
+        ):
             return [CacheStats()]
 
         blocks_stats: List[CacheStats] = []
-        for blocks in BlockAdapter.find_blocks(transformer):
-            blocks_stats.append(
-                _summary(
-                    blocks,
-                    details=details,
-                    logging=logging,
-                    **kwargs,
+        if BlockAdapter.is_cached(transformer):
+            for blocks in BlockAdapter.find_blocks(transformer):
+                blocks_stats.append(
+                    _summary(
+                        blocks,
+                        details=details,
+                        logging=logging,
+                        **kwargs,
+                    )
                 )
-            )
 
-        if transformer_2 is not None:
+        if transformer_2 is not None and BlockAdapter.is_cached(transformer_2):
             for blocks in BlockAdapter.find_blocks(transformer_2):
                 blocks_stats.append(
                     _summary(

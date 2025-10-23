@@ -597,6 +597,21 @@ class BlockAdapter:
             return getattr(adapter, "_is_cached", False)
 
     @classmethod
+    def is_parallelized(cls, adapter: Any) -> bool:
+        if isinstance(adapter, cls):
+            cls.assert_normalized(adapter)
+            return getattr(adapter.transformer[0], "_is_parallelized", False)
+        elif isinstance(adapter, DiffusionPipeline):
+            return getattr(adapter.transformer, "_is_parallelized", False)
+        elif isinstance(adapter, torch.nn.Module):
+            return getattr(adapter, "_is_parallelized", False)
+        elif isinstance(adapter, list):  # [TRN_0,...]
+            assert isinstance(adapter[0], torch.nn.Module)
+            return getattr(adapter[0], "_is_parallelized", False)
+        else:
+            return getattr(adapter, "_is_parallelized", False)
+
+    @classmethod
     def nested_depth(cls, obj: Any):
         # str: 0; List[str]: 1; List[List[str]]: 2
         atom_types = (
