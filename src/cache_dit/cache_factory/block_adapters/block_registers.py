@@ -37,7 +37,7 @@ class BlockAdapterRegistry:
         cls,
         pipe: DiffusionPipeline | str | Any,
         **kwargs,
-    ) -> BlockAdapter:
+    ) -> BlockAdapter | None:
         if not isinstance(pipe, str):
             pipe_cls_name: str = pipe.__class__.__name__
         else:
@@ -47,7 +47,7 @@ class BlockAdapterRegistry:
             if pipe_cls_name.startswith(name):
                 return cls._adapters[name](pipe, **kwargs)
 
-        return BlockAdapter()
+        return None
 
     @classmethod
     def has_separate_cfg(

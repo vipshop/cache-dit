@@ -266,22 +266,43 @@ def enable_cache(
         assert isinstance(
             parallelism_config, ParallelismConfig
         ), "parallelism_config should be of type ParallelismConfig."
+
+        transformers = []
         if isinstance(pipe_or_adapter, DiffusionPipeline):
-            transformer = pipe_or_adapter.transformer
+            adapter = BlockAdapterRegistry.get_adapter(pipe_or_adapter)
+            if adapter is None:
+                assert hasattr(pipe_or_adapter, "transformer"), (
+                    "The given DiffusionPipeline does not have "
+                    "a 'transformer' attribute, cannot enable "
+                    "parallelism."
+                )
+                transformers = [pipe_or_adapter.transformer]
+            else:
+                adapter = BlockAdapter.normalize(adapter)
+                transformers = BlockAdapter.flatten(adapter.transformer)
         else:
-            assert BlockAdapter.assert_normalized(pipe_or_adapter)
+            if not BlockAdapter.is_normalized(pipe_or_adapter):
+                pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter)
             transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
-            if len(transformers) > 1:
-                logger.warning(
-                    "Multiple transformers are detected in the "
-                    "BlockAdapter, all transfomers will be "
-                    "enabled for parallelism."
-                )
-            for i, transformer in enumerate(transformers):
-                # Enable parallelism for the transformer inplace
-                transformers[i] = enable_parallelism(
-                    transformer, parallelism_config
-                )
+
+        if len(transformers) == 0:
+            logger.warning(
+                "No transformer is detected in the "
+                "BlockAdapter, skip enabling parallelism."
+            )
+            return pipe_or_adapter
+
+        if len(transformers) > 1:
+            logger.warning(
+                "Multiple transformers are detected in the "
+                "BlockAdapter, all transfomers will be "
+                "enabled for parallelism."
+            )
+        for i, transformer in enumerate(transformers):
+            # Enable parallelism for the transformer inplace
+            transformers[i] = enable_parallelism(
+                transformer, parallelism_config
+            )
     return pipe_or_adapter
 
 

@@ -572,6 +572,10 @@ class BlockAdapter:
             raise RuntimeError("block_adapter must be normailzed.")
 
     @classmethod
+    def is_normalized(cls, adapter: "BlockAdapter") -> bool:
+        return getattr(adapter, "_is_normalized", False)
+
+    @classmethod
     def is_cached(cls, adapter: Any) -> bool:
         if isinstance(adapter, cls):
             cls.assert_normalized(adapter)
