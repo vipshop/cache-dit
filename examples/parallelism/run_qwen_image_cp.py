@@ -97,6 +97,7 @@ def run_pipe():
         num_inference_steps=50 if args.steps is None else args.steps,
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
+        output_type="latent" if args.perf else "pil",
     ).images[0]
 
     return image
@@ -119,7 +120,8 @@ if rank == 0:
     time_cost = end - start
     save_path = f"qwen-image.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
-    image.save(save_path)
+    if not args.perf:
+        print(f"Saving image to {save_path}")
+        image.save(save_path)
 
 maybe_destroy_distributed()
