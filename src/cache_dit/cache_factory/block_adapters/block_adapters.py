@@ -489,6 +489,7 @@ class BlockAdapter:
     @staticmethod
     def normalize(
         adapter: "BlockAdapter",
+        unique: bool = True,
     ) -> "BlockAdapter":
 
         if getattr(adapter, "_is_normalized", False):
@@ -523,7 +524,10 @@ class BlockAdapter:
         adapter.forward_pattern = _normalize_attr(adapter.forward_pattern)
         adapter.dummy_blocks_names = _normalize_attr(adapter.dummy_blocks_names)
         adapter.params_modifiers = _normalize_attr(adapter.params_modifiers)
-        BlockAdapter.unique(adapter)
+        # Some times, the cache_config will be None.
+        # So we do not perform unique check here.
+        if unique:
+            BlockAdapter.unique(adapter)
 
         adapter._is_normalized = True
 

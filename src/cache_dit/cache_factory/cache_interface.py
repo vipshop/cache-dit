@@ -278,11 +278,13 @@ def enable_cache(
                 )
                 transformers = [pipe_or_adapter.transformer]
             else:
-                adapter = BlockAdapter.normalize(adapter)
+                adapter = BlockAdapter.normalize(adapter, unique=False)
                 transformers = BlockAdapter.flatten(adapter.transformer)
         else:
             if not BlockAdapter.is_normalized(pipe_or_adapter):
-                pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter)
+                pipe_or_adapter = BlockAdapter.normalize(
+                    pipe_or_adapter, unique=False
+                )
             transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
         if len(transformers) == 0:
