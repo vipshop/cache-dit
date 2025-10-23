@@ -160,6 +160,8 @@ def strify(
         Dict[str, Any],
     ],
 ) -> str:
+
+    parallelism_config: ParallelismConfig = None
     if isinstance(adapter_or_others, BlockAdapter):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
@@ -182,8 +184,8 @@ def strify(
         cache_options = adapter_or_others
         cached_steps = None
         cache_type = cache_options.get("cache_type", CacheType.NONE)
-
         stats = None
+        parallelism_config = cache_options.get("parallelism_config", None)
 
         if cache_type == CacheType.NONE:
             return "NONE"
@@ -193,7 +195,10 @@ def strify(
             "DiffusionPipeline | CacheStats | Dict[str, Any]"
         )
 
-    if not cache_options:
+    if stats is not None:
+        parallelism_config = stats.parallelism_config
+
+    if not cache_options and parallelism_config is None:
         return "NONE"
 
     def cache_str():
@@ -219,9 +224,6 @@ def strify(
         return "T0O0"
 
     def parallelism_str():
-        if stats is None:
-            return ""
-        parallelism_config: ParallelismConfig = stats.parallelism_config
         if parallelism_config is not None:
             return f"_{parallelism_config.strify()}"
         return ""
