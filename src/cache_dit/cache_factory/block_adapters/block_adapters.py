@@ -73,7 +73,7 @@ class BlockAdapter:
         ]
     ] = None
 
-    check_forward_pattern: bool = True
+    check_forward_pattern: bool = False
     check_num_outputs: bool = False
 
     # Pipeline Level Flags
