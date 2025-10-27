@@ -78,7 +78,7 @@ class BlockAdapter:
         ]
     ] = None
 
-    check_forward_pattern: bool = False
+    check_forward_pattern: Optional[bool] = None
     check_num_outputs: bool = False
 
     # Pipeline Level Flags
@@ -128,6 +128,30 @@ class BlockAdapter:
             logger.warning("pipe is None, use FakeDiffusionPipeline instead.")
 
     def maybe_skip_checks(self):
+        if self.check_forward_pattern is None:
+            if self.transformer is not None:
+                if self.nested_depth(self.transformer) == 0:
+                    transformer = self.transformer
+                elif self.nested_depth(self.transformer) == 1:
+                    transformer = self.transformer[0]
+                else:
+                    raise ValueError(
+                        "transformer nested depth can't more than 1, "
+                        f"current is: {self.nested_depth(self.transformer)}"
+                    )
+                if transformer.__module__.startswith("diffusers"):
+                    self.check_forward_pattern = True
+                    logger.info(
+                        f"Found transformer from diffusers: {transformer.__module__} "
+                        "enable check_forward_pattern by default."
+                    )
+                else:
+                    self.check_forward_pattern = False
+                    logger.info(
+                        f"Found transformer NOT from diffusers: {transformer.__module__} "
+                        "disable check_forward_pattern by default."
+                    )
+
         if getattr(self.transformer, "_hf_hook", None) is not None:
             logger.warning("_hf_hook is not None, force skip pattern check!")
             self.check_forward_pattern = False

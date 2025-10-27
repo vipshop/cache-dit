@@ -44,7 +44,10 @@ if args.cache:
                 ForwardPattern.Pattern_1,
                 ForwardPattern.Pattern_1,
             ],
-            check_forward_pattern=True,
+            # Set is False for transformers that do not come from Diffusers.
+            check_forward_pattern=pipe.transformer.__module__.startswith(
+                "diffusers"
+            ),
         ),
         cache_config=(
             DBCacheConfig(
@@ -62,13 +65,14 @@ if args.cache:
         ),
         params_modifiers=[
             ParamsModifier(
-                # transformer_blocks
                 cache_config=DBCacheConfig().reset(
                     residual_diff_threshold=args.rdt,
                 ),
             ),
             ParamsModifier(
-                # single_transformer_blocks
+                # NOTE: single_transformer_blocks should have higher
+                # residual_diff_threshold because of the precision error
+                # accumulation from previous transformer_blocks
                 cache_config=DBCacheConfig().reset(
                     residual_diff_threshold=args.rdt * 3,
                 ),
@@ -80,11 +84,17 @@ if args.cache:
 def run_pipe():
     image = pipe(
         "A cat holding a sign that says hello world",
+        height=1024 if args.height is None else args.height,
+        width=1024 if args.width is None else args.width,
         num_inference_steps=28 if args.steps is None else args.steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
 
+
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe()
