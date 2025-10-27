@@ -11,6 +11,8 @@ import torch
 import torch.distributed as dist
 
 from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from torchvision.io import write_video
 
 from longcat_video.pipeline_longcat_video import LongCatVideoPipeline
@@ -69,20 +71,44 @@ def generate(args):
     tokenizer = AutoTokenizer.from_pretrained(
         checkpoint_dir, subfolder="tokenizer", torch_dtype=torch.bfloat16
     )
+
+    # Reduce GPU VRAM requirement.
     text_encoder = UMT5EncoderModel.from_pretrained(
-        checkpoint_dir, subfolder="text_encoder", torch_dtype=torch.bfloat16
+        checkpoint_dir,
+        subfolder="text_encoder",
+        torch_dtype=torch.bfloat16,
+        quantization_config=(
+            TransformersBitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            if args.quantize
+            else None
+        ),
     )
+
     vae = AutoencoderKLWan.from_pretrained(
         checkpoint_dir, subfolder="vae", torch_dtype=torch.bfloat16
     )
     scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
         checkpoint_dir, subfolder="scheduler", torch_dtype=torch.bfloat16
     )
+
     dit = LongCatVideoTransformer3DModel.from_pretrained(
         checkpoint_dir,
         subfolder="dit",
         cp_split_hw=cp_split_hw,
         torch_dtype=torch.bfloat16,
+        quantization_config=(
+            DiffusersBitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            if args.quantize
+            else None
+        ),
     )
 
     pipe = LongCatVideoPipeline(
