@@ -3,6 +3,7 @@ import functools
 from typing import Dict, List, Tuple, Union
 
 from cache_dit.cache_factory.cache_contexts.cache_manager import (
+    BasicCacheConfig,
     CachedContextManager,
 )
 from cache_dit.cache_factory.cache_contexts.prune_context import (
@@ -16,15 +17,27 @@ logger = init_logger(__name__)
 class PrunedContextManager(CachedContextManager):
     # Reuse CachedContextManager for Dynamic Block Prune
 
-    def __init__(self, name: str = None):
-        super().__init__(name)
+    def __init__(self, name: str = None, **kwargs):
+        super().__init__(name, **kwargs)
         # Overwrite for Dynamic Block Prune
         self._current_context: PrunedContext = None
         self._cached_context_manager: Dict[str, PrunedContext] = {}
 
     # Overwrite for Dynamic Block Prune
     def new_context(self, *args, **kwargs) -> PrunedContext:
+        if self._persistent_context:
+            cache_config: BasicCacheConfig = kwargs.get("cache_config", None)
+            assert (
+                cache_config is not None
+                and cache_config.num_inference_steps is not None
+            ), (
+                "When persistent_context is True, num_inference_steps "
+                "must be set in cache_config for proper cache refreshing."
+            )
         _context = PrunedContext(*args, **kwargs)
+        # NOTE: Patch args and kwargs for implicit refresh.
+        _context._init_args = args  # maybe empty tuple: ()
+        _context._init_kwargs = kwargs  # maybe empty dict: {}
         self._cached_context_manager[_context.name] = _context
         return _context
 

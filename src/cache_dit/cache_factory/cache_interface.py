@@ -1,5 +1,6 @@
+import torch
 from typing import Any, Tuple, List, Union, Optional
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
@@ -22,6 +23,9 @@ def enable_cache(
     pipe_or_adapter: Union[
         DiffusionPipeline,
         BlockAdapter,
+        # Transformer-only
+        torch.nn.Module,
+        ModelMixin,
     ],
     # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
     cache_config: Optional[
@@ -47,6 +51,9 @@ def enable_cache(
     **kwargs,
 ) -> Union[
     DiffusionPipeline,
+    # Transformer-only
+    torch.nn.Module,
+    ModelMixin,
     BlockAdapter,
 ]:
     r"""
@@ -76,7 +83,7 @@ def enable_cache(
     with minimal code changes.
 
     Args:
-        pipe_or_adapter (`DiffusionPipeline` or `BlockAdapter`, *required*):
+        pipe_or_adapter (`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):
             The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
             For example: cache_dit.enable_cache(FluxPipeline(...)). Please check https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md
             for the usgae of BlockAdapter.
@@ -119,6 +126,10 @@ def enable_cache(
                     Whether to compute separate difference values for CFG and non-CFG steps, default is True.
                     If False, we will use the computed difference from the current non-CFG transformer step
                     for the current CFG step.
+                num_inference_steps (`int`, *optional*, defaults to None):
+                    num_inference_steps for DiffusionPipeline, used to adjust some internal settings
+                    for better caching performance. For example, we will refresh the cache once the
+                    executed steps exceed num_inference_steps if num_inference_steps is provided.
 
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
@@ -243,7 +254,10 @@ def enable_cache(
         context_kwargs["params_modifiers"] = params_modifiers
 
     if cache_config is not None:
-        if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
+        if isinstance(
+            pipe_or_adapter,
+            (DiffusionPipeline, BlockAdapter, torch.nn.Module, ModelMixin),
+        ):
             pipe_or_adapter = CachedAdapter.apply(
                 pipe_or_adapter,
                 **context_kwargs,

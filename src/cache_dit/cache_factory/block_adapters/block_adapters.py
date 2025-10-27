@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 from typing import Any, Tuple, List, Optional, Union
 
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.cache_factory.patch_functors import PatchFunctor
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.params_modifier import ParamsModifier
@@ -16,12 +16,22 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+class FakeDiffusionPipeline:
+    # A placeholder for pipelines when pipe is None.
+    def __init__(
+        self,
+        transformer: Optional[torch.nn.Module | ModelMixin] = None,
+    ):
+        self.transformer = transformer  # Reference only
+
+
 @dataclasses.dataclass
 class BlockAdapter:
 
     # Transformer configurations.
     pipe: Union[
         DiffusionPipeline,
+        FakeDiffusionPipeline,
         Any,
     ] = None
 
@@ -73,7 +83,7 @@ class BlockAdapter:
         ]
     ] = None
 
-    check_forward_pattern: bool = False
+    check_forward_pattern: Optional[bool] = None
     check_num_outputs: bool = False
 
     # Pipeline Level Flags
@@ -110,12 +120,43 @@ class BlockAdapter:
     def __post_init__(self):
         if self.skip_post_init:
             return
+
+        self.maybe_fake_pipe()
         if any((self.pipe is not None, self.transformer is not None)):
             self.maybe_fill_attrs()
             self.maybe_patchify()
             self.maybe_skip_checks()
 
+    def maybe_fake_pipe(self):
+        if self.pipe is None:
+            self.pipe = FakeDiffusionPipeline()
+            logger.warning("pipe is None, use FakeDiffusionPipeline instead.")
+
     def maybe_skip_checks(self):
+        if self.check_forward_pattern is None:
+            if self.transformer is not None:
+                if self.nested_depth(self.transformer) == 0:
+                    transformer = self.transformer
+                elif self.nested_depth(self.transformer) == 1:
+                    transformer = self.transformer[0]
+                else:
+                    raise ValueError(
+                        "transformer nested depth can't more than 1, "
+                        f"current is: {self.nested_depth(self.transformer)}"
+                    )
+                if transformer.__module__.startswith("diffusers"):
+                    self.check_forward_pattern = True
+                    logger.info(
+                        f"Found transformer from diffusers: {transformer.__module__} "
+                        "enable check_forward_pattern by default."
+                    )
+                else:
+                    self.check_forward_pattern = False
+                    logger.info(
+                        f"Found transformer NOT from diffusers: {transformer.__module__} "
+                        "disable check_forward_pattern by default."
+                    )
+
         if getattr(self.transformer, "_hf_hook", None) is not None:
             logger.warning("_hf_hook is not None, force skip pattern check!")
             self.check_forward_pattern = False
@@ -208,7 +249,10 @@ class BlockAdapter:
             if self.transformer is not None:
                 self.patch_functor.apply(self.transformer, *args, **kwargs)
             else:
-                assert hasattr(self.pipe, "transformer")
+                assert hasattr(self.pipe, "transformer"), (
+                    "pipe.transformer can not be None when patch_functor "
+                    "is provided and transformer is None."
+                )
                 self.patch_functor.apply(self.pipe.transformer, *args, **kwargs)
 
     @staticmethod
@@ -224,6 +268,10 @@ class BlockAdapter:
             adapter.forward_pattern is not None
         ), "adapter.forward_pattern can not be None."
         pipe = adapter.pipe
+        if isinstance(pipe, FakeDiffusionPipeline):
+            raise ValueError(
+                "Can not auto block adapter for FakeDiffusionPipeline."
+            )
 
         assert hasattr(pipe, "transformer"), "pipe.transformer can not be None."
 

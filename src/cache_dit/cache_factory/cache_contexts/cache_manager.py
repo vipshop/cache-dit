@@ -7,6 +7,7 @@ import torch.distributed as dist
 
 from cache_dit.cache_factory.cache_contexts.calibrators import CalibratorBase
 from cache_dit.cache_factory.cache_contexts.cache_context import (
+    BasicCacheConfig,
     CachedContext,
 )
 from cache_dit.logger import init_logger
@@ -21,23 +22,143 @@ class ContextNotExistError(Exception):
 class CachedContextManager:
     # Each Pipeline should have it's own context manager instance.
 
-    def __init__(self, name: str = None):
+    def __init__(self, name: str = None, persistent_context: bool = False):
         self.name = name
         self._current_context: CachedContext = None
         self._cached_context_manager: Dict[str, CachedContext] = {}
+        # Whether to create new context automatically when setting
+        # a non-exist context name. Persistent context is useful when
+        # the pipeline class is not provided and users want to use
+        # cache-dit in a transformer-only way.
+        self._persistent_context = persistent_context
+        self._current_step_refreshed: bool = False
 
+    @property
+    def persistent_context(self) -> bool:
+        return self._persistent_context
+
+    @property
+    def current_context(self) -> CachedContext:
+        return self._current_context
+
+    @property
+    @torch.compiler.disable
+    def current_step_refreshed(self) -> bool:
+        return self._current_step_refreshed
+
+    @torch.compiler.disable
+    def is_pre_refreshed(self) -> bool:
+        _context = self._current_context
+        if _context is None:
+            return False
+
+        num_inference_steps = _context.cache_config.num_inference_steps
+        if num_inference_steps is not None:
+            current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
+            return current_step == num_inference_steps - 1
+        return False
+
+    @torch.compiler.disable
     def new_context(self, *args, **kwargs) -> CachedContext:
+        if self._persistent_context:
+            cache_config: BasicCacheConfig = kwargs.get("cache_config", None)
+            assert (
+                cache_config is not None
+                and cache_config.num_inference_steps is not None
+            ), (
+                "When persistent_context is True, num_inference_steps "
+                "must be set in cache_config for proper cache refreshing."
+                f"\nkwargs: {kwargs}"
+            )
         _context = CachedContext(*args, **kwargs)
+        # NOTE: Patch args and kwargs for implicit refresh.
+        _context._init_args = args  # maybe empty tuple: ()
+        _context._init_kwargs = kwargs  # maybe empty dict: {}
         self._cached_context_manager[_context.name] = _context
         return _context
 
-    def set_context(self, cached_context: CachedContext | str) -> CachedContext:
+    @torch.compiler.disable
+    def maybe_refresh(
+        self,
+        cached_context: Optional[CachedContext | str] = None,
+    ) -> bool:
+        if cached_context is None:
+            _context = self._current_context
+            assert _context is not None, "Current context is not set!"
+
+        if isinstance(cached_context, CachedContext):
+            _context = cached_context
+        else:
+            if cached_context not in self._cached_context_manager:
+                raise ContextNotExistError("Context not exist!")
+            _context = self._cached_context_manager[cached_context]
+
+        if self._persistent_context:
+            assert _context.cache_config.num_inference_steps is not None, (
+                "When persistent_context is True, num_inference_steps must be set "
+                "in cache_config for proper cache refreshing."
+            )
+
+        num_inference_steps = _context.cache_config.num_inference_steps
+        if num_inference_steps is not None:
+            current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
+            # Another round of inference, need to refresh cache context.
+            if current_step >= num_inference_steps:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        f"Refreshing cache context '{_context.name}' "
+                        f"as current step: {current_step} >= "
+                        f"num_inference_steps: {num_inference_steps}."
+                    )
+                return True
+        return False
+
+    @torch.compiler.disable
+    def set_context(
+        self,
+        cached_context: CachedContext | str,
+        *args,
+        **kwargs,
+    ) -> CachedContext:
         if isinstance(cached_context, CachedContext):
             self._current_context = cached_context
         else:
             if cached_context not in self._cached_context_manager:
-                raise ContextNotExistError("Context not exist!")
-            self._current_context = self._cached_context_manager[cached_context]
+                if not self._persistent_context:
+                    raise ContextNotExistError(
+                        "Context not exist and persistent_context is False. Please "
+                        "create new context first or set persistent_context=True."
+                    )
+                else:
+                    # Create new context if not exist
+                    if any((bool(args), bool(kwargs))):
+                        kwargs["name"] = cached_context
+                        self._current_context = self.new_context(
+                            *args, **kwargs
+                        )
+                    else:
+                        raise ValueError(
+                            "To create new context, please provide args and kwargs."
+                        )
+            else:
+                self._current_context = self._cached_context_manager[
+                    cached_context
+                ]
+
+        if self.maybe_refresh(self._current_context):
+            if not any((bool(args), bool(kwargs))):
+                assert hasattr(self._current_context, "_init_args")
+                assert hasattr(self._current_context, "_init_kwargs")
+                args = self._current_context._init_args
+                kwargs = self._current_context._init_kwargs
+
+            self._current_context = self.reset_context(
+                self._current_context, *args, **kwargs
+            )
+            self._current_step_refreshed = True
+        else:
+            self._current_step_refreshed = False
+
         return self._current_context
 
     def get_context(self, name: str = None) -> CachedContext:

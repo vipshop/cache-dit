@@ -20,10 +20,17 @@ class ContextManager:
         cls,
         cache_type: CacheType,
         name: str = "default",
+        persistent_context: bool = False,
     ) -> CachedContextManager | PrunedContextManager:
         if cache_type == CacheType.DBCache:
-            return CachedContextManager(name)
+            return CachedContextManager(
+                name=name,
+                persistent_context=persistent_context,
+            )
         elif cache_type == CacheType.DBPrune:
-            return PrunedContextManager(name)
+            return PrunedContextManager(
+                name=name,
+                persistent_context=persistent_context,
+            )
         else:
             raise ValueError(f"Unsupported cache_type: {cache_type}.")
