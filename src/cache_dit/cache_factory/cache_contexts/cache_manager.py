@@ -103,7 +103,7 @@ class CachedContextManager:
             current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
             # Another round of inference, need to refresh cache context.
             if current_step >= num_inference_steps:
-                if logger.isEnabledFor(logging.DEBUG):
+                if logger.isEnabledFor(logging.INFO):
                     logger.debug(
                         f"Refreshing cache context '{_context.name}' "
                         f"as current step: {current_step} >= "

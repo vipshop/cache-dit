@@ -16,8 +16,8 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class FakeDiffusionPipeline(DiffusionPipeline):
-    pass
+class FakeDiffusionPipeline:
+    pass  # A placeholder for pipelines when pipe is None.
 
 
 @dataclasses.dataclass
