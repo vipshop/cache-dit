@@ -8,6 +8,8 @@ class ParallelismBackend(Enum):
 
     @classmethod
     def is_supported(cls, backend: "ParallelismBackend") -> bool:
+        if backend in [cls.NATIVE_PYTORCH]:
+            return True
         # Now, only Native_Diffuser backend is supported
         if backend in [cls.NATIVE_DIFFUSER]:
             try:
