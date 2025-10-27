@@ -1,14 +1,16 @@
-
 import torch
-from diffusers.models.transformers.transformer_flux import \
-    FluxSingleTransformerBlock
+from diffusers.models.transformers.transformer_flux import (
+    FluxSingleTransformerBlock,
+)
 from einops import rearrange
 from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
-from torch.distributed.tensor.parallel import (ColwiseParallel,
-                                               RowwiseParallel,
-                                               parallelize_module)
+from torch.distributed.tensor.parallel import (
+    ColwiseParallel,
+    RowwiseParallel,
+    parallelize_module,
+)
 
 from cache_dit.logger import init_logger
 
@@ -32,7 +34,9 @@ def t5_apply_tp(
             "layer.1.DenseReluDense.wo": RowwiseParallel(),
         }
         if i == 0:
-            layer_plan["layer.0.SelfAttention.relative_attention_bias"] = ColwiseParallel()
+            layer_plan["layer.0.SelfAttention.relative_attention_bias"] = (
+                ColwiseParallel()
+            )
         parallelize_module(
             module=block,
             device_mesh=tp_mesh,
@@ -40,7 +44,9 @@ def t5_apply_tp(
         )
 
 
-def prepare_proj_out_weight(single_block: FluxSingleTransformerBlock, tp_group_size):
+def prepare_proj_out_weight(
+    single_block: FluxSingleTransformerBlock, tp_group_size
+):
     # rowwise
     hidden_dim = 3072
     requires_grad = single_block.proj_out.weight.requires_grad
@@ -69,7 +75,6 @@ def dit_apply_tp(
             "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
             "ff.net.0.proj": ColwiseParallel(),
             "ff.net.2": RowwiseParallel(),
-
             "attn.add_q_proj": ColwiseParallel(),
             "attn.add_k_proj": ColwiseParallel(),
             "attn.add_v_proj": ColwiseParallel(),

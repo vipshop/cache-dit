@@ -20,33 +20,33 @@ class ForwardPattern(Enum):
 
     Pattern_0 = (
         True,  # Return_H_First
-        False, # Return_H_Only
-        False, # Forward_H_only
+        False,  # Return_H_Only
+        False,  # Forward_H_only
         ("hidden_states", "encoder_hidden_states"),  # In
         ("hidden_states", "encoder_hidden_states"),  # Out
         True,  # Supported
     )
 
     Pattern_1 = (
-        False, # Return_H_First
-        False, # Return_H_Only
-        False, # Forward_H_only
+        False,  # Return_H_First
+        False,  # Return_H_Only
+        False,  # Forward_H_only
         ("hidden_states", "encoder_hidden_states"),  # In
         ("encoder_hidden_states", "hidden_states"),  # Out
         True,  # Supported
     )
 
     Pattern_2 = (
-        False, # Return_H_First
+        False,  # Return_H_First
         True,  # Return_H_Only
-        False, # Forward_H_only
+        False,  # Forward_H_only
         ("hidden_states", "encoder_hidden_states"),  # In
-        ("hidden_states",),                          # Out
+        ("hidden_states",),  # Out
         True,  # Supported
     )
 
     Pattern_3 = (
-        False, # Return_H_First
+        False,  # Return_H_First
         True,  # Return_H_Only
         True,  # Forward_H_only
         ("hidden_states",),  # In
@@ -56,18 +56,18 @@ class ForwardPattern(Enum):
 
     Pattern_4 = (
         True,  # Return_H_First
-        False, # Return_H_Only
+        False,  # Return_H_Only
         True,  # Forward_H_only
-        ("hidden_states",),                          # In
+        ("hidden_states",),  # In
         ("hidden_states", "encoder_hidden_states"),  # Out
         True,  # Supported
     )
 
     Pattern_5 = (
-        False, # Return_H_First
-        False, # Return_H_Only
+        False,  # Return_H_First
+        False,  # Return_H_Only
         True,  # Forward_H_only
-        ("hidden_states",),                          # In
+        ("hidden_states",),  # In
         ("encoder_hidden_states", "hidden_states"),  # Out
         True,  # Supported
     )

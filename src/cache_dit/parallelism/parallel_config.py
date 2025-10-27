@@ -36,12 +36,12 @@ class ParallelismConfig:
         )
 
         if self.tp_size is not None and self.tp_size > 1:
-            assert self.ulysses_size is None or self.ulysses_size == 1, (
-                "Tensor parallelism plus Ulysses parallelism is not supported right now."
-            )
-            assert self.ring_size is None or self.ring_size == 1, (
-                "Tensor parallelism plus Ring parallelism is not supported right now."
-            )
+            assert (
+                self.ulysses_size is None or self.ulysses_size == 1
+            ), "Tensor parallelism plus Ulysses parallelism is not supported right now."
+            assert (
+                self.ring_size is None or self.ring_size == 1
+            ), "Tensor parallelism plus Ring parallelism is not supported right now."
 
     def strify(self, details: bool = False) -> str:
         if details:
