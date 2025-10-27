@@ -83,7 +83,7 @@ def enable_cache(
     with minimal code changes.
 
     Args:
-        pipe_or_adapter (`DiffusionPipeline` or `BlockAdapter`, *required*):
+        pipe_or_adapter (`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):
             The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
             For example: cache_dit.enable_cache(FluxPipeline(...)). Please check https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md
             for the usgae of BlockAdapter.
@@ -126,6 +126,10 @@ def enable_cache(
                     Whether to compute separate difference values for CFG and non-CFG steps, default is True.
                     If False, we will use the computed difference from the current non-CFG transformer step
                     for the current CFG step.
+                num_inference_steps (`int`, *optional*, defaults to None):
+                    num_inference_steps for DiffusionPipeline, used to adjust some internal settings
+                    for better caching performance. For example, we will refresh the cache once the
+                    executed steps exceed num_inference_steps if num_inference_steps is provided.
 
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
