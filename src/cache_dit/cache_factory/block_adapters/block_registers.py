@@ -56,7 +56,8 @@ class BlockAdapterRegistry:
                     # purpose. We construct a fake diffusion pipeline that contains the
                     # given transformer module. Currently, only works for DiT models which
                     # only have one transformer module. Case like multiple transformers
-                    # is not supported, e.g, Wan2.2.
+                    # is not supported, e.g, Wan2.2. Please use BlockAdapter directly for
+                    # such cases.
                     return cls._adapters[name](
                         FakeDiffusionPipeline(pipe_or_module), **kwargs
                     )

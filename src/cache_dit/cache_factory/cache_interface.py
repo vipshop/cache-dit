@@ -1,5 +1,6 @@
+import torch
 from typing import Any, Tuple, List, Union, Optional
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
@@ -22,6 +23,9 @@ def enable_cache(
     pipe_or_adapter: Union[
         DiffusionPipeline,
         BlockAdapter,
+        # Transformer-only
+        torch.nn.Module,
+        ModelMixin,
     ],
     # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
     cache_config: Optional[
@@ -47,6 +51,9 @@ def enable_cache(
     **kwargs,
 ) -> Union[
     DiffusionPipeline,
+    # Transformer-only
+    torch.nn.Module,
+    ModelMixin,
     BlockAdapter,
 ]:
     r"""
@@ -243,7 +250,10 @@ def enable_cache(
         context_kwargs["params_modifiers"] = params_modifiers
 
     if cache_config is not None:
-        if isinstance(pipe_or_adapter, (DiffusionPipeline, BlockAdapter)):
+        if isinstance(
+            pipe_or_adapter,
+            (DiffusionPipeline, BlockAdapter, torch.nn.Module, ModelMixin),
+        ):
             pipe_or_adapter = CachedAdapter.apply(
                 pipe_or_adapter,
                 **context_kwargs,

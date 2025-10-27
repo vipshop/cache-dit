@@ -68,10 +68,12 @@ class CachedAdapter:
                 ):
                     block_adapter.params_modifiers = params_modifiers
 
-                return cls.cachify(
-                    block_adapter,
-                    **context_kwargs,
-                ).pipe
+                block_adapter = cls.cachify(block_adapter, **context_kwargs)
+                if isinstance(pipe_or_adapter, DiffusionPipeline):
+                    return block_adapter.pipe
+
+                return block_adapter.transformer
+
             else:
                 raise ValueError(
                     f"{pipe_or_adapter.__class__.__name__} is not officially supported "
