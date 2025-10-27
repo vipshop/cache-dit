@@ -5,6 +5,7 @@ import torch.distributed as dist
 
 import cache_dit
 from cache_dit import init_logger
+from cache_dit.parallelism.parallel_backend import ParallelismBackend
 
 logger = init_logger(__name__)
 
@@ -127,6 +128,11 @@ def cachify(
                         dist.get_world_size()
                         if args.parallel_type == "tp"
                         else None
+                    ),
+                    backend=(
+                        ParallelismBackend.NATIVE_PYTORCH
+                        if args.parallel_type in ["tp"]
+                        else ParallelismBackend.NATIVE_DIFFUSER
                     ),
                     parallel_kwargs={
                         "attention_backend": (
