@@ -422,8 +422,7 @@ class CachedAdapter:
 
         # make mypy happy
         assert isinstance(
-            context_manager,
-            (CachedContextManager, PrunedContextManager),
+            context_manager, (CachedContextManager, PrunedContextManager)
         )
 
         def new_forward(self, *args, **kwargs):
