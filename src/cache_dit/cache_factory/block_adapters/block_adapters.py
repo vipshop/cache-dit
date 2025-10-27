@@ -16,12 +16,17 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+class FakeDiffusionPipeline(DiffusionPipeline):
+    pass
+
+
 @dataclasses.dataclass
 class BlockAdapter:
 
     # Transformer configurations.
     pipe: Union[
         DiffusionPipeline,
+        FakeDiffusionPipeline,
         Any,
     ] = None
 
@@ -114,6 +119,11 @@ class BlockAdapter:
             self.maybe_fill_attrs()
             self.maybe_patchify()
             self.maybe_skip_checks()
+
+    def maybe_fake_pipe(self):
+        if self.pipe is None:
+            self.pipe = FakeDiffusionPipeline()
+            logger.warning("pipe is None, use FakeDiffusionPipeline instead.")
 
     def maybe_skip_checks(self):
         if getattr(self.transformer, "_hf_hook", None) is not None:
@@ -208,7 +218,10 @@ class BlockAdapter:
             if self.transformer is not None:
                 self.patch_functor.apply(self.transformer, *args, **kwargs)
             else:
-                assert hasattr(self.pipe, "transformer")
+                assert hasattr(self.pipe, "transformer"), (
+                    "pipe.transformer can not be None when patch_functor "
+                    "is provided and transformer is None."
+                )
                 self.patch_functor.apply(self.pipe.transformer, *args, **kwargs)
 
     @staticmethod

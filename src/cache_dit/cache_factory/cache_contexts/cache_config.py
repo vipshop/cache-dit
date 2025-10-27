@@ -56,6 +56,11 @@ class BasicCacheConfig:
     #     Compute separate diff values for CFG and non-CFG step, default True. If False, we will
     #     use the computed diff from current non-CFG transformer step for current CFG step.
     cfg_diff_compute_separate: bool = True
+    # num_inference_steps (`int`, *optional*, defaults to None):
+    #     num_inference_steps for DiffusionPipeline, used to adjust some internal settings
+    #     for better caching performance. For example, we will refresh the cache once the
+    #     executed steps exceed num_inference_steps if num_inference_steps is provided.
+    num_inference_steps: Optional[int] = None
 
     def update(self, **kwargs) -> "BasicCacheConfig":
         for key, value in kwargs.items():
@@ -108,9 +113,6 @@ class ExtraCacheConfig:
     # downsample_factor (`int`, *optional*, defaults to 1):
     #     Downsample factor for Fn buffer, in order the save GPU memory.
     downsample_factor: int = 1
-    # num_inference_steps (`int`, *optional*, defaults to -1):
-    #     num_inference_steps for DiffusionPipeline, for future use.
-    num_inference_steps: int = -1
 
 
 @dataclasses.dataclass
