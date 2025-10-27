@@ -47,6 +47,18 @@ class CachedContextManager:
         return self._current_step_refreshed
 
     @torch.compiler.disable
+    def is_pre_refreshed(self) -> bool:
+        _context = self._current_context
+        if _context is None:
+            return False
+
+        num_inference_steps = _context.cache_config.num_inference_steps
+        if num_inference_steps is not None:
+            current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
+            return current_step == num_inference_steps - 1
+        return False
+
+    @torch.compiler.disable
     def new_context(self, *args, **kwargs) -> CachedContext:
         if self._persistent_context:
             cache_config: BasicCacheConfig = kwargs.get("cache_config", None)

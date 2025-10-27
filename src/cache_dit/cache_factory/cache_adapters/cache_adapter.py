@@ -412,18 +412,8 @@ class CachedAdapter:
         # re-apply hooks to transformer after cache applied.
         # from diffusers.hooks.hooks import HookFunctionReference, HookRegistry
         # from diffusers.hooks.group_offloading import apply_group_offloading
-
-        from cache_dit.cache_factory.cache_contexts import (
-            CachedContextManager,
-            PrunedContextManager,
-        )
-
         context_manager: ContextManager = block_adapter.pipe._context_manager
-
-        # make mypy happy
-        assert isinstance(
-            context_manager, (CachedContextManager, PrunedContextManager)
-        )
+        assert isinstance(context_manager, ContextManager._supported_managers)
 
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
@@ -446,7 +436,7 @@ class CachedAdapter:
 
                 if (
                     context_manager.persistent_context
-                    and context_manager.current_step_refreshed
+                    and context_manager.is_pre_refreshed()
                 ):
                     cls.apply_stats_hooks(block_adapter)
 
@@ -553,6 +543,7 @@ class CachedAdapter:
             params_shift += len(blocks)
 
     @classmethod
+    @torch.compiler.disable
     def apply_stats_hooks(
         cls,
         block_adapter: BlockAdapter,
