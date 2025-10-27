@@ -44,7 +44,7 @@ if args.cache:
                 ForwardPattern.Pattern_1,
                 ForwardPattern.Pattern_1,
             ],
-            # # Set is False for transformers that do not come from Diffusers.
+            # Set is False for transformers that do not come from Diffusers.
             # check_forward_pattern=pipe.transformer.__module__.startswith(
             #     "diffusers"
             # ),
