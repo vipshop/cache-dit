@@ -445,7 +445,10 @@ class CachedAdapter:
                     )
                 outputs = original_forward(*args, **kwargs)
 
-                if context_manager.current_step_refreshed:
+                if (
+                    context_manager.persistent_context
+                    and context_manager.current_step_refreshed
+                ):
                     cls.apply_stats_hooks(block_adapter)
 
             return outputs
