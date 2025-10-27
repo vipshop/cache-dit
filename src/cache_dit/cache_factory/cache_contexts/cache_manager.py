@@ -68,6 +68,7 @@ class CachedContextManager:
             ), (
                 "When persistent_context is True, num_inference_steps "
                 "must be set in cache_config for proper cache refreshing."
+                f"\nkwargs: {kwargs}"
             )
         _context = CachedContext(*args, **kwargs)
         # NOTE: Patch args and kwargs for implicit refresh.
@@ -130,7 +131,7 @@ class CachedContextManager:
                     )
                 else:
                     # Create new context if not exist
-                    if any((args is not None, kwargs is not None)):
+                    if any((bool(args), bool(kwargs))):
                         kwargs["name"] = cached_context
                         self._current_context = self.new_context(
                             *args, **kwargs
@@ -145,7 +146,7 @@ class CachedContextManager:
                 ]
 
         if self.maybe_refresh(self._current_context):
-            if not any((args is not None, kwargs is not None)):
+            if not any((bool(args), bool(kwargs))):
                 assert hasattr(self._current_context, "_init_args")
                 assert hasattr(self._current_context, "_init_kwargs")
                 args = self._current_context._init_args

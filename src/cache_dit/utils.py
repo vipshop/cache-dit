@@ -13,6 +13,7 @@ from cache_dit.cache_factory import CacheType
 from cache_dit.cache_factory import BlockAdapter
 from cache_dit.cache_factory import BasicCacheConfig
 from cache_dit.cache_factory import CalibratorConfig
+from cache_dit.cache_factory import FakeDiffusionPipeline
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.logger import init_logger
 
@@ -64,6 +65,7 @@ def summary(
     adapter_or_others: Union[
         BlockAdapter,
         DiffusionPipeline,
+        FakeDiffusionPipeline,
         torch.nn.Module,
     ],
     details: bool = False,
@@ -73,9 +75,15 @@ def summary(
     if adapter_or_others is None:
         return [CacheStats()]
 
+    if isinstance(adapter_or_others, FakeDiffusionPipeline):
+        raise ValueError(
+            "Please pass DiffusionPipeline, BlockAdapter or transfomer, "
+            "not FakeDiffusionPipeline."
+        )
+
     if not isinstance(adapter_or_others, BlockAdapter):
         if not isinstance(adapter_or_others, DiffusionPipeline):
-            transformer = adapter_or_others
+            transformer = adapter_or_others  # transformer-only
             transformer_2 = None
         else:
             transformer = adapter_or_others.transformer
@@ -165,11 +173,18 @@ def strify(
     adapter_or_others: Union[
         BlockAdapter,
         DiffusionPipeline,
+        FakeDiffusionPipeline,
+        torch.nn.Module,
         CacheStats,
         List[CacheStats],
         Dict[str, Any],
     ],
 ) -> str:
+    if isinstance(adapter_or_others, FakeDiffusionPipeline):
+        raise ValueError(
+            "Please pass DiffusionPipeline, BlockAdapter or transfomer, "
+            "not FakeDiffusionPipeline."
+        )
 
     parallelism_config: ParallelismConfig = None
     if isinstance(adapter_or_others, BlockAdapter):
@@ -177,6 +192,10 @@ def strify(
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, DiffusionPipeline):
+        stats = summary(adapter_or_others, logging=False)[-1]
+        cache_options = stats.cache_options
+        cached_steps = len(stats.cached_steps)
+    elif isinstance(adapter_or_others, torch.nn.Module):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
@@ -202,7 +221,8 @@ def strify(
     else:
         raise ValueError(
             "Please set pipe_or_stats param as one of: "
-            "DiffusionPipeline | CacheStats | Dict[str, Any]"
+            "DiffusionPipeline | CacheStats | Dict[str, Any] | List[CacheStats]"
+            " | BlockAdapter | Transformer"
         )
 
     if stats is not None:
