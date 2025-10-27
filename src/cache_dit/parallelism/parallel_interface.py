@@ -34,6 +34,22 @@ def enable_parallelism(
             transformer,
             parallelism_config,
         )
+    elif parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH:
+        from cache_dit.parallelism.backends.native_pytorch import (
+            maybe_enable_parallelism,
+        )
+
+        assert (
+            parallelism_config.tp_size is not None
+            and parallelism_config.tp_size > 1
+        ), (
+            "Please specify tp_size > 1 to enable tensor parallelism "
+            "with Native_PyTorch backend."
+        )
+        transformer = maybe_enable_parallelism(
+            transformer,
+            parallelism_config,
+        )
     else:
         raise ValueError(
             f"Parallel backend {parallelism_config.backend} is not supported yet."

@@ -105,3 +105,4 @@ def dit_apply_tp(
             device_mesh=tp_mesh,
             parallelize_plan=layer_plan,
         )
+    return model

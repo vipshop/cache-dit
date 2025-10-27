@@ -1,7 +1,9 @@
-import torch
 import argparse
-import cache_dit
+
+import torch
 import torch.distributed as dist
+
+import cache_dit
 from cache_dit import init_logger
 
 logger = init_logger(__name__)
@@ -77,10 +79,11 @@ def cachify(
 ):
     if args.cache or args.parallel_type is not None:
         import torch.distributed as dist
+
         from cache_dit import (
             DBCacheConfig,
-            TaylorSeerCalibratorConfig,
             ParallelismConfig,
+            TaylorSeerCalibratorConfig,
         )
 
         cache_config = kwargs.pop("cache_config", None)
@@ -120,6 +123,11 @@ def cachify(
                         if args.parallel_type == "ring"
                         else None
                     ),
+                    tp_size=(
+                        dist.get_world_size()
+                        if args.parallel_type == "tp"
+                        else None
+                    ),
                     parallel_kwargs={
                         "attention_backend": (
                             "_native_cudnn" if not args.attn else args.attn
@@ -127,7 +135,7 @@ def cachify(
                     },
                 )
                 if parallelism_config is None
-                and args.parallel_type in ["ulysses", "ring"]
+                and args.parallel_type in ["ulysses", "ring", "tp"]
                 else parallelism_config
             ),
         )
