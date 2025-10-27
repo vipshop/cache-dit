@@ -9,6 +9,7 @@ from diffusers import DiffusionPipeline
 
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
+from cache_dit.cache_factory.block_adapters import FakeDiffusionPipeline
 from cache_dit.cache_factory.block_adapters import ParamsModifier
 from cache_dit.cache_factory.block_adapters import BlockAdapterRegistry
 from cache_dit.cache_factory.cache_contexts import ContextManager
@@ -182,8 +183,6 @@ class CachedAdapter:
         context_kwargs = cls.check_context_kwargs(
             block_adapter, **context_kwargs
         )
-        # Apply cache on pipeline: wrap cache context
-        pipe_cls_name = block_adapter.pipe.__class__.__name__
 
         # Each Pipeline should have it's own context manager instance.
         # Different transformers (Wan2.2, etc) should shared the same
@@ -193,38 +192,58 @@ class CachedAdapter:
             "cache_config", None
         )
         assert cache_config is not None, "cache_config can not be None."
+        # Apply cache on pipeline: wrap cache context
+        pipe_cls_name = block_adapter.pipe.__class__.__name__
         context_manager = ContextManager(
             name=f"{pipe_cls_name}_{hash(id(block_adapter.pipe))}",
             cache_type=cache_config.cache_type,
+            # Force use persistent_context for FakeDiffusionPipeline
+            persistent_context=isinstance(
+                block_adapter.pipe, FakeDiffusionPipeline
+            ),
         )
-        block_adapter.pipe._context_manager = context_manager  # instance level
-
         flatten_contexts, contexts_kwargs = cls.modify_context_params(
             block_adapter, **context_kwargs
         )
-        original_call = block_adapter.pipe.__class__.__call__
 
-        @functools.wraps(original_call)
-        def new_call(self, *args, **kwargs):
-            with ExitStack() as stack:
-                # cache context will be reset for each pipe inference
-                for context_name, context_kwargs in zip(
-                    flatten_contexts, contexts_kwargs
-                ):
-                    stack.enter_context(
-                        context_manager.enter_context(
-                            context_manager.reset_context(
-                                context_name,
-                                **context_kwargs,
-                            ),
+        block_adapter.pipe._context_manager = context_manager  # instance level
+
+        if not context_manager.persistent_context:
+
+            original_call = block_adapter.pipe.__class__.__call__
+
+            @functools.wraps(original_call)
+            def new_call(self, *args, **kwargs):
+                with ExitStack() as stack:
+                    # cache context will be reset for each pipe inference
+                    for context_name, context_kwargs in zip(
+                        flatten_contexts, contexts_kwargs
+                    ):
+                        stack.enter_context(
+                            context_manager.enter_context(
+                                context_manager.reset_context(
+                                    context_name,
+                                    **context_kwargs,
+                                ),
+                            )
                         )
-                    )
-                outputs = original_call(self, *args, **kwargs)
-                cls.apply_stats_hooks(block_adapter)
-                return outputs
+                    outputs = original_call(self, *args, **kwargs)
+                    cls.apply_stats_hooks(block_adapter)
+                    return outputs
 
-        block_adapter.pipe.__class__.__call__ = new_call
-        block_adapter.pipe.__class__._original_call = original_call
+            block_adapter.pipe.__class__.__call__ = new_call
+            block_adapter.pipe.__class__._original_call = original_call
+
+        else:
+            # Init persistent cache context for transformer
+            for context_name, context_kwargs in zip(
+                flatten_contexts, contexts_kwargs
+            ):
+                context_manager.reset_context(
+                    context_name,
+                    **context_kwargs,
+                )
+
         block_adapter.pipe.__class__._is_cached = True
 
         cls.apply_params_hooks(block_adapter, contexts_kwargs)
@@ -353,6 +372,7 @@ class CachedAdapter:
                 blocks_name,
                 unique_blocks_name,
                 dummy_blocks_names,
+                block_adapter,
             )
 
         return block_adapter.transformer
@@ -365,6 +385,7 @@ class CachedAdapter:
         blocks_name: List[str],
         unique_blocks_name: List[str],
         dummy_blocks_names: List[str],
+        block_adapter: BlockAdapter,
     ) -> torch.nn.Module:
         dummy_blocks = torch.nn.ModuleList()
 
@@ -392,6 +413,19 @@ class CachedAdapter:
         # from diffusers.hooks.hooks import HookFunctionReference, HookRegistry
         # from diffusers.hooks.group_offloading import apply_group_offloading
 
+        from cache_dit.cache_factory.cache_contexts import (
+            CachedContextManager,
+            PrunedContextManager,
+        )
+
+        context_manager: ContextManager = block_adapter.pipe._context_manager
+
+        # make mypy happy
+        assert isinstance(
+            context_manager,
+            (CachedContextManager, PrunedContextManager),
+        )
+
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
                 for name, context_name in zip(
@@ -410,6 +444,10 @@ class CachedAdapter:
                         )
                     )
                 outputs = original_forward(*args, **kwargs)
+
+                if context_manager.current_step_refreshed:
+                    cls.apply_stats_hooks(block_adapter)
+
             return outputs
 
         def new_forward_with_hf_hook(self, *args, **kwargs):

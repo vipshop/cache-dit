@@ -115,6 +115,8 @@ class BlockAdapter:
     def __post_init__(self):
         if self.skip_post_init:
             return
+
+        self.maybe_fake_pipe()
         if any((self.pipe is not None, self.transformer is not None)):
             self.maybe_fill_attrs()
             self.maybe_patchify()
@@ -237,6 +239,10 @@ class BlockAdapter:
             adapter.forward_pattern is not None
         ), "adapter.forward_pattern can not be None."
         pipe = adapter.pipe
+        if isinstance(pipe, FakeDiffusionPipeline):
+            raise ValueError(
+                "Can not auto block adapter for FakeDiffusionPipeline."
+            )
 
         assert hasattr(pipe, "transformer"), "pipe.transformer can not be None."
 
