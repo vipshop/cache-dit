@@ -102,9 +102,9 @@ def generate(args):
         torch_dtype=torch.bfloat16,
         quantization_config=(
             DiffusersBitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
+                load_in_8bit=True,
+                # bnb_4bit_quant_type="nf4",
+                # bnb_4bit_compute_dtype=torch.bfloat16,
             )
             if args.quantize
             else None
