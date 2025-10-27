@@ -1,3 +1,4 @@
+import torch
 from typing import Any, Tuple, List, Dict, Callable, Union
 
 from diffusers import DiffusionPipeline
@@ -38,17 +39,29 @@ class BlockAdapterRegistry:
     @classmethod
     def get_adapter(
         cls,
-        pipe: DiffusionPipeline | str | Any,
+        pipe_or_module: DiffusionPipeline | torch.nn.Module | str | Any,
         **kwargs,
     ) -> BlockAdapter | None:
-        if not isinstance(pipe, str):
-            pipe_cls_name: str = pipe.__class__.__name__
+        if not isinstance(pipe_or_module, str):
+            cls_name: str = pipe_or_module.__class__.__name__
         else:
-            pipe_cls_name = pipe
+            cls_name = pipe_or_module
 
         for name in cls._adapters:
-            if pipe_cls_name.startswith(name):
-                return cls._adapters[name](pipe, **kwargs)
+            if cls_name.startswith(name):
+                if not isinstance(pipe_or_module, DiffusionPipeline):
+                    assert isinstance(pipe_or_module, torch.nn.Module)
+                    # NOTE: Make pre-registered adapters support Transformer-only case.
+                    # WARN: This branch is not officially supported and only for testing
+                    # purpose. We construct a fake diffusion pipeline that contains the
+                    # given transformer module. Currently, only works for DiT models which
+                    # only have one transformer module. Case like multiple transformers
+                    # is not supported, e.g, Wan2.2.
+                    return cls._adapters[name](
+                        FakeDiffusionPipeline(pipe_or_module), **kwargs
+                    )
+                else:
+                    return cls._adapters[name](pipe_or_module, **kwargs)
 
         return None
 
@@ -90,11 +103,11 @@ class BlockAdapterRegistry:
         return False
 
     @classmethod
-    def is_supported(cls, pipe) -> bool:
-        pipe_cls_name: str = pipe.__class__.__name__
+    def is_supported(cls, pipe_or_module) -> bool:
+        cls_name: str = pipe_or_module.__class__.__name__
 
         for name in cls._adapters:
-            if pipe_cls_name.startswith(name):
+            if cls_name.startswith(name):
                 return True
         return False
 

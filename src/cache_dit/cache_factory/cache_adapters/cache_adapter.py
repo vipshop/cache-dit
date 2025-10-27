@@ -5,7 +5,7 @@ import functools
 from contextlib import ExitStack
 from typing import Dict, List, Tuple, Any, Union, Callable, Optional
 
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, ModelMixin
 
 from cache_dit.cache_factory.cache_types import CacheType
 from cache_dit.cache_factory.block_adapters import BlockAdapter
@@ -33,6 +33,9 @@ class CachedAdapter:
         pipe_or_adapter: Union[
             DiffusionPipeline,
             BlockAdapter,
+            # Transformer-only
+            torch.nn.Module,
+            ModelMixin,
         ],
         **context_kwargs,
     ) -> Union[
@@ -43,7 +46,9 @@ class CachedAdapter:
             pipe_or_adapter is not None
         ), "pipe or block_adapter can not both None!"
 
-        if isinstance(pipe_or_adapter, DiffusionPipeline):
+        if isinstance(
+            pipe_or_adapter, (DiffusionPipeline, torch.nn.Module, ModelMixin)
+        ):
             if BlockAdapterRegistry.is_supported(pipe_or_adapter):
                 logger.info(
                     f"{pipe_or_adapter.__class__.__name__} is officially "

@@ -10,7 +10,14 @@ from utils import get_args, strify
 import cache_dit
 
 
-args = get_args()
+parser = get_args(parse=False)
+parser.add_argument(
+    "--no-adapt",
+    action="store_true",
+    default=False,
+    help="Disable BlockAdapter or not",
+)
+args = parser.parse_args()
 print(args)
 
 
@@ -33,21 +40,25 @@ if args.cache:
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
     cache_dit.enable_cache(
-        BlockAdapter(
-            pipe=None,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
-            ],
-            # Set is False for transformers that do not come from Diffusers.
-            # check_forward_pattern=pipe.transformer.__module__.startswith(
-            #     "diffusers"
-            # ),
+        (
+            BlockAdapter(
+                pipe=None,
+                transformer=pipe.transformer,
+                blocks=[
+                    pipe.transformer.transformer_blocks,
+                    pipe.transformer.single_transformer_blocks,
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_1,
+                    ForwardPattern.Pattern_1,
+                ],
+                # Set is False for transformers that do not come from Diffusers.
+                # check_forward_pattern=pipe.transformer.__module__.startswith(
+                #     "diffusers"
+                # ),
+            )
+            if not args.no_adapt
+            else pipe.transformer
         ),
         cache_config=(
             DBCacheConfig(

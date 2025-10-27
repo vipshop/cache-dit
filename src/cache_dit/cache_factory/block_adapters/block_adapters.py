@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 from typing import Any, Tuple, List, Optional, Union
 
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.cache_factory.patch_functors import PatchFunctor
 from cache_dit.cache_factory.forward_pattern import ForwardPattern
 from cache_dit.cache_factory.params_modifier import ParamsModifier
@@ -17,7 +17,12 @@ logger = init_logger(__name__)
 
 
 class FakeDiffusionPipeline:
-    pass  # A placeholder for pipelines when pipe is None.
+    # A placeholder for pipelines when pipe is None.
+    def __init__(
+        self,
+        transformer: Optional[torch.nn.Module | ModelMixin] = None,
+    ):
+        self.transformer = transformer  # Reference only
 
 
 @dataclasses.dataclass
