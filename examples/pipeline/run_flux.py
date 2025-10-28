@@ -25,13 +25,23 @@ pipe = FluxPipeline.from_pretrained(
 if args.cache:
     cachify(args, pipe)
 
-start = time.time()
-image = pipe(
-    "A cat holding a sign that says hello world",
-    num_inference_steps=28,
-    generator=torch.Generator("cpu").manual_seed(0),
-).images[0]
 
+def run_pipe():
+    image = pipe(
+        "A cat holding a sign that says hello world",
+        height=1024 if args.height is None else args.height,
+        width=1024 if args.width is None else args.width,
+        num_inference_steps=28 if args.steps is None else args.steps,
+        generator=torch.Generator("cpu").manual_seed(0),
+    ).images[0]
+    return image
+
+
+# warmup
+_ = run_pipe()
+
+start = time.time()
+image = run_pipe()
 end = time.time()
 
 cache_dit.summary(pipe)
