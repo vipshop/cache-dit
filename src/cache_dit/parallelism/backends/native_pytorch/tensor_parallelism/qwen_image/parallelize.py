@@ -7,10 +7,6 @@ from torch.distributed.tensor.parallel import (
     parallelize_module,
 )
 
-from cache_dit.logger import init_logger
-
-logger = init_logger(__name__)
-
 
 def dit_apply_tp(
     model: nn.Module,
