@@ -63,7 +63,9 @@ def generate(args):
     local_rank = rank % num_gpus
     torch.cuda.set_device(local_rank)
     dist.init_process_group(
-        backend="nccl", timeout=datetime.timedelta(seconds=3600 * 24)
+        backend="nccl",
+        timeout=datetime.timedelta(seconds=3600 * 24),
+        device_id=local_rank,
     )
     global_rank = dist.get_rank()
     num_processes = dist.get_world_size()
