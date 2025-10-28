@@ -253,8 +253,3 @@ def _parse_args():
 if __name__ == "__main__":
     args = _parse_args()
     generate(args)
-    # torchrun run_longcat_video.py --quantize
-    # torchrun run_longcat_video.py --quantize --cache --Fn 1
-    # torchrun --nproc_per_node=2 run_longcat_video.py --quantize --context_parallel_size 2
-    # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --context_parallel_size 4
-    # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --context_parallel_size 4 --cache --Fn 1
