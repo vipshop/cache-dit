@@ -46,27 +46,30 @@ def generate(args):
     # load parsed args
     checkpoint_dir = args.checkpoint_dir
     context_parallel_size = args.context_parallel_size
-    enable_compile = args.enable_compile
 
     # prepare distributed environment
-    rank = int(os.environ["RANK"])
-    num_gpus = torch.cuda.device_count()
-    local_rank = rank % num_gpus
-    torch.cuda.set_device(local_rank)
-    dist.init_process_group(
-        backend="nccl", timeout=datetime.timedelta(seconds=3600 * 24)
-    )
-    global_rank = dist.get_rank()
-    num_processes = dist.get_world_size()
+    if context_parallel_size > 1:
+        rank = int(os.environ["RANK"])
+        num_gpus = torch.cuda.device_count()
+        local_rank = rank % num_gpus
+        torch.cuda.set_device(local_rank)
+        dist.init_process_group(
+            backend="nccl", timeout=datetime.timedelta(seconds=3600 * 24)
+        )
+        global_rank = dist.get_rank()
+        num_processes = dist.get_world_size()
 
-    # initialize context parallel before loading models
-    init_context_parallel(
-        context_parallel_size=context_parallel_size,
-        global_rank=global_rank,
-        world_size=num_processes,
-    )
-    cp_size = context_parallel_util.get_cp_size()
-    cp_split_hw = context_parallel_util.get_optimal_split(cp_size)
+        # initialize context parallel before loading models
+        init_context_parallel(
+            context_parallel_size=context_parallel_size,
+            global_rank=global_rank,
+            world_size=num_processes,
+        )
+        cp_size = context_parallel_util.get_cp_size()
+        cp_split_hw = context_parallel_util.get_optimal_split(cp_size)
+    else:
+        local_rank = 0
+        cp_split_hw = None
 
     tokenizer = AutoTokenizer.from_pretrained(
         checkpoint_dir, subfolder="tokenizer", torch_dtype=torch.bfloat16
@@ -119,7 +122,7 @@ def generate(args):
         scheduler=scheduler,
         dit=dit,
     )
-    pipe.to(local_rank)
+    pipe.to(f"cuda:{local_rank}")
 
     if args.cache:
         from cache_dit import (
@@ -159,7 +162,7 @@ def generate(args):
             ),
         )
 
-    if enable_compile or args.compile:
+    if args.compile:
         pipe.dit = torch.compile(pipe.dit)
 
     global_seed = 42
@@ -210,6 +213,9 @@ def generate(args):
     del output
     torch_gc()
 
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
 
 def _parse_args():
     parser = get_args(parse=False)
@@ -223,11 +229,6 @@ def _parse_args():
         type=str,
         default=os.environ.get("LONGCAT_VIDEO_DIR", None),
     )
-    parser.add_argument(
-        "--enable_compile",
-        action="store_true",
-    )
-
     args = parser.parse_args()
 
     return args
