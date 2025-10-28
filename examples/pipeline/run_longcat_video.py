@@ -88,10 +88,14 @@ def generate(args):
         checkpoint_dir,
         subfolder="text_encoder",
         torch_dtype=torch.bfloat16,
-        quantization_config=TransformersBitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
+        quantization_config=(
+            TransformersBitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            if args.quantize
+            else None
         ),
     )
 
