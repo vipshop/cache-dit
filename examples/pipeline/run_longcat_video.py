@@ -214,7 +214,7 @@ def generate(args):
 
         time_cost = end - start
         save_path = f"longcat-video.{strify(args, pipe.dit)}"
-        if args.bnb_4bits_transformer:
+        if args.quantize and args.bnb_4bits_transformer:
             save_path += ".bnb4bits"
         save_path += ".mp4"
         print(f"Time cost: {time_cost:.2f}s")
