@@ -32,6 +32,12 @@ from longcat_video.context_parallel.context_parallel_util import (
 from utils import get_args, strify
 import cache_dit
 
+# Example usage:
+# export LONGCAT_VIDEO_PKG_DIR=/path/to/codes/of/LongCat-Video
+# export LONGCAT_VIDEO_DIR=/path/to/models/of/LongCat-Video
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --cache --Fn 1
+
 
 def torch_gc():
     torch.cuda.empty_cache()
@@ -72,20 +78,21 @@ def generate(args):
         checkpoint_dir, subfolder="tokenizer", torch_dtype=torch.bfloat16
     )
 
-    # Reduce GPU VRAM requirement
+    # Load text encoder with bnb 4bits quantization if specified
+    if args.quantize:
+        text_encoder_quant_config = TransformersBitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+    else:
+        text_encoder_quant_config = None
+
     text_encoder = UMT5EncoderModel.from_pretrained(
         checkpoint_dir,
         subfolder="text_encoder",
         torch_dtype=torch.bfloat16,
-        quantization_config=(
-            TransformersBitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-            )
-            if args.quantize
-            else None
-        ),
+        quantization_config=text_encoder_quant_config,
     )
 
     vae = AutoencoderKLWan.from_pretrained(
@@ -95,21 +102,29 @@ def generate(args):
         checkpoint_dir, subfolder="scheduler", torch_dtype=torch.bfloat16
     )
 
+    # Load DiT with bnb 4bits or 8bits quantization if specified
+    if args.quantize:
+        if args.bnb_4bits_transformer:
+            print("Loading LongCat-Video DiT with 4-bit quantization")
+            dit_quant_config = DiffusersBitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+        else:
+            print("Loading LongCat-Video DiT with 8-bit quantization")
+            dit_quant_config = DiffusersBitsAndBytesConfig(
+                load_in_8bit=True,
+            )
+    else:
+        dit_quant_config = None
+
     dit = LongCatVideoTransformer3DModel.from_pretrained(
         checkpoint_dir,
         subfolder="dit",
         cp_split_hw=cp_split_hw,
         torch_dtype=torch.bfloat16,
-        quantization_config=(
-            DiffusersBitsAndBytesConfig(
-                # load_in_8bit=True,
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-            )
-            if args.quantize
-            else None
-        ),
+        quantization_config=dit_quant_config,
     )
 
     pipe = LongCatVideoPipeline(
@@ -131,9 +146,9 @@ def generate(args):
 
         assert isinstance(pipe.dit, LongCatVideoTransformer3DModel)
 
+        # Using Cache-DiT to cache the DiT transformer blocks of LongCat-Video
         cache_dit.enable_cache(
             BlockAdapter(
-                pipe=None,
                 transformer=pipe.dit,
                 blocks=pipe.dit.blocks,
                 forward_pattern=ForwardPattern.Pattern_3,
@@ -212,21 +227,13 @@ def generate(args):
 
 
 def _parse_args():
+    DEAULT_CHECKPOINT_DIR = os.environ.get("LONGCAT_VIDEO_DIR", None)
     parser = get_args(parse=False)
+    parser.add_argument("--frames", type=int, default=None)
+    parser.add_argument("--bnb-4bits-transformer", action="store_true")
+    parser.add_argument("--context_parallel_size", type=int, default=1)
     parser.add_argument(
-        "--frames",
-        type=int,
-        default=None,
-    )
-    parser.add_argument(
-        "--context_parallel_size",
-        type=int,
-        default=1,
-    )
-    parser.add_argument(
-        "--checkpoint_dir",
-        type=str,
-        default=os.environ.get("LONGCAT_VIDEO_DIR", None),
+        "--checkpoint_dir", type=str, default=DEAULT_CHECKPOINT_DIR
     )
     args = parser.parse_args()
 
