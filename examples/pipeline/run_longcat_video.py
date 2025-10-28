@@ -37,8 +37,9 @@ import cache_dit
 # export LONGCAT_VIDEO_DIR=/path/to/models/of/LongCat-Video
 # Add `--quantize` to enable loading models with bitsandbytes
 # for lower memory usage (e.g, GPU w/ < 48GB memory)
-# torchrun --nproc_per_node=4 run_longcat_video.py --quantize
-# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --cache --Fn 1
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --compile
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --compile --cache
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --compile --cache --Fn 1
 
 
 def torch_gc():
