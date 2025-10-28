@@ -49,28 +49,24 @@ def generate(args):
     context_parallel_size = args.context_parallel_size
 
     # prepare distributed environment
-    if context_parallel_size > 1:
-        rank = int(os.environ["RANK"])
-        num_gpus = torch.cuda.device_count()
-        local_rank = rank % num_gpus
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group(
-            backend="nccl", timeout=datetime.timedelta(seconds=3600 * 24)
-        )
-        global_rank = dist.get_rank()
-        num_processes = dist.get_world_size()
+    rank = int(os.environ["RANK"])
+    num_gpus = torch.cuda.device_count()
+    local_rank = rank % num_gpus
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(
+        backend="nccl", timeout=datetime.timedelta(seconds=3600 * 24)
+    )
+    global_rank = dist.get_rank()
+    num_processes = dist.get_world_size()
 
-        # initialize context parallel before loading models
-        init_context_parallel(
-            context_parallel_size=context_parallel_size,
-            global_rank=global_rank,
-            world_size=num_processes,
-        )
-        cp_size = context_parallel_util.get_cp_size()
-        cp_split_hw = context_parallel_util.get_optimal_split(cp_size)
-    else:
-        local_rank = 0
-        cp_split_hw = None
+    # initialize context parallel before loading models
+    init_context_parallel(
+        context_parallel_size=context_parallel_size,
+        global_rank=global_rank,
+        world_size=num_processes,
+    )
+    cp_size = context_parallel_util.get_cp_size()
+    cp_split_hw = context_parallel_util.get_optimal_split(cp_size)
 
     tokenizer = AutoTokenizer.from_pretrained(
         checkpoint_dir, subfolder="tokenizer", torch_dtype=torch.bfloat16
@@ -166,7 +162,8 @@ def generate(args):
     if args.compile:
         pipe.dit = torch.compile(pipe.dit)
 
-    generator = torch.Generator(device="cpu").manual_seed(42)
+    global_seed = 42
+    seed = global_seed + global_rank
 
     def run_t2v():
         # t2v (480p)
@@ -178,7 +175,7 @@ def generate(args):
             num_frames=93,
             num_inference_steps=50,
             guidance_scale=4.0,
-            generator=generator,
+            generator=torch.Generator(device=local_rank).manual_seed(seed),
         )[0]
         return output
 
@@ -234,3 +231,8 @@ def _parse_args():
 if __name__ == "__main__":
     args = _parse_args()
     generate(args)
+    # torchrun run_longcat_video.py --quantize
+    # torchrun run_longcat_video.py --quantize --cache --Fn 1
+    # torchrun --nproc_per_node=2 run_longcat_video.py --quantize --context_parallel_size 2
+    # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --context_parallel_size 4
+    # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --context_parallel_size 4 --cache --Fn 1
