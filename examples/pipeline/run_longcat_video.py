@@ -72,7 +72,7 @@ def generate(args):
         checkpoint_dir, subfolder="tokenizer", torch_dtype=torch.bfloat16
     )
 
-    # Reduce GPU VRAM requirement.
+    # Reduce GPU VRAM requirement
     text_encoder = UMT5EncoderModel.from_pretrained(
         checkpoint_dir,
         subfolder="text_encoder",
