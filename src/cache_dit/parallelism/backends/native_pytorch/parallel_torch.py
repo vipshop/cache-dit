@@ -34,21 +34,26 @@ def maybe_enable_parallelism(
     ):
         from torch.distributed import DeviceMesh, init_device_mesh
 
-        from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.flux.parallelize import (
-            dit_apply_tp,
-        )
-
         tp_mesh: DeviceMesh = init_device_mesh(
             device_type="cuda",
             mesh_shape=[parallelism_config.tp_size],
         )
 
-        assert transformer.__class__.__name__.startswith(
-            "Flux"
-        ), "tensor parallelism currently only supports Flux models."
+        if transformer.__class__.__name__.startswith("Flux"):
+            from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.flux.parallelize import (
+                dit_apply_tp,
+            )
+        elif transformer.__class__.__name__.startswith("QwenImage"):
+            from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.qwen_image.parallelize import (
+                dit_apply_tp,
+            )
+        else:
+            raise NotImplementedError(
+                f"TP for {transformer.__class__.__name__} is not implemented yet."
+            )
+
         transformer = dit_apply_tp(
             transformer,
             tp_mesh=tp_mesh,
         )
-
     return transformer
