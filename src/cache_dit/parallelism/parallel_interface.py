@@ -41,9 +41,9 @@ def enable_parallelism(
 
         assert (
             parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
+            and parallelism_config.tp_size >= 1
         ), (
-            "Please specify tp_size > 1 to enable tensor parallelism "
+            "Please specify tp_size >= 1 to enable tensor parallelism "
             "with Native_PyTorch backend."
         )
         transformer = maybe_enable_parallelism(
