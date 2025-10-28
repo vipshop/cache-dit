@@ -102,22 +102,31 @@ def generate(args):
         checkpoint_dir, subfolder="scheduler", torch_dtype=torch.bfloat16
     )
 
-    # Load DiT with bnb 4bits quantization if specified
-    dit = LongCatVideoTransformer3DModel.from_pretrained(
-        checkpoint_dir,
-        subfolder="dit",
-        cp_split_hw=cp_split_hw,
-        torch_dtype=torch.bfloat16,
-        quantization_config=(
-            DiffusersBitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
+    # Load DiT with bnb 4bits/8bits quantization if specified
+    if args.quantize:
+        if context_parallel_size >= 4:
+            # Activation will be split across multiple GPUs in CP,
+            # so we only apply FP8 Weight Only Quantization here
+            # to keep higher accuracy.
+            dit = LongCatVideoTransformer3DModel.from_pretrained(
+                checkpoint_dir,
+                subfolder="dit",
+                cp_split_hw=cp_split_hw,
+                torch_dtype=torch.bfloat16,
             )
-            if args.quantize
-            else None
-        ),
-    )
+            dit = cache_dit.quantize(dit, quant_type="fp8_w8a16_wo")
+        else:
+            dit = LongCatVideoTransformer3DModel.from_pretrained(
+                checkpoint_dir,
+                subfolder="dit",
+                cp_split_hw=cp_split_hw,
+                torch_dtype=torch.bfloat16,
+                quantization_config=DiffusersBitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                ),
+            )
 
     pipe = LongCatVideoPipeline(
         tokenizer=tokenizer,
@@ -201,7 +210,7 @@ def generate(args):
         time_cost = end - start
         save_path = f"longcat-video.{strify(args, pipe.dit)}"
         if args.quantize:
-            save_path += ".bnb4bits"
+            save_path += ".bnb4bits" if context_parallel_size < 4 else ".fp8wo"
         save_path += ".mp4"
         print(f"Time cost: {time_cost:.2f}s")
         print(f"Saving video to {save_path}")
