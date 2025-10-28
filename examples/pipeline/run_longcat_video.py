@@ -159,9 +159,6 @@ def generate(args):
             ),
         )
 
-    if args.compile:
-        pipe.dit = torch.compile(pipe.dit)
-
     global_seed = 42
     seed = global_seed + global_rank
 
@@ -179,9 +176,12 @@ def generate(args):
         )[0]
         return output
 
-    # warmup
-    _ = run_t2v()
-    torch_gc()
+    if args.compile:
+        pipe.dit = torch.compile(pipe.dit)
+
+        # warmup
+        _ = run_t2v()
+        torch_gc()
 
     start = time.time()
     output = run_t2v()
