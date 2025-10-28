@@ -90,6 +90,20 @@ def cachify(
         cache_config = kwargs.pop("cache_config", None)
         parallelism_config = kwargs.pop("parallelism_config", None)
 
+        backend = (
+            ParallelismBackend.NATIVE_PYTORCH
+            if args.parallel_type in ["tp"]
+            else ParallelismBackend.NATIVE_DIFFUSER
+        )
+        parallel_kwargs = (
+            {
+                "attention_backend": (
+                    "_native_cudnn" if not args.attn else args.attn
+                )
+            }
+            if backend == ParallelismBackend.NATIVE_DIFFUSER
+            else None
+        )
         cache_dit.enable_cache(
             pipe_or_adapter,
             cache_config=(
@@ -129,16 +143,8 @@ def cachify(
                         if args.parallel_type == "tp"
                         else None
                     ),
-                    backend=(
-                        ParallelismBackend.NATIVE_PYTORCH
-                        if args.parallel_type in ["tp"]
-                        else ParallelismBackend.NATIVE_DIFFUSER
-                    ),
-                    parallel_kwargs={
-                        "attention_backend": (
-                            "_native_cudnn" if not args.attn else args.attn
-                        )
-                    },
+                    backend=backend,
+                    parallel_kwargs=parallel_kwargs,
                 )
                 if parallelism_config is None
                 and args.parallel_type in ["ulysses", "ring", "tp"]
