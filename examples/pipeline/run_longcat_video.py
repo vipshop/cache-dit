@@ -143,6 +143,9 @@ def generate(args):
         dit=dit,
     )
 
+    if GiB() <= 48:
+        pipe.vae.enable_tiling()
+
     pipe.to(f"cuda:{local_rank}")
 
     if args.cache:
