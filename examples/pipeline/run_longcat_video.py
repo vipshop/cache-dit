@@ -29,7 +29,7 @@ from longcat_video.context_parallel.context_parallel_util import (
     init_context_parallel,
 )
 
-from utils import get_args, strify
+from utils import get_args, strify, GiB
 import cache_dit
 
 # Example usage:
@@ -108,8 +108,9 @@ def generate(args):
     )
 
     # Load DiT with bnb 4bits/8bits quantization if specified
+    use_4bits_transformer = False
     if args.quantize:
-        if context_parallel_size >= 4:
+        if context_parallel_size >= 2 and GiB() >= 40:
             # Activation will be split across multiple GPUs in CP,
             # so we only apply FP8 Weight Only Quantization here
             # to keep higher accuracy.
@@ -132,6 +133,7 @@ def generate(args):
                     bnb_4bit_compute_dtype=torch.bfloat16,
                 ),
             )
+            use_4bits_transformer = True
 
     pipe = LongCatVideoPipeline(
         tokenizer=tokenizer,
@@ -184,15 +186,18 @@ def generate(args):
     global_seed = 42
     seed = global_seed + global_rank
 
-    def run_t2v():
+    def run_t2v(warmup: bool = False):
         # t2v (480p)
+        print(f"Generating video, warmup={warmup} ...")
         output = pipe.generate_t2v(
             prompt=prompt,
             negative_prompt=negative_prompt,
             height=480 if args.height is None else args.height,
             width=832 if args.width is None else args.width,
             num_frames=93 if args.frames is None else args.frames,
-            num_inference_steps=50 if args.steps is None else args.steps,
+            num_inference_steps=(
+                (50 if args.steps is None else args.steps) if not warmup else 4
+            ),
             guidance_scale=4.0,
             generator=torch.Generator(device=local_rank).manual_seed(seed),
         )[0]
@@ -215,7 +220,7 @@ def generate(args):
         time_cost = end - start
         save_path = f"longcat-video.{strify(args, pipe.dit)}"
         if args.quantize:
-            save_path += ".bnb4bits" if context_parallel_size < 4 else ".fp8wo"
+            save_path += ".bnb4bits" if use_4bits_transformer else ".fp8wo"
         save_path += ".mp4"
         print(f"Time cost: {time_cost:.2f}s")
         print(f"Saving video to {save_path}")
