@@ -15,6 +15,7 @@ from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from torchvision.io import write_video
 
+sys.path.append(os.environ.get("LONGCAT_VIDEO_PKG_DIR", ""))
 from longcat_video.pipeline_longcat_video import LongCatVideoPipeline
 from longcat_video.modules.scheduling_flow_match_euler_discrete import (
     FlowMatchEulerDiscreteScheduler,
@@ -165,11 +166,7 @@ def generate(args):
     if args.compile:
         pipe.dit = torch.compile(pipe.dit)
 
-    global_seed = 42
-    seed = global_seed + global_rank
-
-    generator = torch.Generator(device="cpu")
-    generator.manual_seed(seed)
+    generator = torch.Generator(device="cpu").manual_seed(42)
 
     def run_t2v():
         # t2v (480p)
