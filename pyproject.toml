@@ -13,10 +13,13 @@ dependencies = [
     "torch>=2.7.1",
     "diffusers>=0.35.1",
     "transformers>=4.55.2",
-    "einops>=0.8.1",
 ]
 
 [project.optional-dependencies]
+
+parallelism = [
+    "einops>=0.8.1",
+]
 
 quantization = [
     "torchao>=0.12.0",
@@ -46,6 +49,7 @@ dev = [
 ]
 
 all = [
+    "cache-dit[parallelism]",
     "cache-dit[quantization]",
     "cache-dit[metrics]",
 ]
