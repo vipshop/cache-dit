@@ -1,8 +1,11 @@
-import torch
 import argparse
-import cache_dit
+
+import torch
 import torch.distributed as dist
+
+import cache_dit
 from cache_dit import init_logger
+from cache_dit.parallelism.parallel_backend import ParallelismBackend
 
 logger = init_logger(__name__)
 
@@ -77,15 +80,30 @@ def cachify(
 ):
     if args.cache or args.parallel_type is not None:
         import torch.distributed as dist
+
         from cache_dit import (
             DBCacheConfig,
-            TaylorSeerCalibratorConfig,
             ParallelismConfig,
+            TaylorSeerCalibratorConfig,
         )
 
         cache_config = kwargs.pop("cache_config", None)
         parallelism_config = kwargs.pop("parallelism_config", None)
 
+        backend = (
+            ParallelismBackend.NATIVE_PYTORCH
+            if args.parallel_type in ["tp"]
+            else ParallelismBackend.NATIVE_DIFFUSER
+        )
+        parallel_kwargs = (
+            {
+                "attention_backend": (
+                    "_native_cudnn" if not args.attn else args.attn
+                )
+            }
+            if backend == ParallelismBackend.NATIVE_DIFFUSER
+            else None
+        )
         cache_dit.enable_cache(
             pipe_or_adapter,
             cache_config=(
@@ -120,14 +138,16 @@ def cachify(
                         if args.parallel_type == "ring"
                         else None
                     ),
-                    parallel_kwargs={
-                        "attention_backend": (
-                            "_native_cudnn" if not args.attn else args.attn
-                        )
-                    },
+                    tp_size=(
+                        dist.get_world_size()
+                        if args.parallel_type == "tp"
+                        else None
+                    ),
+                    backend=backend,
+                    parallel_kwargs=parallel_kwargs,
                 )
                 if parallelism_config is None
-                and args.parallel_type in ["ulysses", "ring"]
+                and args.parallel_type in ["ulysses", "ring", "tp"]
                 else parallelism_config
             ),
         )

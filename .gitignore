@@ -179,3 +179,5 @@ init_env.sh
 *.bin
 *.h5
 *.hdf5
+
+uv.lock
