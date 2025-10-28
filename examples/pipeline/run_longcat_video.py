@@ -38,8 +38,8 @@ import cache_dit
 # Add `--quantize` to enable loading models with bitsandbytes
 # for lower memory usage (e.g, GPU w/ < 48GB memory)
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize
-# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --cache --Fn 1
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer --cache --Fn 1
 
 
