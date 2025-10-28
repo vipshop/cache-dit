@@ -35,8 +35,12 @@ import cache_dit
 # Example usage:
 # export LONGCAT_VIDEO_PKG_DIR=/path/to/codes/of/LongCat-Video
 # export LONGCAT_VIDEO_DIR=/path/to/models/of/LongCat-Video
+# Add `--quantize` to enable loading models with bitsandbytes
+# for lower memory usage (e.g, GPU w/ < 48GB memory)
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --cache --Fn 1
+# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer --cache --Fn 1
 
 
 def torch_gc():
@@ -64,6 +68,9 @@ def generate(args):
     )
     global_rank = dist.get_rank()
     num_processes = dist.get_world_size()
+
+    if context_parallel_size is None:
+        context_parallel_size = num_processes
 
     # initialize context parallel before loading models
     init_context_parallel(
@@ -231,7 +238,7 @@ def _parse_args():
     parser = get_args(parse=False)
     parser.add_argument("--frames", type=int, default=None)
     parser.add_argument("--bnb-4bits-transformer", action="store_true")
-    parser.add_argument("--context_parallel_size", type=int, default=1)
+    parser.add_argument("--context_parallel_size", type=int, default=None)
     parser.add_argument(
         "--checkpoint_dir", type=str, default=DEAULT_CHECKPOINT_DIR
     )
