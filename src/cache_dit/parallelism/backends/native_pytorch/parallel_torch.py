@@ -6,20 +6,6 @@ from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
-
-try:
-    from diffusers import ContextParallelConfig
-
-    def native_diffusers_parallelism_available() -> bool:
-        return True
-
-except ImportError:
-    ContextParallelConfig = None
-
-    def native_diffusers_parallelism_available() -> bool:
-        return False
-
-
 from diffusers.models.modeling_utils import ModelMixin
 
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
@@ -48,7 +34,9 @@ def maybe_enable_parallelism(
     ):
         from torch.distributed import DeviceMesh, init_device_mesh
 
-        from cache_dit.parallelism.tp.flux.parallelize import dit_apply_tp
+        from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.flux.parallelize import (
+            dit_apply_tp,
+        )
 
         tp_mesh: DeviceMesh = init_device_mesh(
             device_type="cuda",
