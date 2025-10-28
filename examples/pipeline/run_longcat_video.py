@@ -39,8 +39,6 @@ import cache_dit
 # for lower memory usage (e.g, GPU w/ < 48GB memory)
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize
 # torchrun --nproc_per_node=4 run_longcat_video.py --quantize --cache --Fn 1
-# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer
-# torchrun --nproc_per_node=4 run_longcat_video.py --quantize --bnb-4bits-transformer --cache --Fn 1
 
 
 def torch_gc():
@@ -86,20 +84,15 @@ def generate(args):
     )
 
     # Load text encoder with bnb 4bits quantization if specified
-    if args.quantize:
-        text_encoder_quant_config = TransformersBitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
-    else:
-        text_encoder_quant_config = None
-
     text_encoder = UMT5EncoderModel.from_pretrained(
         checkpoint_dir,
         subfolder="text_encoder",
         torch_dtype=torch.bfloat16,
-        quantization_config=text_encoder_quant_config,
+        quantization_config=TransformersBitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        ),
     )
 
     vae = AutoencoderKLWan.from_pretrained(
@@ -109,29 +102,21 @@ def generate(args):
         checkpoint_dir, subfolder="scheduler", torch_dtype=torch.bfloat16
     )
 
-    # Load DiT with bnb 4bits or 8bits quantization if specified
-    if args.quantize:
-        if args.bnb_4bits_transformer:
-            print("Loading LongCat-Video DiT with 4-bit quantization")
-            dit_quant_config = DiffusersBitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-            )
-        else:
-            print("Loading LongCat-Video DiT with 8-bit quantization")
-            dit_quant_config = DiffusersBitsAndBytesConfig(
-                load_in_8bit=True,
-            )
-    else:
-        dit_quant_config = None
-
+    # Load DiT with bnb 4bits quantization if specified
     dit = LongCatVideoTransformer3DModel.from_pretrained(
         checkpoint_dir,
         subfolder="dit",
         cp_split_hw=cp_split_hw,
         torch_dtype=torch.bfloat16,
-        quantization_config=dit_quant_config,
+        quantization_config=(
+            DiffusersBitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            if args.quantize
+            else None
+        ),
     )
 
     pipe = LongCatVideoPipeline(
@@ -141,6 +126,7 @@ def generate(args):
         scheduler=scheduler,
         dit=dit,
     )
+
     pipe.to(f"cuda:{local_rank}")
 
     if args.cache:
@@ -214,7 +200,7 @@ def generate(args):
 
         time_cost = end - start
         save_path = f"longcat-video.{strify(args, pipe.dit)}"
-        if args.quantize and args.bnb_4bits_transformer:
+        if args.quantize:
             save_path += ".bnb4bits"
         save_path += ".mp4"
         print(f"Time cost: {time_cost:.2f}s")
@@ -240,7 +226,6 @@ def _parse_args():
     DEAULT_CHECKPOINT_DIR = os.environ.get("LONGCAT_VIDEO_DIR", None)
     parser = get_args(parse=False)
     parser.add_argument("--frames", type=int, default=None)
-    parser.add_argument("--bnb-4bits-transformer", action="store_true")
     parser.add_argument("--context_parallel_size", type=int, default=None)
     parser.add_argument(
         "--checkpoint_dir", type=str, default=DEAULT_CHECKPOINT_DIR
