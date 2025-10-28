@@ -213,7 +213,10 @@ def generate(args):
         cache_dit.summary(pipe.dit)
 
         time_cost = end - start
-        save_path = f"longcat-video.{strify(args, pipe.dit)}.mp4"
+        save_path = f"longcat-video.{strify(args, pipe.dit)}"
+        if args.bnb_4bits_transformer:
+            save_path += ".bnb4bits"
+        save_path += ".mp4"
         print(f"Time cost: {time_cost:.2f}s")
         print(f"Saving video to {save_path}")
 
