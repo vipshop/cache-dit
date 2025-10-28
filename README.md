@@ -158,6 +158,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🔥Important News
 
+- 2025.10.28: 🔥Day 1 support [**LongCat-Video**](https://huggingface.co/meituan-longcat/LongCat-Video) with cache acceleration, ~**1.7x↑🎉**, 📚[Example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_longcat_video.py).
 - 2025.10.28: 🎉Currently, **cache-dit** has been recommended by [<a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>](https://hellogithub.com/repository/vipshop/cache-dit) ![](https://img.shields.io/github/stars/521xueweihan/HelloGitHub.svg)🔥
 - 2025.10.23: 🎉Now cache-dit supported the [Kandinsky5 T2V](https://github.com/ai-forever/Kandinsky-5) and [Photoroom/PRX](https://github.com/huggingface/diffusers/pull/12456) pipelines.
 - 2025.10.20: 🔥Now cache-dit supported the **[Hybrid Cache + Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)** scheme!🔥
