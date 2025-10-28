@@ -39,17 +39,18 @@ def maybe_enable_parallelism(
             mesh_shape=[parallelism_config.tp_size],
         )
 
-        if transformer.__class__.__name__.startswith("Flux"):
+        class_name = transformer.__class__.__name__
+        if class_name.startswith("Flux"):
             from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.flux.parallelize import (
                 dit_apply_tp,
             )
-        elif transformer.__class__.__name__.startswith("QwenImage"):
+        elif class_name.startswith("QwenImage"):
             from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.qwen_image.parallelize import (
                 dit_apply_tp,
             )
         else:
             raise NotImplementedError(
-                f"TP for {transformer.__class__.__name__} is not implemented yet."
+                f"TP for {class_name} is not implemented yet."
             )
 
         transformer = dit_apply_tp(
