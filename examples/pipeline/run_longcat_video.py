@@ -167,10 +167,10 @@ def generate(args):
         output = pipe.generate_t2v(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            height=480,
-            width=832,
-            num_frames=93,
-            num_inference_steps=50,
+            height=480 if args.height is None else args.height,
+            width=832 if args.width is None else args.width,
+            num_frames=93 if args.frames is None else args.frames,
+            num_inference_steps=50 if args.steps is None else args.steps,
             guidance_scale=4.0,
             generator=torch.Generator(device=local_rank).manual_seed(seed),
         )[0]
@@ -213,6 +213,11 @@ def generate(args):
 
 def _parse_args():
     parser = get_args(parse=False)
+    parser.add_argument(
+        "--frames",
+        type=int,
+        default=None,
+    )
     parser.add_argument(
         "--context_parallel_size",
         type=int,
