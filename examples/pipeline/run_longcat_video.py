@@ -207,10 +207,11 @@ def generate(args):
         return output
 
     if args.compile:
+        cache_dit.set_compile_configs()
         pipe.dit = torch.compile(pipe.dit)
 
         # warmup
-        _ = run_t2v()
+        _ = run_t2v(warmup=True)
         torch_gc()
 
     start = time.time()
