@@ -37,22 +37,15 @@ pipe: QwenImagePipeline = QwenImagePipeline.from_pretrained(
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
-enable_quatization = (
-    args.quantize and GiB() < 96 and not args.parallel_type == "tp"
-)
+enable_quatization = args.quantize and GiB() < 96
 
 if GiB() < 96:
     if enable_quatization:
         print("Apply FP8 Weight Only Quantize ...")
         args.quantize_type = "fp8_w8a16_wo"  # force
-        pipe.transformer = cache_dit.quantize(
-            pipe.transformer,
-            quant_type=args.quantize_type,
-            exclude_layers=[
-                "img_in",
-                "txt_in",
-            ],
-        )
+        # Only quantize text encoder with FP8 weight-only
+        # quantization, the required memory for transformer per
+        # GPU is reduced significantly after tensor parallelism.
         pipe.text_encoder = cache_dit.quantize(
             pipe.text_encoder,
             quant_type=args.quantize_type,
@@ -61,7 +54,7 @@ if GiB() < 96:
 else:
     pipe.to(device)
 
-if GiB() <= 48:
+if GiB() <= 48 and not enable_quatization:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
 
@@ -70,10 +63,12 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 # Minimum 40GiB is required for tensor parallelism = 2
-if GiB() < 96 and not args.parallel_type == "tp":
-    if not enable_quatization:
+if GiB() < 48 and not enable_quatization:
+    if not args.parallel_type == "tp":
         print("Enable model CPU offload ...")
         pipe.enable_model_cpu_offload(device=device)
+    else:
+        pipe.to(device)
 else:
     pipe.to(device)
 
@@ -112,10 +107,7 @@ def run_pipe(warmup: bool = False):
 
 if args.compile:
     cache_dit.set_compile_configs()
-    if hasattr(pipe.transformer, "compile_repeated_blocks"):
-        pipe.transformer.compile_repeated_blocks()
-    else:
-        pipe.transformer = torch.compile(pipe.transformer)
+    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe(warmup=True)
