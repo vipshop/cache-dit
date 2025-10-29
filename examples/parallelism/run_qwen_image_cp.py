@@ -105,7 +105,10 @@ def run_pipe():
 
 if args.compile:
     cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
+    if hasattr(pipe.transformer, "compile_repeated_blocks"):
+        pipe.transformer.compile_repeated_blocks()
+    else:
+        pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe()
