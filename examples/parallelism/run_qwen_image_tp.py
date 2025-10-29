@@ -6,8 +6,13 @@ sys.path.append("..")
 import time
 
 import torch
-from diffusers import QwenImagePipeline, QwenImageTransformer2DModel
+from diffusers import (
+    QwenImagePipeline,
+    QwenImageTransformer2DModel,
+    AutoencoderKLQwenImage,
+)
 from utils import (
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -30,13 +35,44 @@ pipe: QwenImagePipeline = QwenImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
+assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+
+enable_quatization = args.quantize and GiB() < 96
+
+if GiB() < 96:
+    if enable_quatization:
+        print("Apply FP8 Weight Only Quantize ...")
+        args.quantize_type = "fp8_w8a16_wo"  # force
+        # Only quantize text encoder with FP8 weight-only
+        # quantization, the required memory for transformer per
+        # GPU is reduced significantly after tensor parallelism.
+        pipe.text_encoder = cache_dit.quantize(
+            pipe.text_encoder,
+            quant_type=args.quantize_type,
+        )
+        pipe.to(device)
+else:
+    pipe.to(device)
+
+if GiB() <= 48 and not enable_quatization:
+    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+    pipe.vae.enable_tiling()
+
+# Apply cache and tensor parallelism here
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
-torch.cuda.empty_cache()
-pipe.enable_model_cpu_offload(device=device)
+# Minimum 40GiB is required for tensor parallelism = 2
+if GiB() < 48 and not enable_quatization:
+    if not args.parallel_type == "tp":
+        # NOTE: Seems CPU offload is not compatible with tensor
+        # parallelism (via DTensor).
+        pipe.enable_model_cpu_offload(device=device)
+    else:
+        pipe.to(device)
+else:
+    pipe.to(device)
 
-assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 positive_magic = {
     "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
@@ -52,14 +88,16 @@ negative_prompt = " "
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
-def run_pipe():
+def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
     output = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=50 if args.steps is None else args.steps,
+        num_inference_steps=(
+            (50 if args.steps is None else args.steps) if not warmup else 5
+        ),
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
         output_type="latent" if args.perf else "pil",
@@ -73,7 +111,7 @@ if args.compile:
     pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
-_ = run_pipe()
+_ = run_pipe(warmup=True)
 
 start = time.time()
 image = run_pipe()
