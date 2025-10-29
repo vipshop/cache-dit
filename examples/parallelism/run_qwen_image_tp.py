@@ -65,7 +65,8 @@ if args.cache or args.parallel_type is not None:
 # Minimum 40GiB is required for tensor parallelism = 2
 if GiB() < 48 and not enable_quatization:
     if not args.parallel_type == "tp":
-        print("Enable model CPU offload ...")
+        # NOTE: Seems CPU offload is not compatible with tensor
+        # parallelism (via DTensor).
         pipe.enable_model_cpu_offload(device=device)
     else:
         pipe.to(device)

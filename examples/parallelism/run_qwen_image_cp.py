@@ -66,7 +66,7 @@ if args.cache or args.parallel_type is not None:
 
 
 if GiB() < 96 and not enable_quatization:
-    # NOTE: Enable cpu offload before enabling parallelism will
+    # NOTE: Enable cpu offload before enabling context parallelism will
     # raise shape error after first pipe call, so we enable it after.
     # It seems a bug of diffusers that cpu offload is not fully
     # compatible with context parallelism, visa versa.
@@ -105,10 +105,7 @@ def run_pipe():
 
 if args.compile:
     cache_dit.set_compile_configs()
-    if hasattr(pipe.transformer, "compile_repeated_blocks"):
-        pipe.transformer.compile_repeated_blocks()
-    else:
-        pipe.transformer = torch.compile(pipe.transformer)
+    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe()
