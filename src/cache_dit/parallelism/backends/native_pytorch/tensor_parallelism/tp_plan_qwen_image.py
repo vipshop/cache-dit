@@ -48,6 +48,7 @@ class QwenImageTensorParallelismPlaner(TensorParallelismPlaner):
         return transformer
 
     def parallelize_transformer(
+        self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):
