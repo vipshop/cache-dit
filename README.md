@@ -11,11 +11,10 @@
   </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
-      <img src=https://img.shields.io/badge/PRs-welcome-blue.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
-      <img src=https://static.pepy.tech/badge/cache-dit >
+      <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg? >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-      <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg >
+      <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg > 
   </div>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
@@ -124,7 +123,8 @@
 
 </details>
 
-## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>
+## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> <img src=https://img.shields.io/badge/models-30+-pink.svg > <img src=https://img.shields.io/badge/pipelines-~100+-pink.svg >
+
 
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
