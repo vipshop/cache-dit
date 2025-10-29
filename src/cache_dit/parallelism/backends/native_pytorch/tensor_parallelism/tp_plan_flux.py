@@ -48,6 +48,8 @@ class FluxTensorParallelismPlaner(TensorParallelismPlaner):
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
+        # TODO: Parallelize t5 text encoder via `apply_extra`
+        # abstract method and `extra_parallel_kwargs` ?
 
         return transformer
 

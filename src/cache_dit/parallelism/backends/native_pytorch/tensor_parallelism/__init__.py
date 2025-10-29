@@ -42,7 +42,12 @@ def maybe_enable_tensor_parallelism(
         f"but got {parallelism_config.backend}"
     )
 
+    extra_parallel_kwargs = {}
+    if parallelism_config.parallel_kwargs is not None:
+        extra_parallel_kwargs = parallelism_config.parallel_kwargs
+
     return TensorParallelismPlanerRegister.get_planer(transformer)().apply(
         transformer=transformer,
         parallelism_config=parallelism_config,
+        **extra_parallel_kwargs,
     )

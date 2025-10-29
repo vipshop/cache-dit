@@ -8,6 +8,9 @@ logger = init_logger(__name__)
 
 
 class TensorParallelismPlaner:
+    # TODO: add `apply_extra` abstract method for extra
+    # parallelism kwargs handling
+
     @abstractmethod
     def apply(
         self,
