@@ -31,6 +31,14 @@ def maybe_enable_parallelism(
         "parallelism_config must be an instance of ParallelismConfig"
         f" but got {type(parallelism_config)}"
     )
+    assert parallelism_config.ulysses_size is None, (
+        "Ulysses parallelism is not supported in Native_PyTorch backend. "
+        "Please set ulysses_size to None in parallelism_config."
+    )
+    assert parallelism_config.ring_size is None, (
+        "Ring parallelism is not supported in Native_PyTorch backend. "
+        "Please set ring_size to None in parallelism_config."
+    )
 
     if (
         parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH
