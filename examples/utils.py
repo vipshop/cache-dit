@@ -61,8 +61,12 @@ def get_args(
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument(
-        "--parallel-type", "--parallel", type=str, default=None
-    )  # ulysses, ring
+        "--parallel-type",
+        "--parallel",
+        type=str,
+        default=None,
+        choices=[None, "tp", "ulysses", "ring"],
+    )
     parser.add_argument(
         "--attn",
         type=str,

@@ -11,8 +11,13 @@ from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
-from .tp_plan_registers import TensorParallelismPlanerRegister
 from cache_dit.logger import init_logger
+
+# NOTE: must import all planer classes to register them
+from .tp_plan_registers import TensorParallelismPlanerRegister
+from .tp_plan_flux import FluxTensorParallelismPlaner
+from .tp_plan_qwen_image import QwenImageTensorParallelismPlaner
+
 
 logger = init_logger(__name__)
 
