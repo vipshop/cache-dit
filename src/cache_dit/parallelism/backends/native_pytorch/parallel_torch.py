@@ -2,20 +2,24 @@ from typing import Optional
 
 import torch
 
-from cache_dit.logger import init_logger
-
-logger = init_logger(__name__)
-
 from diffusers.models.modeling_utils import ModelMixin
 
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
+
 
 def maybe_enable_parallelism(
-    transformer: torch.nn.Module,
+    transformer: torch.nn.Module | ModelMixin,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
+    assert isinstance(transformer, torch.nn.Module), (
+        "transformer must be an instance of torch.nn.Module, "
+        f"but got {type(transformer)}"
+    )
     assert isinstance(transformer, ModelMixin), (
         "transformer must be an instance of diffusers' ModelMixin, "
         f"but got {type(transformer)}"
@@ -32,29 +36,10 @@ def maybe_enable_parallelism(
         parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH
         and parallelism_config.tp_size > 1
     ):
-        from torch.distributed import DeviceMesh, init_device_mesh
+        from .tensor_parallelism import maybe_enable_tensor_parallelism
 
-        tp_mesh: DeviceMesh = init_device_mesh(
-            device_type="cuda",
-            mesh_shape=[parallelism_config.tp_size],
-        )
-
-        class_name = transformer.__class__.__name__
-        if class_name.startswith("Flux"):
-            from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.flux.parallelize import (
-                dit_apply_tp,
-            )
-        elif class_name.startswith("QwenImage"):
-            from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.qwen_image.parallelize import (
-                dit_apply_tp,
-            )
-        else:
-            raise NotImplementedError(
-                f"TP for {class_name} is not implemented yet."
-            )
-
-        transformer = dit_apply_tp(
-            transformer,
-            tp_mesh=tp_mesh,
+        transformer = maybe_enable_tensor_parallelism(
+            transformer=transformer,
+            parallelism_config=parallelism_config,
         )
     return transformer
