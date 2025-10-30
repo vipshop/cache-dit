@@ -13,8 +13,8 @@ from cache_dit.logger import init_logger
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 
 from .tp_plan_registers import (
-    TensorParallelismPlaner,
-    TensorParallelismPlanerRegister,
+    TensorParallelismPlanner,
+    TensorParallelismPlannerRegister,
 )
 
 logger = init_logger(__name__)
@@ -75,8 +75,8 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
-@TensorParallelismPlanerRegister.register("Wan")
-class WanTensorParallelismPlaner(TensorParallelismPlaner):
+@TensorParallelismPlannerRegister.register("Wan")
+class WanTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
         transformer: torch.nn.Module,
