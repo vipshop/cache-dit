@@ -48,8 +48,6 @@ if GiB() < 96:
 # FP8 weight only
 if args.quantize:
     # Minimum VRAM required: 38 GiB
-    print("Apply FP8 Weight Only Quantize ...")
-    args.quantize_type = "float8_weight_only"  # force
     pipe.dit = cache_dit.quantize(
         pipe.dit,
         quant_type=args.quantize_type,

@@ -122,7 +122,7 @@ def generate(args):
                 cp_split_hw=cp_split_hw,
                 torch_dtype=torch.bfloat16,
             )
-            dit = cache_dit.quantize(dit, quant_type="float8_weight_only")
+            dit = cache_dit.quantize(dit, quant_type=args.quantize_type)
         else:
             dit = LongCatVideoTransformer3DModel.from_pretrained(
                 checkpoint_dir,

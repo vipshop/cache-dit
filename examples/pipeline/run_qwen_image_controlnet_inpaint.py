@@ -60,7 +60,7 @@ if GiB() < 96:
         # Minimum VRAM required: 42 GiB
         pipe.transformer = cache_dit.quantize(
             pipe.transformer,
-            quant_type="float8_weight_only",
+            quant_type=args.quantize_type,
             exclude_layers=[
                 "img_in",
                 "txt_in",
@@ -72,7 +72,7 @@ if GiB() < 96:
         )
         pipe.text_encoder = cache_dit.quantize(
             pipe.text_encoder,
-            quant_type="float8_weight_only",
+            quant_type=args.quantize_type,
         )
 
         pipe.to("cuda")
