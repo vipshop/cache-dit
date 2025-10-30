@@ -717,7 +717,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     1, 3, 5, ... -> CFG step.
   - `cfg_diff_compute_separate`: (`bool`, *required*, defaults to True):  
     Whether to compute separate difference values for CFG and non-CFG steps, default is True. If False, we will use the computed difference from the current non-CFG transformer step for the current CFG step.
-  - num_inference_steps (`int`, *optional*, defaults to None):  
+  - `num_inference_steps` (`int`, *optional*, defaults to None):  
     num_inference_steps for DiffusionPipeline, used to adjust some internal settings
     for better caching performance. For example, we will refresh the cache once the
     executed steps exceed num_inference_steps if num_inference_steps is provided.
