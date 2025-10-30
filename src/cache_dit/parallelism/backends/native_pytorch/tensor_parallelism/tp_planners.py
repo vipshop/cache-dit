@@ -1,0 +1,10 @@
+# NOTE: must import all planner classes to register them
+from .tp_plan_registers import TensorParallelismPlannerRegister
+from .tp_plan_flux import FluxTensorParallelismPlanner
+from .tp_plan_qwen_image import QwenImageTensorParallelismPlanner
+
+__all__ = [
+    "TensorParallelismPlannerRegister",
+    "FluxTensorParallelismPlanner",
+    "QwenImageTensorParallelismPlanner",
+]

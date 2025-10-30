@@ -8,7 +8,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class TensorParallelismPlaner:
+class TensorParallelismPlanner:
     # TODO: add `apply_extra` abstract method for extra
     # parallelism kwargs handling
 
@@ -24,35 +24,35 @@ class TensorParallelismPlaner:
         )
 
 
-class TensorParallelismPlanerRegister:
-    _tp_planer_registry: Dict[str, TensorParallelismPlaner] = {}
+class TensorParallelismPlannerRegister:
+    _tp_planner_registry: Dict[str, TensorParallelismPlanner] = {}
 
     @classmethod
     def register(cls, name: str):
-        def decorator(planer_cls: type[TensorParallelismPlaner]):
+        def decorator(planner_cls: type[TensorParallelismPlanner]):
             assert (
-                name not in cls._tp_planer_registry
-            ), f"TensorParallelismPlaner with name {name} is already registered."
+                name not in cls._tp_planner_registry
+            ), f"TensorParallelismPlanner with name {name} is already registered."
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Registering TensorParallelismPlaner: {name}")
-            cls._tp_planer_registry[name] = planer_cls
-            return planer_cls
+                logger.debug(f"Registering TensorParallelismPlanner: {name}")
+            cls._tp_planner_registry[name] = planner_cls
+            return planner_cls
 
         return decorator
 
     @classmethod
-    def get_planer(
+    def get_planner(
         cls, transformer: str | torch.nn.Module
-    ) -> type[TensorParallelismPlaner]:
+    ) -> type[TensorParallelismPlanner]:
         if isinstance(transformer, torch.nn.Module):
             name = transformer.__class__.__name__
         else:
             name = transformer
-        planer_cls = None
-        for planer_name in cls._tp_planer_registry:
-            if name.startswith(planer_name):
-                planer_cls = cls._tp_planer_registry.get(planer_name)
+        planner_cls = None
+        for planner_name in cls._tp_planner_registry:
+            if name.startswith(planner_name):
+                planner_cls = cls._tp_planner_registry.get(planner_name)
                 break
-        if planer_cls is None:
-            raise ValueError(f"No planer registered under name: {name}")
-        return planer_cls
+        if planner_cls is None:
+            raise ValueError(f"No planner registered under name: {name}")
+        return planner_cls

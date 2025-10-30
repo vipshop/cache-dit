@@ -80,16 +80,16 @@ logger = init_logger(__name__)
 #     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
 
 __all__ = [
-    "ContextParallelismPlaner",
-    "ContextParallelismPlanerRegister",
-    "FluxContextParallelismPlaner",
-    "QwenImageContextParallelismPlaner",
-    "WanContextParallelismPlaner",
-    "LTXVideoContextParallelismPlaner",
+    "ContextParallelismPlanner",
+    "ContextParallelismPlannerRegister",
+    "FluxContextParallelismPlanner",
+    "QwenImageContextParallelismPlanner",
+    "WanContextParallelismPlanner",
+    "LTXVideoContextParallelismPlanner",
 ]
 
 
-class ContextParallelismPlaner:
+class ContextParallelismPlanner:
     @abstractmethod
     def apply(
         self,
@@ -103,43 +103,43 @@ class ContextParallelismPlaner:
         )
 
 
-class ContextParallelismPlanerRegister:
-    _cp_planer_registry: dict[str, ContextParallelismPlaner] = {}
+class ContextParallelismPlannerRegister:
+    _cp_planner_registry: dict[str, ContextParallelismPlanner] = {}
 
     @classmethod
     def register(cls, name: str):
-        def decorator(planer_cls: type[ContextParallelismPlaner]):
+        def decorator(planner_cls: type[ContextParallelismPlanner]):
             assert (
-                name not in cls._cp_planer_registry
-            ), f"ContextParallelismPlaner with name {name} is already registered."
+                name not in cls._cp_planner_registry
+            ), f"ContextParallelismPlanner with name {name} is already registered."
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Registering ContextParallelismPlaner: {name}")
-            cls._cp_planer_registry[name] = planer_cls
-            return planer_cls
+                logger.debug(f"Registering ContextParallelismPlanner: {name}")
+            cls._cp_planner_registry[name] = planner_cls
+            return planner_cls
 
         return decorator
 
     @classmethod
-    def get_planer(
+    def get_planner(
         cls, transformer: str | torch.nn.Module | ModelMixin
-    ) -> type[ContextParallelismPlaner]:
+    ) -> type[ContextParallelismPlanner]:
         if isinstance(transformer, (torch.nn.Module, ModelMixin)):
             name = transformer.__class__.__name__
         else:
             name = transformer
-        planer_cls = None
-        for planer_name in cls._cp_planer_registry:
-            if name.startswith(planer_name):
-                planer_cls = cls._cp_planer_registry.get(planer_name)
+        planner_cls = None
+        for planner_name in cls._cp_planner_registry:
+            if name.startswith(planner_name):
+                planner_cls = cls._cp_planner_registry.get(planner_name)
                 break
-        if planer_cls is None:
-            raise ValueError(f"No planer registered under name: {name}")
-        return planer_cls
+        if planner_cls is None:
+            raise ValueError(f"No planner registered under name: {name}")
+        return planner_cls
 
 
-# Register context parallelism planer for models
-@ContextParallelismPlanerRegister.register("Flux")
-class FluxContextParallelismPlaner(ContextParallelismPlaner):
+# Register context parallelism planner for models
+@ContextParallelismPlannerRegister.register("Flux")
+class FluxContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
@@ -174,8 +174,8 @@ class FluxContextParallelismPlaner(ContextParallelismPlaner):
         return _cp_plan
 
 
-@ContextParallelismPlanerRegister.register("QwenImage")
-class QwenImageContextParallelismPlaner(ContextParallelismPlaner):
+@ContextParallelismPlannerRegister.register("QwenImage")
+class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
@@ -215,11 +215,11 @@ class QwenImageContextParallelismPlaner(ContextParallelismPlaner):
         return _cp_plan
 
 
-# TODO: Add WanVACETransformer3DModel context parallelism planer.
+# TODO: Add WanVACETransformer3DModel context parallelism planner.
 # NOTE: We choice to use full name to avoid name conflict between
 # WanTransformer3DModel and WanVACETransformer3DModel.
-@ContextParallelismPlanerRegister.register("WanTransformer3D")
-class WanContextParallelismPlaner(ContextParallelismPlaner):
+@ContextParallelismPlannerRegister.register("WanTransformer3D")
+class WanContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
@@ -258,8 +258,8 @@ class WanContextParallelismPlaner(ContextParallelismPlaner):
         return _cp_plan
 
 
-@ContextParallelismPlanerRegister.register("LTXVideo")
-class LTXVideoContextParallelismPlaner(ContextParallelismPlaner):
+@ContextParallelismPlannerRegister.register("LTXVideo")
+class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,

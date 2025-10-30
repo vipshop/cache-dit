@@ -80,7 +80,7 @@ def maybe_enable_context_parallelism(
                         extra_parallel_kwargs = (
                             parallelism_config.parallel_kwargs
                         )
-                    cp_plan = ContextParallelismPlanerRegister.get_planer(
+                    cp_plan = ContextParallelismPlannerRegister.get_planner(
                         transformer
                     )().apply(transformer=transformer, **extra_parallel_kwargs)
 
