@@ -35,10 +35,14 @@ if args.quantize:
     )
 
 
-def run_pipe(pipe: FluxPipeline):
+def run_pipe(warmup: bool = False):
     image = pipe(
         "A cat holding a sign that says hello world",
-        num_inference_steps=28,
+        width=1024 if args.width is None else args.width,
+        height=1024 if args.height is None else args.height,
+        num_inference_steps=(
+            (28 if args.steps is None else args.steps) if not warmup else 5
+        ),
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
@@ -48,12 +52,12 @@ if args.compile:
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
     pipe.transformer.compile_repeated_blocks()
 
-    # warmup
-    _ = run_pipe(pipe)
 
+# warmup
+_ = run_pipe(warmup=True)
 
 start = time.time()
-image = run_pipe(pipe)
+image = run_pipe()
 end = time.time()
 
 cache_dit.summary(pipe)
