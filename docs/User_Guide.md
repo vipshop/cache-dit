@@ -11,6 +11,7 @@
   - [🔥Automatic Block Adapter](#automatic-block-adapter)
   - [📚Hybrid Forward Pattern](#automatic-block-adapter)
   - [📚Implement Patch Functor](#implement-patch-functor)
+  - [📚Transformer-Only Interface](#transformer-only-interface)
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](#dbcache)
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
@@ -18,6 +19,7 @@
 - [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
+- [🤖Low-bits Quantization](#quantization)
 - [🛠Metrics Command Line](#metrics)
 - [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
@@ -321,6 +323,25 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 ```
 
+### 📚Transformer-Only Interface
+
+In some cases, users may **not use Diffusers or DiffusionPipeline** at all, and may not even have the concept of a "pipeline"—for instance, **ComfyUI** (which breaks down the pipeline into individual components while still retaining transformer components). cache-dit also supports such scenarios; it only needs to be configured via **BlockAdapter**. The pipeline is not mandatory, and you can simply keep it at the default value of None. In this case, the `num_inference_steps` parameter in cache_config **must be set**, as cache-dit relies on this parameter to refresh the cache context at the appropriate time. Please refer to [📚run_transformer_only.py](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_transformer_only.py) as an example.
+
+```python
+cache_dit.enable_cache(
+    BlockAdapter( 
+        # NO `pipe` required
+        transformer=transformer,
+        blocks=transformer.transformer_blocks,
+        forward_pattern=ForwardPattern.Pattern_1,
+    ), 
+    cache_config=DBCacheConfig(
+        num_inference_steps=50  # required
+    ),
+)
+```
+
+
 ### 🤖Cache Acceleration Stats Summary
 
 After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary()` API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
@@ -519,7 +540,8 @@ cache_dit.enable_cache(
 
 cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
 
-```python3
+```python
+# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -528,7 +550,6 @@ cache_dit.enable_cache(
     # Set ulysses_size > 1 to enable ulysses style context parallelism.
     parallelism_config=ParallelismConfig(ulysses_size=2),
 )
-# Then, run with torchrun cmd:
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
@@ -538,7 +559,8 @@ cache_dit.enable_cache(
 
 cache-dit is also compatible with tensor parallelism. Currently, we support the use of `Hybrid Cache` + `Tensor Parallelism` scheme (via NATIVE_PYTORCH parallelism backend) in cache-dit. Users can use Tensor Parallelism to further accelerate the speed of inference and **reduce the VRAM usage per GPU**! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
 
-```python3
+```python
+# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -547,11 +569,31 @@ cache_dit.enable_cache(
     # Set tp_size > 1 to enable tensor parallelism.
     parallelism_config=ParallelismConfig(tp_size=2),
 )
-# Then, run with torchrun cmd:
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
 Please note that in the short term, we have no plans to support Hybrid Parallelism. Please choose to use either Context Parallelism or Tensor Parallelism based on your actual scenario.
+
+## 🤖Low-bits Quantization
+
+<div id="quantization"></div>
+
+Currently, torchao has been integrated into cache-dit as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling `cache_dit.quantize(...)`. At present, cache-dit supports the `Hybrid Cache + Low-bits Quantization` scheme. For GPUs with low memory capacity, we recommend using `float8_weight_only` or `int8_weight_only`, as these two schemes cause almost no loss in precision. For more details, please refer to [📚examples/quantize](https://github.com/vipshop/cache-dit/tree/main/examples/quantize).
+
+```python
+# pip3 install "cache-dit[quantization]"
+import cache_dit
+
+cache_dit.enable_cache(pipe_or_adapter)
+
+# float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
+pipe.transformer = cache_dit.quantize(
+    pipe.transformer, quant_type="float8_weight_only"
+)
+pipe.text_encoder = cache_dit.quantize(
+    pipe.text_encoder, quant_type="float8_weight_only"
+)
+```
 
 ## 🛠Metrics Command Line
 
@@ -560,6 +602,7 @@ Please note that in the short term, we have no plans to support Hybrid Paralleli
 You can utilize the APIs provided by cache-dit to quickly evaluate the accuracy losses caused by different cache configurations. For example:
 
 ```python
+# pip3 install "cache-dit[metrics]"
 from cache_dit.metrics import compute_psnr
 from cache_dit.metrics import compute_ssim
 from cache_dit.metrics import compute_fid

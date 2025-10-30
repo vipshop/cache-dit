@@ -48,7 +48,7 @@ def get_args(
     parser.add_argument(
         "--quantize-type",
         type=str,
-        default="float8",
+        default="float8_weight_only",
         choices=[
             "float8",
             "float8_weight_only",

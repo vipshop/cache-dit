@@ -46,7 +46,7 @@ def run_pipe(pipe: FluxPipeline):
 
 if args.compile:
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer.compile_repeated_blocks()
 
     # warmup
     _ = run_pipe(pipe)
