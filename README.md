@@ -6,8 +6,9 @@
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
     🔥<a href="./docs/User_Guide.md">Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">Automatic Block Adapter</a>🔥 <br>
-    🔥<a href="./docs/User_Guide.md"><b>DBCache</b></a> | <a href="./docs/User_Guide.md"><b>DBPrune</b></a> | <a href="./docs/User_Guide.md">Hybrid <b>TaylorSeer</b> Calibrator</a> | <a href="./docs/User_Guide.md">Cache CFG</a>🔥<br>
-    🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Compile Compatible</a> | <a href="./docs/User_Guide.md"><b>SOTA</b></a>🔥 
+    🔥<a href="./docs/User_Guide.md"><b>DBCache</b></a> | <a href="./docs/User_Guide.md"><b>DBPrune</b></a> | <a href="./docs/User_Guide.md">Hybrid <b>TaylorSeer</b> Calibrator</a> | <a href="./docs/User_Guide.md">Hybrid Cache CFG</a>🔥<br>
+    🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Compile Compatible</a>🔥<br>
+    <a href="./docs/User_Guide.md"><b>🎉State-of-the-Art Performance</b></a>🎉 
   </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
@@ -191,7 +192,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div id="user-guide"></div>
 
-For more advanced features such as **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **Patch Functor**, **DBCache**, **TaylorSeer Calibrator**, and **Hybrid Cache CFG**, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
+For more advanced features such as **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **Patch Functor**, **DBCache**, **DBPrune**, **TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism** and **Tensor Parallelism**, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
 
 - [⚙️Installation](./docs/User_Guide.md#️installation)
 - [🔥Benchmarks](./docs/User_Guide.md#benchmarks)
@@ -231,7 +232,7 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 ## 🎉Projects Using CacheDiT
 
-Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), and [sdnext](https://github.com/vladmandic/sdnext/discussions/4269) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg). 🎉**CacheDiT** has also been **recommended** by many famous projects: [Wan2.2](https://github.com/Wan-Video/Wan2.2) ![](https://img.shields.io/github/stars/Wan-Video/Wan2.2.svg), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) ![](https://img.shields.io/github/stars/ModelTC/Qwen-Image-Lightning.svg), [Qwen-Image](https://github.com/QwenLM/Qwen-Image) ![](https://img.shields.io/github/stars/QwenLM/Qwen-Image.svg), <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src="https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg"></a> ![](https://img.shields.io/github/stars/huggingface/diffusers.svg), [<a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>](https://hellogithub.com/repository/vipshop/cache-dit) ![](https://img.shields.io/github/stars/521xueweihan/HelloGitHub.svg), among others.
+Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh) ![](https://img.shields.io/github/stars/dusty-nv/jetson-containers.svg), [flux-fast](https://github.com/huggingface/flux-fast) ![](https://img.shields.io/github/stars/huggingface/flux-fast.svg), and [sdnext](https://github.com/vladmandic/sdnext/discussions/4269) ![](https://img.shields.io/github/stars/vladmandic/sdnext.svg). 🎉**CacheDiT** has also been **recommended** by many famous projects: [Wan2.2](https://github.com/Wan-Video/Wan2.2) ![](https://img.shields.io/github/stars/Wan-Video/Wan2.2.svg), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning) ![](https://img.shields.io/github/stars/ModelTC/Qwen-Image-Lightning.svg), [Qwen-Image](https://github.com/QwenLM/Qwen-Image) ![](https://img.shields.io/github/stars/QwenLM/Qwen-Image.svg), [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video) ![](https://img.shields.io/github/stars/meituan-longcat/LongCat-Video.svg), <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src="https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg"></a> ![](https://img.shields.io/github/stars/huggingface/diffusers.svg), [<a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>](https://hellogithub.com/repository/vipshop/cache-dit) ![](https://img.shields.io/github/stars/521xueweihan/HelloGitHub.svg), among others.
 
 ## ©️Acknowledgements
 
@@ -252,7 +253,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
   title={cache-dit: A Unified, Flexible and Training-free Cache Acceleration Framework for Diffusers.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
-  author={vipshop.com},
+  author={DefTruth, vipshop.com},
   year={2025}
 }
 ```
