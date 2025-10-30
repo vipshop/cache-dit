@@ -73,7 +73,7 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
-@TensorParallelismPlanerRegister.register("QwenImage")
+@TensorParallelismPlanerRegister.register("Wan")
 class QwenImageTensorParallelismPlaner(TensorParallelismPlaner):
     def apply(
         self,
