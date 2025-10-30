@@ -168,8 +168,11 @@ def cachify(
 
 
 def strify(args, pipe_or_stats):
+    quantize_type = args.quantize_type if args.quantize else ""
+    if quantize_type != "":
+        quantize_type = f"_{quantize_type}"
     return (
-        f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}_"
+        f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
 
