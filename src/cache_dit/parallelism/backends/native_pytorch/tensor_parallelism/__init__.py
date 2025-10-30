@@ -12,12 +12,7 @@ from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
-
-# NOTE: must import all planer classes to register them
-from .tp_plan_registers import TensorParallelismPlanerRegister
-from .tp_plan_flux import FluxTensorParallelismPlaner
-from .tp_plan_qwen_image import QwenImageTensorParallelismPlaner
-
+from .tp_planners import *
 
 logger = init_logger(__name__)
 
@@ -46,7 +41,7 @@ def maybe_enable_tensor_parallelism(
     if parallelism_config.parallel_kwargs is not None:
         extra_parallel_kwargs = parallelism_config.parallel_kwargs
 
-    return TensorParallelismPlanerRegister.get_planer(transformer)().apply(
+    return TensorParallelismPlannerRegister.get_planner(transformer)().apply(
         transformer=transformer,
         parallelism_config=parallelism_config,
         **extra_parallel_kwargs,

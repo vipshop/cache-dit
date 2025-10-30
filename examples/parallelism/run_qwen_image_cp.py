@@ -87,14 +87,16 @@ negative_prompt = " "
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
-def run_pipe():
+def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
     output = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=50 if args.steps is None else args.steps,
+        num_inference_steps=(
+            (50 if args.steps is None else args.steps) if not warmup else 5
+        ),
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
         output_type="latent" if args.perf else "pil",
@@ -108,7 +110,7 @@ if args.compile:
     pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
-_ = run_pipe()
+_ = run_pipe(warmup=True)
 
 start = time.time()
 image = run_pipe()

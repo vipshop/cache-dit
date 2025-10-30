@@ -148,10 +148,22 @@ def enable_cache(
             Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
             parallelism for cache-dit. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/parallel_config.py
             for more details of ParallelismConfig.
+                backend: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.NATIVE_DIFFUSER"):
+                    Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
+                    For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
+                    only NATIVE_PYTORCH backend is supported.
                 ulysses_size: (`int`, *optional*, defaults to None):
                     The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
+                    This setting is only valid when backend is NATIVE_DIFFUSER.
                 ring_size: (`int`, *optional*, defaults to None):
                     The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
+                    This setting is only valid when backend is NATIVE_DIFFUSER.
+                tp_size: (`int`, *optional*, defaults to None):
+                    The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
+                    This setting is only valid when backend is NATIVE_PYTORCH.
+                parallel_kwargs: (`dict`, *optional*, defaults to {}):
+                    Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
+                    it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
 
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py

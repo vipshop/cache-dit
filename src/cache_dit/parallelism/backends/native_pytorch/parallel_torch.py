@@ -55,7 +55,8 @@ def maybe_enable_parallelism(
             parallelism_config=parallelism_config,
         )
     else:
-        logger.warning(
-            "tp_size is not set or <= 1, skipping tensor parallelism."
+        raise ValueError(
+            "NATIVE_PYTORCH only supported tensor parallelism now. "
+            "Please set tp_size > 1 for tensor parallelism."
         )
     return transformer

@@ -24,12 +24,8 @@ def enable_parallelism(
     if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
         from cache_dit.parallelism.backends.native_diffusers import (
             maybe_enable_parallelism,
-            native_diffusers_parallelism_available,
         )
 
-        assert (
-            native_diffusers_parallelism_available()
-        ), "Please install diffusers>=0.36.dev0 to use Native_Diffuser backend."
         transformer = maybe_enable_parallelism(
             transformer,
             parallelism_config,
@@ -39,13 +35,6 @@ def enable_parallelism(
             maybe_enable_parallelism,
         )
 
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size >= 1
-        ), (
-            "Please specify tp_size >= 1 to enable tensor parallelism "
-            "with Native_PyTorch backend."
-        )
         transformer = maybe_enable_parallelism(
             transformer,
             parallelism_config,

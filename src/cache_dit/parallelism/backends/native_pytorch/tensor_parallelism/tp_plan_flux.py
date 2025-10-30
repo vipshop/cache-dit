@@ -13,8 +13,8 @@ from torch.distributed.tensor.parallel import (
 )
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from .tp_plan_registers import (
-    TensorParallelismPlaner,
-    TensorParallelismPlanerRegister,
+    TensorParallelismPlanner,
+    TensorParallelismPlannerRegister,
 )
 
 from cache_dit.logger import init_logger
@@ -22,8 +22,8 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-@TensorParallelismPlanerRegister.register("Flux")
-class FluxTensorParallelismPlaner(TensorParallelismPlaner):
+@TensorParallelismPlannerRegister.register("Flux")
+class FluxTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
         transformer: torch.nn.Module,
