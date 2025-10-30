@@ -1,6 +1,7 @@
 import torch
 import logging
 from abc import abstractmethod
+from typing import Dict
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
 
@@ -24,7 +25,7 @@ class TensorParallelismPlaner:
 
 
 class TensorParallelismPlanerRegister:
-    _tp_planer_registry = {}
+    _tp_planer_registry: Dict[str, TensorParallelismPlaner] = {}
 
     @classmethod
     def register(cls, name: str):
