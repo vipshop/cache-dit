@@ -9,7 +9,7 @@ from ..utils import (
     native_diffusers_parallelism_available,
     ContextParallelConfig,
 )
-from .cp_plan_registers import *
+from .cp_planners import *
 
 logger = init_logger(__name__)
 
