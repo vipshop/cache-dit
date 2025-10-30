@@ -10,7 +10,7 @@ try:
     )
 except ImportError:
     raise ImportError(
-        "Context parallelism requires the 'diffusers>-0.36.dev0'."
+        "Context parallelism requires the 'diffusers>=0.36.dev0'."
         "Please install latest version of diffusers from source: \n"
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
