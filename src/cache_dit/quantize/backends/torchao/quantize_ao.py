@@ -9,7 +9,7 @@ logger = init_logger(__name__)
 
 def quantize_ao(
     module: torch.nn.Module,
-    quant_type: str = "fp8_w8a8_dq",
+    quant_type: str = "float8_weight_only",
     exclude_layers: List[str] = [
         "embedder",
         "embed",
@@ -23,6 +23,18 @@ def quantize_ao(
     # by default to avoid non-trivial precision downgrade. Please
     # set `exclude_layers` as `[]` if you don't want this behavior.
     assert isinstance(module, torch.nn.Module)
+
+    alias_map = {
+        "float8": "fp8_w8a8_dq",
+        "float8_weight_only": "fp8_w8a16_wo",
+        "int8": "int8_w8a8_dq",
+        "int8_weight_only": "int8_w8a16_wo",
+        "int4": "int4_w4a8_dq",
+        "int4_w4a4": "int4_w4a4_dq",
+        "int4_weight_only": "int4_w4a16_wo",
+    }
+    if quant_type.lower() in alias_map:
+        quant_type = alias_map[quant_type.lower()]
 
     quant_type = quant_type.lower()
     assert quant_type in (
@@ -183,7 +195,11 @@ def quantize_ao(
         device=kwargs.get("device", None),
     )
 
-    force_empty_cache()
+    maybe_empty_cache()
+
+    alias_map_rev = {v: k for k, v in alias_map.items()}
+    if quant_type in alias_map_rev:
+        quant_type = alias_map_rev[quant_type]
 
     logger.info(
         f"Quantized        Module: {module.__class__.__name__:>5}\n"
@@ -199,10 +215,13 @@ def quantize_ao(
     return module
 
 
-def force_empty_cache():
-    time.sleep(1)
-    gc.collect()
-    torch.cuda.empty_cache()
-    time.sleep(1)
-    gc.collect()
-    torch.cuda.empty_cache()
+def maybe_empty_cache():
+    try:
+        time.sleep(1)
+        gc.collect()
+        torch.cuda.empty_cache()
+        time.sleep(1)
+        gc.collect()
+        torch.cuda.empty_cache()
+    except Exception:
+        pass

@@ -42,7 +42,7 @@ enable_quatization = args.quantize and GiB() < 96
 if GiB() < 96:
     if enable_quatization:
         print("Apply FP8 Weight Only Quantize ...")
-        args.quantize_type = "fp8_w8a16_wo"  # force
+        args.quantize_type = "float8_weight_only"  # force
         # Only quantize text encoder with FP8 weight-only
         # quantization, the required memory for transformer per
         # GPU is reduced significantly after tensor parallelism.

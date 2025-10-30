@@ -40,7 +40,7 @@ enable_quatization = args.quantize and GiB() < 96
 if GiB() < 96:
     if enable_quatization:
         print("Apply FP8 Weight Only Quantize ...")
-        args.quantize_type = "fp8_w8a16_wo"  # force
+        args.quantize_type = "float8_weight_only"  # force
         pipe.transformer = cache_dit.quantize(
             pipe.transformer,
             quant_type=args.quantize_type,
