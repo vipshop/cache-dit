@@ -11,10 +11,9 @@ logger = init_logger(__name__)
 
 
 def GiB():
-    if not torch.cuda.is_available():
-        return 0
-
     try:
+        if not torch.cuda.is_available():
+            return 0
         total_memory_bytes = torch.cuda.get_device_properties(
             torch.cuda.current_device(),
         ).total_memory
@@ -31,22 +30,6 @@ def get_args(
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
-    parser.add_argument("--quantize", "-q", action="store_true", default=False)
-    parser.add_argument(
-        "--quantize-type",
-        "-type",
-        type=str,
-        default="fp8_w8a8_dq",
-        choices=[
-            "fp8_w8a8_dq",
-            "fp8_w8a16_wo",
-            "int8_w8a8_dq",
-            "int8_w8a16_wo",
-            "int4_w4a8_dq",
-            "int4_w4a4_dq",
-            "int4_w4a16_wo",
-        ],
-    )
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
@@ -60,18 +43,43 @@ def get_args(
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--quantize", "-q", action="store_true", default=False)
+    # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
+    parser.add_argument(
+        "--quantize-type",
+        type=str,
+        default="float8_weight_only",
+        choices=[
+            "float8",
+            "float8_weight_only",
+            "int8",
+            "int8_weight_only",
+            "int4",
+            "int4_weight_only",
+        ],
+    )
     parser.add_argument(
         "--parallel-type",
         "--parallel",
         type=str,
         default=None,
-        choices=[None, "tp", "ulysses", "ring"],
+        choices=[
+            None,
+            "tp",
+            "ulysses",
+            "ring",
+        ],
     )
     parser.add_argument(
-        "--attn",
+        "--attention-backend",
+        "--attn",  # attention backend for context parallelism
         type=str,
         default=None,
-        choices=[None, "flash", "_native_cudnn"],
+        choices=[
+            None,
+            "flash",
+            "_native_cudnn",
+        ],
     )
     parser.add_argument("--perf", action="store_true", default=False)
     return parser.parse_args() if parse else parser
@@ -160,8 +168,11 @@ def cachify(
 
 
 def strify(args, pipe_or_stats):
+    quantize_type = args.quantize_type if args.quantize else ""
+    if quantize_type != "":
+        quantize_type = f"_{quantize_type}"
     return (
-        f"C{int(args.compile)}_L{int(args.fuse_lora)}_Q{int(args.quantize)}_"
+        f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
 

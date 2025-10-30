@@ -7,7 +7,7 @@
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
     🔥<a href="./docs/User_Guide.md">Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">Automatic Block Adapter</a>🔥 <br>
     🔥<a href="./docs/User_Guide.md"><b>DBCache</b></a> | <a href="./docs/User_Guide.md"><b>DBPrune</b></a> | <a href="./docs/User_Guide.md">Hybrid <b>TaylorSeer</b> Calibrator</a> | <a href="./docs/User_Guide.md">Hybrid <b>Cache CFG</b></a>🔥<br>
-    🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">8-bits Quantization</a>🔥<br>
+    🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Low-bits Quantization</a>🔥<br>
     🔥<a href="./docs/User_Guide.md">Compile Compatible</a> | <a href="./docs/User_Guide.md"><b>🎉State-of-the-Art Performance</b></a>🎉 
   </p>
   <div align='center'>
@@ -203,6 +203,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
   - [🔥Automatic Block Adapter](./docs/User_Guide.md#automatic-block-adapter)
   - [📚Hybrid Forward Pattern](./docs/User_Guide.md#hybrid-forward-pattern)
   - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
+  - [📚Transformer-Only Interface](./docs/User_Guide.md#transformer-only-interface)
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
 - [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
@@ -210,6 +211,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [🔥Hybrid TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
 - [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](./docs/User_Guide.md#tensor-parallelism)
+- [🤖Low-bits Quantization](./docs/User_Guide.md#quantization)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)

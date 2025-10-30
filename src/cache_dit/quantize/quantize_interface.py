@@ -7,37 +7,24 @@ logger = init_logger(__name__)
 
 def quantize(
     module: torch.nn.Module,
-    quant_type: str = "fp8_w8a8_dq",
+    quant_type: str = "float8_weight_only",
     backend: str = "ao",
     exclude_layers: List[str] = [
         "embedder",
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
-    # only for fp8_w8a8_dq
-    per_row: bool = True,
     **kwargs,
 ) -> torch.nn.Module:
     assert isinstance(module, torch.nn.Module)
 
     if backend.lower() in ("ao", "torchao"):
-        from cache_dit.quantize.quantize_ao import quantize_ao
-
-        quant_type = quant_type.lower()
-        assert quant_type in (
-            "fp8_w8a8_dq",
-            "fp8_w8a16_wo",
-            "int8_w8a8_dq",
-            "int8_w8a16_wo",
-            "int4_w4a8_dq",
-            "int4_w4a4_dq",
-            "int4_w4a16_wo",
-        ), f"{quant_type} is not supported for torchao backend now!"
+        from cache_dit.quantize.backends.torchao import quantize_ao
 
         return quantize_ao(
             module,
             quant_type=quant_type,
-            per_row=per_row,
+            per_row=kwargs.pop("per_row", True),
             exclude_layers=exclude_layers,
             filter_fn=filter_fn,
             **kwargs,
