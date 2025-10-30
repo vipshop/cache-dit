@@ -74,7 +74,7 @@ class DistributedRMSNorm(nn.Module):
 
 
 @TensorParallelismPlanerRegister.register("Wan")
-class QwenImageTensorParallelismPlaner(TensorParallelismPlaner):
+class WanTensorParallelismPlaner(TensorParallelismPlaner):
     def apply(
         self,
         transformer: torch.nn.Module,
