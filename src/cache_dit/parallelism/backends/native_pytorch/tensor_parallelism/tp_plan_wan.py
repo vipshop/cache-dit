@@ -121,9 +121,11 @@ class WanTensorParallelismPlaner(TensorParallelismPlaner):
                 "attn2.to_out.0": RowwiseParallel(),
                 "ffn.net.0.proj": ColwiseParallel(),
                 "ffn.net.2": RowwiseParallel(),
-                "attn2.add_k_proj": ColwiseParallel(),
-                "attn2.add_v_proj": ColwiseParallel(),
             }
+            if hasattr(block.attn2, "add_k_proj"):
+                layer_plan["attn2.add_k_proj"] = ColwiseParallel()
+            if hasattr(block.attn2, "add_v_proj"):
+                layer_plan["attn2.add_v_proj"] = ColwiseParallel()
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,

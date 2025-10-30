@@ -77,7 +77,7 @@ if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"wan.{strify(args, pipe)}.png"
+    save_path = f"wan.{strify(args, pipe)}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     image.save(save_path)
