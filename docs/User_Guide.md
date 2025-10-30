@@ -686,69 +686,73 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 
 ### 👇Parameter Description
 
-- **pipe_or_adapter**(`DiffusionPipeline` or `BlockAdapter`, *required*):
+- **pipe_or_adapter**(`DiffusionPipeline` or `BlockAdapter`, *required*):  
   The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
   For example: `cache_dit.enable_cache(FluxPipeline(...))`.
   Please check https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md for the usage of BlockAdapter.
 
-- **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):
+- **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
   Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
-  - `Fn_compute_blocks`: (`int`, *required*, defaults to 8):
+  - `Fn_compute_blocks`: (`int`, *required*, defaults to 8):  
     Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.
     Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md for more details of DBCache.
-  - `Bn_compute_blocks`: (`int`, *required*, defaults to 0):
+  - `Bn_compute_blocks`: (`int`, *required*, defaults to 0):  
     Further fuses approximate information in the**last n**Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
-  - `residual_diff_threshold`: (`float`, *required*, defaults to 0.08):
+  - `residual_diff_threshold`: (`float`, *required*, defaults to 0.08):  
     The value of residual difference threshold, a higher value leads to faster performance at the cost of lower precision.
-  - `max_warmup_steps`: (`int`, *required*, defaults to 8):
+  - `max_warmup_steps`: (`int`, *required*, defaults to 8):  
     DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
-  - `warmup_interval`: (`int`, *required*, defaults to 1):  
+  - `warmup_interval`: (`int`, *required*, defaults to 1):    
     Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps
     in warmup steps will be computed, others will use dynamic cache.
-  - `max_cached_steps`: (`int`, *required*, defaults to -1):
+  - `max_cached_steps`: (`int`, *required*, defaults to -1):  
     DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
-  - `max_continuous_cached_steps`: (`int`, *required*, defaults to -1):
+  - `max_continuous_cached_steps`: (`int`, *required*, defaults to -1):  
     DBCache disables the caching strategy when the previous continuous cached steps exceed this value to prevent precision degradation.
-  - `enable_separate_cfg`: (`bool`, *required*, defaults to None):
+  - `enable_separate_cfg`: (`bool`, *required*, defaults to None):  
     Whether to use separate cfg or not, such as in Wan 2.1, Qwen-Image. For models that fuse CFG and non-CFG into a single forward step, set enable_separate_cfg as False. Examples include: CogVideoX, HunyuanVideo, Mochi, etc.
-  - `cfg_compute_first`: (`bool`, *required*, defaults to False):
-    Whether to compute cfg forward first, default is False, meaning:
-    0, 2, 4, ... -> non-CFG step;
+  - `cfg_compute_first`: (`bool`, *required*, defaults to False):    
+    Whether to compute cfg forward first, default is False, meaning:  
+    0, 2, 4, ... -> non-CFG step;  
     1, 3, 5, ... -> CFG step.
-  - `cfg_diff_compute_separate`: (`bool`, *required*, defaults to True):
+  - `cfg_diff_compute_separate`: (`bool`, *required*, defaults to True):  
     Whether to compute separate difference values for CFG and non-CFG steps, default is True. If False, we will use the computed difference from the current non-CFG transformer step for the current CFG step.
+  - num_inference_steps (`int`, *optional*, defaults to None):  
+    num_inference_steps for DiffusionPipeline, used to adjust some internal settings
+    for better caching performance. For example, we will refresh the cache once the
+    executed steps exceed num_inference_steps if num_inference_steps is provided.
 
-- **calibrator_config** (`CalibratorConfig`, *optional*, defaults to None):
+- **calibrator_config** (`CalibratorConfig`, *optional*, defaults to None):  
   Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
 
-- **params_modifiers** ('ParamsModifier', *optional*, defaults to None):
+- **params_modifiers** ('ParamsModifier', *optional*, defaults to None):  
   Modify cache context parameters for specific blocks. The configurable parameters are listed below:
-  - `cache_config`: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):
+  - `cache_config`: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
     The same as the 'cache_config' parameter in the cache_dit.enable_cache() interface.
-  - `calibrator_config`: (`CalibratorConfig`, *optional*, defaults to None):
+  - `calibrator_config`: (`CalibratorConfig`, *optional*, defaults to None):  
     The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.
-  - `**kwargs`: (`dict`, *optional*, defaults to {}):
+  - `**kwargs`: (`dict`, *optional*, defaults to {}):  
     The same as the 'kwargs' parameter in the cache_dit.enable_cache() interface.
 
-- **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):
+- **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):  
     Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
     parallelism for cache-dit.
-    - `backend`: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.NATIVE_DIFFUSER"):
+    - `backend`: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.NATIVE_DIFFUSER"):  
         Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
         For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
         only NATIVE_PYTORCH backend is supported.
-    - `ulysses_size`: (`int`, *optional*, defaults to None):
+    - `ulysses_size`: (`int`, *optional*, defaults to None):  
         The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
         This setting is only valid when backend is NATIVE_DIFFUSER.
-    - `ring_size`: (`int`, *optional*, defaults to None):
+    - `ring_size`: (`int`, *optional*, defaults to None):  
         The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
         This setting is only valid when backend is NATIVE_DIFFUSER.
-    - `tp_size`: (`int`, *optional*, defaults to None):
+    - `tp_size`: (`int`, *optional*, defaults to None):  
         The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
         This setting is only valid when backend is NATIVE_PYTORCH.
-    - `parallel_kwargs`: (`dict`, *optional*, defaults to {}):
+    - `parallel_kwargs`: (`dict`, *optional*, defaults to {}):  
         Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
         it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
 
-- **kwargs** (`dict`, *optional*, defaults to {}):
+- **kwargs** (`dict`, *optional*, defaults to {}):   
   Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py for more details.
