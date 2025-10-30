@@ -122,9 +122,9 @@ class WanTensorParallelismPlaner(TensorParallelismPlaner):
                 "ffn.net.0.proj": ColwiseParallel(),
                 "ffn.net.2": RowwiseParallel(),
             }
-            if hasattr(block.attn2, "add_k_proj"):
+            if getattr(block.attn2, "add_k_proj", None):
                 layer_plan["attn2.add_k_proj"] = ColwiseParallel()
-            if hasattr(block.attn2, "add_v_proj"):
+            if getattr(block.attn2, "add_v_proj", None):
                 layer_plan["attn2.add_v_proj"] = ColwiseParallel()
             parallelize_module(
                 module=block,
@@ -144,7 +144,7 @@ class WanTensorParallelismPlaner(TensorParallelismPlaner):
             block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(
                 tp_mesh, block.attn2.norm_k
             )
-            if hasattr(block.attn2, "norm_added_k"):
+            if getattr(block.attn2, "norm_added_k", None):
                 block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
                     tp_mesh, block.attn2.norm_added_k
                 )
