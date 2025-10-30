@@ -536,7 +536,7 @@ cache_dit.enable_cache(
 
 <div id="tensor-parallelism"></div>
 
-cache-dit is also compatible with tensor parallelism. Currently, we support the use of `Hybrid Cache` + `Tensor Parallelism` scheme (via NATIVE_PYTORCH parallelism backend) in cache-dit. Users can use Tensor Parallelism to further accelerate the speed of inference and reduce the VRAM usage! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+cache-dit is also compatible with tensor parallelism. Currently, we support the use of `Hybrid Cache` + `Tensor Parallelism` scheme (via NATIVE_PYTORCH parallelism backend) in cache-dit. Users can use Tensor Parallelism to further accelerate the speed of inference and **reduce the VRAM usage per GPU**! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
 
 ```python3
 from cache_dit import ParallelismConfig
@@ -551,6 +551,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
+Please note that in the short term, we have no plans to support Hybrid Parallelism. Please choose to use either Context Parallelism or Tensor Parallelism based on your actual scenario.
 
 ## 🛠Metrics Command Line
 
