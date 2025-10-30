@@ -7,7 +7,7 @@ logger = init_logger(__name__)
 
 def quantize(
     module: torch.nn.Module,
-    quant_type: str = "float8",
+    quant_type: str = "float8_weight_only",
     backend: str = "ao",
     exclude_layers: List[str] = [
         "embedder",
