@@ -1,3 +1,5 @@
+from typing import Optional, Union
+
 import torch
 from torch import nn
 from torch.distributed import DeviceMesh, init_device_mesh
@@ -22,10 +24,10 @@ class DistributedRMSNorm(nn.Module):
     def __init__(
         self,
         tp_mesh: DeviceMesh,
-        normalized_shape,
-        eps,
-        elementwise_affine,
-        weight,
+        normalized_shape: Union[int, list[int], torch.Size],
+        eps: Optional[float],
+        elementwise_affine: bool,
+        weight: torch.nn.parameter.Parameter,
     ):
         super().__init__()
         self.tp_mesh = tp_mesh
