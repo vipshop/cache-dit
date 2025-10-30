@@ -7,6 +7,7 @@ import time
 
 import torch
 from diffusers import WanPipeline, WanTransformer3DModel
+from diffusers.utils import export_to_video
 from utils import (
     cachify,
     get_args,
@@ -52,13 +53,13 @@ def run_pipe(pipe: WanPipeline):
     seed = 1234
     generator = torch.Generator(device="cpu").manual_seed(seed)
 
-    num_inference_steps = 12
+    num_inference_steps = 30
     output = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
         height=480,
         width=832,
-        num_frames=81,
+        num_frames=49,
         guidance_scale=5.0,
         generator=generator,
         num_inference_steps=num_inference_steps,
@@ -70,7 +71,7 @@ def run_pipe(pipe: WanPipeline):
 _ = run_pipe(pipe)
 
 start = time.time()
-image = run_pipe(pipe)
+video = run_pipe(pipe)
 end = time.time()
 
 if rank == 0:
@@ -80,6 +81,6 @@ if rank == 0:
     save_path = f"wan.{strify(args, pipe)}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
-    image.save(save_path)
+    export_to_video(video, save_path, fps=16)
 
 maybe_destroy_distributed()
