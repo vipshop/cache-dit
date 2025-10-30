@@ -15,11 +15,7 @@
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
       <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
-      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark ><br>
-      <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
-      <img src=https://img.shields.io/badge/Models-30+-hotpink.svg >
-      <img src=https://img.shields.io/badge/Pipelines-~100+-hotpink.svg >
-
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
   </div>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
@@ -128,7 +124,7 @@
 
 </details>
 
-## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a>
+## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> <img src=https://img.shields.io/badge/Models-30+-hotpink.svg > <img src=https://img.shields.io/badge/Pipelines-~100+-hotpink.svg >
 
 
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
