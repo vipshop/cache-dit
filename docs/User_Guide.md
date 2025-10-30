@@ -538,7 +538,7 @@ cache_dit.enable_cache(
 
 <div id="context-parallelism"></div>
 
-cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism). Currently, cache-dit supported context parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [LTXVideo](https://huggingface.co/Lightricks/LTX-Video), [Wan2.1](https://github.com/Wan-Video/Wan2.1) and [Wan2.2](https://github.com/Wan-Video/Wan2.2). cache-dit will support more models in the future.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -557,7 +557,7 @@ cache_dit.enable_cache(
 
 <div id="tensor-parallelism"></div>
 
-cache-dit is also compatible with tensor parallelism. Currently, we support the use of `Hybrid Cache` + `Tensor Parallelism` scheme (via NATIVE_PYTORCH parallelism backend) in cache-dit. Users can use Tensor Parallelism to further accelerate the speed of inference and **reduce the VRAM usage per GPU**! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+cache-dit is also compatible with tensor parallelism. Currently, we support the use of `Hybrid Cache` + `Tensor Parallelism` scheme (via NATIVE_PYTORCH parallelism backend) in cache-dit. Users can use Tensor Parallelism to further accelerate the speed of inference and **reduce the VRAM usage per GPU**! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism). Currently, cache-dit supported tensor parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [Wan2.1](https://github.com/Wan-Video/Wan2.1) and [Wan2.2](https://github.com/Wan-Video/Wan2.2). cache-dit will support more models in the future.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -572,7 +572,8 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-Please note that in the short term, we have no plans to support Hybrid Parallelism. Please choose to use either Context Parallelism or Tensor Parallelism based on your actual scenario.
+> [!Important] 
+> Please note that in the short term, we have no plans to support Hybrid Parallelism. Please choose to use either Context Parallelism or Tensor Parallelism based on your actual scenario.
 
 ## 🤖Low-bits Quantization
 
@@ -587,8 +588,8 @@ import cache_dit
 cache_dit.enable_cache(pipe_or_adapter)
 
 # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
-# int4_weight_only required `fbgemm-gpu-genai>=1.2.0`, which is only support 
-# Compute Arch >= Hopper (not support for Ada, Ampere, ..., etc.)
+# int4_weight_only requires fbgemm-gpu-genai>=1.2.0, which only supports
+# Compute Architectures >= Hopper (and does not support Ada, ..., etc.)
 pipe.transformer = cache_dit.quantize(
     pipe.transformer, quant_type="float8_weight_only"
 )
@@ -596,6 +597,33 @@ pipe.text_encoder = cache_dit.quantize(
     pipe.text_encoder, quant_type="float8_weight_only"
 )
 ```
+
+For **4-bits W4A16 (weight only)** quantization, we recommend `nf4` from **bitsandbytes** due to its better compatibility for many devices. Users can directly use it via the `quantization_config` of diffusers. For example:
+
+```python
+from diffusers import QwenImagePipeline
+from diffusers.quantizers import PipelineQuantizationConfig
+
+pipe = QwenImagePipeline.from_pretrained(
+    "Qwen/Qwen-Image",
+    torch_dtype=torch.bfloat16,
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder", "transformer"],
+        )
+    ),
+).to("cuda")
+
+# Then, apply cache acceleration using cache-dit
+cache_dit.enable_cache(pipe, cache_config=...)
+```
+
 
 ## 🛠Metrics Command Line
 
@@ -661,7 +689,7 @@ Unified Cache API for almost Any Diffusion Transformers (with Transformer Blocks
 ### 👏API: enable_cache
 
 ```python
-def enable_cache(...) -> Union[DiffusionPipeline, BlockAdapter]
+def enable_cache(...) -> Union[DiffusionPipeline, BlockAdapter, Transformer]
 ```
 
 ### 🌟Function Description
@@ -688,7 +716,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 
 ### 👇Parameter Description
 
-- **pipe_or_adapter**(`DiffusionPipeline` or `BlockAdapter`, *required*):  
+- **pipe_or_adapter**(`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):  
   The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
   For example: `cache_dit.enable_cache(FluxPipeline(...))`.
   Please check https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md for the usage of BlockAdapter.
