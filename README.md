@@ -13,6 +13,7 @@
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
+      <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
       <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg? >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
       <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg > 
