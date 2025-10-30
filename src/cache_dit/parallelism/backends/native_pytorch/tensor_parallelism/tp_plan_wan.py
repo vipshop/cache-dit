@@ -1,11 +1,21 @@
 import torch
 from torch import nn
-from torch.distributed import DeviceMesh
+from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
 )
+
+from cache_dit.logger import init_logger
+from cache_dit.parallelism.parallel_config import ParallelismConfig
+
+from .tp_plan_registers import (
+    TensorParallelismPlaner,
+    TensorParallelismPlanerRegister,
+)
+
+logger = init_logger(__name__)
 
 
 class DistributedRMSNorm(nn.Module):
@@ -63,48 +73,77 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
-def dit_apply_tp(
-    model: nn.Module,
-    tp_mesh: DeviceMesh,
-):
-    for name, block in model.blocks.named_children():
-        block.attn1.heads //= tp_mesh.size()
-        block.attn2.heads //= tp_mesh.size()
-        layer_plan = {
-            "attn1.to_q": ColwiseParallel(),
-            "attn1.to_k": ColwiseParallel(),
-            "attn1.to_v": ColwiseParallel(),
-            "attn1.to_out.0": RowwiseParallel(),
-            "attn2.to_q": ColwiseParallel(),
-            "attn2.to_k": ColwiseParallel(),
-            "attn2.to_v": ColwiseParallel(),
-            "attn2.to_out.0": RowwiseParallel(),
-            "ffn.net.0.proj": ColwiseParallel(),
-            "ffn.net.2": RowwiseParallel(),
-            "attn2.add_k_proj": ColwiseParallel(),
-            "attn2.add_v_proj": ColwiseParallel(),
-        }
-        parallelize_module(
-            module=block,
-            device_mesh=tp_mesh,
-            parallelize_plan=layer_plan,
+@TensorParallelismPlanerRegister.register("QwenImage")
+class QwenImageTensorParallelismPlaner(TensorParallelismPlaner):
+    def apply(
+        self,
+        transformer: torch.nn.Module,
+        parallelism_config: ParallelismConfig,
+        **kwargs,
+    ) -> torch.nn.Module:
+        assert (
+            parallelism_config.tp_size is not None
+            and parallelism_config.tp_size > 1
+        ), (
+            "parallel_config.tp_size must be set and greater than 1 for "
+            "tensor parallelism"
         )
 
-        block.attn1.norm_q = DistributedRMSNorm.from_rmsnorm(
-            tp_mesh, block.attn1.norm_q
+        device_type = torch.accelerator.current_accelerator().type
+        tp_mesh: DeviceMesh = init_device_mesh(
+            device_type=device_type,
+            mesh_shape=[parallelism_config.tp_size],
         )
-        block.attn1.norm_k = DistributedRMSNorm.from_rmsnorm(
-            tp_mesh, block.attn1.norm_k
+
+        transformer = self.parallelize_transformer(
+            transformer=transformer,
+            tp_mesh=tp_mesh,
         )
-        block.attn2.norm_q = DistributedRMSNorm.from_rmsnorm(
-            tp_mesh, block.attn2.norm_q
-        )
-        block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(
-            tp_mesh, block.attn2.norm_k
-        )
-        if hasattr(block.attn2, "norm_added_k"):
-            block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn2.norm_added_k
+
+        return transformer
+
+    def parallelize_transformer(
+        self,
+        transformer: nn.Module,
+        tp_mesh: DeviceMesh,
+    ):
+        for _, block in transformer.blocks.named_children():
+            block.attn1.heads //= tp_mesh.size()
+            block.attn2.heads //= tp_mesh.size()
+            layer_plan = {
+                "attn1.to_q": ColwiseParallel(),
+                "attn1.to_k": ColwiseParallel(),
+                "attn1.to_v": ColwiseParallel(),
+                "attn1.to_out.0": RowwiseParallel(),
+                "attn2.to_q": ColwiseParallel(),
+                "attn2.to_k": ColwiseParallel(),
+                "attn2.to_v": ColwiseParallel(),
+                "attn2.to_out.0": RowwiseParallel(),
+                "ffn.net.0.proj": ColwiseParallel(),
+                "ffn.net.2": RowwiseParallel(),
+                "attn2.add_k_proj": ColwiseParallel(),
+                "attn2.add_v_proj": ColwiseParallel(),
+            }
+            parallelize_module(
+                module=block,
+                device_mesh=tp_mesh,
+                parallelize_plan=layer_plan,
             )
 
-    return model
+            block.attn1.norm_q = DistributedRMSNorm.from_rmsnorm(
+                tp_mesh, block.attn1.norm_q
+            )
+            block.attn1.norm_k = DistributedRMSNorm.from_rmsnorm(
+                tp_mesh, block.attn1.norm_k
+            )
+            block.attn2.norm_q = DistributedRMSNorm.from_rmsnorm(
+                tp_mesh, block.attn2.norm_q
+            )
+            block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(
+                tp_mesh, block.attn2.norm_k
+            )
+            if hasattr(block.attn2, "norm_added_k"):
+                block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
+                    tp_mesh, block.attn2.norm_added_k
+                )
+        return transformer
