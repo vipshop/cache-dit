@@ -16,7 +16,8 @@
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [⚡️Hybrid Hybrid Cache CFG](#cfg)
 - [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
-- [⚡️Hybrid Context Parallelism](#context-paralleism)
+- [⚡️Hybrid Context Parallelism](#context-parallelism)
+- [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🛠Metrics Command Line](#metrics)
 - [⚙️Torch Compile](#compile)
 - [📚API Documents](#api-docs)
@@ -514,7 +515,7 @@ cache_dit.enable_cache(
 
 ## ⚡️Hybrid Context Parallelism
 
-<div id="context-paralleism"></div>
+<div id="context-parallelism"></div>
 
 cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
 
@@ -530,6 +531,26 @@ cache_dit.enable_cache(
 # Then, run with torchrun cmd:
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
+
+## ⚡️Hybrid Tensor Parallelism
+
+<div id="tensor-parallelism"></div>
+
+cache-dit is also compatible with tensor parallelism. Currently, we support the use of `Hybrid Cache` + `Tensor Parallelism` scheme (via NATIVE_PYTORCH parallelism backend) in cache-dit. Users can use Tensor Parallelism to further accelerate the speed of inference and reduce the VRAM usage! For more details, please refer to [📚examples/parallelism](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism).
+
+```python3
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set tp_size > 1 to enable tensor parallelism.
+    parallelism_config=ParallelismConfig(tp_size=2),
+)
+# Then, run with torchrun cmd:
+# torchrun --nproc_per_node=2 parallel_cache.py
+```
+
 
 ## 🛠Metrics Command Line
 
@@ -668,10 +689,22 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 - **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):
     Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
     parallelism for cache-dit.
+    - `backend`: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.NATIVE_DIFFUSER"):
+        Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
+        For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
+        only NATIVE_PYTORCH backend is supported.
     - `ulysses_size`: (`int`, *optional*, defaults to None):
-      The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
+        The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
+        This setting is only valid when backend is NATIVE_DIFFUSER.
     - `ring_size`: (`int`, *optional*, defaults to None):
-      The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
+        The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
+        This setting is only valid when backend is NATIVE_DIFFUSER.
+    - `tp_size`: (`int`, *optional*, defaults to None):
+        The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
+        This setting is only valid when backend is NATIVE_PYTORCH.
+    - `parallel_kwargs`: (`dict`, *optional*, defaults to {}):
+        Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
+        it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):
   Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py for more details.
