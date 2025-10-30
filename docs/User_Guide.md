@@ -587,6 +587,8 @@ import cache_dit
 cache_dit.enable_cache(pipe_or_adapter)
 
 # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
+# int4_weight_only required `fbgemm-gpu-genai>=1.2.0`, which is only support 
+# Compute Arch >= Hopper (not support for Ada, Ampere, ..., etc.)
 pipe.transformer = cache_dit.quantize(
     pipe.transformer, quant_type="float8_weight_only"
 )
