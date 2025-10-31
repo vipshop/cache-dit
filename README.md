@@ -204,6 +204,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
   - [📚Hybrid Forward Pattern](./docs/User_Guide.md#hybrid-forward-pattern)
   - [📚Implement Patch Functor](./docs/User_Guide.md#implement-patch-functor)
   - [📚Transformer-Only Interface](./docs/User_Guide.md#transformer-only-interface)
+  - [📚How to use ParamsModifier](./docs/User_Guide.md#how-to-use-paramsmodifier)
   - [🤖Cache Acceleration Stats](./docs/User_Guide.md#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](./docs/User_Guide.md#️dbcache-dual-block-cache)
 - [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
