@@ -77,6 +77,8 @@ def get_args(
         choices=[
             None,
             "flash",
+            # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
+            "native",  # native pytorch attention: sdpa
             "_native_cudnn",
         ],
     )
