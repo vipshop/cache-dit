@@ -100,7 +100,10 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-        if transformer is not None:
+        if (
+            transformer is not None
+            and self._cp_planner_preferred_native_diffusers
+        ):
             from diffusers import FluxTransformer2DModel
 
             assert isinstance(
@@ -109,6 +112,9 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
             if hasattr(transformer, "_cp_plan"):
                 return transformer._cp_plan
 
+        # Otherwise, use the custom CP plan defined here, this maybe
+        # a little different from the native diffusers implementation
+        # for some models.
         _cp_plan = {
             "": {
                 "hidden_states": ContextParallelInput(
@@ -136,7 +142,14 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-        if transformer is not None:
+
+        # Force to use custom CP plan defined by cache-dit
+        self._cp_planner_preferred_native_diffusers = False
+
+        if (
+            transformer is not None
+            and self._cp_planner_preferred_native_diffusers
+        ):
             from diffusers import QwenImageTransformer2DModel
 
             assert isinstance(
@@ -145,6 +158,9 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             if hasattr(transformer, "_cp_plan"):
                 return transformer._cp_plan
 
+        # Otherwise, use the custom CP plan defined here, this maybe
+        # a little different from the native diffusers implementation
+        # for some models.
         _cp_plan = _cp_plan = {
             "": {
                 "hidden_states": ContextParallelInput(
@@ -180,7 +196,10 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-        if transformer is not None:
+        if (
+            transformer is not None
+            and self._cp_planner_preferred_native_diffusers
+        ):
             from diffusers import WanTransformer3DModel
 
             assert isinstance(
@@ -189,6 +208,9 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
             if hasattr(transformer, "_cp_plan"):
                 return transformer._cp_plan
 
+        # Otherwise, use the custom CP plan defined here, this maybe
+        # a little different from the native diffusers implementation
+        # for some models.
         _cp_plan = {
             "rope": {
                 0: ContextParallelInput(
@@ -220,7 +242,14 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-        if transformer is not None:
+
+        # Force to use custom CP plan defined by cache-dit
+        self._cp_planner_preferred_native_diffusers = False
+
+        if (
+            transformer is not None
+            and self._cp_planner_preferred_native_diffusers
+        ):
             from diffusers import LTXVideoTransformer3DModel
 
             assert isinstance(
@@ -229,6 +258,9 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
             if hasattr(transformer, "_cp_plan"):
                 return transformer._cp_plan
 
+        # Otherwise, use the custom CP plan defined here, this maybe
+        # a little different from the native diffusers implementation
+        # for some models.
         _cp_plan = {
             "": {
                 "hidden_states": ContextParallelInput(
@@ -237,6 +269,8 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
+                # Attention mask is not support for _native_cudnn
+                # attention backend
                 "encoder_attention_mask": ContextParallelInput(
                     split_dim=1, expected_dims=2, split_output=False
                 ),

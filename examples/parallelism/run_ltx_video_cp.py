@@ -36,7 +36,7 @@ pipe = LTXConditionPipeline.from_pretrained(
             "bnb_4bit_quant_type": "nf4",
             "bnb_4bit_compute_dtype": torch.bfloat16,
         },
-        components_to_quantize=["transformer", "text_encoder"],
+        components_to_quantize=["text_encoder"],
     ),
 )
 
@@ -52,7 +52,7 @@ pipe_upsample.to(device)
 assert isinstance(pipe.vae, AutoencoderKLLTXVideo)
 pipe.vae.enable_tiling()
 
-if args.cache:
+if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 
