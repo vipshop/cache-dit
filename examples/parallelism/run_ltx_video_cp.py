@@ -12,13 +12,22 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
-from utils import get_args, strify, cachify
+from utils import (
+    cachify,
+    get_args,
+    maybe_destroy_distributed,
+    maybe_init_distributed,
+    strify,
+)
 import cache_dit
 
+# NOTE: Please use `--attn flash` for LTXVideo with context parallelism,
+# otherwise, it may raise attention mask not supported error.
 
 args = get_args()
 print(args)
 
+rank, device = maybe_init_distributed(args)
 
 pipe = LTXConditionPipeline.from_pretrained(
     os.environ.get("LTX_VIDEO_DIR", "Lightricks/LTX-Video-0.9.7-dev"),
@@ -30,7 +39,7 @@ pipe = LTXConditionPipeline.from_pretrained(
             "bnb_4bit_quant_type": "nf4",
             "bnb_4bit_compute_dtype": torch.bfloat16,
         },
-        components_to_quantize=["transformer", "text_encoder"],
+        components_to_quantize=["text_encoder", "transformer"],
     ),
 )
 
@@ -41,12 +50,16 @@ pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained(
     vae=pipe.vae,
     torch_dtype=torch.bfloat16,
 )
-pipe.to("cuda")
-pipe_upsample.to("cuda")
-assert isinstance(pipe.vae, AutoencoderKLLTXVideo)
-pipe.vae.enable_tiling()
 
-if args.cache:
+pipe.to(device)
+pipe_upsample.to(device)
+assert isinstance(pipe.vae, AutoencoderKLLTXVideo)
+assert isinstance(pipe_upsample.vae, AutoencoderKLLTXVideo)
+
+pipe.set_progress_bar_config(disable=rank != 0)
+pipe_upsample.set_progress_bar_config(disable=rank != 0)
+
+if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 
@@ -62,7 +75,7 @@ negative_prompt = (
 )
 expected_height, expected_width = 512, 704
 downscale_factor = 2 / 3
-num_frames = 121
+num_frames = 49
 
 # Part 1. Generate video at smaller resolution
 downscaled_height, downscaled_width = int(
@@ -128,11 +141,14 @@ video = run_pipe()
 end = time.time()
 stats = cache_dit.summary(pipe)
 
-# Part 4. Downscale the video to the expected resolution
-video = [frame.resize((expected_width, expected_height)) for frame in video]
+if rank == 0:
+    # Part 4. Downscale the video to the expected resolution
+    video = [frame.resize((expected_width, expected_height)) for frame in video]
 
-time_cost = end - start
-save_path = f"ltx-video.{strify(args, stats)}.mp4"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving video to {save_path}")
-export_to_video(video, save_path, fps=8)
+    time_cost = end - start
+    save_path = f"ltx-video.{strify(args, stats)}.mp4"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving video to {save_path}")
+    export_to_video(video, save_path, fps=8)
+
+maybe_destroy_distributed()
