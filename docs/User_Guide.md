@@ -12,10 +12,11 @@
   - [📚Hybrid Forward Pattern](#automatic-block-adapter)
   - [📚Implement Patch Functor](#implement-patch-functor)
   - [📚Transformer-Only Interface](#transformer-only-interface)
+  - [📚How to use ParamsModifier](#how-to-use-paramsmodifier)
   - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
 - [⚡️DBCache: Dual Block Cache](#dbcache)
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
-- [⚡️Hybrid Hybrid Cache CFG](#cfg)
+- [⚡️Hybrid Cache CFG](#cfg)
 - [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
@@ -48,10 +49,11 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 ```python
 >>> import cache_dit
 >>> cache_dit.supported_pipelines()
-(30, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTX*', 'Allegro*',
+(32, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTX*', 'Allegro*',
 'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'StableDiffusion3*',
 'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
-'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*'])
+'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*',
+'Kandinsky5*', 'PRX*'])
 ```
 
 <details>
@@ -186,13 +188,10 @@ from diffusers import DiffusionPipeline
 
 # Can be any diffusion pipeline
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-
 # One-line code with default cache options.
 cache_dit.enable_cache(pipe) 
-
 # Just call the pipe as normal.
 output = pipe(...)
-
 # Disable cache and run original pipe.
 cache_dit.disable_cache(pipe)
 ```
@@ -275,13 +274,13 @@ cache_dit.enable_cache(
         # value will be overwrite by the new one.
         params_modifiers=[
             ParamsModifier(
-                cache_config=DBCacheConfig(
+                cache_config=DBCacheConfig().reset(
                     max_warmup_steps=4,
                     max_cached_steps=8,
                 ),
             ),
             ParamsModifier(
-                cache_config=DBCacheConfig(
+                cache_config=DBCacheConfig().reset(
                     max_warmup_steps=2,
                     max_cached_steps=20,
                 ),
@@ -291,6 +290,7 @@ cache_dit.enable_cache(
     ),
 )
 ```
+
 ### 📚Implement Patch Functor
 
 For any PATTERN not in {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
@@ -341,6 +341,50 @@ cache_dit.enable_cache(
 )
 ```
 
+### 📚How to use ParamsModifier
+
+Sometimes you may encounter more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`), or FLUX.1, which has multiple transformer blocks (namely `single_transformer_blocks` and `transformer_blocks`). cache-dit will assign separate cache contexts for different `blocks` instances but share the same `cache_config` by default. Users who want to achieve fine-grained control over different cache contexts can consider using `ParamsModifier`. Just pass the `ParamsModifier` per `blocks` to the `BlockAdapter` or `enable_cache(...)` API. Then, the shared `cache_config` will be overwritten by the new configurations from the `ParamsModifier`. For example:
+
+```python
+from cache_dit import ParamsModifier 
+
+cache_dit.enable_cache(
+    BlockAdapter(
+        pipe=pipe, # FLUX.1, etc.
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_3,
+        ],
+    ),
+    # Basic shared cache config 
+    cache_config=DBCacheConfig(...),
+    params_modifiers=[
+        ParamsModifier(
+            # Modified config only for transformer_blocks
+            # Must call the `reset` method of DBCacheConfig.
+            cache_config=DBCacheConfig().reset(
+                Fn_compute_blocks=8,
+                residual_diff_threshold=0.08,
+            ),
+        ),
+        ParamsModifier(
+            # Modified config only for single_transformer_blocks
+            # NOTE: FLUX.1, single_transformer_blocks should have `higher` 
+            # residual_diff_threshold because of the precision error 
+            # accumulation from previous transformer_blocks
+            cache_config=DBCacheConfig().reset(
+                Fn_compute_blocks=1,
+                residual_diff_threshold=0.16,
+            ),
+        ),
+    ],
+)
+```
 
 ### 🤖Cache Acceleration Stats Summary
 
@@ -407,7 +451,7 @@ cache_dit.enable_cache(
 |Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=105px>|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=120px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=120px>|
 
 ## ⚡️DBPrune: Dynamic Block Prune
 
@@ -441,7 +485,7 @@ cache_dit.enable_cache(
         Bn_compute_blocks=8, # Bn, B8, etc
         residual_diff_threshold=0.12,
         enable_dynamic_prune_threshold=True,
-        non_prune_block_ids=list(range(16)),
+        non_prune_block_ids=list(range(16,24)),
     ),
 )
 ```
@@ -454,7 +498,7 @@ cache_dit.enable_cache(
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=105px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=105px>|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=120px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=120px>|
 
 ## ⚡️Hybrid Cache CFG
 
@@ -531,7 +575,7 @@ cache_dit.enable_cache(
 |Baseline(L20x1)|F1B0 (0.12)|+TaylorSeer|F1B0 (0.15)|+TaylorSeer|+compile| 
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|12.85s|12.86s|10.27s|10.28s|8.48s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=105px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=105px>|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=120px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=120px>|
 
 
 ## ⚡️Hybrid Context Parallelism
@@ -743,9 +787,8 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     Whether to use separate cfg or not, such as in Wan 2.1, Qwen-Image. For models that fuse CFG and non-CFG into a single forward step, set enable_separate_cfg as False. Examples include: CogVideoX, HunyuanVideo, Mochi, etc.
   - `cfg_compute_first`: (`bool`, *required*, defaults to False):    
     Whether to compute cfg forward first, default is False, meaning:  
-    0, 2, 4, ... -> non-CFG step;  
-    1, 3, 5, ... -> CFG step.
-  - `cfg_diff_compute_separate`: (`bool`, *required*, defaults to True):  
+    0, 2, 4, ... -> non-CFG step; 1, 3, 5, ... -> CFG step.
+  - `cfg_diff_compute_separate`: (`bool`, *required*, defaults to True):    
     Whether to compute separate difference values for CFG and non-CFG steps, default is True. If False, we will use the computed difference from the current non-CFG transformer step for the current CFG step.
   - `num_inference_steps` (`int`, *optional*, defaults to None):  
     num_inference_steps for DiffusionPipeline, used to adjust some internal settings
