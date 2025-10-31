@@ -142,10 +142,6 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-
-        # Force to use custom CP plan defined by cache-dit
-        self._cp_planner_preferred_native_diffusers = False
-
         if (
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
@@ -242,10 +238,6 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-
-        # Force to use custom CP plan defined by cache-dit
-        self._cp_planner_preferred_native_diffusers = False
-
         if (
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
