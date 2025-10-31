@@ -22,6 +22,8 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+@TensorParallelismPlannerRegister.register("HunyuanImage")
+@TensorParallelismPlannerRegister.register("HunyuanVideo")
 @TensorParallelismPlannerRegister.register("Flux")
 class FluxTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
