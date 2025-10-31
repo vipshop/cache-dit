@@ -1,3 +1,20 @@
+<div align="center">
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
+  <p align="center">
+    A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
+    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
+  </p>
+  <div align='center'>
+      <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
+      <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
+      <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
+      <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
+  </div>
+  <p align="center">
+    🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉
+</div>
+
 ## 📖User Guide
 
 <div id="contents"></div>  
@@ -32,7 +49,7 @@
 You can install the stable release of `cache-dit` from PyPI:
 
 ```bash
-pip3 install -U cache-dit
+pip3 install -U cache-dit # or, pip3 install -U "cache-dit[all]" for all features
 ```
 Or you can install the latest develop version from GitHub:
 
