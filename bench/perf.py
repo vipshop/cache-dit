@@ -100,7 +100,7 @@ def main():
                 DBCacheConfig,
                 TaylorSeerCalibratorConfig,
             )
-            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
+            from cache_dit.caching.patch_functors import FluxPatchFunctor
 
             if args.cache_config is None:
 
