@@ -314,13 +314,13 @@ For any PATTERN not in {0...5}, we introduced the simple abstract concept of **P
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HiDreamImageTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+    from cache_dit.caching.patch_functors import HiDreamPatchFunctor
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
     return BlockAdapter(
@@ -793,7 +793,6 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 - **pipe_or_adapter**(`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):  
   The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
   For example: `cache_dit.enable_cache(FluxPipeline(...))`.
-  Please check https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md for the usage of BlockAdapter.
 
 - **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
   Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
@@ -858,4 +857,4 @@ This function seamlessly integrates with both standard diffusion pipelines and c
         it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):   
-  Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py for more details.
+  Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py for more details.

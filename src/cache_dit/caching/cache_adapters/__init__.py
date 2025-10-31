@@ -1,0 +1,1 @@
+from cache_dit.caching.cache_adapters.cache_adapter import CachedAdapter

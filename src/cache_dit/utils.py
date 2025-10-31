@@ -9,11 +9,11 @@ from pprint import pprint
 from diffusers import DiffusionPipeline
 
 from typing import Dict, Any, List, Union
-from cache_dit.cache_factory import CacheType
-from cache_dit.cache_factory import BlockAdapter
-from cache_dit.cache_factory import BasicCacheConfig
-from cache_dit.cache_factory import CalibratorConfig
-from cache_dit.cache_factory import FakeDiffusionPipeline
+from cache_dit.caching import CacheType
+from cache_dit.caching import BlockAdapter
+from cache_dit.caching import BasicCacheConfig
+from cache_dit.caching import CalibratorConfig
+from cache_dit.caching import FakeDiffusionPipeline
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.logger import init_logger
 
