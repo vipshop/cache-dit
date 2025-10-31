@@ -1,8 +1,8 @@
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
   <p align="center">
-    A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
-    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️ <br>
+    A <b>Unified</b>, <b>Flexible</b> and <b>Training-free</b> Inference Engine with <br><b>Cache Acceleration</b>, <b>Parallelism</b> and Quantization for 🤗Diffusers. <br>
+    ♥️ Accelerate your DiT with <b>One-line</b> Code ~ ♥️ <br>
   </p>
   <div align='center'>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
