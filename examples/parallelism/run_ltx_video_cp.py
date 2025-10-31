@@ -12,13 +12,19 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
-from utils import get_args, strify, cachify
+from utils import (
+    cachify,
+    get_args,
+    maybe_destroy_distributed,
+    maybe_init_distributed,
+    strify,
+)
 import cache_dit
-
 
 args = get_args()
 print(args)
 
+rank, device = maybe_init_distributed(args)
 
 pipe = LTXConditionPipeline.from_pretrained(
     os.environ.get("LTX_VIDEO_DIR", "Lightricks/LTX-Video-0.9.7-dev"),
@@ -41,8 +47,8 @@ pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained(
     vae=pipe.vae,
     torch_dtype=torch.bfloat16,
 )
-pipe.to("cuda")
-pipe_upsample.to("cuda")
+pipe.to(device)
+pipe_upsample.to(device)
 assert isinstance(pipe.vae, AutoencoderKLLTXVideo)
 pipe.vae.enable_tiling()
 
@@ -128,11 +134,14 @@ video = run_pipe()
 end = time.time()
 stats = cache_dit.summary(pipe)
 
-# Part 4. Downscale the video to the expected resolution
-video = [frame.resize((expected_width, expected_height)) for frame in video]
+if rank == 0:
+    # Part 4. Downscale the video to the expected resolution
+    video = [frame.resize((expected_width, expected_height)) for frame in video]
 
-time_cost = end - start
-save_path = f"ltx-video.{strify(args, stats)}.mp4"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving video to {save_path}")
-export_to_video(video, save_path, fps=8)
+    time_cost = end - start
+    save_path = f"ltx-video.{strify(args, stats)}.mp4"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving video to {save_path}")
+    export_to_video(video, save_path, fps=8)
+
+maybe_destroy_distributed()
