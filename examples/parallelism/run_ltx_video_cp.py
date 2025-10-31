@@ -21,6 +21,9 @@ from utils import (
 )
 import cache_dit
 
+# NOTE: Please use `--attn flash` for LTXVideo with context parallelism,
+# otherwise, it may raise attention mask not supported error.
+
 args = get_args()
 print(args)
 
@@ -36,7 +39,7 @@ pipe = LTXConditionPipeline.from_pretrained(
             "bnb_4bit_quant_type": "nf4",
             "bnb_4bit_compute_dtype": torch.bfloat16,
         },
-        components_to_quantize=["text_encoder"],
+        components_to_quantize=["text_encoder", "transformer"],
     ),
 )
 
@@ -47,10 +50,14 @@ pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained(
     vae=pipe.vae,
     torch_dtype=torch.bfloat16,
 )
+
 pipe.to(device)
 pipe_upsample.to(device)
 assert isinstance(pipe.vae, AutoencoderKLLTXVideo)
-pipe.vae.enable_tiling()
+assert isinstance(pipe_upsample.vae, AutoencoderKLLTXVideo)
+
+pipe.set_progress_bar_config(disable=rank != 0)
+pipe_upsample.set_progress_bar_config(disable=rank != 0)
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
@@ -68,7 +75,7 @@ negative_prompt = (
 )
 expected_height, expected_width = 512, 704
 downscale_factor = 2 / 3
-num_frames = 121
+num_frames = 49
 
 # Part 1. Generate video at smaller resolution
 downscaled_height, downscaled_width = int(
