@@ -8,6 +8,7 @@ import torch
 from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
+    AutoencoderKLQwenImage,
 )
 
 from utils import (
@@ -55,8 +56,9 @@ if GiB() < 96:
 else:
     pipe.to(device)
 
-# assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-# pipe.vae.enable_tiling()
+if GiB() <= 48 and not enable_quatization:
+    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+    pipe.vae.enable_tiling()
 
 # Apply cache and context parallelism here
 if args.cache or args.parallel_type is not None:
