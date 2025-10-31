@@ -30,12 +30,14 @@ pipe: HunyuanImagePipeline = HunyuanImagePipeline.from_pretrained(
         "hunyuanvideo-community/HunyuanImage-2.1-Diffusers",
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+)
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
+torch.cuda.empty_cache()
 assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
+pipe.enable_model_cpu_offload(device=device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 

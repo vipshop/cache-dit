@@ -29,12 +29,14 @@ pipe: HunyuanVideoPipeline = HunyuanVideoPipeline.from_pretrained(
         "hunyuanvideo-community/HunyuanVideo",
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+)
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
+pipe.enable_model_cpu_offload(device=device)
+pipe.vae.enable_tiling()
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
