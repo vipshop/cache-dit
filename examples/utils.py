@@ -71,7 +71,6 @@ def get_args(
         ],
     )
     parser.add_argument(
-        "--attention-backend",
         "--attn",  # attention backend for context parallelism
         type=str,
         default=None,
