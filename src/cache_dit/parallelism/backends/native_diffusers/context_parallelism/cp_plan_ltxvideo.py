@@ -101,7 +101,7 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-@functools.wraps(LTXAttention.prepare_attention_mask)
+@functools.wraps(LTXAttention.__class__.prepare_attention_mask)
 def __patch__LTXAttention_prepare_attention_mask__(
     self: LTXAttention,
     attention_mask: torch.Tensor,
