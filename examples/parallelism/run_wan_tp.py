@@ -23,17 +23,61 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
+model_id = os.environ.get(
+    "WAN_2_2_DIR",
+    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+)
 pipe = WanPipeline.from_pretrained(
-    os.environ.get(
-        "WAN_2_2_DIR",
-        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
-        # "Wan-AI/Wan2.1-T2V-14B-Diffusers",
-    ),
+    model_id,
     torch_dtype=torch.bfloat16,
 )
 
 if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
+    from cache_dit import (
+        ForwardPattern,
+        BlockAdapter,
+        ParamsModifier,
+        DBCacheConfig,
+    )
+
+    if "Wan2.1" in model_id:
+        cachify(args, pipe)
+    else:
+        # Wan 2.2 only
+        cachify(
+            args,
+            BlockAdapter(
+                pipe=pipe,
+                transformer=[
+                    pipe.transformer,
+                    pipe.transformer_2,
+                ],
+                blocks=[
+                    pipe.transformer.blocks,
+                    pipe.transformer_2.blocks,
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_2,
+                    ForwardPattern.Pattern_2,
+                ],
+                params_modifiers=[
+                    # high-noise transformer only have 30% steps
+                    ParamsModifier(
+                        cache_config=DBCacheConfig().reset(
+                            max_warmup_steps=4,
+                            max_cached_steps=8,
+                        ),
+                    ),
+                    ParamsModifier(
+                        cache_config=DBCacheConfig().reset(
+                            max_warmup_steps=2,
+                            max_cached_steps=20,
+                        ),
+                    ),
+                ],
+                has_separate_cfg=True,
+            ),
+        )
 
 pipe.enable_model_cpu_offload(device=device)
 assert isinstance(pipe.transformer, WanTransformer3DModel)
