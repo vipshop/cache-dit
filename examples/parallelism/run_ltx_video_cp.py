@@ -21,8 +21,7 @@ from utils import (
 )
 import cache_dit
 
-# NOTE: Please use `--attn flash` for LTXVideo with context parallelism,
-# otherwise, it may raise attention mask not supported error.
+# NOTE: Please use `--attn naitve` for LTXVideo with context parallelism,
 
 args = get_args()
 print(args)
@@ -60,6 +59,10 @@ pipe.set_progress_bar_config(disable=rank != 0)
 pipe_upsample.set_progress_bar_config(disable=rank != 0)
 
 if args.cache or args.parallel_type is not None:
+    if args.parallel_type is not None:
+        assert args.attn == "native", (
+            "Context parallelism for LTXVideo requires " "--attn native"
+        )
     cachify(args, pipe)
 
 
@@ -88,7 +91,11 @@ downscaled_height, downscaled_width = (
 )
 
 
+stats = None
+
+
 def run_pipe(warmup: bool = False):
+    global stats
 
     latents = pipe(
         conditions=None,
@@ -101,6 +108,8 @@ def run_pipe(warmup: bool = False):
         generator=torch.Generator("cpu").manual_seed(0),
         output_type="latent",
     ).frames
+
+    stats = cache_dit.summary(pipe, details=True)
 
     # Part 2. Upscale generated video using latent upsampler with fewer inference steps
     # The available latent upsampler upscales the height/width by 2x
@@ -139,7 +148,6 @@ _ = run_pipe(warmup=True)
 start = time.time()
 video = run_pipe()
 end = time.time()
-stats = cache_dit.summary(pipe)
 
 if rank == 0:
     # Part 4. Downscale the video to the expected resolution
