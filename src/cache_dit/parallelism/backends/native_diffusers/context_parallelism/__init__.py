@@ -9,7 +9,13 @@ from ..utils import (
     native_diffusers_parallelism_available,
     ContextParallelConfig,
 )
+from .attention import maybe_resigter_native_attention_backend
 from .cp_planners import *
+
+try:
+    maybe_resigter_native_attention_backend()
+except ImportError as e:
+    raise ImportError(e)
 
 logger = init_logger(__name__)
 
@@ -49,7 +55,7 @@ def maybe_enable_context_parallelism(
             )
             if hasattr(transformer, "enable_parallelism"):
                 if hasattr(transformer, "set_attention_backend"):
-                    # _native_cudnn, flash, etc.
+                    # native, _native_cudnn, flash, etc.
                     if attention_backend is None:
                         # Now only _native_cudnn is supported for parallelism
                         # issue: https://github.com/huggingface/diffusers/pull/12443
