@@ -31,6 +31,9 @@ def _is_native_attention_backend_supported_context_parallel() -> bool:
         return (
             AttentionBackendName.NATIVE
             in _AttentionBackendRegistry._supports_context_parallel
+            and _AttentionBackendRegistry._supports_context_parallel[
+                AttentionBackendName.NATIVE
+            ]
         )
     except AttributeError:
         assert isinstance(

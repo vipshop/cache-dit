@@ -161,7 +161,7 @@ def __patch__LTXAttention_prepare_attention_mask__(
     return attention_mask
 
 
-@functools.wraps(LTXVideoAttnProcessor.__class__.__call__)
+@functools.wraps(LTXVideoAttnProcessor.__call__)
 def __patch__LTXVideoAttnProcessor__call__(
     self: LTXVideoAttnProcessor,
     attn: "LTXAttention",
