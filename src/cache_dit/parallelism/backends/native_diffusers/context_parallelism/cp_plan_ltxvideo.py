@@ -63,9 +63,7 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
         LTXAttention.prepare_attention_mask = (
             __patch__LTXAttention_prepare_attention_mask__
         )
-        LTXVideoAttnProcessor.__class__.__call__ = (
-            __patch__LTXVideoAttnProcessor__call__
-        )
+        LTXVideoAttnProcessor.__call__ = __patch__LTXVideoAttnProcessor__call__
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
