@@ -21,8 +21,7 @@ from utils import (
 )
 import cache_dit
 
-# NOTE: Please use `--attn flash` for LTXVideo with context parallelism,
-# otherwise, it may raise attention mask not supported error.
+# NOTE: Please use `--attn naitve` for LTXVideo with context parallelism,
 
 args = get_args()
 print(args)
@@ -60,6 +59,10 @@ pipe.set_progress_bar_config(disable=rank != 0)
 pipe_upsample.set_progress_bar_config(disable=rank != 0)
 
 if args.cache or args.parallel_type is not None:
+    if args.parallel_type is not None:
+        assert args.attn == "native", (
+            "Context parallelism for LTXVideo requires " "--attn native"
+        )
     cachify(args, pipe)
 
 

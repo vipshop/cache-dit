@@ -26,9 +26,23 @@ __all__ = [
 ]
 
 
-if not _AttentionBackendRegistry._is_context_parallel_available(
-    AttentionBackendName.NATIVE
-):
+def _is_native_attention_backend_supported_context_parallel() -> bool:
+    try:
+        return (
+            AttentionBackendName.NATIVE
+            in _AttentionBackendRegistry._supports_context_parallel
+        )
+    except AttributeError:
+        assert isinstance(
+            _AttentionBackendRegistry._supports_context_parallel, set
+        )
+        return (
+            AttentionBackendName.NATIVE.value
+            in _AttentionBackendRegistry._supports_context_parallel
+        )
+
+
+if not _is_native_attention_backend_supported_context_parallel():
     logger.warning(
         "Re-registering NATIVE attention backend to enable context parallelism. "
         "This is a temporary workaround and should be removed after the native "
