@@ -91,7 +91,11 @@ downscaled_height, downscaled_width = (
 )
 
 
+stats = None
+
+
 def run_pipe(warmup: bool = False):
+    global stats
 
     latents = pipe(
         conditions=None,
@@ -104,6 +108,8 @@ def run_pipe(warmup: bool = False):
         generator=torch.Generator("cpu").manual_seed(0),
         output_type="latent",
     ).frames
+
+    stats = cache_dit.summary(pipe, details=True)
 
     # Part 2. Upscale generated video using latent upsampler with fewer inference steps
     # The available latent upsampler upscales the height/width by 2x
@@ -142,7 +148,6 @@ _ = run_pipe(warmup=True)
 start = time.time()
 video = run_pipe()
 end = time.time()
-stats = cache_dit.summary(pipe)
 
 if rank == 0:
     # Part 4. Downscale the video to the expected resolution
