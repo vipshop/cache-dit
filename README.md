@@ -56,7 +56,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
-<details align='left'>
+<details align='center'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
   
 <p align='center'>
