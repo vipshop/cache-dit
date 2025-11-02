@@ -5,13 +5,17 @@
   <p align="center">
     <h2>A Unified and Flexible Inference Engine with Cache <br>Acceleration, Parallelism and Quantization for 🤗Diffusers.<br>
     </h2>
-      <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
-      <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
-      <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
-      <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
-      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark > <br>
-    🔥<a href="./docs/User_Guide.md"><b>Cache Acceleration</b></a> | <a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Quantization</a>🔥<br>
-     <br>♥️ Accelerate your DiT with <b>One-line</b> Code ~ ♥️
+    <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
+    <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
+    <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
+    <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
+    <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
+    <img src=https://img.shields.io/badge/Release-v1.0-brightgreen.svg ><br>
+    <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
+    <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
+    <img src=https://img.shields.io/badge/Models-30+-hotpink.svg > <img src=https://img.shields.io/badge/Pipelines-~100+-hotpink.svg ><br>
+    🔥<a href="./docs/User_Guide.md"><b>Cache Acceleration</b></a> | <a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Quantization</b></a>🔥
+    <br>♥️ Accelerate your DiT with <b>One-line</b> Code ~ ♥️
   </p>
 </div>
 
@@ -22,7 +26,7 @@
     🔥<a href="./docs/User_Guide.md">Compile Compatible</a> | <a href="./docs/User_Guide.md"><b>🎉State-of-the-Art Performance</b></a>🎉 
 -->
 
-## 🔥Hightlight <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> <img src=https://img.shields.io/badge/Models-30+-hotpink.svg > <img src=https://img.shields.io/badge/Pipelines-~100+-hotpink.svg >
+## 🔥Hightlight 
 
 <!--
 <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
@@ -59,7 +63,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <details align='left'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
-<p>
+  
+<p align='center'>
   🎉Now, cache-dit covers almost All Diffusers' DiT Pipelines🎉 <br>
    🔥<a href="./examples/pipeline">Qwen-Image</a> | <a href="./examples/pipeline">Qwen-Image-Edit</a> | <a href="./examples/pipeline">Qwen-Image-Edit-Plus </a> 🔥<br>
     🔥<a href="./examples/pipeline">FLUX.1</a> | <a href="./examples/pipeline">Qwen-Image-Lightning 4/8 Steps</a> | <a href="./examples/pipeline"> Wan 2.1 </a> | <a href="./examples/pipeline"> Wan 2.2 </a>🔥<br>
@@ -67,7 +72,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
     🔥<a href="./examples/pipeline">CogView3Plus</a> | <a href="./examples/pipeline">CogView4</a> | <a href="./examples/pipeline">LTXVideo</a> | <a href="./examples/pipeline">CogVideoX</a> | <a href="./examples/">CogVideoX 1.5</a> | <a href="./examples/">ConsisID</a>🔥<br>
     🔥<a href="./examples/pipeline">Cosmos</a> | <a href="./examples/pipeline">SkyReelsV2</a> | <a href="./examples/pipeline">VisualCloze</a> | <a href="./examples/pipeline">OmniGen 1/2</a> | <a href="./examples/pipeline">Lumina 1/2</a> | <a href="./examples/pipeline">PixArt</a>🔥<br>
     🔥<a href="./examples/pipeline">Chroma</a> | <a href="./examples/pipeline">Sana</a> | <a href="./examples/pipeline">Allegro</a> | <a href="./examples/pipeline">Mochi</a> | <a href="./examples/pipeline">SD 3/3.5</a> | <a href="./examples/pipeline">Amused</a> | <a href="./examples/pipeline"> ... </a> | <a href="./examples/pipeline">DiT-XL</a>🔥
-  </p>
+</p>
+  
 <div align='center'>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C0_Q0_NONE.gif width=124px>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/gifs/wan2.2.C1_Q0_DBCACHE_F1B0_W2M8MC2_T1O2_R0.08.gif width=124px>
