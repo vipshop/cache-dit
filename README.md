@@ -27,7 +27,7 @@
 <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
 -->
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework for 🤗 Diffusers, enabling cache acceleration with just ♥️**one line**♥️ of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
+**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified** and **Flexible** inference engine for 🤗 Diffusers, enabling acceleration with just ♥️**one line**♥️ of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
 
 ```bash
 pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
@@ -56,7 +56,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
-<details align='left'>
+<details align='center'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
   
 <p align='center'>
@@ -256,7 +256,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A Unified and Flexible Inference Engine with Cache Acceleration， Parallelism and Quantization for Diffusers.},
+  title={cache-dit: A Unified and Flexible Inference Engine with Cache Acceleration，Parallelism and Quantization for Diffusers.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com},
