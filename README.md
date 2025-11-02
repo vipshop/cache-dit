@@ -4,13 +4,13 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
   <p align="center">
     <h2>A Unified and Flexible Inference Engine with Cache <br>Acceleration, Parallelism and Quantization for 🤗Diffusers.<br>
+    </h2>
       <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
       <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
       <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
       <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
       <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-    </h2>
-    ♥️ Accelerate your DiT with <b>One-line</b> Code ~ ♥️<br>
+     <br>♥️ Accelerate your DiT with <b>One-line</b> Code ~ ♥️<br>
     🔥<a href="./docs/User_Guide.md">Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">Automatic Block Adapter</a>🔥 <br>
     🔥<a href="./docs/User_Guide.md"><b>DBCache</b></a> | <a href="./docs/User_Guide.md"><b>DBPrune</b></a> | <a href="./docs/User_Guide.md">Hybrid <b>TaylorSeer</b> Calibrator</a> | <a href="./docs/User_Guide.md"><b>Cache CFG</b></a>🔥<br>
     🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Low-bits Quantization</a>🔥<br>
@@ -21,6 +21,7 @@
 <details align='center'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
 <p>
+  🎉Now, cache-dit covers almost All Diffusers' DiT Pipelines🎉 <br>
    🔥<a href="./examples/pipeline">Qwen-Image</a> | <a href="./examples/pipeline">Qwen-Image-Edit</a> | <a href="./examples/pipeline">Qwen-Image-Edit-Plus </a> 🔥<br>
     🔥<a href="./examples/pipeline">FLUX.1</a> | <a href="./examples/pipeline">Qwen-Image-Lightning 4/8 Steps</a> | <a href="./examples/pipeline"> Wan 2.1 </a> | <a href="./examples/pipeline"> Wan 2.2 </a>🔥<br>
     🔥<a href="./examples/pipeline">HunyuanImage-2.1</a> | <a href="./examples/pipeline">HunyuanVideo</a> | <a href="./examples/pipeline">HunyuanDiT</a> | <a href="./examples/pipeline">HiDream</a> | <a href="./examples/pipeline">AuraFlow</a>🔥<br>
