@@ -38,7 +38,7 @@ def my_local_scheme(version):
 
 setup(
     name=PACKAGE_NAME,
-    description="A Unified, Flexible and Training-free Inference Engine with Cache Acceleration, Parallelism and Quantization for 🤗Diffusers",
+    description="A Unified and Flexible Inference Engine with Cache Acceleration, Parallelism and Quantization for 🤗Diffusers",
     author="DefTruth, vipshop.com",
     use_scm_version={
         "write_to": path.join("src", "cache_dit", "_version.py"),
