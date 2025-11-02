@@ -3,20 +3,19 @@
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
   <p align="center">
-    <h2>A <b>Unified</b> and <b>Flexible</b> Inference Engine with <b>Cache</b><br>Acceleration, <b>Parallelism</b> and Quantization for 🤗Diffusers. </h2>
+    <h2>A <b>Unified</b> and <b>Flexible</b> Inference Engine with <b>Cache</b><br>Acceleration, <b>Parallelism</b> and Quantization for 🤗Diffusers. <br>
+      <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
+      <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
+      <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
+      <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
+      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
+    </h2>
     ♥️ Accelerate your DiT with <b>One-line</b> Code ~ ♥️ <br>
     🔥<a href="./docs/User_Guide.md">Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">Automatic Block Adapter</a>🔥 <br>
     🔥<a href="./docs/User_Guide.md"><b>DBCache</b></a> | <a href="./docs/User_Guide.md"><b>DBPrune</b></a> | <a href="./docs/User_Guide.md">Hybrid <b>TaylorSeer</b> Calibrator</a> | <a href="./docs/User_Guide.md"><b>Cache CFG</b></a>🔥<br>
     🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Low-bits Quantization</a>🔥<br>
     🔥<a href="./docs/User_Guide.md">Compile Compatible</a> | <a href="./docs/User_Guide.md"><b>🎉State-of-the-Art Performance</b></a>🎉 
   </p>
-  <div align='center'>
-      <img src=https://img.shields.io/badge/Language-Python-brightgreen.svg >
-      <img src=https://img.shields.io/badge/PyPI-pass-brightgreen.svg >
-      <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
-      <img src=https://img.shields.io/github/issues/vipshop/cache-dit.svg >
-      <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-  </div>
   <p align="center">
     🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
     🔥<a href="./examples/pipeline">Qwen-Image</a> | <a href="./examples/pipeline">Qwen-Image-Edit</a> | <a href="./examples/pipeline">Qwen-Image-Edit-Plus </a> 🔥<br>
