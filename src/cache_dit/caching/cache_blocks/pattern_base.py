@@ -1,7 +1,18 @@
 import inspect
+import logging
 import torch
 import torch.distributed as dist
+from diffusers.hooks import HookRegistry
 
+try:
+    from diffusers.hooks.context_parallel import ContextParallelSplitHook
+except ImportError:
+    ContextParallelSplitHook = None
+    raise UserWarning(
+        "Context parallelism requires the 'diffusers>=0.36.dev0'."
+        "Please install latest version of diffusers from source: \n"
+        "pip3 install git+https://github.com/huggingface/diffusers.git"
+    )
 from cache_dit.caching.cache_contexts.cache_context import CachedContext
 from cache_dit.caching.cache_contexts.prune_context import PrunedContext
 from cache_dit.caching.cache_contexts.cache_manager import (
@@ -175,6 +186,48 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             )
         )
 
+    @torch.compiler.disable
+    def _check_if_context_parallel_enabled(
+        self,
+        module: torch.nn.Module,
+    ) -> bool:
+        if ContextParallelSplitHook is None:
+            return False
+        if hasattr(module, "_diffusers_hook"):
+            _diffusers_hook: HookRegistry = module._diffusers_hook
+            for hook in _diffusers_hook.hooks.values():
+                if isinstance(hook, ContextParallelSplitHook):
+                    return True
+        return False
+
+    def _get_Fn_residual(
+        self,
+        original_hidden_states: torch.Tensor,
+        hidden_states: torch.Tensor,
+    ) -> torch.Tensor:
+        # NOTE: Make cases compatible with context parallelism while using
+        # block level cp plan, e.g., WanTransformer3DModel. The shape of
+        # `original_hidden_states` and `hidden_states` after Fn maybe
+        # different due to seqlen split in context parallelism.
+        if self._check_if_context_parallel_enabled(
+            self.transformer_blocks[0]
+        ) and (original_hidden_states.shape != hidden_states.shape):
+            # Force use `hidden_states` as the Fn states residual for subsequent
+            # dynamic cache processing if the shape is different.
+            Fn_hidden_states_residual = hidden_states
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    f"Context parallelism is enabled in Fn blocks, and the shape of "
+                    f"original_hidden_states {original_hidden_states.shape} and "
+                    f"hidden_states {hidden_states.shape} are different after Fn blocks. "
+                    f"Use hidden_states as Fn_hidden_states_residual directly."
+                )
+        else:
+            Fn_hidden_states_residual = (
+                hidden_states - original_hidden_states.to(hidden_states.device)
+            )
+        return Fn_hidden_states_residual
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -210,7 +263,9 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             **kwargs,
         )
 
-        Fn_hidden_states_residual = hidden_states - original_hidden_states
+        Fn_hidden_states_residual = self._get_Fn_residual(
+            original_hidden_states, hidden_states
+        )
         del original_hidden_states
 
         self.context_manager.mark_step_begin()
@@ -541,6 +596,11 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
             )
 
         self.context_manager.mark_step_begin()
+
+        if self._check_if_context_parallel_enabled(self.transformer_blocks[0]):
+            raise RuntimeError(
+                "Block level Context parallelism is not supported in PrunedBlocks."
+            )
 
         # Call all blocks with prune strategy to process the hidden states.
         for i, block in enumerate(self.transformer_blocks):
