@@ -76,7 +76,7 @@ if not _is_native_attention_backend_supported_context_parallel():
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
         if attn_mask is not None:
-            # Check if forward_op is native attention forward op
+            # NOTE(DefTruth): Check if forward_op is native attention forward op
             forward_op_name = forward_op.__name__
             if not forward_op_name == "_native_attention_forward_op":
                 raise ValueError(
