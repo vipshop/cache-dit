@@ -22,6 +22,8 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+@TensorParallelismPlannerRegister.register("HunyuanImage")
+@TensorParallelismPlannerRegister.register("HunyuanVideo")
 @TensorParallelismPlannerRegister.register("Flux")
 class FluxTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
@@ -120,7 +122,7 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
             single_block: FluxSingleTransformerBlock, tp_group_size
         ):
             # rowwise
-            hidden_dim = 3072
+            hidden_dim = single_block.attn.to_q.weight.shape[0]
             requires_grad = single_block.proj_out.weight.requires_grad
             linear2_weight_data = (
                 single_block.proj_out.weight.data.T.detach().clone()
