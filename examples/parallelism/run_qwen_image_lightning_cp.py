@@ -138,14 +138,14 @@ prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coff
 negative_prompt = " "
 
 
-def run_pipe():
+def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
     image = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=steps,
+        num_inference_steps=steps if not warmup else 1,
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(0),
     ).images[0]
