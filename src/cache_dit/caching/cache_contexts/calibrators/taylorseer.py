@@ -1,3 +1,5 @@
+# The TaylorSeerState codebase is adapted from FBCache. Over time its codebase
+# diverged a lot, and TaylorSeerState API is no longer compatible with FBCache.
 import math
 import torch
 from typing import List, Dict

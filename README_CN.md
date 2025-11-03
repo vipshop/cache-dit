@@ -196,12 +196,6 @@ pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-di
 
 ## ©️特别声明
 
-<div id="Acknowledgements"></div>
-
-**cache-dit** 代码库基于 FBCache 开发而成。但随着时间推移，其代码库已发生较大差异，且 **cache-dit** 的 API 不再与 FBCache 兼容。
-
-## ©️特别鸣谢
-
 本项目的顺利推进与落地，离不开 唯品会-计算机视觉算法团队 的鼎力支持。特别鸣谢该团队在文档建设、功能测试及生产级应用落地等关键环节提供的专业指导与全面协助。
 
 ## ©️引用我们
