@@ -141,6 +141,8 @@ prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coff
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
 
+pipe.set_progress_bar_config(disable=rank != 0)
+
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
@@ -149,7 +151,7 @@ def run_pipe(warmup: bool = False):
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=steps if not warmup else 1,
+        num_inference_steps=steps if not warmup else steps,
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(0),
         output_type="latent" if args.perf else "pil",
