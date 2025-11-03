@@ -98,7 +98,7 @@ def run_pipe(warmup: bool = False):
             (50 if args.steps is None else args.steps) if not warmup else 5
         ),
         true_cfg_scale=4.0,
-        generator=torch.Generator(device="cpu").manual_seed(42),
+        generator=torch.Generator(device="cpu").manual_seed(0),
         output_type="latent" if args.perf else "pil",
     )
     image = output.images[0] if not args.perf else None

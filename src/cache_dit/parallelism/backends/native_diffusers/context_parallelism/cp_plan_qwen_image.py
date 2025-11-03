@@ -31,6 +31,10 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
+
+        # NOTE: Set it as False to use custom CP plan defined here.
+        self._cp_planner_preferred_native_diffusers = True
+
         if (
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
@@ -46,25 +50,28 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
         # for some models.
-        _cp_plan = _cp_plan = {
+        # NOTE: encoder_hidden_states is always can not be equally split
+        # by world size while using context parallelism in QwenImage. So,
+        # we do not split encoder_hidden_states here.
+        _cp_plan = {
             "": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-                "encoder_hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
-                ),
-                "encoder_hidden_states_mask": ContextParallelInput(
-                    split_dim=1, expected_dims=2, split_output=False
-                ),
+                # "encoder_hidden_states": ContextParallelInput(
+                #     split_dim=1, expected_dims=3, split_output=False
+                # ),
+                # "encoder_hidden_states_mask": ContextParallelInput(
+                #     split_dim=1, expected_dims=2, split_output=False
+                # ),
             },
             "pos_embed": {
                 0: ContextParallelInput(
                     split_dim=0, expected_dims=2, split_output=True
                 ),
-                1: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
+                # 1: ContextParallelInput(
+                #     split_dim=0, expected_dims=2, split_output=True
+                # ),
             },
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
