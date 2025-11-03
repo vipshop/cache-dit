@@ -24,6 +24,8 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
+# For now you need to install the latest diffusers as below:
+# pip install git+https://github.com/huggingface/diffusers@main
 pipe: HunyuanImagePipeline = HunyuanImagePipeline.from_pretrained(
     os.environ.get(
         "HUNYUAN_IMAGE_DIR",

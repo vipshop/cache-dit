@@ -11,9 +11,8 @@ readme = "README.md"
 dependencies = [
     "pyyaml",
     "torch>=2.7.1",
-    # "diffusers>=0.35.1",
+    "diffusers>=0.35.1",
     "transformers>=4.55.2",
-    "diffusers@git+https://github.com/huggingface/diffusers@df8dd778177c3d2272f74cbebd880d7abd9f5ec9",
 ]
 
 [project.optional-dependencies]
