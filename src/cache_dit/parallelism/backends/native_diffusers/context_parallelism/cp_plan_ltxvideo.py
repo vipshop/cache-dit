@@ -81,7 +81,6 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-                # Attention mask is not support fo
                 # "encoder_attention_mask": ContextParallelInput(
                 #     split_dim=1, expected_dims=2, split_output=False
                 # ),
