@@ -117,6 +117,7 @@ image = run_pipe()
 end = time.time()
 
 if rank == 0:
+    cache_dit.summary(pipe)
     time_cost = end - start
     save_path = f"qwen-image.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
