@@ -95,16 +95,6 @@ pipe.load_lora_weights(
 pipe.fuse_lora()
 pipe.unload_lora_weights()
 
-if GiB() < 96:
-    if enable_quatization:
-        # Only quantize text encoder module to fit in GPUs with
-        # 48GiB memory for better performance. the required memory
-        # for transformer per GPU is reduced significantly after
-        # tensor parallelism.
-        pipe.to(device)
-else:
-    pipe.to(device)
-
 if GiB() <= 48 and not enable_quatization:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
