@@ -69,10 +69,10 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         # NOTE: encoder_attention_mask (namely, attention_mask in cross-attn)
-        # should never be split in context parallelism for LTXVideoTransformer3DModel.
-        # It don't contribute to any computation in parallel or not. So we comment it
-        # out here and handle the head-split correctly while using context parallel
-        # in the patched attention processor.
+        # should never be split across seqlen while using context parallelism
+        # for LTXVideoTransformer3DModel. It don't contribute to any computation
+        # in parallel or not. So we comment it out here and handle the head-split
+        # correctly while using context parallel in the patched attention processor.
         _cp_plan = {
             "": {
                 "hidden_states": ContextParallelInput(

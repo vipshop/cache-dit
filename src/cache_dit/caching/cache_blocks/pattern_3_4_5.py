@@ -119,8 +119,8 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             **kwargs,
         )
 
-        Fn_hidden_states_residual = hidden_states - original_hidden_states.to(
-            hidden_states.device
+        Fn_hidden_states_residual = self._get_Fn_residual(
+            original_hidden_states, hidden_states
         )
         del original_hidden_states
 
@@ -386,6 +386,11 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
             )
 
         self.context_manager.mark_step_begin()
+
+        if self._check_if_context_parallel_enabled(self.transformer_blocks[0]):
+            raise RuntimeError(
+                "Block level Context parallelism is not supported in PrunedBlocks."
+            )
 
         # Call all blocks with prune strategy to process the hidden states.
         new_encoder_hidden_states = None

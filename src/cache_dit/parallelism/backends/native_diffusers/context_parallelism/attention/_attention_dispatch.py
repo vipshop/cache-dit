@@ -49,7 +49,8 @@ if not _is_native_attention_backend_supported_context_parallel():
     logger.warning(
         "Re-registering NATIVE attention backend to enable context parallelism. "
         "This is a temporary workaround and should be removed after the native "
-        "attention backend supports context parallelism natively."
+        "attention backend supports context parallelism natively. Please check: "
+        "https://github.com/huggingface/diffusers/pull/12563 for more details."
     )
     _AttentionBackendRegistry._backends.pop(AttentionBackendName.NATIVE)
     _AttentionBackendRegistry._constraints.pop(AttentionBackendName.NATIVE)
