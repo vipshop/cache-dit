@@ -314,13 +314,13 @@ For any PATTERN not in {0...5}, we introduced the simple abstract concept of **P
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HiDreamImageTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+    from cache_dit.caching.patch_functors import HiDreamPatchFunctor
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
     return BlockAdapter(
@@ -431,6 +431,8 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
 
+![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-fnbn-v1.png)
+
 ```python
 import cache_dit
 from diffusers import FluxPipeline
@@ -469,6 +471,17 @@ cache_dit.enable_cache(
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.59s|8.58s|15.41s|15.11s|17.74s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.08_S11.png width=140px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F1B0S1_R0.2_S19.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F8B8S1_R0.15_S15.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F12B12S4_R0.2_S16.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBCACHE_F16B16S4_R0.2_S13.png width=140px>|
+|**Baseline(L20x1)**|**F1B0 (0.08)**|**F8B8 (0.12)**|**F8B12 (0.12)**|**F8B16 (0.20)**|**F8B20 (0.20)**|
+|27.85s|6.04s|5.88s|5.77s|6.01s|6.20s|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_NONE_R0.08.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F1B0_R0.08.png width=140px> |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B8_R0.12.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B12_R0.12.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B16_R0.2.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B20_R0.2.png width=140px>|
+
+<div align="center">
+  <p align="center">
+    DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
+  </p>
+</div>
+
+These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
 
 ## ⚡️DBPrune: Dynamic Block Prune
 
@@ -780,7 +793,6 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 - **pipe_or_adapter**(`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):  
   The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
   For example: `cache_dit.enable_cache(FluxPipeline(...))`.
-  Please check https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md for the usage of BlockAdapter.
 
 - **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
   Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
@@ -845,4 +857,4 @@ This function seamlessly integrates with both standard diffusion pipelines and c
         it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):   
-  Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/cache_contexts/cache_context.py for more details.
+  Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py for more details.

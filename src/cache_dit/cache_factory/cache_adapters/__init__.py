@@ -1,1 +1,0 @@
-from cache_dit.cache_factory.cache_adapters.cache_adapter import CachedAdapter

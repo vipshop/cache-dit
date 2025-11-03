@@ -68,7 +68,7 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
                 DBCacheConfig,
                 TaylorSeerCalibratorConfig,
             )
-            from cache_dit.cache_factory.patch_functors import FluxPatchFunctor
+            from cache_dit.caching.patch_functors import FluxPatchFunctor
 
             cache_dit.enable_cache(
                 # BlockAdapter & forward pattern

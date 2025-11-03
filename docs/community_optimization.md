@@ -122,13 +122,13 @@ For any pattern not included in CacheDiT, use the Patch Functor to convert the p
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch Functors are already provided in CacheDiT, [HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc.
+Some Patch Functors are already provided in CacheDiT, [HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_hidream.py), [ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_chroma.py), etc.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HiDreamImageTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+    from cache_dit.caching.patch_functors import HiDreamPatchFunctor
 
     assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
     return BlockAdapter(
