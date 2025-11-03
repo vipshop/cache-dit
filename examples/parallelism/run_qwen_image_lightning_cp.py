@@ -153,7 +153,7 @@ def run_pipe(warmup: bool = False):
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(0),
         output_type="latent" if args.perf else "pil",
-    ).images
+    )
     image = output.images[0] if not args.perf else None
     return image
 
