@@ -140,7 +140,7 @@ negative_prompt = " "
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
-    image = pipe(
+    output = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
@@ -148,7 +148,9 @@ def run_pipe(warmup: bool = False):
         num_inference_steps=steps if not warmup else 1,
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(0),
-    ).images[0]
+        output_type="latent" if args.perf else "pil",
+    ).images
+    image = output.images[0] if not args.perf else None
     return image
 
 
