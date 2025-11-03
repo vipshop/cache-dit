@@ -106,14 +106,18 @@ if args.cache or args.parallel_type is not None:
     cachify(
         args,
         pipe,
-        cache_config=DBCacheConfig(
-            Fn_compute_blocks=16,
-            Bn_compute_blocks=16,
-            max_warmup_steps=4 if steps > 4 else 2,
-            max_cached_steps=2 if steps > 4 else 1,
-            max_continuous_cached_steps=1,
-            enable_separate_cfg=False,  # true_cfg_scale=1.0
-            residual_diff_threshold=0.50 if steps > 4 else 0.8,
+        cache_config=(
+            DBCacheConfig(
+                Fn_compute_blocks=16,
+                Bn_compute_blocks=16,
+                max_warmup_steps=4 if steps > 4 else 2,
+                max_cached_steps=2 if steps > 4 else 1,
+                max_continuous_cached_steps=1,
+                enable_separate_cfg=False,  # true_cfg_scale=1.0
+                residual_diff_threshold=0.50 if steps > 4 else 0.8,
+            )
+            if args.cache
+            else None
         ),
     )
 
