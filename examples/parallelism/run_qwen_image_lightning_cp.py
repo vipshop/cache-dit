@@ -149,7 +149,7 @@ def run_pipe(warmup: bool = False):
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=steps if not warmup else 1,
+        num_inference_steps=steps if not warmup else 4,
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(0),
         output_type="latent" if args.perf else "pil",
