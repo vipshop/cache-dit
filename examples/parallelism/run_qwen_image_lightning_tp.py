@@ -12,6 +12,8 @@ from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
+
 from utils import (
     GiB,
     get_args,
@@ -47,6 +49,8 @@ scheduler_config = {
 }
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
+enable_quatization = args.quantize and GiB() < 96
+
 pipe = QwenImagePipeline.from_pretrained(
     os.environ.get(
         "QWEN_IMAGE_DIR",
@@ -54,6 +58,21 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
+    quantization_config=(
+        (
+            PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={
+                    "load_in_4bit": True,
+                    "bnb_4bit_quant_type": "nf4",
+                    "bnb_4bit_compute_dtype": torch.bfloat16,
+                },
+                components_to_quantize=["text_encoder"],
+            )
+        )
+        if enable_quatization
+        else None
+    ),
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
@@ -75,21 +94,6 @@ pipe.load_lora_weights(
 
 pipe.fuse_lora()
 pipe.unload_lora_weights()
-
-enable_quatization = args.quantize and GiB() < 96
-if GiB() < 96:
-    if enable_quatization:
-        # Only quantize text encoder module to fit in GPUs with
-        # 48GiB memory for better performance. the required memory
-        # for transformer per GPU is reduced significantly after
-        # tensor parallelism.
-        pipe.text_encoder = cache_dit.quantize(
-            pipe.text_encoder,
-            quant_type=args.quantize_type,
-        )
-        pipe.to(device)
-else:
-    pipe.to(device)
 
 if GiB() <= 48 and not enable_quatization:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
