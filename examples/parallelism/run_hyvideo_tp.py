@@ -49,6 +49,7 @@ def run_pipe(pipe: HunyuanVideoPipeline):
         width=512,
         num_frames=61,
         num_inference_steps=30,
+        generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     return output
 
