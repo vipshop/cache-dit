@@ -668,13 +668,14 @@ def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
         assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
         return BlockAdapter(
             pipe=pipe,
+            transformer=pipe.transformer,
             blocks=[
                 pipe.transformer.transformer_blocks,
                 pipe.transformer.single_transformer_blocks,
             ],
             forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_0,
+                ForwardPattern.Pattern_0,
             ],
             check_forward_pattern=True,
             **kwargs,
