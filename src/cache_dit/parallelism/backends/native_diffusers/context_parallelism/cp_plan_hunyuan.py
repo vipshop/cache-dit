@@ -531,14 +531,6 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
 
     attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, N]
 
-    from cache_dit.utils import print_tensor
-
-    print_tensor(hidden_states, "hidden_states input")
-    print_tensor(encoder_hidden_states, "encoder_hidden_states input")
-    print_tensor(attention_mask, "attention_mask input")
-    print_tensor(image_rotary_emb[0], "image_rotary_emb[0] input")
-    print_tensor(image_rotary_emb[1], "image_rotary_emb[1] input")
-
     # 4. Transformer blocks
     if torch.is_grad_enabled() and self.gradient_checkpointing:
         for block in self.transformer_blocks:
