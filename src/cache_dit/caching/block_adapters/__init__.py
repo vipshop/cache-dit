@@ -677,6 +677,10 @@ def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
                 ForwardPattern.Pattern_0,
                 ForwardPattern.Pattern_0,
             ],
+            # set `has_separate_cfg` as True to enable separate cfg caching
+            # since in hyimage-2.1 the `guider_state` contains 2 input batches.
+            # The cfg is `enabled` by default in AdaptiveProjectedMixGuidance.
+            has_separate_cfg=True,
             check_forward_pattern=True,
             **kwargs,
         )
