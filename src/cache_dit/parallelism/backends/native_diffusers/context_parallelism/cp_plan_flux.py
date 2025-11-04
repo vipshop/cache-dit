@@ -48,6 +48,24 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         _cp_plan = {
+            # Here is a Transformer level CP plan for Flux, which will
+            # only apply the only 1 split hook (pre_forward) on the forward
+            # of Transformer, and gather the output after Transformer forward.
+            # Pattern of transformer forward, split_output=False:
+            #     un-split input -> splited input (inside transformer)
+            # Pattern of the transformer_blocks, single_transformer_blocks:
+            #     splited input (previous splited output) -> to_qkv/...
+            #     -> all2all
+            #     -> attn (local head, full seqlen)
+            #     -> all2all
+            #     -> splited output
+            # The `hidden_states` and `encoder_hidden_states` will still keep
+            # itself splited after block forward (namely, automatic split by
+            # the all2all comm op after attn) for the all blocks.
+            # img_ids and txt_ids will only be splited once at the very beginning,
+            # and keep splited through the whole transformer forward. The all2all
+            # comm op only happens on the `out` tensor after local attn not on
+            # img_ids and txt_ids.
             "": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
@@ -62,6 +80,10 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
                     split_dim=0, expected_dims=2, split_output=False
                 ),
             },
+            # Then, the final proj_out will gather the splited output.
+            #     splited input (previous splited output)
+            #     -> all gather
+            #     -> un-split output
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan

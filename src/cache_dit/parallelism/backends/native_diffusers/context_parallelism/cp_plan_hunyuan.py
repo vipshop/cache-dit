@@ -79,7 +79,10 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
             #     -> splited output
             # The `encoder_hidden_states` will be changed after each block forward,
             # so we need to split it at the first block, and keep it splited (namely,
-            # automatic split by the all2all comm op after attn) for the rest blocks.
+            # automatically split by the all2all op after attn) for the rest blocks.
+            # The `out` tensor of local attn will be splited into `hidden_states` and
+            # `encoder_hidden_states` after each block forward, thus both of them
+            # will be automatically splited by all2all comm op after local attn.
             "transformer_blocks.0": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
