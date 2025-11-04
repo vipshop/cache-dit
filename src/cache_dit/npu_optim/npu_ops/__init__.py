@@ -3,6 +3,7 @@ from .npu_rms_norm import replace_npu_rms_norm
 from .npu_layer_norm_eval import replace_npu_layer_norm_eval
 from .npu_rotary_mul import replace_npu_rotary_mul
 from .npu_weight_nz import replace_npu_weight_nz
+from .npu_adalayernorm import replace_npu_adalayernorm
 
 NPU_OPTIM_MAP = {
     "npu_fast_gelu": replace_npu_fast_gelu,
@@ -10,4 +11,5 @@ NPU_OPTIM_MAP = {
     "npu_layer_norm_eval": replace_npu_layer_norm_eval,
     "npu_rotary_mul": replace_npu_rotary_mul,
     "npu_weight_nz": replace_npu_weight_nz,
+    "npu_adalayernorm": replace_npu_adalayernorm,
 }

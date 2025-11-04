@@ -29,7 +29,8 @@ npu_optimize([
     "npu_rms_norm",
     "npu_layer_norm_eval",
     "npu_rotary_mul",
-    "npu_weight_nz"
+    "npu_weight_nz",
+    "npu_adalayernorm"
 ])
 
 args = get_args()
