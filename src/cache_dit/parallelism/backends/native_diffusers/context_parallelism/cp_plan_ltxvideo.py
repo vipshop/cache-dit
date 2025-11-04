@@ -69,12 +69,24 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
         # for some models.
-        # NOTE: encoder_attention_mask (namely, attention_mask in cross-attn)
-        # should never be split across seqlen while using context parallelism
-        # for LTXVideoTransformer3DModel. It don't contribute to any computation
-        # in parallel or not. So we comment it out here and handle the head-split
-        # correctly while using context parallel in the patched attention processor.
+
         _cp_plan = {
+            # Here is a Transformer level CP plan for Flux, which will
+            # only apply the only 1 split hook (pre_forward) on the forward
+            # of Transformer, and gather the output after Transformer forward.
+            # Pattern of transformer forward, split_output=False:
+            #     un-split input -> splited input (inside transformer)
+            # Pattern of the transformer_blocks, single_transformer_blocks:
+            #     splited input (previous splited output) -> to_qkv/...
+            #     -> all2all
+            #     -> attn (local head, full seqlen)
+            #     -> all2all
+            #     -> splited output
+            # The `hidden_states` and `encoder_hidden_states` will still keep
+            # itself splited after block forward, namely, hidden_states will
+            # automatically split by the all2all comm op after attn, and the
+            # encoder_hidden_states will be keep splited after the entrypoint
+            # of transformer forward, for the all blocks.
             "": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
@@ -82,10 +94,20 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
+                # NOTE: encoder_attention_mask (namely, attention_mask in cross-attn)
+                # should never be split across seqlen while using context parallelism
+                # for LTXVideoTransformer3DModel. It don't contribute to any computation
+                # in parallel or not. So we comment it out here and handle the head-split
+                # correctly while using context parallel in the patched attention processor.
                 # "encoder_attention_mask": ContextParallelInput(
                 #     split_dim=1, expected_dims=2, split_output=False
                 # ),
             },
+            # Pattern of rope, split_output=True (split output rather than input):
+            #    un-split input
+            #    -> keep input un-split
+            #    -> rope
+            #    -> splited output
             "rope": {
                 0: ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=True
@@ -94,6 +116,10 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
                     split_dim=1, expected_dims=3, split_output=True
                 ),
             },
+            # Then, the final proj_out will gather the splited output.
+            #     splited input (previous splited output)
+            #     -> all gather
+            #     -> un-split output
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
