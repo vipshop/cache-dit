@@ -628,7 +628,8 @@ def __patch_HunyuanVideoAttnProcessor2_0__call__(
     key = attn.to_k(hidden_states)
     value = attn.to_v(hidden_states)
 
-    query = query.unflatten(2, (attn.heads, -1))  # NOTE(DefTruth): no transpose
+    # NOTE(DefTruth): no transpose
+    query = query.unflatten(2, (attn.heads, -1))
     key = key.unflatten(2, (attn.heads, -1))
     value = value.unflatten(2, (attn.heads, -1))
 
@@ -686,9 +687,9 @@ def __patch_HunyuanVideoAttnProcessor2_0__call__(
         if attn.norm_added_k is not None:
             encoder_key = attn.norm_added_k(encoder_key)
 
-        query = torch.cat([query, encoder_query], dim=2)
-        key = torch.cat([key, encoder_key], dim=2)
-        value = torch.cat([value, encoder_value], dim=2)
+        query = torch.cat([query, encoder_query], dim=1)
+        key = torch.cat([key, encoder_key], dim=1)
+        value = torch.cat([value, encoder_value], dim=1)
 
     # 5. Attention
     # NOTE(DefTruth): use dispatch_attention_fn
@@ -702,7 +703,8 @@ def __patch_HunyuanVideoAttnProcessor2_0__call__(
         backend=getattr(self, "_attention_backend", None),
         parallel_config=getattr(self, "_parallel_config", None),
     )
-    hidden_states = hidden_states.flatten(2, 3)  # NOTE(DefTruth): no transpose
+    # NOTE(DefTruth): no transpose
+    hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)
 
     # 6. Output projection
