@@ -13,12 +13,10 @@ def _transpose_to_nz(model):
     for name, module in model.named_modules():
         if isinstance(module, torch.nn.Linear):
             if module.weight.data.device.type == "cpu":
-                logger.warning(f"Module {name} is not on NPU, Current type is {module.weight.data.device.type}, convert it to npu")
                 module.weight.data = module.weight.data.to("npu")
             try:
                 weight = torch_npu.npu_format_cast(module.weight.data.contiguous(), 29)
                 module.weight.data = weight
-                logger.info(f"Transposed {name} to NZ")
             except Exception as e:
                 logger.warning(f"Failed to transpose {name} to NZ, skipping: {e}")
 
