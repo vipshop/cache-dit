@@ -85,7 +85,7 @@ def run_pipe(warmup: bool = False):
     "paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."
     image = pipe(
         prompt,
-        num_inference_steps=1 if not warmup else 1,
+        num_inference_steps=50 if not warmup else 5,
         height=2048,
         width=2048,
         generator=torch.Generator("cpu").manual_seed(0),
