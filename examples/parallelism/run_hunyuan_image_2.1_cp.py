@@ -21,7 +21,7 @@ from utils import (
 )
 import cache_dit
 
-# NOTE: Please use `--attn naitve` for LTXVideo with context parallelism,
+# NOTE: Please use `--parallel ulysses --attn naitve` for HunyuanImage with context parallelism,
 
 args = get_args()
 print(args)
