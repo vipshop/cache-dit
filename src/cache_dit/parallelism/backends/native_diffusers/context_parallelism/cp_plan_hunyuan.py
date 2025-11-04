@@ -298,7 +298,6 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
                 attention_mask=attention_mask,
                 image_rotary_emb=image_rotary_emb,
             )
-            i += 1
 
     # 4. Output projection
     hidden_states = self.norm_out(hidden_states, temb)
