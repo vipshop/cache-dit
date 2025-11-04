@@ -10,17 +10,20 @@ from ..utils import log_replace_info
 op_path="/home/z00879328/vipshop/scripts/fa_op_test/op_build/build/lib.linux-aarch64-cpython-311/ascend_ops.cpython-311-aarch64-linux-gnu.so"
 torch.ops.load_library(op_path)
 
+def adalayernorm_function(x: torch.Tensor, scale: torch.Tensor, shift: torch.Tensor, epsilson: float = 1e-6) -> torch.Tensor:
+    return torch.ops.ascend_ops.adalayernorm(
+        x=x,
+        scale=scale,
+        shift=shift,
+        epsilson=epsilson
+    )
+
 # class NpuAdaLayerNormSingle(AdaLayerNormZeroSingle):
 def AdaLayerNormZeroSingle_forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
     emb = self.linear(self.silu(emb))
     shift_msa, scale_msa, gate_msa = emb.chunk(3, dim=1)
     # x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-    x = torch.ops.ascend_ops.adalayernorm(
-        x=x,
-        scale=scale_msa,
-        shift=shift_msa,
-        epsilson=1e-6
-    )
+    x = adalayernorm_function(x, scale_msa, shift_msa, 1e-6)
 
     return x, gate_msa
 
@@ -37,12 +40,7 @@ def AdaLayerNormZero_forward(self,
     emb = self.linear(self.silu(emb))
     shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
     # x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-    x = torch.ops.ascend_ops.adalayernorm(
-        x=x,
-        scale=scale_msa,
-        shift=shift_msa,
-        epsilson=1e-6
-    )
+    x = adalayernorm_function(x, scale_msa, shift_msa, 1e-6)
     return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
 
 def replace_npu_adalayernorm():

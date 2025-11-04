@@ -22,12 +22,19 @@ def log_replace_info(ori_module, npu_module):
 def npu_optimize(optim_modules: dict = None):
     if is_torch_npu_available():
         from .npu_ops import NPU_OPTIM_MAP
+        from .models_wrapper import NPU_MODELS_WRAPPER_MAP
+
         if optim_modules is None:
             optim_modules = list(NPU_OPTIM_MAP.keys())
 
         for module in optim_modules:
             try:
-                NPU_OPTIM_MAP[module]()
+                if module in NPU_OPTIM_MAP:
+                    NPU_OPTIM_MAP[module]()
+                elif module in NPU_MODELS_WRAPPER_MAP:
+                    NPU_MODELS_WRAPPER_MAP[module]()
+                else:
+                    logger.warning(f"Module {module} not found in NPU_OPTIM_MAP, will not apply npu optimizations")
             except:
                 logger.warning(f"Apply {module} failed, will still use original module")
     else:

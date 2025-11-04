@@ -30,7 +30,8 @@ npu_optimize([
     "npu_layer_norm_eval",
     "npu_rotary_mul",
     "npu_weight_nz",
-    "npu_adalayernorm"
+    "npu_adalayernorm",
+    "flux_transformer_block_forward"
 ])
 
 args = get_args()
