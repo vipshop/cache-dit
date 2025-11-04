@@ -658,3 +658,34 @@ def prx_adapter(pipe, **kwargs) -> BlockAdapter:
             "PRXTransformer2DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )
+
+
+@BlockAdapterRegistry.register("HunyuanImage")
+def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import HunyuanImageTransformer2DModel
+
+        assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_0,
+                ForwardPattern.Pattern_0,
+            ],
+            # set `has_separate_cfg` as True to enable separate cfg caching
+            # since in hyimage-2.1 the `guider_state` contains 2 input batches.
+            # The cfg is `enabled` by default in AdaptiveProjectedMixGuidance.
+            has_separate_cfg=True,
+            check_forward_pattern=True,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "HunyuanImageTransformer2DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
