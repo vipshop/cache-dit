@@ -1,3 +1,4 @@
+import os
 import torch
 from typing import Optional
 
@@ -26,8 +27,15 @@ __all__ = [
     "_native_attention",
 ]
 
+# Enable custom native attention backend with context parallelism
+# by default. Users can set the environment variable to 0 to disable
+# this behavior. Default to enabled for better compatibility.
+_CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH = bool(
+    int(os.getenv("CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH", "1"))
+)
 
-def _is_native_attention_backend_supported_context_parallel() -> bool:
+
+def _is_native_attn_supported_context_parallel() -> bool:
     try:
         return (
             AttentionBackendName.NATIVE
@@ -46,18 +54,24 @@ def _is_native_attention_backend_supported_context_parallel() -> bool:
         )
 
 
-if not _is_native_attention_backend_supported_context_parallel():
+if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     logger.warning(
         "Re-registering NATIVE attention backend to enable context parallelism. "
         "This is a temporary workaround and should be removed after the native "
         "attention backend supports context parallelism natively. Please check: "
-        "https://github.com/huggingface/diffusers/pull/12563 for more details."
+        "https://github.com/huggingface/diffusers/pull/12563 for more details. "
+        "Or, you can disable this behavior by setting the environment variable "
+        "`CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0`."
     )
     _AttentionBackendRegistry._backends.pop(AttentionBackendName.NATIVE)
     _AttentionBackendRegistry._constraints.pop(AttentionBackendName.NATIVE)
     _AttentionBackendRegistry._supported_arg_names.pop(
         AttentionBackendName.NATIVE
     )
+    if _is_native_attn_supported_context_parallel():
+        _AttentionBackendRegistry._supports_context_parallel.pop(
+            AttentionBackendName.NATIVE
+        )
 
     # Re-define templated context parallel attention to support attn mask
     def _templated_context_parallel_attention_v2(
