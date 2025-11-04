@@ -20,7 +20,11 @@ from utils import (
     maybe_destroy_distributed,
 )
 import cache_dit
+from cache_dit.parallelism.backends.native_diffusers.context_parallelism import (
+    maybe_resigter_native_attention_backend,
+)
 
+maybe_resigter_native_attention_backend()
 
 args = get_args()
 print(args)
@@ -81,7 +85,7 @@ def run_pipe(warmup: bool = False):
     "paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."
     image = pipe(
         prompt,
-        num_inference_steps=50 if not warmup else 5,
+        num_inference_steps=1 if not warmup else 1,
         height=2048,
         width=2048,
         generator=torch.Generator("cpu").manual_seed(0),

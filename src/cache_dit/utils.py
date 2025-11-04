@@ -520,3 +520,41 @@ def _summary(
                     )
 
     return cache_stats
+
+
+@torch.compiler.disable
+def print_tensor(
+    x: torch.Tensor,
+    name: str,
+    dim: int = 1,
+    shape_use_no_distributed: bool = True,
+    disable: bool = False,
+):
+    if disable:
+        return
+
+    x = x.contiguous()
+    if torch.distributed.is_initialized():
+        # all gather hidden_states and check values mean
+        gather_x = [
+            torch.zeros_like(x)
+            for _ in range(torch.distributed.get_world_size())
+        ]
+        torch.distributed.all_gather(gather_x, x)
+        gather_x = torch.cat(gather_x, dim=dim)
+
+        if not shape_use_no_distributed:
+            x_shape = gather_x.shape
+        else:
+            x_shape = x.shape
+
+        if torch.distributed.get_rank() == 0:
+            print(
+                f"{name}, mean: {gather_x.float().mean().item()}, "
+                f"std: {gather_x.float().std().item()}, shape: {x_shape}"
+            )
+    else:
+        print(
+            f"{name}, mean: {x.float().mean().item()}, "
+            f"std: {x.float().std().item()}, shape: {x.shape}"
+        )
