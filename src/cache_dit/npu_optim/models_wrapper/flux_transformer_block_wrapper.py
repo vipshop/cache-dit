@@ -63,6 +63,6 @@ def FluxTransformerBlock_forward(
     return encoder_hidden_states, hidden_states
 
 def replace_flux_transformer_block_forward():
-    from diffusers.models.transformers import FluxTransformerBlock
+    from diffusers.models.transformers.transformer_flux import FluxTransformerBlock
     FluxTransformerBlock.forward = FluxTransformerBlock_forward
     log_replace_info("FluxTransformerBlock of transformers", "flux_transformer_block_forward")
