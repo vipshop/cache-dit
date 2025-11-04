@@ -8,7 +8,12 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
-from diffusers import HunyuanVideoTransformer3DModel
+from diffusers.models.transformers.transformer_hunyuan_video import (
+    HunyuanVideoTransformer3DModel,
+    HunyuanVideoAttnProcessor2_0,
+)
+from diffusers.models.attention_processor import Attention
+from diffusers.models.attention_dispatch import dispatch_attention_fn
 
 try:
     from diffusers import HunyuanImageTransformer2DModel
@@ -371,6 +376,9 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
         HunyuanVideoTransformer3DModel.forward = (
             __patch__HunyuanVideoTransformer3DModel_forward__
         )
+        HunyuanVideoAttnProcessor2_0.__call__ = (
+            __patch_HunyuanVideoAttnProcessor2_0__call__
+        )
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
@@ -439,7 +447,6 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
     attention_kwargs: Optional[Dict[str, Any]] = None,
     return_dict: bool = True,
 ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
-    print("call __patch__HunyuanVideoTransformer3DModel_forward__")
     if attention_kwargs is not None:
         attention_kwargs = attention_kwargs.copy()
         lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -524,6 +531,14 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
 
     attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)  # [B, 1, 1, N]
 
+    from cache_dit.utils import print_tensor
+
+    print_tensor(hidden_states, "hidden_states input")
+    print_tensor(encoder_hidden_states, "encoder_hidden_states input")
+    print_tensor(attention_mask, "attention_mask input")
+    print_tensor(image_rotary_emb[0], "image_rotary_emb[0] input")
+    print_tensor(image_rotary_emb[1], "image_rotary_emb[1] input")
+
     # 4. Transformer blocks
     if torch.is_grad_enabled() and self.gradient_checkpointing:
         for block in self.transformer_blocks:
@@ -602,3 +617,114 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
         return (hidden_states,)
 
     return Transformer2DModelOutput(sample=hidden_states)
+
+
+@functools.wraps(HunyuanVideoAttnProcessor2_0.__call__)
+def __patch_HunyuanVideoAttnProcessor2_0__call__(
+    self: HunyuanVideoAttnProcessor2_0,
+    attn: Attention,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    if attn.add_q_proj is None and encoder_hidden_states is not None:
+        hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
+
+    # 1. QKV projections
+    query = attn.to_q(hidden_states)
+    key = attn.to_k(hidden_states)
+    value = attn.to_v(hidden_states)
+
+    query = query.unflatten(2, (attn.heads, -1))  # NOTE(DefTruth): no transpose
+    key = key.unflatten(2, (attn.heads, -1))
+    value = value.unflatten(2, (attn.heads, -1))
+
+    # 2. QK normalization
+    if attn.norm_q is not None:
+        query = attn.norm_q(query)
+    if attn.norm_k is not None:
+        key = attn.norm_k(key)
+
+    # 3. Rotational positional embeddings applied to latent stream
+    if image_rotary_emb is not None:
+        from diffusers.models.embeddings import apply_rotary_emb
+
+        # NOTE(DefTruth): Monkey patch for encoder conditional RoPE
+        if attn.add_q_proj is None and encoder_hidden_states is not None:
+            query = torch.cat(
+                [
+                    apply_rotary_emb(
+                        query[:, : -encoder_hidden_states.shape[1]],
+                        image_rotary_emb,
+                        sequence_dim=1,
+                    ),
+                    query[:, -encoder_hidden_states.shape[1] :],
+                ],
+                dim=1,
+            )
+            key = torch.cat(
+                [
+                    apply_rotary_emb(
+                        key[:, : -encoder_hidden_states.shape[1]],
+                        image_rotary_emb,
+                        sequence_dim=1,
+                    ),
+                    key[:, -encoder_hidden_states.shape[1] :],
+                ],
+                dim=1,
+            )
+        else:
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+
+    # 4. Encoder condition QKV projection and normalization
+    if attn.add_q_proj is not None and encoder_hidden_states is not None:
+        encoder_query = attn.add_q_proj(encoder_hidden_states)
+        encoder_key = attn.add_k_proj(encoder_hidden_states)
+        encoder_value = attn.add_v_proj(encoder_hidden_states)
+
+        # NOTE(DefTruth): no transpose
+        encoder_query = encoder_query.unflatten(2, (attn.heads, -1))
+        encoder_key = encoder_key.unflatten(2, (attn.heads, -1))
+        encoder_value = encoder_value.unflatten(2, (attn.heads, -1))
+
+        if attn.norm_added_q is not None:
+            encoder_query = attn.norm_added_q(encoder_query)
+        if attn.norm_added_k is not None:
+            encoder_key = attn.norm_added_k(encoder_key)
+
+        query = torch.cat([query, encoder_query], dim=2)
+        key = torch.cat([key, encoder_key], dim=2)
+        value = torch.cat([value, encoder_value], dim=2)
+
+    # 5. Attention
+    # NOTE(DefTruth): use dispatch_attention_fn
+    hidden_states = dispatch_attention_fn(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        dropout_p=0.0,
+        is_causal=False,
+        backend=getattr(self, "_attention_backend", None),
+        parallel_config=getattr(self, "_parallel_config", None),
+    )
+    hidden_states = hidden_states.flatten(2, 3)  # NOTE(DefTruth): no transpose
+    hidden_states = hidden_states.to(query.dtype)
+
+    # 6. Output projection
+    if encoder_hidden_states is not None:
+        hidden_states, encoder_hidden_states = (
+            hidden_states[:, : -encoder_hidden_states.shape[1]],
+            hidden_states[:, -encoder_hidden_states.shape[1] :],
+        )
+
+        if getattr(attn, "to_out", None) is not None:
+            hidden_states = attn.to_out[0](hidden_states)
+            hidden_states = attn.to_out[1](hidden_states)
+
+        if getattr(attn, "to_add_out", None) is not None:
+            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+    return hidden_states, encoder_hidden_states
