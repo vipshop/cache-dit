@@ -41,7 +41,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
                 transformer, FluxTransformer2DModel
             ), "Transformer must be an instance of FluxTransformer2DModel"
             if hasattr(transformer, "_cp_plan"):
-                return transformer._cp_plan
+                if transformer._cp_plan is not None:
+                    return transformer._cp_plan
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation

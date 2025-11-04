@@ -9,7 +9,10 @@ from diffusers import (
     HunyuanImagePipeline,
     HunyuanImageTransformer2DModel,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
+
 from utils import (
+    GiB,
     get_args,
     strify,
     cachify,
@@ -24,6 +27,7 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
+enable_quatization = args.quantize and GiB() < 96
 # For now you need to install the latest diffusers as below:
 # pip install git+https://github.com/huggingface/diffusers@main
 pipe: HunyuanImagePipeline = HunyuanImagePipeline.from_pretrained(
@@ -32,14 +36,40 @@ pipe: HunyuanImagePipeline = HunyuanImagePipeline.from_pretrained(
         "hunyuanvideo-community/HunyuanImage-2.1-Diffusers",
     ),
     torch_dtype=torch.bfloat16,
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder"],  # ~4GiB
+        )
+        if enable_quatization
+        else None
+    ),
 )
+
+if GiB() < 96:
+    if enable_quatization:
+        pipe.transformer = cache_dit.quantize(
+            pipe.transformer,
+            quant_type=args.quantize_type,  # float8_weight_only
+        )
+        pipe.to("cuda")
+else:
+    pipe.to("cuda")
+
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 torch.cuda.empty_cache()
 assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
-pipe.enable_model_cpu_offload(device=device)
+
+if GiB() < 96 and not enable_quatization:
+    pipe.enable_model_cpu_offload(device=device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 

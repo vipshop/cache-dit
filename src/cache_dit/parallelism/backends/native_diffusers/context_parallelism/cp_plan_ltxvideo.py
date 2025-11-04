@@ -56,7 +56,8 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
             and self._cp_planner_preferred_native_diffusers
         ):
             if hasattr(transformer, "_cp_plan"):
-                return transformer._cp_plan
+                if transformer._cp_plan is not None:
+                    return transformer._cp_plan
 
         # Apply monkey patch to fix attention mask preparation at class level
         assert issubclass(LTXAttention, AttentionModuleMixin)

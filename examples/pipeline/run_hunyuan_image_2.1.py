@@ -55,10 +55,7 @@ else:
 
 
 if args.cache:
-    # set `enable_separate_cfg` as True to enable separate cfg caching
-    # since in this example the `guider_state` contains 2 input batches.
-    # The cfg is `enabled` by default in AdaptiveProjectedMixGuidance.
-    cachify(args, pipe, enable_separate_cfg=True)
+    cachify(args, pipe)
 
 torch.cuda.empty_cache()
 assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)

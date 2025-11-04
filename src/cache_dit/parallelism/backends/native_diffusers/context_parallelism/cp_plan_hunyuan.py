@@ -3,6 +3,7 @@ from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
 
 try:
+    from diffusers import HunyuanImageTransformer2DModel
     from diffusers.models._modeling_parallel import (
         ContextParallelInput,
         ContextParallelOutput,
@@ -24,26 +25,25 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-@ContextParallelismPlannerRegister.register("QwenImage")
-class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
+@ContextParallelismPlannerRegister.register("HunyuanImage")
+class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 
-        # NOTE: Set it as False to use custom CP plan defined here.
+        # NOTE: Diffusers native CP plan still not supported
+        # for HunyuanImage now.
         self._cp_planner_preferred_native_diffusers = False
 
         if (
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
         ):
-            from diffusers import QwenImageTransformer2DModel
-
             assert isinstance(
-                transformer, QwenImageTransformer2DModel
-            ), "Transformer must be an instance of QwenImageTransformer2DModel"
+                transformer, HunyuanImageTransformer2DModel
+            ), "Transformer must be an instance of HunyuanImageTransformer2DModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
@@ -52,28 +52,27 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         _cp_plan = {
-            "": {
-                "hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
-                ),
-                # NOTE: Due to the joint attention implementation of
-                # QwenImageTransformerBlock, we must split the
-                # encoder_hidden_states as well.
-                "encoder_hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
-                ),
-                # NOTE: But encoder_hidden_states_mask seems never used in
-                # QwenImageTransformerBlock, so we do not split it here.
-                # "encoder_hidden_states_mask": ContextParallelInput(
-                #     split_dim=1, expected_dims=2, split_output=False
-                # ),
-            },
-            "pos_embed": {
+            "rope": {
                 0: ContextParallelInput(
                     split_dim=0, expected_dims=2, split_output=True
                 ),
                 1: ContextParallelInput(
                     split_dim=0, expected_dims=2, split_output=True
+                ),
+            },
+            "transformer_blocks.0": {
+                "hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+            },
+            "transformer_blocks.*": {
+                "encoder_hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+            },
+            "single_transformer_blocks.*": {
+                "encoder_hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
                 ),
             },
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),

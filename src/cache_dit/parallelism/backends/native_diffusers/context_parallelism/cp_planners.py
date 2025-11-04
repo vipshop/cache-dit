@@ -64,6 +64,7 @@ from .cp_plan_flux import FluxContextParallelismPlanner
 from .cp_plan_qwen_image import QwenImageContextParallelismPlanner
 from .cp_plan_wan import WanContextParallelismPlanner
 from .cp_plan_ltxvideo import LTXVideoContextParallelismPlanner
+from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner
 
 
 __all__ = [
@@ -73,4 +74,5 @@ __all__ = [
     "QwenImageContextParallelismPlanner",
     "WanContextParallelismPlanner",
     "LTXVideoContextParallelismPlanner",
+    "HunyuanImageContextParallelismPlanner",
 ]
