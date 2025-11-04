@@ -59,7 +59,9 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         "Re-registering NATIVE attention backend to enable context parallelism. "
         "This is a temporary workaround and should be removed after the native "
         "attention backend supports context parallelism natively. Please check: "
-        "https://github.com/huggingface/diffusers/pull/12563 for more details."
+        "https://github.com/huggingface/diffusers/pull/12563 for more details. "
+        "Or, you can disable this behavior by setting the environment variable "
+        "`CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0`."
     )
     _AttentionBackendRegistry._backends.pop(AttentionBackendName.NATIVE)
     _AttentionBackendRegistry._constraints.pop(AttentionBackendName.NATIVE)
