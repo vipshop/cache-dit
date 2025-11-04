@@ -130,7 +130,6 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
     attention_kwargs: Optional[Dict[str, Any]] = None,
     return_dict: bool = True,
 ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-    print("call __patch__HunyuanImageTransformer2DModel_forward__")
     if attention_kwargs is not None:
         attention_kwargs = attention_kwargs.copy()
         lora_scale = attention_kwargs.pop("scale", 1.0)

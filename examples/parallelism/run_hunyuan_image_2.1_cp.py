@@ -9,7 +9,6 @@ from diffusers import (
     HunyuanImagePipeline,
     HunyuanImageTransformer2DModel,
 )
-from diffusers.quantizers import PipelineQuantizationConfig
 
 from utils import (
     GiB,
@@ -40,19 +39,6 @@ pipe: HunyuanImagePipeline = HunyuanImagePipeline.from_pretrained(
         "hunyuanvideo-community/HunyuanImage-2.1-Diffusers",
     ),
     torch_dtype=torch.bfloat16,
-    quantization_config=(
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            components_to_quantize=["text_encoder"],  # ~4GiB
-        )
-        if enable_quatization
-        else None
-    ),
 )
 
 if GiB() < 96:
@@ -61,7 +47,10 @@ if GiB() < 96:
             pipe.transformer,
             quant_type=args.quantize_type,  # float8_weight_only
         )
-        pipe.to("cuda")
+        pipe.text_encoder = cache_dit.quantize(
+            pipe.text_encoder,
+            quant_type=args.quantize_type,  # float8_weight_only
+        )
 else:
     pipe.to("cuda")
 
@@ -72,7 +61,7 @@ if args.cache or args.parallel_type is not None:
 torch.cuda.empty_cache()
 assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
 
-if GiB() < 96 and not enable_quatization:
+if GiB() < 96:
     pipe.enable_model_cpu_offload(device=device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
