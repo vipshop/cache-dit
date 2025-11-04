@@ -57,7 +57,7 @@ if GiB() < 96:
     if enable_quatization:
         pipe.transformer = cache_dit.quantize(
             pipe.transformer,
-            quant_type=args.quantize_type,  # float8_weight_only
+            quant_type=args.quantize_type,  # float8_weight_only, 12GiB
         )
         pipe.to(device)
 else:

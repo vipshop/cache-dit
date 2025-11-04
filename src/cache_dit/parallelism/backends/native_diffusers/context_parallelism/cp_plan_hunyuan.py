@@ -426,9 +426,10 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hunyuan_video.py#L1032
 @functools.wraps(HunyuanVideoTransformer3DModel.forward)
 def __patch__HunyuanVideoTransformer3DModel_forward__(
-    self,
+    self: HunyuanVideoTransformer3DModel,
     hidden_states: torch.Tensor,
     timestep: torch.LongTensor,
     encoder_hidden_states: torch.Tensor,
@@ -438,6 +439,7 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
     attention_kwargs: Optional[Dict[str, Any]] = None,
     return_dict: bool = True,
 ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    print("call __patch__HunyuanVideoTransformer3DModel_forward__")
     if attention_kwargs is not None:
         attention_kwargs = attention_kwargs.copy()
         lora_scale = attention_kwargs.pop("scale", 1.0)
