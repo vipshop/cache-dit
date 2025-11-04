@@ -64,14 +64,14 @@ if GiB() < 96 and not enable_quatization:
     pipe.enable_model_cpu_offload()
 
 
-def run_pipe(pipe: HunyuanImagePipeline):
+def run_pipe(warmup: bool = False):
     prompt = "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, "
     "standing in a painting studio, wearing a red knitted scarf and a red beret with "
     "the word “Tencent” on it, holding a paintbrush with a focused expression as it "
     "paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."
     image = pipe(
         prompt,
-        num_inference_steps=50,
+        num_inference_steps=50 if not warmup else 5,
         height=2048,
         width=2048,
         generator=torch.Generator("cpu").manual_seed(0),
@@ -84,10 +84,10 @@ if args.compile:
     pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
-_ = run_pipe(pipe)
+_ = run_pipe(warmup=True)
 
 start = time.time()
-image = run_pipe(pipe)
+image = run_pipe()
 end = time.time()
 
 cache_dit.summary(pipe)
