@@ -11,19 +11,18 @@ class NpuFastGelu(nn.GELU):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return torch_npu.npu_fast_gelu(input)
 
-
-class NpuFastGeluDiffuser(GeluDiffuser):
-    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        return torch_npu.npu_fast_gelu(gate)
-
+def F_fast_gelu_func(
+    input: torch.Tensor,
+    approximate: str = "tanh"
+) -> torch.Tensor:
+    return torch_npu.npu_fast_gelu(input)
 
 def replace_func():
-    from diffusers.models import activations
-    activations.GELU = NpuFastGeluDiffuser
-
+    import torch.nn.functional as F
+    F.gelu = F_fast_gelu_func
+    
     from torch import nn
     nn.GELU = NpuFastGelu
-
 
 def replace_npu_fast_gelu():
     replace_func()
