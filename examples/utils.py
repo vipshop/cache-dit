@@ -202,12 +202,18 @@ def maybe_destroy_distributed():
         dist.destroy_process_group()
 
 
-def print_dist_tensor_all_gather(
+@torch.compiler.disable
+def print_tensor(
     x: torch.Tensor,
     name: str,
     dim: int = 1,
     shape_use_no_distributed: bool = True,
+    disable: bool = True,
 ):
+    if disable:
+        return
+
+    x = x.contiguous()
     if torch.distributed.is_initialized():
         # all gather hidden_states and check values mean
         gather_x = [

@@ -51,6 +51,11 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         _cp_plan = {
+            # Pattern of rope, split_output=True (split output rather than input):
+            #    un-split input
+            #    -> keep input un-split
+            #    -> rope
+            #    -> splited output
             "rope": {
                 0: ContextParallelInput(
                     split_dim=1, expected_dims=4, split_output=True
@@ -59,16 +64,38 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
                     split_dim=1, expected_dims=4, split_output=True
                 ),
             },
+            # Pattern of blocks.0, split_output=False:
+            #     un-split input -> split -> to_qkv/...
+            #     -> all2all
+            #     -> attn (local head, full seqlen)
+            #     -> all2all
+            #     -> splited output
+            #     (only split hidden_states, not encoder_hidden_states)
             "blocks.0": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
             },
+            # Pattern of the all blocks, split_output=False:
+            #     un-split input -> split -> to_qkv/...
+            #     -> all2all
+            #     -> attn (local head, full seqlen)
+            #     -> all2all
+            #     -> splited output
+            #    (only split encoder_hidden_states, not hidden_states.
+            #    hidden_states has been automatically split in previous
+            #    block by all2all comm op after attn)
+            # The `encoder_hidden_states` will [NOT] be changed after each block forward,
+            # so we need to split it at [ALL] block by the inserted split hook.
             "blocks.*": {
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
             },
+            # Then, the final proj_out will gather the splited output.
+            #     splited input (previous splited output)
+            #     -> all gather
+            #     -> un-split output
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan

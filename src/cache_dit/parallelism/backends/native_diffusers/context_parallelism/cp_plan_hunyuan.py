@@ -52,6 +52,11 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         _cp_plan = {
+            # Pattern of rope, split_output=True (split output rather than input):
+            #    un-split input
+            #    -> keep input un-split
+            #    -> rope
+            #    -> splited output
             "rope": {
                 0: ContextParallelInput(
                     split_dim=0, expected_dims=2, split_output=True
@@ -60,21 +65,33 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
                     split_dim=0, expected_dims=2, split_output=True
                 ),
             },
+            # Pattern of transformer_blocks.0, split_output=False:
+            #     un-split input -> split -> to_qkv/...
+            #     -> all2all
+            #     -> attn (local head, full seqlen)
+            #     -> all2all
+            #     -> splited output
+            # Pattern of the rest transformer_blocks, single_transformer_blocks:
+            #     splited input (previous splited output) -> to_qkv/...
+            #     -> all2all
+            #     -> attn (local head, full seqlen)
+            #     -> all2all
+            #     -> splited output
+            # The `encoder_hidden_states` will be changed after each block forward,
+            # so we need to split it at the first block, and keep it splited (namely,
+            # automatic split by the all2all comm op after attn) for the rest blocks.
             "transformer_blocks.0": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-            },
-            "transformer_blocks.*": {
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
             },
-            "single_transformer_blocks.*": {
-                "encoder_hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
-                ),
-            },
+            # Then, the final proj_out will gather the splited output.
+            #     splited input (previous splited output)
+            #     -> all gather
+            #     -> un-split output
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
