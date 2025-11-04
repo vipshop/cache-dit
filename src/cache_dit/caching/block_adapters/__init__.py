@@ -658,3 +658,29 @@ def prx_adapter(pipe, **kwargs) -> BlockAdapter:
             "PRXTransformer2DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )
+
+
+@BlockAdapterRegistry.register("HunyuanImage")
+def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import HunyuanImageTransformer2DModel
+
+        assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_1,
+            ],
+            check_forward_pattern=True,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "HunyuanImageTransformer2DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
