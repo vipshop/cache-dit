@@ -615,8 +615,8 @@ def supported_matrix() -> str | None:
                 if pipeline in _pipelines_supported_tensor_parallelism
                 else "✖️"
             )
-            line = f"| **🎉[{pipeline}](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | {cp_support} | {tp_support} |"
-            line += " [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |"
+            line = f"| **🎉[{pipeline}](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | {cp_support} | {tp_support} |"
+            line += " [link](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline) |"
             matrix_lines.append(line)
         # sort by '✅'
         matrix_lines = [matrix_lines[0], matrix_lines[1]] + sorted(
