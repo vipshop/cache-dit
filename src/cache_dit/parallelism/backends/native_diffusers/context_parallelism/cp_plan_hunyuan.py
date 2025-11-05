@@ -379,6 +379,9 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
         HunyuanVideoAttnProcessor2_0.__call__ = (
             __patch_HunyuanVideoAttnProcessor2_0__call__
         )
+        # Also need to patch the parallel config and attention backend
+        HunyuanVideoAttnProcessor2_0._parallel_config = None
+        HunyuanVideoAttnProcessor2_0._attention_backend = None
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
