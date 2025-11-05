@@ -598,11 +598,11 @@ def supported_matrix() -> str | None:
             "VisualCloze",
         ]
 
-        # generate the supported matrix, markdown table format
+        # Generate the supported matrix, markdown table format
         matrix_lines: List[str] = []
         header = "| Model | Cache  | CP | TP | Model | Cache  | CP | TP |"
         matrix_lines.append(header)
-        matrix_lines.append("|:---|:---:|:---:|:---:|:---|:---:|:---:|:---:|")
+        matrix_lines.append("|:---|:---|:---|:---|:---|:---|:---|:---|")
         half = (len(_pipelines_supported_cache) + 1) // 2
         link = (
             "https://github.com/vipshop/cache-dit/blob/main/examples/pipeline"
@@ -642,28 +642,6 @@ def supported_matrix() -> str | None:
             )
             matrix_lines.append(line)
 
-        # i = 0
-        # for pipeline in _pipelines_supported_cache:
-        #     cp_support = (
-        #         "✅"
-        #         if pipeline in _pipelines_supported_context_parallelism
-        #         else "✖️"
-        #     )
-        #     tp_support = (
-        #         "✅"
-        #         if pipeline in _pipelines_supported_tensor_parallelism
-        #         else "✖️"
-        #     )
-        #     line = f"| **🎉[{pipeline}](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | {cp_support} | {tp_support} |"
-        #     i += 1
-        #     if i % 2 == 0:
-        #         matrix_lines.append(line)
-        # sort by '✅'
-        # matrix_lines = [matrix_lines[0], matrix_lines[1]] + sorted(
-        #     matrix_lines[2:],
-        #     key=lambda x: (x.count("✅"), x),
-        #     reverse=True,
-        # )
         matrix_str = "\n".join(matrix_lines)
 
         print("\nSupported Cache and Parallelism Matrix:\n")
