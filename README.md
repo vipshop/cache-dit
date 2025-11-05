@@ -1,10 +1,14 @@
+<!--
 📚English | <a href="./README_CN.md">📚中文阅读 </a> 
+-->
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
   <p align="center">
     <h2>A Unified and Flexible Inference Engine with Cache <br>Acceleration, Parallelism and Quantization for 🤗Diffusers.<br>
+<!--
     <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
+-->
     <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
     <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
     <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
@@ -21,11 +25,8 @@
     🔥<a href="./docs/User_Guide.md">Compile Compatible</a> | <a href="./docs/User_Guide.md"><b>🎉State-of-the-Art Performance</b></a>🎉 
 -->
 
-## 🔥Hightlight 
+## 🔥Hightlight <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
 
-<!--
-<a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
--->
 We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified** and **Flexible** inference engine for 🤗 Diffusers, enabling acceleration with just ♥️**one line**♥️ of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
 
@@ -56,7 +57,46 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
-<details align='center'>
+## 🎯 Supported DiTs
+
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Documentaion |
+|---|---|---|---|---|
+| 🎉Wan | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉VisualCloze | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉QwenImage | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉HunyuanVideo | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉HunyuanImage | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Flux | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉LTX | ✅ | ✅ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉StableDiffusion3 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉StableAudio | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉SkyReelsV2 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉ShapE | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Sana | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉PixArt | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉PRX | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉OmniGen | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Mochi | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Lumina | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉LongCatVideo | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Kandinsky5 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉HunyuanDiTPAG | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉HunyuanDiT | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉HiDream | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉EasyAnimate | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉DiT | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Cosmos | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉ConsisID | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉CogView4 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉CogView3Plus | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉CogVideoX | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Chroma | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Bria | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉AuraFlow | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Amused | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| 🎉Allegro | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+
+<details align='left'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
   
 <p align='center'>

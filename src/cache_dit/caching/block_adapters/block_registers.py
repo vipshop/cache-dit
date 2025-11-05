@@ -115,4 +115,4 @@ class BlockAdapterRegistry:
     @classmethod
     def supported_pipelines(cls, **kwargs) -> Tuple[int, List[str]]:
         val_pipelines = cls._adapters.keys()
-        return len(val_pipelines), [p + "*" for p in val_pipelines]
+        return len(val_pipelines), [p for p in val_pipelines]

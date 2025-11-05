@@ -558,3 +558,76 @@ def print_tensor(
             f"{name}, mean: {x.float().mean().item()}, "
             f"std: {x.float().std().item()}, shape: {x.shape}"
         )
+
+
+def supported_matrix() -> str | None:
+    try:
+        from cache_dit.caching.block_adapters.block_registers import (
+            BlockAdapterRegistry,
+        )
+
+        _pipelines_supported_cache = BlockAdapterRegistry.supported_pipelines()[
+            1
+        ]
+        _pipelines_supported_cache += [
+            "LongCatVideo",  # not in diffusers, but supported
+        ]
+        from cache_dit.parallelism.backends.native_diffusers import (
+            ContextParallelismPlannerRegister,
+        )
+
+        _pipelines_supported_context_parallelism = (
+            ContextParallelismPlannerRegister.supported_planners()[1]
+        )
+        from cache_dit.parallelism.backends.native_pytorch import (
+            TensorParallelismPlannerRegister,
+        )
+
+        _pipelines_supported_tensor_parallelism = (
+            TensorParallelismPlannerRegister.supported_planners()[1]
+        )
+        # Add some special aliases since cp/tp planners use the name shortcut
+        # of Transformer only.
+        _pipelines_supported_context_parallelism += [
+            "Wan",
+            "LTX",
+            "VisualCloze",
+        ]
+        _pipelines_supported_tensor_parallelism += [
+            "Wan",
+            "VisualCloze",
+        ]
+
+        # generate the supported matrix, markdown table format
+        matrix_lines: List[str] = []
+        header = "| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Documentaion |"
+        matrix_lines.append(header)
+        matrix_lines.append("|---|---|---|---|---|")
+
+        for pipeline in _pipelines_supported_cache:
+            cp_support = (
+                "✅"
+                if pipeline in _pipelines_supported_context_parallelism
+                else "✖️"
+            )
+            tp_support = (
+                "✅"
+                if pipeline in _pipelines_supported_tensor_parallelism
+                else "✖️"
+            )
+            line = f"| 🎉{pipeline} | ✅ | {cp_support} | {tp_support} |"
+            line += " 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |"
+            matrix_lines.append(line)
+        # sort by '✅'
+        matrix_lines = [matrix_lines[0], matrix_lines[1]] + sorted(
+            matrix_lines[2:],
+            key=lambda x: (x.count("✅"), x),
+            reverse=True,
+        )
+        matrix_str = "\n".join(matrix_lines)
+
+        print("\nSupported Cache and Parallelism Matrix:\n")
+        print(matrix_str)
+        return matrix_str
+    except Exception:
+        return None
