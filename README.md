@@ -1,6 +1,6 @@
 <div align="center">
   <p align="center">
-    <h2 align="left">
+    <h2 align="center">
         <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="90" align="left">
         A Unified and Flexible Inference Engine with 🤗🎉<br>Hybrid Cache Acceleration and Parallelism for DiTs<br>
         <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
@@ -53,7 +53,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 > [!Tip] 
 > One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future.
 
-<div align="left">
+<div align="center">
 
 | Model | Cache  | CP | TP | Model | Cache  | CP | TP |
 |:---|:---|:---|:---|:---|:---|:---|:---|
@@ -78,7 +78,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 </div>
 
-<details align='left'>
+<details align='center'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
   
 <p align='center'>
