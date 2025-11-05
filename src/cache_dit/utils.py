@@ -600,7 +600,7 @@ def supported_matrix() -> str | None:
 
         # generate the supported matrix, markdown table format
         matrix_lines: List[str] = []
-        header = "| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Documentaion |"
+        header = "| Model Series | Cache | Context Parallelism | Tensor Parallelism | Documentaion |"
         matrix_lines.append(header)
         matrix_lines.append("|---|---|---|---|---|")
 
