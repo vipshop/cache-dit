@@ -77,7 +77,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 <div align="left">
 
 | Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Example |
-|:---:|:---:|:---:|:---:|:---:|
+|:---|:---:|:---:|:---:|:---:|
 | **🎉[Wan 2.1](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[Wan 2.2](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[VisualCloze](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
