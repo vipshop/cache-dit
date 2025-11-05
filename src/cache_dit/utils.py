@@ -615,7 +615,7 @@ def supported_matrix() -> str | None:
                 if pipeline in _pipelines_supported_tensor_parallelism
                 else "✖️"
             )
-            line = f"| 🎉{pipeline} | ✅ | {cp_support} | {tp_support} |"
+            line = f"| **🎉[{pipeline}](./example/pipeline)** | ✅ | {cp_support} | {tp_support} |"
             line += (
                 " [docs](./docs/User_Guide.md), [example](./example/pipeline) |"
             )
