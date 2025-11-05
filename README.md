@@ -64,14 +64,15 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div align="center">
 
-| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Examples |
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Example |
 |:---:|:---:|:---:|:---:|:---:|
-| **🎉[Wan](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[Wan 2.1](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[Wan 2.2](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[VisualCloze](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[QwenImage](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[HunyuanVideo](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[HunyuanImage](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
-| **🎉[Flux](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[FLUX.1](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
 | **🎉[LTX](./example/pipeline)** | ✅ | ✅ | ✖️ | [link](./example/pipeline) |
 | **🎉[StableDiffusion3](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
 | **🎉[StableAudio](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
@@ -95,6 +96,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | **🎉[CogView4](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
 | **🎉[CogView3Plus](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
 | **🎉[CogVideoX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogVideoX 1.5](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
 | **🎉[Chroma](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
 | **🎉[Bria](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
 | **🎉[AuraFlow](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
