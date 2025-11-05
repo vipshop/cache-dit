@@ -18,12 +18,6 @@
   </p>
 </div>
 
-<!--
-    🔥<a href="./docs/User_Guide.md">Forward Pattern Matching</a> | <a href="./docs/User_Guide.md">Automatic Block Adapter</a>🔥 <br>
-    🔥<a href="./docs/User_Guide.md"><b>DBCache</b></a> | <a href="./docs/User_Guide.md"><b>DBPrune</b></a> | <a href="./docs/User_Guide.md">Hybrid <b>TaylorSeer</b> Calibrator</a> | <a href="./docs/User_Guide.md"><b>Cache CFG</b></a>🔥<br>
-    🔥<a href="./docs/User_Guide.md"><b>Context Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md">Low-bits Quantization</a>🔥<br>
-    🔥<a href="./docs/User_Guide.md">Compile Compatible</a> | <a href="./docs/User_Guide.md"><b>🎉State-of-the-Art Performance</b></a>🎉 
--->
 
 ## 🔥Hightlight <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
 
@@ -251,8 +245,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 For more advanced features such as **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **Patch Functor**, **DBCache**, **DBPrune**, **TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism** and **Tensor Parallelism**, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
 
 - [⚙️Installation](./docs/User_Guide.md#️installation)
+- [🔥Supported DiTs](./docs/User_Guide.md#supported)
 - [🔥Benchmarks](./docs/User_Guide.md#benchmarks)
-- [🔥Supported Pipelines](./docs/User_Guide.md#supported-pipelines)
 - [🎉Unified Cache APIs](./docs/User_Guide.md#unified-cache-apis)
   - [📚Forward Pattern Matching](./docs/User_Guide.md#forward-pattern-matching)
   - [📚Cache with One-line Code](./docs/User_Guide.md#%EF%B8%8Fcache-acceleration-with-one-line-code)

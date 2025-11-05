@@ -17,8 +17,8 @@
 <div id="contents"></div>  
 
 - [⚙️Installation](#️installation)
+- [🔥Supported DiTs](#supported)
 - [🔥Benchmarks](#benchmarks)
-- [🔥Supported Pipelines](#supported)
 - [🎉Unified Cache APIs](#unified)
   - [📚Forward Pattern Matching](#forward-pattern-matching)
   - [📚Cache with One-line Code](#%EF%B8%8Fcache-acceleration-with-one-line-code)
@@ -54,7 +54,7 @@ Or you can install the latest develop version from GitHub:
 pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 
-## 🔥Supported Pipelines  
+## 🔥Supported DiTs  
 
 <div id="supported"></div>
 
@@ -68,47 +68,54 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
 'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*',
 'Kandinsky5*', 'PRX*'])
+>>> cache_dit.supported_matrix()
 ```
 
-<details>
-<summary> Show all pipelines </summary>  
+> [!Tip] 
+> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future.
 
-- [🚀HunyuanImage-2.1](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀CogView4](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀LTXVideo](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀Lumina2](https://github.com/vipshop/cache-dit/blob/main/examples)  
-- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀AuraFlow-v0.3](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀NVIDIA Sana](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀SD-3/3.5](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀ConsisID](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀Allegro](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀Amused](https://github.com/vipshop/cache-dit/blob/main/examples)
-- [🚀DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples)
-- ...
+<div align="left">
 
-</details>
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Example |
+|:---:|:---:|:---:|:---:|:---:|
+| **🎉[Wan 2.1](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[Wan 2.2](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[VisualCloze](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[QwenImage](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[HunyuanVideo](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[HunyuanImage](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[FLUX.1](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[LTX](./example/pipeline)** | ✅ | ✅ | ✖️ | [link](./example/pipeline) |
+| **🎉[StableDiffusion3](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[StableAudio](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[SkyReelsV2](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[ShapE](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Sana](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[PixArt](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[PRX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[OmniGen](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Mochi](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Lumina](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[LongCatVideo](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Kandinsky5](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[HunyuanDiT](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[HunyuanDiTPAG](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[HiDream](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[EasyAnimate](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[DiT](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Cosmos](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[ConsisID](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogView4](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogView3Plus](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogVideoX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogVideoX 1.5](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Chroma](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Bria](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[AuraFlow](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Amused](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Allegro](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+
+</div>
 
 ## 🔥Benchmarks
 
@@ -166,8 +173,6 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
 
 NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
-
-</details>
 
 ### 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
