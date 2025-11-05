@@ -59,42 +59,42 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🎯 Supported DiTs
 
-| Model Series | Cache | Context Parallelism | Tensor Parallelism | Documentaion |
-|---|---|---|---|---|
-| 🎉Wan | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉VisualCloze | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉QwenImage | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉HunyuanVideo | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉HunyuanImage | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Flux | ✅ | ✅ | ✅ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉LTX | ✅ | ✅ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉StableDiffusion3 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉StableAudio | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉SkyReelsV2 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉ShapE | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Sana | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉PixArt | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉PRX | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉OmniGen | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Mochi | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Lumina | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉LongCatVideo | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Kandinsky5 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉HunyuanDiTPAG | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉HunyuanDiT | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉HiDream | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉EasyAnimate | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉DiT | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Cosmos | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉ConsisID | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉CogView4 | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉CogView3Plus | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉CogVideoX | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Chroma | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Bria | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉AuraFlow | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Amused | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
-| 🎉Allegro | ✅ | ✖️ | ✖️ | 📚[docs](./docs/User_Guide.md), 📚[examples](./examples/pipelines) |
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism |
+|:---:|:---:|:---:|:---:|
+| 🎉Wan | ✅ | ✅ | ✅ |
+| 🎉VisualCloze | ✅ | ✅ | ✅ |
+| 🎉QwenImage | ✅ | ✅ | ✅ |
+| 🎉HunyuanVideo | ✅ | ✅ | ✅ |
+| 🎉HunyuanImage | ✅ | ✅ | ✅ |
+| 🎉Flux | ✅ | ✅ | ✅ |
+| 🎉LTX | ✅ | ✅ | ✖️ |
+| 🎉StableDiffusion3 | ✅ | ✖️ | ✖️ |
+| 🎉StableAudio | ✅ | ✖️ | ✖️ |
+| 🎉SkyReelsV2 | ✅ | ✖️ | ✖️ |
+| 🎉ShapE | ✅ | ✖️ | ✖️ |
+| 🎉Sana | ✅ | ✖️ | ✖️ |
+| 🎉PixArt | ✅ | ✖️ | ✖️ |
+| 🎉PRX | ✅ | ✖️ | ✖️ |
+| 🎉OmniGen | ✅ | ✖️ | ✖️ |
+| 🎉Mochi | ✅ | ✖️ | ✖️ |
+| 🎉Lumina | ✅ | ✖️ | ✖️ |
+| 🎉LongCatVideo | ✅ | ✖️ | ✖️ |
+| 🎉Kandinsky5 | ✅ | ✖️ | ✖️ |
+| 🎉HunyuanDiTPAG | ✅ | ✖️ | ✖️ |
+| 🎉HunyuanDiT | ✅ | ✖️ | ✖️ |
+| 🎉HiDream | ✅ | ✖️ | ✖️ |
+| 🎉EasyAnimate | ✅ | ✖️ | ✖️ |
+| 🎉DiT | ✅ | ✖️ | ✖️ |
+| 🎉Cosmos | ✅ | ✖️ | ✖️ |
+| 🎉ConsisID | ✅ | ✖️ | ✖️ |
+| 🎉CogView4 | ✅ | ✖️ | ✖️ |
+| 🎉CogView3Plus | ✅ | ✖️ | ✖️ |
+| 🎉CogVideoX | ✅ | ✖️ | ✖️ |
+| 🎉Chroma | ✅ | ✖️ | ✖️ |
+| 🎉Bria | ✅ | ✖️ | ✖️ |
+| 🎉AuraFlow | ✅ | ✖️ | ✖️ |
+| 🎉Amused | ✅ | ✖️ | ✖️ |
+| 🎉Allegro | ✅ | ✖️ | ✖️ |
 
 <details align='left'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
