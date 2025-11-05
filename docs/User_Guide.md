@@ -1,18 +1,18 @@
 <div align="center">
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
   <p align="center">
-    <h2>A Unified and Flexible Inference Engine with Cache <br>Acceleration, Parallelism and Quantization for 🤗Diffusers.<br>
-    <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
-    <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
-    <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
-    <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
-    <img src=https://img.shields.io/badge/Models-30+-hotpink.svg > <img src=https://img.shields.io/badge/Pipelines-~100+-hotpink.svg >
+    <h2 align="left">
+        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="90" align="left">
+        A Unified and Flexible Inference Engine with 🤗🎉<br>Hybrid Cache Acceleration and Parallelism for DiTs<br>
+        <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
+        <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
+        <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
+        <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
+        <img src=https://img.shields.io/badge/Models-30+-hotpink.svg >
     </h2>
-    🔥<a href="./docs/User_Guide.md"><b>Cache Acceleration</b></a> | <a href="./docs/User_Guide.md"><b>Context/Tensor Parallelism</b></a> | <a href="./docs/User_Guide.md"><b>Quantization</b></a>🔥<br>
   </p>
 </div>
 
-## 📖User Guide
+## 📖Table of Contents
 
 <div id="contents"></div>  
 

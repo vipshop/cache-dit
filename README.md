@@ -48,6 +48,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
+<!--
+
 ## 🎯 Supported DiTs
 
 > [!Tip] 
@@ -96,6 +98,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 </div>
 
+-->
 
 <details align='left'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
@@ -295,7 +298,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A Unified and Flexible Inference Engine with Cache Acceleration，Parallelism and Quantization for Diffusers.},
+  title={cache-dit: A Unified and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for Diffusers.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com},
