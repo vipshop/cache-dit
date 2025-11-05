@@ -55,7 +55,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div align="left">
 
-| Model Series | Hybrid Cache Acceleration | Context Parallelism | Tensor Parallelism
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism
 |:---|:---:|:---:|:---:|
 | **🎉[Wan](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
 | **🎉[VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |

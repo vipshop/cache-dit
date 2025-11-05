@@ -76,42 +76,43 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div align="left">
 
-| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Example |
-|:---|:---:|:---:|:---:|:---:|
-| **🎉[Wan](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✅ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[VisualCloze](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✅ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[QwenImage](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✅ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✅ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✅ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Flux](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✅ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[LTX](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✅ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[StableDiffusion3](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[StableAudio](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[ShapE](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[PixArt](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[PRX](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[OmniGen](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Mochi](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Lumina](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[LongCatVideo](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Kandinsky5](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[HunyuanDiTPAG](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[HiDream](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[EasyAnimate](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[DiT](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[ConsisID](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Chroma](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[AuraFlow](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Amused](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
-| **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/example/pipeline)** | ✅ | ✖️ | ✖️ | [link](https://github.com/vipshop/cache-dit/blob/main/example/pipeline) |
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism
+|:---|:---:|:---:|:---:|
+| **🎉[Wan](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
+| **🎉[VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
+| **🎉[QwenImage](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
+| **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
+| **🎉[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
+| **🎉[Flux](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✅ |
+| **🎉[LTX](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✅ | ✖️ |
+| **🎉[StableDiffusion3](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[StableAudio](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[ShapE](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[PixArt](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[PRX](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Mochi](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Lumina](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[LongCatVideo](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Kandinsky5](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[HunyuanDiTPAG](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[HiDream](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[EasyAnimate](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[DiT](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[ConsisID](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Chroma](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[AuraFlow](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Amused](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+| **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✅ | ✖️ | ✖️ |
+
 </div>
 
 ## 🔥Benchmarks
