@@ -2,7 +2,7 @@
   <p align="center">
     <h2 align="left">
         <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="90" align="left">
-        A Unified and Flexible Inference Engine with<br>Hybrid Cache Acceleration and Parallelism for DiTs<br>
+        A Unified and Flexible Inference Engine with 🤗🎉<br>Hybrid Cache Acceleration and Parallelism for DiTs<br>
         <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
         <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
         <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
