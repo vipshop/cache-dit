@@ -602,8 +602,7 @@ def supported_matrix() -> str | None:
         matrix_lines: List[str] = []
         header = "| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Docs/Examples |"
         matrix_lines.append(header)
-        # matrix_lines.append("|---|---|---|---|---|")
-        matrix_lines.append("|:---:|:---:|:---:|:---:|")
+        matrix_lines.append("|:---:|:---:|:---:|:---:|:---:|")
 
         for pipeline in _pipelines_supported_cache:
             cp_support = (
