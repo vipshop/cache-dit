@@ -62,45 +62,49 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 > [!Tip] 
 > One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future.
 
-| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Docs/Examples |
+<div align="center">
+
+| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Examples |
 |:---:|:---:|:---:|:---:|:---:|
-| **🎉[Wan](./example/pipeline)** | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[VisualCloze](./example/pipeline)** | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[QwenImage](./example/pipeline)** | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[HunyuanVideo](./example/pipeline)** | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[HunyuanImage](./example/pipeline)** | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Flux](./example/pipeline)** | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[LTX](./example/pipeline)** | ✅ | ✅ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[StableDiffusion3](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[StableAudio](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[SkyReelsV2](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[ShapE](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Sana](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[PixArt](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[PRX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[OmniGen](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Mochi](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Lumina](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[LongCatVideo](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Kandinsky5](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[HunyuanDiT](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[HunyuanDiTPAG](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[HiDream](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[EasyAnimate](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[DiT](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Cosmos](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[ConsisID](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[CogView4](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[CogView3Plus](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[CogVideoX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Chroma](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Bria](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[AuraFlow](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Amused](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
-| **🎉[Allegro](./example/pipeline)** | ✅ | ✖️ | ✖️ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
+| **🎉[Wan](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[VisualCloze](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[QwenImage](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[HunyuanVideo](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[HunyuanImage](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[Flux](./example/pipeline)** | ✅ | ✅ | ✅ | [link](./example/pipeline) |
+| **🎉[LTX](./example/pipeline)** | ✅ | ✅ | ✖️ | [link](./example/pipeline) |
+| **🎉[StableDiffusion3](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[StableAudio](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[SkyReelsV2](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[ShapE](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Sana](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[PixArt](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[PRX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[OmniGen](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Mochi](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Lumina](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[LongCatVideo](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Kandinsky5](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[HunyuanDiT](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[HunyuanDiTPAG](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[HiDream](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[EasyAnimate](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[DiT](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Cosmos](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[ConsisID](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogView4](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogView3Plus](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[CogVideoX](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Chroma](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Bria](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[AuraFlow](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Amused](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+| **🎉[Allegro](./example/pipeline)** | ✅ | ✖️ | ✖️ | [link](./example/pipeline) |
+
+</div>
 
 
-<details align='left'>
+<details align='center'>
 <summary>🔥<b>Click</b> here to show many <b>Image/Video</b> cases🔥</summary>
   
 <p align='center'>

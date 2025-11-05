@@ -600,7 +600,7 @@ def supported_matrix() -> str | None:
 
         # generate the supported matrix, markdown table format
         matrix_lines: List[str] = []
-        header = "| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Docs/Examples |"
+        header = "| Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Examples |"
         matrix_lines.append(header)
         matrix_lines.append("|:---:|:---:|:---:|:---:|:---:|")
 
@@ -616,9 +616,7 @@ def supported_matrix() -> str | None:
                 else "✖️"
             )
             line = f"| **🎉[{pipeline}](./example/pipeline)** | ✅ | {cp_support} | {tp_support} |"
-            line += (
-                " [docs](./docs/User_Guide.md), [example](./example/pipeline) |"
-            )
+            line += " [link](./example/pipeline) |"
             matrix_lines.append(line)
         # sort by '✅'
         matrix_lines = [matrix_lines[0], matrix_lines[1]] + sorted(
