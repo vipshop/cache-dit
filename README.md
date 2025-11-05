@@ -1,12 +1,8 @@
-<!--
-📚English | <a href="./README_CN.md">📚中文阅读 </a> 
--->
-
 <div align="center">
   <p align="center">
     <h2 align="left">
-        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="110" align="left">
-        A Unified and Flexible Inference Engine with <br>Hybrid Cache Acceleration and Parallelism for 🤗DiTs<br>
+        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="80" align="left">
+        A Unified and Flexible Inference Engine with<br>Hybrid Cache Acceleration and Parallelism for 🤗DiTs<br>
         <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
         <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
         <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
