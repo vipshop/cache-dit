@@ -30,6 +30,7 @@ from cache_dit.parallelism import ParallelismBackend
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.utils import summary
 from cache_dit.utils import strify
+from cache_dit.utils import supported_matrix
 
 try:
     from cache_dit.quantize import quantize

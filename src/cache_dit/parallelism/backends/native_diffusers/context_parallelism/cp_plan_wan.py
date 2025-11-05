@@ -25,8 +25,8 @@ logger = init_logger(__name__)
 
 
 # TODO: Add WanVACETransformer3DModel context parallelism planner.
-# NOTE: We choice to use full name to avoid name conflict between
-# WanTransformer3DModel and WanVACETransformer3DModel.
+# NOTE: Maybe use full name to avoid name conflict between
+# WanTransformer3DModel and WanVACETransformer3DModel?
 @ContextParallelismPlannerRegister.register("WanTransformer3D")
 class WanContextParallelismPlanner(ContextParallelismPlanner):
     def apply(

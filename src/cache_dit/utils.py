@@ -558,3 +558,94 @@ def print_tensor(
             f"{name}, mean: {x.float().mean().item()}, "
             f"std: {x.float().std().item()}, shape: {x.shape}"
         )
+
+
+def supported_matrix() -> str | None:
+    try:
+        from cache_dit.caching.block_adapters.block_registers import (
+            BlockAdapterRegistry,
+        )
+
+        _pipelines_supported_cache = BlockAdapterRegistry.supported_pipelines()[
+            1
+        ]
+        _pipelines_supported_cache += [
+            "LongCatVideo",  # not in diffusers, but supported
+        ]
+        from cache_dit.parallelism.backends.native_diffusers import (
+            ContextParallelismPlannerRegister,
+        )
+
+        _pipelines_supported_context_parallelism = (
+            ContextParallelismPlannerRegister.supported_planners()[1]
+        )
+        from cache_dit.parallelism.backends.native_pytorch import (
+            TensorParallelismPlannerRegister,
+        )
+
+        _pipelines_supported_tensor_parallelism = (
+            TensorParallelismPlannerRegister.supported_planners()[1]
+        )
+        # Add some special aliases since cp/tp planners use the name shortcut
+        # of Transformer only.
+        _pipelines_supported_context_parallelism += [
+            "Wan",
+            "LTX",
+            "VisualCloze",
+        ]
+        _pipelines_supported_tensor_parallelism += [
+            "Wan",
+            "VisualCloze",
+        ]
+
+        # Generate the supported matrix, markdown table format
+        matrix_lines: List[str] = []
+        header = "| Model | Cache  | CP | TP | Model | Cache  | CP | TP |"
+        matrix_lines.append(header)
+        matrix_lines.append("|:---|:---|:---|:---|:---|:---|:---|:---|")
+        half = (len(_pipelines_supported_cache) + 1) // 2
+        link = (
+            "https://github.com/vipshop/cache-dit/blob/main/examples/pipeline"
+        )
+        for i in range(half):
+            pipeline_left = _pipelines_supported_cache[i]
+            cp_support_left = (
+                "✅"
+                if pipeline_left in _pipelines_supported_context_parallelism
+                else "✖️"
+            )
+            tp_support_left = (
+                "✅"
+                if pipeline_left in _pipelines_supported_tensor_parallelism
+                else "✖️"
+            )
+            if i + half < len(_pipelines_supported_cache):
+                pipeline_right = _pipelines_supported_cache[i + half]
+                cp_support_right = (
+                    "✅"
+                    if pipeline_right
+                    in _pipelines_supported_context_parallelism
+                    else "✖️"
+                )
+                tp_support_right = (
+                    "✅"
+                    if pipeline_right in _pipelines_supported_tensor_parallelism
+                    else "✖️"
+                )
+            else:
+                pipeline_right = ""
+                cp_support_right = ""
+                tp_support_right = ""
+            line = (
+                f"| **🎉[{pipeline_left}]({link})** | ✅ | {cp_support_left} | {tp_support_left} "
+                f"| **🎉[{pipeline_right}]({link})** | ✅ | {cp_support_right} | {tp_support_right} | "
+            )
+            matrix_lines.append(line)
+
+        matrix_str = "\n".join(matrix_lines)
+
+        print("\nSupported Cache and Parallelism Matrix:\n")
+        print(matrix_str)
+        return matrix_str
+    except Exception:
+        return None
