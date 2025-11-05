@@ -60,7 +60,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 ## 🎯 Supported DiTs
 
 | Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Docs/Examples |
-|:---:|:---:|:---:|:---:|
+|:---:|:---:|:---:|:---:|:---:|
 | 🎉Wan | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
 | 🎉VisualCloze | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
 | 🎉QwenImage | ✅ | ✅ | ✅ | [docs](./docs/User_Guide.md), [example](./example/pipeline) |
