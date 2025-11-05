@@ -59,7 +59,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ## 🎯 Supported DiTs
 
->[!Tips] One **Model Series** may contain **many** pipelines. Cache-dit applies accelerate optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future.
+> [!Tips] 
+> One **Model Series** may contain **many** pipelines. Cache-dit applies accelerate optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future.
 
 | Model Series | Cache Acceleration | Context Parallelism | Tensor Parallelism | Docs/Examples |
 |:---:|:---:|:---:|:---:|:---:|
