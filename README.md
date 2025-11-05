@@ -2,12 +2,12 @@
   <p align="center">
     <h2 align="left">
         <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="90" align="left">
-        A Unified and Flexible Inference Engine with<br>Hybrid Cache Acceleration and Parallelism for 🤗DiTs<br>
+        A Unified and Flexible Inference Engine with<br>Hybrid Cache Acceleration and Parallelism for DiTs<br>
         <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
         <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
         <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
         <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
-        <img src=https://img.shields.io/badge/Models-30+-hotpink.svg > <img src=https://img.shields.io/badge/Pipelines-~100+-hotpink.svg >
+        <img src=https://img.shields.io/badge/Models-30+-hotpink.svg >
     </h2>
   </p>
 </div>
