@@ -4,8 +4,8 @@
 
 <div align="center">
   <p align="center">
-    <h2 align="center">
-        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="110" align="left"><br>
+    <h2 align="left">
+        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="110" align="left">
         A Unified and Flexible Inference Engine with <br>Hybrid Cache Acceleration and Parallelism for 🤗DiTs<br>
         <img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
         <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
