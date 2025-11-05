@@ -210,6 +210,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 </details>
 
+<!--
 ## 🔥Important News
 
 - 2025.10.28: 🔥Day 1 support [**LongCat-Video**](https://huggingface.co/meituan-longcat/LongCat-Video) with cache acceleration, ~**1.7x↑🎉**, 📚[Example](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_longcat_video.py).
@@ -240,6 +241,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - 2025.07.13: 🎉[**FLUX.1-dev**](https://github.com/xlite-dev/flux-faster) **3.3x↑🎉** speedup! NVIDIA L20 with **[cache-dit](https://github.com/vipshop/cache-dit)** + **compile + FP8 DQ**.
 
 </details>
+
+-->
 
 ## 📚User Guide
 
