@@ -45,7 +45,7 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         # NOTE: Diffusers native CP plan still not supported
-        # for HunyuanImage now.
+        # for CogView3Plus now.
         self._cp_planner_preferred_native_diffusers = False
 
         if (
@@ -118,7 +118,7 @@ class CogView4ContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         # NOTE: Diffusers native CP plan still not supported
-        # for HunyuanImage now.
+        # for CogView4 now.
         self._cp_planner_preferred_native_diffusers = False
 
         if (
