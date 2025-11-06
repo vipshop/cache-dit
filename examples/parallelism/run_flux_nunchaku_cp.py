@@ -97,8 +97,6 @@ if args.cache or args.parallel_type is not None:
                 ),
             ),
         ],
-        # In order to enable parallelism for nunchaku flux transformer,
-        # please use our modified fork: https://github.com/vipshop/nunchaku
         parallelism_config=(
             ParallelismConfig(
                 ulysses_size=(
@@ -116,10 +114,6 @@ if args.cache or args.parallel_type is not None:
             else None
         ),
     )
-
-    if args.parallel_type in ["ulysses", "ring"]:
-        assert isinstance(pipe.transformer, NunchakuFluxTransformer2DModelV2)
-        pipe.transformer.set_native_parallel_flag(True)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 

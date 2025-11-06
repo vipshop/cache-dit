@@ -1,6 +1,7 @@
 import torch
 from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers import FluxTransformer2DModel
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -35,8 +36,6 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
         ):
-            from diffusers import FluxTransformer2DModel
-
             assert isinstance(
                 transformer, FluxTransformer2DModel
             ), "Transformer must be an instance of FluxTransformer2DModel"
