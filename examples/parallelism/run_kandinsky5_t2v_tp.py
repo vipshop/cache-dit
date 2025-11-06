@@ -31,6 +31,8 @@ rank, device = maybe_init_distributed(args)
 
 model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
 model_id = os.environ.get("KANDINSKY5_T2V_DIR", model_id)
+# For now you need to install the latest diffusers as below:
+# pip install git+https://github.com/huggingface/diffusers@main
 pipe = Kandinsky5T2VPipeline.from_pretrained(
     model_id, torch_dtype=torch.bfloat16
 )
