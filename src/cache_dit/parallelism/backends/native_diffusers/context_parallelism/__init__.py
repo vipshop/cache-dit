@@ -93,9 +93,49 @@ def maybe_enable_context_parallelism(
                 transformer.enable_parallelism(
                     config=cp_config, cp_plan=cp_plan
                 )
+                _maybe_patch_native_parallel_config(transformer)
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."
                 )
+
+    return transformer
+
+
+def _maybe_patch_native_parallel_config(
+    transformer: torch.nn.Module,
+) -> torch.nn.Module:
+
+    cls_name = transformer.__class__.__name__
+    if not cls_name.startswith("Nunchaku"):
+        return transformer
+
+    from diffusers import FluxTransformer2DModel
+
+    try:
+        from nunchaku.models.transformers.transformer_flux_v2 import (
+            NunchakuFluxTransformer2DModelV2,
+            NunchakuFluxAttention,
+            NunchakuFluxFA2Processor,
+        )
+    except ImportError:
+        raise ImportError(
+            "NunchakuFluxTransformer2DModelV2 requires the 'nunchaku' package."
+            "Please install nunchaku before using the context parallelism for "
+            "nunchaku Flux models"
+        )
+    assert isinstance(
+        transformer, (NunchakuFluxTransformer2DModelV2, FluxTransformer2DModel)
+    )
+    config = transformer._parallel_config
+
+    attention_classes = (NunchakuFluxAttention, NunchakuFluxFA2Processor)
+    for module in transformer.modules():
+        if not isinstance(module, attention_classes):
+            continue
+        processor = module.processor
+        if processor is None or not hasattr(processor, "_parallel_config"):
+            continue
+        processor._parallel_config = config
 
     return transformer
