@@ -35,6 +35,7 @@ class ParallelismConfig:
             f"Please make sure the required packages are installed."
         )
 
+        # Validate the parallelism configuration and auto adjust the backend if needed
         if self.tp_size is not None and self.tp_size > 1:
             assert (
                 self.ulysses_size is None or self.ulysses_size == 1
@@ -42,6 +43,29 @@ class ParallelismConfig:
             assert (
                 self.ring_size is None or self.ring_size == 1
             ), "Tensor parallelism plus Ring parallelism is not supported right now."
+            if self.backend != ParallelismBackend.NATIVE_PYTORCH:
+                logger.warning(
+                    "Tensor parallelism is only supported for NATIVE_PYTORCH backend "
+                    "right now. Force set backend to NATIVE_PYTORCH."
+                )
+                self.backend = ParallelismBackend.NATIVE_PYTORCH
+        elif (
+            self.ulysses_size is not None
+            and self.ulysses_size > 1
+            and self.ring_size is not None
+            and self.ring_size > 1
+        ):
+            raise ValueError(
+                "Ulysses parallelism plus Ring parallelism is not fully supported right now."
+            )
+        else:
+            if self.ulysses_size > 1 or self.ring_size > 1:
+                if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
+                    logger.warning(
+                        "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
+                        "backend right now. Force set backend to NATIVE_DIFFUSER."
+                    )
+                    self.backend = ParallelismBackend.NATIVE_DIFFUSER
 
     def strify(self, details: bool = False) -> str:
         if details:
