@@ -11,13 +11,14 @@ from torch.distributed.tensor.parallel import (
     RowwiseParallel,
     parallelize_module,
 )
+
+from cache_dit.logger import init_logger
 from cache_dit.parallelism.parallel_config import ParallelismConfig
+
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-
-from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
@@ -97,19 +98,28 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
                 "attn.to_k": ColwiseParallel(),
                 "attn.to_v": ColwiseParallel(),
                 "attn.to_out.0": RowwiseParallel(),
-                "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
+                # "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
                 "ff.net.0.proj": ColwiseParallel(),
                 "ff.net.2": RowwiseParallel(),
                 "attn.add_q_proj": ColwiseParallel(),
                 "attn.add_k_proj": ColwiseParallel(),
                 "attn.add_v_proj": ColwiseParallel(),
                 "attn.to_add_out": RowwiseParallel(),
-                "norm1_context.linear": ColwiseParallel(
-                    output_layouts=Replicate()
-                ),
+                # "norm1_context.linear": ColwiseParallel(
+                #     output_layouts=Replicate()
+                # ),
                 "ff_context.net.0.proj": ColwiseParallel(),
                 "ff_context.net.2": RowwiseParallel(),
             }
+
+            if getattr(block.attn.norm1, "linear", None) is not None:
+                layer_plan["norm1.linear"] = ColwiseParallel(
+                    output_layouts=Replicate()
+                )
+            if getattr(block.attn.norm1_context, "linear", None) is not None:
+                layer_plan["norm1_context.linear"] = ColwiseParallel(
+                    output_layouts=Replicate()
+                )
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,
@@ -152,8 +162,12 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
                 "attn.to_v": ColwiseParallel(),
                 "proj_mlp": ColwiseParallel(),
                 "proj_out": RowwiseParallel(),
-                "norm.linear": ColwiseParallel(output_layouts=Replicate()),
+                # "norm.linear": ColwiseParallel(output_layouts=Replicate()),
             }
+            if getattr(block.attn.norm, "linear", None) is not None:
+                layer_plan["norm.linear"] = ColwiseParallel(
+                    output_layouts=Replicate()
+                )
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,

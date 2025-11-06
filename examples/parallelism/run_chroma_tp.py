@@ -34,6 +34,7 @@ pipe.to("cuda")
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
+torch.cuda.empty_cache()
 pipe.set_progress_bar_config(disable=rank != 0)
 
 prompt = [
