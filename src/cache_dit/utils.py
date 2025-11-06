@@ -527,7 +527,7 @@ def print_tensor(
     x: torch.Tensor,
     name: str,
     dim: int = 1,
-    shape_use_no_distributed: bool = True,
+    no_dist_shape: bool = True,
     disable: bool = False,
 ):
     if disable:
@@ -543,7 +543,7 @@ def print_tensor(
         torch.distributed.all_gather(gather_x, x)
         gather_x = torch.cat(gather_x, dim=dim)
 
-        if not shape_use_no_distributed:
+        if not no_dist_shape:
             x_shape = gather_x.shape
         else:
             x_shape = x.shape
