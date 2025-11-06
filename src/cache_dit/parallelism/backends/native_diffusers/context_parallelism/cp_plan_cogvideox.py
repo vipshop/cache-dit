@@ -40,7 +40,7 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         # NOTE: Diffusers native CP plan still not supported
-        # for HunyuanImage now.
+        # for CogVideoX now.
         self._cp_planner_preferred_native_diffusers = False
 
         if (

@@ -70,6 +70,7 @@ from .cp_plan_cogvideox import CogVideoXContextParallelismPlanner
 from .cp_plan_cogview import CogView3PlusContextParallelismPlanner
 from .cp_plan_cogview import CogView4ContextParallelismPlanner
 from .cp_plan_cosisid import CosisIDContextParallelismPlanner
+from .cp_plan_chroma import ChromaContextParallelismPlanner
 
 
 __all__ = [
@@ -85,4 +86,5 @@ __all__ = [
     "CogView3PlusContextParallelismPlanner",
     "CogView4ContextParallelismPlanner",
     "CosisIDContextParallelismPlanner",
+    "ChromaContextParallelismPlanner",
 ]
