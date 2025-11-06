@@ -271,7 +271,8 @@ def __patch_CogView4AttnProcessor__call__(
             and self._parallel_config is not None
         ):
             raise NotImplementedError(
-                "Attention mask with context parallelism for CogView4 is not implemented yet."
+                "Attention mask with context parallelism for CogView4 "
+                "is not implemented yet."
             )
 
     # NOTE(DefTruth): Apply dispatch_attention_fn instead of sdpa directly
