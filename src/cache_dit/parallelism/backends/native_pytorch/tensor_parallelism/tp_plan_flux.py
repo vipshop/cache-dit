@@ -98,16 +98,12 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
                 "attn.to_k": ColwiseParallel(),
                 "attn.to_v": ColwiseParallel(),
                 "attn.to_out.0": RowwiseParallel(),
-                # "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
                 "ff.net.0.proj": ColwiseParallel(),
                 "ff.net.2": RowwiseParallel(),
                 "attn.add_q_proj": ColwiseParallel(),
                 "attn.add_k_proj": ColwiseParallel(),
                 "attn.add_v_proj": ColwiseParallel(),
                 "attn.to_add_out": RowwiseParallel(),
-                # "norm1_context.linear": ColwiseParallel(
-                #     output_layouts=Replicate()
-                # ),
                 "ff_context.net.0.proj": ColwiseParallel(),
                 "ff_context.net.2": RowwiseParallel(),
             }
@@ -162,7 +158,6 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
                 "attn.to_v": ColwiseParallel(),
                 "proj_mlp": ColwiseParallel(),
                 "proj_out": RowwiseParallel(),
-                # "norm.linear": ColwiseParallel(output_layouts=Replicate()),
             }
             if getattr(block.attn.norm, "linear", None) is not None:
                 layer_plan["norm.linear"] = ColwiseParallel(
