@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.cogvideox_transformer_3d import (
     CogVideoXAttnProcessor2_0,
+    CogVideoXTransformer3DModel,
 )
 from diffusers.models.attention_processor import Attention
 from diffusers.models.attention_dispatch import dispatch_attention_fn
@@ -46,8 +47,9 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
         ):
-            # This planner can be also used for ConsisID,
-            # so, we do not check the type here.
+            assert isinstance(
+                transformer, CogVideoXTransformer3DModel
+            ), "Transformer must be an instance of CogVideoXTransformer3DModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
