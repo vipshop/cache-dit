@@ -181,7 +181,9 @@ def strify(args, pipe_or_stats):
 def maybe_init_distributed(args=None):
     if args is not None:
         if args.parallel_type is not None:
-            dist.init_process_group("nccl")
+            dist.init_process_group(
+                backend="nccl",
+            )
             rank = dist.get_rank()
             device = torch.device("cuda", rank % torch.cuda.device_count())
             torch.cuda.set_device(device)
@@ -189,7 +191,9 @@ def maybe_init_distributed(args=None):
     else:
         # always init distributed for other examples
         if not dist.is_initialized():
-            dist.init_process_group("nccl")
+            dist.init_process_group(
+                backend="nccl",
+            )
         rank = dist.get_rank()
         device = torch.device("cuda", rank % torch.cuda.device_count())
         torch.cuda.set_device(device)
