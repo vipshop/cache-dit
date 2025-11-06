@@ -68,6 +68,8 @@ from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner
 from .cp_plan_hunyuan import HunyuanVideoContextParallelismPlanner
 from .cp_plan_cogvideox import CogVideoXContextParallelismPlanner
 from .cp_plan_cogview import CogView3PlusContextParallelismPlanner
+from .cp_plan_cogview import CogView4ContextParallelismPlanner
+from .cp_plan_cosisid import CosisIDContextParallelismPlanner
 
 
 __all__ = [
@@ -81,4 +83,6 @@ __all__ = [
     "HunyuanVideoContextParallelismPlanner",
     "CogVideoXContextParallelismPlanner",
     "CogView3PlusContextParallelismPlanner",
+    "CogView4ContextParallelismPlanner",
+    "CosisIDContextParallelismPlanner",
 ]

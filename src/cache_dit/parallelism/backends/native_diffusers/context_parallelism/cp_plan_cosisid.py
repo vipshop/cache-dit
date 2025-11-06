@@ -1,13 +1,12 @@
 import torch
-import functools
-from typing import Optional, Tuple
+from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.models.transformers.consisid_transformer_3d import (
+    ConsisIDTransformer3DModel,
+)
 from diffusers.models.transformers.cogvideox_transformer_3d import (
     CogVideoXAttnProcessor2_0,
-    CogVideoXTransformer3DModel,
 )
-from diffusers.models.attention_processor import Attention
-from diffusers.models.attention_dispatch import dispatch_attention_fn
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -25,14 +24,15 @@ from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
 )
+from .cp_plan_cogvideox import __patch_CogVideoXAttnProcessor2_0__call__
 
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-@ContextParallelismPlannerRegister.register("CogVideoX")
-class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
+@ContextParallelismPlannerRegister.register("ConsisID")
+class CosisIDContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
@@ -40,7 +40,7 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         # NOTE: Diffusers native CP plan still not supported
-        # for HunyuanImage now.
+        # for ConsisID now.
         self._cp_planner_preferred_native_diffusers = False
 
         if (
@@ -48,12 +48,13 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
             and self._cp_planner_preferred_native_diffusers
         ):
             assert isinstance(
-                transformer, CogVideoXTransformer3DModel
-            ), "Transformer must be an instance of CogVideoXTransformer3DModel"
+                transformer, ConsisIDTransformer3DModel
+            ), "Transformer must be an instance of ConsisIDTransformer3DModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
+        # ConsisID uses the same attention processor as CogVideoX.
         CogVideoXAttnProcessor2_0.__call__ = (
             __patch_CogVideoXAttnProcessor2_0__call__
         )
@@ -111,92 +112,12 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
                     ),
                 ],
             },
-            # transformer forward while using CP, since it is not splited here.
-            # Then, the final proj_out will gather the splited output.
-            #     splited input (previous splited output)
-            #     -> all gather
-            #     -> un-split output
-            "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            # NOTE: We should gather both hidden_states and encoder_hidden_states
+            # at the end of the last block. Because the subsequent op is:
+            # hidden_states = torch.cat([encoder_hidden_states, hidden_states])
+            f"transformer_blocks.{len(transformer.transformer_blocks) - 1}": [
+                ContextParallelOutput(gather_dim=1, expected_dims=3),
+                ContextParallelOutput(gather_dim=1, expected_dims=3),
+            ],
         }
         return _cp_plan
-
-
-@functools.wraps(CogVideoXAttnProcessor2_0.__call__)
-def __patch_CogVideoXAttnProcessor2_0__call__(
-    self: CogVideoXAttnProcessor2_0,
-    attn: Attention,
-    hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    image_rotary_emb: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    text_seq_length = encoder_hidden_states.size(1)
-
-    hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
-    batch_size, sequence_length, _ = hidden_states.shape
-
-    # NOTE(DefTruth): attention mask is always None in CogVideoX
-    if attention_mask is not None:
-        attention_mask = attn.prepare_attention_mask(
-            attention_mask, sequence_length, batch_size
-        )
-        attention_mask = attention_mask.view(
-            batch_size, attn.heads, -1, attention_mask.shape[-1]
-        )
-
-    query = attn.to_q(hidden_states)
-    key = attn.to_k(hidden_states)
-    value = attn.to_v(hidden_states)
-
-    inner_dim = key.shape[-1]
-    head_dim = inner_dim // attn.heads
-
-    # NOTE(DefTruth): no transpose
-    query = query.view(batch_size, -1, attn.heads, head_dim)
-    key = key.view(batch_size, -1, attn.heads, head_dim)
-    value = value.view(batch_size, -1, attn.heads, head_dim)
-
-    if attn.norm_q is not None:
-        query = attn.norm_q(query)
-    if attn.norm_k is not None:
-        key = attn.norm_k(key)
-
-    # Apply RoPE if needed
-    if image_rotary_emb is not None:
-        from diffusers.models.embeddings import apply_rotary_emb
-
-        query[:, text_seq_length:] = apply_rotary_emb(
-            query[:, text_seq_length:],
-            image_rotary_emb,
-            sequence_dim=1,
-        )
-        if not attn.is_cross_attention:
-            key[:, text_seq_length:] = apply_rotary_emb(
-                key[:, text_seq_length:],
-                image_rotary_emb,
-                sequence_dim=1,
-            )
-
-    # NOTE(DefTruth): Apply dispatch_attention_fn instead of sdpa directly
-    hidden_states = dispatch_attention_fn(
-        query,
-        key,
-        value,
-        attn_mask=attention_mask,
-        dropout_p=0.0,
-        is_causal=False,
-        backend=getattr(self, "_attention_backend", None),
-        parallel_config=getattr(self, "_parallel_config", None),
-    )
-    hidden_states = hidden_states.reshape(batch_size, -1, attn.heads * head_dim)
-
-    # linear proj
-    hidden_states = attn.to_out[0](hidden_states)
-    # dropout
-    hidden_states = attn.to_out[1](hidden_states)
-
-    encoder_hidden_states, hidden_states = hidden_states.split(
-        [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
-    )
-    return hidden_states, encoder_hidden_states
