@@ -59,7 +59,9 @@ class ParallelismConfig:
                 "Ulysses parallelism plus Ring parallelism is not fully supported right now."
             )
         else:
-            if self.ulysses_size > 1 or self.ring_size > 1:
+            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
+                self.ring_size is not None and self.ring_size > 1
+            ):
                 if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
                     logger.warning(
                         "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
