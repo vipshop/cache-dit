@@ -54,7 +54,8 @@ class Kandinsky5TensorParallelismPlanner(TensorParallelismPlanner):
         tp_mesh: DeviceMesh,
     ):
         for _, block in transformer.visual_transformer_blocks.named_children():
-            block.attn.heads //= tp_mesh.size()
+            block.self_attention.num_heads //= tp_mesh.size()
+            block.cross_attention.num_heads //= tp_mesh.size()
             layer_plan = {
                 "self_attention.to_query": ColwiseParallel(),
                 "self_attention.to_key": ColwiseParallel(),
