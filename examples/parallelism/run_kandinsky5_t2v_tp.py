@@ -4,14 +4,24 @@ import sys
 sys.path.append("..")
 
 import time
+
 import torch
-from diffusers import Kandinsky5T2VPipeline, AutoencoderKLHunyuanVideo
+from diffusers import AutoencoderKLHunyuanVideo, Kandinsky5T2VPipeline
 from diffusers.utils import export_to_video
-from utils import get_args, strify, cachify
+from utils import (
+    cachify,
+    get_args,
+    maybe_destroy_distributed,
+    maybe_init_distributed,
+    strify,
+)
+
 import cache_dit
 
 args = get_args()
 print(args)
+
+rank, device = maybe_init_distributed(args)
 
 # Available models:
 # ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
@@ -26,14 +36,10 @@ pipe = Kandinsky5T2VPipeline.from_pretrained(
 )
 pipe = pipe.to("cuda")
 
-for m in pipe.transformer.named_modules():
-    if isinstance(m[1], torch.nn.Linear):
-        print(f"{m[0]}: {m[1]}")
-
-sys.exit(0)
-
-if args.cache:
+if args.cache or args.parallel_type is not None:
     cachify(args, pipe, enable_separate_cfg=not ("nocfg" in model_id))
+
+torch.cuda.empty_cache()
 
 prompt = "A cat and a dog baking a cake together in a kitchen."
 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
@@ -61,10 +67,13 @@ start = time.time()
 video = run_pipe()
 end = time.time()
 
-cache_dit.summary(pipe)
+if rank == 0:
+    cache_dit.summary(pipe)
 
-time_cost = end - start
-save_path = f"kandinsky5.{strify(args, pipe)}.mp4"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving video to {save_path}")
-export_to_video(video, save_path, fps=24, quality=9)
+    time_cost = end - start
+    save_path = f"kandinsky5.{strify(args, pipe)}.mp4"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving video to {save_path}")
+    export_to_video(video, save_path, fps=24, quality=9)
+
+maybe_destroy_distributed()
