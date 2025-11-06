@@ -14,6 +14,6 @@ pipe = ChromaPipeline.from_pretrained(
 
 pipe.to("cuda")
 
-for m in pipe.transformer.name_modules():
+for m in pipe.transformer.named_modules():
     if isinstance(m[1], torch.nn.Linear):
         print(m[0], m[1])
