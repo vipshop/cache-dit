@@ -74,6 +74,7 @@ from .cp_plan_chroma import ChromaContextParallelismPlanner
 from .cp_plan_nunchaku import NunchakuFluxContextParallelismPlanner
 from .cp_plan_nunchaku import NunchakuQwenImageContextParallelismPlanner
 from .cp_plan_pixart import PixArtContextParallelismPlanner
+from .cp_plan_dit import DiTContextParallelismPlanner
 
 
 __all__ = [
@@ -93,4 +94,5 @@ __all__ = [
     "NunchakuFluxContextParallelismPlanner",
     "NunchakuQwenImageContextParallelismPlanner",
     "PixArtContextParallelismPlanner",
+    "DiTContextParallelismPlanner",
 ]

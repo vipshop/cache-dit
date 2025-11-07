@@ -45,11 +45,8 @@ class PixArtContextParallelismPlanner(ContextParallelismPlanner):
         assert transformer is not None, "Transformer must be provided."
         assert isinstance(
             transformer, PixArtTransformer2DModel
-        ), "Transformer must be an instance of LTXVideoTransformer3DModel"
+        ), "Transformer must be an instance of PixArtTransformer2DModel"
 
-        # NOTE: The atttention_mask preparation in LTXAttention while using
-        # context parallelism is buggy in diffusers v0.36.0.dev0, so we
-        # disable the preference to use native diffusers implementation here.
         self._cp_planner_preferred_native_diffusers = False
 
         if (
