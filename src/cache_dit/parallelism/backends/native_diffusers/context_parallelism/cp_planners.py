@@ -72,6 +72,7 @@ from .cp_plan_cogview import CogView4ContextParallelismPlanner
 from .cp_plan_cosisid import CosisIDContextParallelismPlanner
 from .cp_plan_chroma import ChromaContextParallelismPlanner
 from .cp_plan_nunchaku import NunchakuFluxContextParallelismPlanner
+from .cp_plan_nunchaku import NunchakuQwenImageContextParallelismPlanner
 
 
 __all__ = [
@@ -89,4 +90,5 @@ __all__ = [
     "CosisIDContextParallelismPlanner",
     "ChromaContextParallelismPlanner",
     "NunchakuFluxContextParallelismPlanner",
+    "NunchakuQwenImageContextParallelismPlanner",
 ]

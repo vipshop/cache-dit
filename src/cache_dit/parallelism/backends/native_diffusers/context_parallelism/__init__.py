@@ -110,7 +110,7 @@ def _maybe_patch_native_parallel_config(
     if not cls_name.startswith("Nunchaku"):
         return transformer
 
-    from diffusers import FluxTransformer2DModel
+    from diffusers import FluxTransformer2DModel, QwenImageTransformer2DModel
 
     try:
         from nunchaku.models.transformers.transformer_flux_v2 import (
@@ -118,22 +118,45 @@ def _maybe_patch_native_parallel_config(
             NunchakuFluxAttention,
             NunchakuFluxFA2Processor,
         )
+        from nunchaku.models.transformers.transformer_qwenimage import (
+            NunchakuQwenAttention,
+            NunchakuQwenImageNaiveFA2Processor,
+            NunchakuQwenImageTransformer2DModel,
+        )
     except ImportError:
         raise ImportError(
-            "NunchakuFluxTransformer2DModelV2 requires the 'nunchaku' package."
-            "Please install nunchaku before using the context parallelism for "
-            "nunchaku Flux models"
+            "NunchakuFluxTransformer2DModelV2 or NunchakuQwenImageTransformer2DModel "
+            "requires the 'nunchaku' package. Please install nunchaku before using "
+            "the context parallelism for nunchaku 4-bits models."
         )
     assert isinstance(
-        transformer, (NunchakuFluxTransformer2DModelV2, FluxTransformer2DModel)
+        transformer,
+        (
+            NunchakuFluxTransformer2DModelV2,
+            FluxTransformer2DModel,
+        ),
+    ) or isinstance(
+        transformer,
+        (
+            NunchakuQwenImageTransformer2DModel,
+            QwenImageTransformer2DModel,
+        ),
+    ), (
+        "transformer must be an instance of NunchakuFluxTransformer2DModelV2 "
+        f"or NunchakuQwenImageTransformer2DModel, but got {type(transformer)}"
     )
     config = transformer._parallel_config
 
-    attention_classes = (NunchakuFluxAttention, NunchakuFluxFA2Processor)
+    attention_classes = (
+        NunchakuFluxAttention,
+        NunchakuFluxFA2Processor,
+        NunchakuQwenAttention,
+        NunchakuQwenImageNaiveFA2Processor,
+    )
     for module in transformer.modules():
         if not isinstance(module, attention_classes):
             continue
-        processor = module.processor
+        processor = getattr(module, "processor", None)
         if processor is None or not hasattr(processor, "_parallel_config"):
             continue
         processor._parallel_config = config
