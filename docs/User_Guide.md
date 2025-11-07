@@ -68,7 +68,6 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
 'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*',
 'Kandinsky5*', 'PRX*'])
->>> cache_dit.supported_matrix()
 ```
 
 > [!Tip] 
