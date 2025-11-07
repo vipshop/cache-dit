@@ -33,7 +33,7 @@ transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
 )
 
 # Minimize VRAM required: 20GiB if use w4a16_text_encoder else 30GiB
-w4a16_text_encoder = False
+w4a16_text_encoder = args.quantize
 pipe = QwenImagePipeline.from_pretrained(
     os.environ.get(
         "QWEN_IMAGE_DIR",
