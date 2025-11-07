@@ -73,6 +73,7 @@ from .cp_plan_cosisid import CosisIDContextParallelismPlanner
 from .cp_plan_chroma import ChromaContextParallelismPlanner
 from .cp_plan_nunchaku import NunchakuFluxContextParallelismPlanner
 from .cp_plan_nunchaku import NunchakuQwenImageContextParallelismPlanner
+from .cp_plan_pixart import PixArtContextParallelismPlanner
 
 
 __all__ = [
@@ -91,4 +92,5 @@ __all__ = [
     "ChromaContextParallelismPlanner",
     "NunchakuFluxContextParallelismPlanner",
     "NunchakuQwenImageContextParallelismPlanner",
+    "PixArtContextParallelismPlanner",
 ]
