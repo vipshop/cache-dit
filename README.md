@@ -48,7 +48,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
-## 🎯 Supported DiTs
+## 🔥 Supported DiTs
 
 > [!Tip] 
 > One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **4-bits**: w/ nunchaku + svdq int4.
