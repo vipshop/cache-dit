@@ -66,13 +66,17 @@ if args.cache or args.parallel_type is not None:
 
     cache_dit.enable_cache(
         pipe,
-        cache_config=DBCacheConfig(
-            Fn_compute_blocks=args.Fn,
-            Bn_compute_blocks=args.Bn,
-            max_warmup_steps=args.max_warmup_steps,
-            max_cached_steps=args.max_cached_steps,
-            max_continuous_cached_steps=args.max_continuous_cached_steps,
-            residual_diff_threshold=args.rdt,
+        cache_config=(
+            DBCacheConfig(
+                Fn_compute_blocks=args.Fn,
+                Bn_compute_blocks=args.Bn,
+                max_warmup_steps=args.max_warmup_steps,
+                max_cached_steps=args.max_cached_steps,
+                max_continuous_cached_steps=args.max_continuous_cached_steps,
+                residual_diff_threshold=args.rdt,
+            )
+            if args.cache
+            else None
         ),
         calibrator_config=(
             TaylorSeerCalibratorConfig(
