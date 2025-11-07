@@ -184,7 +184,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 </details>
 
-## 📚User Guide
+## 📖Table of Contents
 
 <div id="user-guide"></div>
 
