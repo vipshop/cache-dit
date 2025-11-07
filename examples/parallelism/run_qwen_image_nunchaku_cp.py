@@ -57,7 +57,7 @@ pipe = QwenImagePipeline.from_pretrained(
 ).to("cuda")
 
 
-if args.cache:
+if args.cache or args.parallel_type is not None:
     from cache_dit import (
         DBCacheConfig,
         ParallelismConfig,
