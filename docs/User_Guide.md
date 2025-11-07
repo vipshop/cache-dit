@@ -683,6 +683,19 @@ pipe = QwenImagePipeline.from_pretrained(
 cache_dit.enable_cache(pipe, cache_config=...)
 ```
 
+cache-dit natively supports the `Hybrid Cache + 🔥Nunchaku SVDQ INT4/FP4 + Context Parallelism` scheme. Users can leverage caching and context parallelism to speed up Nunchaku **4-bit** models. For more details, please refer to [📚parallelism+nunchaku](https://github.com/vipshop/cache-dit/tree/main/examples/parallelism/run_qwen_image_nunchaku_cp.py).
+
+```python
+transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
+    f"path-to/svdq-int4_r32-qwen-image.safetensors"
+)
+pipe = QwenImagePipeline.from_pretrained(
+   "Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16,
+).to("cuda")
+
+cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
+```
+
 
 ## 🛠Metrics Command Line
 
