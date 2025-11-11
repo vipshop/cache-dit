@@ -103,7 +103,6 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
             )
             block.attn1.heads //= tp_size
             layer_plan = {
-                # "":PrepareModuleInput(),
                 "attn1.to_q": ColwiseParallel(),
                 "attn1.to_k": ColwiseParallel(),
                 "attn1.to_v": ColwiseParallel(),
