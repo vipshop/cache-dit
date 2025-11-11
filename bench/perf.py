@@ -224,7 +224,7 @@ def main():
     mean_time = sum(all_times) / len(all_times)
     logger.info(f"Mean Time: {mean_time:.2f}s")
 
-    cache_dit.utils(pipe, details=True)
+    cache_dit.summary(pipe, details=True)
     save_name = (
         f"C{int(args.compile)}_Q{int(args.quantize)}_"
         f"{cache_dit.strify(pipe)}_"
