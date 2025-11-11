@@ -49,7 +49,6 @@ if GiB() < 96:
             pipe.text_encoder,
             quant_type=args.quantize_type,
         )
-        pipe.to(device)
 else:
     pipe.to(device)
 

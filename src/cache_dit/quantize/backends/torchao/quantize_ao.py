@@ -1,7 +1,6 @@
-import gc
-import time
 import torch
 from typing import Callable, Optional, List
+from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -213,15 +212,3 @@ def quantize_ao(
     module._quantize_type = quant_type
     module._is_quantized = True
     return module
-
-
-def maybe_empty_cache():
-    try:
-        time.sleep(1)
-        gc.collect()
-        torch.cuda.empty_cache()
-        time.sleep(1)
-        gc.collect()
-        torch.cuda.empty_cache()
-    except Exception:
-        pass
