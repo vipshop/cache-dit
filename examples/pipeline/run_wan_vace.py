@@ -85,12 +85,8 @@ negative_prompt = (
     "background, three legs, many people in the background, walking "
     "backwards"
 )
-first_frame = load_image(
-    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
-)
-last_frame = load_image(
-    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
-)
+first_frame = load_image("../data/flf2v_input_first_frame.png")
+last_frame = load_image("../data/flf2v_input_last_frame.png")
 
 height = 512
 width = 512
