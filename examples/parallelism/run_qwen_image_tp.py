@@ -68,7 +68,10 @@ if GiB() < 48 and not enable_quatization:
     else:
         pipe.to(device)
 else:
-    pipe.to(device)
+    if not args.parallel_type == "tp":
+        pipe.enable_model_cpu_offload(device=device)
+    else:
+        pipe.to(device)
 
 
 if GiB() <= 48 and not enable_quatization:
