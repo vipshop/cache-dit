@@ -37,8 +37,14 @@ pipe: QwenImagePipeline = QwenImagePipeline.from_pretrained(
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
-enable_quatization = args.quantize and GiB() < 96
+# Apply cache and tensor parallelism here
+if args.cache or args.parallel_type is not None:
+    cachify(args, pipe)
 
+
+# NOTE: Please handle to(device) after cachify(namely, after applying
+# tensor parallelism), in order to reduce the memory usage at the beginning.
+enable_quatization = args.quantize and GiB() < 96
 if GiB() < 96:
     if enable_quatization:
         # Only quantize text encoder module to fit in GPUs with
@@ -52,13 +58,6 @@ if GiB() < 96:
 else:
     pipe.to(device)
 
-if GiB() <= 48 and not enable_quatization:
-    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-    pipe.vae.enable_tiling()
-
-# Apply cache and tensor parallelism here
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
 
 # Minimum 40GiB is required for tensor parallelism = 2
 if GiB() < 48 and not enable_quatization:
@@ -71,6 +70,10 @@ if GiB() < 48 and not enable_quatization:
 else:
     pipe.to(device)
 
+
+if GiB() <= 48 and not enable_quatization:
+    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+    pipe.vae.enable_tiling()
 
 positive_magic = {
     "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt

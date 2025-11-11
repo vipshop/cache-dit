@@ -44,7 +44,7 @@ def _is_native_attn_supported_context_parallel() -> bool:
                 AttentionBackendName.NATIVE
             ]
         )
-    except AttributeError:
+    except Exception:
         assert isinstance(
             _AttentionBackendRegistry._supports_context_parallel, set
         )
@@ -69,9 +69,16 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         AttentionBackendName.NATIVE
     )
     if _is_native_attn_supported_context_parallel():
-        _AttentionBackendRegistry._supports_context_parallel.pop(
-            AttentionBackendName.NATIVE
-        )
+        if isinstance(
+            _AttentionBackendRegistry._supports_context_parallel, dict
+        ):
+            _AttentionBackendRegistry._supports_context_parallel.pop(
+                AttentionBackendName.NATIVE
+            )
+        else:
+            _AttentionBackendRegistry._supports_context_parallel.remove(
+                AttentionBackendName.NATIVE.value
+            )
 
     # Re-define templated context parallel attention to support attn mask
     def _templated_context_parallel_attention_v2(
