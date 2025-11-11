@@ -1,5 +1,9 @@
 import torch
 from diffusers.models.attention_processor import MochiAttnProcessor2_0
+from diffusers.models.transformers.transformer_mochi import (
+    MochiTransformerBlock,
+)
+from einops import rearrange
 from torch import nn
 from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed._tensor import Replicate
@@ -81,6 +85,21 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
 
         return transformer
 
+    @staticmethod
+    def rearrange_feedforward_weight(block: MochiTransformerBlock, tp_size):
+        def rerangege_swiglu_weight(weight: torch.Tensor, tp_size: int):
+            weight = rearrange(weight, "r (g d) -> r g d", g=2)
+            weight = rearrange(weight, "r g (h d) -> r h (g d)", g=2, h=tp_size)
+            weight = rearrange(weight, "r h d -> r (h d)", h=tp_size)
+            return weight
+
+        block.ff.net[0].proj.weight.data = rerangege_swiglu_weight(
+            block.ff.net[0].proj.weight.data.T, tp_size
+        ).T
+        block.ff_context.net[0].proj.weight.data = rerangege_swiglu_weight(
+            block.ff_context.net[0].proj.weight.data.T, tp_size
+        ).T
+
     def parallelize_transformer(
         self,
         transformer: nn.Module,
@@ -101,6 +120,8 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
                 tp_size=tp_size,
                 tp_rank=tp_rank,
             )
+
+            self.rearrange_feedforward_weight(block, tp_size)
             block.attn1.heads //= tp_size
             layer_plan = {
                 "attn1.to_q": ColwiseParallel(),
