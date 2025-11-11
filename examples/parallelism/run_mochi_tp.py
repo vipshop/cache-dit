@@ -8,7 +8,6 @@ import time
 import torch
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
-from diffusers.quantizers import PipelineQuantizationConfig
 from utils import (
     cachify,
     get_args,
@@ -27,25 +26,9 @@ rank, device = maybe_init_distributed(args)
 model_id = "genmo/mochi-1-preview"
 model_id = os.environ.get("MOCHI_DIR", model_id)
 
-# Create pipeline with optional quantization
-# Note: When using TP, quantization might need special handling
-quantization_config = None
-if not args.parallel_type or args.parallel_type != "tp":
-    # Only use quantization when not using TP, or handle carefully
-    quantization_config = PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["transformer", "text_encoder"],
-    )
-
 pipe = MochiPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
-    quantization_config=quantization_config,
 )
 pipe = pipe.to(device)
 
