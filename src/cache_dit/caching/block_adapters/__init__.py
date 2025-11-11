@@ -86,11 +86,17 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
         WanTransformer3DModel,
         WanVACETransformer3DModel,
     )
+    from cache_dit.caching.patch_functors import WanVACEPatchFunctor
 
     assert isinstance(
         pipe.transformer,
         (WanTransformer3DModel, WanVACETransformer3DModel),
     )
+    cls_name = pipe.transformer.__class__.__name__
+    patch_functor = (
+        WanVACEPatchFunctor() if cls_name.startswith("WanVACE") else None
+    )
+
     if getattr(pipe, "transformer_2", None):
         assert isinstance(
             pipe.transformer_2,
@@ -111,6 +117,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
                 ForwardPattern.Pattern_2,
                 ForwardPattern.Pattern_2,
             ],
+            patch_functor=patch_functor,
             check_forward_pattern=True,
             has_separate_cfg=True,
             **kwargs,
@@ -122,6 +129,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
             transformer=pipe.transformer,
             blocks=pipe.transformer.blocks,
             forward_pattern=ForwardPattern.Pattern_2,
+            patch_functor=patch_functor,
             check_forward_pattern=True,
             has_separate_cfg=True,
             **kwargs,

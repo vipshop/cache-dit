@@ -150,4 +150,8 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
                 block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
                     tp_mesh, block.attn2.norm_added_k
                 )
+
+        # TODO(DefTruth): parallelize other modules if needed, e.g., vace
+        # blocks for WanVACETransformerBlock in WanVACETransformer3DModel.
+
         return transformer
