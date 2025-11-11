@@ -1,3 +1,9 @@
+import os
+import sys
+
+sys.path.append("..")
+
+import time
 import torch
 import PIL.Image
 from diffusers import AutoencoderKLWan, WanVACEPipeline
@@ -5,6 +11,13 @@ from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
 )
 from diffusers.utils import export_to_video, load_image
+
+from utils import get_args, strify, cachify
+import cache_dit
+
+
+args = get_args()
+print(args)
 
 
 def prepare_video_and_mask(
@@ -33,6 +46,7 @@ def prepare_video_and_mask(
 
 
 model_id = "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
+model_id = os.environ.get("WAN_VACE_DIR", model_id)
 vae = AutoencoderKLWan.from_pretrained(
     model_id, subfolder="vae", torch_dtype=torch.float32
 )
@@ -43,7 +57,15 @@ flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
 pipe.scheduler = UniPCMultistepScheduler.from_config(
     pipe.scheduler.config, flow_shift=flow_shift
 )
-pipe.to("cuda")
+
+if args.cache:
+    cachify(args, pipe)
+
+# Enable memory savings
+pipe.enable_model_cpu_offload()
+
+assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
+pipe.vae.enable_tiling()
 
 prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
 negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
@@ -61,16 +83,35 @@ video, mask = prepare_video_and_mask(
     first_frame, last_frame, height, width, num_frames
 )
 
-output = pipe(
-    video=video,
-    mask=mask,
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    height=height,
-    width=width,
-    num_frames=num_frames,
-    num_inference_steps=30,
-    guidance_scale=5.0,
-    generator=torch.Generator().manual_seed(42),
-).frames[0]
-export_to_video(output, "output.mp4", fps=16)
+
+def run_pipe(warmup: bool = False):
+    output = pipe(
+        video=video,
+        mask=mask,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=height,
+        width=width,
+        num_frames=num_frames,
+        num_inference_steps=30 if not warmup else 5,
+        guidance_scale=5.0,
+        generator=torch.Generator("cpu").manual_seed(42),
+    ).frames[0]
+    return output
+
+
+# warmup
+_ = run_pipe(warmup=True)
+
+
+start = time.time()
+output = run_pipe(warmup=False)
+end = time.time()
+
+stats = cache_dit.summary(pipe)
+
+time_cost = end - start
+save_path = f"wan-vace.{strify(args, stats)}.mp4"
+print(f"Time cost: {time_cost:.2f}s")
+print(f"Saving video to {save_path}")
+export_to_video(output, save_path, fps=16)
