@@ -294,7 +294,9 @@ def enable_cache(
 
         transformers = []
         if isinstance(pipe_or_adapter, DiffusionPipeline):
-            adapter = BlockAdapterRegistry.get_adapter(pipe_or_adapter)
+            adapter = BlockAdapterRegistry.get_adapter(
+                pipe_or_adapter, skip_post_init=cache_config is None
+            )
             if adapter is None:
                 assert hasattr(pipe_or_adapter, "transformer"), (
                     "The given DiffusionPipeline does not have "
