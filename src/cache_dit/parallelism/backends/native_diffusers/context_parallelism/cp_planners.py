@@ -71,10 +71,23 @@ from .cp_plan_cogview import CogView3PlusContextParallelismPlanner
 from .cp_plan_cogview import CogView4ContextParallelismPlanner
 from .cp_plan_cosisid import CosisIDContextParallelismPlanner
 from .cp_plan_chroma import ChromaContextParallelismPlanner
-from .cp_plan_nunchaku import NunchakuFluxContextParallelismPlanner
-from .cp_plan_nunchaku import NunchakuQwenImageContextParallelismPlanner
 from .cp_plan_pixart import PixArtContextParallelismPlanner
 from .cp_plan_dit import DiTContextParallelismPlanner
+
+try:
+    import nunchaku  # noqa: F401
+
+    _nunchaku_available = True
+except ImportError:
+    _nunchaku_available = False
+
+if _nunchaku_available:
+    from .cp_plan_nunchaku import (  # noqa: F401
+        NunchakuFluxContextParallelismPlanner,
+    )
+    from .cp_plan_nunchaku import (  # noqa: F401
+        NunchakuQwenImageContextParallelismPlanner,
+    )
 
 
 __all__ = [
@@ -91,8 +104,14 @@ __all__ = [
     "CogView4ContextParallelismPlanner",
     "CosisIDContextParallelismPlanner",
     "ChromaContextParallelismPlanner",
-    "NunchakuFluxContextParallelismPlanner",
-    "NunchakuQwenImageContextParallelismPlanner",
     "PixArtContextParallelismPlanner",
     "DiTContextParallelismPlanner",
 ]
+
+if _nunchaku_available:
+    __all__.extend(
+        [
+            "NunchakuFluxContextParallelismPlanner",
+            "NunchakuQwenImageContextParallelismPlanner",
+        ]
+    )
