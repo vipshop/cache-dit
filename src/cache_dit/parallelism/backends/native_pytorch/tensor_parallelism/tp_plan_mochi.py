@@ -88,9 +88,7 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
     @staticmethod
     def rearrange_feedforward_weight(block: MochiTransformerBlock, tp_size):
         def rerangege_swiglu_weight(weight: torch.Tensor, tp_size: int):
-            weight = rearrange(weight, "r (g d) -> r g d", g=2)
-            weight = rearrange(weight, "r g (h d) -> r h (g d)", g=2, h=tp_size)
-            weight = rearrange(weight, "r h d -> r (h d)", h=tp_size)
+            weight = rearrange(weight, "r (g h d) -> r (h g d)", g=2, h=tp_size)
             return weight
 
         block.ff.net[0].proj.weight.data = rerangege_swiglu_weight(
