@@ -68,8 +68,23 @@ assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
-prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
-negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+prompt = (
+    "CG animation style, a small blue bird takes off from the ground, "
+    "flapping its wings. The bird's feathers are delicate, with a unique "
+    "pattern on its chest. The background shows a blue sky with white "
+    "clouds under bright sunshine. The camera follows the bird upward, "
+    "capturing its flight and the vastness of the sky from a close-up, "
+    "low-angle perspective."
+)
+negative_prompt = (
+    "Bright tones, overexposed, static, blurred details, subtitles, "
+    "style, works, paintings, images, static, overall gray, worst "
+    "quality, low quality, JPEG compression residue, ugly, incomplete, "
+    "extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
+    "disfigured, misshapen limbs, fused fingers, still picture, messy "
+    "background, three legs, many people in the background, walking "
+    "backwards"
+)
 first_frame = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
 )
