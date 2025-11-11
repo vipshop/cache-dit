@@ -53,7 +53,7 @@ def enable_parallelism(
         f"transformer id:{id(transformer)}"
     )
 
-    # NOTE: Workaround for potential memory leak issue after parallelism
+    # NOTE: Workaround for potential memory peak issue after parallelism
     # enabling, specially for tensor parallelism in native pytorch backend.
     maybe_empty_cache()
 
