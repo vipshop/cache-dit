@@ -1,4 +1,5 @@
 import torch
+from diffusers.models.attention_processor import MochiAttnProcessor2_0
 from torch import nn
 from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed._tensor import Replicate
@@ -17,6 +18,38 @@ from .tp_plan_registers import (
 )
 
 logger = init_logger(__name__)
+
+
+class SplitFreqsProcessor:
+    def __init__(
+        self, processor: MochiAttnProcessor2_0, tp_size: int, tp_rank: int
+    ):
+        self.processor = processor
+        self.tp_size = tp_size
+        self.tp_rank = tp_rank
+
+    @classmethod
+    def from_mochi_processor(
+        cls, processor: MochiAttnProcessor2_0, tp_size: int, tp_rank: int
+    ):
+        return cls(
+            processor=processor,
+            tp_size=tp_size,
+            tp_rank=tp_rank,
+        )
+
+    def __call__(self, *args, **kwargs):
+        image_rotary_emb = kwargs.pop("image_rotary_emb", None)
+        assert image_rotary_emb is not None
+        cos, sin = image_rotary_emb
+        cos = torch.chunk(cos, self.tp_size, dim=-2)[self.tp_rank]
+        sin = torch.chunk(sin, self.tp_size, dim=-2)[self.tp_rank]
+        image_rotary_emb = (cos, sin)
+        return self.processor(
+            *args,
+            image_rotary_emb=image_rotary_emb,
+            **kwargs,
+        )
 
 
 @TensorParallelismPlannerRegister.register("Mochi")
@@ -53,38 +86,41 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):
-        for _, block in transformer.transformer_blocks.named_children():
-            block.attn1.heads //= tp_mesh.size()
 
+        tp_size = tp_mesh.get_group().size()
+        tp_rank = tp_mesh.get_group().rank()
+
+        for name, block in transformer.transformer_blocks.named_children():
+            if block.context_pre_only:
+                logger.info(
+                    f"Skipping tensor parallelism for context pre-only block: {name}"
+                )
+                continue
+            block.attn1.processor = SplitFreqsProcessor.from_mochi_processor(
+                processor=block.attn1.processor,
+                tp_size=tp_size,
+                tp_rank=tp_rank,
+            )
+            block.attn1.heads //= tp_size
             layer_plan = {
+                # "":PrepareModuleInput(),
                 "attn1.to_q": ColwiseParallel(),
                 "attn1.to_k": ColwiseParallel(),
                 "attn1.to_v": ColwiseParallel(),
                 "attn1.to_out.0": RowwiseParallel(),
+                "attn1.add_q_proj": ColwiseParallel(),
+                "attn1.add_k_proj": ColwiseParallel(),
+                "attn1.add_v_proj": ColwiseParallel(),
+                "attn1.to_add_out": RowwiseParallel(),
                 "ff.net.0.proj": ColwiseParallel(),
                 "ff.net.2": RowwiseParallel(),
+                "ff_context.net.0.proj": ColwiseParallel(),
+                "ff_context.net.2": RowwiseParallel(),
                 "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
+                "norm1_context.linear": ColwiseParallel(
+                    output_layouts=Replicate()
+                ),
             }
-
-            if getattr(block.attn1, "to_add_out", None) is not None:
-                text_plan = {
-                    "attn1.add_q_proj": ColwiseParallel(),
-                    "attn1.add_k_proj": ColwiseParallel(),
-                    "attn1.add_v_proj": ColwiseParallel(),
-                    "attn1.to_add_out": RowwiseParallel(),
-                }
-                layer_plan.update(text_plan)
-            if getattr(block.norm1_context, "linear", None) is not None:
-                layer_plan["norm1_context.linear"] = ColwiseParallel(
-                    output_layouts=Replicate()
-                )
-            if getattr(block.norm1_context, "linear_1", None) is not None:
-                layer_plan["norm1_context.linear_1"] = ColwiseParallel(
-                    output_layouts=Replicate()
-                )
-            if getattr(block, "ff_context", None) is not None:
-                layer_plan["ff_context.net.0.proj"] = ColwiseParallel()
-                layer_plan["ff_context.net.2"] = RowwiseParallel()
 
             parallelize_module(
                 module=block,
