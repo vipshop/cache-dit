@@ -34,8 +34,8 @@ pipe = MochiPipeline.from_pretrained(
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
-pipe.enable_vae_tiling()
 pipe.enable_model_cpu_offload(device=device)
+pipe.vae.enable_tiling()
 
 torch.cuda.empty_cache()
 
