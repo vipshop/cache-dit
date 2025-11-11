@@ -1,6 +1,7 @@
 import torch
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -51,6 +52,11 @@ def enable_parallelism(
         f"Enabled parallelism: {parallelism_config.strify(True)}, "
         f"transformer id:{id(transformer)}"
     )
+
+    # NOTE: Workaround for potential memory leak issue after parallelism
+    # enabling, specially for tensor parallelism in native pytorch backend.
+    maybe_empty_cache()
+
     return transformer
 
 
