@@ -73,6 +73,9 @@ if args.cache or args.parallel_type is not None:
 # Enable memory savings
 if GiB() < 40:
     pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
+
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
