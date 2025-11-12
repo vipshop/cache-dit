@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.distributed import DeviceMesh, init_device_mesh
+from torch.distributed._tensor import Replicate
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
     RowwiseParallel,
@@ -65,6 +66,7 @@ class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
                 # Feed-forward networks
                 "ff.net.0.proj": ColwiseParallel(),
                 "ff.net.2": RowwiseParallel(),
+                "norm1.linear": RowwiseParallel(output_layouts=Replicate()),
             }
 
             parallelize_module(
