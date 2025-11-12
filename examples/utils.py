@@ -80,6 +80,7 @@ def get_args(
             # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
             "native",  # native pytorch attention: sdpa
             "_native_cudnn",
+            "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
     parser.add_argument("--perf", action="store_true", default=False)

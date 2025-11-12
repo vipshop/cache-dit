@@ -63,6 +63,7 @@ from .cp_plan_registers import (
 from .cp_plan_flux import FluxContextParallelismPlanner
 from .cp_plan_qwen_image import QwenImageContextParallelismPlanner
 from .cp_plan_wan import WanContextParallelismPlanner
+from .cp_plan_wan import WanVACEContextParallelismPlanner
 from .cp_plan_ltxvideo import LTXVideoContextParallelismPlanner
 from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner
 from .cp_plan_hunyuan import HunyuanVideoContextParallelismPlanner
@@ -96,6 +97,7 @@ __all__ = [
     "FluxContextParallelismPlanner",
     "QwenImageContextParallelismPlanner",
     "WanContextParallelismPlanner",
+    "WanVACEContextParallelismPlanner",
     "LTXVideoContextParallelismPlanner",
     "HunyuanImageContextParallelismPlanner",
     "HunyuanVideoContextParallelismPlanner",
