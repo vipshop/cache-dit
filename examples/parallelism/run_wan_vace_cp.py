@@ -13,6 +13,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import (
 from diffusers.utils import export_to_video, load_image
 
 from utils import (
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -70,7 +71,8 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 # Enable memory savings
-pipe.enable_model_cpu_offload(device=device)
+if GiB() < 40:
+    pipe.enable_model_cpu_offload(device=device)
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
