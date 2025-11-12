@@ -30,6 +30,7 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.vae, AutoencoderKLCogVideoX)  # enable type check for IDE
+torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 
