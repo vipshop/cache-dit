@@ -21,6 +21,7 @@ logger = init_logger(__name__)
 
 @TensorParallelismPlannerRegister.register("CogView3Plus")
 @TensorParallelismPlannerRegister.register("CogView4")
+@TensorParallelismPlannerRegister.register("CogVideoX")
 class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
@@ -68,6 +69,12 @@ class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
                 "ff.net.2": RowwiseParallel(),
                 "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
             }
+
+            # Add norm2.linear if present (CogVideoX)
+            if hasattr(block, "norm2") and hasattr(block.norm2, "linear"):
+                layer_plan["norm2.linear"] = ColwiseParallel(
+                    output_layouts=Replicate()
+                )
 
             parallelize_module(
                 module=block,
