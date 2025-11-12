@@ -3,17 +3,7 @@ import yaml
 
 def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
     try:
-        kwargs: dict = cache_kwargs
-
-        required_keys = [
-            "residual_diff_threshold",
-        ]
-        for key in required_keys:
-            if key not in kwargs:
-                raise ValueError(
-                    f"Configuration file missing required item: {key}"
-                )
-
+        kwargs: dict = cache_kwargs  # refence only
         cache_context_kwargs = {}
         if kwargs.get("enable_taylorseer", False):
             from cache_dit.caching.cache_contexts.calibrators import (
