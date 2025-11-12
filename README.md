@@ -21,7 +21,7 @@
 
 ## 🔥Hightlight
 
-We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
+We are excited to announce that the **first API-stable version (v1.0)** of cache-dit has finally been released!
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified** and **Flexible** Inference Engine for 🤗Diffusers, enabling acceleration with just ♥️**one line**♥️ of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
 
 ```bash
@@ -51,7 +51,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 
-## 🔥 Supported DiTs
+## 🔥Supported DiTs
 
 > [!Tip] 
 > One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **4-bits**: w/ nunchaku + svdq int4.
