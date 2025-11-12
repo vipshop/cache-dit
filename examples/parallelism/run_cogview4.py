@@ -25,10 +25,14 @@ pipe = CogView4Pipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe, enable_separate_cfg=True)
-torch.cuda.empty_cache()
-pipe.enable_model_cpu_offload(device=device)
+# Handle model placement based on parallelism type
+if args.parallel_type == "cp":
+    pipe.to("cuda")
+else:  # tp or no parallelism
+    if args.cache or args.parallel_type is not None:
+        cachify(args, pipe, enable_separate_cfg=True)
+    torch.cuda.empty_cache()
+    pipe.enable_model_cpu_offload(device=device)
 
 prompt = "A vibrant cherry red sports car sits proudly under the gleaming sun, its polished exterior smooth and flawless, casting a mirror-like reflection. The car features a low, aerodynamic body, angular headlights that gaze forward like predatory eyes, and a set of black, high-gloss racing rims that contrast starkly with the red. A subtle hint of chrome embellishes the grille and exhaust, while the tinted windows suggest a luxurious and private interior. The scene conveys a sense of speed and elegance, the car appearing as if it's about to burst into a sprint along a coastal road, with the ocean's azure waves crashing in the background."
 
@@ -56,7 +60,8 @@ if rank == 0:
     stats = cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"cogview4_tp.{strify(args, stats)}.png"
+    parallel_type = args.parallel_type or "none"
+    save_path = f"cogview4_{parallel_type}.{strify(args, stats)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving to {save_path}")
     image.save(save_path)
