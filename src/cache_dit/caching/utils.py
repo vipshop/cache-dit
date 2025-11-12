@@ -39,7 +39,7 @@ def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
             cache_context_kwargs["cache_config"] = BasicCacheConfig()
             cache_context_kwargs["cache_config"].update(**kwargs)
         else:
-            cache_type = str(kwargs.pop("cache_type"))
+            cache_type = str(kwargs.get("cache_type", None))
             if cache_type == "DBCache":
                 from cache_dit.caching.cache_contexts import DBCacheConfig
 
