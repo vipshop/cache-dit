@@ -61,16 +61,9 @@ class CogView3PlusTensorParallelismPlanner(TensorParallelismPlanner):
                 "attn1.to_k": ColwiseParallel(),
                 "attn1.to_v": ColwiseParallel(),
                 "attn1.to_out.0": RowwiseParallel(),
-                # Cross-attention projections
-                "attn2.to_q": ColwiseParallel(),
-                "attn2.to_k": ColwiseParallel(),
-                "attn2.to_v": ColwiseParallel(),
-                "attn2.to_out.0": RowwiseParallel(),
                 # Feed-forward networks
                 "ff.net.0.proj": ColwiseParallel(),
                 "ff.net.2": RowwiseParallel(),
-                "ff_context.net.0.proj": ColwiseParallel(),
-                "ff_context.net.2": RowwiseParallel(),
             }
 
             parallelize_module(
