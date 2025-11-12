@@ -53,6 +53,16 @@ def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
             else:
                 raise ValueError(f"Unsupported cache_type: {cache_type}.")
 
+        if "parallelism_config" in kwargs:
+            from cache_dit.parallelism.parallel_config import (
+                ParallelismConfig,
+            )
+
+            parallelism_kwargs = kwargs.get("parallelism_config", {})
+            cache_context_kwargs["parallelism_config"] = ParallelismConfig(
+                **parallelism_kwargs
+            )
+
         return cache_context_kwargs
 
     except Exception as e:
