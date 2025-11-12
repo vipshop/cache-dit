@@ -21,7 +21,7 @@
 
 ## 🔥Hightlight
 
-We are excited to announce that the **first API-stable version (v1.0)** of cache-dit has finally been released!
+We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
 **[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified** and **Flexible** Inference Engine for 🤗Diffusers, enabling acceleration with just ♥️**one line**♥️ of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
 
 ```bash
