@@ -29,3 +29,7 @@ def main():
                 print(
                     f"block{block_idx}.{name}: Linear({module.in_features} -> {module.out_features})"
                 )
+
+
+if __name__ == "__main__":
+    main()
