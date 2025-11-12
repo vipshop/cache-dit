@@ -189,6 +189,11 @@ def strify(
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, dict):
+        if (
+            cache_type := adapter_or_others.get("cache_type", None)
+        ) is not None:
+            if cache_type in [CacheType.NONE, "NONE", "None"]:
+                return "NONE"
         # Assume context_kwargs
         cache_options = load_options(adapter_or_others)
         cached_steps = None
