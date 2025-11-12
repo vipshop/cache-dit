@@ -12,6 +12,7 @@ from cache_dit.caching import BasicCacheConfig
 from cache_dit.caching import CalibratorConfig
 from cache_dit.caching import FakeDiffusionPipeline
 from cache_dit.parallelism import ParallelismConfig
+from cache_dit.caching import load_options
 from cache_dit.logger import init_logger
 
 
@@ -190,7 +191,7 @@ def strify(
     elif isinstance(adapter_or_others, dict):
 
         # Assume context_kwargs
-        cache_options = adapter_or_others
+        cache_options = load_options(adapter_or_others)
         cached_steps = None
         cache_type = cache_options.get("cache_type", CacheType.NONE)
         stats = None

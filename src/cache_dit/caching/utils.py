@@ -1,10 +1,9 @@
 import yaml
 
 
-def load_cache_options_from_yaml(yaml_file_path):
+def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
     try:
-        with open(yaml_file_path, "r") as f:
-            kwargs: dict = yaml.safe_load(f)
+        kwargs: dict = cache_kwargs
 
         required_keys = [
             "residual_diff_threshold",
@@ -40,7 +39,7 @@ def load_cache_options_from_yaml(yaml_file_path):
             cache_context_kwargs["cache_config"] = BasicCacheConfig()
             cache_context_kwargs["cache_config"].update(**kwargs)
         else:
-            cache_type = kwargs.pop("cache_type")
+            cache_type = str(kwargs.pop("cache_type"))
             if cache_type == "DBCache":
                 from cache_dit.caching.cache_contexts import DBCacheConfig
 
@@ -56,6 +55,15 @@ def load_cache_options_from_yaml(yaml_file_path):
 
         return cache_context_kwargs
 
+    except Exception as e:
+        raise ValueError(f"Error parsing cache configuration. {str(e)}")
+
+
+def load_cache_options_from_yaml(yaml_file_path: str) -> dict:
+    try:
+        with open(yaml_file_path, "r") as f:
+            kwargs: dict = yaml.safe_load(f)
+        return load_cache_options_from_dict(kwargs)
     except FileNotFoundError:
         raise FileNotFoundError(
             f"Configuration file not found: {yaml_file_path}"
@@ -64,5 +72,12 @@ def load_cache_options_from_yaml(yaml_file_path):
         raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
 
 
-def load_options(path: str):
-    return load_cache_options_from_yaml(path)
+def load_options(path_or_dict: str | dict) -> dict:
+    if isinstance(path_or_dict, str):
+        return load_cache_options_from_yaml(path_or_dict)
+    elif isinstance(path_or_dict, dict):
+        return load_cache_options_from_dict(path_or_dict)
+    else:
+        raise ValueError(
+            "Input must be a file path (str) or a configuration dictionary (dict)."
+        )
