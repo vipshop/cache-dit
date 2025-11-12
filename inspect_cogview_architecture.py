@@ -29,31 +29,51 @@ def print_linear_layers(model, model_name):
 
 
 def main():
-    # CogView3-Plus-3B
-    cogview3_path = os.environ.get("COGVIEW3_DIR", "zai-org/CogView3-Plus-3B")
-    try:
-        from diffusers import CogView3PlusPipeline
+    # Get model path from environment variable
+    model_path = os.environ.get("MODEL_DIR")
+    if not model_path:
+        print("Error: Please set MODEL_DIR environment variable")
+        print("Example: export MODEL_DIR=zai-org/CogView3-Plus-3B")
+        return
 
-        print(f"Loading CogView3-Plus-3B from: {cogview3_path}")
-        pipe3 = CogView3PlusPipeline.from_pretrained(
-            cogview3_path, torch_dtype=torch.bfloat16, device_map="cpu"
+    # Infer model type from path
+    model_path_lower = model_path.lower()
+    if "cogview3" in model_path_lower or "3-plus" in model_path_lower:
+        model_name = "CogView3-Plus-3B"
+        pipeline_class = "CogView3PlusPipeline"
+    elif "cogview4" in model_path_lower or "4-6b" in model_path_lower:
+        model_name = "CogView4-6B"
+        pipeline_class = "CogView4Pipeline"
+    else:
+        print(
+            f"Warning: Could not determine model type from path: {model_path}"
         )
-        print_linear_layers(pipe3.transformer, "CogView3-Plus-3B")
-    except Exception as e:
-        print(f"Failed to load CogView3-Plus-3B: {e}")
+        print("Please ensure path contains 'cogview3' or 'cogview4'")
+        return
 
-    # CogView4-6B
-    cogview4_path = os.environ.get("COGVIEW4_DIR", "zai-org/CogView4-6B")
+    print(f"Detected model: {model_name}")
+    print(f"Pipeline class: {pipeline_class}")
+    print(f"Loading from: {model_path}")
+
     try:
-        from diffusers import CogView4Pipeline
+        # Import the appropriate pipeline
+        if pipeline_class == "CogView3PlusPipeline":
+            from diffusers import CogView3PlusPipeline
 
-        print(f"Loading CogView4-6B from: {cogview4_path}")
-        pipe4 = CogView4Pipeline.from_pretrained(
-            cogview4_path, torch_dtype=torch.bfloat16, device_map="cpu"
-        )
-        print_linear_layers(pipe4.transformer, "CogView4-6B")
+            pipe = CogView3PlusPipeline.from_pretrained(
+                model_path, torch_dtype=torch.bfloat16
+            )
+        else:  # CogView4Pipeline
+            from diffusers import CogView4Pipeline
+
+            pipe = CogView4Pipeline.from_pretrained(
+                model_path, torch_dtype=torch.bfloat16
+            )
+
+        print_linear_layers(pipe.transformer, model_name)
+
     except Exception as e:
-        print(f"Failed to load CogView4-6B: {e}")
+        print(f"Failed to load {model_name}: {e}")
 
 
 if __name__ == "__main__":
