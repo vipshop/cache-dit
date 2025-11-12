@@ -28,7 +28,6 @@ pipe = CogView4Pipeline.from_pretrained(
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe, enable_separate_cfg=True)
 
-# Handle model placement based on parallelism type
 torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
 
