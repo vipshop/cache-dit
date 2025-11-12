@@ -19,7 +19,8 @@ logger = init_logger(__name__)
 
 
 @TensorParallelismPlannerRegister.register("CogView3Plus")
-class CogView3PlusTensorParallelismPlanner(TensorParallelismPlanner):
+@TensorParallelismPlannerRegister.register("CogView4")
+class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
         transformer: torch.nn.Module,
