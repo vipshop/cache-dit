@@ -154,7 +154,8 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
         for _, block in transformer.blocks.named_children():
             prepare_block(block)
 
-        for _, block in transformer.vace_blocks.named_children():
-            prepare_block(block)
+        if hasattr(transformer, "vace_blocks"):
+            for _, block in transformer.vace_blocks.named_children():
+                prepare_block(block)
 
         return transformer
