@@ -52,6 +52,7 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
         # for some models.
+        num_blocks = len(transformer.visual_transformer_blocks)
         _cp_plan = {
             # Pattern of blocks.0, split_output=False:
             #     un-split input -> split -> to_qkv/...
@@ -85,7 +86,7 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
                 ),
             },
             # NOTE: Need to gather the visual_embed before final out_layer.
-            f"visual_transformer_blocks.{len(transformer.visual_transformer_blocks) - 1}": ContextParallelOutput(
+            f"visual_transformer_blocks.{num_blocks - 1}": ContextParallelOutput(
                 gather_dim=1, expected_dims=3
             ),
         }
