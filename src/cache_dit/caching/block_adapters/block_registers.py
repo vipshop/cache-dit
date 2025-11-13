@@ -23,6 +23,7 @@ class BlockAdapterRegistry:
         "Chroma",
         "Lumina2",
         "Kandinsky5",
+        "ChronoEdit",
     ]
 
     @classmethod

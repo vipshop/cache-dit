@@ -721,3 +721,26 @@ def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
             "HunyuanImageTransformer2DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )
+
+
+@BlockAdapterRegistry.register("ChronoEdit")
+def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import ChronoEditTransformer3DModel
+
+        assert isinstance(pipe.transformer, ChronoEditTransformer3DModel)
+        # Same as Wan 2.1 adapter
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.blocks,
+            forward_pattern=ForwardPattern.Pattern_2,
+            check_forward_pattern=True,
+            has_separate_cfg=True,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "ChronoEditTransformer3DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )

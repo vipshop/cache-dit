@@ -52,7 +52,7 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         _cp_plan = {
-            # Here is a Transformer level CP plan for Flux, which will
+            # Here is a Transformer level CP plan for Qwen-Image, which will
             # only apply the only 1 split hook (pre_forward) on the forward
             # of Transformer, and gather the output after Transformer forward.
             # Pattern of transformer forward, split_output=False:
