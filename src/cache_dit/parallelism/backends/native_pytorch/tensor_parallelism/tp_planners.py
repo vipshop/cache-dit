@@ -4,6 +4,7 @@ from .tp_plan_flux import FluxTensorParallelismPlanner
 from .tp_plan_hunyuan_dit import HunyuanDiTTensorParallelismPlanner
 from .tp_plan_kandinsky5 import Kandinsky5TensorParallelismPlanner
 from .tp_plan_mochi import MochiTensorParallelismPlanner
+from .tp_plan_ltx_video import LTXVideoTensorParallelismPlanner
 from .tp_plan_pixart import PixArtTensorParallelismPlanner
 from .tp_plan_qwen_image import QwenImageTensorParallelismPlanner
 from .tp_plan_registers import TensorParallelismPlannerRegister
@@ -15,6 +16,7 @@ __all__ = [
     "HunyuanDiTTensorParallelismPlanner",
     "Kandinsky5TensorParallelismPlanner",
     "MochiTensorParallelismPlanner",
+    "LTXVideoTensorParallelismPlanner",
     "PixArtTensorParallelismPlanner",
     "QwenImageTensorParallelismPlanner",
     "TensorParallelismPlannerRegister",
