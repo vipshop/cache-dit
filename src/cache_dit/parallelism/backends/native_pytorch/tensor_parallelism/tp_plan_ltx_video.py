@@ -8,6 +8,7 @@ from torch.distributed.tensor.parallel import (
     RowwiseParallel,
     parallelize_module,
 )
+from diffusers.models.transformers.transformer_ltx import LTXVideoAttnProcessor
 
 from cache_dit.logger import init_logger
 from cache_dit.parallelism.parallel_config import ParallelismConfig
@@ -75,6 +76,39 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
+class SplitFreqsProcessor:
+    def __init__(
+        self, processor: LTXVideoAttnProcessor, tp_size: int, tp_rank: int
+    ):
+        self.processor = processor
+        self.tp_size = tp_size
+        self.tp_rank = tp_rank
+
+    @classmethod
+    def from_attn_processor(
+        cls, processor: LTXVideoAttnProcessor, tp_size: int, tp_rank: int
+    ):
+        return cls(
+            processor=processor,
+            tp_size=tp_size,
+            tp_rank=tp_rank,
+        )
+
+    def __call__(self, *args, **kwargs):
+        assert len(args) == 5
+        assert isinstance(args[-1], tuple)
+        image_rotary_emb = args[-1]
+        assert image_rotary_emb is not None
+        cos, sin = image_rotary_emb
+        cos = torch.chunk(cos, self.tp_size, dim=-1)[self.tp_rank]
+        sin = torch.chunk(sin, self.tp_size, dim=-1)[self.tp_rank]
+        image_rotary_emb = (cos, sin)
+        return self.processor(
+            *(*args[:-1], image_rotary_emb),
+            **kwargs,
+        )
+
+
 @TensorParallelismPlannerRegister.register("LTXVideo")
 class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
@@ -108,9 +142,12 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):
+        tp_size = tp_mesh.get_group().size()
+        tp_rank = tp_mesh.get_group().rank()
+
         def prepare_block(block: nn.Module):
-            block.attn1.heads //= tp_mesh.size()
-            block.attn2.heads //= tp_mesh.size()
+            block.attn1.heads //= tp_size
+            block.attn2.heads //= tp_size
             layer_plan = {
                 "attn1.to_q": ColwiseParallel(),
                 "attn1.to_k": ColwiseParallel(),
@@ -144,6 +181,11 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
             )
 
         for _, block in transformer.transformer_blocks.named_children():
+            block.attn1.processor = SplitFreqsProcessor.from_attn_processor(
+                processor=block.attn1.processor,
+                tp_size=tp_size,
+                tp_rank=tp_rank,
+            )
             prepare_block(block)
 
         return transformer
