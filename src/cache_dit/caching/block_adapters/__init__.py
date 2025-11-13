@@ -1,3 +1,4 @@
+import os
 from cache_dit.caching.forward_pattern import ForwardPattern
 from cache_dit.caching.block_adapters.block_adapters import BlockAdapter
 from cache_dit.caching.block_adapters.block_adapters import (
@@ -13,26 +14,48 @@ from cache_dit.caching.block_adapters.block_registers import (
 def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
     from cache_dit.utils import is_diffusers_at_least_0_3_5
+    from cache_dit.caching.patch_functors import FluxPatchFunctor
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
     transformer_cls_name: str = pipe.transformer.__class__.__name__
     if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith(
         "Nunchaku"
     ):
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
-            ],
-            check_forward_pattern=True,
-            **kwargs,
+        # NOTE: Users should never use this variable directly, it is only for
+        # developer to control whether to enable dummy blocks, default to enabled.
+        _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS = (
+            os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1") == "1"
         )
+
+        if not _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS:
+            return BlockAdapter(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=[
+                    pipe.transformer.transformer_blocks,
+                    pipe.transformer.single_transformer_blocks,
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_1,
+                    ForwardPattern.Pattern_1,
+                ],
+                check_forward_pattern=True,
+                **kwargs,
+            )
+        else:
+            return BlockAdapter(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=(
+                    pipe.transformer.transformer_blocks
+                    + pipe.transformer.single_transformer_blocks
+                ),
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=["single_transformer_blocks"],
+                patch_functor=FluxPatchFunctor(),
+                forward_pattern=ForwardPattern.Pattern_1,
+                **kwargs,
+            )
     else:
         return BlockAdapter(
             pipe=pipe,
