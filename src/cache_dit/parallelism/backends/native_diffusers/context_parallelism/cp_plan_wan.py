@@ -1,7 +1,7 @@
 import torch
 from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers import WanTransformer3DModel, WanVACETransformer3DModel
+from diffusers import WanVACETransformer3DModel
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -25,9 +25,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-# TODO: Add WanVACETransformer3DModel context parallelism planner.
-# NOTE: Maybe use full name to avoid name conflict between
-# WanTransformer3DModel and WanVACETransformer3DModel?
+@ContextParallelismPlannerRegister.register("ChronoEditTransformer3D")
 @ContextParallelismPlannerRegister.register("WanTransformer3D")
 class WanContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
@@ -39,9 +37,6 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
             transformer is not None
             and self._cp_planner_preferred_native_diffusers
         ):
-            assert isinstance(
-                transformer, WanTransformer3DModel
-            ), "Transformer must be an instance of WanTransformer3DModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
