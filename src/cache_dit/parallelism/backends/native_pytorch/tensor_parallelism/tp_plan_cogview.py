@@ -19,6 +19,7 @@ from .tp_plan_registers import (
 logger = init_logger(__name__)
 
 
+@TensorParallelismPlannerRegister.register("ConsisID")
 @TensorParallelismPlannerRegister.register("CogView3Plus")
 @TensorParallelismPlannerRegister.register("CogView4")
 @TensorParallelismPlannerRegister.register("CogVideoX")
