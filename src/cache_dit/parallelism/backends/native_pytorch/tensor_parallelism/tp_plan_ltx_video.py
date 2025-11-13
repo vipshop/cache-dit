@@ -115,6 +115,7 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
+        **kwargs,
     ) -> torch.nn.Module:
         assert (
             parallelism_config.tp_size is not None
