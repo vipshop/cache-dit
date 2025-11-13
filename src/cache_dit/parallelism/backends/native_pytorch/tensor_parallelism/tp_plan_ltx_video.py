@@ -120,8 +120,8 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
                 "attn2.to_k": ColwiseParallel(),
                 "attn2.to_v": ColwiseParallel(),
                 "attn2.to_out.0": RowwiseParallel(),
-                "ffn.net.0.proj": ColwiseParallel(),
-                "ffn.net.2": RowwiseParallel(),
+                "ff.net.0.proj": ColwiseParallel(),
+                "ff.net.2": RowwiseParallel(),
             }
 
             parallelize_module(
