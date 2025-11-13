@@ -21,8 +21,9 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith(
         "Nunchaku"
     ):
-        # NOTE: Users should never use this variable directly, it is only for
-        # developer to control whether to enable dummy blocks, default to enabled.
+        # NOTE(DefTruth): Users should never use this variable directly,
+        # it is only for developers to control whether to enable dummy
+        # blocks, default to enabled.
         _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS = (
             os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1") == "1"
         )
