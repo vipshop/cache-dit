@@ -109,7 +109,7 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):
-        for _, block in transformer.blocks.named_children():
+        def prepare_block(block: nn.Module):
             block.attn1.heads //= tp_mesh.size()
             block.attn2.heads //= tp_mesh.size()
             layer_plan = {
@@ -151,7 +151,11 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
                     tp_mesh, block.attn2.norm_added_k
                 )
 
-        # TODO(DefTruth): parallelize other modules if needed, e.g., vace
-        # blocks for WanVACETransformerBlock in WanVACETransformer3DModel.
+        for _, block in transformer.blocks.named_children():
+            prepare_block(block)
+
+        if hasattr(transformer, "vace_blocks"):
+            for _, block in transformer.vace_blocks.named_children():
+                prepare_block(block)
 
         return transformer

@@ -70,6 +70,7 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 # Enable memory savings
+torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
