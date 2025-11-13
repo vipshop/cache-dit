@@ -5,7 +5,11 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import Transformer2DModel, PixArtSigmaPipeline, PixArtPipeline
+from diffusers import (
+    Transformer2DModel,
+    PixArtSigmaPipeline,
+    PixArtAlphaPipeline,
+)
 from utils import (
     get_args,
     strify,
@@ -34,7 +38,7 @@ model_id = os.environ.get(
 if "Sigma" in model_id:
     pipeline_class = PixArtSigmaPipeline
 else:
-    pipeline_class = PixArtPipeline
+    pipeline_class = PixArtAlphaPipeline
 
 transformer = Transformer2DModel.from_pretrained(
     model_id,
