@@ -57,6 +57,8 @@ pipe = pipeline_class.from_pretrained(
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
+torch.cuda.empty_cache()
+pipe.enable_model_cpu_offload(device=device)
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
