@@ -22,7 +22,7 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 pipe = CogVideoXPipeline.from_pretrained(
-    os.environ.get("COGVIDEOX_1_5_DIR", "THUDM/CogVideoX1.5-5b"),
+    os.environ.get("COGVIDEOX_1_5_DIR", "zai-org/CogVideoX1.5-5B"),
     torch_dtype=torch.bfloat16,
 )
 
@@ -30,6 +30,7 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.vae, AutoencoderKLCogVideoX)  # enable type check for IDE
+torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
 pipe.vae.enable_tiling()
 
@@ -72,7 +73,8 @@ if rank == 0:
     stats = cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"cogvideox1.5.{strify(args, stats)}.mp4"
+    parallel_type = args.parallel_type or "none"
+    save_path = f"cogvideox_1.5_{parallel_type}.{strify(args, stats)}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving video to {save_path}")
     export_to_video(video, save_path, fps=8)
