@@ -143,7 +143,7 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
                 tp_mesh, block.attn2.norm_k
             )
 
-        for _, block in transformer.blocks.named_children():
+        for _, block in transformer.transformer_blocks.named_children():
             prepare_block(block)
 
         return transformer
