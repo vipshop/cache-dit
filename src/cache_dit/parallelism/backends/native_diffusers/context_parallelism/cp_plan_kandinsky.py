@@ -54,13 +54,13 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
         # for some models.
         num_blocks = len(transformer.visual_transformer_blocks)
         _cp_plan = {
-            # Pattern of blocks.0, split_output=False:
+            # Pattern of blocks 0, split_output=False:
             #     un-split input -> split -> to_qkv/...
             #     -> all2all
             #     -> attn (local head, full seqlen)
             #     -> all2all
             #     -> splited output
-            #     (only split hidden_states, not encoder_hidden_states)
+            #     (only split visual_embed, not text_embed)
             "visual_transformer_blocks.0": {
                 "visual_embed": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
@@ -72,11 +72,11 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
             #     -> attn (local head, full seqlen)
             #     -> all2all
             #     -> splited output
-            #    (only split encoder_hidden_states, not hidden_states.
+            #    (only split text_embed, not hidden_states.
             #    hidden_states has been automatically split in previous
             #    block by all2all comm op after attn)
-            # The `encoder_hidden_states` will [NOT] be changed after each block forward,
-            # so we need to split it at [ALL] block by the inserted split hook.
+            # The `text_embed` and `rope` will [NOT] be changed after each block ,
+            # forward, so we need to split it at [ALL] block by the inserted hook.
             "visual_transformer_blocks.*": {
                 "text_embed": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
@@ -85,7 +85,8 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
                     split_dim=1, expected_dims=6, split_output=False
                 ),
             },
-            # NOTE: Need to gather the visual_embed before final out_layer.
+            # NOTE: Need to gather the visual_embed before final out_layer, because
+            # the flatten operation before out_layer needs the full visual_embed.
             f"visual_transformer_blocks.{num_blocks - 1}": ContextParallelOutput(
                 gather_dim=1, expected_dims=3
             ),
