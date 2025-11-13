@@ -75,6 +75,7 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
+@TensorParallelismPlannerRegister.register("ChronoEdit")
 @TensorParallelismPlannerRegister.register("Wan")
 class WanTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
