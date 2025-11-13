@@ -75,9 +75,8 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
-@TensorParallelismPlannerRegister.register("ChronoEdit")
-@TensorParallelismPlannerRegister.register("Wan")
-class WanTensorParallelismPlanner(TensorParallelismPlanner):
+@TensorParallelismPlannerRegister.register("LTXVideo")
+class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
         transformer: torch.nn.Module,
@@ -124,10 +123,7 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
                 "ffn.net.0.proj": ColwiseParallel(),
                 "ffn.net.2": RowwiseParallel(),
             }
-            if getattr(block.attn2, "add_k_proj", None):
-                layer_plan["attn2.add_k_proj"] = ColwiseParallel()
-            if getattr(block.attn2, "add_v_proj", None):
-                layer_plan["attn2.add_v_proj"] = ColwiseParallel()
+
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,
@@ -146,16 +142,8 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
             block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(
                 tp_mesh, block.attn2.norm_k
             )
-            if getattr(block.attn2, "norm_added_k", None):
-                block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
-                    tp_mesh, block.attn2.norm_added_k
-                )
 
         for _, block in transformer.blocks.named_children():
             prepare_block(block)
-
-        if hasattr(transformer, "vace_blocks"):
-            for _, block in transformer.vace_blocks.named_children():
-                prepare_block(block)
 
         return transformer
