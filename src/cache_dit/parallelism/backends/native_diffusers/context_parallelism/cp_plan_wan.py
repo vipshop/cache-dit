@@ -181,6 +181,7 @@ def __patch_WanAttnProcessor__call__(
     attention_mask: Optional[torch.Tensor] = None,
     rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
 ) -> torch.Tensor:
+    print("call __patch_WanAttnProcessor__call__")
     encoder_hidden_states_img = None
     if attn.add_k_proj is not None:
         # 512 is the context length of the text encoder, hardcoded for now
