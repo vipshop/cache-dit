@@ -100,7 +100,7 @@ def run_pipe(warmup: bool = False):
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
         num_inference_steps=50 if not warmup else 5,
-        generator=torch.Generator("cpu").manual_seed(0),
+        generator=torch.Generator("cpu").manual_seed(42),
     ).frames[0]
     output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))
     return output
