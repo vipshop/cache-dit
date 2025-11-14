@@ -80,7 +80,6 @@ else:
 
 assert isinstance(pipe.vae, AutoencoderKLWan)
 pipe.vae.enable_tiling()
-pipe.vae.enable_slicing()
 
 image = load_image("../data/chrono_edit_example.png")
 
