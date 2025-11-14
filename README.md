@@ -10,7 +10,7 @@
         <img src=https://img.shields.io/badge/Models-30+-orange.svg >
     </h2>
   </p>
-<img src=./assets/speedup_v2.png>
+<img src=./assets/speedup.png>
 </div>
 
 <!--
