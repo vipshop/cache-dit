@@ -12,7 +12,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class BlockAdapterRegistry:
+class BlockAdapterRegister:
     _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
     _predefined_adapters_has_separate_cfg: List[str] = [
         "QwenImage",

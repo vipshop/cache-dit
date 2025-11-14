@@ -11,7 +11,7 @@ from cache_dit.caching.cache_types import CacheType
 from cache_dit.caching.block_adapters import BlockAdapter
 from cache_dit.caching.block_adapters import FakeDiffusionPipeline
 from cache_dit.caching.block_adapters import ParamsModifier
-from cache_dit.caching.block_adapters import BlockAdapterRegistry
+from cache_dit.caching.block_adapters import BlockAdapterRegister
 from cache_dit.caching.cache_contexts import ContextManager
 from cache_dit.caching.cache_contexts import BasicCacheConfig
 from cache_dit.caching.cache_contexts import CalibratorConfig
@@ -49,13 +49,13 @@ class CachedAdapter:
         if isinstance(
             pipe_or_adapter, (DiffusionPipeline, torch.nn.Module, ModelMixin)
         ):
-            if BlockAdapterRegistry.is_supported(pipe_or_adapter):
+            if BlockAdapterRegister.is_supported(pipe_or_adapter):
                 logger.info(
                     f"{pipe_or_adapter.__class__.__name__} is officially "
                     "supported by cache-dit. Use it's pre-defined BlockAdapter "
                     "directly!"
                 )
-                block_adapter = BlockAdapterRegistry.get_adapter(
+                block_adapter = BlockAdapterRegister.get_adapter(
                     pipe_or_adapter
                 )
                 assert block_adapter is not None, (
@@ -140,7 +140,7 @@ class CachedAdapter:
         assert cache_config is not None, "cache_config can not be None."
         if cache_config.enable_separate_cfg is None:
             # Check cfg for some specific case if users don't set it as True
-            if BlockAdapterRegistry.has_separate_cfg(block_adapter):
+            if BlockAdapterRegister.has_separate_cfg(block_adapter):
                 cache_config.enable_separate_cfg = True
                 logger.info(
                     f"Use custom 'enable_separate_cfg' from BlockAdapter: True. "
@@ -148,7 +148,7 @@ class CachedAdapter:
                 )
             else:
                 cache_config.enable_separate_cfg = (
-                    BlockAdapterRegistry.has_separate_cfg(block_adapter.pipe)
+                    BlockAdapterRegister.has_separate_cfg(block_adapter.pipe)
                 )
                 logger.info(
                     f"Use default 'enable_separate_cfg' from block adapter "

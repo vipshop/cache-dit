@@ -506,10 +506,10 @@ def _summary(
 def supported_matrix() -> str | None:
     try:
         from cache_dit.caching.block_adapters.block_registers import (
-            BlockAdapterRegistry,
+            BlockAdapterRegister,
         )
 
-        _pipelines_supported_cache = BlockAdapterRegistry.supported_pipelines()[
+        _pipelines_supported_cache = BlockAdapterRegister.supported_pipelines()[
             1
         ]
         _pipelines_supported_cache += [

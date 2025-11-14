@@ -56,6 +56,7 @@ def get_args(
             "int8_weight_only",
             "int4",
             "int4_weight_only",
+            "bitsandbytes_4bit",
         ],
     )
     parser.add_argument(

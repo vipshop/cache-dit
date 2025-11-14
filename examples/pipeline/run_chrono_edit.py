@@ -22,7 +22,6 @@ import cache_dit
 args = get_args()
 print(args)
 
-
 model_id = "nvidia/ChronoEdit-14B-Diffusers"
 model_id = os.environ.get("CHRONO_EDIT_DIR", model_id)
 
@@ -36,20 +35,29 @@ transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
 )
 
+enable_quantization = (
+    args.quantize and args.quantize_type == "bitsandbytes_4bit"
+)
+
 pipe = ChronoEditPipeline.from_pretrained(
     model_id,
     vae=vae,
     image_encoder=image_encoder,
     transformer=transformer,
     torch_dtype=torch.bfloat16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["text_encoder"],
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            # text_encoder: ~ 6GiB, transformer: ~ 8GiB, total: ~14GiB
+            components_to_quantize=["text_encoder", "transformer"],
+        )
+        if enable_quantization
+        else None
     ),
 )
 

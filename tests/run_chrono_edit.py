@@ -1,34 +1,25 @@
 import os
-import sys
-
-sys.path.append("..")
-
 import time
 import torch
 import numpy as np
 from PIL import Image
+import torch.distributed as dist
 from diffusers import (
     AutoencoderKLWan,
     ChronoEditTransformer3DModel,
     ChronoEditPipeline,
 )
 from diffusers.quantizers import PipelineQuantizationConfig
+from diffusers import ContextParallelConfig
 from diffusers.utils import load_image
 from transformers import CLIPVisionModel
-from utils import (
-    cachify,
-    get_args,
-    maybe_destroy_distributed,
-    maybe_init_distributed,
-    strify,
-)
 
-import cache_dit
 
-args = get_args()
-print(args)
-
-rank, device = maybe_init_distributed(args)
+dist.init_process_group(backend="nccl")
+rank = dist.get_rank()
+device = torch.device("cuda", rank % torch.cuda.device_count())
+world_size = dist.get_world_size()
+torch.cuda.set_device(device)
 
 model_id = "nvidia/ChronoEdit-14B-Diffusers"
 model_id = os.environ.get("CHRONO_EDIT_DIR", model_id)
@@ -41,10 +32,6 @@ vae = AutoencoderKLWan.from_pretrained(
 )
 transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
-)
-
-enable_quantization = (
-    args.quantize and args.quantize_type == "bitsandbytes_4bit"
 )
 
 pipe = ChronoEditPipeline.from_pretrained(
@@ -64,24 +51,14 @@ pipe = ChronoEditPipeline.from_pretrained(
             # text_encoder: ~ 6GiB, transformer: ~ 8GiB, total: ~14GiB
             components_to_quantize=["text_encoder", "transformer"],
         )
-        if enable_quantization
-        else None
     ),
-)
+).to(device)
 
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
-
-# Enable memory savings
-if not enable_quantization:
-    pipe.enable_model_cpu_offload(device=device)
-else:
-    pipe.to(device)
-
+torch.cuda.empty_cache()
 assert isinstance(pipe.vae, AutoencoderKLWan)
 pipe.vae.enable_tiling()
 
-image = load_image("../data/chrono_edit_example.png")
+image = load_image("../examples/data/chrono_edit_example.png")
 
 max_area = 720 * 1280
 aspect_ratio = image.height / image.width
@@ -97,6 +74,13 @@ prompt = (
     "The mouse’s pose should be natural—perhaps sitting upright with paws resting lightly on the rim or submerged in the tea. The teacup’s floral design, gold trim, and warm lighting must remain unchanged to preserve the original aesthetic. The steam should softly swirl around the mouse, enhancing the spa-like, whimsical mood."
 )
 
+assert isinstance(pipe.transformer, ChronoEditTransformer3DModel)
+pipe.transformer.set_attention_backend("native")
+if world_size > 1:
+    pipe.transformer.enable_parallelism(
+        config=ContextParallelConfig(ulysses_degree=world_size)
+    )
+
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
@@ -110,9 +94,7 @@ def run_pipe(warmup: bool = False):
         guidance_scale=5.0,
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
-        num_inference_steps=(
-            (50 if not warmup else 1) if args.steps is None else args.steps
-        ),
+        num_inference_steps=50 if not warmup else 2,
         generator=torch.Generator("cuda").manual_seed(0),
     ).frames[0]
     output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))
@@ -124,12 +106,11 @@ output = run_pipe()
 end = time.time()
 
 if rank == 0:
-    stats = cache_dit.summary(pipe)
-
     time_cost = end - start
-    save_path = f"chrono-edit.{strify(args, stats)}.png"
+    save_path = f"chrono-edit.{world_size}gpus.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     output.save(save_path)
 
-maybe_destroy_distributed()
+if dist.is_initialized():
+    dist.destroy_process_group()

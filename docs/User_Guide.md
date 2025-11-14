@@ -299,7 +299,7 @@ For any PATTERN not in {0...5}, we introduced the simple abstract concept of **P
 Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
-@BlockAdapterRegistry.register("HiDream")
+@BlockAdapterRegister.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HiDreamImageTransformer2DModel
     from cache_dit.caching.patch_functors import HiDreamPatchFunctor
