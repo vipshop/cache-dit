@@ -84,7 +84,7 @@ height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
-prompt = "Transform to high-end PVC scale figure"  # will padding to max length internally, 512.
+prompt = "Transform to high-end PVC scale figure."
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
