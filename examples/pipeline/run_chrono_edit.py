@@ -62,7 +62,7 @@ assert isinstance(pipe.vae, AutoencoderKLWan)
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
-image = load_image("../data/chrono_edit_example.jpeg")
+image = load_image("../data/chrono_edit_example.png")
 
 max_area = 720 * 1280
 aspect_ratio = image.height / image.width
@@ -73,11 +73,7 @@ height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
-prompt = (
-    "The women say 'Hello, ChronoEdit!' and transform this image to "
-    "high-end PVC scale figure with detailed textures and realistic "
-    "lighting and shadows that make it look like a photograph"
-)
+prompt = "Transform to high-end PVC scale figure"  # will padding to max length internally, 512.
 
 
 def get_prompt_length(prompt: str) -> int:

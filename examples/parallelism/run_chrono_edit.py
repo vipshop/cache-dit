@@ -49,14 +49,18 @@ pipe = ChronoEditPipeline.from_pretrained(
     image_encoder=image_encoder,
     transformer=transformer,
     torch_dtype=torch.bfloat16,
-    quantization_config=PipelineQuantizationConfig(
-        quant_backend="bitsandbytes_4bit",
-        quant_kwargs={
-            "load_in_4bit": True,
-            "bnb_4bit_quant_type": "nf4",
-            "bnb_4bit_compute_dtype": torch.bfloat16,
-        },
-        components_to_quantize=["text_encoder"],
+    quantization_config=(
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            components_to_quantize=["text_encoder"],
+        )
+        if args.quantize
+        else None
     ),
 )
 
@@ -69,7 +73,7 @@ assert isinstance(pipe.vae, AutoencoderKLWan)
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
-image = load_image("../data/chrono_edit_example.jpeg")
+image = load_image("../data/chrono_edit_example.png")
 
 max_area = 720 * 1280
 aspect_ratio = image.height / image.width
@@ -80,11 +84,7 @@ height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
-prompt = (
-    "The women say 'Hello, ChronoEdit!' and transform this image to "
-    "high-end PVC scale figure with detailed textures and realistic "
-    "lighting and shadows that make it look like a photograph"
-)  # will padding to max length internally, 512.
+prompt = "Transform to high-end PVC scale figure"  # will padding to max length internally, 512.
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
