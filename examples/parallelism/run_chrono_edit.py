@@ -6,13 +6,14 @@ sys.path.append("..")
 import time
 import torch
 import numpy as np
+from PIL import Image
 from diffusers import (
     AutoencoderKLWan,
     ChronoEditTransformer3DModel,
     ChronoEditPipeline,
 )
 from diffusers.quantizers import PipelineQuantizationConfig
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import load_image
 from transformers import CLIPVisionModel
 from utils import (
     cachify,
@@ -68,9 +69,7 @@ assert isinstance(pipe.vae, AutoencoderKLWan)
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
-image = load_image(
-    "https://huggingface.co/spaces/nvidia/ChronoEdit/resolve/main/examples/3.png"
-)
+image = load_image("../data/chrono_edit_example.jpeg")
 
 max_area = 720 * 1280
 aspect_ratio = image.height / image.width
@@ -82,9 +81,31 @@ width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
 prompt = (
-    "The user wants to transform the image by adding a small, cute mouse sitting inside the floral teacup, enjoying a spa bath. The mouse should appear relaxed and cheerful, with a tiny white bath towel draped over its head like a turban. It should be positioned comfortably in the cup's liquid, with gentle steam rising around it to blend with the cozy atmosphere. "
-    "The mouse's pose should be natural—perhaps sitting upright with paws resting lightly on the rim or submerged in the tea. The teacup's floral design, gold trim, and warm lighting must remain unchanged to preserve the original aesthetic. The steam should softly swirl around the mouse, enhancing the spa-like, whimsical mood."
+    "The women say 'Hello, ChronoEdit!' and transform this image to "
+    "high-end PVC scale figure with detailed textures and realistic "
+    "lighting and shadows that make it look like a photograph."
 )
+
+
+def get_prompt_length(prompt: str) -> int:
+    return len(pipe.tokenizer(prompt, return_tensors="pt").input_ids[0])
+
+
+# Ensure prompt length is divisible by number of devices for context parallelism
+prompt_len = get_prompt_length(prompt)
+print(f"Original prompt length: {prompt_len}")
+if args.parallel_type in ["ulysses", "ring"]:
+    num_partitions = torch.cuda.device_count()
+    if prompt_len % num_partitions != 0:
+        new_len = ((prompt_len // num_partitions) + 1) * num_partitions
+        pad_len = new_len - prompt_len
+        prompt += " " * pad_len
+        new_prompt_len = get_prompt_length(prompt)
+        assert new_prompt_len == new_len, f"{new_prompt_len} != {new_len}"
+        print(
+            f"Adjusted prompt length from {prompt_len} to {new_prompt_len} "
+            f"by padding {new_prompt_len} spaces."
+        )
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
@@ -95,13 +116,14 @@ def run_pipe(warmup: bool = False):
         prompt=prompt,
         height=height,
         width=width,
-        num_frames=49 if not warmup else 5,
+        num_frames=5,
         guidance_scale=5.0,
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
-        num_inference_steps=50,
+        num_inference_steps=50 if not warmup else 5,
         generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
+    output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))
     return output
 
 
@@ -116,9 +138,9 @@ if rank == 0:
     stats = cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"chrono-edit.{strify(args, stats)}.mp4"
+    save_path = f"chrono-edit.{strify(args, stats)}.png"
     print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving video to {save_path}")
-    export_to_video(output, save_path, fps=16)
+    print(f"Saving image to {save_path}")
+    output.save(save_path)
 
 maybe_destroy_distributed()
