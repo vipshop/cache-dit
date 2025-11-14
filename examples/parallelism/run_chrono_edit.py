@@ -111,7 +111,7 @@ def run_pipe(warmup: bool = False):
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
         num_inference_steps=(
-            (50 if not warmup else 1) if args.steps is None else args.steps
+            (50 if not warmup else 5) if args.steps is None else args.steps
         ),
         generator=torch.Generator("cuda").manual_seed(0),
     ).frames[0]
