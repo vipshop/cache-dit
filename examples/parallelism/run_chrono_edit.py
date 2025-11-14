@@ -75,11 +75,11 @@ if args.cache or args.parallel_type is not None:
 # Enable memory savings
 if not enable_quantization:
     pipe.enable_model_cpu_offload(device=device)
-    assert isinstance(pipe.vae, AutoencoderKLWan)
-    pipe.vae.enable_tiling()
-    pipe.vae.enable_slicing()
 else:
     pipe.to(device)
+
+assert isinstance(pipe.vae, AutoencoderKLWan)
+pipe.vae.enable_tiling()
 
 image = load_image("../data/chrono_edit_example.png")
 
