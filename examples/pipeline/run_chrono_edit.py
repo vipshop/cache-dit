@@ -73,11 +73,10 @@ height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
-prompt = "Transform to high-end PVC scale figure"  # will padding to max length internally, 512.
-
-
-def get_prompt_length(prompt: str) -> int:
-    return len(pipe.tokenizer(prompt, return_tensors="pt").input_ids[0])
+prompt = (
+    "The user wants to transform the image by adding a small, cute mouse sitting inside the floral teacup, enjoying a spa bath. The mouse should appear relaxed and cheerful, with a tiny white bath towel draped over its head like a turban. It should be positioned comfortably in the cup’s liquid, with gentle steam rising around it to blend with the cozy atmosphere. "
+    "The mouse’s pose should be natural—perhaps sitting upright with paws resting lightly on the rim or submerged in the tea. The teacup’s floral design, gold trim, and warm lighting must remain unchanged to preserve the original aesthetic. The steam should softly swirl around the mouse, enhancing the spa-like, whimsical mood."
+)
 
 
 def run_pipe(warmup: bool = False):
@@ -90,15 +89,14 @@ def run_pipe(warmup: bool = False):
         guidance_scale=5.0,
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
-        num_inference_steps=50 if not warmup else 5,
+        num_inference_steps=(
+            (50 if not warmup else 1) if args.steps is None else args.steps
+        ),
         generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))
     return output
 
-
-# warmup
-run_pipe(warmup=True)
 
 start = time.time()
 output = run_pipe()
