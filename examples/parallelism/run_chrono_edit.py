@@ -105,7 +105,7 @@ def run_pipe(warmup: bool = False):
         num_inference_steps=(
             (50 if not warmup else 1) if args.steps is None else args.steps
         ),
-        generator=torch.Generator("cpu").manual_seed(0),
+        generator=torch.Generator("cuda").manual_seed(0),
     ).frames[0]
     output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))
     return output

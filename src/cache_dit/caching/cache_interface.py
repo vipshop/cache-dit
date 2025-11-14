@@ -3,7 +3,7 @@ from typing import Any, Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.caching.cache_types import CacheType
 from cache_dit.caching.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters import BlockAdapterRegistry
+from cache_dit.caching.block_adapters import BlockAdapterRegister
 from cache_dit.caching.cache_adapters import CachedAdapter
 from cache_dit.caching.cache_contexts import BasicCacheConfig
 from cache_dit.caching.cache_contexts import DBCacheConfig
@@ -294,7 +294,7 @@ def enable_cache(
 
         transformers = []
         if isinstance(pipe_or_adapter, DiffusionPipeline):
-            adapter = BlockAdapterRegistry.get_adapter(
+            adapter = BlockAdapterRegister.get_adapter(
                 pipe_or_adapter, skip_post_init=cache_config is None
             )
             if adapter is None:
@@ -351,10 +351,10 @@ def disable_cache(
 def supported_pipelines(
     **kwargs,
 ) -> Tuple[int, List[str]]:
-    return BlockAdapterRegistry.supported_pipelines(**kwargs)
+    return BlockAdapterRegister.supported_pipelines(**kwargs)
 
 
 def get_adapter(
     pipe: DiffusionPipeline | str | Any,
 ) -> BlockAdapter:
-    return BlockAdapterRegistry.get_adapter(pipe)
+    return BlockAdapterRegister.get_adapter(pipe)

@@ -7,7 +7,7 @@ from cache_dit.caching.params_modifier import ParamsModifier
 from cache_dit.caching.patch_functors import PatchFunctor
 
 from cache_dit.caching.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters import BlockAdapterRegistry
+from cache_dit.caching.block_adapters import BlockAdapterRegister
 from cache_dit.caching.block_adapters import FakeDiffusionPipeline
 
 from cache_dit.caching.cache_contexts import BasicCacheConfig
