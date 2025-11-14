@@ -43,6 +43,10 @@ transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
 )
 
+enable_quantization = (
+    args.quantize and args.quantize_type == "bitsandbytes_4bit"
+)
+
 pipe = ChronoEditPipeline.from_pretrained(
     model_id,
     vae=vae,
@@ -57,9 +61,10 @@ pipe = ChronoEditPipeline.from_pretrained(
                 "bnb_4bit_quant_type": "nf4",
                 "bnb_4bit_compute_dtype": torch.bfloat16,
             },
-            components_to_quantize=["text_encoder"],
+            # text_encoder: ~ 6GiB, transformer: ~ 8GiB, total: ~14GiB
+            components_to_quantize=["text_encoder", "transformer"],
         )
-        if args.quantize
+        if enable_quantization
         else None
     ),
 )
@@ -68,10 +73,13 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 # Enable memory savings
-pipe.enable_model_cpu_offload(device=device)
-assert isinstance(pipe.vae, AutoencoderKLWan)
-pipe.vae.enable_tiling()
-pipe.vae.enable_slicing()
+if not enable_quantization:
+    pipe.enable_model_cpu_offload(device=device)
+    assert isinstance(pipe.vae, AutoencoderKLWan)
+    pipe.vae.enable_tiling()
+    pipe.vae.enable_slicing()
+else:
+    pipe.to(device)
 
 image = load_image("../data/chrono_edit_example.png")
 
