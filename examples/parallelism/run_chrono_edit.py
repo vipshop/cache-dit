@@ -83,29 +83,8 @@ image = image.resize((width, height))
 prompt = (
     "The women say 'Hello, ChronoEdit!' and transform this image to "
     "high-end PVC scale figure with detailed textures and realistic "
-    "lighting and shadows that make it look like a photograph."
-)
-
-
-def get_prompt_length(prompt: str) -> int:
-    return len(pipe.tokenizer(prompt, return_tensors="pt").input_ids[0])
-
-
-# Ensure prompt length is divisible by number of devices for context parallelism
-prompt_len = get_prompt_length(prompt)
-print(f"Original prompt length: {prompt_len}")
-if args.parallel_type in ["ulysses", "ring"]:
-    num_partitions = torch.cuda.device_count()
-    if prompt_len % num_partitions != 0:
-        new_len = ((prompt_len // num_partitions) + 1) * num_partitions
-        pad_len = new_len - prompt_len
-        prompt += " " * pad_len
-        new_prompt_len = get_prompt_length(prompt)
-        assert new_prompt_len == new_len, f"{new_prompt_len} != {new_len}"
-        print(
-            f"Adjusted prompt length from {prompt_len} to {new_prompt_len} "
-            f"by padding {new_prompt_len} spaces."
-        )
+    "lighting and shadows that make it look like a photograph"
+)  # will padding to max length internally, 512.
 
 pipe.set_progress_bar_config(disable=rank != 0)
 

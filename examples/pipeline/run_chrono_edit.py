@@ -74,9 +74,14 @@ width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
 prompt = (
-    "Transform to high-end PVC scale figure with detailed textures and "
-    "realistic lighting and shadows that make it look like a photograph."
+    "The women say 'Hello, ChronoEdit!' and transform this image to "
+    "high-end PVC scale figure with detailed textures and realistic "
+    "lighting and shadows that make it look like a photograph"
 )
+
+
+def get_prompt_length(prompt: str) -> int:
+    return len(pipe.tokenizer(prompt, return_tensors="pt").input_ids[0])
 
 
 def run_pipe(warmup: bool = False):
