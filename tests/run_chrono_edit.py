@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 import numpy as np
@@ -21,6 +22,8 @@ world_size = dist.get_world_size()
 torch.cuda.set_device(device)
 
 model_id = "nvidia/ChronoEdit-14B-Diffusers"
+model_id = os.environ.get("CHRONO_EDIT_DIR", model_id)
+
 image_encoder = CLIPVisionModel.from_pretrained(
     model_id, subfolder="image_encoder", torch_dtype=torch.float32
 )
@@ -51,6 +54,7 @@ pipe = ChronoEditPipeline.from_pretrained(
     ),
 ).to(device)
 
+torch.cuda.empty_cache()
 assert isinstance(pipe.vae, AutoencoderKLWan)
 pipe.vae.enable_tiling()
 
@@ -72,9 +76,10 @@ prompt = (
 
 assert isinstance(pipe.transformer, ChronoEditTransformer3DModel)
 pipe.transformer.set_attention_backend("native")
-pipe.transformer.enable_parallelism(
-    config=ContextParallelConfig(ulysses_degree=2)
-)
+if world_size > 1:
+    pipe.transformer.enable_parallelism(
+        config=ContextParallelConfig(ulysses_degree=world_size)
+    )
 
 pipe.set_progress_bar_config(disable=rank != 0)
 

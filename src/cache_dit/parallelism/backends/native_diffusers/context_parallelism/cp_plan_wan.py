@@ -97,14 +97,10 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
                 #    block by all2all comm op after attn)
                 # The `encoder_hidden_states` will [NOT] be changed after each block forward,
                 # so we need to split it at [ALL] block by the inserted split hook.
-                # FIXME(DefTruth): (1) Temporarily disable splitting encoder_hidden_states
-                # due to the image_encoder always produce 257 tokens for image_embed,
-                # causing the shape of encoder_hidden_states not divisible by number
-                # of devices in CP.
-                # (2) Another solution is to modify the AttnProcessor to support spearate
-                # splitting of encoder_hidden_states and encoder_hidden_states_image, then
-                # we can only apply splitting on encoder_hidden_states (text) which is
-                # always divisible by number of devices in CP.
+                # NOTE(DefTruth): We need to disable the splitting of encoder_hidden_states because
+                # the image_encoder consistently generates 257 tokens for image_embed. This causes
+                # the shape of encoder_hidden_states—whose token count is always 769 (512 + 257)
+                # after concatenation—to be indivisible by the number of devices in the CP.
                 # "blocks.*": {
                 #     "encoder_hidden_states": ContextParallelInput(
                 #         split_dim=1, expected_dims=3, split_output=False
@@ -238,9 +234,10 @@ def __patch_WanAttnProcessor__call__(
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            # FIXME(DefTruth): The key/value is only dependent on encoder_hidden_states
-            # (img) in cross-attention, the (q_chunk * k) * v computation can be parallelized
-            # separately and thus no need to pass the parallel_config here.
+            # FIXME(DefTruth): Since the key/value in cross-attention depends
+            # solely on encoder_hidden_states_img (img), the (q_chunk * k) * v
+            # computation can be parallelized independently. Thus, there is
+            # no need to pass the parallel_config here.
             parallel_config=None,
         )
         hidden_states_img = hidden_states_img.flatten(2, 3)
@@ -254,9 +251,10 @@ def __patch_WanAttnProcessor__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=self._attention_backend,
-        # FIXME(DefTruth): The key/value is only dependent on encoder_hidden_states
-        # (text) in cross-attention, the (q_chunk * k) * v computation can be parallelized
-        # separately and thus no need to pass the parallel_config here.
+        # FIXME(DefTruth): Since the key/value in cross-attention depends
+        # solely on encoder_hidden_states (text), the (q_chunk * k) * v
+        # computation can be parallelized independently. Thus, there is
+        # no need to pass the parallel_config here.
         parallel_config=(
             self._parallel_config if encoder_hidden_states is None else None
         ),
