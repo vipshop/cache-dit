@@ -11,6 +11,7 @@ from diffusers import (
     ChronoEditTransformer3DModel,
     ChronoEditPipeline,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 from utils import (
@@ -47,6 +48,15 @@ pipe = ChronoEditPipeline.from_pretrained(
     image_encoder=image_encoder,
     transformer=transformer,
     torch_dtype=torch.bfloat16,
+    quantization_config=PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_4bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["text_encoder"],
+    ),
 )
 
 if args.cache or args.parallel_type is not None:
