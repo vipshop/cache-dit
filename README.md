@@ -10,8 +10,9 @@
         <img src=https://img.shields.io/badge/Models-30+-orange.svg >
     </h2>
   </p>
-<img src=./assets/speedup_v3.png>
+<img src=./assets/speedup_v4.png>
 </div>
+
 <!--
 <img src=https://img.shields.io/github/release/vipshop/cache-dit.svg >
 <img src=https://img.shields.io/github/license/vipshop/cache-dit.svg?color=blue >
