@@ -12,7 +12,6 @@
   </p>
 <img src=./assets/speedup_v3.png>
 </div>
-
 <!--
 <img src=https://img.shields.io/github/release/vipshop/cache-dit.svg >
 <img src=https://img.shields.io/github/license/vipshop/cache-dit.svg?color=blue >
