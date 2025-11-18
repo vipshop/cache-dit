@@ -638,11 +638,12 @@ from cache_dit import DBCacheConfig
 cache_dit.enable_cache(
     pipe,
     cache_config=DBCacheConfig(
+        # ..., Basic DBCache configs
         residual_diff_threshold=0.12,  
         # Mask for 30 steps, 11111101001000001000001000001
         steps_computation_mask=cache_dit.steps_mask(
-            compute_bins=[6, 1, 1, 1, 1],  # 10
-            cache_bins=[1, 2, 5, 6, 6],  # 20
+            compute_bins=[6, 1, 1, 1, 1], # 10
+            cache_bins=[1, 2, 5, 6, 6], # 20
         ),
         # The policy for cache steps can be 'dynamic' or 'static'
         steps_computation_policy="dynamic",
@@ -882,6 +883,11 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     Further fuses approximate information in the**last n**Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
   - `residual_diff_threshold`: (`float`, *required*, defaults to 0.08):  
     The value of residual difference threshold, a higher value leads to faster performance at the cost of lower precision.
+  - `max_accumulated_residual_diff_threshold`: (`float`, *optional*, defaults to None):  
+    The maximum accumulated relative l1 diff threshold for Cache. If set, when the  
+    accumulated relative l1 diff exceeds this threshold, the caching strategy will be  
+    disabled for current step. This is useful for some cases where the input condition  
+    changes significantly in a single step. Default None means this feature is disabled.  
   - `max_warmup_steps`: (`int`, *required*, defaults to 8):  
     DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
   - `warmup_interval`: (`int`, *required*, defaults to 1):    
@@ -902,6 +908,15 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     num_inference_steps for DiffusionPipeline, used to adjust some internal settings
     for better caching performance. For example, we will refresh the cache once the
     executed steps exceed num_inference_steps if num_inference_steps is provided.
+  - `steps_computation_mask`: (`List[int]`, *optional*, defaults to None):  
+    This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list  
+    of length num_inference_steps indicating whether to compute each step or not.  
+    1 means must compute, 0 means use dynamic/static cache. If provided, will override  
+    other settings to decide whether to compute each step.  
+  - `steps_computation_policy`: (`str`, *optional*, defaults to "dynamic"):  
+    The computation policy for steps when using steps_computation_mask. It can be  
+    "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0  
+    in steps_computation_mask, while "static" means using static cache for those steps.  
 
 - **calibrator_config** (`CalibratorConfig`, *optional*, defaults to None):  
   Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
