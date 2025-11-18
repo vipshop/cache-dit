@@ -1,6 +1,6 @@
 import torch
 import dataclasses
-from typing import Optional, Union
+from typing import Optional, Union, List
 from cache_dit.caching.cache_types import CacheType
 from cache_dit.logger import init_logger
 
@@ -27,6 +27,12 @@ class BasicCacheConfig:
     #     the value of residual diff threshold, a higher value leads to faster performance at the
     #     cost of lower precision.
     residual_diff_threshold: Union[torch.Tensor, float] = 0.08
+    # max_accumulated_residual_diff_threshold (`float`, *optional*, defaults to None):
+    #     The maximum accumulated relative l1 diff threshold for Cache. If set, when the
+    #     accumulated relative l1 diff exceeds this threshold, the caching strategy will be
+    #     disabled for current step. This is useful for some cases where the input condition
+    #     changes significantly in a single step. Default None means this feature is disabled.
+    max_accumulated_residual_diff_threshold: Optional[float] = None
     # max_warmup_steps (`int`, *required*, defaults to 8):
     #     DBCache does not apply the caching strategy when the number of running steps is less than
     #     or equal to this value, ensuring the model sufficiently learns basic features during warmup.
@@ -61,6 +67,17 @@ class BasicCacheConfig:
     #     for better caching performance. For example, we will refresh the cache once the
     #     executed steps exceed num_inference_steps if num_inference_steps is provided.
     num_inference_steps: Optional[int] = None
+    # steps_computation_mask (`List[int]`, *optional*, defaults to None):
+    #     This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list
+    #     of length num_inference_steps indicating whether to compute each step or not.
+    #     1 means must compute, 0 means use dynamic/static cache. If provided, will override
+    #     other settings to decide whether to compute each step.
+    steps_computation_mask: Optional[List[int]] = None
+    # steps_computation_policy (`str`, *optional*, defaults to "dynamic"):
+    #     The computation policy for steps when using steps_computation_mask. It can be
+    #     "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
+    #     in steps_computation_mask, while "static" means using static cache for those steps.
+    steps_computation_policy: str = "dynamic"  # "dynamic" or "static"
 
     def update(self, **kwargs) -> "BasicCacheConfig":
         for key, value in kwargs.items():
@@ -85,7 +102,7 @@ class BasicCacheConfig:
         return dataclasses.asdict(self)
 
     def strify(self) -> str:
-        return (
+        base_str = (
             f"{self.cache_type}_"
             f"F{self.Fn_compute_blocks}"
             f"B{self.Bn_compute_blocks}_"
@@ -95,6 +112,12 @@ class BasicCacheConfig:
             f"MC{max(0, self.max_continuous_cached_steps)}_"
             f"R{self.residual_diff_threshold}"
         )
+
+        if self.steps_computation_mask is not None:
+            base_str += f"_SCM{''.join(map(str, self.steps_computation_mask))}"
+            base_str += f"_{self.steps_computation_policy}"
+
+        return base_str
 
 
 @dataclasses.dataclass

@@ -32,5 +32,6 @@ from cache_dit.caching.cache_interface import enable_cache
 from cache_dit.caching.cache_interface import disable_cache
 from cache_dit.caching.cache_interface import supported_pipelines
 from cache_dit.caching.cache_interface import get_adapter
+from cache_dit.caching.cache_interface import steps_mask
 
 from cache_dit.caching.utils import load_options

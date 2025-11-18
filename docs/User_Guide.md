@@ -27,6 +27,7 @@
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
+- [🤖Steps Computation Masking](#steps-mask)
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🤖Low-bits Quantization](#quantization)
@@ -622,6 +623,32 @@ cache_dit.enable_cache(
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=140px>|
 
 </div>
+
+## 🤖Steps Computation Masking
+
+![](../assets/steps_mask.png)
+
+The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa arxiv.2511.00090](https://arxiv.org/pdf/2511.00090) and [EasyCache arxiv.2507.02860](https://arxiv.org/pdf/2507.02860). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. It is a list of length num_inference_steps indicating whether to compute each step or not. 1 means must compute, 0 means use dynamic/static cache. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](../examples/api/run_steps_mask.py) for more details.
+
+<div id="steps-mask"></div>
+
+```python
+from cache_dit import DBCacheConfig
+
+cache_dit.enable_cache(
+    pipe,
+    cache_config=DBCacheConfig(
+        residual_diff_threshold=0.12,  
+        # Mask for 30 steps, 11111101001000001000001000001
+        steps_computation_mask=cache_dit.steps_mask(
+            compute_bins=[6, 1, 1, 1, 1],  # 10
+            cache_bins=[1, 2, 5, 6, 6],  # 20
+        ),
+        # The policy for cache steps can be 'dynamic' or 'static'
+        steps_computation_policy="dynamic",
+    ),
+)
+```
 
 ## ⚡️Hybrid Context Parallelism
 

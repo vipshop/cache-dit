@@ -101,6 +101,11 @@ def enable_cache(
                 residual_diff_threshold (`float`, *required*, defaults to 0.08):
                     the value of residual diff threshold, a higher value leads to faster performance at the
                     cost of lower precision.
+                max_accumulated_residual_diff_threshold (`float`, *optional*, defaults to None):
+                    The maximum accumulated relative l1 diff threshold for Cache. If set, when the
+                    accumulated relative l1 diff exceeds this threshold, the caching strategy will be
+                    disabled for current step. This is useful for some cases where the input condition
+                    changes significantly in a single step. Default None means this feature is disabled.
                 max_warmup_steps (`int`, *required*, defaults to 8):
                     DBCache does not apply the caching strategy when the number of running steps is less than
                     or equal to this value, ensuring the model sufficiently learns basic features during warmup.
@@ -129,6 +134,15 @@ def enable_cache(
                     num_inference_steps for DiffusionPipeline, used to adjust some internal settings
                     for better caching performance. For example, we will refresh the cache once the
                     executed steps exceed num_inference_steps if num_inference_steps is provided.
+                steps_computation_mask (`List[int]`, *optional*, defaults to None):
+                    This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list
+                    of length num_inference_steps indicating whether to compute each step or not.
+                    1 means must compute, 0 means use dynamic/static cache. If provided, will override
+                    other settings to decide whether to compute each step.
+                steps_computation_policy (`str`, *optional*, defaults to "dynamic"):
+                    The computation policy for steps when using steps_computation_mask. It can be
+                    "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
+                    in steps_computation_mask, while "static" means using static cache for those steps.
 
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
@@ -342,3 +356,40 @@ def get_adapter(
     pipe: DiffusionPipeline | str | Any,
 ) -> BlockAdapter:
     return BlockAdapterRegister.get_adapter(pipe)
+
+
+def steps_mask(
+    compute_bins: List[int],
+    cache_bins: List[int],
+    total_steps: Optional[int] = None,
+) -> list[int]:
+    mask = []
+    step = 0
+    compute_bins = compute_bins.copy()
+    cache_bins = cache_bins.copy()
+    # reverse to use as stacks
+    compute_bins.reverse()
+    cache_bins.reverse()
+
+    if total_steps is not None:
+        assert (
+            sum(compute_bins) + sum(cache_bins) >= total_steps
+        ), "The sum of compute and cache intervals must be at least total_steps."
+    else:
+        total_steps = sum(compute_bins) + sum(cache_bins)
+
+    while step < total_steps:
+
+        if compute_bins:
+            ci = compute_bins.pop()
+            mask.extend([1] * ci)
+            step += ci
+        if cache_bins:
+            cai = cache_bins.pop()
+            mask.extend([0] * cai)
+            step += cai
+
+        if step >= total_steps:
+            break
+
+    return mask[:total_steps]
