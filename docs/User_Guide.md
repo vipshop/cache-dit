@@ -884,9 +884,9 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   - `residual_diff_threshold`: (`float`, *required*, defaults to 0.08):  
     The value of residual difference threshold, a higher value leads to faster performance at the cost of lower precision.
   - `max_accumulated_residual_diff_threshold`: (`float`, *optional*, defaults to None):  
-    The maximum accumulated relative l1 diff threshold for Cache. If set, when the  
-    accumulated relative l1 diff exceeds this threshold, the caching strategy will be  
-    disabled for current step. This is useful for some cases where the input condition  
+    The maximum accumulated relative l1 diff threshold for Cache. If set, when the
+    accumulated relative l1 diff exceeds this threshold, the caching strategy will be
+    disabled for current step. This is useful for some cases where the input condition
     changes significantly in a single step. Default None means this feature is disabled.  
   - `max_warmup_steps`: (`int`, *required*, defaults to 8):  
     DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
@@ -909,14 +909,14 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     for better caching performance. For example, we will refresh the cache once the
     executed steps exceed num_inference_steps if num_inference_steps is provided.
   - `steps_computation_mask`: (`List[int]`, *optional*, defaults to None):  
-    This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list  
-    of length num_inference_steps indicating whether to compute each step or not.  
-    1 means must compute, 0 means use dynamic/static cache. If provided, will override  
+    This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list
+    of length num_inference_steps indicating whether to compute each step or not.
+    1 means must compute, 0 means use dynamic/static cache. If provided, will override
     other settings to decide whether to compute each step.  
   - `steps_computation_policy`: (`str`, *optional*, defaults to "dynamic"):  
-    The computation policy for steps when using steps_computation_mask. It can be  
-    "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0  
-    in steps_computation_mask, while "static" means using static cache for those steps.  
+    The computation policy for steps when using steps_computation_mask. It can be
+    "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
+    in steps_computation_mask, while "static" means using static cache for those steps.
 
 - **calibrator_config** (`CalibratorConfig`, *optional*, defaults to None):  
   Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
