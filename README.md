@@ -77,7 +77,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 
 </div>
 
-🎉Surprisingly, **cache-dit** still works in the **extremely few-step** distill model. Such as **Qwen-Image-Lightning**, with the F16B16 config, the PSNR is 34.81 and the ImageReward is 1.26. It maintained a relatively high precision.
+🎉Surprisingly, **cache-dit** still works in the **extremely few-step** distill model, such as **Qwen-Image-Lightning**, with the F16B16 config, the PSNR is 34.8 and the ImageReward is 1.26. It maintained a relatively high precision.
 <div align="center">
 
 | Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
