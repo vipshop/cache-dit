@@ -342,3 +342,38 @@ def get_adapter(
     pipe: DiffusionPipeline | str | Any,
 ) -> BlockAdapter:
     return BlockAdapterRegister.get_adapter(pipe)
+
+
+def steps_mask(
+    compute_bins: List[int], cache_bins: List[int], total_steps: Optional[int] = None
+) -> list[int]:
+    mask = []
+    step = 0
+    compute_bins = compute_bins.copy()
+    cache_bins = cache_bins.copy()
+    # reverse to use as stacks
+    compute_bins.reverse()
+    cache_bins.reverse()
+
+    if total_steps is not None:
+        assert (
+            sum(compute_bins) + sum(cache_bins) >= total_steps
+        ), "The sum of compute and cache intervals must be at least total_steps."
+    else:
+        total_steps = sum(compute_bins) + sum(cache_bins)
+
+    while step < total_steps:
+
+        if compute_bins:
+            ci = compute_bins.pop()
+            mask.extend([1] * ci)
+            step += ci
+        if cache_bins:
+            cai = cache_bins.pop()
+            mask.extend([0] * cai)
+            step += cai
+
+        if step >= total_steps:
+            break
+
+    return mask[:total_steps]

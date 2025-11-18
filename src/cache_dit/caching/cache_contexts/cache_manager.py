@@ -330,6 +330,24 @@ class CachedContextManager:
         return cached_context.get_cfg_residual_diffs()
 
     @torch.compiler.disable
+    def get_accumulated_residual_diff(self) -> float:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_accumulated_residual_diff()
+
+    @torch.compiler.disable
+    def get_cfg_accumulated_residual_diff(self) -> float:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_cfg_accumulated_residual_diff()
+
+    @torch.compiler.disable
+    def max_accumulated_residual_diff_threshold(self) -> float:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.cache_config.max_accumulated_residual_diff_threshold
+
+    @torch.compiler.disable
     def is_calibrator_enabled(self) -> bool:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
@@ -376,6 +394,21 @@ class CachedContextManager:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.is_in_warmup()
+
+    @torch.compiler.disable
+    def is_in_full_compute_steps(self) -> bool:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.is_in_full_compute_steps()
+
+    @torch.compiler.disable
+    def is_in_full_static_cache_steps(self) -> bool:
+        # If enabled steps_computation_mask w/ static cache, maybe use
+        # at the very beginning of cache blocks forward. NO, Fn blocks
+        # compute first.
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.is_in_full_static_cache_steps()
 
     @torch.compiler.disable
     def is_l1_diff_enabled(self) -> bool:
@@ -760,6 +793,13 @@ class CachedContextManager:
         if self.is_in_warmup():
             return False
 
+        # if enabled steps_computation_mask w/ dyanamic cache
+        if self.is_in_full_compute_steps():
+            return False
+        else:
+            if self.is_in_full_static_cache_steps():
+                return True
+
         # max cached steps
         max_cached_steps = self.get_max_cached_steps()
         if not self.is_separate_cfg_step():
@@ -797,6 +837,26 @@ class CachedContextManager:
             else:
                 cached_context.cfg_continuous_cached_steps = 0
             return False
+
+        # max accumulated residual diff threshold
+        max_accumulated_residual_diff_threshold = self.max_accumulated_residual_diff_threshold()
+        if (
+            max_accumulated_residual_diff_threshold is not None
+            and max_accumulated_residual_diff_threshold > 0.0
+        ):
+            if not self.is_separate_cfg_step():
+                accumulated_residual_diff = self.get_accumulated_residual_diff()
+            else:
+                accumulated_residual_diff = self.get_cfg_accumulated_residual_diff()
+            if accumulated_residual_diff >= max_accumulated_residual_diff_threshold:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        f"{prefix}, max_accumulated_residual_diff_threshold "
+                        f"reached: {max_accumulated_residual_diff_threshold:.6f}, "
+                        f"accumulated_residual_diff: {accumulated_residual_diff:.6f}, "
+                        "can not use cache."
+                    )
+                return False
 
         if threshold is None or threshold <= 0.0:
             threshold = self.get_residual_diff_threshold()

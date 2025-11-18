@@ -58,11 +58,13 @@ class CachedContext:
     residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    accumulated_residual_diff: float = 0.0
     continuous_cached_steps: int = 0
     cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    cfg_accumulated_residual_diff: float = 0.0
     cfg_continuous_cached_steps: int = 0
 
     def __post_init__(self):
@@ -209,15 +211,25 @@ class CachedContext:
         if not self.is_separate_cfg_step():
             if step not in self.residual_diffs:
                 self.residual_diffs[step] = diff
+                if diff > 0.0:
+                    self.accumulated_residual_diff += diff
         else:
             if step not in self.cfg_residual_diffs:
                 self.cfg_residual_diffs[step] = diff
+                if diff > 0.0:
+                    self.cfg_accumulated_residual_diff += diff
 
     def get_residual_diffs(self):
         return self.residual_diffs.copy()
 
     def get_cfg_residual_diffs(self):
         return self.cfg_residual_diffs.copy()
+
+    def get_accumulated_residual_diff(self):
+        return self.accumulated_residual_diff
+
+    def get_cfg_accumulated_residual_diff(self):
+        return self.cfg_accumulated_residual_diff
 
     def add_cached_step(self):
         curr_cached_step = self.get_current_step()
@@ -279,3 +291,21 @@ class CachedContext:
 
     def is_in_warmup(self):
         return self.get_current_step() in self.warmup_steps
+
+    def is_in_full_compute_steps(self):
+        if self.cache_config.steps_computation_mask is None:
+            return False
+        current_step = self.get_current_step()
+        if current_step < len(self.cache_config.steps_computation_mask):
+            return self.cache_config.steps_computation_mask[current_step] == 1
+        return False
+
+    def is_in_full_static_cache_steps(self):
+        # If enabled steps_computation_mask w/ static cache, maybe use at the very
+        # beginning of cache blocks forward. TODO: maybe support NO-Fn blocks compute
+        # first for static cache.
+        return (
+            not self.is_in_warmup()
+            and not self.is_in_full_compute_steps()
+            and self.cache_config.steps_computation_policy == "static"
+        )
