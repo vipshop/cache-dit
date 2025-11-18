@@ -40,9 +40,7 @@ class FluxPatchFunctor(PatchFunctor):
         is_patched = False
         for block in blocks:
             if isinstance(block, FluxSingleTransformerBlock):
-                forward_parameters = inspect.signature(
-                    block.forward
-                ).parameters.keys()
+                forward_parameters = inspect.signature(block.forward).parameters.keys()
                 if "encoder_hidden_states" not in forward_parameters:
                     block.forward = __patch_single_forward__.__get__(block)
                     is_patched = True
@@ -56,16 +54,11 @@ class FluxPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -169,27 +162,20 @@ def __patch_transformer_forward__(
     ids = torch.cat((txt_ids, img_ids), dim=0)
     image_rotary_emb = self.pos_embed(ids)
 
-    if (
-        joint_attention_kwargs is not None
-        and "ip_adapter_image_embeds" in joint_attention_kwargs
-    ):
-        ip_adapter_image_embeds = joint_attention_kwargs.pop(
-            "ip_adapter_image_embeds"
-        )
+    if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
+        ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
         ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
         joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
     for index_block, block in enumerate(self.transformer_blocks):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            encoder_hidden_states, hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    joint_attention_kwargs,
-                )
+            encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                image_rotary_emb,
+                joint_attention_kwargs,
             )
 
         else:
@@ -203,35 +189,28 @@ def __patch_transformer_forward__(
 
         # controlnet residual
         if controlnet_block_samples is not None:
-            interval_control = len(self.transformer_blocks) / len(
-                controlnet_block_samples
-            )
+            interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
             interval_control = int(np.ceil(interval_control))
             # For Xlabs ControlNet.
             if controlnet_blocks_repeat:
                 hidden_states = (
                     hidden_states
-                    + controlnet_block_samples[
-                        index_block % len(controlnet_block_samples)
-                    ]
+                    + controlnet_block_samples[index_block % len(controlnet_block_samples)]
                 )
             else:
                 hidden_states = (
-                    hidden_states
-                    + controlnet_block_samples[index_block // interval_control]
+                    hidden_states + controlnet_block_samples[index_block // interval_control]
                 )
 
     for index_block, block in enumerate(self.single_transformer_blocks):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            encoder_hidden_states, hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    joint_attention_kwargs,
-                )
+            encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                image_rotary_emb,
+                joint_attention_kwargs,
             )
 
         else:
@@ -250,10 +229,7 @@ def __patch_transformer_forward__(
             )
             interval_control = int(np.ceil(interval_control))
             hidden_states = (
-                hidden_states
-                + controlnet_single_block_samples[
-                    index_block // interval_control
-                ]
+                hidden_states + controlnet_single_block_samples[index_block // interval_control]
             )
 
     hidden_states = self.norm_out(hidden_states, temb)

@@ -48,16 +48,11 @@ class WanVACEPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -90,21 +85,15 @@ def __patch_block_forward__(
         ).chunk(6, dim=1)
 
     # 1. Self-attention
-    norm_hidden_states = (
-        self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa
-    ).type_as(hidden_states)
-    attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-    hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(
+    norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
         hidden_states
     )
+    attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
+    hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
     # 2. Cross-attention
-    norm_hidden_states = self.norm2(hidden_states.float()).type_as(
-        hidden_states
-    )
-    attn_output = self.attn2(
-        norm_hidden_states, encoder_hidden_states, None, None
-    )
+    norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
+    attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
     hidden_states = hidden_states + attn_output
 
     # 3. Feed-forward
@@ -112,9 +101,7 @@ def __patch_block_forward__(
         self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa
     ).type_as(hidden_states)
     ff_output = self.ffn(norm_hidden_states)
-    hidden_states = (
-        hidden_states.float() + ff_output.float() * c_gate_msa
-    ).type_as(hidden_states)
+    hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
     # NOTE(DefTruth): Fused VACE into block forward to support caching.
     i = self._i
@@ -147,10 +134,7 @@ def __patch_transformer_forward__(
         # weight the lora layers by setting `lora_scale` for each PEFT layer
         scale_lora_layers(self, lora_scale)
     else:
-        if (
-            attention_kwargs is not None
-            and attention_kwargs.get("scale", None) is not None
-        ):
+        if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
             logger.warning(
                 "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
             )
@@ -162,9 +146,7 @@ def __patch_transformer_forward__(
     post_patch_width = width // p_w
 
     if control_hidden_states_scale is None:
-        control_hidden_states_scale = control_hidden_states.new_ones(
-            len(self.config.vace_layers)
-        )
+        control_hidden_states_scale = control_hidden_states.new_ones(len(self.config.vace_layers))
     control_hidden_states_scale = torch.unbind(control_hidden_states_scale)
     if len(control_hidden_states_scale) != len(self.config.vace_layers):
         raise ValueError(
@@ -186,15 +168,11 @@ def __patch_transformer_forward__(
         hidden_states.size(1) - control_hidden_states.size(1),
         control_hidden_states.size(2),
     )
-    control_hidden_states = torch.cat(
-        [control_hidden_states, control_hidden_states_padding], dim=1
-    )
+    control_hidden_states = torch.cat([control_hidden_states, control_hidden_states_padding], dim=1)
 
     # 3. Time embedding
     temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = (
-        self.condition_embedder(
-            timestep, encoder_hidden_states, encoder_hidden_states_image
-        )
+        self.condition_embedder(timestep, encoder_hidden_states, encoder_hidden_states_image)
     )
     timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
@@ -209,19 +187,15 @@ def __patch_transformer_forward__(
         # Prepare VACE hints
         control_hidden_states_list = []
         for i, block in enumerate(self.vace_blocks):
-            conditioning_states, control_hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    control_hidden_states,
-                    timestep_proj,
-                    rotary_emb,
-                )
+            conditioning_states, control_hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                control_hidden_states,
+                timestep_proj,
+                rotary_emb,
             )
-            control_hidden_states_list.append(
-                (conditioning_states, control_hidden_states_scale[i])
-            )
+            control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
         control_hidden_states_list = control_hidden_states_list[::-1]
 
         for i, block in enumerate(self.blocks):
@@ -246,9 +220,7 @@ def __patch_transformer_forward__(
                 timestep_proj,
                 rotary_emb,
             )
-            control_hidden_states_list.append(
-                (conditioning_states, control_hidden_states_scale[i])
-            )
+            control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
         control_hidden_states_list = control_hidden_states_list[::-1]
 
         for i, block in enumerate(self.blocks):
@@ -265,9 +237,7 @@ def __patch_transformer_forward__(
             #     hidden_states = hidden_states + control_hint * scale
 
     # 6. Output norm, projection & unpatchify
-    shift, scale = (
-        self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)
-    ).chunk(2, dim=1)
+    shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
     # Move the shift and scale tensors to the same device as hidden_states.
     # When using multi-GPU inference via accelerate these will be on the
@@ -276,9 +246,9 @@ def __patch_transformer_forward__(
     shift = shift.to(hidden_states.device)
     scale = scale.to(hidden_states.device)
 
-    hidden_states = (
-        self.norm_out(hidden_states.float()) * (1 + scale) + shift
-    ).type_as(hidden_states)
+    hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(
+        hidden_states
+    )
     hidden_states = self.proj_out(hidden_states)
 
     hidden_states = hidden_states.reshape(

@@ -64,16 +64,11 @@ class HiDreamPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -118,12 +113,8 @@ def __patch_double_forward__(
     # 1. MM-Attention
     norm_hidden_states = self.norm1_i(hidden_states).to(dtype=wtype)
     norm_hidden_states = norm_hidden_states * (1 + scale_msa_i) + shift_msa_i
-    norm_encoder_hidden_states = self.norm1_t(encoder_hidden_states).to(
-        dtype=wtype
-    )
-    norm_encoder_hidden_states = (
-        norm_encoder_hidden_states * (1 + scale_msa_t) + shift_msa_t
-    )
+    norm_encoder_hidden_states = self.norm1_t(encoder_hidden_states).to(dtype=wtype)
+    norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + scale_msa_t) + shift_msa_t
 
     attn_output_i, attn_output_t = self.attn1(
         norm_hidden_states,
@@ -138,21 +129,15 @@ def __patch_double_forward__(
     # 2. Feed-forward
     norm_hidden_states = self.norm3_i(hidden_states).to(dtype=wtype)
     norm_hidden_states = norm_hidden_states * (1 + scale_mlp_i) + shift_mlp_i
-    norm_encoder_hidden_states = self.norm3_t(encoder_hidden_states).to(
-        dtype=wtype
-    )
-    norm_encoder_hidden_states = (
-        norm_encoder_hidden_states * (1 + scale_mlp_t) + shift_mlp_t
-    )
+    norm_encoder_hidden_states = self.norm3_t(encoder_hidden_states).to(dtype=wtype)
+    norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + scale_mlp_t) + shift_mlp_t
 
     ff_output_i = gate_mlp_i * self.ff_i(norm_hidden_states)
     ff_output_t = gate_mlp_t * self.ff_t(norm_encoder_hidden_states)
     hidden_states = ff_output_i + hidden_states
     encoder_hidden_states = ff_output_t + encoder_hidden_states
 
-    initial_encoder_hidden_states = encoder_hidden_states[
-        :, :initial_encoder_hidden_states_seq_len
-    ]
+    initial_encoder_hidden_states = encoder_hidden_states[:, :initial_encoder_hidden_states_seq_len]
 
     return hidden_states, initial_encoder_hidden_states
 
@@ -171,9 +156,7 @@ def __patch_single_forward__(
     block_id = self._block_id
     hidden_states_seq_len = hidden_states.shape[1]
     cur_llama31_encoder_hidden_states = llama31_encoder_hidden_states[block_id]
-    hidden_states = torch.cat(
-        [hidden_states, cur_llama31_encoder_hidden_states], dim=1
-    )
+    hidden_states = torch.cat([hidden_states, cur_llama31_encoder_hidden_states], dim=1)
 
     wtype = hidden_states.dtype
     (
@@ -239,17 +222,11 @@ def __patch_transformer_forward__(
         encoder_hidden_states_t5 = encoder_hidden_states[0]
         encoder_hidden_states_llama3 = encoder_hidden_states[1]
 
-    if (
-        img_ids is not None
-        and img_sizes is not None
-        and hidden_states_masks is None
-    ):
+    if img_ids is not None and img_sizes is not None and hidden_states_masks is None:
         deprecation_message = "Passing `img_ids` and `img_sizes` with unpachified `hidden_states` is deprecated and will be ignored."
         deprecate("img_ids", "0.35.0", deprecation_message)
 
-    if hidden_states_masks is not None and (
-        img_ids is None or img_sizes is None
-    ):
+    if hidden_states_masks is not None and (img_ids is None or img_sizes is None):
         raise ValueError(
             "if `hidden_states_masks` is passed, `img_ids` and `img_sizes` must also be passed."
         )
@@ -268,10 +245,7 @@ def __patch_transformer_forward__(
         # weight the lora layers by setting `lora_scale` for each PEFT layer
         scale_lora_layers(self, lora_scale)
     else:
-        if (
-            attention_kwargs is not None
-            and attention_kwargs.get("scale", None) is not None
-        ):
+        if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
             logger.warning(
                 "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
             )
@@ -282,9 +256,7 @@ def __patch_transformer_forward__(
 
     # Patchify the input
     if hidden_states_masks is None:
-        hidden_states, hidden_states_masks, img_sizes, img_ids = self.patchify(
-            hidden_states
-        )
+        hidden_states, hidden_states_masks, img_sizes, img_ids = self.patchify(hidden_states)
 
     # Embed the hidden states
     hidden_states = self.x_embedder(hidden_states)
@@ -294,22 +266,16 @@ def __patch_transformer_forward__(
     p_embedder = self.p_embedder(pooled_embeds)
     temb = timesteps + p_embedder
 
-    encoder_hidden_states = [
-        encoder_hidden_states_llama3[k] for k in self.config.llama_layers
-    ]
+    encoder_hidden_states = [encoder_hidden_states_llama3[k] for k in self.config.llama_layers]
 
     if self.caption_projection is not None:
         new_encoder_hidden_states = []
         for i, enc_hidden_state in enumerate(encoder_hidden_states):
             enc_hidden_state = self.caption_projection[i](enc_hidden_state)
-            enc_hidden_state = enc_hidden_state.view(
-                batch_size, -1, hidden_states.shape[-1]
-            )
+            enc_hidden_state = enc_hidden_state.view(batch_size, -1, hidden_states.shape[-1])
             new_encoder_hidden_states.append(enc_hidden_state)
         encoder_hidden_states = new_encoder_hidden_states
-        encoder_hidden_states_t5 = self.caption_projection[-1](
-            encoder_hidden_states_t5
-        )
+        encoder_hidden_states_t5 = self.caption_projection[-1](encoder_hidden_states_t5)
         encoder_hidden_states_t5 = encoder_hidden_states_t5.view(
             batch_size, -1, hidden_states.shape[-1]
         )
@@ -335,16 +301,14 @@ def __patch_transformer_forward__(
     llama31_encoder_hidden_states = encoder_hidden_states
     for bid, block in enumerate(self.double_stream_blocks):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            hidden_states, initial_encoder_hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    initial_encoder_hidden_states,
-                    hidden_states_masks,
-                    temb,
-                    image_rotary_emb,
-                    llama31_encoder_hidden_states,
-                )
+            hidden_states, initial_encoder_hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                initial_encoder_hidden_states,
+                hidden_states_masks,
+                temb,
+                image_rotary_emb,
+                llama31_encoder_hidden_states,
             )
         else:
             hidden_states, initial_encoder_hidden_states = block(
@@ -357,24 +321,19 @@ def __patch_transformer_forward__(
             )
 
     image_tokens_seq_len = hidden_states.shape[1]
-    hidden_states = torch.cat(
-        [hidden_states, initial_encoder_hidden_states], dim=1
-    )
+    hidden_states = torch.cat([hidden_states, initial_encoder_hidden_states], dim=1)
     if hidden_states_masks is not None:
         # NOTE: Patched
         cur_llama31_encoder_hidden_states = llama31_encoder_hidden_states[0]
         encoder_attention_mask_ones = torch.ones(
             (
                 batch_size,
-                initial_encoder_hidden_states.shape[1]
-                + cur_llama31_encoder_hidden_states.shape[1],
+                initial_encoder_hidden_states.shape[1] + cur_llama31_encoder_hidden_states.shape[1],
             ),
             device=hidden_states_masks.device,
             dtype=hidden_states_masks.dtype,
         )
-        hidden_states_masks = torch.cat(
-            [hidden_states_masks, encoder_attention_mask_ones], dim=1
-        )
+        hidden_states_masks = torch.cat([hidden_states_masks, encoder_attention_mask_ones], dim=1)
 
     for bid, block in enumerate(self.single_stream_blocks):
         if torch.is_grad_enabled() and self.gradient_checkpointing:

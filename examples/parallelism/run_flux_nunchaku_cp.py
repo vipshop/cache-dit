@@ -86,29 +86,17 @@ if args.cache or args.parallel_type is not None:
         params_modifiers=[
             ParamsModifier(
                 # transformer_blocks
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt
-                ),
+                cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt),
             ),
             ParamsModifier(
                 # single_transformer_blocks
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt * 3
-                ),
+                cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3),
             ),
         ],
         parallelism_config=(
             ParallelismConfig(
-                ulysses_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ulysses"
-                    else None
-                ),
-                ring_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ring"
-                    else None
-                ),
+                ulysses_size=(dist.get_world_size() if args.parallel_type == "ulysses" else None),
+                ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
             )
             if args.parallel_type in ["ulysses", "ring"]
             else None

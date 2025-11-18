@@ -50,18 +50,13 @@ class DiTContextParallelismPlanner(ContextParallelismPlanner):
 
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
         # Apply monkey patch to fix attention mask preparation at class level
-        Attention.prepare_attention_mask = (
-            __patch_Attention_prepare_attention_mask__
-        )
+        Attention.prepare_attention_mask = __patch_Attention_prepare_attention_mask__
         AttnProcessor2_0.__call__ = __patch_AttnProcessor2_0__call__
         if not hasattr(AttnProcessor2_0, "_parallel_config"):
             AttnProcessor2_0._parallel_config = None

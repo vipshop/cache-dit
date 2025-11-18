@@ -26,9 +26,7 @@ class CacheStats:
     cached_steps: list[int] = dataclasses.field(default_factory=list)
     residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
     cfg_cached_steps: list[int] = dataclasses.field(default_factory=list)
-    cfg_residual_diffs: dict[str, float] = dataclasses.field(
-        default_factory=dict
-    )
+    cfg_residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
     # Dynamic Block Prune
     pruned_steps: list[int] = dataclasses.field(default_factory=list)
     pruned_blocks: list[int] = dataclasses.field(default_factory=list)
@@ -122,9 +120,7 @@ def summary(
             )
 
         blocks_stats = [
-            stats
-            for stats in blocks_stats
-            if (stats.cache_options or stats.parallelism_config)
+            stats for stats in blocks_stats if (stats.cache_options or stats.parallelism_config)
         ]
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
@@ -189,9 +185,7 @@ def strify(
         cache_options = stats.cache_options
         cached_steps = len(stats.cached_steps)
     elif isinstance(adapter_or_others, dict):
-        if (
-            cache_type := adapter_or_others.get("cache_type", None)
-        ) is not None:
+        if (cache_type := adapter_or_others.get("cache_type", None)) is not None:
             if cache_type in [CacheType.NONE, "NONE", "None"]:
                 return "NONE"
         # Assume context_kwargs
@@ -227,9 +221,7 @@ def strify(
         return "NONE"
 
     def calibrator_str():
-        calibrator_config: CalibratorConfig = cache_options.get(
-            "calibrator_config", None
-        )
+        calibrator_config: CalibratorConfig = cache_options.get("calibrator_config", None)
         if calibrator_config is not None:
             return calibrator_config.strify()
         return "T0O0"
@@ -286,9 +278,7 @@ def _summary(
         parallelism_config: ParallelismConfig = module._parallelism_config
         cache_stats.parallelism_config = parallelism_config
         if logging:
-            print(
-                f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}"
-            )
+            print(f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}")
     else:
         if logging:
             logger.warning(f"Can't find Parallelism Config for: {cls_name}")
@@ -329,9 +319,7 @@ def _summary(
             qmax = np.max(diffs_values)
 
             if pruned_ratio is not None:
-                print(
-                    f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n"
-                )
+                print(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n")
 
                 print(
                     "| Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
@@ -346,9 +334,7 @@ def _summary(
                 )
                 print("")
             else:
-                print(
-                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n"
-                )
+                print(f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n")
 
                 print(
                     "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
@@ -370,9 +356,7 @@ def _summary(
 
             if details:
                 if pruned_ratio is not None:
-                    print(
-                        f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n"
-                    )
+                    print(f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n")
                     pprint(
                         f"Pruned Blocks: {len(pruned_blocks)}, {pruned_blocks}",
                     )
@@ -384,9 +368,7 @@ def _summary(
                         compact=True,
                     )
                 else:
-                    print(
-                        f"📚Cache Steps and Residual Diffs Details: {cls_name}\n"
-                    )
+                    print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
                     pprint(
                         f"Cache Steps: {len(cached_steps)}, {cached_steps}",
                     )
@@ -397,9 +379,7 @@ def _summary(
 
     if hasattr(module, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = module._cfg_cached_steps
-        cfg_residual_diffs: dict[str, list | float] = dict(
-            module._cfg_residual_diffs
-        )
+        cfg_residual_diffs: dict[str, list | float] = dict(module._cfg_residual_diffs)
 
         if hasattr(module, "_cfg_pruned_steps"):
             cfg_pruned_steps: list[int] = module._cfg_pruned_steps
@@ -422,9 +402,7 @@ def _summary(
         if cfg_residual_diffs and logging:
             cfg_diffs_values = list(cfg_residual_diffs.values())
             if isinstance(cfg_diffs_values[0], list):
-                cfg_diffs_values = [
-                    v for sublist in cfg_diffs_values for v in sublist
-                ]
+                cfg_diffs_values = [v for sublist in cfg_diffs_values for v in sublist]
             qmin = np.min(cfg_diffs_values)
             q0 = np.percentile(cfg_diffs_values, 0)
             q1 = np.percentile(cfg_diffs_values, 25)
@@ -434,9 +412,7 @@ def _summary(
             qmax = np.max(cfg_diffs_values)
 
             if cfg_pruned_ratio is not None:
-                print(
-                    f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n"
-                )
+                print(f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n")
 
                 print(
                     "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
@@ -451,9 +427,7 @@ def _summary(
                 )
                 print("")
             else:
-                print(
-                    f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n"
-                )
+                print(f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n")
 
                 print(
                     "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
@@ -475,9 +449,7 @@ def _summary(
 
             if details:
                 if cfg_pruned_ratio is not None:
-                    print(
-                        f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n"
-                    )
+                    print(f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n")
                     pprint(
                         f"CFG Pruned Blocks: {len(cfg_pruned_blocks)}, {cfg_pruned_blocks}",
                     )
@@ -489,9 +461,7 @@ def _summary(
                         compact=True,
                     )
                 else:
-                    print(
-                        f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n"
-                    )
+                    print(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
                     pprint(
                         f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
                     )
@@ -509,9 +479,7 @@ def supported_matrix() -> str | None:
             BlockAdapterRegister,
         )
 
-        _pipelines_supported_cache = BlockAdapterRegister.supported_pipelines()[
-            1
-        ]
+        _pipelines_supported_cache = BlockAdapterRegister.supported_pipelines()[1]
         _pipelines_supported_cache += [
             "LongCatVideo",  # not in diffusers, but supported
         ]
@@ -547,33 +515,22 @@ def supported_matrix() -> str | None:
         matrix_lines.append(header)
         matrix_lines.append("|:---|:---|:---|:---|:---|:---|:---|:---|")
         half = (len(_pipelines_supported_cache) + 1) // 2
-        link = (
-            "https://github.com/vipshop/cache-dit/blob/main/examples/pipeline"
-        )
+        link = "https://github.com/vipshop/cache-dit/blob/main/examples/pipeline"
         for i in range(half):
             pipeline_left = _pipelines_supported_cache[i]
             cp_support_left = (
-                "✅"
-                if pipeline_left in _pipelines_supported_context_parallelism
-                else "✖️"
+                "✅" if pipeline_left in _pipelines_supported_context_parallelism else "✖️"
             )
             tp_support_left = (
-                "✅"
-                if pipeline_left in _pipelines_supported_tensor_parallelism
-                else "✖️"
+                "✅" if pipeline_left in _pipelines_supported_tensor_parallelism else "✖️"
             )
             if i + half < len(_pipelines_supported_cache):
                 pipeline_right = _pipelines_supported_cache[i + half]
                 cp_support_right = (
-                    "✅"
-                    if pipeline_right
-                    in _pipelines_supported_context_parallelism
-                    else "✖️"
+                    "✅" if pipeline_right in _pipelines_supported_context_parallelism else "✖️"
                 )
                 tp_support_right = (
-                    "✅"
-                    if pipeline_right in _pipelines_supported_tensor_parallelism
-                    else "✖️"
+                    "✅" if pipeline_right in _pipelines_supported_tensor_parallelism else "✖️"
                 )
             else:
                 pipeline_right = ""

@@ -10,17 +10,11 @@ def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
                 TaylorSeerCalibratorConfig,
             )
 
-            cache_context_kwargs["calibrator_config"] = (
-                TaylorSeerCalibratorConfig(
-                    enable_calibrator=kwargs.pop("enable_taylorseer"),
-                    enable_encoder_calibrator=kwargs.pop(
-                        "enable_encoder_taylorseer", False
-                    ),
-                    calibrator_cache_type=kwargs.pop(
-                        "taylorseer_cache_type", "residual"
-                    ),
-                    taylorseer_order=kwargs.pop("taylorseer_order", 1),
-                )
+            cache_context_kwargs["calibrator_config"] = TaylorSeerCalibratorConfig(
+                enable_calibrator=kwargs.pop("enable_taylorseer"),
+                enable_encoder_calibrator=kwargs.pop("enable_encoder_taylorseer", False),
+                calibrator_cache_type=kwargs.pop("taylorseer_cache_type", "residual"),
+                taylorseer_order=kwargs.pop("taylorseer_order", 1),
             )
 
         if "cache_type" not in kwargs:
@@ -49,9 +43,7 @@ def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
             )
 
             parallelism_kwargs = kwargs.get("parallelism_config", {})
-            cache_context_kwargs["parallelism_config"] = ParallelismConfig(
-                **parallelism_kwargs
-            )
+            cache_context_kwargs["parallelism_config"] = ParallelismConfig(**parallelism_kwargs)
 
         return cache_context_kwargs
 
@@ -65,9 +57,7 @@ def load_cache_options_from_yaml(yaml_file_path: str) -> dict:
             kwargs: dict = yaml.safe_load(f)
         return load_cache_options_from_dict(kwargs)
     except FileNotFoundError:
-        raise FileNotFoundError(
-            f"Configuration file not found: {yaml_file_path}"
-        )
+        raise FileNotFoundError(f"Configuration file not found: {yaml_file_path}")
     except yaml.YAMLError as e:
         raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
 
@@ -78,6 +68,4 @@ def load_options(path_or_dict: str | dict) -> dict:
     elif isinstance(path_or_dict, dict):
         return load_cache_options_from_dict(path_or_dict)
     else:
-        raise ValueError(
-            "Input must be a file path (str) or a configuration dictionary (dict)."
-        )
+        raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")

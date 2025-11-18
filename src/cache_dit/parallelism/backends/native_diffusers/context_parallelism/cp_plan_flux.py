@@ -32,10 +32,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, FluxTransformer2DModel
             ), "Transformer must be an instance of FluxTransformer2DModel"
@@ -72,12 +69,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-                "img_ids": ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=False
-                ),
-                "txt_ids": ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=False
-                ),
+                "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+                "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
             },
             # Then, the final proj_out will gather the splited output.
             #     splited input (previous splited output)

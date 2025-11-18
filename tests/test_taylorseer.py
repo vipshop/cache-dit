@@ -7,9 +7,7 @@ from cache_dit.caching.cache_contexts.calibrators import (
 
 
 def get_args():
-    parser = argparse.ArgumentParser(
-        description="Test TaylorSeer approximation."
-    )
+    parser = argparse.ArgumentParser(description="Test TaylorSeer approximation.")
     parser.add_argument(
         "--n_derivatives",
         "--order",

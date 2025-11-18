@@ -85,9 +85,7 @@ class CachedContext:
             if self.calibrator_config.enable_encoder_calibrator:
                 self.encoder_calibrator = Calibrator(self.calibrator_config)
                 if self.cache_config.enable_separate_cfg:
-                    self.cfg_encoder_calibrator = Calibrator(
-                        self.calibrator_config
-                    )
+                    self.cfg_encoder_calibrator = Calibrator(self.calibrator_config)
 
     def enable_calibrator(self):
         if self.calibrator_config is not None:
@@ -116,9 +114,7 @@ class CachedContext:
         residual_diff_threshold = self.cache_config.residual_diff_threshold
         if self.extra_cache_config.l1_hidden_states_diff_threshold is not None:
             # Use the L1 hidden states diff threshold if set
-            residual_diff_threshold = (
-                self.extra_cache_config.l1_hidden_states_diff_threshold
-            )
+            residual_diff_threshold = self.extra_cache_config.l1_hidden_states_diff_threshold
         if isinstance(residual_diff_threshold, torch.Tensor):
             residual_diff_threshold = residual_diff_threshold.item()
         return residual_diff_threshold
@@ -169,9 +165,7 @@ class CachedContext:
                     calibrator.reset_cache()
                 if encoder_calibrator is not None:
                     encoder_calibrator.reset_cache()
-                cfg_calibrator, cfg_encoder_calibrator = (
-                    self.get_cfg_calibrators()
-                )
+                cfg_calibrator, cfg_encoder_calibrator = self.get_cfg_calibrators()
                 if cfg_calibrator is not None:
                     cfg_calibrator.reset_cache()
                 if cfg_encoder_calibrator is not None:
@@ -188,9 +182,7 @@ class CachedContext:
                     if encoder_calibrator is not None:
                         encoder_calibrator.mark_step_begin()
                 else:
-                    cfg_calibrator, cfg_encoder_calibrator = (
-                        self.get_cfg_calibrators()
-                    )
+                    cfg_calibrator, cfg_encoder_calibrator = self.get_cfg_calibrators()
                     if cfg_calibrator is not None:
                         cfg_calibrator.mark_step_begin()
                     if cfg_encoder_calibrator is not None:

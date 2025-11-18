@@ -33,9 +33,7 @@ pipe = LTXConditionPipeline.from_pretrained(
 )
 
 pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained(
-    os.environ.get(
-        "LTX_UPSCALER_DIR", "Lightricks/ltxv-spatial-upscaler-0.9.7"
-    ),
+    os.environ.get("LTX_UPSCALER_DIR", "Lightricks/ltxv-spatial-upscaler-0.9.7"),
     vae=pipe.vae,
     torch_dtype=torch.bfloat16,
 )
@@ -60,21 +58,17 @@ def round_to_nearest_resolution_acceptable_by_vae(height, width):
 
 
 prompt = "The video depicts a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
-negative_prompt = (
-    "worst quality, inconsistent motion, blurry, jittery, distorted"
-)
+negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 expected_height, expected_width = 512, 704
 downscale_factor = 2 / 3
 num_frames = 49
 
 # Part 1. Generate video at smaller resolution
-downscaled_height, downscaled_width = int(
-    expected_height * downscale_factor
-), int(expected_width * downscale_factor)
-downscaled_height, downscaled_width = (
-    round_to_nearest_resolution_acceptable_by_vae(
-        downscaled_height, downscaled_width
-    )
+downscaled_height, downscaled_width = int(expected_height * downscale_factor), int(
+    expected_width * downscale_factor
+)
+downscaled_height, downscaled_width = round_to_nearest_resolution_acceptable_by_vae(
+    downscaled_height, downscaled_width
 )
 
 
@@ -104,9 +98,7 @@ def run_pipe(warmup: bool = False):
         downscaled_height * 2,
         downscaled_width * 2,
     )
-    upscaled_latents = pipe_upsample(
-        latents=latents, output_type="latent"
-    ).frames
+    upscaled_latents = pipe_upsample(latents=latents, output_type="latent").frames
 
     if warmup:
         return None

@@ -40,9 +40,7 @@ def run_pipe(warmup: bool = False):
         "A cat holding a sign that says hello world",
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=(
-            (28 if args.steps is None else args.steps) if not warmup else 5
-        ),
+        num_inference_steps=((28 if args.steps is None else args.steps) if not warmup else 5),
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image

@@ -37,9 +37,7 @@ def get_args(
     parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
     parser.add_argument("--warmup-interval", "--wi", type=int, default=1)
     parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
-    parser.add_argument(
-        "--max-continuous-cached-steps", "--mcc", type=int, default=-1
-    )
+    parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
     parser.add_argument("--height", type=int, default=None)
@@ -112,11 +110,7 @@ def cachify(
             else ParallelismBackend.NATIVE_DIFFUSER
         )
         parallel_kwargs = (
-            {
-                "attention_backend": (
-                    "_native_cudnn" if not args.attn else args.attn
-                )
-            }
+            {"attention_backend": ("_native_cudnn" if not args.attn else args.attn)}
             if backend == ParallelismBackend.NATIVE_DIFFUSER
             else None
         )
@@ -146,25 +140,14 @@ def cachify(
             parallelism_config=(
                 ParallelismConfig(
                     ulysses_size=(
-                        dist.get_world_size()
-                        if args.parallel_type == "ulysses"
-                        else None
+                        dist.get_world_size() if args.parallel_type == "ulysses" else None
                     ),
-                    ring_size=(
-                        dist.get_world_size()
-                        if args.parallel_type == "ring"
-                        else None
-                    ),
-                    tp_size=(
-                        dist.get_world_size()
-                        if args.parallel_type == "tp"
-                        else None
-                    ),
+                    ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
+                    tp_size=(dist.get_world_size() if args.parallel_type == "tp" else None),
                     backend=backend,
                     parallel_kwargs=parallel_kwargs,
                 )
-                if parallelism_config is None
-                and args.parallel_type in ["ulysses", "ring", "tp"]
+                if parallelism_config is None and args.parallel_type in ["ulysses", "ring", "tp"]
                 else parallelism_config
             ),
         )

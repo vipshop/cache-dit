@@ -4,30 +4,21 @@
         <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="90" align="left">
         A Unified and Flexible Inference Engine with 🤗🎉<br>Hybrid Cache Acceleration and Parallelism for DiTs<br>
         <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=BLUE&left_text=downloads></a>
-        <img src=https://img.shields.io/badge/Release-v1.0.*-blue.svg >
+        <img src=https://img.shields.io/badge/Release-v1.1.*-blue.svg >
         <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a> 
         <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
         <img src=https://img.shields.io/badge/Models-30+-orange.svg >
     </h2>
   </p>
-<img src=./assets/speedup_v4.png>
+<img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
 </div>
-
-<!--
-<img src=https://img.shields.io/github/release/vipshop/cache-dit.svg >
-<img src=https://img.shields.io/github/license/vipshop/cache-dit.svg?color=blue >
-<a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=GREEN&left_text=downloads></a>
-<a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/pypi/dm/cache-dit.svg ></a> 
-<img src=https://img.shields.io/github/stars/vipshop/cache-dit.svg?style=dark >
--->
 
 ## 🔥Hightlight
 
-We are excited to announce that the **first API-stable version (v1.0.0)** of cache-dit has finally been released!
-**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified** and **Flexible** Inference Engine for 🤗Diffusers, enabling acceleration with just ♥️**one line**♥️ of code. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
+We are excited to announce that the 🎉**v1.1.0** version of cache-dit has finally been released! It brings **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)** and **[🔥Tensor Parallelism](./docs/User_Guide.md#️hybrid-tensor-parallelism)** to cache-dit, **thus making** it a unified and flexible inference engine for 🤗DiTs. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **DBCache**, **DBPrune**, **Hybrid TaylorSeer Calibrator**, **Hybrid Cache CFG**, **Context Parallelism**, **Tensor Parallelism**, **Torch Compile Compatible** and **🎉SOTA** performance.
 
 ```bash
-pip3 install -U cache-dit # pip3 install git+https://github.com/vipshop/cache-dit.git
+pip3 install -U cache-dit # Also, pip3 install git+https://github.com/huggingface/diffusers.git (latest)
 ```
 You can install the stable release of cache-dit from PyPI, or the latest development version from GitHub. Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ```python
@@ -51,7 +42,54 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes (e.g., DBCache or DBPrune + TaylorSeerCalibrator). DBCache or DBPrune acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
 - **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
 
-![](./assets/clip-score-bench-v2.png)
+![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench-v2.png)
+
+The comparison between **cache-dit** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio (TFLOPs) less than 🎉**4x**, cache-dit achieved the best accuracy. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/tree/main/bench/). 
+
+<div align="center">
+
+| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
+| --- | --- | --- | --- | --- |
+| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
+| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
+| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
+| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
+| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
+| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
+| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
+| **[DBCache(S)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
+| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
+| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
+| **[DBCache(S)+TS](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
+| **[DBCache(M)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
+| **[DBCache(M)+TS](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
+| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
+| [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
+| FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
+| ToCa(N=12) | 644.70 | 5.77× | 0.7155 | 31.808 |
+| DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
+| TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
+| TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
+| **[DBCache(F)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.9271 | 32.552 |
+| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | 6.24× | 0.9502 | 32.706 |
+| **[DBCache(F)+TS](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
+| **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
+
+</div>
+
+🎉Surprisingly, **cache-dit** still works in the **extremely few-step** distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR is 34.8163 and the ImageReward is 1.2614. It maintained a relatively high precision. 
+<div align="center">
+
+| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
+|----------------------------|-----------|------------|--------------|----------|------------|
+| [**Lightning**]: 4 steps   | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
+| F24B24_W2MC1_R0.8          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
+| F16B16_W2MC1_R0.8          | 34.8163   | 35.6109    | 1.2614       | 244.25   | 1.12x       |
+| F12B12_W2MC1_R0.8          | 33.8953   | 35.6535    | 1.2549       | 234.63   | 1.17x       |
+| F8B8_W2MC1_R0.8            | 33.1374   | 35.7284    | 1.2517       | 224.29   | 1.22x       |
+| F1B0_W2MC1_R0.8            | 31.8317   | 35.6651    | 1.2397       | 206.90   | 1.33x       |
+
+</div>
 
 ## 🔥Supported DiTs
 
@@ -224,7 +262,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 ## 👋Contribute 
 <div id="contribute"></div>
 
-How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/raw/main/CONTRIBUTE.md).
+How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](https://github.com/vipshop/cache-dit/raw/main/docs/CONTRIBUTE.md).
 
 <div align='center'>
 <a href="https://star-history.com/#vipshop/cache-dit&Date">
@@ -243,7 +281,7 @@ Here is a curated list of open-source projects integrating **CacheDiT**, includi
 
 ## ©️Acknowledgements
 
-Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and production-level deployment of this project.
+Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and production-level deployment of this project. We learned the design and reused code from the following projects: [🤗diffusers](https://huggingface.co/docs/diffusers), [ParaAttention](https://github.com/chengzeyi/ParaAttention), [xDiT](https://github.com/xdit-project/xDiT) and [TaylorSeer](https://github.com/Shenyi-Z/TaylorSeer).
 
 ## ©️Citations
 
@@ -251,7 +289,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A Unified and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for Diffusers.},
+  title={cache-dit: A Unified and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for DiTs.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com},

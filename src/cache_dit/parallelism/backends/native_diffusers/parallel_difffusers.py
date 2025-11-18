@@ -17,8 +17,7 @@ def maybe_enable_parallelism(
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
     assert isinstance(transformer, ModelMixin), (
-        "transformer must be an instance of diffusers' ModelMixin, "
-        f"but got {type(transformer)}"
+        "transformer must be an instance of diffusers' ModelMixin, " f"but got {type(transformer)}"
     )
     if parallelism_config is None:
         return transformer
@@ -33,10 +32,7 @@ def maybe_enable_parallelism(
         f"but got {parallelism_config.backend}"
     )
 
-    if (
-        parallelism_config.ulysses_size is not None
-        or parallelism_config.ring_size is not None
-    ):
+    if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
         transformer = maybe_enable_context_parallelism(
             transformer,
             parallelism_config,

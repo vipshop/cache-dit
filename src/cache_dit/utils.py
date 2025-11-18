@@ -57,10 +57,7 @@ def print_tensor(
     x = x.contiguous()
     if torch.distributed.is_initialized():
         # all gather hidden_states and check values mean
-        gather_x = [
-            torch.zeros_like(x)
-            for _ in range(torch.distributed.get_world_size())
-        ]
+        gather_x = [torch.zeros_like(x) for _ in range(torch.distributed.get_world_size())]
         torch.distributed.all_gather(gather_x, x)
         gather_x = torch.cat(gather_x, dim=dim)
 

@@ -25,9 +25,7 @@ class ParallelismConfig:
     #     Additional kwargs for parallelism backends. For example, for
     #     NATIVE_DIFFUSER backend, it can include `cp_plan` and
     #     `attention_backend` arguments for `Context Parallelism`.
-    parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(
-        default_factory=dict
-    )
+    parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
         assert ParallelismBackend.is_supported(self.backend), (

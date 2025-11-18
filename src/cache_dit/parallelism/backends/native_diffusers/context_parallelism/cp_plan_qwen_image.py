@@ -35,10 +35,7 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # NOTE: Set it as False to use custom CP plan defined here.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             from diffusers import QwenImageTransformer2DModel
 
             assert isinstance(
@@ -88,12 +85,8 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             #    -> rope
             #    -> splited output
             "pos_embed": {
-                0: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
-                1: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
+                0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
             },
             # Then, the final proj_out will gather the splited output.
             #     splited input (previous splited output)

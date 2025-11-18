@@ -36,16 +36,12 @@ model_id = os.environ.get("CHRONO_EDIT_DIR", model_id)
 image_encoder = CLIPVisionModel.from_pretrained(
     model_id, subfolder="image_encoder", torch_dtype=torch.float32
 )
-vae = AutoencoderKLWan.from_pretrained(
-    model_id, subfolder="vae", torch_dtype=torch.float32
-)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
 )
 
-enable_quantization = (
-    args.quantize and args.quantize_type == "bitsandbytes_4bit"
-)
+enable_quantization = args.quantize and args.quantize_type == "bitsandbytes_4bit"
 
 pipe = ChronoEditPipeline.from_pretrained(
     model_id,
@@ -85,9 +81,7 @@ image = load_image("../data/chrono_edit_example.png")
 
 max_area = 720 * 1280
 aspect_ratio = image.height / image.width
-mod_value = (
-    pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-)
+mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
 height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
@@ -110,9 +104,7 @@ def run_pipe(warmup: bool = False):
         guidance_scale=5.0,
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
-        num_inference_steps=(
-            (50 if not warmup else 5) if args.steps is None else args.steps
-        ),
+        num_inference_steps=((50 if not warmup else 5) if args.steps is None else args.steps),
         generator=torch.Generator("cuda").manual_seed(0),
     ).frames[0]
     output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))

@@ -27,12 +27,8 @@ class Kandinsky5TensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -65,9 +61,7 @@ class Kandinsky5TensorParallelismPlanner(TensorParallelismPlanner):
                 "cross_attention.to_key": ColwiseParallel(),
                 "cross_attention.to_value": ColwiseParallel(),
                 "cross_attention.out_layer": RowwiseParallel(),
-                "visual_modulation.out_layer": ColwiseParallel(
-                    output_layouts=Replicate()
-                ),
+                "visual_modulation.out_layer": ColwiseParallel(output_layouts=Replicate()),
                 "feed_forward.in_layer": ColwiseParallel(),
                 "feed_forward.out_layer": RowwiseParallel(),
             }

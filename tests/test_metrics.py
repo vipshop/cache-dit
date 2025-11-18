@@ -61,9 +61,7 @@ def main():
         print(f"{args.img_true} vs {args.img_test}, Num: {n}, PSNR: {img_psnr}")
         if args.compute_fid:
             img_fid, n = compute_fid(args.img_true, args.img_test)
-            print(
-                f"{args.img_true} vs {args.img_test}, Num: {n}, FID: {img_fid}"
-            )
+            print(f"{args.img_true} vs {args.img_test}, Num: {n}, FID: {img_fid}")
     if args.video_true is not None and args.video_test is not None:
         if any(
             (
@@ -73,9 +71,7 @@ def main():
         ):
             return
         video_psnr, n = compute_video_psnr(args.video_true, args.video_test)
-        print(
-            f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}"
-        )
+        print(f"{args.video_true} vs {args.video_test}, Frames: {n}, PSNR: {video_psnr}")
 
 
 if __name__ == "__main__":

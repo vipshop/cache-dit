@@ -48,10 +48,7 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
         # for CogView3Plus now.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, CogView3PlusTransformer2DModel
             ), "Transformer must be an instance of CogView3PlusTransformer2DModel"
@@ -60,9 +57,7 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
                     return transformer._cp_plan
 
         # CogView3Plus and CogVideoX share the same attention processor
-        CogVideoXAttnProcessor2_0.__call__ = (
-            __patch_CogVideoXAttnProcessor2_0__call__
-        )
+        CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
         if not hasattr(CogVideoXAttnProcessor2_0, "_parallel_config"):
             CogVideoXAttnProcessor2_0._parallel_config = None
@@ -121,10 +116,7 @@ class CogView4ContextParallelismPlanner(ContextParallelismPlanner):
         # for CogView4 now.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, CogView4Transformer2DModel
             ), "Transformer must be an instance of CogView4Transformer2DModel"
@@ -179,12 +171,8 @@ class CogView4ContextParallelismPlanner(ContextParallelismPlanner):
             #    ...
             "transformer_blocks.*": {
                 "image_rotary_emb": [
-                    ContextParallelInput(
-                        split_dim=0, expected_dims=2, split_output=False
-                    ),
-                    ContextParallelInput(
-                        split_dim=0, expected_dims=2, split_output=False
-                    ),
+                    ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+                    ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
                 ],
             },
             # transformer forward while using CP, since it is not splited here.
@@ -260,19 +248,13 @@ def __patch_CogView4AttnProcessor__call__(
         # TODO(DefTruth): Permute mix_attn_mask if context parallel is used.
         # For example, if work size = 2: [E, H] -> [E_0, H_0, E_1, H_1]
         mix_attn_mask = mix_attn_mask.unsqueeze(2)  # [B, seq_len, 1]
-        attn_mask_matrix = mix_attn_mask @ mix_attn_mask.transpose(
-            1, 2
-        )  # [B, seq_len, seq_len]
+        attn_mask_matrix = mix_attn_mask @ mix_attn_mask.transpose(1, 2)  # [B, seq_len, seq_len]
         attention_mask = (
             (attn_mask_matrix > 0).unsqueeze(1).to(query.dtype)
         )  # [B, 1, seq_len, seq_len]
-        if (
-            hasattr(self, "_parallel_config")
-            and self._parallel_config is not None
-        ):
+        if hasattr(self, "_parallel_config") and self._parallel_config is not None:
             raise NotImplementedError(
-                "Attention mask with context parallelism for CogView4 "
-                "is not implemented yet."
+                "Attention mask with context parallelism for CogView4 " "is not implemented yet."
             )
 
     # NOTE(DefTruth): Apply dispatch_attention_fn instead of sdpa directly

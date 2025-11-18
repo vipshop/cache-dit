@@ -27,9 +27,7 @@ model_id = os.environ.get("CHRONO_EDIT_DIR", model_id)
 image_encoder = CLIPVisionModel.from_pretrained(
     model_id, subfolder="image_encoder", torch_dtype=torch.float32
 )
-vae = AutoencoderKLWan.from_pretrained(
-    model_id, subfolder="vae", torch_dtype=torch.float32
-)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
 )
@@ -62,9 +60,7 @@ image = load_image("../examples/data/chrono_edit_example.png")
 
 max_area = 720 * 1280
 aspect_ratio = image.height / image.width
-mod_value = (
-    pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-)
+mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
 height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
@@ -77,9 +73,7 @@ prompt = (
 assert isinstance(pipe.transformer, ChronoEditTransformer3DModel)
 pipe.transformer.set_attention_backend("native")
 if world_size > 1:
-    pipe.transformer.enable_parallelism(
-        config=ContextParallelConfig(ulysses_degree=world_size)
-    )
+    pipe.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=world_size))
 
 pipe.set_progress_bar_config(disable=rank != 0)
 

@@ -166,9 +166,7 @@ end = time.time()
 stats = cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = (
-    f"qwen-image-lightning.nunchaku.{steps}steps.{strify(args, stats)}.png"
-)
+save_path = f"qwen-image-lightning.nunchaku.{steps}steps.{strify(args, stats)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)

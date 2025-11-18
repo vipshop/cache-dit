@@ -12,14 +12,10 @@ def enable_parallelism(
     parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
     assert isinstance(transformer, torch.nn.Module), (
-        "transformer must be an instance of torch.nn.Module, "
-        f"but got {type(transformer)}"
+        "transformer must be an instance of torch.nn.Module, " f"but got {type(transformer)}"
     )
     if getattr(transformer, "_is_parallelized", False):
-        logger.warning(
-            "The transformer is already parallelized. "
-            "Skipping parallelism enabling."
-        )
+        logger.warning("The transformer is already parallelized. " "Skipping parallelism enabling.")
         return transformer
 
     if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
@@ -41,9 +37,7 @@ def enable_parallelism(
             parallelism_config,
         )
     else:
-        raise ValueError(
-            f"Parallel backend {parallelism_config.backend} is not supported yet."
-        )
+        raise ValueError(f"Parallel backend {parallelism_config.backend} is not supported yet.")
 
     transformer._is_parallelized = True  # type: ignore[attr-defined]
     # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
@@ -64,10 +58,7 @@ def remove_parallelism_stats(
     transformer: torch.nn.Module,
 ) -> torch.nn.Module:
     if not getattr(transformer, "_is_parallelized", False):
-        logger.warning(
-            "The transformer is not parallelized. "
-            "Skipping removing parallelism."
-        )
+        logger.warning("The transformer is not parallelized. " "Skipping removing parallelism.")
         return transformer
 
     if hasattr(transformer, "_is_parallelized"):

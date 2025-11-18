@@ -85,9 +85,7 @@ def run_pipe():
 _ = run_pipe()  # always work
 
 start = time.time()
-image = (
-    run_pipe()
-)  # raise error here if cpu offload is enabled before parallelism
+image = run_pipe()  # raise error here if cpu offload is enabled before parallelism
 end = time.time()
 
 

@@ -77,17 +77,13 @@ class DistributedRMSNorm(nn.Module):
 
 
 class SplitFreqsProcessor:
-    def __init__(
-        self, processor: LTXVideoAttnProcessor, tp_size: int, tp_rank: int
-    ):
+    def __init__(self, processor: LTXVideoAttnProcessor, tp_size: int, tp_rank: int):
         self.processor = processor
         self.tp_size = tp_size
         self.tp_rank = tp_rank
 
     @classmethod
-    def from_attn_processor(
-        cls, processor: LTXVideoAttnProcessor, tp_size: int, tp_rank: int
-    ):
+    def from_attn_processor(cls, processor: LTXVideoAttnProcessor, tp_size: int, tp_rank: int):
         return cls(
             processor=processor,
             tp_size=tp_size,
@@ -117,12 +113,8 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -168,18 +160,10 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
-            block.attn1.norm_q = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn1.norm_q
-            )
-            block.attn1.norm_k = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn1.norm_k
-            )
-            block.attn2.norm_q = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn2.norm_q
-            )
-            block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn2.norm_k
-            )
+            block.attn1.norm_q = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn1.norm_q)
+            block.attn1.norm_k = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn1.norm_k)
+            block.attn2.norm_q = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn2.norm_q)
+            block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn2.norm_k)
 
         for _, block in transformer.transformer_blocks.named_children():
             block.attn1.processor = SplitFreqsProcessor.from_attn_processor(

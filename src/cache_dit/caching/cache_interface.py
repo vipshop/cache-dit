@@ -205,20 +205,14 @@ def enable_cache(
         "Bn_compute_blocks": kwargs.get("Bn_compute_blocks", None),
         "max_warmup_steps": kwargs.get("max_warmup_steps", None),
         "max_cached_steps": kwargs.get("max_cached_steps", None),
-        "max_continuous_cached_steps": kwargs.get(
-            "max_continuous_cached_steps", None
-        ),
+        "max_continuous_cached_steps": kwargs.get("max_continuous_cached_steps", None),
         "residual_diff_threshold": kwargs.get("residual_diff_threshold", None),
         "enable_separate_cfg": kwargs.get("enable_separate_cfg", None),
         "cfg_compute_first": kwargs.get("cfg_compute_first", None),
-        "cfg_diff_compute_separate": kwargs.get(
-            "cfg_diff_compute_separate", None
-        ),
+        "cfg_diff_compute_separate": kwargs.get("cfg_diff_compute_separate", None),
     }
 
-    deprecated_kwargs = {
-        k: v for k, v in deprecated_kwargs.items() if v is not None
-    }
+    deprecated_kwargs = {k: v for k, v in deprecated_kwargs.items() if v is not None}
 
     if deprecated_kwargs:
         logger.warning(
@@ -252,9 +246,7 @@ def enable_cache(
         calibrator_config = TaylorSeerCalibratorConfig(
             enable_calibrator=kwargs.get("enable_taylorseer"),
             enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer"),
-            calibrator_cache_type=kwargs.get(
-                "taylorseer_cache_type", "residual"
-            ),
+            calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
             taylorseer_order=kwargs.get("taylorseer_order", 1),
         )
 
@@ -309,15 +301,12 @@ def enable_cache(
                 transformers = BlockAdapter.flatten(adapter.transformer)
         else:
             if not BlockAdapter.is_normalized(pipe_or_adapter):
-                pipe_or_adapter = BlockAdapter.normalize(
-                    pipe_or_adapter, unique=False
-                )
+                pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
             transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
         if len(transformers) == 0:
             logger.warning(
-                "No transformer is detected in the "
-                "BlockAdapter, skip enabling parallelism."
+                "No transformer is detected in the " "BlockAdapter, skip enabling parallelism."
             )
             return pipe_or_adapter
 
@@ -329,9 +318,7 @@ def enable_cache(
             )
         for i, transformer in enumerate(transformers):
             # Enable parallelism for the transformer inplace
-            transformers[i] = enable_parallelism(
-                transformer, parallelism_config
-            )
+            transformers[i] = enable_parallelism(transformer, parallelism_config)
     return pipe_or_adapter
 
 
@@ -342,10 +329,7 @@ def disable_cache(
     ],
 ):
     CachedAdapter.maybe_release_hooks(pipe_or_adapter)
-    logger.warning(
-        f"Cache Acceleration is disabled for: "
-        f"{pipe_or_adapter.__class__.__name__}."
-    )
+    logger.warning(f"Cache Acceleration is disabled for: " f"{pipe_or_adapter.__class__.__name__}.")
 
 
 def supported_pipelines(

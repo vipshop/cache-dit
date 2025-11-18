@@ -29,12 +29,8 @@ class HunyuanDiTTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -97,8 +93,6 @@ class HunyuanDiTTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
-            logger.debug(
-                f"Parallelized HunyuanDiT block {i} with TP size {tp_mesh.size()}"
-            )
+            logger.debug(f"Parallelized HunyuanDiT block {i} with TP size {tp_mesh.size()}")
 
         return transformer

@@ -82,12 +82,8 @@ def init_logger(name: str):
                 try:
                     os.makedirs(_LOG_DIR)
                 except OSError as e:
-                    _root_logger.warn(
-                        f"Error creating directory {_LOG_DIR} : {e}"
-                    )
-            _inference_log_file_handler[pid] = logging.FileHandler(
-                _LOG_DIR + f"/process.{pid}.log"
-            )
+                    _root_logger.warn(f"Error creating directory {_LOG_DIR} : {e}")
+            _inference_log_file_handler[pid] = logging.FileHandler(_LOG_DIR + f"/process.{pid}.log")
             _inference_log_file_handler[pid].setLevel(_LOG_LEVEL)
             _inference_log_file_handler[pid].setFormatter(
                 NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
@@ -98,9 +94,7 @@ def init_logger(name: str):
     return logger
 
 
-def logging_rank_0(
-    logger: logging.Logger, message: str, level: int = logging.INFO
-):
+def logging_rank_0(logger: logging.Logger, message: str, level: int = logging.INFO):
     if not isinstance(logger, logging.Logger):
         raise TypeError("logger must be an instance of logging.Logger")
     if not isinstance(message, str):

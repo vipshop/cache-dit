@@ -14,9 +14,7 @@ args = get_args()
 print(args)
 
 
-model_id = os.environ.get(
-    "HUNYUAN_DIT_DIR", "Tencent-Hunyuan/HunyuanDiT-Diffusers"
-)
+model_id = os.environ.get("HUNYUAN_DIT_DIR", "Tencent-Hunyuan/HunyuanDiT-Diffusers")
 
 pipe = HunyuanDiTPipeline.from_pretrained(
     model_id,

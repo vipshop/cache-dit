@@ -118,16 +118,8 @@ if args.cache or args.parallel_type is not None:
         ),
         parallelism_config=(
             ParallelismConfig(
-                ulysses_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ulysses"
-                    else None
-                ),
-                ring_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ring"
-                    else None
-                ),
+                ulysses_size=(dist.get_world_size() if args.parallel_type == "ulysses" else None),
+                ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
             )
             if args.parallel_type in ["ulysses", "ring"]
             else None
@@ -181,9 +173,7 @@ if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = (
-        f"qwen-image-lightning.{steps}steps.nunchaku.{strify(args, pipe)}.png"
-    )
+    save_path = f"qwen-image-lightning.{steps}steps.nunchaku.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     if not args.perf:
         print(f"Saving image to {save_path}")

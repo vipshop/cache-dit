@@ -3,16 +3,6 @@ import logging
 import torch
 import torch.distributed as dist
 from diffusers.hooks import HookRegistry
-
-try:
-    from diffusers.hooks.context_parallel import ContextParallelSplitHook
-except ImportError:
-    ContextParallelSplitHook = None
-    raise UserWarning(
-        "Context parallelism requires the 'diffusers>=0.36.dev0'."
-        "Please install latest version of diffusers from source: \n"
-        "pip3 install git+https://github.com/huggingface/diffusers.git"
-    )
 from cache_dit.caching.cache_contexts.cache_context import CachedContext
 from cache_dit.caching.cache_contexts.prune_context import PrunedContext
 from cache_dit.caching.cache_contexts.cache_manager import (
@@ -27,6 +17,16 @@ from cache_dit.caching.cache_types import CacheType
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
+
+try:
+    from diffusers.hooks.context_parallel import ContextParallelSplitHook
+except ImportError:
+    ContextParallelSplitHook = None
+    logger.warning(
+        "Context parallelism requires the 'diffusers>=0.36.dev0'."
+        "Please install latest version of diffusers from source: \n"
+        "pip3 install git+https://github.com/huggingface/diffusers.git"
+    )
 
 
 class CachedBlocks_Pattern_Base(torch.nn.Module):
@@ -75,14 +75,11 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
 
     def _check_forward_pattern(self):
         if not self.check_forward_pattern:
-            logger.warning(
-                f"Skipped Forward Pattern Check: {self.forward_pattern}"
-            )
+            logger.warning(f"Skipped Forward Pattern Check: {self.forward_pattern}")
             return
 
         assert (
-            self.forward_pattern.Supported
-            and self.forward_pattern in self._supported_patterns
+            self.forward_pattern.Supported and self.forward_pattern in self._supported_patterns
         ), f"Pattern {self.forward_pattern} is not supported now!"
 
         if self.transformer_blocks is not None:
@@ -92,14 +89,12 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                     if isinstance(block.block, torch.nn.Module):
                         block = block.block
 
-                forward_parameters = set(
-                    inspect.signature(block.forward).parameters.keys()
-                )
+                forward_parameters = set(inspect.signature(block.forward).parameters.keys())
 
                 if self.check_num_outputs:
-                    num_outputs = str(
-                        inspect.signature(block.forward).return_annotation
-                    ).count("torch.Tensor")
+                    num_outputs = str(inspect.signature(block.forward).return_annotation).count(
+                        "torch.Tensor"
+                    )
 
                     if num_outputs > 0:
                         assert len(self.forward_pattern.Out) == num_outputs, (
@@ -122,15 +117,11 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
     @torch.compiler.disable
     def _check_cache_params(self):
         self._check_cache_type()
-        assert self.context_manager.Fn_compute_blocks() <= len(
-            self.transformer_blocks
-        ), (
+        assert self.context_manager.Fn_compute_blocks() <= len(self.transformer_blocks), (
             f"Fn_compute_blocks {self.context_manager.Fn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
-        assert self.context_manager.Bn_compute_blocks() <= len(
-            self.transformer_blocks
-        ), (
+        assert self.context_manager.Bn_compute_blocks() <= len(self.transformer_blocks), (
             f"Bn_compute_blocks {self.context_manager.Bn_compute_blocks()} must be less than "
             f"the number of transformer blocks {len(self.transformer_blocks)}"
         )
@@ -209,9 +200,9 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         # block level cp plan, e.g., WanTransformer3DModel. The shape of
         # `original_hidden_states` and `hidden_states` after Fn maybe
         # different due to seqlen split in context parallelism.
-        if self._check_if_context_parallel_enabled(
-            self.transformer_blocks[0]
-        ) and (original_hidden_states.shape != hidden_states.shape):
+        if self._check_if_context_parallel_enabled(self.transformer_blocks[0]) and (
+            original_hidden_states.shape != hidden_states.shape
+        ):
             # Force use `hidden_states` as the Fn states residual for subsequent
             # dynamic cache processing if the shape is different.
             Fn_hidden_states_residual = hidden_states
@@ -223,8 +214,8 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
                     f"Use hidden_states as Fn_hidden_states_residual directly."
                 )
         else:
-            Fn_hidden_states_residual = (
-                hidden_states - original_hidden_states.to(hidden_states.device)
+            Fn_hidden_states_residual = hidden_states - original_hidden_states.to(
+                hidden_states.device
             )
         return Fn_hidden_states_residual
 
@@ -263,9 +254,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             **kwargs,
         )
 
-        Fn_hidden_states_residual = self._get_Fn_residual(
-            original_hidden_states, hidden_states
-        )
+        Fn_hidden_states_residual = self._get_Fn_residual(original_hidden_states, hidden_states)
         del original_hidden_states
 
         self.context_manager.mark_step_begin()
@@ -288,21 +277,19 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         if can_use_cache:
             self.context_manager.add_cached_step()
             del Fn_hidden_states_residual
-            hidden_states, encoder_hidden_states = (
-                self.context_manager.apply_cache(
-                    hidden_states,
-                    encoder_hidden_states,
-                    prefix=(
-                        f"{self.cache_prefix}_Bn_residual"
-                        if self.context_manager.is_cache_residual()
-                        else f"{self.cache_prefix}_Bn_hidden_states"
-                    ),
-                    encoder_prefix=(
-                        f"{self.cache_prefix}_Bn_residual"
-                        if self.context_manager.is_encoder_cache_residual()
-                        else f"{self.cache_prefix}_Bn_hidden_states"
-                    ),
-                )
+            hidden_states, encoder_hidden_states = self.context_manager.apply_cache(
+                hidden_states,
+                encoder_hidden_states,
+                prefix=(
+                    f"{self.cache_prefix}_Bn_residual"
+                    if self.context_manager.is_cache_residual()
+                    else f"{self.cache_prefix}_Bn_hidden_states"
+                ),
+                encoder_prefix=(
+                    f"{self.cache_prefix}_Bn_residual"
+                    if self.context_manager.is_encoder_cache_residual()
+                    else f"{self.cache_prefix}_Bn_hidden_states"
+                ),
             )
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
@@ -398,11 +385,9 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         # If so, we can skip some Bn blocks and directly
         # use the cached values.
         return (
-            self.context_manager.get_current_step()
-            in self.context_manager.get_cached_steps()
+            self.context_manager.get_current_step() in self.context_manager.get_cached_steps()
         ) or (
-            self.context_manager.get_current_step()
-            in self.context_manager.get_cfg_cached_steps()
+            self.context_manager.get_current_step() in self.context_manager.get_cfg_cached_steps()
         )
 
     @torch.compiler.disable
@@ -410,18 +395,14 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         # Select first `n` blocks to process the hidden states for
         # more stable diff calculation.
         # Fn: [0,...,n-1]
-        selected_Fn_blocks = self.transformer_blocks[
-            : self.context_manager.Fn_compute_blocks()
-        ]
+        selected_Fn_blocks = self.transformer_blocks[: self.context_manager.Fn_compute_blocks()]
         return selected_Fn_blocks
 
     @torch.compiler.disable
     def _Mn_blocks(self):  # middle blocks
         # M(N-2n): only transformer_blocks [n,...,N-n], middle
         if self.context_manager.Bn_compute_blocks() == 0:  # WARN: x[:-0] = []
-            selected_Mn_blocks = self.transformer_blocks[
-                self.context_manager.Fn_compute_blocks() :
-            ]
+            selected_Mn_blocks = self.transformer_blocks[self.context_manager.Fn_compute_blocks() :]
         else:
             selected_Mn_blocks = self.transformer_blocks[
                 self.context_manager.Fn_compute_blocks() : -self.context_manager.Bn_compute_blocks()
@@ -431,9 +412,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
     @torch.compiler.disable
     def _Bn_blocks(self):
         # Bn: transformer_blocks [N-n+1,...,N-1]
-        selected_Bn_blocks = self.transformer_blocks[
-            -self.context_manager.Bn_compute_blocks() :
-        ]
+        selected_Bn_blocks = self.transformer_blocks[-self.context_manager.Bn_compute_blocks() :]
         return selected_Bn_blocks
 
     def call_Fn_blocks(
@@ -481,14 +460,9 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
 
         hidden_states_residual = hidden_states - original_hidden_states
 
-        if (
-            encoder_hidden_states is not None
-            and original_encoder_hidden_states is not None
-        ):
+        if encoder_hidden_states is not None and original_encoder_hidden_states is not None:
             encoder_hidden_states = encoder_hidden_states.contiguous()
-            encoder_hidden_states_residual = (
-                encoder_hidden_states - original_encoder_hidden_states
-            )
+            encoder_hidden_states_residual = encoder_hidden_states - original_encoder_hidden_states
         else:
             encoder_hidden_states_residual = None
 
@@ -558,9 +532,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         assert isinstance(
             self.context_manager, PrunedContextManager
         ), "context_manager must be PrunedContextManager for PrunedBlocks."
-        self.context_manager: PrunedContextManager = (
-            self.context_manager
-        )  # For type hint
+        self.context_manager: PrunedContextManager = self.context_manager  # For type hint
 
     @torch.compiler.disable
     def _check_cache_type(self):
@@ -598,9 +570,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         self.context_manager.mark_step_begin()
 
         if self._check_if_context_parallel_enabled(self.transformer_blocks[0]):
-            raise RuntimeError(
-                "Block level Context parallelism is not supported in PrunedBlocks."
-            )
+            raise RuntimeError("Block level Context parallelism is not supported in PrunedBlocks.")
 
         # Call all blocks with prune strategy to process the hidden states.
         for i, block in enumerate(self.transformer_blocks):
@@ -629,9 +599,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
     @torch.compiler.disable
     def _skip_prune(self, block_id: int) -> bool:
         # Wrap for non compiled mode.
-        return block_id in self.context_manager.get_non_prune_blocks_ids(
-            self.num_blocks
-        )
+        return block_id in self.context_manager.get_non_prune_blocks_ids(self.num_blocks)
 
     @torch.compiler.disable
     def _maybe_prune(
@@ -675,21 +643,19 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
         torch._dynamo.graph_break()
         if can_use_prune:
             self.context_manager.add_pruned_step()
-            hidden_states, encoder_hidden_states = (
-                self.context_manager.apply_prune(
-                    hidden_states,
-                    encoder_hidden_states,
-                    prefix=(
-                        f"{self.cache_prefix}_{block_id}_Bn_residual"
-                        if self.context_manager.is_cache_residual()
-                        else f"{self.cache_prefix}_{block_id}_Bn_hidden_states"
-                    ),
-                    encoder_prefix=(
-                        f"{self.cache_prefix}_{block_id}_Bn_encoder_residual"
-                        if self.context_manager.is_encoder_cache_residual()
-                        else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
-                    ),
-                )
+            hidden_states, encoder_hidden_states = self.context_manager.apply_prune(
+                hidden_states,
+                encoder_hidden_states,
+                prefix=(
+                    f"{self.cache_prefix}_{block_id}_Bn_residual"
+                    if self.context_manager.is_cache_residual()
+                    else f"{self.cache_prefix}_{block_id}_Bn_hidden_states"
+                ),
+                encoder_prefix=(
+                    f"{self.cache_prefix}_{block_id}_Bn_encoder_residual"
+                    if self.context_manager.is_encoder_cache_residual()
+                    else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
+                ),
             )
             torch._dynamo.graph_break()
         else:
@@ -707,10 +673,7 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
                 hidden_states = hidden_states.contiguous()
                 hidden_states_residual = hidden_states - original_hidden_states
 
-                if (
-                    encoder_hidden_states is not None
-                    and original_encoder_hidden_states is not None
-                ):
+                if encoder_hidden_states is not None and original_encoder_hidden_states is not None:
                     encoder_hidden_states = encoder_hidden_states.contiguous()
                     encoder_hidden_states_residual = (
                         encoder_hidden_states - original_encoder_hidden_states

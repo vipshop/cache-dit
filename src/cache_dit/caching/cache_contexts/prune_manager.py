@@ -27,10 +27,7 @@ class PrunedContextManager(CachedContextManager):
     def new_context(self, *args, **kwargs) -> PrunedContext:
         if self._persistent_context:
             cache_config: BasicCacheConfig = kwargs.get("cache_config", None)
-            assert (
-                cache_config is not None
-                and cache_config.num_inference_steps is not None
-            ), (
+            assert cache_config is not None and cache_config.num_inference_steps is not None, (
                 "When persistent_context is True, num_inference_steps "
                 "must be set in cache_config for proper cache refreshing."
             )
@@ -121,11 +118,7 @@ class PrunedContextManager(CachedContextManager):
         # Get the non-prune block ids for current context
         # Never prune the first `Fn` and last `Bn` blocks.
         Fn_compute_blocks_ids = list(
-            range(
-                self.Fn_compute_blocks()
-                if self.Fn_compute_blocks() < num_blocks
-                else num_blocks
-            )
+            range(self.Fn_compute_blocks() if self.Fn_compute_blocks() < num_blocks else num_blocks)
         )
 
         Bn_compute_blocks_ids = list(
@@ -149,9 +142,7 @@ class PrunedContextManager(CachedContextManager):
                 + context.cache_config.non_prune_block_ids
             )
         )
-        non_prune_blocks_ids = [
-            d for d in non_prune_blocks_ids if d < num_blocks
-        ]
+        non_prune_blocks_ids = [d for d in non_prune_blocks_ids if d < num_blocks]
         return sorted(non_prune_blocks_ids)
 
     @torch.compiler.disable
@@ -160,8 +151,6 @@ class PrunedContextManager(CachedContextManager):
         return self.can_cache(*args, **kwargs)
 
     @torch.compiler.disable
-    def apply_prune(
-        self, *args, **kwargs
-    ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
+    def apply_prune(self, *args, **kwargs) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
         # Directly reuse apply_cache for Dynamic Block Prune
         return self.apply_cache(*args, **kwargs)
