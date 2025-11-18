@@ -15,7 +15,7 @@
 
 ## 🔥Hightlight
 
-We are excited to announce that the 🎉**v1.1.0** version of cache-dit has finally been released! It brings **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)** and **[🔥Tensor Parallelism](./docs/User_Guide.md#️hybrid-tensor-parallelism)** to cache-dit, **thus making** it a Unified and Flexible inference engine for 🤗DiTs. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Block Adapter**, **DBCache**, **DBPrune**, **Cache CFG**, **TaylorSeer**, **Context Parallelism**, **Tensor Parallelism** and **🎉SOTA** performance.
+We are excited to announce that the 🎉**v1.1.0** version of cache-dit has finally been released! It brings **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)** and **[🔥Tensor Parallelism](./docs/User_Guide.md#️hybrid-tensor-parallelism)** to cache-dit, **thus making** it a Unified and Flexible Inference Engine for 🤗DiTs. Key features: **Unified Cache APIs**, **Forward Pattern Matching**, **Block Adapter**, **DBCache**, **DBPrune**, **Cache CFG**, **TaylorSeer**, **Context Parallelism**, **Tensor Parallelism** and **🎉SOTA** performance.
 
 ```bash
 pip3 install -U cache-dit # Also, pip3 install git+https://github.com/huggingface/diffusers.git (latest)
