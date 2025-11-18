@@ -77,7 +77,7 @@ The comparison between **cache-dit** and algorithms such as Δ-DiT, Chipmunk, FO
 
 </div>
 
-🎉Surprisingly, **cache-dit** still works in the **extremely few-step** distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR is 34.8163 and the ImageReward is 1.2614. It maintained a relatively high precision. 
+Surprisingly, **cache-dit** still works in the 🎉**extremely few-step** distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR is 34.81 and the ImageReward is 1.26. It maintained a relatively high precision. 
 <div align="center">
 
 | Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
