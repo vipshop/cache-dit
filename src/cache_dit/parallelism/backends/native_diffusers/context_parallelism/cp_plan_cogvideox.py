@@ -43,10 +43,7 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
         # for CogVideoX now.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, CogVideoXTransformer3DModel
             ), "Transformer must be an instance of CogVideoXTransformer3DModel"
@@ -54,9 +51,7 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        CogVideoXAttnProcessor2_0.__call__ = (
-            __patch_CogVideoXAttnProcessor2_0__call__
-        )
+        CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
         if not hasattr(CogVideoXAttnProcessor2_0, "_parallel_config"):
             CogVideoXAttnProcessor2_0._parallel_config = None
@@ -103,12 +98,8 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
             #    ...
             "transformer_blocks.*": {
                 "image_rotary_emb": [
-                    ContextParallelInput(
-                        split_dim=0, expected_dims=2, split_output=False
-                    ),
-                    ContextParallelInput(
-                        split_dim=0, expected_dims=2, split_output=False
-                    ),
+                    ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+                    ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
                 ],
             },
             # transformer forward while using CP, since it is not splited here.
@@ -138,12 +129,8 @@ def __patch_CogVideoXAttnProcessor2_0__call__(
 
     # NOTE(DefTruth): attention mask is always None in CogVideoX
     if attention_mask is not None:
-        attention_mask = attn.prepare_attention_mask(
-            attention_mask, sequence_length, batch_size
-        )
-        attention_mask = attention_mask.view(
-            batch_size, attn.heads, -1, attention_mask.shape[-1]
-        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
     query = attn.to_q(hidden_states)
     key = attn.to_k(hidden_states)

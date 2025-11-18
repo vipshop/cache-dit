@@ -4,7 +4,7 @@ name = "cache_dit"
 dynamic = ["version"]
 requires-python = ">=3.10"
 authors = [{name = "DefTruth, vipshop.com, etc."}]
-description = "A Unified and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for 🤗Diffusers."
+description = "A Unified and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for 🤗DiTs."
 maintainers = [{name="DefTruth, vipshop.com, etc"}] 
 readme = "README.md" 
 

@@ -36,13 +36,9 @@ def maybe_onload(
             unique_devices = list(set(original_devices))
             if len(unique_devices) > 1 or unique_devices[0] != target_device:
                 if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(
-                        f"Onloading from {unique_devices} to {target_device}"
-                    )
+                    logger.debug(f"Onloading from {unique_devices} to {target_device}")
 
-                has_meta_params = any(
-                    dev.type == "meta" for dev in original_devices
-                )
+                has_meta_params = any(dev.type == "meta" for dev in original_devices)
                 if has_meta_params:  # compatible with sequential cpu offload
                     block = block.to_empty(device=target_device)
                 else:
@@ -53,9 +49,7 @@ def maybe_onload(
         if need_restore and original_devices:
 
             async def restore_device():
-                for param, original_device in zip(
-                    block.parameters(), original_devices
-                ):
+                for param, original_device in zip(block.parameters(), original_devices):
                     param.data = await asyncio.to_thread(
                         lambda p, d: p.to(d, non_blocking=True),
                         param.data,  # type: torch.Tensor
@@ -87,9 +81,7 @@ def get_event_loop() -> asyncio.AbstractEventLoop:
         import threading
 
         if not any(t.name == "_my_loop" for t in threading.enumerate()):
-            threading.Thread(
-                target=run_loop, name="_my_loop", daemon=True
-            ).start()
+            threading.Thread(target=run_loop, name="_my_loop", daemon=True).start()
 
     return loop
 

@@ -47,10 +47,7 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
         if cls_name.startswith("ChronoEditTransformer3D"):
             self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
@@ -67,12 +64,8 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
                 #    -> rope
                 #    -> splited output
                 "rope": {
-                    0: ContextParallelInput(
-                        split_dim=1, expected_dims=4, split_output=True
-                    ),
-                    1: ContextParallelInput(
-                        split_dim=1, expected_dims=4, split_output=True
-                    ),
+                    0: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
+                    1: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
                 },
                 # Pattern of blocks.0, split_output=False:
                 #     un-split input -> split -> to_qkv/...
@@ -110,9 +103,7 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
                 #     splited input (previous splited output)
                 #     -> all gather
                 #     -> un-split output
-                "proj_out": ContextParallelOutput(
-                    gather_dim=1, expected_dims=3
-                ),
+                "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
             }
         else:
             _cp_plan = {
@@ -122,12 +113,8 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
                 #    -> rope
                 #    -> splited output
                 "rope": {
-                    0: ContextParallelInput(
-                        split_dim=1, expected_dims=4, split_output=True
-                    ),
-                    1: ContextParallelInput(
-                        split_dim=1, expected_dims=4, split_output=True
-                    ),
+                    0: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
+                    1: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
                 },
                 # Pattern of blocks.0, split_output=False:
                 #     un-split input -> split -> to_qkv/...
@@ -161,9 +148,7 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
                 #     splited input (previous splited output)
                 #     -> all gather
                 #     -> un-split output
-                "proj_out": ContextParallelOutput(
-                    gather_dim=1, expected_dims=3
-                ),
+                "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
             }
         return _cp_plan
 
@@ -181,14 +166,10 @@ def __patch_WanAttnProcessor__call__(
     if attn.add_k_proj is not None:
         # 512 is the context length of the text encoder, hardcoded for now
         image_context_length = encoder_hidden_states.shape[1] - 512
-        encoder_hidden_states_img = encoder_hidden_states[
-            :, :image_context_length
-        ]
+        encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
         encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
 
-    query, key, value = _get_qkv_projections(
-        attn, hidden_states, encoder_hidden_states
-    )
+    query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
 
     query = attn.norm_q(query)
     key = attn.norm_k(key)
@@ -218,9 +199,7 @@ def __patch_WanAttnProcessor__call__(
     # I2V task
     hidden_states_img = None
     if encoder_hidden_states_img is not None:
-        key_img, value_img = _get_added_kv_projections(
-            attn, encoder_hidden_states_img
-        )
+        key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
         key_img = attn.norm_added_k(key_img)
 
         key_img = key_img.unflatten(2, (attn.heads, -1))
@@ -255,9 +234,7 @@ def __patch_WanAttnProcessor__call__(
         # solely on encoder_hidden_states (text), the (q_chunk * k) * v
         # computation can be parallelized independently. Thus, there is
         # no need to pass the parallel_config here.
-        parallel_config=(
-            self._parallel_config if encoder_hidden_states is None else None
-        ),
+        parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.type_as(query)
@@ -282,10 +259,7 @@ class WanVACEContextParallelismPlanner(ContextParallelismPlanner):
         # WanVACETransformer3DModel.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, WanVACETransformer3DModel
             ), "Transformer must be an instance of WanVACETransformer3DModel"
@@ -303,12 +277,8 @@ class WanVACEContextParallelismPlanner(ContextParallelismPlanner):
             #    -> rope
             #    -> splited output
             "rope": {
-                0: ContextParallelInput(
-                    split_dim=1, expected_dims=4, split_output=True
-                ),
-                1: ContextParallelInput(
-                    split_dim=1, expected_dims=4, split_output=True
-                ),
+                0: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
+                1: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
             },
             # Pattern of vace_blocks.0, split_output=False:
             "vace_blocks.0": {

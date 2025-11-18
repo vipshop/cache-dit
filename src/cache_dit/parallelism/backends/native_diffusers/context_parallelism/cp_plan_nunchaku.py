@@ -58,10 +58,7 @@ class NunchakuFluxContextParallelismPlanner(ContextParallelismPlanner):
 
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
 
             assert isinstance(
                 transformer, NunchakuFluxTransformer2DModelV2
@@ -70,9 +67,7 @@ class NunchakuFluxContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        NunchakuFluxFA2Processor.__call__ = (
-            __patch_NunchakuFluxFA2Processor__call__
-        )
+        NunchakuFluxFA2Processor.__call__ = __patch_NunchakuFluxFA2Processor__call__
         # Also need to patch the parallel config and attention backend
         if not hasattr(NunchakuFluxFA2Processor, "_parallel_config"):
             NunchakuFluxFA2Processor._parallel_config = None
@@ -112,12 +107,8 @@ class NunchakuFluxContextParallelismPlanner(ContextParallelismPlanner):
                 "encoder_hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-                "img_ids": ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=False
-                ),
-                "txt_ids": ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=False
-                ),
+                "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+                "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
             },
             # Then, the final proj_out will gather the splited output.
             #     splited input (previous splited output)
@@ -151,11 +142,7 @@ def __patch_NunchakuFluxFA2Processor__call__(
         attn.to_qkv,
         attn.norm_q,
         attn.norm_k,
-        (
-            image_rotary_emb[0]
-            if isinstance(image_rotary_emb, tuple)
-            else image_rotary_emb
-        ),
+        (image_rotary_emb[0] if isinstance(image_rotary_emb, tuple) else image_rotary_emb),
     )
 
     if attn.added_kv_proj_dim is not None:
@@ -235,10 +222,7 @@ class NunchakuQwenImageContextParallelismPlanner(ContextParallelismPlanner):
 
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
 
             assert isinstance(
                 transformer, NunchakuQwenImageTransformer2DModel
@@ -253,9 +237,7 @@ class NunchakuQwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # Also need to patch the parallel config and attention backend
         if not hasattr(NunchakuQwenImageNaiveFA2Processor, "_parallel_config"):
             NunchakuQwenImageNaiveFA2Processor._parallel_config = None
-        if not hasattr(
-            NunchakuQwenImageNaiveFA2Processor, "_attention_backend"
-        ):
+        if not hasattr(NunchakuQwenImageNaiveFA2Processor, "_attention_backend"):
             NunchakuQwenImageNaiveFA2Processor._attention_backend = None
         if not hasattr(NunchakuQwenAttention, "_parallel_config"):
             NunchakuQwenAttention._parallel_config = None
@@ -302,12 +284,8 @@ class NunchakuQwenImageContextParallelismPlanner(ContextParallelismPlanner):
             #    -> rope
             #    -> splited output
             "pos_embed": {
-                0: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
-                1: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
+                0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
             },
             # Then, the final proj_out will gather the splited output.
             #     splited input (previous splited output)

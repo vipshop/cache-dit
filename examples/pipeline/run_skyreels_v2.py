@@ -16,9 +16,7 @@ args = get_args()
 print(args)
 
 
-model_id = os.environ.get(
-    "SKYREELS_V2_DIR", "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers"
-)
+model_id = os.environ.get("SKYREELS_V2_DIR", "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers")
 
 vae = AutoModel.from_pretrained(
     model_id,
@@ -44,9 +42,7 @@ pipe = SkyReelsV2Pipeline.from_pretrained(
 pipe.to("cuda")
 
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
-pipe.scheduler = UniPCMultistepScheduler.from_config(
-    pipe.scheduler.config, flow_shift=flow_shift
-)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
 
 if args.cache:
     cachify(args, pipe)

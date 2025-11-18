@@ -25,17 +25,13 @@ logger = init_logger(__name__)
 
 
 class SplitFreqsProcessor:
-    def __init__(
-        self, processor: MochiAttnProcessor2_0, tp_size: int, tp_rank: int
-    ):
+    def __init__(self, processor: MochiAttnProcessor2_0, tp_size: int, tp_rank: int):
         self.processor = processor
         self.tp_size = tp_size
         self.tp_rank = tp_rank
 
     @classmethod
-    def from_mochi_processor(
-        cls, processor: MochiAttnProcessor2_0, tp_size: int, tp_rank: int
-    ):
+    def from_mochi_processor(cls, processor: MochiAttnProcessor2_0, tp_size: int, tp_rank: int):
         return cls(
             processor=processor,
             tp_size=tp_size,
@@ -64,12 +60,8 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -109,9 +101,7 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
 
         for name, block in transformer.transformer_blocks.named_children():
             if block.context_pre_only:
-                logger.info(
-                    f"Skipping tensor parallelism for context pre-only block: {name}"
-                )
+                logger.info(f"Skipping tensor parallelism for context pre-only block: {name}")
                 continue
             block.attn1.processor = SplitFreqsProcessor.from_mochi_processor(
                 processor=block.attn1.processor,
@@ -135,9 +125,7 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
                 "ff_context.net.0.proj": ColwiseParallel(),
                 "ff_context.net.2": RowwiseParallel(),
                 "norm1.linear": ColwiseParallel(output_layouts=Replicate()),
-                "norm1_context.linear": ColwiseParallel(
-                    output_layouts=Replicate()
-                ),
+                "norm1_context.linear": ColwiseParallel(output_layouts=Replicate()),
             }
 
             parallelize_module(

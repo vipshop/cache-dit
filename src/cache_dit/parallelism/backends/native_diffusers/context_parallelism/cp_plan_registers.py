@@ -38,9 +38,7 @@ class ContextParallelismPlanner:
         **kwargs,
     ) -> ContextParallelModelPlan:
         # NOTE: This method should only return the CP plan dictionary.
-        raise NotImplementedError(
-            "apply method must be implemented by subclasses"
-        )
+        raise NotImplementedError("apply method must be implemented by subclasses")
 
 
 class ContextParallelismPlannerRegister:

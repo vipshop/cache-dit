@@ -17,9 +17,7 @@ print(args)
 # Available checkpoints: nvidia/Cosmos-Predict2-2B-Video2World, nvidia/Cosmos-Predict2-14B-Video2World
 model_id = os.environ.get("COSMOS_DIR", "nvidia/Cosmos-Predict2-2B-Video2World")
 
-pipe = Cosmos2VideoToWorldPipeline.from_pretrained(
-    model_id, torch_dtype=torch.bfloat16
-)
+pipe = Cosmos2VideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 if args.cache:

@@ -12,9 +12,7 @@ import cache_dit
 args = get_args()
 print(args)
 
-model_id = os.environ.get(
-    "SANA_DIR", "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers"
-)
+model_id = os.environ.get("SANA_DIR", "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers")
 
 pipe = SanaPipeline.from_pretrained(
     model_id,

@@ -62,10 +62,7 @@ class CachedContextManager:
     def new_context(self, *args, **kwargs) -> CachedContext:
         if self._persistent_context:
             cache_config: BasicCacheConfig = kwargs.get("cache_config", None)
-            assert (
-                cache_config is not None
-                and cache_config.num_inference_steps is not None
-            ), (
+            assert cache_config is not None and cache_config.num_inference_steps is not None, (
                 "When persistent_context is True, num_inference_steps "
                 "must be set in cache_config for proper cache refreshing."
                 f"\nkwargs: {kwargs}"
@@ -133,17 +130,11 @@ class CachedContextManager:
                     # Create new context if not exist
                     if any((bool(args), bool(kwargs))):
                         kwargs["name"] = cached_context
-                        self._current_context = self.new_context(
-                            *args, **kwargs
-                        )
+                        self._current_context = self.new_context(*args, **kwargs)
                     else:
-                        raise ValueError(
-                            "To create new context, please provide args and kwargs."
-                        )
+                        raise ValueError("To create new context, please provide args and kwargs.")
             else:
-                self._current_context = self._cached_context_manager[
-                    cached_context
-                ]
+                self._current_context = self._cached_context_manager[cached_context]
 
         if self.maybe_refresh(self._current_context):
             if not any((bool(args), bool(kwargs))):
@@ -152,9 +143,7 @@ class CachedContextManager:
                 args = self._current_context._init_args
                 kwargs = self._current_context._init_kwargs
 
-            self._current_context = self.reset_context(
-                self._current_context, *args, **kwargs
-            )
+            self._current_context = self.reset_context(self._current_context, *args, **kwargs)
             self._current_step_refreshed = True
         else:
             self._current_step_refreshed = False
@@ -393,10 +382,8 @@ class CachedContextManager:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return (
-            cached_context.extra_cache_config.l1_hidden_states_diff_threshold
-            is not None
-            and cached_context.extra_cache_config.l1_hidden_states_diff_threshold
-            > 0.0
+            cached_context.extra_cache_config.l1_hidden_states_diff_threshold is not None
+            and cached_context.extra_cache_config.l1_hidden_states_diff_threshold > 0.0
         )
 
     @torch.compiler.disable
@@ -409,18 +396,14 @@ class CachedContextManager:
     def Fn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        assert (
-            cached_context.cache_config.Fn_compute_blocks >= 1
-        ), "Fn_compute_blocks must be >= 1"
+        assert cached_context.cache_config.Fn_compute_blocks >= 1, "Fn_compute_blocks must be >= 1"
         return cached_context.cache_config.Fn_compute_blocks
 
     @torch.compiler.disable
     def Bn_compute_blocks(self) -> int:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        assert (
-            cached_context.cache_config.Bn_compute_blocks >= 0
-        ), "Bn_compute_blocks must be >= 0"
+        assert cached_context.cache_config.Bn_compute_blocks >= 0, "Bn_compute_blocks must be >= 0"
         return cached_context.cache_config.Bn_compute_blocks
 
     @torch.compiler.disable
@@ -489,9 +472,7 @@ class CachedContextManager:
                 token_m_t1 = t1.abs().mean(dim=-1)  # [B, seq_len]
                 # D = (t1 - t2) / t1 = 1 - (t2 / t1), if D = 0, then t1 = t2.
                 token_diff = token_m_df / token_m_t1  # [B, seq_len]
-                condition: torch.Tensor = (
-                    token_diff > condition_thresh
-                )  # [B, seq_len]
+                condition: torch.Tensor = token_diff > condition_thresh  # [B, seq_len]
                 if condition.sum() > 0:
                     condition = condition.unsqueeze(-1)  # [B, seq_len, 1]
                     condition = condition.expand_as(raw_diff)  # [B, seq_len, d]
@@ -515,9 +496,7 @@ class CachedContextManager:
             diff = (mean_diff / mean_t1).item()
 
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"{prefix}, diff: {diff:.6f}, threshold: {threshold:.6f}"
-            )
+            logger.debug(f"{prefix}, diff: {diff:.6f}, threshold: {threshold:.6f}")
 
         self.add_residual_diff(diff)
 
@@ -655,9 +634,7 @@ class CachedContextManager:
             return self.get_buffer(f"{prefix}_buffer")
 
     @torch.compiler.disable
-    def set_Bn_encoder_buffer(
-        self, buffer: torch.Tensor | None, prefix: str = "Bn"
-    ):
+    def set_Bn_encoder_buffer(self, buffer: torch.Tensor | None, prefix: str = "Bn"):
         # DON'T set None Buffer
         if buffer is None:
             return
@@ -737,9 +714,7 @@ class CachedContextManager:
         else:
             hidden_states_prev = self.get_Fn_buffer(prefix)
 
-        assert (
-            hidden_states_prev is not None
-        ), f"{prefix}_buffer must be set before"
+        assert hidden_states_prev is not None, f"{prefix}_buffer must be set before"
 
         if self.is_cache_residual():
             hidden_states = hidden_states_prev + hidden_states
@@ -751,20 +726,14 @@ class CachedContextManager:
 
         if encoder_hidden_states is not None:
             if "Bn" in encoder_prefix:
-                encoder_hidden_states_prev = self.get_Bn_encoder_buffer(
-                    encoder_prefix
-                )
+                encoder_hidden_states_prev = self.get_Bn_encoder_buffer(encoder_prefix)
             else:
-                encoder_hidden_states_prev = self.get_Fn_encoder_buffer(
-                    encoder_prefix
-                )
+                encoder_hidden_states_prev = self.get_Fn_encoder_buffer(encoder_prefix)
 
             if encoder_hidden_states_prev is not None:
 
                 if self.is_encoder_cache_residual():
-                    encoder_hidden_states = (
-                        encoder_hidden_states_prev + encoder_hidden_states
-                    )
+                    encoder_hidden_states = encoder_hidden_states_prev + encoder_hidden_states
                 else:
                     # If encoder cache is not residual, we use the encoder hidden states directly
                     encoder_hidden_states = encoder_hidden_states_prev
@@ -801,8 +770,7 @@ class CachedContextManager:
         if max_cached_steps >= 0 and (len(cached_steps) >= max_cached_steps):
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
-                    f"{prefix}, max_cached_steps reached: {max_cached_steps}, "
-                    "can not use cache."
+                    f"{prefix}, max_cached_steps reached: {max_cached_steps}, " "can not use cache."
                 )
             return False
 

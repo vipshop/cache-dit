@@ -39,16 +39,11 @@ _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH = bool(
 def _is_native_attn_supported_context_parallel() -> bool:
     try:
         return (
-            AttentionBackendName.NATIVE
-            in _AttentionBackendRegistry._supports_context_parallel
-            and _AttentionBackendRegistry._supports_context_parallel[
-                AttentionBackendName.NATIVE
-            ]
+            AttentionBackendName.NATIVE in _AttentionBackendRegistry._supports_context_parallel
+            and _AttentionBackendRegistry._supports_context_parallel[AttentionBackendName.NATIVE]
         )
     except Exception:
-        assert isinstance(
-            _AttentionBackendRegistry._supports_context_parallel, set
-        )
+        assert isinstance(_AttentionBackendRegistry._supports_context_parallel, set)
         return (
             AttentionBackendName.NATIVE.value
             in _AttentionBackendRegistry._supports_context_parallel
@@ -66,16 +61,10 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     )
     _AttentionBackendRegistry._backends.pop(AttentionBackendName.NATIVE)
     _AttentionBackendRegistry._constraints.pop(AttentionBackendName.NATIVE)
-    _AttentionBackendRegistry._supported_arg_names.pop(
-        AttentionBackendName.NATIVE
-    )
+    _AttentionBackendRegistry._supported_arg_names.pop(AttentionBackendName.NATIVE)
     if _is_native_attn_supported_context_parallel():
-        if isinstance(
-            _AttentionBackendRegistry._supports_context_parallel, dict
-        ):
-            _AttentionBackendRegistry._supports_context_parallel.pop(
-                AttentionBackendName.NATIVE
-            )
+        if isinstance(_AttentionBackendRegistry._supports_context_parallel, dict):
+            _AttentionBackendRegistry._supports_context_parallel.pop(AttentionBackendName.NATIVE)
         else:
             _AttentionBackendRegistry._supports_context_parallel.remove(
                 AttentionBackendName.NATIVE.value
@@ -107,13 +96,9 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                     f"but got forward_op: {forward_op_name}."
                 )
         if is_causal:
-            raise ValueError(
-                "Causal attention is not yet supported for templated attention."
-            )
+            raise ValueError("Causal attention is not yet supported for templated attention.")
         if enable_gqa:
-            raise ValueError(
-                "GQA is not yet supported for templated attention."
-            )
+            raise ValueError("GQA is not yet supported for templated attention.")
 
         # TODO: add support for unified attention with ring/ulysses degree both being > 1
         if _parallel_config.context_parallel_config.ring_degree > 1:
@@ -147,9 +132,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                 _parallel_config,
             )
         else:
-            raise ValueError(
-                "Reaching this branch of code is unexpected. Please report a bug."
-            )
+            raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 
     # NOTE:Remove NATIVE attention backend constraints and re-register it.
     # Here is a temporary workaround to enable context parallelism with
@@ -173,9 +156,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     ):
         # Native attention does not return_lse
         if return_lse:
-            raise ValueError(
-                "Native attention does not support return_lse=True"
-            )
+            raise ValueError("Native attention does not support return_lse=True")
 
         # used for backward pass
         if _save_ctx:
@@ -213,9 +194,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         key.requires_grad_(True)
         value.requires_grad_(True)
 
-        query_t, key_t, value_t = (
-            x.permute(0, 2, 1, 3) for x in (query, key, value)
-        )
+        query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
             query=query_t,
             key=key_t,
@@ -260,13 +239,9 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         _parallel_config: Optional["ParallelConfig"] = None,
     ) -> torch.Tensor:
         if return_lse:
-            raise ValueError(
-                "Native attention backend does not support setting `return_lse=True`."
-            )
+            raise ValueError("Native attention backend does not support setting `return_lse=True`.")
         if _parallel_config is None:
-            query, key, value = (
-                x.permute(0, 2, 1, 3) for x in (query, key, value)
-            )
+            query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
             out = torch.nn.functional.scaled_dot_product_attention(
                 query=query,
                 key=key,
@@ -300,6 +275,4 @@ else:
         _native_attention,
     )  # noqa: F401
 
-    logger.info(
-        "Native attention backend already supports context parallelism."
-    )
+    logger.info("Native attention backend already supports context parallelism.")

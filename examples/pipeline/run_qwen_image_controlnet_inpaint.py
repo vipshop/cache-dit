@@ -49,9 +49,7 @@ mask_image = load_image(
     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/masks/mask1.png"
 )
 prompt = "一辆绿色的出租车行驶在路上"
-negative_prompt = (
-    "worst quality, low quality, blurry, text, watermark, logo"  # or " "
-)
+negative_prompt = "worst quality, low quality, blurry, text, watermark, logo"  # or " "
 
 
 if GiB() < 96:

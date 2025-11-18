@@ -17,9 +17,7 @@ print(args)
 model_id = os.environ.get("LUMINA_DIR", "Alpha-VLLM/Lumina-Image-2.0")
 
 ckpt_path = os.path.join(model_id, "consolidated.00-of-01.pth")
-transformer = Lumina2Transformer2DModel.from_single_file(
-    ckpt_path, torch_dtype=torch.bfloat16
-)
+transformer = Lumina2Transformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
 
 pipe = Lumina2Pipeline.from_pretrained(
     model_id, transformer=transformer, torch_dtype=torch.bfloat16

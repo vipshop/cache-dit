@@ -34,12 +34,8 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -75,9 +71,7 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
                 "layer.1.DenseReluDense.wo": RowwiseParallel(),
             }
             if i == 0:
-                layer_plan["layer.0.SelfAttention.relative_attention_bias"] = (
-                    ColwiseParallel()
-                )
+                layer_plan["layer.0.SelfAttention.relative_attention_bias"] = ColwiseParallel()
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,
@@ -109,13 +103,9 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
             }
 
             if getattr(block.norm1, "linear", None) is not None:
-                layer_plan["norm1.linear"] = ColwiseParallel(
-                    output_layouts=Replicate()
-                )
+                layer_plan["norm1.linear"] = ColwiseParallel(output_layouts=Replicate())
             if getattr(block.norm1_context, "linear", None) is not None:
-                layer_plan["norm1_context.linear"] = ColwiseParallel(
-                    output_layouts=Replicate()
-                )
+                layer_plan["norm1_context.linear"] = ColwiseParallel(output_layouts=Replicate())
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,
@@ -125,27 +115,17 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
         # NOTE: special handling for FluxSingleTransformerBlock, we have to
         # rearrange the proj_out weight because it contains both out and down
         # projection weights in a single matrix.
-        def rearrange_proj_out_weight(
-            single_block: FluxSingleTransformerBlock, tp_group_size
-        ):
+        def rearrange_proj_out_weight(single_block: FluxSingleTransformerBlock, tp_group_size):
             # rowwise
             hidden_dim = single_block.attn.to_q.weight.shape[0]
             requires_grad = single_block.proj_out.weight.requires_grad
-            linear2_weight_data = (
-                single_block.proj_out.weight.data.T.detach().clone()
-            )
+            linear2_weight_data = single_block.proj_out.weight.data.T.detach().clone()
             out_weight = linear2_weight_data[:hidden_dim, ...]
-            out_weight = rearrange(
-                out_weight, "(G D) C -> G D C", G=tp_group_size
-            )
+            out_weight = rearrange(out_weight, "(G D) C -> G D C", G=tp_group_size)
             down_weight = linear2_weight_data.data[hidden_dim:, ...]
-            down_weight = rearrange(
-                down_weight, "(G D) C -> G D C", G=tp_group_size
-            )
+            down_weight = rearrange(down_weight, "(G D) C -> G D C", G=tp_group_size)
             new_linear2_weight = torch.cat([out_weight, down_weight], dim=1)
-            new_linear2_weight = rearrange(
-                new_linear2_weight, "G D C -> (G D) C"
-            )
+            new_linear2_weight = rearrange(new_linear2_weight, "G D C -> (G D) C")
             single_block.proj_out.weight.data.copy_(new_linear2_weight.T)
             single_block.proj_out.weight.requires_grad_(requires_grad)
 
@@ -160,9 +140,7 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
                 "proj_out": RowwiseParallel(),
             }
             if getattr(block.norm, "linear", None) is not None:
-                layer_plan["norm.linear"] = ColwiseParallel(
-                    output_layouts=Replicate()
-                )
+                layer_plan["norm.linear"] = ColwiseParallel(output_layouts=Replicate())
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,

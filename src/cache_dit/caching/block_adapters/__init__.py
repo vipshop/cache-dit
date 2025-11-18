@@ -18,9 +18,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
     transformer_cls_name: str = pipe.transformer.__class__.__name__
-    if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith(
-        "Nunchaku"
-    ):
+    if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith("Nunchaku"):
         # NOTE(DefTruth): Users should never use this variable directly,
         # it is only for developers to control whether to enable dummy
         # blocks, default to enabled.
@@ -48,8 +46,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
                 pipe=pipe,
                 transformer=pipe.transformer,
                 blocks=(
-                    pipe.transformer.transformer_blocks
-                    + pipe.transformer.single_transformer_blocks
+                    pipe.transformer.transformer_blocks + pipe.transformer.single_transformer_blocks
                 ),
                 blocks_name="transformer_blocks",
                 dummy_blocks_names=["single_transformer_blocks"],
@@ -117,9 +114,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
         (WanTransformer3DModel, WanVACETransformer3DModel),
     )
     cls_name = pipe.transformer.__class__.__name__
-    patch_functor = (
-        WanVACEPatchFunctor() if cls_name.startswith("WanVACE") else None
-    )
+    patch_functor = WanVACEPatchFunctor() if cls_name.startswith("WanVACE") else None
 
     if getattr(pipe, "transformer_2", None):
         assert isinstance(
@@ -415,9 +410,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import Lumina2Transformer2DModel
     from diffusers import LuminaNextDiT2DModel
 
-    assert isinstance(
-        pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel)
-    )
+    assert isinstance(pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel))
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,

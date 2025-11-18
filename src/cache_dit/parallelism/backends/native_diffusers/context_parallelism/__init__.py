@@ -25,8 +25,7 @@ def maybe_enable_context_parallelism(
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
     assert isinstance(transformer, ModelMixin), (
-        "transformer must be an instance of diffusers' ModelMixin, "
-        f"but got {type(transformer)}"
+        "transformer must be an instance of diffusers' ModelMixin, " f"but got {type(transformer)}"
     )
     if parallelism_config is None:
         return transformer
@@ -41,18 +40,13 @@ def maybe_enable_context_parallelism(
         and native_diffusers_parallelism_available()
     ):
         cp_config = None
-        if (
-            parallelism_config.ulysses_size is not None
-            or parallelism_config.ring_size is not None
-        ):
+        if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
             cp_config = ContextParallelConfig(
                 ulysses_degree=parallelism_config.ulysses_size,
                 ring_degree=parallelism_config.ring_size,
             )
         if cp_config is not None:
-            attention_backend = parallelism_config.parallel_kwargs.get(
-                "attention_backend", None
-            )
+            attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
             if hasattr(transformer, "enable_parallelism"):
                 if hasattr(transformer, "set_attention_backend"):
                     # native, _native_cudnn, flash, etc.
@@ -72,27 +66,19 @@ def maybe_enable_context_parallelism(
                             f"backend to: {attention_backend}"
                         )
                 # Prefer custom cp_plan if provided
-                cp_plan = parallelism_config.parallel_kwargs.get(
-                    "cp_plan", None
-                )
+                cp_plan = parallelism_config.parallel_kwargs.get("cp_plan", None)
                 if cp_plan is not None:
-                    logger.info(
-                        f"Using custom context parallelism plan: {cp_plan}"
-                    )
+                    logger.info(f"Using custom context parallelism plan: {cp_plan}")
                 else:
                     # Try get context parallelism plan from register if not provided
                     extra_parallel_kwargs = {}
                     if parallelism_config.parallel_kwargs is not None:
-                        extra_parallel_kwargs = (
-                            parallelism_config.parallel_kwargs
-                        )
-                    cp_plan = ContextParallelismPlannerRegister.get_planner(
-                        transformer
-                    )().apply(transformer=transformer, **extra_parallel_kwargs)
+                        extra_parallel_kwargs = parallelism_config.parallel_kwargs
+                    cp_plan = ContextParallelismPlannerRegister.get_planner(transformer)().apply(
+                        transformer=transformer, **extra_parallel_kwargs
+                    )
 
-                transformer.enable_parallelism(
-                    config=cp_config, cp_plan=cp_plan
-                )
+                transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
                 _maybe_patch_native_parallel_config(transformer)
             else:
                 raise ValueError(

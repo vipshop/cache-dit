@@ -29,9 +29,7 @@ pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
     # Based on: https://github.com/huggingface/diffusers/pull/12523
-    device_map=(
-        "balanced" if GiB() < 96 and torch.cuda.device_count() > 1 else None
-    ),
+    device_map=("balanced" if GiB() < 96 and torch.cuda.device_count() > 1 else None),
 )
 
 if GiB() < 96 and torch.cuda.device_count() <= 1:
@@ -120,9 +118,7 @@ image = load_image(
 
 max_area = 480 * 832
 aspect_ratio = image.height / image.width
-mod_value = (
-    pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-)
+mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
 height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
@@ -162,9 +158,7 @@ end = time.time()
 cache_dit.summary(pipe, details=True)
 
 time_cost = end - start
-save_path = (
-    f"wan2.2-i2v.frame{len(video)}.{height}x{width}.{strify(args, pipe)}.mp4"
-)
+save_path = f"wan2.2-i2v.frame{len(video)}.{height}x{width}.{strify(args, pipe)}.mp4"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving video to {save_path}")
 export_to_video(video, save_path, fps=16)

@@ -87,16 +87,8 @@ if args.cache or args.parallel_type is not None:
         ),
         parallelism_config=(
             ParallelismConfig(
-                ulysses_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ulysses"
-                    else None
-                ),
-                ring_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ring"
-                    else None
-                ),
+                ulysses_size=(dist.get_world_size() if args.parallel_type == "ulysses" else None),
+                ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
             )
             if args.parallel_type in ["ulysses", "ring"]
             else None
@@ -125,9 +117,7 @@ def run_pipe(warmup: bool = False):
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=(
-            (50 if args.steps is None else args.steps) if not warmup else 5
-        ),
+        num_inference_steps=((50 if args.steps is None else args.steps) if not warmup else 5),
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(0),
         output_type="latent" if args.perf else "pil",

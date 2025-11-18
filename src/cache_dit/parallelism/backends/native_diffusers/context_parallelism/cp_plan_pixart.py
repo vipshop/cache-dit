@@ -49,18 +49,13 @@ class PixArtContextParallelismPlanner(ContextParallelismPlanner):
 
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
         # Apply monkey patch to fix attention mask preparation at class level
-        Attention.prepare_attention_mask = (
-            __patch_Attention_prepare_attention_mask__
-        )
+        Attention.prepare_attention_mask = __patch_Attention_prepare_attention_mask__
         AttnProcessor2_0.__call__ = __patch_AttnProcessor2_0__call__
         if not hasattr(AttnProcessor2_0, "_parallel_config"):
             AttnProcessor2_0._parallel_config = None
@@ -145,9 +140,7 @@ def __patch_Attention_prepare_attention_mask__(
             #       we want to instead pad by (0, remaining_length), where remaining_length is:
             #       remaining_length: int = target_length - current_length
             # TODO: re-enable tests/models/test_models_unet_2d_condition.py#test_model_xattn_padding
-            attention_mask = F.pad(
-                attention_mask, (0, target_length), value=0.0
-            )
+            attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
 
     if out_dim == 3:
         if attention_mask.shape[0] < batch_size * head_size:
@@ -182,14 +175,10 @@ def __patch_AttnProcessor2_0__call__(
 
     if input_ndim == 4:
         batch_size, channel, height, width = hidden_states.shape
-        hidden_states = hidden_states.view(
-            batch_size, channel, height * width
-        ).transpose(1, 2)
+        hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
     batch_size, sequence_length, _ = (
-        hidden_states.shape
-        if encoder_hidden_states is None
-        else encoder_hidden_states.shape
+        hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
     )
 
     if attention_mask is not None:
@@ -207,9 +196,7 @@ def __patch_AttnProcessor2_0__call__(
             # accordingly. The head_size is also adjusted based on the world size
             # in order to make sdpa work correctly, otherwise, the sdpa op will raise
             # error due to the mismatch between attention_mask shape and expected shape.
-            cp_config = getattr(
-                self._parallel_config, "context_parallel_config", None
-            )
+            cp_config = getattr(self._parallel_config, "context_parallel_config", None)
             if cp_config is not None and cp_config._world_size > 1:
                 head_size = attn.heads // cp_config._world_size
                 attention_mask = attn.prepare_attention_mask(
@@ -224,18 +211,14 @@ def __patch_AttnProcessor2_0__call__(
                 )
 
     if attn.group_norm is not None:
-        hidden_states = attn.group_norm(
-            hidden_states.transpose(1, 2)
-        ).transpose(1, 2)
+        hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
     query = attn.to_q(hidden_states)
 
     if encoder_hidden_states is None:
         encoder_hidden_states = hidden_states
     elif attn.norm_cross:
-        encoder_hidden_states = attn.norm_encoder_hidden_states(
-            encoder_hidden_states
-        )
+        encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
     key = attn.to_k(encoder_hidden_states)
     value = attn.to_v(encoder_hidden_states)
@@ -273,9 +256,7 @@ def __patch_AttnProcessor2_0__call__(
     hidden_states = attn.to_out[1](hidden_states)
 
     if input_ndim == 4:
-        hidden_states = hidden_states.transpose(-1, -2).reshape(
-            batch_size, channel, height, width
-        )
+        hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
     if attn.residual_connection:
         hidden_states = hidden_states + residual

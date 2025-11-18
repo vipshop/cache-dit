@@ -14,9 +14,7 @@ import cache_dit
 args = get_args()
 print(args)
 
-model_id = os.environ.get(
-    "EASY_ANIMATE_DIR", "alibaba-pai/EasyAnimateV5.1-7b-zh"
-)
+model_id = os.environ.get("EASY_ANIMATE_DIR", "alibaba-pai/EasyAnimateV5.1-7b-zh")
 
 
 pipe = EasyAnimatePipeline.from_pretrained(

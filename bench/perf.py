@@ -33,12 +33,8 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--compile-all", action="store_true", default=False)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
-    parser.add_argument(
-        "--use-block-adapter", "--adapt", action="store_true", default=False
-    )
-    parser.add_argument(
-        "--use-auto-block-adapter", "--auto", action="store_true", default=False
-    )
+    parser.add_argument("--use-block-adapter", "--adapt", action="store_true", default=False)
+    parser.add_argument("--use-auto-block-adapter", "--auto", action="store_true", default=False)
     parser.add_argument("--save-dir", type=str, default="./tmp")
     return parser.parse_args()
 
@@ -89,9 +85,7 @@ def main():
                     ),
                 )
             else:
-                cache_dit.enable_cache(
-                    pipe, **cache_dit.load_options(args.cache_config)
-                )
+                cache_dit.enable_cache(pipe, **cache_dit.load_options(args.cache_config))
         else:
             assert isinstance(pipe.transformer, FluxTransformer2DModel)
             from cache_dit import (
@@ -185,9 +179,7 @@ def main():
             cache_dit.set_compile_configs()
         else:
             torch._dynamo.config.recompile_limit = 96  # default is 8
-            torch._dynamo.config.accumulated_recompile_limit = (
-                2048  # default is 256
-            )
+            torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
         if isinstance(pipe.transformer, FluxTransformer2DModel):
             if not args.compile_all:
                 logger.warning(
@@ -199,9 +191,7 @@ def main():
                 for module in pipe.transformer.single_transformer_blocks:
                     module.compile(fullgraph=True)
             else:
-                pipe.transformer = torch.compile(
-                    pipe.transformer, mode="default"
-                )
+                pipe.transformer = torch.compile(pipe.transformer, mode="default")
         else:
             logger.info("Compiling the transformer with default mode.")
             pipe.transformer = torch.compile(pipe.transformer, mode="default")
@@ -216,9 +206,7 @@ def main():
         ).images[0]
         end = time.time()
         all_times.append(end - start)
-        logger.info(
-            f"Run {i + 1}/{args.repeats}, " f"Time: {all_times[-1]:.2f}s"
-        )
+        logger.info(f"Run {i + 1}/{args.repeats}, " f"Time: {all_times[-1]:.2f}s")
 
     all_times.pop(0)  # Remove the first run time, usually warmup
     mean_time = sum(all_times) / len(all_times)

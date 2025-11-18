@@ -45,8 +45,7 @@ class TaylorSeerState:
         step = self.current_step if step is None else step
         if (
             step < self.max_warmup_steps
-            or (step - self.max_warmup_steps + 1) % self.skip_interval_steps
-            == 0
+            or (step - self.max_warmup_steps + 1) % self.skip_interval_steps == 0
         ):
             return True
         return False
@@ -63,9 +62,7 @@ class TaylorSeerState:
 
         for i in range(self.n_derivatives):
             if self.state["dY_prev"][i] is not None and self.current_step > 1:
-                dY_current[i + 1] = (
-                    dY_current[i] - self.state["dY_prev"][i]
-                ) / window
+                dY_current[i + 1] = (dY_current[i] - self.state["dY_prev"][i]) / window
             else:
                 break
         return dY_current

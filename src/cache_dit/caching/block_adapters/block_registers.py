@@ -28,9 +28,7 @@ class BlockAdapterRegister:
 
     @classmethod
     def register(cls, name: str, supported: bool = True):
-        def decorator(
-            func: Callable[..., BlockAdapter]
-        ) -> Callable[..., BlockAdapter]:
+        def decorator(func: Callable[..., BlockAdapter]) -> Callable[..., BlockAdapter]:
             if supported:
                 cls._adapters[name] = func
             return func
@@ -59,9 +57,7 @@ class BlockAdapterRegister:
                     # only have one transformer module. Case like multiple transformers
                     # is not supported, e.g, Wan2.2. Please use BlockAdapter directly for
                     # such cases.
-                    return cls._adapters[name](
-                        FakeDiffusionPipeline(pipe_or_module), **kwargs
-                    )
+                    return cls._adapters[name](FakeDiffusionPipeline(pipe_or_module), **kwargs)
                 else:
                     return cls._adapters[name](pipe_or_module, **kwargs)
 

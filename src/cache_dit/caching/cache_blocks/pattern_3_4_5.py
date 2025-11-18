@@ -39,9 +39,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = (
-                self._process_block_outputs(hidden_states)
-            )
+            hidden_states, new_encoder_hidden_states = self._process_block_outputs(hidden_states)
 
         return hidden_states, new_encoder_hidden_states
 
@@ -65,9 +63,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 else:
                     raise ValueError("Unexpected hidden_states format.")
             else:
-                assert (
-                    len(hidden_states) == 1
-                ), f"Unexpected output length: {len(hidden_states)}"
+                assert len(hidden_states) == 1, f"Unexpected output length: {len(hidden_states)}"
                 hidden_states = hidden_states[0]
         return hidden_states, new_encoder_hidden_states
 
@@ -76,11 +72,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         self,
         hidden_states: torch.Tensor,
         new_encoder_hidden_states: torch.Tensor | None,
-    ) -> (
-        torch.Tensor
-        | tuple[torch.Tensor, torch.Tensor]
-        | tuple[torch.Tensor, None]
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, None]:
         if self.forward_pattern.Return_H_Only:
             return hidden_states
         else:
@@ -106,9 +98,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            return self._process_forward_outputs(
-                hidden_states, new_encoder_hidden_states
-            )
+            return self._process_forward_outputs(hidden_states, new_encoder_hidden_states)
 
         original_hidden_states = hidden_states
         # Call first `n` blocks to process the hidden states for
@@ -119,9 +109,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             **kwargs,
         )
 
-        Fn_hidden_states_residual = self._get_Fn_residual(
-            original_hidden_states, hidden_states
-        )
+        Fn_hidden_states_residual = self._get_Fn_residual(original_hidden_states, hidden_states)
         del original_hidden_states
 
         self.context_manager.mark_step_begin()
@@ -144,21 +132,19 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
         if can_use_cache:
             self.context_manager.add_cached_step()
             del Fn_hidden_states_residual
-            hidden_states, new_encoder_hidden_states = (
-                self.context_manager.apply_cache(
-                    hidden_states,
-                    new_encoder_hidden_states,  # encoder_hidden_states not use cache
-                    prefix=(
-                        f"{self.cache_prefix}_Bn_residual"
-                        if self.context_manager.is_cache_residual()
-                        else f"{self.cache_prefix}_Bn_hidden_states"
-                    ),
-                    encoder_prefix=(
-                        f"{self.cache_prefix}_Bn_residual"
-                        if self.context_manager.is_encoder_cache_residual()
-                        else f"{self.cache_prefix}_Bn_hidden_states"
-                    ),
-                )
+            hidden_states, new_encoder_hidden_states = self.context_manager.apply_cache(
+                hidden_states,
+                new_encoder_hidden_states,  # encoder_hidden_states not use cache
+                prefix=(
+                    f"{self.cache_prefix}_Bn_residual"
+                    if self.context_manager.is_cache_residual()
+                    else f"{self.cache_prefix}_Bn_hidden_states"
+                ),
+                encoder_prefix=(
+                    f"{self.cache_prefix}_Bn_residual"
+                    if self.context_manager.is_encoder_cache_residual()
+                    else f"{self.cache_prefix}_Bn_hidden_states"
+                ),
             )
             torch._dynamo.graph_break()
             # Call last `n` blocks to further process the hidden states
@@ -251,9 +237,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = (
-                self._process_block_outputs(hidden_states)
-            )
+            hidden_states, new_encoder_hidden_states = self._process_block_outputs(hidden_states)
 
         return hidden_states, new_encoder_hidden_states
 
@@ -272,15 +256,11 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            hidden_states, new_encoder_hidden_states = (
-                self._process_block_outputs(hidden_states)
-            )
+            hidden_states, new_encoder_hidden_states = self._process_block_outputs(hidden_states)
 
         # compute hidden_states residual
         hidden_states = hidden_states.contiguous()
-        hidden_states_residual = hidden_states - original_hidden_states.to(
-            hidden_states.device
-        )
+        hidden_states_residual = hidden_states - original_hidden_states.to(hidden_states.device)
 
         return (
             hidden_states,
@@ -305,9 +285,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            hidden_states, new_encoder_hidden_states = (
-                self._process_block_outputs(hidden_states)
-            )
+            hidden_states, new_encoder_hidden_states = self._process_block_outputs(hidden_states)
 
         return hidden_states, new_encoder_hidden_states
 
@@ -352,9 +330,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
         assert isinstance(
             self.context_manager, PrunedContextManager
         ), "context_manager must be PrunedContextManager for PrunedBlocks."
-        self.context_manager: PrunedContextManager = (
-            self.context_manager
-        )  # For type hint
+        self.context_manager: PrunedContextManager = self.context_manager  # For type hint
 
     @torch.compiler.disable
     def _check_cache_type(self):
@@ -381,16 +357,12 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                 *args,
                 **kwargs,
             )
-            return self._process_forward_outputs(
-                hidden_states, new_encoder_hidden_states
-            )
+            return self._process_forward_outputs(hidden_states, new_encoder_hidden_states)
 
         self.context_manager.mark_step_begin()
 
         if self._check_if_context_parallel_enabled(self.transformer_blocks[0]):
-            raise RuntimeError(
-                "Block level Context parallelism is not supported in PrunedBlocks."
-            )
+            raise RuntimeError("Block level Context parallelism is not supported in PrunedBlocks.")
 
         # Call all blocks with prune strategy to process the hidden states.
         new_encoder_hidden_states = None
@@ -420,9 +392,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
     @torch.compiler.disable
     def _skip_prune(self, block_id: int) -> bool:
         # Wrap for non compiled mode.
-        return block_id in self.context_manager.get_non_prune_blocks_ids(
-            self.num_blocks
-        )
+        return block_id in self.context_manager.get_non_prune_blocks_ids(self.num_blocks)
 
     @torch.compiler.disable
     def _maybe_prune(
@@ -466,21 +436,19 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
         torch._dynamo.graph_break()
         if can_use_prune:
             self.context_manager.add_pruned_step()
-            hidden_states, new_encoder_hidden_states = (
-                self.context_manager.apply_prune(
-                    hidden_states,
-                    new_encoder_hidden_states,
-                    prefix=(
-                        f"{self.cache_prefix}_{block_id}_Bn_residual"
-                        if self.context_manager.is_cache_residual()
-                        else f"{self.cache_prefix}_{block_id}_Bn_hidden_states"
-                    ),
-                    encoder_prefix=(
-                        f"{self.cache_prefix}_{block_id}_Bn_encoder_residual"
-                        if self.context_manager.is_encoder_cache_residual()
-                        else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
-                    ),
-                )
+            hidden_states, new_encoder_hidden_states = self.context_manager.apply_prune(
+                hidden_states,
+                new_encoder_hidden_states,
+                prefix=(
+                    f"{self.cache_prefix}_{block_id}_Bn_residual"
+                    if self.context_manager.is_cache_residual()
+                    else f"{self.cache_prefix}_{block_id}_Bn_hidden_states"
+                ),
+                encoder_prefix=(
+                    f"{self.cache_prefix}_{block_id}_Bn_encoder_residual"
+                    if self.context_manager.is_encoder_cache_residual()
+                    else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
+                ),
             )
             torch._dynamo.graph_break()
         else:
@@ -490,10 +458,8 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                 *args,
                 **kwargs,
             )
-            hidden_states, new_encoder_hidden_states = (
-                self._process_block_outputs(
-                    hidden_states, new_encoder_hidden_states
-                )
+            hidden_states, new_encoder_hidden_states = self._process_block_outputs(
+                hidden_states, new_encoder_hidden_states
             )
             if not self._skip_prune(block_id):
                 hidden_states = hidden_states.contiguous()
@@ -503,12 +469,9 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                     new_encoder_hidden_states is not None
                     and original_encoder_hidden_states is not None
                 ):
-                    new_encoder_hidden_states = (
-                        new_encoder_hidden_states.contiguous()
-                    )
+                    new_encoder_hidden_states = new_encoder_hidden_states.contiguous()
                     new_encoder_hidden_states_residual = (
-                        new_encoder_hidden_states
-                        - original_encoder_hidden_states
+                        new_encoder_hidden_states - original_encoder_hidden_states
                     )
                 else:
                     new_encoder_hidden_states_residual = None

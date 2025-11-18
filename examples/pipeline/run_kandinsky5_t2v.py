@@ -21,9 +21,7 @@ print(args)
 
 model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
 model_id = os.environ.get("KANDINSKY5_T2V_DIR", model_id)
-pipe = Kandinsky5T2VPipeline.from_pretrained(
-    model_id, torch_dtype=torch.bfloat16
-)
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
 if args.cache:

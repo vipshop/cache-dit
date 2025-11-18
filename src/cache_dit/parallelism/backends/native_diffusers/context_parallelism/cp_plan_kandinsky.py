@@ -41,10 +41,7 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
 
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
@@ -81,9 +78,7 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
                 "text_embed": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-                "rope": ContextParallelInput(
-                    split_dim=1, expected_dims=6, split_output=False
-                ),
+                "rope": ContextParallelInput(split_dim=1, expected_dims=6, split_output=False),
             },
             # NOTE: Need to gather the visual_embed before final out_layer, because
             # the flatten operation before out_layer needs the full visual_embed.

@@ -14,16 +14,12 @@ import cache_dit
 args = get_args()
 print(args)
 
-model_id = os.environ.get(
-    "HUNYUAN_VIDEO_DIR", "hunyuanvideo-community/HunyuanVideo"
-)
+model_id = os.environ.get("HUNYUAN_VIDEO_DIR", "hunyuanvideo-community/HunyuanVideo")
 pipe = HunyuanVideoPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
-    ),
+    device_map=("balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None),
 )
 
 

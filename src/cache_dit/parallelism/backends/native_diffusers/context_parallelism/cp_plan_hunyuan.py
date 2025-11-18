@@ -50,10 +50,7 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
         # for HunyuanImage now.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, HunyuanImageTransformer2DModel
             ), "Transformer must be an instance of HunyuanImageTransformer2DModel"
@@ -63,9 +60,7 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
 
         # Apply monkey patch to fix attention mask preparation while using CP
         assert isinstance(transformer, HunyuanImageTransformer2DModel)
-        HunyuanImageTransformer2DModel.forward = (
-            __patch__HunyuanImageTransformer2DModel_forward__
-        )
+        HunyuanImageTransformer2DModel.forward = __patch__HunyuanImageTransformer2DModel_forward__
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
@@ -77,12 +72,8 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
             #    -> rope
             #    -> splited output
             "rope": {
-                0: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
-                1: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
+                0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
             },
             # Pattern of transformer_blocks.0, split_output=False:
             #     un-split input -> split -> to_qkv/...
@@ -146,10 +137,7 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
         # weight the lora layers by setting `lora_scale` for each PEFT layer
         scale_lora_layers(self, lora_scale)
     else:
-        if (
-            attention_kwargs is not None
-            and attention_kwargs.get("scale", None) is not None
-        ):
+        if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
             logger.warning(
                 "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
             )
@@ -161,34 +149,23 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
         batch_size, channels, frame, height, width = hidden_states.shape
         sizes = (frame, height, width)
     else:
-        raise ValueError(
-            f"hidden_states must be a 4D or 5D tensor, got {hidden_states.shape}"
-        )
+        raise ValueError(f"hidden_states must be a 4D or 5D tensor, got {hidden_states.shape}")
 
-    post_patch_sizes = tuple(
-        d // p for d, p in zip(sizes, self.config.patch_size)
-    )
+    post_patch_sizes = tuple(d // p for d, p in zip(sizes, self.config.patch_size))
 
     # 1. RoPE
     image_rotary_emb = self.rope(hidden_states)
 
     # 2. Conditional embeddings
     encoder_attention_mask = encoder_attention_mask.bool()
-    temb = self.time_guidance_embed(
-        timestep, guidance=guidance, timestep_r=timestep_r
-    )
+    temb = self.time_guidance_embed(timestep, guidance=guidance, timestep_r=timestep_r)
     hidden_states = self.x_embedder(hidden_states)
     encoder_hidden_states = self.context_embedder(
         encoder_hidden_states, timestep, encoder_attention_mask
     )
 
-    if (
-        self.context_embedder_2 is not None
-        and encoder_hidden_states_2 is not None
-    ):
-        encoder_hidden_states_2 = self.context_embedder_2(
-            encoder_hidden_states_2
-        )
+    if self.context_embedder_2 is not None and encoder_hidden_states_2 is not None:
+        encoder_hidden_states_2 = self.context_embedder_2(encoder_hidden_states_2)
 
         encoder_attention_mask_2 = encoder_attention_mask_2.bool()
 
@@ -237,52 +214,40 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
     # NOTE(DefTruth): Permute attention_mask if context parallel is used.
     # For example, if work size = 2: [H, E] -> [H_0, E_0, H_1, E_1]
     if self._parallel_config is not None:
-        cp_config = getattr(
-            self._parallel_config, "context_parallel_config", None
-        )
+        cp_config = getattr(self._parallel_config, "context_parallel_config", None)
         if cp_config is not None and cp_config._world_size > 1:
             hidden_mask = attention_mask[:, : hidden_states.shape[1]]
             encoder_mask = attention_mask[:, hidden_states.shape[1] :]
-            hidden_mask_splits = torch.chunk(
-                hidden_mask, cp_config._world_size, dim=1
-            )
-            encoder_mask_splits = torch.chunk(
-                encoder_mask, cp_config._world_size, dim=1
-            )
+            hidden_mask_splits = torch.chunk(hidden_mask, cp_config._world_size, dim=1)
+            encoder_mask_splits = torch.chunk(encoder_mask, cp_config._world_size, dim=1)
             new_attention_mask_splits = []
             for i in range(cp_config._world_size):
                 new_attention_mask_splits.append(hidden_mask_splits[i])
                 new_attention_mask_splits.append(encoder_mask_splits[i])
             attention_mask = torch.cat(new_attention_mask_splits, dim=1)
 
-    attention_mask = attention_mask.unsqueeze(1).unsqueeze(
-        2
-    )  # [1,N] -> [1,1,1,N]
+    attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)  # [1,N] -> [1,1,1,N]
 
     # 3. Transformer blocks
     if torch.is_grad_enabled() and self.gradient_checkpointing:
         for block in self.transformer_blocks:
-            hidden_states, encoder_hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    attention_mask=attention_mask,
-                    image_rotary_emb=image_rotary_emb,
-                )
+            hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                attention_mask=attention_mask,
+                image_rotary_emb=image_rotary_emb,
             )
 
         for block in self.single_transformer_blocks:
-            hidden_states, encoder_hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    attention_mask=attention_mask,
-                    image_rotary_emb=image_rotary_emb,
-                )
+            hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                attention_mask=attention_mask,
+                image_rotary_emb=image_rotary_emb,
             )
 
     else:
@@ -312,10 +277,7 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
     # reshape: [batch_size, *post_patch_dims, channels, *patch_size]
     out_channels = self.config.out_channels
     reshape_dims = (
-        [batch_size]
-        + list(post_patch_sizes)
-        + [out_channels]
-        + list(self.config.patch_size)
+        [batch_size] + list(post_patch_sizes) + [out_channels] + list(self.config.patch_size)
     )
     hidden_states = hidden_states.reshape(*reshape_dims)
 
@@ -325,16 +287,13 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
     ndim = len(post_patch_sizes)
     permute_pattern = [0, ndim + 1]  # batch, channels
     for i in range(ndim):
-        permute_pattern.extend(
-            [i + 1, ndim + 2 + i]
-        )  # post_patch_sizes[i], patch_sizes[i]
+        permute_pattern.extend([i + 1, ndim + 2 + i])  # post_patch_sizes[i], patch_sizes[i]
     hidden_states = hidden_states.permute(*permute_pattern)
 
     # flatten patch dimensions: flatten each (post_patch_size, patch_size) pair
     # batch_size, channels, post_patch_sizes[0] * patch_sizes[0], post_patch_sizes[1] * patch_sizes[1], ...
     final_dims = [batch_size, out_channels] + [
-        post_patch * patch
-        for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)
+        post_patch * patch for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)
     ]
     hidden_states = hidden_states.reshape(*final_dims)
 
@@ -360,10 +319,7 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
         # for HunyuanImage now.
         self._cp_planner_preferred_native_diffusers = False
 
-        if (
-            transformer is not None
-            and self._cp_planner_preferred_native_diffusers
-        ):
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
                 transformer, HunyuanVideoTransformer3DModel
             ), "Transformer must be an instance of HunyuanVideoTransformer3DModel"
@@ -373,12 +329,8 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
 
         # Apply monkey patch to fix attention mask preparation while using CP
         assert isinstance(transformer, HunyuanVideoTransformer3DModel)
-        HunyuanVideoTransformer3DModel.forward = (
-            __patch__HunyuanVideoTransformer3DModel_forward__
-        )
-        HunyuanVideoAttnProcessor2_0.__call__ = (
-            __patch_HunyuanVideoAttnProcessor2_0__call__
-        )
+        HunyuanVideoTransformer3DModel.forward = __patch__HunyuanVideoTransformer3DModel_forward__
+        HunyuanVideoAttnProcessor2_0.__call__ = __patch_HunyuanVideoAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
         if not hasattr(HunyuanVideoAttnProcessor2_0, "_parallel_config"):
             HunyuanVideoAttnProcessor2_0._parallel_config = None
@@ -395,12 +347,8 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
             #    -> rope
             #    -> splited output
             "rope": {
-                0: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
-                1: ContextParallelInput(
-                    split_dim=0, expected_dims=2, split_output=True
-                ),
+                0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
             },
             # Pattern of transformer_blocks.0, split_output=False:
             #     un-split input -> split -> to_qkv/...
@@ -462,10 +410,7 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
         # weight the lora layers by setting `lora_scale` for each PEFT layer
         scale_lora_layers(self, lora_scale)
     else:
-        if (
-            attention_kwargs is not None
-            and attention_kwargs.get("scale", None) is not None
-        ):
+        if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
             logger.warning(
                 "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
             )
@@ -481,9 +426,7 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
     image_rotary_emb = self.rope(hidden_states)
 
     # 2. Conditional embeddings
-    temb, token_replace_emb = self.time_text_embed(
-        timestep, pooled_projections, guidance
-    )
+    temb, token_replace_emb = self.time_text_embed(timestep, pooled_projections, guidance)
 
     hidden_states = self.x_embedder(hidden_states)
     encoder_hidden_states = self.context_embedder(
@@ -500,34 +443,20 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
         device=hidden_states.device,
         dtype=torch.bool,
     )  # [B, N]
-    effective_condition_sequence_length = encoder_attention_mask.sum(
-        dim=1, dtype=torch.int
-    )  # [B,]
-    effective_sequence_length = (
-        latent_sequence_length + effective_condition_sequence_length
-    )
-    indices = torch.arange(
-        sequence_length, device=hidden_states.device
-    ).unsqueeze(
-        0
-    )  # [1, N]
+    effective_condition_sequence_length = encoder_attention_mask.sum(dim=1, dtype=torch.int)  # [B,]
+    effective_sequence_length = latent_sequence_length + effective_condition_sequence_length
+    indices = torch.arange(sequence_length, device=hidden_states.device).unsqueeze(0)  # [1, N]
     mask_indices = indices >= effective_sequence_length.unsqueeze(1)  # [B, N]
     attention_mask = attention_mask.masked_fill(mask_indices, False)
     # NOTE(DefTruth): Permute attention_mask if context parallel is used.
     # For example, if work size = 2: [H, E] -> [H_0, E_0, H_1, E_1]
     if self._parallel_config is not None:
-        cp_config = getattr(
-            self._parallel_config, "context_parallel_config", None
-        )
+        cp_config = getattr(self._parallel_config, "context_parallel_config", None)
         if cp_config is not None and cp_config._world_size > 1:
             hidden_mask = attention_mask[:, :latent_sequence_length]
             encoder_mask = attention_mask[:, latent_sequence_length:]
-            hidden_mask_splits = torch.chunk(
-                hidden_mask, cp_config._world_size, dim=1
-            )
-            encoder_mask_splits = torch.chunk(
-                encoder_mask, cp_config._world_size, dim=1
-            )
+            hidden_mask_splits = torch.chunk(hidden_mask, cp_config._world_size, dim=1)
+            encoder_mask_splits = torch.chunk(encoder_mask, cp_config._world_size, dim=1)
             new_attention_mask_splits = []
             for i in range(cp_config._world_size):
                 new_attention_mask_splits.append(hidden_mask_splits[i])
@@ -539,31 +468,27 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
     # 4. Transformer blocks
     if torch.is_grad_enabled() and self.gradient_checkpointing:
         for block in self.transformer_blocks:
-            hidden_states, encoder_hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    attention_mask,
-                    image_rotary_emb,
-                    token_replace_emb,
-                    first_frame_num_tokens,
-                )
+            hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                attention_mask,
+                image_rotary_emb,
+                token_replace_emb,
+                first_frame_num_tokens,
             )
 
         for block in self.single_transformer_blocks:
-            hidden_states, encoder_hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    attention_mask,
-                    image_rotary_emb,
-                    token_replace_emb,
-                    first_frame_num_tokens,
-                )
+            hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                temb,
+                attention_mask,
+                image_rotary_emb,
+                token_replace_emb,
+                first_frame_num_tokens,
             )
 
     else:

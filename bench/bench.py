@@ -113,9 +113,7 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
             cache_dit.set_compile_configs()
         else:
             torch._dynamo.config.recompile_limit = 96  # default is 8
-            torch._dynamo.config.accumulated_recompile_limit = (
-                2048  # default is 256
-            )
+            torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
         if not args.compile_all:
             logger.warning(
                 "Only compile transformer blocks not the whole model "
@@ -134,9 +132,7 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
     return pipe
 
 
-def gen_flux_image(
-    args: argparse.Namespace, pipe: FluxPipeline, prompt: str = None
-) -> Image.Image:
+def gen_flux_image(args: argparse.Namespace, pipe: FluxPipeline, prompt: str = None) -> Image.Image:
     assert prompt is not None
     image = pipe(
         prompt,
@@ -163,30 +159,20 @@ def get_args() -> argparse.ArgumentParser:
     parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
     parser.add_argument("--warmup-interval", type=int, default=1)
     parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
-    parser.add_argument(
-        "--max-continuous-cached-steps", "--mcc", type=int, default=-1
-    )
-    parser.add_argument(
-        "--disable-block-adapter", action="store_true", default=False
-    )
+    parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
+    parser.add_argument("--disable-block-adapter", action="store_true", default=False)
     # Compile & FP8
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--inductor-flags", action="store_true", default=False)
     parser.add_argument("--compile-all", action="store_true", default=False)
     parser.add_argument("--quantize", "--q", action="store_true", default=False)
     # Test data
-    parser.add_argument(
-        "--save-dir", type=str, default="./tmp/DrawBench200_Default"
-    )
-    parser.add_argument(
-        "--prompt-file", type=str, default="./prompts/DrawBench200.txt"
-    )
+    parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200_Default")
+    parser.add_argument("--prompt-file", type=str, default="./prompts/DrawBench200.txt")
     parser.add_argument("--width", type=int, default=1024, help="Image width")
     parser.add_argument("--height", type=int, default=1024, help="Image height")
     parser.add_argument("--test-num", type=int, default=None)
-    parser.add_argument(
-        "--cal-flops", "--flops", action="store_true", default=False
-    )
+    parser.add_argument("--cal-flops", "--flops", action="store_true", default=False)
     return parser.parse_args()
 
 
@@ -208,9 +194,7 @@ def main():
     logger.info(f"Loaded {len(prompts)} prompts from: {args.prompt_file}")
 
     all_times = []
-    perf_tag = (
-        f"C{int(args.compile)}_Q{int(args.quantize)}_{cache_dit.strify(pipe)}"
-    )
+    perf_tag = f"C{int(args.compile)}_Q{int(args.quantize)}_{cache_dit.strify(pipe)}"
     save_dir = os.path.join(args.save_dir, perf_tag)
     os.makedirs(save_dir, exist_ok=True)
 

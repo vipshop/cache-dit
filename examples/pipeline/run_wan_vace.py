@@ -34,10 +34,7 @@ def prepare_video_and_mask(
     # Ideally, this should be 127.5 to match original code, but they perform computation on numpy arrays
     # whereas we are passing PIL images. If you choose to pass numpy arrays, you can set it to 127.5 to
     # match the original code.
-    frames.extend(
-        [PIL.Image.new("RGB", (width, height), (128, 128, 128))]
-        * (num_frames - 2)
-    )
+    frames.extend([PIL.Image.new("RGB", (width, height), (128, 128, 128))] * (num_frames - 2))
     frames.append(last_img)
     mask_black = PIL.Image.new("L", (width, height), 0)
     mask_white = PIL.Image.new("L", (width, height), 255)
@@ -47,16 +44,10 @@ def prepare_video_and_mask(
 
 model_id = "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
 model_id = os.environ.get("WAN_VACE_DIR", model_id)
-vae = AutoencoderKLWan.from_pretrained(
-    model_id, subfolder="vae", torch_dtype=torch.float32
-)
-pipe = WanVACEPipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16
-)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = WanVACEPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
-pipe.scheduler = UniPCMultistepScheduler.from_config(
-    pipe.scheduler.config, flow_shift=flow_shift
-)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
 
 if args.cache:
     cachify(args, pipe)
@@ -91,9 +82,7 @@ last_frame = load_image("../data/flf2v_input_last_frame.png")
 height = 512
 width = 512
 num_frames = 81
-video, mask = prepare_video_and_mask(
-    first_frame, last_frame, height, width, num_frames
-)
+video, mask = prepare_video_and_mask(first_frame, last_frame, height, width, num_frames)
 
 
 def run_pipe(warmup: bool = False):

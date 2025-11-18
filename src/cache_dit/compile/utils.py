@@ -44,16 +44,13 @@ def set_compile_configs(
         # Enable compute comm overlap
         torch._inductor.config.reorder_for_compute_comm_overlap = True
         # L20 64 GB/s, PCIe; A100/A800 NVLink 300 GB/s.
-        torch._inductor.config.intra_node_bw = (
-            64 if "L20" in torch.cuda.get_device_name() else 300
-        )
+        torch._inductor.config.intra_node_bw = 64 if "L20" in torch.cuda.get_device_name() else 300
 
     if not descent_tuning:
         return
 
     FORCE_DISABLE_CUSTOM_COMPILE_CONFIG = (
-        os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0")
-        == "1"
+        os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0") == "1"
     )
     if FORCE_DISABLE_CUSTOM_COMPILE_CONFIG:
         logging_rank_0(

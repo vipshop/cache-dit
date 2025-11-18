@@ -30,12 +30,8 @@ class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -74,9 +70,7 @@ class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
 
             # Add norm2.linear if present (CogVideoX)
             if hasattr(block, "norm2") and hasattr(block.norm2, "linear"):
-                layer_plan["norm2.linear"] = ColwiseParallel(
-                    output_layouts=Replicate()
-                )
+                layer_plan["norm2.linear"] = ColwiseParallel(output_layouts=Replicate())
 
             parallelize_module(
                 module=block,

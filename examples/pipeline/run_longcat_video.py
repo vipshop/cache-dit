@@ -200,9 +200,7 @@ def generate(args):
             height=480 if args.height is None else args.height,
             width=832 if args.width is None else args.width,
             num_frames=93 if args.frames is None else args.frames,
-            num_inference_steps=(
-                (50 if args.steps is None else args.steps) if not warmup else 4
-            ),
+            num_inference_steps=((50 if args.steps is None else args.steps) if not warmup else 4),
             guidance_scale=4.0,
             generator=torch.Generator(device=local_rank).manual_seed(seed),
         )[0]
@@ -252,9 +250,7 @@ def _parse_args():
     parser = get_args(parse=False)
     parser.add_argument("--frames", type=int, default=None)
     parser.add_argument("--context_parallel_size", type=int, default=None)
-    parser.add_argument(
-        "--checkpoint_dir", type=str, default=DEAULT_CHECKPOINT_DIR
-    )
+    parser.add_argument("--checkpoint_dir", type=str, default=DEAULT_CHECKPOINT_DIR)
     args = parser.parse_args()
 
     return args
