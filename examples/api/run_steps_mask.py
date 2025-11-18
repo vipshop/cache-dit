@@ -33,10 +33,10 @@ if args.cache:
             max_warmup_steps=6,
             warmup_interval=1,
             residual_diff_threshold=args.rdt,  # 0.08 default
-            # 28 steps total, 1111110100100001000010000100
+            # Mask for 30 steps, 11111101001000001000001000001
             steps_computation_mask=cache_dit.steps_mask(
-                compute_bins=[6, 1, 1, 1, 1, 1],  # 11
-                cache_bins=[1, 2, 4, 4, 4, 2],  # 17
+                compute_bins=[6, 1, 1, 1, 1],  # 10
+                cache_bins=[1, 2, 5, 6, 6],  # 20
             ),
             # dynamic or static
             steps_computation_policy="static",
@@ -48,7 +48,7 @@ if args.cache:
 start = time.time()
 image = pipe(
     "A cat holding a sign that says hello world",
-    num_inference_steps=28,
+    num_inference_steps=30,
     generator=torch.Generator("cpu").manual_seed(0),
 ).images[0]
 

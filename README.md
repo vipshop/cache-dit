@@ -248,6 +248,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [⚡️DBPrune: Dynamic Block Prune](./docs/User_Guide.md#️dbprune-dynamic-block-prune)
 - [⚡️Hybrid Cache CFG](./docs/User_Guide.md#️hybrid-cache-cfg)
 - [🔥Hybrid TaylorSeer Calibrator](./docs/User_Guide.md#taylorseer-calibrator)
+- [🤖Steps Computation Masking](./docs/User_Guide.md#steps-mask)
 - [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](./docs/User_Guide.md#tensor-parallelism)
 - [🤖Low-bits Quantization](./docs/User_Guide.md#quantization)
