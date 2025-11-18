@@ -255,6 +255,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](./docs/User_Guide.md#tensor-parallelism)
 - [🤖Low-bits Quantization](./docs/User_Guide.md#quantization)
+- [🤖How to use FP8 Attention](./docs/User_Guide.md#fp8-attention)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
