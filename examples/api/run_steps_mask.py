@@ -30,16 +30,16 @@ if args.cache:
         cache_config=DBCacheConfig(
             Fn_compute_blocks=1,
             Bn_compute_blocks=0,
-            max_warmup_steps=8,
+            max_warmup_steps=6,
             warmup_interval=1,
             residual_diff_threshold=args.rdt,  # 0.08 default
             # 28 steps total, 1111110100100001000010000100
             steps_computation_mask=cache_dit.steps_mask(
-                compute_bins=[6, 1, 1, 1, 1, 1],
-                cache_bins=[1, 2, 4, 4, 4, 2],
+                compute_bins=[6, 1, 1, 1, 1, 1],  # 11
+                cache_bins=[1, 2, 4, 4, 4, 2],  # 17
             ),
             # dynamic or static
-            steps_computation_policy="dynamic",
+            steps_computation_policy="static",
         ),
     )
     print(cache_dit.strify(pipe))
