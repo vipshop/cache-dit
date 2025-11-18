@@ -38,8 +38,8 @@ if args.cache:
                 compute_bins=[6, 1, 1, 1, 1],  # 10
                 cache_bins=[1, 2, 5, 6, 6],  # 20
             ),
-            # dynamic or static
-            steps_computation_policy="static",
+            # The policy for cache steps can be 'dynamic' or 'static'
+            steps_computation_policy="dynamic",
         ),
     )
     print(cache_dit.strify(pipe))
