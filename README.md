@@ -44,7 +44,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench-v2.png)
 
-The comparison between **cache-dit** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio (TFLOPs) less than 🎉**4x**, cache-dit achieved the best accuracy. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/tree/main/bench/). 
+The comparison between **cache-dit** and other algorithms shows that within a speedup ratio (TFLOPs) less than 🎉**4x**, cache-dit achieved the **SOTA** performance. Please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/tree/main/bench/) for more details.
 
 <div align="center">
 
@@ -77,7 +77,7 @@ The comparison between **cache-dit** and algorithms such as Δ-DiT, Chipmunk, FO
 
 </div>
 
-Surprisingly, **cache-dit** still works in the **extremely few-step** distill model. Such as **Qwen-Image-Lightning**, with the F16B16 config, the PSNR is 34.81 and the ImageReward is 1.26. It maintained a relatively high precision. 
+🎉Surprisingly, **cache-dit** still works in the **extremely few-step** distill model. Such as **Qwen-Image-Lightning**, with the F16B16 config, the PSNR is 34.81 and the ImageReward is 1.26. It maintained a relatively high precision.
 <div align="center">
 
 | Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
