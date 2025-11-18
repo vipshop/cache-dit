@@ -51,10 +51,6 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
 | [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
-| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
-| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
-| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
-| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
 | Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
 | FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
 | **[DBCache(S)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
@@ -63,7 +59,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 | **[DBCache(S)+TS](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
 | **[DBCache(M)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
 | **[DBCache(M)+TS](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
-| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
+| **[FoCa(N=5): arxiv.2508](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
 | [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
 | FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
 | ToCa(N=12) | 644.70 | 5.77× | 0.7155 | 31.808 |
@@ -71,7 +67,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 | TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
 | TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
 | **[DBCache(F)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.9271 | 32.552 |
-| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | 6.24× | 0.9502 | 32.706 |
+| **[FoCa(N=8): arxiv.2508](https://arxiv.org/pdf/2508.16211)** | 596.07 | 6.24× | 0.9502 | 32.706 |
 | **[DBCache(F)+TS](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
 | **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
 
