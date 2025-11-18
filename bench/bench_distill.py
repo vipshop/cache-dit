@@ -98,6 +98,7 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
                 max_cached_steps=args.max_cached_steps,
                 max_continuous_cached_steps=args.max_continuous_cached_steps,
                 residual_diff_threshold=args.rdt,
+                enable_separate_cfg=False,  # true_cfg_scale=1.0
             ),
             calibrator_config=(
                 TaylorSeerCalibratorConfig(
@@ -154,6 +155,10 @@ def gen_qwen_image(
         true_cfg_scale=1.0,
         generator=torch.Generator("cpu").manual_seed(args.seed),
     ).images[0]
+
+    if args.verbose:
+        cache_dit.summary(pipe)
+
     return image
 
 
@@ -162,6 +167,7 @@ def get_args() -> argparse.ArgumentParser:
     # General arguments
     parser.add_argument("--steps", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--verbose", action="store_true", default=False)
     # Cache params
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)

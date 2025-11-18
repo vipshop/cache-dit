@@ -141,6 +141,10 @@ def gen_flux_image(args: argparse.Namespace, pipe: FluxPipeline, prompt: str = N
         num_inference_steps=args.steps,
         generator=torch.Generator("cpu").manual_seed(args.seed),
     ).images[0]
+
+    if args.verbose:
+        cache_dit.summary(pipe)
+
     return image
 
 
@@ -149,6 +153,7 @@ def get_args() -> argparse.ArgumentParser:
     # General arguments
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--verbose", action="store_true", default=False)
     # Cache params
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--taylorseer", action="store_true", default=False)
