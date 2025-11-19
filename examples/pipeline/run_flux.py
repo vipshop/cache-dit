@@ -48,7 +48,6 @@ if args.attn is not None:
         pipe.transformer.set_attention_backend(args.attn)
         print(f"Set attention backend to {args.attn}")
 
-
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
@@ -66,7 +65,6 @@ def run_pipe():
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
-
 
 # warmup
 _ = run_pipe()
