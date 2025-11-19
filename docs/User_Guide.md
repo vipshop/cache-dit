@@ -631,23 +631,49 @@ The `steps_computation_mask` parameter adopts a step-wise computation masking ap
 <div id="steps-mask"></div>
 
 ```python
-from cache_dit import DBCacheConfig
+from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
+# Scheme: Hybrid DBCache + LeMiCa/EasyCache + TaylorSeer
 cache_dit.enable_cache(
     pipe_or_adapter,
     cache_config=DBCacheConfig(
-        # Basic DBCache configs, ...
-        residual_diff_threshold=0.12,  
-        # Mask for 30 steps, 11111101001000001000001000001
+        # Basic DBCache configs
+        Fn_compute_blocks=8,
+        Bn_compute_blocks=0,
+        # keep is the same as first compute bin
+        max_warmup_steps=6,  
+        residual_diff_threshold=0.12,
+        # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
+        # SCM=111111010010000010000100001, 1: compute, 0: cache.
         steps_computation_mask=cache_dit.steps_mask(
             compute_bins=[6, 1, 1, 1, 1], # 10
-            cache_bins=[1, 2, 5, 6, 6], # 20
+            cache_bins=[1, 2, 5, 5, 5], # 18
         ),
         # The policy for cache steps can be 'dynamic' or 'static'
         steps_computation_policy="dynamic",
     ),
+    calibrator_config=TaylorSeerCalibratorConfig(
+        taylorseer_order=1,
+    ),
 )
+
 ```
+
+As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (please click to enlarge) has shown **obvious blurriness**. However, the **Ultra** version under **dynamic cache** (`SCM Ultra D*`) still maintains excellent clarity. Therefore, we prioritize recommending the use of dynamic cache while using `SCM: steps_computation_mask`.
+
+<div align="center">
+
+|Baseline(L20x1)|SCM Slow S*|SCM Slow D*|SCM Fast D*|SCM Ultra D*|+TaylorSeer|+compile| 
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|15.4s|17.1s|11.4s|8.2s|8.2s|7.1s|
+|<img src="../assets/steps_mask/flux.NONE.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.08_SCM1111111101110011100110011000_static_T0O0_S10.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=110px>|
+
+<p align="center">
+    DBCache + SCM(steps_computation_mask) + TaylorSeer, <b> L20x1 </b>, <br>S*: static cache, D*: dynamic cache, Steps: 28, "A cat holding a sign that says hello world"
+</p>
+
+</div>
+
 
 ## ⚡️Hybrid Context Parallelism
 

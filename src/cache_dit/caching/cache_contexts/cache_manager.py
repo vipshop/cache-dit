@@ -402,13 +402,19 @@ class CachedContextManager:
         return cached_context.is_in_full_compute_steps()
 
     @torch.compiler.disable
-    def is_in_full_static_cache_steps(self) -> bool:
+    def is_steps_computation_mask_enabled(self) -> bool:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.cache_config.steps_computation_mask is not None
+
+    @torch.compiler.disable
+    def get_steps_computation_policy(self) -> str:  # dynamic/static
         # If enabled steps_computation_mask w/ static cache, maybe use
         # at the very beginning of cache blocks forward. NO, Fn blocks
         # compute first.
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
-        return cached_context.is_in_full_static_cache_steps()
+        return cached_context.get_steps_computation_policy()
 
     @torch.compiler.disable
     def is_l1_diff_enabled(self) -> bool:
@@ -794,11 +800,12 @@ class CachedContextManager:
             return False
 
         # if enabled steps_computation_mask w/ dyanamic cache
-        if self.is_in_full_compute_steps():
-            return False
-        else:
-            if self.is_in_full_static_cache_steps():
-                return True
+        if self.is_steps_computation_mask_enabled():
+            if self.is_in_full_compute_steps():
+                return False
+            else:  # In cache steps, dynaimic/static cache allowed
+                if self.get_steps_computation_policy() == "static":
+                    return True
 
         # max cached steps
         max_cached_steps = self.get_max_cached_steps()
