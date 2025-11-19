@@ -101,3 +101,8 @@ save_path = f"flux.{cache_dit.strify(pipe)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
+
+# python3 run_steps_mask.py --cache --step-mask slow --step-policy static
+# python3 run_steps_mask.py --cache --step-mask medium --step-policy static
+# python3 run_steps_mask.py --cache --step-mask fast --step-policy static
+# python3 run_steps_mask.py --cache --step-mask fast --step-policy static --taylorseer --taylorseer-order 1

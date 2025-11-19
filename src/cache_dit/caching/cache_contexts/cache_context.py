@@ -281,6 +281,26 @@ class CachedContext:
 
     @property
     def warmup_steps(self) -> List[int]:
+        # Truncate the warmup steps if steps_compute_mask is provided
+        if self.cache_config.steps_computation_mask is not None:
+            first_continuous_compute_steps = 0  # first continuous compute steps
+            for m in self.cache_config.steps_computation_mask:
+                if m == 1:
+                    first_continuous_compute_steps += 1
+                else:
+                    break
+            max_warmup = min(
+                self.cache_config.max_warmup_steps,
+                first_continuous_compute_steps,
+            )
+            return list(
+                range(
+                    0,
+                    max_warmup,
+                    self.cache_config.warmup_interval,
+                )
+            )
+
         return list(
             range(
                 0,
@@ -300,12 +320,8 @@ class CachedContext:
             return self.cache_config.steps_computation_mask[current_step] == 1
         return False
 
-    def is_in_full_static_cache_steps(self):
+    def get_steps_computation_policy(self):
         # If enabled steps_computation_mask w/ static cache, maybe use at the very
         # beginning of cache blocks forward. TODO: maybe support NO-Fn blocks compute
         # first for static cache.
-        return (
-            not self.is_in_warmup()
-            and not self.is_in_full_compute_steps()
-            and self.cache_config.steps_computation_policy == "static"
-        )
+        return self.cache_config.steps_computation_policy
