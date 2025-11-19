@@ -626,7 +626,7 @@ cache_dit.enable_cache(
 
 <div align="center">
 
-|LeiMiCa: Non-uniform cache steps|LeiMiCa: Cache Errors Distribution|EasyCache: Transformation rate Analysis|
+|LeMiCa: Non-uniform cache steps|LeMiCa: Cache Errors Distribution|EasyCache: Transformation rate Analysis|
 |:---:|:---:|:---:|
 |<img src=https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb width=350px height=180px>|<img src="./assets/lemica_0.png" width=280px height=130px>|<img src="./assets/easy_cache_0.png" width=280px height=130px>|
 
