@@ -138,7 +138,7 @@ Comparisons between different FnBn compute block configurations show that **more
 
 </div>
 
-The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **4x**, cache-dit achieved the best accuracy. Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/). 
+The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **4x**, cache-dit achieved the best accuracy. Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/). NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
 
 <div align="center">
 
@@ -170,8 +170,6 @@ The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chi
 | **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
 
 </div>
-
-NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
 
 ### 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 
@@ -626,7 +624,7 @@ cache_dit.enable_cache(
 
 ## 🤖Steps Computation Masking
 
-![](../assets/steps_mask.png)
+![](https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb)
 
 The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa arxiv.2511.00090](https://arxiv.org/pdf/2511.00090) and [EasyCache arxiv.2507.02860](https://arxiv.org/pdf/2507.02860). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. It is a list of length num_inference_steps indicating whether to compute each step or not. 1 means must compute, 0 means use dynamic/static cache. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](../examples/api/run_steps_mask.py) for more details.
 
