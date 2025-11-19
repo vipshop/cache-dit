@@ -11,12 +11,31 @@ import cache_dit
 
 
 parser = get_args(parse=False)
-parser.add_argument("--step-mask", type=str, default="slow", choices=["slow", "medium", "fast"])
-parser.add_argument("--step-policy", type=str, default="static", choices=["dynamic", "static"])
+parser.add_argument(
+    "--step-mask",
+    type=str,
+    default="slow",
+    choices=["slow", "medium", "fast", "s", "m", "f"],
+)
+parser.add_argument(
+    "--step-policy",
+    type=str,
+    default="dynamic",
+    choices=["dynamic", "static"],
+)
 args = parser.parse_args()
 print(args)
 
 
+step_mask_aliases = {
+    "s": "slow",
+    "m": "medium",
+    "f": "fast",
+}
+if args.step_mask in step_mask_aliases:
+    args.step_mask = step_mask_aliases[args.step_mask]
+
+# Define different step computation masks for 28 steps
 step_computation_masks = {
     "slow": cache_dit.steps_mask(
         compute_bins=[8, 3, 3, 2, 2],  # 18
@@ -102,7 +121,10 @@ print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
 
-# python3 run_steps_mask.py --cache --step-mask slow --step-policy static
-# python3 run_steps_mask.py --cache --step-mask medium --step-policy static
-# python3 run_steps_mask.py --cache --step-mask fast --step-policy static
-# python3 run_steps_mask.py --cache --step-mask fast --step-policy static --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy static
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy dynamic --rdt 0.15
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic --rdt 0.20
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25 --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25 --compile
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25 --compile --taylorseer --taylorseer-order 1
