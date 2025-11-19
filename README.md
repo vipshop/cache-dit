@@ -10,9 +10,7 @@
         <img src=https://img.shields.io/badge/Models-30+-orange.svg >
     </h2>
   </p>
-<img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
 
-<div align="center">
 
 |Baseline|SCM S S*|SCM S D*|Fast D*|SCM U D*|+TaylorSeer|+compile| 
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -22,7 +20,8 @@
 <p align="center">
   Scheme: <b>DBCache + SCM(steps_computation_mask) + TaylorSeer</b>, L20x1, S*: static cache, <b>D*: dynamic cache</b>, <br><b>S</b>: Slow, <b>F</b>: Fast, <b>U</b>: Ultra Fast, Steps: 28, Prompt: "A cat holding a sign that says hello world"
 </p>
-</div>
+
+<img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
 
 </div>
 
