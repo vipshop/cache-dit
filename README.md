@@ -21,13 +21,13 @@
   Scheme: <b>DBCache + SCM(steps_computation_mask) + TaylorSeer</b>, L20x1, S*: static cache, <b>D*: dynamic cache</b>, <br><b>S</b>: Slow, <b>F</b>: Fast, <b>U</b>: Ultra Fast, FLUX.1-Dev, Steps: 28, Prompt: "A cat holding a sign that says hello world"
 </p>
 
-|SCM S S*|SCM U D* + TaylorSeer +compile| 
+|DBCache + SCM Slow S*|DBCache + SCM Ultra D* + TaylorSeer + compile| 
 |:---:|:---:|
 |15.4s|7.1s|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.08_SCM1111111101110011100110011000_static_T0O0_S10.png" width=400px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=400px>|
 
 <p align="center">
-The Ultra version under dynamic cache (SCM Ultra D*) maintains better clarity <br>than the static cache one (SCM Slow S*).
+<b>Dynamic Caching is all you need!</b> The <b>Ultra</b> fast version under dynamic cache (<b>SCM Ultra D*</b>) <br>maintains <b>better clarity</b> than the slower static cache one (<b>SCM Slow S*</b>).
 </p>
 
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
