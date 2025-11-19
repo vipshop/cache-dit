@@ -672,6 +672,15 @@ As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (
     DBCache + SCM(steps_computation_mask) + TaylorSeer, <b> L20x1 </b>, <br>S*: static cache, D*: dynamic cache, Steps: 28, "A cat holding a sign that says hello world"
 </p>
 
+|DBCache + SCM Slow S*|DBCache + SCM Ultra D* + TaylorSeer + compile| 
+|:---:|:---:|
+|15.4s|7.1s|
+|<img src="../assets/steps_mask/static.png" width=360px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=360px>|
+
+<p align="center">
+<b>Dynamic Caching is all you need!</b> The <b>Ultra</b> fast version under dynamic cache (<b>SCM Ultra D*</b>) <br>maintains <b>better clarity</b> than the slower static cache one (<b>SCM Slow S*</b>).
+</p>
+
 </div>
 
 
