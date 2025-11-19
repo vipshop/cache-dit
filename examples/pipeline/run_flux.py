@@ -33,8 +33,6 @@ if args.quantize:
         exclude_layers=[
             "embedder",
             "embed",
-            "norm_out",
-            "proj_out",
         ],
     )
     pipe.text_encoder_2 = cache_dit.quantize(
