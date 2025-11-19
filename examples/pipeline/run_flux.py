@@ -65,9 +65,9 @@ def run_pipe():
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
-    if args.quantize:
-        pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
-
+    pipe.text_encoder = torch.compile(pipe.text_encoder)
+    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
+    pipe.vae = torch.compile(pipe.vae)
 
 # warmup
 _ = run_pipe()
