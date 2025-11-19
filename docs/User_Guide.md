@@ -631,9 +631,9 @@ The `steps_computation_mask` parameter adopts a step-wise computation masking ap
 
 <div align="center">
 
-|LeMiCa: Non-uniform cache steps|LeMiCa: Cache Errors|EasyCache: Transformation rate Analysis|
+|LeMiCa: Non-Uniform Cache Steps|LeMiCa: Cache Errors|EasyCache: Transformation rate Analysis|
 |:---:|:---:|:---:|
-|<img src=https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb width=385px>|<img src="./assets/lemica_0.png" width=230px>|<img src="./assets/easy_cache_0.png" width=345px>|
+|<img src=https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb width=385px>|<img src="./assets/lemica_0.png" width=235px>|<img src="./assets/easy_cache_0.png" width=345px>|
 
 </div>
 
