@@ -49,6 +49,14 @@ if args.attn is not None:
         print(f"Set attention backend to {args.attn}")
 
 
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
+    pipe.text_encoder = torch.compile(pipe.text_encoder)
+    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
+    pipe.vae = torch.compile(pipe.vae)
+
+
 def run_pipe():
     image = pipe(
         "A cat holding a sign that says hello world",
@@ -59,13 +67,6 @@ def run_pipe():
     ).images[0]
     return image
 
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
-    pipe.text_encoder = torch.compile(pipe.text_encoder)
-    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
-    pipe.vae = torch.compile(pipe.vae)
 
 # warmup
 _ = run_pipe()

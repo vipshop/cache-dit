@@ -5,7 +5,7 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import FluxPipeline
+from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args
 import cache_dit
 
@@ -62,7 +62,7 @@ pipe = FluxPipeline.from_pretrained(
         "black-forest-labs/FLUX.1-dev",
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+)
 
 if args.cache:
     from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
@@ -94,10 +94,36 @@ if args.cache:
         ),
     )
 
+assert isinstance(pipe.transformer, FluxTransformer2DModel)
+if args.quantize:
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "embedder",
+            "embed",
+        ],
+    )
+    pipe.text_encoder_2 = cache_dit.quantize(
+        pipe.text_encoder_2,
+        quant_type=args.quantize_type,
+    )
+    print(f"Applied quantization: {args.quantize_type} to Transformer and Text Encoder 2.")
+
+pipe.to("cuda")
+
+if args.attn is not None:
+    if hasattr(pipe.transformer, "set_attention_backend"):
+        pipe.transformer.set_attention_backend(args.attn)
+        print(f"Set attention backend to {args.attn}")
+
 
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
+    pipe.text_encoder = torch.compile(pipe.text_encoder)
+    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
+    pipe.vae = torch.compile(pipe.vae)
 
 
 def run_pipe():
@@ -134,3 +160,4 @@ image.save(save_path)
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --taylorseer --taylorseer-order 1
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --compile --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --compile --taylorseer --taylorseer-order 1 --quantize --quantize-type float8 --attn sage
