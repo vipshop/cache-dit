@@ -631,22 +631,32 @@ The `steps_computation_mask` parameter adopts a step-wise computation masking ap
 <div id="steps-mask"></div>
 
 ```python
-from cache_dit import DBCacheConfig
+from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
+# Scheme: Hybrid DBCache + LeMiCa/EasyCache + TaylorSeer
 cache_dit.enable_cache(
     pipe_or_adapter,
     cache_config=DBCacheConfig(
-        # Basic DBCache configs, ...
-        residual_diff_threshold=0.12,  
-        # Mask for 30 steps, 11111101001000001000001000001
+        # Basic DBCache configs
+        Fn_compute_blocks=8,
+        Bn_compute_blocks=0,
+        # keep is the same as first compute bin
+        max_warmup_steps=6,  
+        residual_diff_threshold=0.12,
+        # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
+        # 111111010010000010000100001, 1: compute, 0: cache.
         steps_computation_mask=cache_dit.steps_mask(
             compute_bins=[6, 1, 1, 1, 1], # 10
-            cache_bins=[1, 2, 5, 6, 6], # 20
+            cache_bins=[1, 2, 5, 5, 5], # 18
         ),
         # The policy for cache steps can be 'dynamic' or 'static'
-        steps_computation_policy="dynamic",
+        steps_computation_policy="static",
+    ),
+    calibrator_config=TaylorSeerCalibratorConfig(
+        taylorseer_order=1,
     ),
 )
+
 ```
 
 ## ⚡️Hybrid Context Parallelism
