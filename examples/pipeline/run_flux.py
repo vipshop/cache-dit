@@ -5,7 +5,7 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import FluxPipeline
+from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args, strify, cachify
 import cache_dit
 
@@ -20,10 +20,35 @@ pipe = FluxPipeline.from_pretrained(
         "black-forest-labs/FLUX.1-dev",
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+)
 
 if args.cache:
     cachify(args, pipe)
+
+assert isinstance(pipe.transformer, FluxTransformer2DModel)
+if args.quantize:
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "embedder",
+            "embed",
+            "norm_out",
+            "proj_out",
+        ],
+    )
+    pipe.text_encoder_2 = cache_dit.quantize(
+        pipe.text_encoder_2,
+        quant_type=args.quantize_type,
+    )
+    print(f"Applied quantization: {args.quantize_type} to Transformer and Text Encoder 2.")
+
+pipe.to("cuda")
+
+if args.attn is not None:
+    if hasattr(pipe.transformer, "set_attention_backend"):
+        pipe.transformer.set_attention_backend(args.attn)
+        print(f"Set attention backend to {args.attn}")
 
 
 def run_pipe():
