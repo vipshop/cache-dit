@@ -27,7 +27,7 @@
 - [⚡️DBPrune: Dynamic Block Prune](#dbprune)
 - [⚡️Hybrid Cache CFG](#cfg)
 - [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
-- [🤖Steps Computation Masking](#steps-mask)
+- [🤖SCM: Steps Computation Masking](#steps-mask)
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🤖Low-bits Quantization](#quantization)
@@ -622,7 +622,7 @@ cache_dit.enable_cache(
 
 </div>
 
-## 🤖Steps Computation Masking
+## 🤖SCM: Steps Computation Masking
 
 ![](https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb)
 
@@ -666,7 +666,7 @@ As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (
 |Baseline(L20x1)|SCM Slow S*|SCM Slow D*|SCM Fast D*|SCM Ultra D*|+TaylorSeer|+compile| 
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.4s|17.1s|11.4s|8.2s|8.2s|7.1s|
-|<img src="../assets/steps_mask/flux.NONE.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.08_SCM1111111101110011100110011000_static_T0O0_S10.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=110px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=110px>|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.08_SCM1111111101110011100110011000_static_T0O0_S10.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=110px>|
 
 <p align="center">
     DBCache + SCM(steps_computation_mask) + TaylorSeer, <b> L20x1 </b>, <br>S*: static cache, D*: dynamic cache, Steps: 28, "A cat holding a sign that says hello world"
