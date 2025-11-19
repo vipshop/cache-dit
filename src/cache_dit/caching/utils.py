@@ -1,9 +1,11 @@
 import yaml
+import copy
 
 
 def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
     try:
-        kwargs: dict = cache_kwargs  # refence only
+        # deep copy to avoid modifying original kwargs
+        kwargs: dict = copy.deepcopy(cache_kwargs)
         cache_context_kwargs = {}
         if kwargs.get("enable_taylorseer", False):
             from cache_dit.caching.cache_contexts.calibrators import (
@@ -11,10 +13,10 @@ def load_cache_options_from_dict(cache_kwargs: dict) -> dict:
             )
 
             cache_context_kwargs["calibrator_config"] = TaylorSeerCalibratorConfig(
-                enable_calibrator=kwargs.pop("enable_taylorseer"),
-                enable_encoder_calibrator=kwargs.pop("enable_encoder_taylorseer", False),
-                calibrator_cache_type=kwargs.pop("taylorseer_cache_type", "residual"),
-                taylorseer_order=kwargs.pop("taylorseer_order", 1),
+                enable_calibrator=kwargs.get("enable_taylorseer"),
+                enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer", False),
+                calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
+                taylorseer_order=kwargs.get("taylorseer_order", 1),
             )
 
         if "cache_type" not in kwargs:
