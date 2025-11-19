@@ -56,6 +56,17 @@ step_computation_masks = {
     ),
 }
 
+step_computation_dynamic_policy_rdt = {
+    "slow": 0.20,
+    "medium": 0.25,
+    "fast": 0.30,
+    "ultra": 0.34,
+}
+
+if args.rdt == 0.08:  # default
+    args.rdt = step_computation_dynamic_policy_rdt[args.step_mask]
+
+
 pipe = FluxPipeline.from_pretrained(
     os.environ.get(
         "FLUX_DIR",
@@ -153,11 +164,11 @@ print(f"Saving image to {save_path}")
 image.save(save_path)
 
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy static
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy dynamic --rdt 0.15
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic --rdt 0.15
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.20
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.20 --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --compile --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.35 --compile --taylorseer --taylorseer-order 1 --quantize --quantize-type float8 --attn sage
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy dynamic
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --taylorseer --taylorseer-order 1 --quantize --quantize-type float8 --attn sage
