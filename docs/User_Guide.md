@@ -650,7 +650,7 @@ cache_dit.enable_cache(
             cache_bins=[1, 2, 5, 5, 5], # 18
         ),
         # The policy for cache steps can be 'dynamic' or 'static'
-        steps_computation_policy="static",
+        steps_computation_policy="dynamic",
     ),
     calibrator_config=TaylorSeerCalibratorConfig(
         taylorseer_order=1,
@@ -661,7 +661,7 @@ cache_dit.enable_cache(
 
 <div align="center">
   <p align="center">
-    DBCache + SCM(steps_computation_mask) + TaylorSeer, <b> L20x1 </b>, S*: static cache, <br>D*: dynamic cache, Steps: 28, "A cat holding a sign that says hello world"
+    DBCache + SCM(steps_computation_mask) + TaylorSeer, <b> L20x1 </b>, <br>S*: static cache, D*: dynamic cache, Steps: 28, "A cat holding a sign that says hello world"
   </p>
 
 |Baseline(L20x1)|SCM Slow S*|SCM Slow D*|SCM Fast D*|SCM Ultra D*|+TaylorSeer|+compile| 
@@ -671,6 +671,7 @@ cache_dit.enable_cache(
 
 </div>
 
+As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (please click to enlarge) has shown **obvious blurriness**. However, the **Ultra** version under **dynamic cache** (`SCM Ultra D*`) still maintains excellent clarity. Therefore, we prioritize recommending the use of dynamic cache while using `SCM: steps_computation_mask`.
 
 ## ⚡️Hybrid Context Parallelism
 
