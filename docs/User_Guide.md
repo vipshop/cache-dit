@@ -644,7 +644,7 @@ cache_dit.enable_cache(
         max_warmup_steps=6,  
         residual_diff_threshold=0.12,
         # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
-        # 111111010010000010000100001, 1: compute, 0: cache.
+        # SCM=111111010010000010000100001, 1: compute, 0: cache.
         steps_computation_mask=cache_dit.steps_mask(
             compute_bins=[6, 1, 1, 1, 1], # 10
             cache_bins=[1, 2, 5, 5, 5], # 18
@@ -658,6 +658,19 @@ cache_dit.enable_cache(
 )
 
 ```
+
+<div align="center">
+  <p align="center">
+    DBCache + SCM(steps_computation_mask) + TaylorSeer, <b> L20x1 </b>, S*: static cache, <br>D*: dynamic cache, Steps: 28, "A cat holding a sign that says hello world"
+  </p>
+
+|Baseline(L20x1)|SCM Slow S*|SCM Slow D*|SCM Fast D*|SCM Ultra D*|+TaylorSeer|+compile| 
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|24.85s|15.4s|17.1s|11.4s|8.2s|8.2s|7.1s|
+|<img src="../assets/steps_mask/flux.NONE.png" width=120px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.08_SCM1111111101110011100110011000_static_T0O0_S10.png" width=120px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=120px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=120px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=120px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=120px>|<img src="../assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=120px>|
+
+</div>
+
 
 ## ⚡️Hybrid Context Parallelism
 

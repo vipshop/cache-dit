@@ -15,7 +15,7 @@ parser.add_argument(
     "--step-mask",
     type=str,
     default="slow",
-    choices=["slow", "medium", "fast", "s", "m", "f"],
+    choices=["slow", "medium", "fast", "ultra", "s", "m", "f", "u"],
 )
 parser.add_argument(
     "--step-policy",
@@ -31,6 +31,7 @@ step_mask_aliases = {
     "s": "slow",
     "m": "medium",
     "f": "fast",
+    "u": "ultra",
 }
 if args.step_mask in step_mask_aliases:
     args.step_mask = step_mask_aliases[args.step_mask]
@@ -48,6 +49,10 @@ step_computation_masks = {
     "fast": cache_dit.steps_mask(
         compute_bins=[6, 1, 1, 1, 1],  # 10
         cache_bins=[1, 3, 4, 5, 5],  # 18
+    ),
+    "ultra": cache_dit.steps_mask(
+        compute_bins=[4, 1, 1, 1, 1],  # 8
+        cache_bins=[1, 4, 5, 6, 6],  # 20
     ),
 }
 
@@ -123,8 +128,9 @@ image.save(save_path)
 
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy static
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy dynamic --rdt 0.15
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic --rdt 0.20
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25 --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25 --compile
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.25 --compile --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic --rdt 0.15
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.20
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --rdt 0.20 --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --compile --taylorseer --taylorseer-order 1
