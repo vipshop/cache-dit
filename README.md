@@ -27,7 +27,7 @@
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=250px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.08_SCM1111111101110011100110011000_static_T0O0_S10.png" width=250px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=250px>|
 
 <p align="center">
-The Ultra version under dynamic cache (SCM Ultra D*) maintains better clarity than the static cache one (SCM Slow S*).
+The Ultra version under dynamic cache (SCM Ultra D*) maintains better clarity <br>than the static cache one (SCM Slow S*).
 </p>
 
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
