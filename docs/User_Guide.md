@@ -634,9 +634,9 @@ The `steps_computation_mask` parameter adopts a step-wise computation masking ap
 from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
-    pipe,
+    pipe_or_adapter,
     cache_config=DBCacheConfig(
-        # ..., Basic DBCache configs
+        # Basic DBCache configs, ...
         residual_diff_threshold=0.12,  
         # Mask for 30 steps, 11111101001000001000001000001
         steps_computation_mask=cache_dit.steps_mask(
