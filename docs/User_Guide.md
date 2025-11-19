@@ -627,7 +627,7 @@ cache_dit.enable_cache(
 <div id="steps-mask"></div>
 
 
-The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa arxiv.2511.00090](https://arxiv.org/pdf/2511.00090) and [EasyCache arxiv.2507.02860](https://arxiv.org/pdf/2507.02860). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. 
+The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa [arxiv.2511.00090][Code]](https://github.com/UnicomAI/LeMiCa) and [EasyCache [arxiv.2507.02860][Code]](https://github.com/H-EmbodVis/EasyCache). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. 
 
 <div align="center">
 
