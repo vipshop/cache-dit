@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args
+from utils import get_args, strify
 import cache_dit
 
 
@@ -147,7 +147,7 @@ end = time.time()
 cache_dit.summary(pipe)
 
 time_cost = end - start
-save_path = f"flux.{cache_dit.strify(pipe)}.png"
+save_path = f"flux.{strify(args, pipe)}.png"
 print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
@@ -160,4 +160,4 @@ image.save(save_path)
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --taylorseer --taylorseer-order 1
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --compile --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.30 --compile --taylorseer --taylorseer-order 1 --quantize --quantize-type float8 --attn sage
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --rdt 0.35 --compile --taylorseer --taylorseer-order 1 --quantize --quantize-type float8 --attn sage
