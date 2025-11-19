@@ -624,11 +624,22 @@ cache_dit.enable_cache(
 
 ## 🤖SCM: Steps Computation Masking
 
-![](https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb)
-
-The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa arxiv.2511.00090](https://arxiv.org/pdf/2511.00090) and [EasyCache arxiv.2507.02860](https://arxiv.org/pdf/2507.02860). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. It is a list of length num_inference_steps indicating whether to compute each step or not. 1 means must compute, 0 means use dynamic/static cache. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](../examples/api/run_steps_mask.py) for more details.
-
 <div id="steps-mask"></div>
+
+
+The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa arxiv.2511.00090](https://arxiv.org/pdf/2511.00090) and [EasyCache arxiv.2507.02860](https://arxiv.org/pdf/2507.02860). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. 
+
+<div align="center">
+
+|LeMiCa: Non-uniform cache steps|LeMiCa: Cache Errors|EasyCache: Transformation rate Analysis|
+|:---:|:---:|:---:|
+|<img src=https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb width=385px>|<img src="./assets/lemica_0.png" width=220px>|<img src="./assets/easy_cache_0.png" width=345px>|
+
+</div>
+
+It is a list of length num_inference_steps indicating whether to compute each step or not. 1 means must compute, 0 means use dynamic/static cache. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](../examples/api/run_steps_mask.py) for more details.
+
+
 
 ```python
 from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
