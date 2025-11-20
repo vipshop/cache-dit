@@ -1,3 +1,4 @@
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.parallelism.parallel_interface import enable_parallelism
+from cache_dit.parallelism.parallel_interface import maybe_pad_prompt

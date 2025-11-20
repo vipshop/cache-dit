@@ -89,8 +89,9 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+    input_prompt = prompt + positive_magic["en"]
     output = pipe(
-        prompt=prompt + positive_magic["en"],
+        prompt=input_prompt,
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
