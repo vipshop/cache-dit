@@ -110,6 +110,7 @@ def maybe_pad_prompt(
     seq_len = inputs_ids.input_ids.shape[1]  # [batch_size, seq_len]
 
     # Add extra tokens length, e.g., negative prompt tokens length
+    partition_seq_len = seq_len
     partition_seq_len += num_extra_tokens
     if extra_prompt is not None:
         extra_inputs_ids = tokenizer(extra_prompt, return_tensors="pt")
