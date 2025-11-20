@@ -5,6 +5,7 @@ sys.path.append("..")
 
 import time
 import torch
+import torch.distributed as dist
 from diffusers import (
     QwenImagePipeline,
     QwenImageTransformer2DModel,
@@ -20,6 +21,7 @@ from utils import (
     maybe_destroy_distributed,
 )
 import cache_dit
+import cache_dit.parallelism
 
 
 args = get_args()
@@ -89,8 +91,16 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+    input_prompt = prompt + positive_magic["en"]
+    input_prompt = cache_dit.parallelism.maybe_pad_prompt(
+        tokenizer=pipe.tokenizer,
+        prompt=input_prompt,
+        extra_prompt=negative_prompt,  # negative prompt token, " "
+        num_parition=dist.get_world_size() if dist.is_initialized() else 1,
+        verbose=rank == 0,
+    )
     output = pipe(
-        prompt=prompt + positive_magic["en"],
+        prompt=input_prompt,
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
