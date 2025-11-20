@@ -74,9 +74,9 @@ def remove_parallelism_stats(
 def maybe_pad_prompt(
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
     prompt: str,
-    extra_prompt: Optional[str] = None,
-    num_parition: Optional[int] = None,
-    pad_token: Optional[str] = None,
+    extra_prompt: Optional[str] = None,  # e.g., negative prompt
+    num_parition: Optional[int] = None,  # e.g., dist.get_world_size()
+    pad_token: Optional[str] = None,  # e.g., default tokenizer.pad_token
     num_extra_tokens: Optional[int] = 0,  # e.g., negative prompt tokens length
     verbose: bool = True,
 ) -> str:
