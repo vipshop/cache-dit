@@ -11,23 +11,42 @@ logger = init_logger(__name__)
 
 
 class MemoryTracker:
-    """Track peak GPU memory usage during execution."""
+    """Track peak GPU memory usage during execution.
+
+    Note: This tracker works best when models are fully loaded on GPU.
+    With CPU offload enabled, peak memory may be underestimated as components
+    are dynamically loaded/unloaded during inference.
+    """
 
     def __init__(self, device=None):
         self.device = device if device is not None else torch.cuda.current_device()
         self.enabled = torch.cuda.is_available()
         self.peak_memory = 0
+        self.start_memory = 0
+        self.start_reserved = 0
 
     def __enter__(self):
         if self.enabled:
-            torch.cuda.reset_peak_memory_stats(self.device)
             torch.cuda.synchronize(self.device)
+            # Record current state before tracking
+            self.start_memory = torch.cuda.memory_allocated(self.device)
+            self.start_reserved = torch.cuda.memory_reserved(self.device)
+            # Reset peak stats to track from this point
+            torch.cuda.reset_peak_memory_stats(self.device)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.enabled:
             torch.cuda.synchronize(self.device)
-            self.peak_memory = torch.cuda.max_memory_allocated(self.device)
+            # Get peak memory statistics
+            peak_allocated = torch.cuda.max_memory_allocated(self.device)
+            peak_reserved = torch.cuda.max_memory_reserved(self.device)
+
+            # Use the maximum of peak allocated or reserved memory
+            # This helps capture memory usage even with CPU offload
+            self.peak_memory = max(
+                peak_allocated, peak_reserved, self.start_memory, self.start_reserved
+            )
 
     def get_peak_memory_gb(self):
         """Get peak memory in GB."""
