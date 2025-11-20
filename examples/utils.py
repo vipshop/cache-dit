@@ -10,6 +10,38 @@ from cache_dit.parallelism.parallel_backend import ParallelismBackend
 logger = init_logger(__name__)
 
 
+class MemoryTracker:
+    """Track peak GPU memory usage during execution."""
+
+    def __init__(self, device=None):
+        self.device = device if device is not None else torch.cuda.current_device()
+        self.enabled = torch.cuda.is_available()
+        self.peak_memory = 0
+
+    def __enter__(self):
+        if self.enabled:
+            torch.cuda.reset_peak_memory_stats(self.device)
+            torch.cuda.synchronize(self.device)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.enabled:
+            torch.cuda.synchronize(self.device)
+            self.peak_memory = torch.cuda.max_memory_allocated(self.device)
+
+    def get_peak_memory_gb(self):
+        """Get peak memory in GB."""
+        return self.peak_memory / (1024**3)
+
+    def report(self):
+        """Print memory usage report."""
+        if self.enabled:
+            peak_gb = self.get_peak_memory_gb()
+            logger.info(f"Peak GPU memory usage: {peak_gb:.2f} GB")
+            return peak_gb
+        return 0
+
+
 def GiB():
     try:
         if not torch.cuda.is_available():
@@ -84,6 +116,18 @@ def get_args(
         ],
     )
     parser.add_argument("--perf", action="store_true", default=False)
+    # New arguments for customization
+    parser.add_argument("--prompt", type=str, default=None, help="Override default prompt")
+    parser.add_argument(
+        "--negative-prompt", type=str, default=None, help="Override default negative prompt"
+    )
+    parser.add_argument("--model-path", type=str, default=None, help="Override model path")
+    parser.add_argument(
+        "--track-memory",
+        action="store_true",
+        default=False,
+        help="Track and report peak GPU memory usage",
+    )
     return parser.parse_args() if parse else parser
 
 
@@ -95,11 +139,7 @@ def cachify(
     if args.cache or args.parallel_type is not None:
         import torch.distributed as dist
 
-        from cache_dit import (
-            DBCacheConfig,
-            ParallelismConfig,
-            TaylorSeerCalibratorConfig,
-        )
+        from cache_dit import DBCacheConfig, ParallelismConfig, TaylorSeerCalibratorConfig
 
         cache_config = kwargs.pop("cache_config", None)
         parallelism_config = kwargs.pop("parallelism_config", None)

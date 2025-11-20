@@ -11,7 +11,7 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 
-from utils import GiB, get_args, strify, cachify
+from utils import GiB, get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -23,9 +23,13 @@ enable_quatization = args.quantize and GiB() < 96
 # For now you need to install the latest diffusers as below:
 # pip install git+https://github.com/huggingface/diffusers@main
 pipe: HunyuanImagePipeline = HunyuanImagePipeline.from_pretrained(
-    os.environ.get(
-        "HUNYUAN_IMAGE_DIR",
-        "hunyuanvideo-community/HunyuanImage-2.1-Diffusers",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "HUNYUAN_IMAGE_DIR",
+            "hunyuanvideo-community/HunyuanImage-2.1-Diffusers",
+        )
     ),
     torch_dtype=torch.bfloat16,
     quantization_config=(
@@ -66,6 +70,8 @@ if GiB() < 96 and not enable_quatization:
 
 def run_pipe(warmup: bool = False):
     prompt = "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, "
+    if args.prompt is not None:
+        prompt = args.prompt
     "standing in a painting studio, wearing a red knitted scarf and a red beret with "
     "the word “Tencent” on it, holding a paintbrush with a focused expression as it "
     "paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."
@@ -86,9 +92,17 @@ if args.compile:
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe)
 

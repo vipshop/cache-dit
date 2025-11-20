@@ -13,6 +13,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -22,7 +23,11 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 pipe = CogVideoXPipeline.from_pretrained(
-    os.environ.get("COGVIDEOX_1_5_DIR", "zai-org/CogVideoX1.5-5B"),
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get("COGVIDEOX_1_5_DIR", "zai-org/CogVideoX1.5-5B")
+    ),
     torch_dtype=torch.bfloat16,
 )
 
@@ -49,6 +54,11 @@ prompt = (
 )
 
 
+if args.prompt is not None:
+
+    prompt = args.prompt
+
+
 def run_pipe(warmup: bool = False):
     video = pipe(
         prompt=prompt,
@@ -65,9 +75,17 @@ def run_pipe(warmup: bool = False):
 _ = run_pipe(warmup=True)
 
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

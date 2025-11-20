@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -34,10 +34,15 @@ if args.quantize:
         quant_type=args.quantize_type,
     )
 
+# Set default prompt
+prompt = "A cat holding a sign that says hello world"
+if args.prompt is not None:
+    prompt = args.prompt
+
 
 def run_pipe(warmup: bool = False):
     image = pipe(
-        "A cat holding a sign that says hello world",
+        prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
         num_inference_steps=((28 if args.steps is None else args.steps) if not warmup else 5),
@@ -54,9 +59,17 @@ if args.compile:
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe)
 

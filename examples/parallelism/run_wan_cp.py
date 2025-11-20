@@ -14,6 +14,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -23,9 +24,13 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
-model_id = os.environ.get(
-    "WAN_2_2_DIR",
-    "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
+        "WAN_2_2_DIR",
+        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    )
 )
 pipe = WanPipeline.from_pretrained(
     model_id,
@@ -87,7 +92,11 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe(warmup: bool = False):
     prompt = "A cat walks on the grass, realistic"
+    if args.prompt is not None:
+        prompt = args.prompt
     negative_prompt = "Bright tones, overexposed, static, blurred details, "
+    if args.negative_prompt is not None:
+        negative_prompt = args.negative_prompt
     "subtitles, style, works, paintings, images, static, overall gray, "
     "worst quality, low quality, JPEG compression residue, ugly, incomplete, "
     "extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
@@ -114,9 +123,17 @@ def run_pipe(warmup: bool = False):
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

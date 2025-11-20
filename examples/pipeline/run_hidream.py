@@ -10,16 +10,20 @@ from transformers import AutoTokenizer, LlamaForCausalLM
 from diffusers.quantizers import PipelineQuantizationConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 args = get_args()
 print(args)
 
 tokenizer_4 = AutoTokenizer.from_pretrained(
-    os.environ.get(
-        "LLAMA_DIR",
-        "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "LLAMA_DIR",
+            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        )
     ),
 )
 
@@ -60,9 +64,18 @@ pipe.to("cuda")
 if args.cache:
     cachify(args, pipe)
 
+# Set default prompt
+prompt = 'A cute girl holding a sign that says "Hi-Dreams.ai".'
+if args.prompt is not None:
+    prompt = args.prompt
+
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = pipe(
-    'A cute girl holding a sign that says "Hi-Dreams.ai".',
+    prompt,
     height=1024 if args.height is None else args.height,
     width=1024 if args.width is None else args.width,
     guidance_scale=5.0,
@@ -70,6 +83,10 @@ image = pipe(
     generator=torch.Generator("cpu").manual_seed(0),
 ).images[0]
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 stats = cache_dit.summary(pipe)
 

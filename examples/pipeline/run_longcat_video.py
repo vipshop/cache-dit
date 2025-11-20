@@ -29,7 +29,7 @@ from longcat_video.context_parallel.context_parallel_util import (
     init_context_parallel,
 )
 
-from utils import get_args, strify, GiB
+from utils import get_args, strify, GiB, MemoryTracker
 import cache_dit
 
 # Example usage:
@@ -51,7 +51,11 @@ def generate(args):
     print(args)
     # case setup
     prompt = "In a realistic photography style, a white boy around seven or eight years old sits on a park bench, wearing a light blue T-shirt, denim shorts, and white sneakers. He holds an ice cream cone with vanilla and chocolate flavors, and beside him is a medium-sized golden Labrador. Smiling, the boy offers the ice cream to the dog, who eagerly licks it with its tongue. The sun is shining brightly, and the background features a green lawn and several tall trees, creating a warm and loving scene."
+    if args.prompt is not None:
+        prompt = args.prompt
     negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+    if args.negative_prompt is not None:
+        negative_prompt = args.negative_prompt
 
     # load parsed args
     checkpoint_dir = args.checkpoint_dir
@@ -214,9 +218,17 @@ def generate(args):
         _ = run_t2v(warmup=True)
         torch_gc()
 
+    memory_tracker = MemoryTracker() if args.track_memory else None
+    if memory_tracker:
+        memory_tracker.__enter__()
+
     start = time.time()
     output = run_t2v()
     end = time.time()
+
+    if memory_tracker:
+        memory_tracker.__exit__(None, None, None)
+        memory_tracker.report()
 
     if local_rank == 0:
         cache_dit.summary(pipe.dit)

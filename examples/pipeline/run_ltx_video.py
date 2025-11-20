@@ -12,7 +12,7 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import export_to_video
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -21,7 +21,11 @@ print(args)
 
 
 pipe = LTXConditionPipeline.from_pretrained(
-    os.environ.get("LTX_VIDEO_DIR", "Lightricks/LTX-Video-0.9.7-dev"),
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get("LTX_VIDEO_DIR", "Lightricks/LTX-Video-0.9.7-dev")
+    ),
     torch_dtype=torch.bfloat16,
     quantization_config=PipelineQuantizationConfig(
         quant_backend="bitsandbytes_4bit",
@@ -55,7 +59,13 @@ def round_to_nearest_resolution_acceptable_by_vae(height, width):
 
 
 prompt = "The video depicts a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
+if args.prompt is not None:
+    prompt = args.prompt
+
 negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
+
 expected_height, expected_width = 512, 704
 downscale_factor = 2 / 3
 num_frames = 121
@@ -115,9 +125,17 @@ def run_pipe(warmup: bool = False):
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 stats = cache_dit.summary(pipe)
 
 # Part 4. Downscale the video to the expected resolution

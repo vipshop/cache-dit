@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -15,9 +15,13 @@ print(args)
 
 
 pipe = FluxPipeline.from_pretrained(
-    os.environ.get(
-        "FLUX_DIR",
-        "black-forest-labs/FLUX.1-dev",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "FLUX_DIR",
+            "black-forest-labs/FLUX.1-dev",
+        )
     ),
     torch_dtype=torch.bfloat16,
 )
@@ -55,10 +59,15 @@ if args.compile:
     pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
     pipe.vae = torch.compile(pipe.vae)
 
+# Set default prompt
+prompt = "A cat holding a sign that says hello world"
+if args.prompt is not None:
+    prompt = args.prompt
+
 
 def run_pipe():
     image = pipe(
-        "A cat holding a sign that says hello world",
+        prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
         num_inference_steps=28 if args.steps is None else args.steps,
@@ -66,12 +75,21 @@ def run_pipe():
     ).images[0]
     return image
 
+
 # warmup
 _ = run_pipe()
+
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
 
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe)
 

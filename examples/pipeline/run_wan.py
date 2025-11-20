@@ -11,7 +11,7 @@ from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
 )
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -56,13 +56,25 @@ else:
         "from source."
     )
 
+prompt = (
+    "An astronaut dancing vigorously on the moon with earth "
+    "flying past in the background, hyperrealistic"
+)
+if args.prompt is not None:
+    prompt = args.prompt
+
+negative_prompt = ""
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
+
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = pipe(
-    prompt=(
-        "An astronaut dancing vigorously on the moon with earth "
-        "flying past in the background, hyperrealistic"
-    ),
-    negative_prompt="",
+    prompt=prompt,
+    negative_prompt=negative_prompt,
     height=height,
     width=width,
     num_frames=49,
@@ -70,6 +82,10 @@ video = pipe(
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 stats = cache_dit.summary(pipe)
 

@@ -21,6 +21,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -30,8 +31,10 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
-model_id = "nvidia/ChronoEdit-14B-Diffusers"
-model_id = os.environ.get("CHRONO_EDIT_DIR", model_id)
+model_id = args.model_path if args.model_path is not None else "nvidia/ChronoEdit-14B-Diffusers"
+model_id = (
+    args.model_path if args.model_path is not None else os.environ.get("CHRONO_EDIT_DIR", model_id)
+)
 
 image_encoder = CLIPVisionModel.from_pretrained(
     model_id, subfolder="image_encoder", torch_dtype=torch.float32
@@ -91,6 +94,10 @@ prompt = (
     "The mouse’s pose should be natural—perhaps sitting upright with paws resting lightly on the rim or submerged in the tea. The teacup’s floral design, gold trim, and warm lighting must remain unchanged to preserve the original aesthetic. The steam should softly swirl around the mouse, enhancing the spa-like, whimsical mood."
 )
 
+
+if args.prompt is not None:
+
+    prompt = args.prompt
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
@@ -119,9 +126,17 @@ if args.compile:
     _ = run_pipe(warmup=True)
 
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 output = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

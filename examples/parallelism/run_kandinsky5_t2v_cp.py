@@ -18,6 +18,7 @@ from utils import (
     cachify,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -32,8 +33,16 @@ rank, device = maybe_init_distributed(args)
 # ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers
 # ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers
 
-model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
-model_id = os.environ.get("KANDINSKY5_T2V_DIR", model_id)
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
+)
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get("KANDINSKY5_T2V_DIR", model_id)
+)
 pipe = Kandinsky5T2VPipeline.from_pretrained(
     model_id,
     torch_dtype=torch.bfloat16,
@@ -53,7 +62,13 @@ if args.cache or args.parallel_type is not None:
     cachify(args, pipe, enable_separate_cfg=not ("nocfg" in model_id))
 
 prompt = "A cat and a dog baking a cake together in a kitchen."
+
+if args.prompt is not None:
+
+    prompt = args.prompt
 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
 
 assert isinstance(pipe.vae, AutoencoderKLHunyuanVideo)
 
@@ -83,9 +98,17 @@ if args.compile:
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

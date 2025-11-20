@@ -13,16 +13,20 @@ from diffusers import (
 )
 from diffusers.utils import export_to_video, load_image
 
-from utils import get_args, GiB, strify, cachify
+from utils import get_args, GiB, strify, cachify, MemoryTracker
 import cache_dit
 import numpy as np
 
 args = get_args()
 print(args)
 
-model_id = os.environ.get(
-    "WAN_2_2_I2V_DIR",
-    "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
+        "WAN_2_2_I2V_DIR",
+        "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+    )
 )
 
 pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
@@ -124,7 +128,11 @@ width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))
 
 prompt = "Summer beach vacation style, a white cat wearing sunglasses sits on a surfboard. The fluffy-furred feline gazes directly at the camera with a relaxed expression. Blurred beach scenery forms the background featuring crystal-clear waters, distant green hills, and a blue sky dotted with white clouds. The cat assumes a naturally relaxed posture, as if savoring the sea breeze and warm sunlight. A close-up shot highlights the feline's intricate details and the refreshing atmosphere of the seaside."
+if args.prompt is not None:
+    prompt = args.prompt
 negative_prompt = "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
 
 
 def run_pipe():
@@ -151,9 +159,17 @@ if args.compile or args.quantize:
     # warmup
     run_pipe()
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe, details=True)
 

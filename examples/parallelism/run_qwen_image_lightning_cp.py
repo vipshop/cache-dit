@@ -19,6 +19,7 @@ from utils import (
     cachify,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -48,9 +49,13 @@ scheduler_config = {
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
 pipe = QwenImagePipeline.from_pretrained(
-    os.environ.get(
-        "QWEN_IMAGE_DIR",
-        "Qwen/Qwen-Image",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "QWEN_IMAGE_DIR",
+            "Qwen/Qwen-Image",
+        )
     ),
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
@@ -138,8 +143,12 @@ positive_magic = {
 # Generate image
 prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coffee 😊 $2 per cup," with a neon light beside it displaying "通义千问". Next to it hangs a poster showing a beautiful Chinese woman, and beneath the poster is written "π≈3.1415926-53589793-23846264-33832795-02384197". Ultra HD, 4K, cinematic composition"""
 
+if args.prompt is not None:
+    prompt = args.prompt
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
@@ -168,9 +177,17 @@ if args.compile:
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 
 if rank == 0:
