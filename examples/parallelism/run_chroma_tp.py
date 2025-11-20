@@ -29,10 +29,10 @@ pipe = ChromaPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-pipe.to("cuda")
-
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
+
+pipe.to(device)
 
 torch.cuda.empty_cache()
 pipe.set_progress_bar_config(disable=rank != 0)
