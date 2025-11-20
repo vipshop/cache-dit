@@ -20,6 +20,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -32,9 +33,13 @@ rank, device = maybe_init_distributed(args)
 enable_quatization = args.quantize and GiB() < 96
 
 pipe: HunyuanVideoPipeline = HunyuanVideoPipeline.from_pretrained(
-    os.environ.get(
-        "HUNYUAN_VIDEO_DIR",
-        "hunyuanvideo-community/HunyuanVideo",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "HUNYUAN_VIDEO_DIR",
+            "hunyuanvideo-community/HunyuanVideo",
+        )
     ),
     torch_dtype=torch.bfloat16,
     quantization_config=(
@@ -80,6 +85,8 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe(warmup: bool = False):
     prompt = "A cat walks on the grass, realistic"
+    if args.prompt is not None:
+        prompt = args.prompt
     output = pipe(
         prompt,
         height=320,
@@ -98,9 +105,17 @@ if args.compile:
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

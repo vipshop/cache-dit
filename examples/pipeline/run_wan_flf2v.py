@@ -13,7 +13,7 @@ from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 from diffusers.utils import export_to_video, load_image
 from transformers import CLIPVisionModel
 
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -68,9 +68,13 @@ def main():
     args = get_args()
     print(args)
 
-    model_id = os.environ.get(
-        "WAN_FLF2V_DIR",
-        "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers",
+    model_id = (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "WAN_FLF2V_DIR",
+            "Wan-AI/Wan2.1-FLF2V-14B-720P-Diffusers",
+        )
     )
     image_encoder = CLIPVisionModel.from_pretrained(
         model_id, subfolder="image_encoder", torch_dtype=torch.float32
@@ -93,12 +97,19 @@ def main():
     if last_frame.size != first_frame.size:
         last_frame, _, _ = center_crop_resize(last_frame, height, width)
 
+    # Set default prompt
     prompt = (
         "CG animation style, a small blue bird takes off from the ground, flapping its wings. "
         + "The bird's feathers are delicate, with a unique pattern on its chest. The background shows "
         + "a blue sky with white clouds under bright sunshine. The camera follows the bird upward, "
         + "capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
     )
+    if args.prompt is not None:
+        prompt = args.prompt
+
+    memory_tracker = MemoryTracker() if args.track_memory else None
+    if memory_tracker:
+        memory_tracker.__enter__()
 
     start = time.time()
     output = pipe(
@@ -113,6 +124,10 @@ def main():
         generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     end = time.time()
+
+    if memory_tracker:
+        memory_tracker.__exit__(None, None, None)
+        memory_tracker.report()
 
     stats = cache_dit.summary(pipe)
 

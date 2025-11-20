@@ -18,6 +18,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -50,8 +51,10 @@ def prepare_video_and_mask(
     return frames, mask
 
 
-model_id = "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
-model_id = os.environ.get("WAN_VACE_DIR", model_id)
+model_id = args.model_path if args.model_path is not None else "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
+model_id = (
+    args.model_path if args.model_path is not None else os.environ.get("WAN_VACE_DIR", model_id)
+)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
 pipe = WanVACEPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
@@ -67,6 +70,7 @@ assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
+# Set default prompt and negative prompt
 prompt = (
     "CG animation style, a small blue bird takes off from the ground, "
     "flapping its wings. The bird's feathers are delicate, with a unique "
@@ -75,6 +79,9 @@ prompt = (
     "capturing its flight and the vastness of the sky from a close-up, "
     "low-angle perspective."
 )
+if args.prompt is not None:
+    prompt = args.prompt
+
 negative_prompt = (
     "Bright tones, overexposed, static, blurred details, subtitles, "
     "style, works, paintings, images, static, overall gray, worst "
@@ -84,6 +91,8 @@ negative_prompt = (
     "background, three legs, many people in the background, walking "
     "backwards"
 )
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
 first_frame = load_image("../data/flf2v_input_first_frame.png")
 last_frame = load_image("../data/flf2v_input_last_frame.png")
 
@@ -115,9 +124,17 @@ def run_pipe(warmup: bool = False):
 _ = run_pipe(warmup=True)
 
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 output = run_pipe(warmup=False)
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
 

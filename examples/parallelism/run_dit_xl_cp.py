@@ -13,6 +13,7 @@ from utils import (
     cachify,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -22,9 +23,13 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 pipe = DiTPipeline.from_pretrained(
-    os.environ.get(
-        "DIT_XL_DIR",
-        "facebook/DiT-XL-2-256",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "DIT_XL_DIR",
+            "facebook/DiT-XL-2-256",
+        )
     ),
     torch_dtype=torch.float16,
 )
@@ -51,9 +56,17 @@ def run_pipe():
 # warmup
 _ = run_pipe()
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

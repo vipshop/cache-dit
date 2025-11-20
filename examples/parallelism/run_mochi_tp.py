@@ -14,6 +14,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -23,8 +24,8 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
-model_id = "genmo/mochi-1-preview"
-model_id = os.environ.get("MOCHI_DIR", model_id)
+model_id = args.model_path if args.model_path is not None else "genmo/mochi-1-preview"
+model_id = args.model_path if args.model_path is not None else os.environ.get("MOCHI_DIR", model_id)
 
 pipe = MochiPipeline.from_pretrained(
     model_id,
@@ -45,6 +46,11 @@ prompt = (
 )
 
 
+if args.prompt is not None:
+
+    prompt = args.prompt
+
+
 def run_pipe():
     video = pipe(
         prompt,
@@ -55,9 +61,17 @@ def run_pipe():
     return video
 
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

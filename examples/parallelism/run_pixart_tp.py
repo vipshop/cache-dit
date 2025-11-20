@@ -16,6 +16,7 @@ from utils import (
     cachify,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -26,12 +27,16 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 # Support both PixArt-Alpha and PixArt-Sigma models
-model_id = os.environ.get(
-    "PIXART_DIR",
-    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
-    # Alternative models:
-    # "PixArt-alpha/PixArt-XL-2-1024-MS",
-    # "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
+        "PIXART_DIR",
+        "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+        # Alternative models:
+        # "PixArt-alpha/PixArt-XL-2-1024-MS",
+        # "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+    )
 )
 
 # Determine pipeline type based on model
@@ -61,10 +66,15 @@ torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
 pipe.set_progress_bar_config(disable=rank != 0)
 
+# Set default prompt
+prompt = "A small cactus with a happy face in the Sahara desert."
+if args.prompt is not None:
+    prompt = args.prompt
+
 
 def run_pipe(warmup: bool = False):
     image = pipe(
-        "A small cactus with a happy face in the Sahara desert.",
+        prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
         num_inference_steps=50 if not warmup else 5,
@@ -76,9 +86,17 @@ def run_pipe(warmup: bool = False):
 # Warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

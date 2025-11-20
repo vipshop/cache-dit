@@ -12,6 +12,7 @@ from utils import (
     maybe_init_distributed,
     strify,
     cachify,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -22,9 +23,13 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 pipe = ChromaPipeline.from_pretrained(
-    os.environ.get(
-        "CHROMA1_DIR",
-        "lodestones/Chroma1-HD",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "CHROMA1_DIR",
+            "lodestones/Chroma1-HD",
+        )
     ),
     torch_dtype=torch.bfloat16,
 )
@@ -40,9 +45,18 @@ pipe.set_progress_bar_config(disable=rank != 0)
 prompt = [
     "A high-fashion close-up portrait of a blonde woman in clear sunglasses. The image uses a bold teal and red color split for dramatic lighting. The background is a simple teal-green. The photo is sharp and well-composed, and is designed for viewing with anaglyph 3D glasses for optimal effect. It looks professionally done."
 ]
+if args.prompt is not None:
+    prompt = [args.prompt]
+
 negative_prompt = [
     "low quality, ugly, unfinished, out of focus, deformed, disfigure, blurry, smudged, restricted palette, flat colors"
 ]
+if args.negative_prompt is not None:
+    negative_prompt = [args.negative_prompt]
+
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
 
 start = time.time()
 image = pipe(
@@ -54,6 +68,10 @@ image = pipe(
     num_images_per_prompt=1,
 ).images[0]
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe, details=True)

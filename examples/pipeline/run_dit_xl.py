@@ -7,7 +7,7 @@ import time
 import torch
 
 from diffusers import DiTPipeline, DPMSolverMultistepScheduler
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 args = get_args()
@@ -15,9 +15,13 @@ print(args)
 
 
 pipe = DiTPipeline.from_pretrained(
-    os.environ.get(
-        "DIT_XL_DIR",
-        "facebook/DiT-XL-2-256",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "DIT_XL_DIR",
+            "facebook/DiT-XL-2-256",
+        )
     ),
     torch_dtype=torch.float16,
 )
@@ -31,6 +35,10 @@ words = ["white shark"]
 
 class_ids = pipe.get_label_ids(words)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = pipe(
     class_labels=class_ids,
@@ -38,6 +46,10 @@ image = pipe(
     generator=torch.Generator("cpu").manual_seed(33),
 ).images[0]
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe)
 

@@ -11,7 +11,7 @@ from diffusers import (
     QwenImageControlNetInpaintPipeline,
     QwenImageTransformer2DModel,
 )
-from utils import GiB, get_args, strify, cachify
+from utils import GiB, get_args, strify, cachify, MemoryTracker
 
 import cache_dit
 
@@ -19,9 +19,13 @@ import cache_dit
 args = get_args()
 print(args)
 
-base_model = os.environ.get(
-    "QWEN_IMAGE_DIR",
-    "Qwen/Qwen-Image",
+base_model = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
+        "QWEN_IMAGE_DIR",
+        "Qwen/Qwen-Image",
+    )
 )
 controlnet_model = os.environ.get(
     "QWEN_IMAGE_CN_DIR",
@@ -49,7 +53,11 @@ mask_image = load_image(
     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/masks/mask1.png"
 )
 prompt = "一辆绿色的出租车行驶在路上"
+if args.prompt is not None:
+    prompt = args.prompt
 negative_prompt = "worst quality, low quality, blurry, text, watermark, logo"  # or " "
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
 
 
 if GiB() < 96:
@@ -116,9 +124,17 @@ if args.compile:
     # warmup
     run_pipe()
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 stats = cache_dit.summary(pipe)
 

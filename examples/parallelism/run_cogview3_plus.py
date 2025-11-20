@@ -12,6 +12,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -21,9 +22,13 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 pipe = CogView3PlusPipeline.from_pretrained(
-    os.environ.get(
-        "COGVIEW3_DIR",
-        "THUDM/CogView3-Plus-3B",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "COGVIEW3_DIR",
+            "THUDM/CogView3-Plus-3B",
+        )
     ),
     torch_dtype=torch.bfloat16,
 )
@@ -34,6 +39,8 @@ torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
 
 prompt = "A vibrant cherry red sports car sits proudly under the gleaming sun, its polished exterior smooth and flawless, casting a mirror-like reflection. The car features a low, aerodynamic body, angular headlights that gaze forward like predatory eyes, and a set of black, high-gloss racing rims that contrast starkly with the red. A subtle hint of chrome embellishes the grille and exhaust, while the tinted windows suggest a luxurious and private interior. The scene conveys a sense of speed and elegance, the car appearing as if it's about to burst into a sprint along a coastal road, with the ocean's azure waves crashing in the background."
+if args.prompt is not None:
+    prompt = args.prompt
 
 
 def run_pipe(warmup: bool = False):
@@ -51,9 +58,17 @@ def run_pipe(warmup: bool = False):
 # warmup
 run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

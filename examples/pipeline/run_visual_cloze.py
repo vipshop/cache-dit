@@ -7,7 +7,7 @@ import time
 import torch
 from diffusers import VisualClozePipeline
 from diffusers.utils import load_image
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -16,9 +16,13 @@ print(args)
 
 # Load the VisualClozePipeline
 pipe = VisualClozePipeline.from_pretrained(
-    os.environ.get(
-        "VISUAL_CLOZE_DIR",
-        "VisualCloze/VisualClozePipeline-512",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "VISUAL_CLOZE_DIR",
+            "VisualCloze/VisualClozePipeline-512",
+        )
     ),
     resolution=512,
     torch_dtype=torch.bfloat16,
@@ -50,6 +54,10 @@ task_prompt = "Each row shows a virtual try-on process that aims to put [IMAGE2]
 content_prompt = None
 
 # Run the pipeline
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 
 image = pipe(
@@ -66,6 +74,10 @@ image = pipe(
 ).images[0][0]
 
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe)
 
