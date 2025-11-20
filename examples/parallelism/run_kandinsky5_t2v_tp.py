@@ -34,10 +34,11 @@ model_id = os.environ.get("KANDINSKY5_T2V_DIR", model_id)
 # For now you need to install the latest diffusers as below:
 # pip install git+https://github.com/huggingface/diffusers@main
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe, enable_separate_cfg=not ("nocfg" in model_id))
+
+pipe = pipe.to(device)
 
 torch.cuda.empty_cache()
 

@@ -30,10 +30,12 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
         "black-forest-labs/FLUX.1-dev",
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+)
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
+
+pipe.to(device)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
