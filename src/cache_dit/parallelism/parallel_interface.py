@@ -121,7 +121,9 @@ def maybe_pad_prompt(
         if verbose:
             logger.info(
                 f"Padding the prompt from seq_len {seq_len} to "
-                f"{seq_len + pad_len} to make {seq_len + pad_len} + {num_extra_tokens} = {seq_len + pad_len + num_extra_tokens} divisible by num_partition {num_parition}."
+                f"{seq_len + pad_len} to make {seq_len + pad_len} + "
+                f"{num_extra_tokens} = {seq_len + pad_len + num_extra_tokens} "
+                f"divisible by num_partition {num_parition}."
             )
         pad_token_id = tokenizer.convert_tokens_to_ids(pad_token)
         assert isinstance(pad_token_id, int), f"pad_token {pad_token} has more than one token."
