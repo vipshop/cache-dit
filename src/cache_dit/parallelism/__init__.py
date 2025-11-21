@@ -1,4 +1,6 @@
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.parallelism.backends.native_diffusers import enable_ulysses_anything
+from cache_dit.parallelism.backends.native_diffusers import disable_ulysses_anything
 from cache_dit.parallelism.parallel_interface import enable_parallelism
 from cache_dit.parallelism.parallel_interface import maybe_pad_prompt

@@ -29,6 +29,7 @@
 - [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
 - [🤖SCM: Steps Computation Masking](#steps-mask)
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
+- [🤖UAA: Ulysses Anything Attention](#ulysses-anything-attention)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🤖Low-bits Quantization](#quantization)
 - [🤖How to use FP8 Attention](#fp8-attention)
@@ -713,6 +714,50 @@ cache_dit.enable_cache(
 )
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
+
+## 🤖UAA: Ulysses Anything Attention 
+
+<div id="ulysses-anything-attention"></div>
+
+We have implemented **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary seq_len** with nearly 🎉**Zero overhead** (namely, **✅~0** communication overhead,  **✅~0** IO access overhead and **✅~0** values padding). As we know, the default Ulysses Attention requires that the seq_len of the input hidden_states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+
+For example, in the Text-to-Image and Image-to-Video tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary seq_len**, which enhances the versatility of Ulysses.
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set `experimental_ulysses_anything` as True to enable UAA
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2,
+        parallel_kwargs={
+            "experimental_ulysses_anything": True
+        },
+    ),
+)
+# torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
+```
+
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce comm latency.
+
+```python
+dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+```
+
+Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and it mat introduce a slight degradation of performance while the `cpu:gloo` backend is not avaliable.
+
+
+<div align="center">
+
+|L20x2, Ulysses |UAA w/ Gloo | UAA w/o Gloo |  L20x2 w/ Ulysses | L20x4 w/ UAA |
+|:---:|:---:|:---:|:---:|:---:|
+|FLUX.1, 13.87s|🎉13.88s|14.75s|Qwen-Image| ❌Ulysses failed|
+|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/qwen-image.C1_Q1_float8_weight_only_NONE_Ulysses2.png" width=180px>|<img src="../assets/uaa/qwen-image.C1_Q1_float8_weight_only_NONE_Ulysses4_ulysses_anything.png" width=180px>|
+
+</div>
 
 ## ⚡️Hybrid Tensor Parallelism
 

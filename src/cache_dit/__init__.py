@@ -46,6 +46,28 @@ except ImportError as e:  # noqa: F841
         )
 
 
+try:
+    from cache_dit.parallelism import disable_ulysses_anything
+    from cache_dit.parallelism import enable_ulysses_anything
+
+except ImportError as e:  # noqa: F841
+    err_msg = str(e)
+
+    def enable_ulysses_anything(*args, **kwargs):
+        raise ImportError(
+            "Ulysses Anything Attention requires additional dependencies. "
+            "Please install cache-dit[parallelism] or cache-dit[all] "
+            f"to use this feature. Error message: {err_msg}"
+        )
+
+    def disable_ulysses_anything(*args, **kwargs):
+        raise ImportError(
+            "Ulysses Anything Attention requires additional dependencies. "
+            "Please install cache-dit[parallelism] or cache-dit[all] "
+            f"to use this feature. Error message: {err_msg}"
+        )
+
+
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
 DBPrune = CacheType.DBPrune

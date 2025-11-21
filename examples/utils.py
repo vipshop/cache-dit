@@ -128,6 +128,12 @@ def get_args(
         default=False,
         help="Track and report peak GPU memory usage",
     )
+    parser.add_argument(
+        "--ulysses-anything",
+        action="store_true",
+        default=False,
+        help="Enable Ulysses Anything Attention for context parallelism",
+    )
     return parser.parse_args() if parse else parser
 
 
@@ -149,8 +155,12 @@ def cachify(
             if args.parallel_type in ["tp"]
             else ParallelismBackend.NATIVE_DIFFUSER
         )
+
         parallel_kwargs = (
-            {"attention_backend": ("_native_cudnn" if not args.attn else args.attn)}
+            {
+                "attention_backend": ("_native_cudnn" if not args.attn else args.attn),
+                "experimental_ulysses_anything": args.ulysses_anything,
+            }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
             else None
         )
@@ -199,17 +209,20 @@ def strify(args, pipe_or_stats):
     quantize_type = args.quantize_type if args.quantize else ""
     if quantize_type != "":
         quantize_type = f"_{quantize_type}"
-    return (
+    base_str = (
         f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
+    if args.ulysses_anything:
+        base_str += "_ulysses_anything"
+    return base_str
 
 
 def maybe_init_distributed(args=None):
     if args is not None:
         if args.parallel_type is not None:
             dist.init_process_group(
-                backend="nccl",
+                backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
             )
             rank = dist.get_rank()
             device = torch.device("cuda", rank % torch.cuda.device_count())
