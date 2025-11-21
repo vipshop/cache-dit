@@ -59,10 +59,6 @@ def _all_to_all_single_any_qkv(
     x: torch.Tensor,
     group: dist.ProcessGroup,
 ) -> torch.Tensor:
-    # NOTE(DefTruth): Please note that torch.compile will raise an NCCL
-    # timeout error here - 'Watchdog caught collective operation timeout:
-    # WorkNCCL(SeqNum=435, OpType=ALLTOALL_BASE ...'), so, we choose to
-    # disable torch.compile for this function as a temporary workaround.
     shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
     (world_size, S_LOCAL, B, H_LOCAL, D) = shape
     input_split_sizes = [S_LOCAL] * world_size
@@ -74,6 +70,10 @@ def _all_to_all_single_any_qkv(
     )
     gathered_sizes = _wait_tensor(gathered_sizes)
 
+    # NOTE(DefTruth): Please note that torch.compile will raise an NCCL
+    # timeout error here - 'Watchdog caught collective operation timeout:
+    # WorkNCCL(SeqNum=435, OpType=ALLTOALL_BASE ...'), so, we choose to
+    # introduce a graph break here as a temporary workaround.
     torch._dynamo.graph_break()
     output_split_sizes = gathered_sizes.tolist()
     # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
