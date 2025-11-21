@@ -741,7 +741,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
 ```
 
-Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce comm latency.
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce comm latency.
 
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
