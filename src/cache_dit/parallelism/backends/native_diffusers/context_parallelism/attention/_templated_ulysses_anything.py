@@ -34,7 +34,7 @@ __all__ = [
 # - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
 # For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
-# NOTE: Avoid unwaited collective calls in torch.compile graphs.
+# TODO: How to avoid unwaited collective calls warnings in torch.compile graphs?
 def _wait_tensor(tensor):
     if isinstance(tensor, fc.AsyncCollectiveTensor):
         tensor = tensor.wait()
@@ -43,7 +43,7 @@ def _wait_tensor(tensor):
 
 
 # Reference:
-# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
+# - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
 def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     shape = x.shape
     # HACK: We need to flatten because despite making tensors contiguous, torch single-file-ization
