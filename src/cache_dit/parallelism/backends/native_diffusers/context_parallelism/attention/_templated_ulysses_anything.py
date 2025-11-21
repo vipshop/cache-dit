@@ -36,10 +36,11 @@ __all__ = [
 # - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L827
 # - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
 # For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
+# NOTE: Avoid unwaited collective calls in torch.compile graphs.
+@torch.compiler.disable
 def _wait_tensor(tensor):
-    with fc.allow_inflight_collective_as_graph_input_ctx():
-        if isinstance(tensor, fc.AsyncCollectiveTensor):
-            tensor = tensor.wait()
+    if isinstance(tensor, fc.AsyncCollectiveTensor):
+        tensor = tensor.wait()
     return tensor
 
 
