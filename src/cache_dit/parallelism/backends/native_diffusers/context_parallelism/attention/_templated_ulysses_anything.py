@@ -141,7 +141,6 @@ def _all_to_all_single_any_o(
     return out
 
 
-@torch.compiler.disable
 def _gather_split_any_o(  # noqa: F811
     out: torch.Tensor,
     group: dist.ProcessGroup,
