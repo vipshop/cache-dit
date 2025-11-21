@@ -5,12 +5,11 @@ from typing import Optional, Tuple, List
 
 import torch
 import torch.distributed as dist
-import torch.distributed._functional_collectives as funcol
+import torch.distributed._functional_collectives as fc
 
 try:
     from diffusers.models.attention_dispatch import (
         _all_to_all_single,
-        _wait_tensor,
     )
     from diffusers.models._modeling_parallel import ParallelConfig
     from diffusers.hooks.context_parallel import EquipartitionSharder
@@ -31,6 +30,17 @@ __all__ = [
     "is_ulysses_anything_enabled",
     "disable_ulysses_anything",
 ]
+
+
+# Reference:
+# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L827
+# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
+# For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
+def _wait_tensor(tensor):
+    with fc.allow_inflight_collective_as_graph_input_ctx():
+        if isinstance(tensor, fc.AsyncCollectiveTensor):
+            tensor = tensor.wait()
+    return tensor
 
 
 @torch.compiler.disable
@@ -55,6 +65,11 @@ def _check_all_sizes_same(sizes: List[int]) -> bool:
     return True
 
 
+@torch.compiler.disable
+def _tensor_tolist(tensor: torch.Tensor) -> List[int]:
+    return tensor.tolist()
+
+
 def _all_to_all_single_any_qkv(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -65,7 +80,7 @@ def _all_to_all_single_any_qkv(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    gathered_sizes = funcol.all_gather_tensor(
+    gathered_sizes = fc.all_gather_tensor(
         torch.tensor(S_LOCAL, device=x.device), gather_dim=0, group=group
     )
     gathered_sizes = _wait_tensor(gathered_sizes)
@@ -74,10 +89,10 @@ def _all_to_all_single_any_qkv(
     # timeout error here - 'Watchdog caught collective operation timeout:
     # WorkNCCL(SeqNum=435, OpType=ALLTOALL_BASE ...'), so, we choose to
     # introduce a graph break here as a temporary workaround.
-    torch._dynamo.graph_break()
-    output_split_sizes = gathered_sizes.tolist()
+    output_split_sizes = _tensor_tolist(gathered_sizes)
     # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
     # are all equal, which may be more efficient.
+    torch._dynamo.graph_break()
     if _check_all_sizes_same(output_split_sizes):
         x = _all_to_all_single(x, group)
         # (world_size * S_LOCAL, B, H_LOCAL, D)
@@ -86,7 +101,7 @@ def _all_to_all_single_any_qkv(
 
     torch._dynamo.graph_break()
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
-    x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
     x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
     return x
 
@@ -127,7 +142,7 @@ def _all_to_all_single_any_o(
     input_split_sizes = [o.shape[0] for o in torch.tensor_split(out, world_size, dim=0)]
     # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[4,4], [5,5],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
-    out = funcol.all_to_all_single(out, output_split_sizes, input_split_sizes, group)
+    out = fc.all_to_all_single(out, output_split_sizes, input_split_sizes, group)
     out = _wait_tensor(out)  # (S_LOCAL*world_size, H_LOCAL, D)
     # NOTE(DefTruth): We can not simply reshape here, because the collective tensors
     # are stacked at dim=0(SeqLen), we need to first split them and then concat at
