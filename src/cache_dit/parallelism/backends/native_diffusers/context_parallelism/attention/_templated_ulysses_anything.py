@@ -83,6 +83,10 @@ def _check_all_sizes_same(sizes: List[int]) -> bool:
 # Backend compiler `inductor` failed with aten._local_scalar_dense.default
 @torch.compiler.disable
 def _tensor_tolist(tensor: torch.Tensor) -> List[int]:
+    # NOTE(DefTruth): Please note that torch.compile will raise an NCCL
+    # timeout error here - 'Watchdog caught collective operation timeout:
+    # WorkNCCL(SeqNum=435, OpType=ALLTOALL_BASE ...'), so, we choose to
+    # introduce a graph break here as a temporary workaround.
     return tensor.tolist()
 
 
@@ -99,6 +103,33 @@ def _split_sizes(S_GLOBAL: int, world_size: int) -> List[int]:
     return splits
 
 
+def _gather_size(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
+    world_size = dist.get_world_size(group=group)
+    # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
+    avaiable_backends = str(dist.get_backend(group=group))
+    # e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+    gather_device = "cpu" if "cpu" in avaiable_backends else torch.device("cuda")
+    gathered_sizes = [
+        torch.empty(
+            (1,),
+            device=gather_device,
+            dtype=torch.int64,
+        )
+        for _ in range(world_size)
+    ]
+    dist.all_gather(
+        gathered_sizes,
+        torch.tensor(
+            [S_LOCAL],
+            device=gather_device,
+            dtype=torch.int64,
+        ),
+        group=group,
+    )
+    gathered_sizes = torch.cat(gathered_sizes, dim=0)
+    return _tensor_tolist(gathered_sizes)
+
+
 def _all_to_all_single_any_qkv(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -109,16 +140,7 @@ def _all_to_all_single_any_qkv(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    gathered_sizes = fc.all_gather_tensor(
-        torch.tensor(S_LOCAL, device=x.device), gather_dim=0, group=group
-    )
-    gathered_sizes = _wait_tensor(gathered_sizes)
-
-    # NOTE(DefTruth): Please note that torch.compile will raise an NCCL
-    # timeout error here - 'Watchdog caught collective operation timeout:
-    # WorkNCCL(SeqNum=435, OpType=ALLTOALL_BASE ...'), so, we choose to
-    # introduce a graph break here as a temporary workaround.
-    output_split_sizes = _tensor_tolist(gathered_sizes)
+    output_split_sizes = _gather_size(S_LOCAL, group)
     # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
     # are all equal, which may be more efficient.
     # torch._dynamo.graph_break()
@@ -132,6 +154,7 @@ def _all_to_all_single_any_qkv(
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
     x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+
     return x
 
 
