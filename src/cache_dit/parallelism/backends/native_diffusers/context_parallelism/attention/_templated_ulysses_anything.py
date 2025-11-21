@@ -13,7 +13,11 @@ try:
     )
     from diffusers.hooks.context_parallel import EquipartitionSharder
 except ImportError:
-    raise ImportError("Please upgrade diffusers to >= 0.36.dev0 to use Ulysses Anything Attention.")
+    raise ImportError(
+        "Context parallelism requires the 'diffusers>=0.36.dev0'."
+        "Please install latest version of diffusers from source: \n"
+        "pip3 install git+https://github.com/huggingface/diffusers.git"
+    )
 
 
 @torch.compiler.disable
@@ -48,6 +52,8 @@ def _all_to_all_single_any_qkv(
     gathered_sizes = funcol.all_gather_tensor(
         torch.tensor(S_LOCAL, device=x.device), gather_dim=0, group=group
     )
+    # TODO(DefTruth): Consider using all_to_all_single if the gathered_sizes
+    # are all equal to improve efficiency.
     gathered_sizes = _wait_tensor(gathered_sizes)
     output_split_sizes = gathered_sizes.tolist()  # list of S_LOCAL across ranks
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
@@ -199,6 +205,15 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         )
 
 
+# NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
+# function may return fewer than the specified number of chunks! For example,
+# x = torch.tensor([1,2,3,4,5]), torch.chunk(x, 4) will return only 3 chunks:
+# (tensor([1, 2]), tensor([3, 4]), tensor([5])). This behavior can lead to
+# inconsistencies when sharding tensors across multiple devices. In contrast,
+# tensor_split will always return the specified number of chunks, the last chunk
+# may be smaller if the tensor size is not divisible by the number of chunks.
+# For example, torch.tensor_split(x, 4) will return 4 chunks:
+# (tensor([1, 2]), tensor([3]), tensor([4]), tensor([5])).
 @functools.wraps(EquipartitionSharder.shard)
 def shard_anything(
     cls: EquipartitionSharder,
@@ -211,15 +226,6 @@ def shard_anything(
         f"Cannot shard tensor of size {tensor.size()} along dim {dim} "
         f"across mesh of size {mesh.size()}."
     )
-    # NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
-    # function may return fewer than the specified number of chunks! For example,
-    # x = torch.tensor([1,2,3,4,5]), torch.chunk(x, 4) will return only 3 chunks:
-    # (tensor([1, 2]), tensor([3, 4]), tensor([5])). This behavior can lead to
-    # inconsistencies when sharding tensors across multiple devices. In contrast,
-    # tensor_split will always return the specified number of chunks, the last chunk
-    # may be smaller if the tensor size is not divisible by the number of chunks.
-    # For example, torch.tensor_split(x, 4) will return 4 chunks:
-    # (tensor([1, 2]), tensor([3]), tensor([4]), tensor([5])).
     return tensor.tensor_split(mesh.size(), dim=dim)[dist.get_rank(mesh.get_group())]
 
 
