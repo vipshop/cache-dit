@@ -739,11 +739,14 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
 ```
 
-Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and its use will introduce a small degree of performance degradation. Compared to Ulysses Attention, in our implementation of UAA, we have added an **extra all-gather** operation for scalar types to obtain the seq_len value of each rank, which resides on the CPU. To avoid multiple forced CUDA synchronizations caused by H2D (Host-to-Device) and D2H (Device-to-Host) transfers, please add the **Gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and its use will introduce a small degree of performance degradation. 
 
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
+
+Compared to Ulysses Attention, in our implementation of UAA, we have added an **extra all-gather** operation for scalar types to obtain the seq_len value of each rank, which resides on the CPU. To avoid multiple forced CUDA synchronizations caused by H2D (Host-to-Device) and D2H (Device-to-Host) transfers, please add the **Gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+
 
 <div align="center">
 
