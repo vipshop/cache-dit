@@ -79,7 +79,8 @@ def _all_to_all_single_any_qkv(
     # are all equal, which may be more efficient.
     if _check_all_sizes_same(output_split_sizes):
         x = _all_to_all_single(x, group)
-        x = x.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        # (world_size * S_LOCAL, B, H_LOCAL, D)
+        x = x.flatten(0, 1).contiguous()
         return x  # (S_GLOBAL, B, H_LOCAL, D)
 
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
@@ -97,6 +98,7 @@ def _all_to_all_single_any_o(
 ) -> torch.Tensor:
     rank, world_size = _maybe_get_rank_world_size(group, rank, world_size)
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    print(f"out shape before all_to_all_single_any_o: {shape}")
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
     # If S_GLOBAL is divisible by world_size, we can use the more
