@@ -100,7 +100,6 @@ def _all_to_all_single_any_o(
     rank, world_size = _maybe_get_rank_world_size(group, rank, world_size)
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
-    # TODO(DefTruth): Maybe enable torch.compile for o all_to_all_single
 
     # If S_GLOBAL is divisible by world_size, we can use the more
     # efficient _all_to_all_single implementation.
@@ -147,7 +146,6 @@ def _gather_split_any_o(  # noqa: F811
     rank: Optional[int] = None,
     world_size: Optional[int] = None,
 ) -> torch.Tensor:
-    # TODO(DefTruth): Maybe enable torch.compile for o gather_split
     # NOTE(DefTruth): This is an alternative implementation of _all_to_all_single
     # for any o. It use all_gather and split, which may be less efficient.
     rank, world_size = _maybe_get_rank_world_size(group, rank, world_size)
