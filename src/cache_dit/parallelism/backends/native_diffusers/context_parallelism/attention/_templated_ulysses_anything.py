@@ -1,3 +1,4 @@
+import os
 import functools
 from typing import Optional, Tuple, List
 
@@ -262,7 +263,9 @@ def shard_anything(
 EquipartitionSharder.shard = shard_anything
 
 
-_CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
+_CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
+    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
+)
 
 
 def enable_ulysses_anything(**kwargs):
