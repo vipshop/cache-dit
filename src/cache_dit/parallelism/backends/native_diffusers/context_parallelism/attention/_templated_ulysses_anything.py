@@ -87,6 +87,7 @@ def _all_to_all_single_any_qkv(
     return x
 
 
+@torch.compiler.disable
 def _all_to_all_single_any_o(
     out: torch.Tensor,
     group: dist.ProcessGroup,
@@ -134,7 +135,8 @@ def _all_to_all_single_any_o(
     return out
 
 
-def _gather_split_any_o(
+@torch.compiler.disable
+def _gather_split_any_o(  # noqa: F811
     out: torch.Tensor,
     group: dist.ProcessGroup,
     rank: Optional[int] = None,
@@ -245,6 +247,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
 # may be smaller if the tensor size is not divisible by the number of chunks.
 # For example, torch.tensor_split(x, 4) will return 4 chunks:
 # (tensor([1, 2]), tensor([3]), tensor([4]), tensor([5])).
+@classmethod
 @functools.wraps(EquipartitionSharder.shard)
 def shard_anything(
     cls: EquipartitionSharder,
