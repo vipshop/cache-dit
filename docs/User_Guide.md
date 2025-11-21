@@ -747,7 +747,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
 
-Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and its use will introduce a small degree of performance degradation if the `cpu:gloo` communication is not avaliable.
+Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and it mat introduce a slight degradation of performance while the `cpu:gloo` backend is not avaliable.
 
 
 <div align="center">
