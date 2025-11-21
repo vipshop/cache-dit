@@ -163,7 +163,7 @@ class _CommType(Enum):
 
 class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
 
-    _default_o_comm_method = _CommType.ALL_TO_ALL
+    _o_split_comm = _CommType.ALL_TO_ALL
 
     @staticmethod
     def forward(
@@ -223,7 +223,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        if TemplatedUlyssesAnythingAttention._default_o_comm_method == _CommType.ALL_TO_ALL:
+        if TemplatedUlyssesAnythingAttention._o_split_comm == _CommType.ALL_TO_ALL:
             out = _all_to_all_single_any_o(out, group)
         else:
             out = _gather_split_any_o(out, group)
