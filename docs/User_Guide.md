@@ -719,8 +719,7 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-We have implemented a Ulysses Attention that supports **arbitrary seq_len**, namely **UAA: Ulysses Anything Attention**. As we know, the default implementation of Ulysses-style Context Parallelism requires that the seq_len of the input hidden_states or encoder_hidden_states must be divisible by the number of devices.      
-This imposes significant limitations on the practical application of Ulysses. For instance, in Text-to-Image tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary seq_len**, which enhances the versatility of Ulysses.
+We have implemented a Ulysses Attention that supports **arbitrary seq_len**, namely **UAA: Ulysses Anything Attention**. As we know, the default implementation of Ulysses-style Context Parallelism requires that the seq_len of the input hidden_states or encoder_hidden_states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses. For instance, in Text-to-Image tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary seq_len**, which enhances the versatility of Ulysses.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -740,7 +739,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
 ```
 
-Please note that Ulysses Anything Attention is currently an experimental feature; it has not undergone large-scale testing, and its use will introduce a small degree of performance degradation.  
+Please note that Ulysses Anything Attention is currently an 📚experimental feature; it has not undergone large-scale testing, and its use will introduce a small degree of performance degradation.  
 
 ## ⚡️Hybrid Tensor Parallelism
 
