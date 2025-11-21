@@ -8,10 +8,10 @@ import torch.distributed._functional_collectives as funcol
 
 try:
     from diffusers.models.attention_dispatch import (
-        ParallelConfig,
         _all_to_all_single,
         _wait_tensor,
     )
+    from diffusers.models._modeling_parallel import ParallelConfig
     from diffusers.hooks.context_parallel import EquipartitionSharder
 except ImportError:
     raise ImportError(
