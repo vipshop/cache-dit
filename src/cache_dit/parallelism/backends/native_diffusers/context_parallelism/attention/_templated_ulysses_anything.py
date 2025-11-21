@@ -66,6 +66,8 @@ def _check_all_sizes_same(sizes: List[int]) -> bool:
     return True
 
 
+# NOTE: Disable torch.compile to avoid compile error - Explanation:
+# Backend compiler `inductor` failed with aten._local_scalar_dense.default
 @torch.compiler.disable
 def _tensor_tolist(tensor: torch.Tensor) -> List[int]:
     return tensor.tolist()
