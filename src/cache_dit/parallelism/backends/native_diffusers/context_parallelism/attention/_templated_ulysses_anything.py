@@ -122,6 +122,19 @@ def _all_to_all_single_any_qkv(
     return x
 
 
+@torch.compiler.disable
+def _split_sizes(S_GLOBAL: int, world_size: int) -> List[int]:
+    assert world_size > 0, "world_size must be greater than 0"
+    assert S_GLOBAL >= world_size, "S_GLOBAL must be greater than or equal to world_size"
+
+    base = S_GLOBAL // world_size
+    remainder = S_GLOBAL % world_size
+
+    splits = [base + 1 if i < remainder else base for i in range(world_size)]
+
+    return splits
+
+
 def _all_to_all_single_any_o(
     out: torch.Tensor,
     group: dist.ProcessGroup,
@@ -149,14 +162,14 @@ def _all_to_all_single_any_o(
 
     torch._dynamo.graph_break()
     out = out.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
-    # NOTE(DefTruth): We use tensor_split here to ensure the same split policy
+    # NOTE(DefTruth): May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-
-    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[4,5], [4,5],..]
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(out, world_size, dim=0)]
-    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[4,4], [5,5],..]
+    # input_split_sizes = [o.shape[0] for o in torch.tensor_split(out, world_size, dim=0)]
+    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
+    input_split_sizes = _split_sizes(S_GLOBAL * B, world_size)
+    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
     out = fc.all_to_all_single(out, output_split_sizes, input_split_sizes, group)
     out = _wait_tensor(out)  # (S_LOCAL*world_size, H_LOCAL, D)
