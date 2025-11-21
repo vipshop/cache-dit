@@ -21,9 +21,13 @@ print(args)
 
 height, width = 480, 832
 pipe = WanPipeline.from_pretrained(
-    os.environ.get(
-        "WAN_2_2_DIR",
-        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "WAN_2_2_DIR",
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        )
     ),
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement

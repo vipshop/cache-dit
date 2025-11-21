@@ -29,9 +29,13 @@ transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
 # Minimize VRAM required: 20GiB if use w4a16_text_encoder else 30GiB
 w4a16_text_encoder = False
 pipe = QwenImagePipeline.from_pretrained(
-    os.environ.get(
-        "QWEN_IMAGE_DIR",
-        "Qwen/Qwen-Image",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "QWEN_IMAGE_DIR",
+            "Qwen/Qwen-Image",
+        )
     ),
     transformer=transformer,
     torch_dtype=torch.bfloat16,

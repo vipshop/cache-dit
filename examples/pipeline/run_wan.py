@@ -21,9 +21,13 @@ print(args)
 
 height, width = 480, 832
 pipe = WanPipeline.from_pretrained(
-    os.environ.get(
-        "WAN_DIR",
-        "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",  # "num_layers": 30,
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "WAN_DIR",
+            "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",  # "num_layers": 30,
+        )
     ),
     torch_dtype=torch.bfloat16,
 )
