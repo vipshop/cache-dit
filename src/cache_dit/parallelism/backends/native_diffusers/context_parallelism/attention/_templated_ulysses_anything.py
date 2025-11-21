@@ -260,9 +260,6 @@ def shard_anything(
     return tensor.tensor_split(mesh.size(), dim=dim)[dist.get_rank(mesh.get_group())]
 
 
-EquipartitionSharder.shard = shard_anything
-
-
 _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
 )
