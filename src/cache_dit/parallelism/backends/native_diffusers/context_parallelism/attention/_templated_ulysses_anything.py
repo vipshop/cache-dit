@@ -1,5 +1,6 @@
 import os
 import functools
+from enum import Enum
 from typing import Optional, Tuple, List
 
 import torch
@@ -155,7 +156,15 @@ def _gather_split_any_o(  # noqa: F811
     return out
 
 
+class _CommType(Enum):
+    ALL_TO_ALL = "all_to_all_single"
+    GATHER_SPLIT = "gather_split"
+
+
 class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
+
+    _default_o_comm_method = _CommType.ALL_TO_ALL
+
     @staticmethod
     def forward(
         ctx: torch.autograd.function.FunctionCtx,
@@ -214,7 +223,10 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out = _all_to_all_single_any_o(out, group)
+        if TemplatedUlyssesAnythingAttention._default_o_comm_method == _CommType.ALL_TO_ALL:
+            out = _all_to_all_single_any_o(out, group)
+        else:
+            out = _gather_split_any_o(out, group)
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
