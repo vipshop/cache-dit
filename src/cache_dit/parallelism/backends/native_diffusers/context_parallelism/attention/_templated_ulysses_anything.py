@@ -35,10 +35,10 @@ __all__ = [
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
 # For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
 # NOTE: Avoid unwaited collective calls in torch.compile graphs.
-@torch.compiler.disable
 def _wait_tensor(tensor):
     if isinstance(tensor, fc.AsyncCollectiveTensor):
         tensor = tensor.wait()
+
     return tensor
 
 
