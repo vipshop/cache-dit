@@ -24,7 +24,11 @@ transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
     f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
 )
 pipe: FluxPipeline = FluxPipeline.from_pretrained(
-    os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev")
+    ),
     transformer=transformer,
     torch_dtype=torch.bfloat16,
 ).to("cuda")
