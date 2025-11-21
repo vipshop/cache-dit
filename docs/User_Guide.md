@@ -752,10 +752,10 @@ Please note that Ulysses Anything Attention is currently an **experimental** fea
 
 <div align="center">
 
-|L20x2, CP2 w/ Ulysses Attention |CP2 w/ Ulysses Anything Attention + Gloo All Gather | 
-|:---:|:---:|
-|13.87s|13.88s|
-|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=460px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=460px>|
+|L20x2, CP2 w/ Ulysses Attention |CP2 w/ UAA + Gloo All Gather |CP2 w/ UAA + NCCL All Gather |  
+|:---:|:---:|:---:|
+|FLUX.1, 28 steps, 13.87s|13.88s (nearly 🎉**Zero overhead**)|14.75s|
+|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=250px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=250px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=250px>|
 
 </div>
 
