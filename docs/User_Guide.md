@@ -752,10 +752,10 @@ Please note that Ulysses Anything Attention is currently an **experimental** fea
 
 <div align="center">
 
-|L20x2, CP2 w/ Ulysses Attention |CP2 w/ UAA + Gloo All Gather |CP2 w/ UAA + NCCL All Gather |  
-|:---:|:---:|:---:|
-|FLUX.1, 28 steps, 13.87s|13.88s (nearly 🎉**Zero overhead**)|14.75s|
-|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=300px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=300px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=300px>|
+|L20x2, Ulysses |UAA w/ Gloo | UAA w/o Gloo |  L20x2 w/ Ulysses | L20x4 w/ UAA |
+|:---:|:---:|:---:|:---:|:---:|
+|FLUX.1, 13.87s|🎉13.88s|14.75s|Qwen-Image| ❌Ulysses failed|
+|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/qwen-image.C1_Q1_float8_weight_only_NONE_Ulysses2.png" width=180px>|<img src="../assets/uaa/qwen-image.C1_Q1_float8_weight_only_NONE_Ulysses4_ulysses_anything.png" width=180px>|
 
 </div>
 
