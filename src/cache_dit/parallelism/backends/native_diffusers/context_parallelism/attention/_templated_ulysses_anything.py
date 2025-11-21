@@ -18,10 +18,16 @@ except ImportError:
         "Please install latest version of diffusers from source: \n"
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
 
 __all__ = [
     "TemplatedUlyssesAnythingAttention",
     "EquipartitionSharder",
+    "enable_ulysses_anything",
+    "is_ulysses_anything_enabled",
+    "disable_ulysses_anything",
 ]
 
 
@@ -254,3 +260,53 @@ def shard_anything(
 
 
 EquipartitionSharder.shard = shard_anything
+
+
+_CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
+
+
+def enable_ulysses_anything(**kwargs):
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
+    try:
+        if _CACHE_DIT_ENABELD_ULYSSES_ANYTHING:
+            # function for TemplatedUlyssesAnythingAttention.
+            if EquipartitionSharder.shard != shard_anything:
+                EquipartitionSharder.shard = shard_anything
+                logger.warning(
+                    "Ulysses Anything Attention is already enabled in cache-dit. "
+                    "but EquipartitionSharder.shard is not set correctly, "
+                    "resetting it to the correct shard_anything function."
+                )
+            return
+
+        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = True
+
+        logger.warning(
+            "Ulysses Anything Attention is enabled in cache-dit. "
+            "Please note that this is an experimental feature and "
+            "may not be fully tested."
+        )
+
+        # Ensure the EquipartitionSharder uses our modified shard_anything
+        # function for TemplatedUlyssesAnythingAttention.
+        if EquipartitionSharder.shard != shard_anything:
+            EquipartitionSharder.shard = shard_anything
+            logger.info(
+                "EquipartitionSharder.shard is set to shard_anything function "
+                "for Ulysses Anything Attention."
+            )
+    except Exception as e:
+        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
+        logger.error(f"Failed to enable Ulysses Anything Attention in cache-dit due to error: {e}")
+        pass
+
+
+def is_ulysses_anything_enabled(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
+    return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
+
+
+def disable_ulysses_anything(**kwargs):
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
+    _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
+    logger.info("Ulysses Anything Attention is manually disabled in cache-dit.")

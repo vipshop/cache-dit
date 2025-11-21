@@ -128,6 +128,12 @@ def get_args(
         default=False,
         help="Track and report peak GPU memory usage",
     )
+    parser.add_argument(
+        "--ulysses-anything",
+        action="store_true",
+        default=False,
+        help="Enable Ulysses Anything Attention for context parallelism",
+    )
     return parser.parse_args() if parse else parser
 
 
@@ -149,8 +155,12 @@ def cachify(
             if args.parallel_type in ["tp"]
             else ParallelismBackend.NATIVE_DIFFUSER
         )
+
         parallel_kwargs = (
-            {"attention_backend": ("_native_cudnn" if not args.attn else args.attn)}
+            {
+                "attention_backend": ("_native_cudnn" if not args.attn else args.attn),
+                "experimental_ulysses_anything": args.ulysses_anything,
+            }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
             else None
         )
