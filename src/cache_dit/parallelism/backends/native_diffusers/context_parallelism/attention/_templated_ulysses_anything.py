@@ -107,23 +107,14 @@ def _gather_size(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     avaiable_backends = str(dist.get_backend(group=group))
-    # e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+    # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
     gather_device = "cpu" if "cpu" in avaiable_backends else torch.device("cuda")
     gathered_sizes = [
-        torch.empty(
-            (1,),
-            device=gather_device,
-            dtype=torch.int64,
-        )
-        for _ in range(world_size)
+        torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)
     ]
     dist.all_gather(
         gathered_sizes,
-        torch.tensor(
-            [S_LOCAL],
-            device=gather_device,
-            dtype=torch.int64,
-        ),
+        torch.tensor([S_LOCAL], device=gather_device, dtype=torch.int64),
         group=group,
     )
     gathered_sizes = torch.cat(gathered_sizes, dim=0)
@@ -143,14 +134,12 @@ def _all_to_all_single_any_qkv(
     output_split_sizes = _gather_size(S_LOCAL, group)
     # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
     # are all equal, which may be more efficient.
-    # torch._dynamo.graph_break()
     if _check_all_sizes_same(output_split_sizes):
         x = _all_to_all_single(x, group)
         # (world_size * S_LOCAL, B, H_LOCAL, D)
         x = x.flatten(0, 1).contiguous()
         return x  # (S_GLOBAL, B, H_LOCAL, D)
 
-    # torch._dynamo.graph_break()
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
     x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
@@ -170,7 +159,6 @@ def _all_to_all_single_any_o(
 
     # If S_GLOBAL is divisible by world_size, we can use the more
     # efficient _all_to_all_single implementation.
-    # torch._dynamo.graph_break()
     if S_GLOBAL % world_size == 0:
         # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_Q_LOCAL, D)
         out = (
@@ -183,7 +171,6 @@ def _all_to_all_single_any_o(
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
         return out
 
-    # torch._dynamo.graph_break()
     out = out.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
     # NOTE(DefTruth): May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
