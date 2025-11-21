@@ -55,7 +55,6 @@ def _check_all_sizes_same(sizes: List[int]) -> bool:
     return True
 
 
-@torch.compiler.disable
 def _all_to_all_single_any_qkv(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -74,6 +73,8 @@ def _all_to_all_single_any_qkv(
         torch.tensor(S_LOCAL, device=x.device), gather_dim=0, group=group
     )
     gathered_sizes = _wait_tensor(gathered_sizes)
+
+    torch._dynamo.graph_break()
     output_split_sizes = gathered_sizes.tolist()
     # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
     # are all equal, which may be more efficient.
@@ -83,13 +84,13 @@ def _all_to_all_single_any_qkv(
         x = x.flatten(0, 1).contiguous()
         return x  # (S_GLOBAL, B, H_LOCAL, D)
 
+    torch._dynamo.graph_break()
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
     x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
     return x
 
 
-@torch.compiler.disable
 def _all_to_all_single_any_o(
     out: torch.Tensor,
     group: dist.ProcessGroup,
@@ -103,6 +104,7 @@ def _all_to_all_single_any_o(
 
     # If S_GLOBAL is divisible by world_size, we can use the more
     # efficient _all_to_all_single implementation.
+    torch._dynamo.graph_break()
     if S_GLOBAL % world_size == 0:
         # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_Q_LOCAL, D)
         out = (
@@ -115,6 +117,7 @@ def _all_to_all_single_any_o(
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
         return out
 
+    torch._dynamo.graph_break()
     out = out.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
     # NOTE(DefTruth): We use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
