@@ -209,10 +209,13 @@ def strify(args, pipe_or_stats):
     quantize_type = args.quantize_type if args.quantize else ""
     if quantize_type != "":
         quantize_type = f"_{quantize_type}"
-    return (
+    base_str = (
         f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
+    if args.ulysses_anything:
+        base_str += "_ulysses_anything"
+    return base_str
 
 
 def maybe_init_distributed(args=None):
