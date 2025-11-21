@@ -1,5 +1,5 @@
 import functools
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import torch
 import torch.distributed as dist
@@ -19,6 +19,11 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 
+__all__ = [
+    "TemplatedUlyssesAnythingAttention",
+    "EquipartitionSharder",
+]
+
 
 @torch.compiler.disable
 def _maybe_get_rank_world_size(
@@ -34,6 +39,15 @@ def _maybe_get_rank_world_size(
 
 
 @torch.compiler.disable
+def _check_all_sizes_same(sizes: List[int]) -> bool:
+    first_size = sizes[0]
+    for s in sizes:
+        if s != first_size:
+            return False
+    return True
+
+
+@torch.compiler.disable
 def _all_to_all_single_any_qkv(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -44,7 +58,6 @@ def _all_to_all_single_any_qkv(
     # disable torch.compile for this function as a temporary workaround.
     shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
     (world_size, S_LOCAL, B, H_LOCAL, D) = shape
-    x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     input_split_sizes = [S_LOCAL] * world_size
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
@@ -52,10 +65,16 @@ def _all_to_all_single_any_qkv(
     gathered_sizes = funcol.all_gather_tensor(
         torch.tensor(S_LOCAL, device=x.device), gather_dim=0, group=group
     )
-    # TODO(DefTruth): Consider using all_to_all_single if the gathered_sizes
-    # are all equal to improve efficiency.
     gathered_sizes = _wait_tensor(gathered_sizes)
-    output_split_sizes = gathered_sizes.tolist()  # list of S_LOCAL across ranks
+    output_split_sizes = gathered_sizes.tolist()
+    # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
+    # are all equal, which may be more efficient.
+    if _check_all_sizes_same(output_split_sizes):
+        x = _all_to_all_single(x, group)
+        x = x.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        return x  # (S_GLOBAL, B, H_LOCAL, D)
+
+    x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
     x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
     return x
@@ -71,9 +90,10 @@ def _all_to_all_single_any_o(
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
-    # If S_GLOBAL is divisible by world_size, we can use the more efficient all_to_all_single
+    # If S_GLOBAL is divisible by world_size, we can use the more
+    # efficient _all_to_all_single implementation.
     if S_GLOBAL % world_size == 0:
-        # (B, S_GLOBAL, H_LOCAL, D) -> ... -> (world_size, H_LOCAL, B, S_Q_LOCAL, D)
+        # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_Q_LOCAL, D)
         out = (
             out.reshape(B, world_size, S_GLOBAL // world_size, H_LOCAL, D)
             .permute(1, 3, 0, 2, 4)
@@ -88,14 +108,18 @@ def _all_to_all_single_any_o(
     # NOTE(DefTruth): We use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
-    # all of which are views of :attr:`input`, thus may not introduce extra
-    # IO access.
+    # all of which are views of input, thus may not introduce extra IO access.
+
     # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[4,5], [4,5],..]
     input_split_sizes = [o.shape[0] for o in torch.tensor_split(out, world_size, dim=0)]
     # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[4,4], [5,5],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
     out = funcol.all_to_all_single(out, output_split_sizes, input_split_sizes, group)
     out = _wait_tensor(out)  # (S_LOCAL*world_size, H_LOCAL, D)
+    # NOTE(DefTruth): We can not simply reshape here, because the collective tensors
+    # are stacked at dim=0(SeqLen), we need to first split them and then concat at
+    # dim=1(Head), otherwise the result will be incorrect due to the linear layout
+    # of the tensor in memory.
     H_GLOBAL = H_LOCAL * world_size
     S_LOCAL = out.shape[0] // world_size
     out = torch.cat(out.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
