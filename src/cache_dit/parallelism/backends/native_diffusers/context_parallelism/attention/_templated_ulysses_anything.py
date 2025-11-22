@@ -352,8 +352,10 @@ class AllGatherAnythingFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        grad_chunks = torch.tensor_split(grad_output, ctx.world_size, dim=ctx.dim)
-        return grad_chunks[ctx.rank], None, None
+        # NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
+        # function may return fewer than the specified number of chunks!
+        grad_splits = torch.tensor_split(grad_output, ctx.world_size, dim=ctx.dim)
+        return grad_splits[ctx.rank], None, None
 
 
 # NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
