@@ -317,6 +317,8 @@ def _collect_shapes(
     return gather_shapes
 
 
+# NOTE: dist.all_gather, Gathers tensors from the whole group in a list.
+# Complex and uneven sized tensors are supported.
 class AllGatherAnythingFunction(torch.autograd.Function):
     @staticmethod
     def forward(
