@@ -307,6 +307,53 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         )
 
 
+@torch.compiler.disable
+def _collect_shapes(
+    shape: List[int], gather_dims: List[int], dim: int, world_size: int
+) -> List[List[int]]:
+    gather_shapes = [list(shape)] * world_size
+    for i in range(world_size):
+        gather_shapes[i][dim] = gather_dims[i]
+    return gather_shapes
+
+
+class AllGatherAnythingFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx,
+        tensor: torch.Tensor,
+        dim: int,
+        group: dist.device_mesh.DeviceMesh,
+    ):
+        ctx.dim = dim
+        ctx.group = group
+        ctx.world_size = dist.get_world_size(group)
+        ctx.rank = dist.get_rank(group)
+        shape = tensor.shape
+        rank_dim = shape[dim]
+        gather_dims = _gather_size(rank_dim, group)
+
+        # If sizes is divisible by world_size, we can use the more
+        # efficient all_gather_tensor implementation.
+        if _check_all_sizes_same(gather_dims):
+            return fc.all_gather_tensor(tensor, dim, group=group)
+
+        gather_shapes = _collect_shapes(shape, gather_dims, dim, ctx.world_size)
+
+        gathered_tensors = [
+            torch.empty(shape, device=tensor.device, dtype=tensor.dtype) for shape in gather_shapes
+        ]
+
+        dist.all_gather(gathered_tensors, tensor, group=group)
+        gathered_tensor = torch.cat(gathered_tensors, dim=dim)
+        return gathered_tensor
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_chunks = torch.tensor_split(grad_output, ctx.world_size, dim=ctx.dim)
+        return grad_chunks[ctx.rank], None, None
+
+
 # NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
 # function may return fewer than the specified number of chunks! For example,
 # x = torch.tensor([1,2,3,4,5]), torch.chunk(x, 4) will return only 3 chunks:
@@ -332,6 +379,20 @@ def shard_anything(
     return tensor.tensor_split(mesh.size(), dim=dim)[dist.get_rank(mesh.get_group())]
 
 
+@classmethod
+@functools.wraps(EquipartitionSharder.unshard)
+def unshard_anything(
+    cls,
+    tensor: torch.Tensor,
+    dim: int,
+    mesh: torch.distributed.device_mesh.DeviceMesh,
+    **kwargs,
+) -> torch.Tensor:
+    tensor = tensor.contiguous()
+    tensor = AllGatherAnythingFunction.apply(tensor, dim, mesh.get_group())
+    return tensor
+
+
 _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
 )
@@ -344,10 +405,11 @@ def enable_ulysses_anything(**kwargs):
             # function for TemplatedUlyssesAnythingAttention.
             if EquipartitionSharder.shard != shard_anything:
                 EquipartitionSharder.shard = shard_anything
+                EquipartitionSharder.unshard = unshard_anything
                 logger.warning(
                     "Ulysses Anything Attention is already enabled in cache-dit. "
-                    "but EquipartitionSharder.shard is not set correctly, "
-                    "resetting it to the correct shard_anything function."
+                    "but EquipartitionSharder.shard/unshard is not set correctly, "
+                    "resetting it to the correct shard/unshard_anything function."
                 )
             return
 
@@ -363,8 +425,9 @@ def enable_ulysses_anything(**kwargs):
         # function for TemplatedUlyssesAnythingAttention.
         if EquipartitionSharder.shard != shard_anything:
             EquipartitionSharder.shard = shard_anything
+            EquipartitionSharder.unshard = unshard_anything
             logger.info(
-                "EquipartitionSharder.shard is set to shard_anything function "
+                "EquipartitionSharder.shard/unshard is set to shard/unshard_anything function "
                 "for Ulysses Anything Attention."
             )
     except Exception as e:
