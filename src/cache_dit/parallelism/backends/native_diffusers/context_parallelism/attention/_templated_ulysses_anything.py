@@ -57,7 +57,7 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
 
 
 @torch.compiler.disable
-def _maybe_get_rank_world_size(
+def _get_rank_world_size(
     group: dist.ProcessGroup,
     rank: Optional[int] = None,
     world_size: Optional[int] = None,
@@ -102,7 +102,7 @@ def _split_sizes(S_GLOBAL: int, world_size: int) -> List[int]:
     return splits
 
 
-def _gather_size(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
+def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     avaiable_backends = str(dist.get_backend(group=group))
@@ -130,7 +130,7 @@ def _all_to_all_single_any_qkv(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    output_split_sizes = _gather_size(S_LOCAL, group)
+    output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
     # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
     # are all equal, which may be more efficient.
     if _check_all_sizes_same(output_split_sizes):
@@ -152,7 +152,7 @@ def _all_to_all_single_any_o(
     rank: Optional[int] = None,
     world_size: Optional[int] = None,
 ) -> torch.Tensor:
-    rank, world_size = _maybe_get_rank_world_size(group, rank, world_size)
+    rank, world_size = _get_rank_world_size(group, rank, world_size)
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
@@ -201,7 +201,7 @@ def _gather_split_any_o(  # noqa: F811
 ) -> torch.Tensor:
     # NOTE(DefTruth): This is an alternative implementation of _all_to_all_single
     # for any o. It use all_gather and split, which may be less efficient.
-    rank, world_size = _maybe_get_rank_world_size(group, rank, world_size)
+    rank, world_size = _get_rank_world_size(group, rank, world_size)
     # (B, S_GLOBAL, H_LOCAL, D)
     # all gather to get (B, S_GLOBAL, H_GLOBAL, D) at H_GLOBAL dim
     out_gathered = [torch.empty_like(out) for _ in range(world_size)]
@@ -297,7 +297,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
 
 
 @torch.compiler.disable
-def _collect_shapes(
+def _collect_gather_shapes(
     shape: List[int], gather_dims: List[int], dim: int, world_size: int
 ) -> List[List[int]]:
     gather_shapes = [list(shape)] * world_size
@@ -322,17 +322,27 @@ class AllGatherAnythingFunction(torch.autograd.Function):
         ctx.rank = dist.get_rank(group)
         shape = tensor.shape
         rank_dim = shape[dim]
-        gather_dims = _gather_size(rank_dim, group)
+        gather_dims = _gather_size_by_comm(rank_dim, group)
 
         # If sizes is divisible by world_size, we can use the more
         # efficient all_gather_tensor implementation.
         if _check_all_sizes_same(gather_dims):
             return fc.all_gather_tensor(tensor, dim, group=group)
 
-        gather_shapes = _collect_shapes(shape, gather_dims, dim, ctx.world_size)
+        gather_shapes = _collect_gather_shapes(
+            shape,
+            gather_dims,
+            dim,
+            ctx.world_size,
+        )
 
         gathered_tensors = [
-            torch.empty(shape, device=tensor.device, dtype=tensor.dtype) for shape in gather_shapes
+            torch.empty(
+                shape,
+                device=tensor.device,
+                dtype=tensor.dtype,
+            )
+            for shape in gather_shapes
         ]
 
         dist.all_gather(gathered_tensors, tensor, group=group)
@@ -372,6 +382,10 @@ def shard_anything(
     return tensor.tensor_split(mesh.size(), dim=dim)[dist.get_rank(mesh.get_group())]
 
 
+# NOTE(DefTruth): We use AllGatherAnythingFunction to support gathering
+# tensors with complex and uneven sizes across all ranks. It handles the
+# case where the tensor size (the seq_len of hidden_states) along the
+# specified dimension is not divisible by the number of ranks in the mesh.
 @classmethod
 @functools.wraps(EquipartitionSharder.unshard)
 def unshard_anything(
