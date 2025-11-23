@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 import torch
 import torch.distributed as dist
@@ -8,6 +9,15 @@ from cache_dit import init_logger
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 
 logger = init_logger(__name__)
+
+
+def setup_distributed_logger():
+    """Configure logger to only output on rank 0 in distributed mode."""
+    if dist.is_initialized() and dist.get_rank() != 0:
+        # Disable logging for non-zero ranks
+        logging.getLogger("cache_dit").setLevel(logging.ERROR)
+        # Also disable the root logger for other libraries
+        logging.getLogger().setLevel(logging.ERROR)
 
 
 def print_rank0(*args, **kwargs):
@@ -246,6 +256,8 @@ def maybe_init_distributed(args=None):
             rank = dist.get_rank()
             device = torch.device("cuda", rank % torch.cuda.device_count())
             torch.cuda.set_device(device)
+            # Configure logger to only output on rank 0
+            setup_distributed_logger()
             return rank, device
     else:
         # always init distributed for other examples
@@ -256,6 +268,8 @@ def maybe_init_distributed(args=None):
         rank = dist.get_rank()
         device = torch.device("cuda", rank % torch.cuda.device_count())
         torch.cuda.set_device(device)
+        # Configure logger to only output on rank 0
+        setup_distributed_logger()
         return rank, device
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
