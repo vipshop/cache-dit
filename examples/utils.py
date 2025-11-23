@@ -11,21 +11,29 @@ from cache_dit.parallelism.parallel_backend import ParallelismBackend
 logger = init_logger(__name__)
 
 
+class RankFilter(logging.Filter):
+    def filter(self, record):
+        return not dist.is_initialized() or dist.get_rank() == 0
+
+
+_rank_filter = RankFilter()
+
+
 def setup_distributed_logger():
-    """Configure logger to only output on rank 0 in distributed mode."""
-    if dist.is_initialized() and dist.get_rank() != 0:
-        # Disable logging for non-zero ranks
-        logging.getLogger("cache_dit").setLevel(logging.ERROR)
-        # Also disable the root logger for other libraries
-        logging.getLogger().setLevel(logging.ERROR)
+    cache_dit_logger = logging.getLogger("cache_dit")
+    if _rank_filter not in cache_dit_logger.filters:
+        cache_dit_logger.addFilter(_rank_filter)
+
+    root_logger = logging.getLogger()
+    if _rank_filter not in root_logger.filters:
+        root_logger.addFilter(_rank_filter)
+
+
+setup_distributed_logger()
 
 
 def print_rank0(*args, **kwargs):
-    """Print only on rank 0 in distributed setting."""
-    rank = 0
-    if dist.is_initialized():
-        rank = dist.get_rank()
-    if rank == 0:
+    if not dist.is_initialized() or dist.get_rank() == 0:
         print(*args, **kwargs)
 
 
@@ -49,20 +57,12 @@ class MemoryTracker:
             self.peak_memory = torch.cuda.max_memory_allocated(self.device)
 
     def get_peak_memory_gb(self):
-        """Get peak memory in GB."""
         return self.peak_memory / (1024**3)
 
     def report(self, rank=None):
-        """Print memory usage report.
-
-        Args:
-            rank: Current rank. If None, will try to get from dist. Only prints on rank 0.
-        """
         if self.enabled:
             if rank is None:
-                rank = 0
-                if dist.is_initialized():
-                    rank = dist.get_rank()
+                rank = 0 if not dist.is_initialized() else dist.get_rank()
 
             if rank == 0:
                 peak_gb = self.get_peak_memory_gb()
@@ -256,7 +256,6 @@ def maybe_init_distributed(args=None):
             rank = dist.get_rank()
             device = torch.device("cuda", rank % torch.cuda.device_count())
             torch.cuda.set_device(device)
-            # Configure logger to only output on rank 0
             setup_distributed_logger()
             return rank, device
     else:
@@ -268,7 +267,6 @@ def maybe_init_distributed(args=None):
         rank = dist.get_rank()
         device = torch.device("cuda", rank % torch.cuda.device_count())
         torch.cuda.set_device(device)
-        # Configure logger to only output on rank 0
         setup_distributed_logger()
         return rank, device
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
