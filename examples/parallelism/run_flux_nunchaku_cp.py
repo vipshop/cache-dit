@@ -20,13 +20,13 @@ from utils import (
     maybe_init_distributed,
     maybe_destroy_distributed,
     MemoryTracker,
+    print_rank0,
 )
 import cache_dit
 
 args = get_args()
-print(args)
-
 rank, device = maybe_init_distributed(args)
+print_rank0(args)
 
 nunchaku_flux_dir = os.environ.get(
     "NUNCHAKA_FLUX_DIR",
@@ -147,9 +147,7 @@ end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
-
-cache_dit.summary(pipe)
+    memory_tracker.report(rank)
 
 if rank == 0:
     cache_dit.summary(pipe)

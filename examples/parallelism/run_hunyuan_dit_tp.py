@@ -13,12 +13,12 @@ from utils import (
     maybe_init_distributed,
     maybe_destroy_distributed,
     MemoryTracker,
+    print_rank0,
 )
 import cache_dit
 
 
 args = get_args()
-print(args)
 
 
 model_id = (
@@ -33,6 +33,7 @@ model_id = (
 
 # Initialize distributed for tensor parallelism
 rank, device = maybe_init_distributed(args)
+print_rank0(args)
 
 pipe = HunyuanDiTPipeline.from_pretrained(
     model_id,
@@ -64,11 +65,10 @@ end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
-
-stats = cache_dit.summary(pipe)
+    memory_tracker.report(rank)
 
 if rank == 0:
+    stats = cache_dit.summary(pipe)
     time_cost = end - start
     version = "11" if "1.1" in model_id else "12"
     save_path = f"hunyuan_dit_{version}.{strify(args, stats)}.png"

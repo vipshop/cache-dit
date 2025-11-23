@@ -20,14 +20,14 @@ from utils import (
     maybe_init_distributed,
     strify,
     MemoryTracker,
+    print_rank0,
 )
 
 import cache_dit
 
 args = get_args()
-print(args)
-
 rank, device = maybe_init_distributed(args)
+print_rank0(args)
 
 
 def prepare_video_and_mask(
@@ -137,7 +137,7 @@ end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
+    memory_tracker.report(rank)
 
 if rank == 0:
 

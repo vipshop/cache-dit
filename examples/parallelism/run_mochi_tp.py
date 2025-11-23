@@ -15,14 +15,14 @@ from utils import (
     maybe_init_distributed,
     strify,
     MemoryTracker,
+    print_rank0,
 )
 
 import cache_dit
 
 args = get_args()
-print(args)
-
 rank, device = maybe_init_distributed(args)
+print_rank0(args)
 
 model_id = args.model_path if args.model_path is not None else "genmo/mochi-1-preview"
 model_id = args.model_path if args.model_path is not None else os.environ.get("MOCHI_DIR", model_id)
@@ -71,7 +71,7 @@ end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
+    memory_tracker.report(rank)
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

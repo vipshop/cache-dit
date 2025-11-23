@@ -20,14 +20,14 @@ from utils import (
     maybe_init_distributed,
     maybe_destroy_distributed,
     MemoryTracker,
+    print_rank0,
 )
 import cache_dit
 
 
 args = get_args()
-print(args)
-
 rank, device = maybe_init_distributed(args)
+print_rank0(args)
 
 # From https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
 scheduler_config = {
@@ -187,7 +187,7 @@ end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
+    memory_tracker.report(rank)
 
 
 if rank == 0:

@@ -10,6 +10,15 @@ from cache_dit.parallelism.parallel_backend import ParallelismBackend
 logger = init_logger(__name__)
 
 
+def print_rank0(*args, **kwargs):
+    """Print only on rank 0 in distributed setting."""
+    rank = 0
+    if dist.is_initialized():
+        rank = dist.get_rank()
+    if rank == 0:
+        print(*args, **kwargs)
+
+
 class MemoryTracker:
     """Track peak GPU memory usage during execution."""
 
@@ -33,12 +42,22 @@ class MemoryTracker:
         """Get peak memory in GB."""
         return self.peak_memory / (1024**3)
 
-    def report(self):
-        """Print memory usage report."""
+    def report(self, rank=None):
+        """Print memory usage report.
+
+        Args:
+            rank: Current rank. If None, will try to get from dist. Only prints on rank 0.
+        """
         if self.enabled:
-            peak_gb = self.get_peak_memory_gb()
-            logger.info(f"Peak GPU memory usage: {peak_gb:.2f} GB")
-            return peak_gb
+            if rank is None:
+                rank = 0
+                if dist.is_initialized():
+                    rank = dist.get_rank()
+
+            if rank == 0:
+                peak_gb = self.get_peak_memory_gb()
+                logger.info(f"Peak GPU memory usage: {peak_gb:.2f} GB")
+                return peak_gb
         return 0
 
 

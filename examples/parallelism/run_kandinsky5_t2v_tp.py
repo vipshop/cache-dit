@@ -15,14 +15,14 @@ from utils import (
     maybe_init_distributed,
     strify,
     MemoryTracker,
+    print_rank0,
 )
 
 import cache_dit
 
 args = get_args()
-print(args)
-
 rank, device = maybe_init_distributed(args)
+print_rank0(args)
 
 # Available models:
 # ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
@@ -89,7 +89,7 @@ end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
+    memory_tracker.report(rank)
 
 if rank == 0:
     cache_dit.summary(pipe)
