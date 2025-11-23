@@ -20,13 +20,16 @@ _rank_filter = RankFilter()
 
 
 def setup_distributed_logger():
-    cache_dit_logger = logging.getLogger("cache_dit")
-    if _rank_filter not in cache_dit_logger.filters:
-        cache_dit_logger.addFilter(_rank_filter)
+    loggers_to_filter = [
+        logging.getLogger("cache_dit"),
+        logging.getLogger("diffusers"),
+        logging.getLogger("transformers"),
+        logging.getLogger(),
+    ]
 
-    root_logger = logging.getLogger()
-    if _rank_filter not in root_logger.filters:
-        root_logger.addFilter(_rank_filter)
+    for logger in loggers_to_filter:
+        if _rank_filter not in logger.filters:
+            logger.addFilter(_rank_filter)
 
 
 setup_distributed_logger()
