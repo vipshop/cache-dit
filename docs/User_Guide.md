@@ -749,12 +749,17 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 <div align="center">
 
-|L20x2, Ulysses |UAA w/ Gloo | UAA w/o Gloo |  L20x1 | L20x2 w/ UAA |
-|:---:|:---:|:---:|:---:|:---:|
-|FLUX.1, 13.87s|**🎉13.88s**|14.75s|FLUX.1, 23.25s| **🎉13.75s**|
-|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=180px>|<img src="../assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|
-|1024x1024|1024x1024|1024x1024|1008x1008|1008x1008|
-|✅Ulysses ✅UAA|✅Ulysses ✅UAA|✅Ulysses ✅UAA|✅Ulysses ✅UAA|**❌Ulysses ✅UAA**|
+<p align="center">
+    U*: Ulysses Attention, UUA: Ulysses Anything Attenton, UUA*: UUA + Gloo, Device: NVIDIA L20<br>
+    FLUX.1-Dev w/o CPU Offload 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
+</p>
+
+|CP2 w/ U* |CP2 w/ UAA* | CP2 w/ UAA |  L20x1 | CP2 w/ UAA* | CP2 w/ U* |  L20x1 |  CP2 w/ UAA* | 
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|FLUX, 13.87s|**🎉13.88s**|14.75s|FLUX.1, 23.25s| **🎉13.75s**|Qwen, 131.5s|180.2s|🎉133.1s|
+|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=110px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="../assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=110px>|<img src="../assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="../assets/uaa/qwen-image.1312x1312.C0_Q0_NONE_Ulysses2.png" width=110px>|<img src="../assets/uaa/qwen-image.1328x1328.C0_Q0_NONE.png" width=110px>|<img src="../assets/uaa/qwen-image.1328x1328.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|
+|1024x1024|1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
+|✅U* ✅UAA|✅U* ✅UAA|✅U* ✅UAA|✅U* ✅UAA|❌U* ✅UAA|✅U* ✅UAA|✅U* ✅UAA|❌U* ✅UAA|
 
 </div>
 
