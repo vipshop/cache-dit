@@ -80,7 +80,6 @@ def run_pipe(pipe: FluxPipeline):
 
 
 if args.compile:
-    cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup

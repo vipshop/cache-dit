@@ -34,7 +34,6 @@ __all__ = [
 # - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
 # For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
-# TODO: How to avoid unwaited collective calls warnings in torch.compile graphs?
 def _wait_tensor(tensor):
     if isinstance(tensor, fc.AsyncCollectiveTensor):
         tensor = tensor.wait()
@@ -42,22 +41,6 @@ def _wait_tensor(tensor):
     return tensor
 
 
-# Reference:
-# - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
-def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
-    shape = x.shape
-    # HACK: We need to flatten because despite making tensors contiguous, torch single-file-ization
-    # to benchmark triton codegen fails somewhere:
-    # buf25 = torch.ops._c10d_functional.all_to_all_single.default(buf24, [1, 1], [1, 1], '3')
-    # ValueError: Tensors must be contiguous
-    x = x.flatten()
-    x = fc.all_to_all_single(x, None, None, group)
-    x = x.reshape(shape)
-    x = _wait_tensor(x)
-    return x
-
-
-@torch.compiler.disable
 def _get_rank_world_size(
     group: dist.ProcessGroup,
     rank: Optional[int] = None,
@@ -68,39 +51,6 @@ def _get_rank_world_size(
     if rank is None:
         rank = dist.get_rank(group=group)
     return rank, world_size
-
-
-@torch.compiler.disable
-def _check_all_sizes_same(sizes: List[int]) -> bool:
-    first_size = sizes[0]
-    for s in sizes:
-        if s != first_size:
-            return False
-    return True
-
-
-# NOTE: Disable torch.compile to avoid compile error - Explanation:
-# Backend compiler `inductor` failed with aten._local_scalar_dense.default
-@torch.compiler.disable
-def _tensor_tolist(tensor: torch.Tensor) -> List[int]:
-    # NOTE(DefTruth): Please note that torch.compile will raise an NCCL
-    # timeout error here - 'Watchdog caught collective operation timeout:
-    # WorkNCCL(SeqNum=435, OpType=ALLTOALL_BASE ...'), so, we choose to
-    # introduce a graph break here as a temporary workaround.
-    return tensor.tolist()
-
-
-@torch.compiler.disable
-def _divide_size(S_GLOBAL: int, world_size: int) -> List[int]:
-    assert world_size > 0, "world_size must be greater than 0"
-    assert S_GLOBAL >= world_size, "S_GLOBAL must be greater than or equal to world_size"
-
-    base = S_GLOBAL // world_size
-    remainder = S_GLOBAL % world_size
-
-    splits = [base + 1 if i < remainder else base for i in range(world_size)]
-
-    return splits
 
 
 def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
@@ -117,10 +67,14 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
         torch.tensor([S_LOCAL], device=gather_device, dtype=torch.int64),
         group=group,
     )
-    gathered_sizes = torch.cat(gathered_sizes, dim=0)
-    return _tensor_tolist(gathered_sizes)
+
+    gathered_sizes = [s[0].item() for s in gathered_sizes]
+    # NOTE: DON'T use tolist here due to graph break - Explanation:
+    # Backend compiler `inductor` failed with aten._local_scalar_dense.default
+    return gathered_sizes
 
 
+@torch.compiler.allow_in_graph
 def _all_to_all_single_any_qkv(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -132,21 +86,16 @@ def _all_to_all_single_any_qkv(
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
     output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
-    # NOTE(DefTruth): Using _all_to_all_single if the gathered_sizes
-    # are all equal, which may be more efficient.
-    if _check_all_sizes_same(output_split_sizes):
-        x = _all_to_all_single(x, group)
-        # (world_size * S_LOCAL, B, H_LOCAL, D)
-        x = x.flatten(0, 1).contiguous()
-        return x  # (S_GLOBAL, B, H_LOCAL, D)
-
+    # NOTE: The `if` branch will introduce graph break for torch.compile,
+    # so, we choose to disable the even split optimization implementation
+    # _all_to_all_single for now.
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
     x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
-
     return x
 
 
+@torch.compiler.allow_in_graph
 def _all_to_all_single_any_o(
     out: torch.Tensor,
     group: dist.ProcessGroup,
@@ -157,50 +106,40 @@ def _all_to_all_single_any_o(
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
-    # If S_GLOBAL is divisible by world_size, we can use the more
-    # efficient _all_to_all_single implementation.
-    if S_GLOBAL % world_size == 0:
-        # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_Q_LOCAL, D)
-        out = (
-            out.reshape(B, world_size, S_GLOBAL // world_size, H_LOCAL, D)
-            .permute(1, 3, 0, 2, 4)
-            .contiguous()
-        )
-        out = _all_to_all_single(out, group)
-        # (world_size * H_LOCAL, B, S_Q_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
-        return out
-
+    # NOTE: The `if` branch will introduce graph break for torch.compile,
+    # so, we choose to disable the even split optimization implementation
+    # _all_to_all_single for now.
     out = out.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
-    # NOTE(DefTruth): May use tensor_split here to ensure the same split policy
+    # NOTE: May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-    # input_split_sizes = _split_sizes(S_GLOBAL * B, world_size)
     input_split_sizes = [o.shape[0] for o in torch.tensor_split(out, world_size, dim=0)]
     # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
     # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
     out = fc.all_to_all_single(out, output_split_sizes, input_split_sizes, group)
     out = _wait_tensor(out)  # (S_LOCAL*world_size, H_LOCAL, D)
-    # NOTE(DefTruth): We can not simply reshape here, because the collective tensors
+    # NOTE: We can not simply reshape here, because the collective tensors
     # are stacked at dim=0(SeqLen), we need to first split them and then concat at
     # dim=1(Head), otherwise the result will be incorrect due to the linear layout
     # of the tensor in memory.
     H_GLOBAL = H_LOCAL * world_size
     S_LOCAL = out.shape[0] // world_size
+    # TODO: How to avoid extra memory IO access here? nearly 2ms per steps on NVIDIA L20.
     out = torch.cat(out.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
-    out = out.reshape(B, S_LOCAL, H_GLOBAL, D).contiguous()  # (B, S_LOCAL, H_GLOBAL, D)
+    out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
     return out
 
 
+@torch.compiler.allow_in_graph
 def _gather_split_any_o(  # noqa: F811
     out: torch.Tensor,
     group: dist.ProcessGroup,
     rank: Optional[int] = None,
     world_size: Optional[int] = None,
 ) -> torch.Tensor:
-    # NOTE(DefTruth): This is an alternative implementation of _all_to_all_single
+    # NOTE: This is an alternative implementation of _all_to_all_single
     # for any o. It use all_gather and split, which may be less efficient.
     rank, world_size = _get_rank_world_size(group, rank, world_size)
     # (B, S_GLOBAL, H_LOCAL, D)
@@ -209,7 +148,7 @@ def _gather_split_any_o(  # noqa: F811
     dist.all_gather(out_gathered, out, group=group)
     out_gathered = torch.cat(out_gathered, dim=2)
     # (B, S_GLOBAL, H_GLOBAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-    out = out_gathered.tensor_split(world_size, dim=1)[rank].contiguous()
+    out = out_gathered.tensor_split(world_size, dim=1)[rank]
     return out
 
 
@@ -273,7 +212,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out = _all_to_all_single_any_o(out, group)
+        out = _all_to_all_single_any_o(out, group).contiguous()
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
@@ -297,8 +236,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         )
 
 
-@torch.compiler.disable
-def _collect_gather_shapes(
+def _fill_gather_shapes(
     shape: List[int], gather_dims: List[int], dim: int, world_size: int
 ) -> List[List[int]]:
     gather_shapes = []
@@ -310,9 +248,46 @@ def _collect_gather_shapes(
     return gather_shapes
 
 
+@torch.compiler.allow_in_graph
+def _all_gather_anything(  # noqa: F811
+    tensor: torch.Tensor,
+    dim: int,
+    group: dist.device_mesh.DeviceMesh,
+) -> torch.Tensor:
+    _, world_size = _get_rank_world_size(group)
+    tensor = tensor.contiguous()
+    shape = tensor.shape
+    rank_dim = shape[dim]
+    gather_dims = _gather_size_by_comm(rank_dim, group)
+
+    # NOTE: The `if` branch will introduce graph break for torch.compile,
+    # so, we choose to disable the even split optimization for now.
+
+    gather_shapes = _fill_gather_shapes(
+        shape,
+        gather_dims,
+        dim,
+        world_size,
+    )
+
+    gathered_tensors = [
+        torch.empty(
+            shape,
+            device=tensor.device,
+            dtype=tensor.dtype,
+        )
+        for shape in gather_shapes
+    ]
+
+    dist.all_gather(gathered_tensors, tensor, group=group)
+    gathered_tensor = torch.cat(gathered_tensors, dim=dim)
+    return gathered_tensor
+
+
 # NOTE: dist.all_gather, Gathers tensors from the whole group in a list.
 # Complex and uneven sized tensors are supported.
 class AllGatherAnythingFunction(torch.autograd.Function):
+
     @staticmethod
     def forward(
         ctx,
@@ -324,44 +299,18 @@ class AllGatherAnythingFunction(torch.autograd.Function):
         ctx.group = group
         ctx.world_size = dist.get_world_size(group)
         ctx.rank = dist.get_rank(group)
-        shape = tensor.shape
-        rank_dim = shape[dim]
-        gather_dims = _gather_size_by_comm(rank_dim, group)
-
-        # If sizes is divisible by world_size, we can use the more
-        # efficient all_gather_tensor implementation.
-        if _check_all_sizes_same(gather_dims):
-            return fc.all_gather_tensor(tensor, dim, group=group)
-
-        gather_shapes = _collect_gather_shapes(
-            shape,
-            gather_dims,
-            dim,
-            ctx.world_size,
-        )
-
-        gathered_tensors = [
-            torch.empty(
-                shape,
-                device=tensor.device,
-                dtype=tensor.dtype,
-            )
-            for shape in gather_shapes
-        ]
-
-        dist.all_gather(gathered_tensors, tensor, group=group)
-        gathered_tensor = torch.cat(gathered_tensors, dim=dim)
+        gathered_tensor = _all_gather_anything(tensor, dim, group)
         return gathered_tensor
 
     @staticmethod
     def backward(ctx, grad_output):
-        # NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
+        # NOTE: We use `tensor_split` instead of chunk, because the `chunk`
         # function may return fewer than the specified number of chunks!
         grad_splits = torch.tensor_split(grad_output, ctx.world_size, dim=ctx.dim)
         return grad_splits[ctx.rank], None, None
 
 
-# NOTE(DefTruth): We use `tensor_split` instead of chunk, because the `chunk`
+# NOTE: We use `tensor_split` instead of chunk, because the `chunk`
 # function may return fewer than the specified number of chunks! For example,
 # x = torch.tensor([1,2,3,4,5]), torch.chunk(x, 4) will return only 3 chunks:
 # (tensor([1, 2]), tensor([3, 4]), tensor([5])). This behavior can lead to
@@ -386,7 +335,7 @@ def shard_anything(
     return tensor.tensor_split(mesh.size(), dim=dim)[dist.get_rank(mesh.get_group())]
 
 
-# NOTE(DefTruth): We use AllGatherAnythingFunction to support gathering
+# NOTE: We use AllGatherAnythingFunction to support gathering
 # tensors with complex and uneven sizes across all ranks. It handles the
 # case where the tensor size (the seq_len of hidden_states) along the
 # specified dimension is not divisible by the number of ranks in the mesh.
