@@ -61,7 +61,7 @@ if GiB() < 96:
 else:
     pipe.to(device)
 
-if GiB() <= 48 and not enable_quatization:
+if GiB() <= 48 or not enable_quatization:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
 
