@@ -64,11 +64,15 @@ if args.prompt is not None:
     prompt = args.prompt
 
 
+height = 1024 if args.height is None else args.height
+width = 1024 if args.width is None else args.width
+
+
 def run_pipe(pipe: FluxPipeline):
     image = pipe(
         prompt,
-        height=1024 if args.height is None else args.height,
-        width=1024 if args.width is None else args.width,
+        height=height,
+        width=width,
         num_inference_steps=28 if args.steps is None else args.steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
@@ -98,7 +102,7 @@ if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"flux.{strify(args, pipe)}.png"
+    save_path = f"flux.{height}x{width}.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     image.save(save_path)
