@@ -719,7 +719,7 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-We have implemented **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary seq_len** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. As we know, the default Ulysses Attention requires that the seq_len of the input hidden_states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+We have implemented **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary seq_len** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. As we know, the default Ulysses Attention requires that the seq len of the input hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
 
 For example, in the T2I/I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary seq_len**, which enhances the versatility of Ulysses.
 
