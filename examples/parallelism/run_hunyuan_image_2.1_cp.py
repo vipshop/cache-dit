@@ -81,12 +81,9 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 
 def run_pipe(warmup: bool = False):
-    prompt = "A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, "
+    prompt = 'A cute, cartoon-style anthropomorphic penguin plush toy with fluffy fur, standing in a painting studio, wearing a red knitted scarf and a red beret with the word "Tencent" on it, holding a paintbrush with a focused expression as it paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style.'
     if args.prompt is not None:
         prompt = args.prompt
-    "standing in a painting studio, wearing a red knitted scarf and a red beret with "
-    "the word “Tencent” on it, holding a paintbrush with a focused expression as it "
-    "paints an oil painting of the Mona Lisa, rendered in a photorealistic photographic style."
     image = pipe(
         prompt,
         num_inference_steps=50 if not warmup else 5,
