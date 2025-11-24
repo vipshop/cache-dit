@@ -272,7 +272,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        _all_to_all_single_any_o(out, group)
+        out = _all_to_all_single_any_o(out, group)
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
