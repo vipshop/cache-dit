@@ -719,9 +719,8 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-We have implemented **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary seq_len** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the seq len of the input hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+We have implemented the **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence length of the input hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
 
-For example, in the T2I and I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary seq_len**, which enhances the versatility of Ulysses.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -741,14 +740,12 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
 ```
 
-Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce comm latency.
+For example, in the T2I and I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **✅padding-free** Ulysses Attention (UAA) for **arbitrary sequence length**, which enhances the versatility of Ulysses.
 
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
-
-Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and it mat introduce a slight degradation of performance while the `cpu:gloo` backend is not avaliable.
-
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce commucation latency.
 
 <div align="center">
 
@@ -760,6 +757,10 @@ Please note that Ulysses Anything Attention is currently an **experimental** fea
 |✅Ulysses ✅UAA|✅Ulysses ✅UAA|✅Ulysses ✅UAA|✅Ulysses ✅UAA|**❌Ulysses ✅UAA**|
 
 </div>
+
+> [!Important]
+> Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the `cpu:gloo` commucation backend is not available.
+
 
 ## ⚡️Hybrid Tensor Parallelism
 
