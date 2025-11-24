@@ -9,6 +9,7 @@ from .tp_plan_pixart import PixArtTensorParallelismPlanner
 from .tp_plan_qwen_image import QwenImageTensorParallelismPlanner
 from .tp_plan_registers import TensorParallelismPlannerRegister
 from .tp_plan_wan import WanTensorParallelismPlanner
+from .tp_plan_skyreels import SkyReelsV2TensorParallelismPlanner
 
 __all__ = [
     "CogViewTensorParallelismPlanner",
@@ -21,4 +22,5 @@ __all__ = [
     "QwenImageTensorParallelismPlanner",
     "TensorParallelismPlannerRegister",
     "WanTensorParallelismPlanner",
+    "SkyReelsV2TensorParallelismPlanner",
 ]
