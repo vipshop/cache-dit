@@ -719,7 +719,7 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-We have implemented the **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence length of the input hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+We have implemented the **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence length of hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
 
 
 ```python
