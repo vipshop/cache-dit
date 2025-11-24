@@ -36,10 +36,15 @@ pipe: WanImageToVideoPipeline = WanImageToVideoPipeline.from_pretrained(
     device_map=("balanced" if GiB() < 96 and torch.cuda.device_count() > 1 else None),
 )
 
+# When device_map is None, we need to explicitly move the model to GPU
+# or enable CPU offload to avoid running on CPU
 if GiB() < 96 and torch.cuda.device_count() <= 1:
     # issue: https://github.com/huggingface/diffusers/issues/12499
     print("Enable model cpu offload for low memory device.")
     pipe.enable_model_cpu_offload()
+elif torch.cuda.device_count() > 1 and pipe.device.type == "cpu":
+    # Multi-GPU but model is on CPU (device_map was None): move to default GPU
+    pipe.to("cuda")
 
 
 if args.cache:

@@ -87,6 +87,15 @@ if args.cache:
         ),
     )
 
+# When device_map is None, we need to explicitly move the model to GPU
+# or enable CPU offload to avoid running on CPU
+if torch.cuda.device_count() <= 1:
+    # Single GPU: use CPU offload for memory efficiency
+    pipe.enable_model_cpu_offload()
+elif torch.cuda.device_count() > 1 and pipe.device.type == "cpu":
+    # Multi-GPU but model is on CPU (device_map was None): move to default GPU
+    pipe.to("cuda")
+
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 if diffusers.__version__ >= "0.34.0":
