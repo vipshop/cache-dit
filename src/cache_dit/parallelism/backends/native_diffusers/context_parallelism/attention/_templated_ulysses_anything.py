@@ -43,13 +43,9 @@ def _wait_tensor(tensor):
 
 def _get_rank_world_size(
     group: dist.ProcessGroup,
-    rank: Optional[int] = None,
-    world_size: Optional[int] = None,
 ) -> Tuple[int, int]:
-    if world_size is None:
-        world_size = dist.get_world_size(group=group)
-    if rank is None:
-        rank = dist.get_rank(group=group)
+    world_size = dist.get_world_size(group=group)
+    rank = dist.get_rank(group=group)
     return rank, world_size
 
 
@@ -99,10 +95,8 @@ def _all_to_all_single_any_qkv(
 def _all_to_all_single_any_o(
     out: torch.Tensor,
     group: dist.ProcessGroup,
-    rank: Optional[int] = None,
-    world_size: Optional[int] = None,
 ) -> torch.Tensor:
-    rank, world_size = _get_rank_world_size(group, rank, world_size)
+    rank, world_size = _get_rank_world_size(group)
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
@@ -136,12 +130,10 @@ def _all_to_all_single_any_o(
 def _gather_split_any_o(  # noqa: F811
     out: torch.Tensor,
     group: dist.ProcessGroup,
-    rank: Optional[int] = None,
-    world_size: Optional[int] = None,
 ) -> torch.Tensor:
     # NOTE: This is an alternative implementation of _all_to_all_single
     # for any o. It use all_gather and split, which may be less efficient.
-    rank, world_size = _get_rank_world_size(group, rank, world_size)
+    rank, world_size = _get_rank_world_size(group)
     # (B, S_GLOBAL, H_LOCAL, D)
     # all gather to get (B, S_GLOBAL, H_GLOBAL, D) at H_GLOBAL dim
     out_gathered = [torch.empty_like(out) for _ in range(world_size)]
