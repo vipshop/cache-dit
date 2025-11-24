@@ -751,7 +751,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 <p align="center">
     U*: Ulysses Attention, UUA: Ulysses Anything Attenton, UUA*: UUA + Gloo, Device: NVIDIA L20<br>
-    FLUX.1-Dev w/o CPU Offload 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
+    FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
 </p>
 
 |CP2 w/ U* |CP2 w/ UAA* | CP2 w/ UAA |  L20x1 | CP2 w/ UAA* | CP2 w/ U* |  L20x1 |  CP2 w/ UAA* | 
