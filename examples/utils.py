@@ -134,6 +134,12 @@ def get_args(
         default=False,
         help="Enable Ulysses Anything Attention for context parallelism",
     )
+    parser.add_argument(
+        "--disable-compute-comm-overlap",
+        action="store_true",
+        default=False,
+        help="Disable compute-communication overlap during compilation",
+    )
     return parser.parse_args() if parse else parser
 
 
@@ -142,6 +148,11 @@ def cachify(
     pipe_or_adapter,
     **kwargs,
 ):
+    if args.disable_compute_comm_overlap:
+        # Enable compute comm overlap default for torch.compile if used
+        # cache_dit.set_compile_flags(), users need to disable it explicitly.
+        cache_dit.disable_compute_comm_overlap()
+
     if args.cache or args.parallel_type is not None:
         import torch.distributed as dist
 

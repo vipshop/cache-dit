@@ -26,9 +26,9 @@ from cache_dit.caching import TaylorSeerCalibratorConfig
 from cache_dit.caching import FoCaCalibratorConfig
 from cache_dit.caching import supported_pipelines
 from cache_dit.caching import get_adapter
-from cache_dit.compile import set_compile_configs
 from cache_dit.parallelism import ParallelismBackend
 from cache_dit.parallelism import ParallelismConfig
+from cache_dit.compile import set_compile_configs
 from cache_dit.summary import supported_matrix
 from cache_dit.summary import summary
 from cache_dit.summary import strify
@@ -44,6 +44,24 @@ except ImportError as e:  # noqa: F841
             "Please install cache-dit[quantization] or cache-dit[all] "
             f"to use this feature. Error message: {err_msg}"
         )
+
+
+def enable_compute_comm_overlap():
+    try:
+        from cache_dit.compile import enable_compile_compute_comm_overlap
+
+        enable_compile_compute_comm_overlap()
+    except:  # noqa: E722
+        pass
+
+
+def disable_compute_comm_overlap():
+    try:
+        from cache_dit.compile import disable_compile_compute_comm_overlap
+
+        disable_compile_compute_comm_overlap()
+    except:  # noqa: E722
+        pass
 
 
 try:

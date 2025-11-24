@@ -23,12 +23,36 @@ def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
     return CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or mode
 
 
+_CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = (
+    os.environ.get(
+        "CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP",
+        "1",
+    )
+    != "0"
+)
+
+
+def enable_compile_compute_comm_overlap():
+    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
+    _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = True
+
+
+def disable_compile_compute_comm_overlap():
+    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
+    _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = False
+
+
+def is_compile_compute_comm_overlap_enabled() -> bool:
+    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
+    return _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
+
+
 def set_compile_configs(
     descent_tuning: bool = False,
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
     use_fast_math: bool = False,
-    compute_comm_overlap: bool = False,
+    compute_comm_overlap: bool = is_compile_compute_comm_overlap_enabled(),
     **kwargs,  # other kwargs
 ):
     # Alway increase recompile_limit for dynamic shape compilation
