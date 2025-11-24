@@ -94,10 +94,10 @@ class SkyReelsV2TensorParallelismPlanner(TensorParallelismPlanner):
                     device_mesh=tp_mesh,
                     parallelize_plan=layer_plan,
                 )
-                logger.info(f"Successfully parallelized block: {name}")
+                logger.debug(f"Successfully parallelized block: {name}")
             except Exception as e:
-                logger.warning(f"Could not parallelize block {name}: {e}")
-                logger.warning(
+                logger.debug(f"Could not parallelize block {name}: {e}")
+                logger.debug(
                     "Block structure may differ from expected pattern. Skipping this block."
                 )
 
