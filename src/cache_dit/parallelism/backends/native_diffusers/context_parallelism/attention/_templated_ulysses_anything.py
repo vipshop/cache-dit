@@ -49,6 +49,7 @@ def _get_rank_world_size(
     return rank, world_size
 
 
+@functools.lru_cache(maxsize=128)
 def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
@@ -120,7 +121,7 @@ def _all_to_all_single_any_o(
     # of the tensor in memory.
     H_GLOBAL = H_LOCAL * world_size
     S_LOCAL = out.shape[0] // world_size
-    # TODO: How to avoid extra memory IO access here? nearly 2ms per steps on NVIDIA L20.
+    # TODO: How to avoid extra memory IO access here?
     out = torch.cat(out.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
     out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
     return out
@@ -228,8 +229,9 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         )
 
 
+@functools.lru_cache(maxsize=64)
 def _fill_gather_shapes(
-    shape: List[int], gather_dims: List[int], dim: int, world_size: int
+    shape: Tuple[int], gather_dims: Tuple[int], dim: int, world_size: int
 ) -> List[List[int]]:
     gather_shapes = []
     for i in range(world_size):
@@ -256,8 +258,8 @@ def _all_gather_anything(  # noqa: F811
     # so, we choose to disable the even split optimization for now.
 
     gather_shapes = _fill_gather_shapes(
-        shape,
-        gather_dims,
+        tuple(shape),
+        tuple(gather_dims),
         dim,
         world_size,
     )
