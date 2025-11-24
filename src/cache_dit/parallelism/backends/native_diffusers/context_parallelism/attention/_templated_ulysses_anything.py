@@ -90,7 +90,7 @@ def _tensor_tolist(tensor: torch.Tensor) -> List[int]:
 
 
 @torch.compiler.disable
-def _split_sizes(S_GLOBAL: int, world_size: int) -> List[int]:
+def _split_size_by_world(S_GLOBAL: int, world_size: int) -> List[int]:
     assert world_size > 0, "world_size must be greater than 0"
     assert S_GLOBAL >= world_size, "S_GLOBAL must be greater than or equal to world_size"
 
@@ -105,9 +105,9 @@ def _split_sizes(S_GLOBAL: int, world_size: int) -> List[int]:
 def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
-    avaiable_backends = str(dist.get_backend(group=group))
+    comm_backends = str(dist.get_backend(group=group))
     # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
-    gather_device = "cpu" if "cpu" in avaiable_backends else torch.device("cuda")
+    gather_device = "cpu" if "cpu" in comm_backends else torch.device("cuda")
     gathered_sizes = [
         torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)
     ]
