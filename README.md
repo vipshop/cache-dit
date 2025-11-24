@@ -23,7 +23,7 @@
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
 
 <p align="center">
-    U*: Ulysses Attention, <b>UUA: Ulysses Anything Attenton</b>, UUA*: UUA + Gloo, Device: NVIDIA L20<br>
+    U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
     FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
 </p>
 
