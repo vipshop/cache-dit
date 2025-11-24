@@ -719,9 +719,8 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-We have implemented **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary seq_len** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. As we know, the default Ulysses Attention requires that the seq_len of the input hidden_states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+We have implemented the **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence len of hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
 
-For example, in the T2I/I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary seq_len**, which enhances the versatility of Ulysses.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -741,25 +740,32 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
 ```
 
-Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce comm latency.
+For example, in the T2I and I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **✅padding-free** Ulysses Attention (UAA) for **arbitrary sequence length**, which enhances the versatility of Ulysses.
 
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
-
-Please note that Ulysses Anything Attention is currently an **experimental** feature; it has not undergone large-scale testing, and it mat introduce a slight degradation of performance while the `cpu:gloo` backend is not avaliable.
-
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce commucation latency.
 
 <div align="center">
 
-|L20x2, Ulysses |UAA w/ Gloo | UAA w/o Gloo |  L20x1 | L20x2 w/ UAA |
-|:---:|:---:|:---:|:---:|:---:|
-|FLUX.1, 13.87s|**🎉13.88s**|14.75s|FLUX.1, 23.25s| **🎉13.75s**|
-|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|<img src="../assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=180px>|<img src="../assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=180px>|
-|1024x1024|1024x1024|1024x1024|1008x1008|1008x1008|
-|✅Ulysses ✅UAA|✅Ulysses ✅UAA|✅Ulysses ✅UAA|✅Ulysses ✅UAA|**❌Ulysses ✅UAA**|
+<p align="center">
+    U*: Ulysses Attention, UUA: Ulysses Anything Attenton, UUA*: UUA + Gloo, Device: NVIDIA L20<br>
+    FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
+</p>
+
+|CP2 w/ U* |CP2 w/ UAA* | CP2 w/ UAA |  L20x1 | CP2 w/ UAA* | CP2 w/ U* |  L20x1 |  CP2 w/ UAA* | 
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|FLUX, 13.87s|**🎉13.88s**|14.75s|23.25s| **🎉13.75s**|Qwen, 132s|181s|**🎉133s**|
+|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=110px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="../assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="../assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=110px>|<img src="../assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="../assets/uaa/qwen-image.1312x1312.C0_Q0_NONE_Ulysses2.png" width=110px>|<img src="../assets/uaa/qwen-image.1328x1328.C0_Q0_NONE.png" width=110px>|<img src="../assets/uaa/qwen-image.1328x1328.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|
+|1024x1024|1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
+|✅U* ✅UAA|✅U* ✅UAA|✅U* ✅UAA|✅U* ✅UAA|❌U* ✅UAA|✅U* ✅UAA|✅U* ✅UAA|❌U* ✅UAA|
 
 </div>
+
+> [!Important]
+> Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the `cpu:gloo` commucation backend is not available.
+
 
 ## ⚡️Hybrid Tensor Parallelism
 

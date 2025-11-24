@@ -95,6 +95,9 @@ if args.negative_prompt is not None:
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
+height = 1024 if args.height is None else args.height
+width = 1024 if args.width is None else args.width
+
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
@@ -102,8 +105,8 @@ def run_pipe(warmup: bool = False):
     output = pipe(
         prompt=input_prompt,
         negative_prompt=negative_prompt,
-        width=1024 if args.width is None else args.width,
-        height=1024 if args.height is None else args.height,
+        width=height,
+        height=width,
         num_inference_steps=((50 if args.steps is None else args.steps) if not warmup else 5),
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(0),
@@ -137,7 +140,7 @@ if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"qwen-image.{strify(args, pipe)}.png"
+    save_path = f"qwen-image.{height}x{width}.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     if not args.perf:
         print(f"Saving image to {save_path}")
