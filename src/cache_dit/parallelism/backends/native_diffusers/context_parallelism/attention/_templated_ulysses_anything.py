@@ -1,4 +1,5 @@
 import os
+import copy
 import functools
 from typing import Optional, Tuple, List
 
@@ -300,9 +301,12 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
 def _collect_gather_shapes(
     shape: List[int], gather_dims: List[int], dim: int, world_size: int
 ) -> List[List[int]]:
-    gather_shapes = [list(shape)] * world_size
+    gather_shapes = []
     for i in range(world_size):
-        gather_shapes[i][dim] = gather_dims[i]
+        # WARN: deepcopy to avoid modifying the original shape
+        rank_shape = list(copy.deepcopy(shape))
+        rank_shape[dim] = gather_dims[i]
+        gather_shapes.append(rank_shape)
     return gather_shapes
 
 
