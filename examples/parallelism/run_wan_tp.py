@@ -94,14 +94,9 @@ def run_pipe(warmup: bool = False):
     prompt = "A cat walks on the grass, realistic"
     if args.prompt is not None:
         prompt = args.prompt
-    negative_prompt = "Bright tones, overexposed, static, blurred details, "
+    negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
     if args.negative_prompt is not None:
         negative_prompt = args.negative_prompt
-    "subtitles, style, works, paintings, images, static, overall gray, "
-    "worst quality, low quality, JPEG compression residue, ugly, incomplete, "
-    "extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
-    "disfigured, misshapen limbs, fused fingers, still picture, messy "
-    "background, three legs, many people in the background, walking backwards"
 
     seed = 1234
     generator = torch.Generator(device="cpu").manual_seed(seed)
