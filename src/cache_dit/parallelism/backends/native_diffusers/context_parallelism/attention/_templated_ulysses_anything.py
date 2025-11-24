@@ -90,7 +90,7 @@ def _tensor_tolist(tensor: torch.Tensor) -> List[int]:
 
 
 @torch.compiler.disable
-def _split_size_by_world(S_GLOBAL: int, world_size: int) -> List[int]:
+def _divide_size(S_GLOBAL: int, world_size: int) -> List[int]:
     assert world_size > 0, "world_size must be greater than 0"
     assert S_GLOBAL >= world_size, "S_GLOBAL must be greater than or equal to world_size"
 
