@@ -9,6 +9,7 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -84,8 +85,11 @@ if args.cache or args.parallel_type is not None:
             ),
         )
 
-# TP mode is incompatible with CPU offload, use direct GPU loading
-pipe.to(device)
+# Enable memory savings
+if GiB() < 40:
+    pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
 
 # Add quantization support
 if args.quantize:

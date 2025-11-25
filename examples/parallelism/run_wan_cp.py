@@ -9,6 +9,7 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -85,7 +86,11 @@ if args.cache or args.parallel_type is not None:
         )
 
 assert isinstance(pipe.transformer, WanTransformer3DModel)
-pipe.enable_model_cpu_offload(device=device)
+# Enable memory savings
+if GiB() < 40:
+    pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
 
 # Add quantization support
 if args.quantize:
