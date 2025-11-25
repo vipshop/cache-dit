@@ -71,13 +71,6 @@ if GiB() < 40:
 else:
     pipe.to(device)
 
-# Add quantization support
-if args.quantize:
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-    )
-
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()

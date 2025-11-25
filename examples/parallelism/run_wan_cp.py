@@ -92,19 +92,6 @@ if GiB() < 40:
 else:
     pipe.to(device)
 
-# Add quantization support
-if args.quantize:
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-    )
-    # Quantize transformer_2 for Wan 2.2
-    if hasattr(pipe, "transformer_2") and pipe.transformer_2 is not None:
-        pipe.transformer_2 = cache_dit.quantize(
-            pipe.transformer_2,
-            quant_type=args.quantize_type,
-        )
-
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
