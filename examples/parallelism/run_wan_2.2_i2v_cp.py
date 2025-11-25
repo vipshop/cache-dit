@@ -140,7 +140,7 @@ def run_pipe(warmup: bool = False):
         negative_prompt=negative_prompt,
         height=height,
         width=width,
-        num_frames=81,  # pipe.vae_scale_factor_temporal=4
+        num_frames=49,  # pipe.vae_scale_factor_temporal=4
         guidance_scale=3.5,
         num_inference_steps=num_inference_steps,
         generator=torch.Generator(device="cpu").manual_seed(0),
