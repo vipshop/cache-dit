@@ -62,7 +62,7 @@ def get_args(
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
-    parser.add_argument("--steps", type=int, default=None)
+    parser.add_argument("--steps", type=int, default=35)
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
@@ -72,8 +72,8 @@ def get_args(
     parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
-    parser.add_argument("--height", type=int, default=None)
-    parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--width", type=int, default=832)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
@@ -112,6 +112,13 @@ def get_args(
             # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
             "native",  # native pytorch attention: sdpa
             "_native_cudnn",
+            "_native_npu"
+        ],
+    )
+    parser.add_argument("--perf", action="store_true", default=False)
+    parser.add_argument("--vae-tiling", action="store_true", default=False)
+    parser.add_argument("--vae-dp", action="store_true", default=False)
+    parser.add_argument("--cpu-offload", action="store_true", default=False)
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
