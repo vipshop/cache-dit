@@ -39,16 +39,11 @@ class DiTPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -93,13 +88,9 @@ def __patch_transformer_forward__(
 
     # 3. Output
     # conditioning = self.transformer_blocks[0].norm1.emb(timestep, class_labels, hidden_dtype=hidden_states.dtype)
-    conditioning = self._norm1_emb(
-        timestep, class_labels, hidden_dtype=hidden_states.dtype
-    )
+    conditioning = self._norm1_emb(timestep, class_labels, hidden_dtype=hidden_states.dtype)
     shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-    hidden_states = (
-        self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-    )
+    hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
     hidden_states = self.proj_out_2(hidden_states)
 
     # unpatchify

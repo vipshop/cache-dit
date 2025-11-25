@@ -19,6 +19,7 @@ from utils import (
     strify,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    MemoryTracker,
 )
 import cache_dit
 
@@ -35,7 +36,11 @@ transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
     f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
 )
 pipe: FluxPipeline = FluxPipeline.from_pretrained(
-    os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev")
+    ),
     transformer=transformer,
     torch_dtype=torch.bfloat16,
     quantization_config=(
@@ -86,49 +91,36 @@ if args.cache or args.parallel_type is not None:
         params_modifiers=[
             ParamsModifier(
                 # transformer_blocks
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt
-                ),
+                cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt),
             ),
             ParamsModifier(
                 # single_transformer_blocks
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt * 3
-                ),
+                cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3),
             ),
         ],
-        # In order to enable parallelism for nunchaku flux transformer,
-        # please use our modified fork: https://github.com/vipshop/nunchaku
         parallelism_config=(
             ParallelismConfig(
-                ulysses_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ulysses"
-                    else None
-                ),
-                ring_size=(
-                    dist.get_world_size()
-                    if args.parallel_type == "ring"
-                    else None
-                ),
+                ulysses_size=(dist.get_world_size() if args.parallel_type == "ulysses" else None),
+                ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
             )
             if args.parallel_type in ["ulysses", "ring"]
             else None
         ),
     )
 
-    if args.parallel_type in ["ulysses", "ring"]:
-        assert isinstance(pipe.transformer, NunchakuFluxTransformer2DModelV2)
-        pipe.transformer.set_native_parallel_flag(True)
-
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
+# Set default prompt
+prompt = "A cat holding a sign that says hello world"
+if args.prompt is not None:
+    prompt = args.prompt
+
 
 def run_pipe(pipe: FluxPipeline):
     image = pipe(
-        "A cat holding a sign that says hello world",
+        prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
         num_inference_steps=28 if args.steps is None else args.steps,
@@ -145,9 +137,17 @@ if args.compile:
 # warmup
 _ = run_pipe(pipe)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe(pipe)
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe)
 

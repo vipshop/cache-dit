@@ -11,7 +11,7 @@ from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
     UniPCMultistepScheduler,
 )
-from utils import get_args, GiB, strify, cachify
+from utils import get_args, GiB, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -21,15 +21,17 @@ print(args)
 
 height, width = 480, 832
 pipe = WanPipeline.from_pretrained(
-    os.environ.get(
-        "WAN_2_2_DIR",
-        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "WAN_2_2_DIR",
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+        )
     ),
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=(
-        "balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None
-    ),
+    device_map=("balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None),
 )
 
 # flow shift should be 3.0 for 480p images, 5.0 for 720p images
@@ -85,6 +87,15 @@ if args.cache:
         ),
     )
 
+# When device_map is None, we need to explicitly move the model to GPU
+# or enable CPU offload to avoid running on CPU
+if torch.cuda.device_count() <= 1:
+    # Single GPU: use CPU offload for memory efficiency
+    pipe.enable_model_cpu_offload()
+elif torch.cuda.device_count() > 1 and pipe.device.type == "cpu":
+    # Multi-GPU but model is on CPU (device_map was None): move to default GPU
+    pipe.to("cuda")
+
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 if diffusers.__version__ >= "0.34.0":
@@ -115,6 +126,18 @@ if args.quantize:
         quant_type=args.quantize_type,
     )
 
+# Set default prompt and negative prompt
+prompt = (
+    "An astronaut dancing vigorously on the moon with earth "
+    "flying past in the background, hyperrealistic"
+)
+if args.prompt is not None:
+    prompt = args.prompt
+
+negative_prompt = ""
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
+
 if args.compile or args.quantize:
     cache_dit.set_compile_configs()
     pipe.transformer.compile_repeated_blocks(fullgraph=True)
@@ -122,10 +145,7 @@ if args.compile or args.quantize:
 
     # warmup
     video = pipe(
-        prompt=(
-            "An astronaut dancing vigorously on the moon with earth "
-            "flying past in the background, hyperrealistic"
-        ),
+        prompt=prompt,
         height=height,
         width=width,
         num_frames=81,
@@ -134,13 +154,14 @@ if args.compile or args.quantize:
     ).frames[0]
 
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = pipe(
-    prompt=(
-        "An astronaut dancing vigorously on the moon with earth "
-        "flying past in the background, hyperrealistic"
-    ),
-    negative_prompt="",
+    prompt=prompt,
+    negative_prompt=negative_prompt,
     height=height,
     width=width,
     num_frames=81,
@@ -148,6 +169,10 @@ video = pipe(
     generator=torch.Generator("cpu").manual_seed(0),
 ).frames[0]
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe, details=True)
 

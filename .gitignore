@@ -181,3 +181,4 @@ init_env.sh
 *.hdf5
 
 uv.lock
+CLAUDE.local.md

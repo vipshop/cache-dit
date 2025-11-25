@@ -30,9 +30,7 @@ class PrunedContext(CachedContext):
     def __post_init__(self):
         super().__post_init__()
         if not isinstance(self.cache_config, DBPruneConfig):
-            raise ValueError(
-                "PrunedContext only supports DBPruneConfig as cache_config."
-            )
+            raise ValueError("PrunedContext only supports DBPruneConfig as cache_config.")
 
         if self.cache_config.cache_type == CacheType.DBPrune:
             if (
@@ -61,18 +59,11 @@ class PrunedContext(CachedContext):
                 diffs = [d for d in diffs if d > 0.0]
                 if diffs:
                     mean_diff = sum(diffs) / len(diffs)
-                    relaxed_diff = (
-                        mean_diff
-                        * self.cache_config.dynamic_prune_threshold_relax_ratio
-                    )
+                    relaxed_diff = mean_diff * self.cache_config.dynamic_prune_threshold_relax_ratio
                     if self.cache_config.max_dynamic_prune_threshold is None:
-                        max_dynamic_prune_threshold = (
-                            2 * residual_diff_threshold
-                        )
+                        max_dynamic_prune_threshold = 2 * residual_diff_threshold
                     else:
-                        max_dynamic_prune_threshold = (
-                            self.cache_config.max_dynamic_prune_threshold
-                        )
+                        max_dynamic_prune_threshold = self.cache_config.max_dynamic_prune_threshold
                     if relaxed_diff < max_dynamic_prune_threshold:
                         # If the mean diff is less than twice the threshold,
                         # we can use it as the dynamic prune threshold.

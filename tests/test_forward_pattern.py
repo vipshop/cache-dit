@@ -292,14 +292,10 @@ class RandPipeline(DiffusionPipeline):
             ForwardPattern.Pattern_2,
         ]:
             self.is_pattern_0_1_2 = True
-            self.transformer = RandTransformer2DModel_Pattern_0_1_2(
-                pattern=pattern
-            )
+            self.transformer = RandTransformer2DModel_Pattern_0_1_2(pattern=pattern)
         else:
             self.is_pattern_0_1_2 = False
-            self.transformer = RandTransformer2DModel_Pattern_3_4_5(
-                pattern=pattern
-            )
+            self.transformer = RandTransformer2DModel_Pattern_3_4_5(pattern=pattern)
 
     def __call__(
         self,
@@ -336,9 +332,7 @@ class RandPipeline(DiffusionPipeline):
 
 def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--pattern", type=int, choices=[0, 1, 2, 3, 4, 5], default=0
-    )
+    parser.add_argument("--pattern", type=int, choices=[0, 1, 2, 3, 4, 5], default=0)
     return parser.parse_args()
 
 

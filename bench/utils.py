@@ -134,9 +134,7 @@ def calculate_flops(
             len(args) == 0 and len(kwargs) == 0
         ), "args and kwargs must be empty value if input_shape is not None, then will be generate random input by inpust_shape"
         assert type(input_shape) is tuple, "input_shape must be a tuple"
-        assert (
-            len(input_shape) >= 1
-        ), "input_shape must have at least one element"
+        assert len(input_shape) >= 1, "input_shape must have at least one element"
 
         if transformer_tokenizer is None:  # model is not transformers model
             assert (
@@ -176,9 +174,7 @@ def calculate_flops(
     elif forward_mode == "generate":
         results = model.generate(*args, **kwargs)
     else:
-        raise NotImplementedError(
-            "forward_mode should be either forward or generate"
-        )
+        raise NotImplementedError("forward_mode should be either forward or generate")
 
     flops = calculate_flops_pipline.get_total_flops()
     macs = calculate_flops_pipline.get_total_macs()
@@ -199,13 +195,9 @@ def calculate_flops(
 
     if output_as_string:
         return (
-            flops_to_string(
-                flops, units=output_unit, precision=output_precision
-            ),
+            flops_to_string(flops, units=output_unit, precision=output_precision),
             macs_to_string(macs, units=output_unit, precision=output_precision),
-            params_to_string(
-                params, units=output_unit, precision=output_precision
-            ),
+            params_to_string(params, units=output_unit, precision=output_precision),
         )
 
     return flops, macs, params, results
@@ -233,9 +225,7 @@ def apply_flops_hook(
         hook_forward = transformer.forward
         transformer.forward = old_forward  # Direct assignment without __get__
 
-        step_flops, _, _, results = calculate_flops(
-            model=transformer, kwargs=kwargs
-        )
+        step_flops, _, _, results = calculate_flops(model=transformer, kwargs=kwargs)
 
         transformer.forward = hook_forward  # Direct assignment without __get__
 
@@ -253,9 +243,7 @@ def apply_flops_hook(
         return results
 
     # Bind the new forward method to the transformer instance
-    transformer.forward = new_forward.__get__(
-        transformer, transformer.__class__
-    )
+    transformer.forward = new_forward.__get__(transformer, transformer.__class__)
     logger.info(f"Applied FLOPs hook to {transformer.__class__.__name__}!")
 
     return transformer

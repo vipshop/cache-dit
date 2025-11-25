@@ -7,15 +7,19 @@ import time
 import torch
 
 from diffusers import StableDiffusion3Pipeline
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 args = get_args()
 print(args)
 
-model_id = os.environ.get(
-    "SD_3_5_DIR",
-    "stabilityai/stable-diffusion-3.5-large",
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
+        "SD_3_5_DIR",
+        "stabilityai/stable-diffusion-3.5-large",
+    )
 )
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
@@ -27,8 +31,14 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
 if args.cache:
     cachify(args, pipe)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
+if args.prompt is not None:
+    prompt = args.prompt
 image = pipe(
     prompt,
     num_inference_steps=50,
@@ -36,6 +46,10 @@ image = pipe(
 ).images[0]
 
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 stats = cache_dit.summary(pipe)
 time_cost = end - start

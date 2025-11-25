@@ -8,13 +8,19 @@ class ParallelismBackend(Enum):
 
     @classmethod
     def is_supported(cls, backend: "ParallelismBackend") -> bool:
-        if backend in [cls.NATIVE_PYTORCH]:
+        if backend == cls.NATIVE_PYTORCH:
             return True
-        # Now, only Native_Diffuser backend is supported
-        if backend in [cls.NATIVE_DIFFUSER]:
+        elif backend == cls.NATIVE_DIFFUSER:
             try:
-                import diffusers  # noqa: F401
+                from diffusers.models._modeling_parallel import (  # noqa F401
+                    ContextParallelModelPlan,
+                )
             except ImportError:
-                return False
+                raise ImportError(
+                    "NATIVE_DIFFUSER parallelism backend requires the latest "
+                    "version of diffusers(>=0.36.dev0). Please install latest "
+                    "version of diffusers from source: \npip3 install "
+                    "git+https://github.com/huggingface/diffusers.git"
+                )
             return True
         return False

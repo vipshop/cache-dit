@@ -15,7 +15,7 @@ from nunchaku import NunchakuQwenImageTransformer2DModel
 
 from io import BytesIO
 import requests
-from utils import get_args, strify
+from utils import get_args, strify, MemoryTracker
 import cache_dit
 
 args = get_args()
@@ -55,9 +55,13 @@ transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
 # Minimize VRAM required: 25GiB if use w4a16_text_encoder else 35GiB
 w4a16_text_encoder = False
 pipe = QwenImageEditPlusPipeline.from_pretrained(
-    os.environ.get(
-        "QWEN_IMAGE_EDIT_2509_DIR",
-        "Qwen/Qwen-Image-Edit-2509",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "QWEN_IMAGE_EDIT_2509_DIR",
+            "Qwen/Qwen-Image-Edit-2509",
+        )
     ),
     transformer=transformer,
     torch_dtype=torch.bfloat16,
@@ -119,6 +123,8 @@ image2 = Image.open(
     )
 )
 prompt = "The magician bear is on the left, the alchemist bear is on the right, facing each other in the central park square."
+if args.prompt is not None:
+    prompt = args.prompt
 
 
 def run_pipe():
@@ -141,9 +147,17 @@ if args.compile:
     # Warmup
     run_pipe()
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 stats = cache_dit.summary(pipe, details=True)
 

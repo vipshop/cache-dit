@@ -1,3 +1,5 @@
+# The cache context codebase is adapted from FBCache. Over time its codebase
+# diverged a lot, and context API is no longer compatible with FBCache.
 import logging
 import dataclasses
 from collections import defaultdict
@@ -56,11 +58,13 @@ class CachedContext:
     residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    accumulated_residual_diff: float = 0.0
     continuous_cached_steps: int = 0
     cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
+    cfg_accumulated_residual_diff: float = 0.0
     cfg_continuous_cached_steps: int = 0
 
     def __post_init__(self):
@@ -83,9 +87,7 @@ class CachedContext:
             if self.calibrator_config.enable_encoder_calibrator:
                 self.encoder_calibrator = Calibrator(self.calibrator_config)
                 if self.cache_config.enable_separate_cfg:
-                    self.cfg_encoder_calibrator = Calibrator(
-                        self.calibrator_config
-                    )
+                    self.cfg_encoder_calibrator = Calibrator(self.calibrator_config)
 
     def enable_calibrator(self):
         if self.calibrator_config is not None:
@@ -114,9 +116,7 @@ class CachedContext:
         residual_diff_threshold = self.cache_config.residual_diff_threshold
         if self.extra_cache_config.l1_hidden_states_diff_threshold is not None:
             # Use the L1 hidden states diff threshold if set
-            residual_diff_threshold = (
-                self.extra_cache_config.l1_hidden_states_diff_threshold
-            )
+            residual_diff_threshold = self.extra_cache_config.l1_hidden_states_diff_threshold
         if isinstance(residual_diff_threshold, torch.Tensor):
             residual_diff_threshold = residual_diff_threshold.item()
         return residual_diff_threshold
@@ -167,9 +167,7 @@ class CachedContext:
                     calibrator.reset_cache()
                 if encoder_calibrator is not None:
                     encoder_calibrator.reset_cache()
-                cfg_calibrator, cfg_encoder_calibrator = (
-                    self.get_cfg_calibrators()
-                )
+                cfg_calibrator, cfg_encoder_calibrator = self.get_cfg_calibrators()
                 if cfg_calibrator is not None:
                     cfg_calibrator.reset_cache()
                 if cfg_encoder_calibrator is not None:
@@ -186,9 +184,7 @@ class CachedContext:
                     if encoder_calibrator is not None:
                         encoder_calibrator.mark_step_begin()
                 else:
-                    cfg_calibrator, cfg_encoder_calibrator = (
-                        self.get_cfg_calibrators()
-                    )
+                    cfg_calibrator, cfg_encoder_calibrator = self.get_cfg_calibrators()
                     if cfg_calibrator is not None:
                         cfg_calibrator.mark_step_begin()
                     if cfg_encoder_calibrator is not None:
@@ -215,15 +211,25 @@ class CachedContext:
         if not self.is_separate_cfg_step():
             if step not in self.residual_diffs:
                 self.residual_diffs[step] = diff
+                if diff > 0.0:
+                    self.accumulated_residual_diff += diff
         else:
             if step not in self.cfg_residual_diffs:
                 self.cfg_residual_diffs[step] = diff
+                if diff > 0.0:
+                    self.cfg_accumulated_residual_diff += diff
 
     def get_residual_diffs(self):
         return self.residual_diffs.copy()
 
     def get_cfg_residual_diffs(self):
         return self.cfg_residual_diffs.copy()
+
+    def get_accumulated_residual_diff(self):
+        return self.accumulated_residual_diff
+
+    def get_cfg_accumulated_residual_diff(self):
+        return self.cfg_accumulated_residual_diff
 
     def add_cached_step(self):
         curr_cached_step = self.get_current_step()
@@ -275,6 +281,26 @@ class CachedContext:
 
     @property
     def warmup_steps(self) -> List[int]:
+        # Truncate the warmup steps if steps_compute_mask is provided
+        if self.cache_config.steps_computation_mask is not None:
+            first_continuous_compute_steps = 0  # first continuous compute steps
+            for m in self.cache_config.steps_computation_mask:
+                if m == 1:
+                    first_continuous_compute_steps += 1
+                else:
+                    break
+            max_warmup = min(
+                self.cache_config.max_warmup_steps,
+                first_continuous_compute_steps,
+            )
+            return list(
+                range(
+                    0,
+                    max_warmup,
+                    self.cache_config.warmup_interval,
+                )
+            )
+
         return list(
             range(
                 0,
@@ -285,3 +311,17 @@ class CachedContext:
 
     def is_in_warmup(self):
         return self.get_current_step() in self.warmup_steps
+
+    def is_in_full_compute_steps(self):
+        if self.cache_config.steps_computation_mask is None:
+            return False
+        current_step = self.get_current_step()
+        if current_step < len(self.cache_config.steps_computation_mask):
+            return self.cache_config.steps_computation_mask[current_step] == 1
+        return False
+
+    def get_steps_computation_policy(self):
+        # If enabled steps_computation_mask w/ static cache, maybe use at the very
+        # beginning of cache blocks forward. TODO: maybe support NO-Fn blocks compute
+        # first for static cache.
+        return self.cache_config.steps_computation_policy

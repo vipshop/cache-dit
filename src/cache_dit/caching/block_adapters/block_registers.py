@@ -12,7 +12,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class BlockAdapterRegistry:
+class BlockAdapterRegister:
     _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
     _predefined_adapters_has_separate_cfg: List[str] = [
         "QwenImage",
@@ -23,13 +23,12 @@ class BlockAdapterRegistry:
         "Chroma",
         "Lumina2",
         "Kandinsky5",
+        "ChronoEdit",
     ]
 
     @classmethod
     def register(cls, name: str, supported: bool = True):
-        def decorator(
-            func: Callable[..., BlockAdapter]
-        ) -> Callable[..., BlockAdapter]:
+        def decorator(func: Callable[..., BlockAdapter]) -> Callable[..., BlockAdapter]:
             if supported:
                 cls._adapters[name] = func
             return func
@@ -58,9 +57,7 @@ class BlockAdapterRegistry:
                     # only have one transformer module. Case like multiple transformers
                     # is not supported, e.g, Wan2.2. Please use BlockAdapter directly for
                     # such cases.
-                    return cls._adapters[name](
-                        FakeDiffusionPipeline(pipe_or_module), **kwargs
-                    )
+                    return cls._adapters[name](FakeDiffusionPipeline(pipe_or_module), **kwargs)
                 else:
                     return cls._adapters[name](pipe_or_module, **kwargs)
 
@@ -115,4 +112,4 @@ class BlockAdapterRegistry:
     @classmethod
     def supported_pipelines(cls, **kwargs) -> Tuple[int, List[str]]:
         val_pipelines = cls._adapters.keys()
-        return len(val_pipelines), [p + "*" for p in val_pipelines]
+        return len(val_pipelines), [p for p in val_pipelines]

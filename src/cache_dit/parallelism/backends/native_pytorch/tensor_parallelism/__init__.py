@@ -2,7 +2,7 @@ try:
     import einops
 except ImportError:
     raise ImportError(
-        "Metrics functionality requires the 'parallelism' extra dependencies. "
+        "parallelism functionality requires the 'parallelism' extra dependencies. "
         "Install with:\npip install cache-dit[parallelism]"
     )
 
@@ -22,12 +22,10 @@ def maybe_enable_tensor_parallelism(
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
     assert isinstance(transformer, torch.nn.Module), (
-        "transformer must be an instance of torch.nn.Module, "
-        f"but got {type(transformer)}"
+        "transformer must be an instance of torch.nn.Module, " f"but got {type(transformer)}"
     )
     assert isinstance(transformer, ModelMixin), (
-        "transformer must be an instance of diffusers' ModelMixin, "
-        f"but got {type(transformer)}"
+        "transformer must be an instance of diffusers' ModelMixin, " f"but got {type(transformer)}"
     )
     if parallelism_config is None:
         return transformer

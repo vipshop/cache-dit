@@ -123,9 +123,7 @@ class CachedBlocks:
                     **kwargs,
                 )
             else:
-                raise ValueError(
-                    f"Cache type {cache_type} is not supported now!"
-                )
+                raise ValueError(f"Cache type {cache_type} is not supported now!")
         elif forward_pattern in CachedBlocks_Pattern_3_4_5._supported_patterns:
             if cache_type == CacheType.DBCache:
                 assert isinstance(
@@ -146,9 +144,7 @@ class CachedBlocks:
                     **kwargs,
                 )
             else:
-                raise ValueError(
-                    f"Cache type {cache_type} is not supported now!"
-                )
+                raise ValueError(f"Cache type {cache_type} is not supported now!")
         else:
             raise ValueError(f"Pattern {forward_pattern} is not supported now!")
 
@@ -196,9 +192,7 @@ class PrunedBlocks:
                     **kwargs,
                 )
             else:
-                raise ValueError(
-                    f"Cache type {cache_type} is not supported now!"
-                )
+                raise ValueError(f"Cache type {cache_type} is not supported now!")
         elif forward_pattern in PrunedBlocks_Pattern_3_4_5._supported_patterns:
             if cache_type == CacheType.DBPrune:
                 assert isinstance(
@@ -219,8 +213,6 @@ class PrunedBlocks:
                     **kwargs,
                 )
             else:
-                raise ValueError(
-                    f"Cache type {cache_type} is not supported now!"
-                )
+                raise ValueError(f"Cache type {cache_type} is not supported now!")
         else:
             raise ValueError(f"Pattern {forward_pattern} is not supported now!")

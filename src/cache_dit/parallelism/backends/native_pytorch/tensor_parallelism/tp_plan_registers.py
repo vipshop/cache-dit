@@ -19,9 +19,7 @@ class TensorParallelismPlanner:
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        raise NotImplementedError(
-            "apply method must be implemented by subclasses"
-        )
+        raise NotImplementedError("apply method must be implemented by subclasses")
 
 
 class TensorParallelismPlannerRegister:
@@ -41,9 +39,7 @@ class TensorParallelismPlannerRegister:
         return decorator
 
     @classmethod
-    def get_planner(
-        cls, transformer: str | torch.nn.Module
-    ) -> type[TensorParallelismPlanner]:
+    def get_planner(cls, transformer: str | torch.nn.Module) -> type[TensorParallelismPlanner]:
         if isinstance(transformer, torch.nn.Module):
             name = transformer.__class__.__name__
         else:
@@ -56,3 +52,10 @@ class TensorParallelismPlannerRegister:
         if planner_cls is None:
             raise ValueError(f"No planner registered under name: {name}")
         return planner_cls
+
+    @classmethod
+    def supported_planners(
+        cls,
+    ) -> tuple[int, list[str]]:
+        val_planners = cls._tp_planner_registry.keys()
+        return len(val_planners), [p for p in val_planners]

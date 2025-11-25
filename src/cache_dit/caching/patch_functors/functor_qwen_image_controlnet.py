@@ -50,16 +50,11 @@ class QwenImageControlNetPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -136,10 +131,7 @@ def __patch_block_forward__(
         index_block = self._index_block
         interval_control = num_blocks / len(controlnet_block_samples)
         interval_control = int(np.ceil(interval_control))
-        hidden_states = (
-            hidden_states
-            + controlnet_block_samples[index_block // interval_control]
-        )
+        hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
 
     return encoder_hidden_states, hidden_states
 
@@ -191,10 +183,7 @@ def __patch_transformer_forward__(
         # weight the lora layers by setting `lora_scale` for each PEFT layer
         scale_lora_layers(self, lora_scale)
     else:
-        if (
-            attention_kwargs is not None
-            and attention_kwargs.get("scale", None) is not None
-        ):
+        if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
             logger.warning(
                 "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
             )
@@ -214,22 +203,18 @@ def __patch_transformer_forward__(
         else self.time_text_embed(timestep, guidance, hidden_states)
     )
 
-    image_rotary_emb = self.pos_embed(
-        img_shapes, txt_seq_lens, device=hidden_states.device
-    )
+    image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
 
     for index_block, block in enumerate(self.transformer_blocks):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            encoder_hidden_states, hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    encoder_hidden_states_mask,
-                    temb,
-                    image_rotary_emb,
-                    controlnet_block_samples,
-                )
+            encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                encoder_hidden_states_mask,
+                temb,
+                image_rotary_emb,
+                controlnet_block_samples,
             )
 
         else:

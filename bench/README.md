@@ -81,10 +81,10 @@ NOTE: Except for DBCache, other performance data are referenced from the paper [
 
 |Algo|Configuration|Algo|Configuration|
 |---|---|---|---|
-|**DBCache(S:Slow)**| F=4,B=0,W=4,I=1,MC=4 |DBCache(S:Slow)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=4,O=1|
-|**DBCache(M:Medium)**|F=1,B=0,W=4,I=1,MC=6|DBCache(M:Medium)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=6,O=1|
-|**DBCache(F:Fast)**|F=1,B=0,W=8,I=2,MC=8|DBCache(F:Fast)+TS:TaylorSeer|F=1,B=0,W=8,I=2,MC=8,O=1|
-|**DBCache(U:Ultra)**|F=1,B=0,W=8,I=4,MC=10,|DBCache(U:Ultra)+TS:TaylorSeer|F=1,B=0,W=8,I=4,MC=10,O=1|
+|**DBCache(S:Slow)**|F=4,B=0,W=4,I=1,MC=4,R=0.12|DBCache(S:Slow)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=4,O=1,R=0.2|
+|**DBCache(M:Medium)**|F=1,B=0,W=4,I=1,MC=6,R=0.24|DBCache(M:Medium)+TS:TaylorSeer|F=1,B=0,W=4,I=1,MC=6,O=1,R=0.24|
+|**DBCache(F:Fast)**|F=1,B=0,W=8,I=2,MC=8,R=0.8|DBCache(F:Fast)+TS:TaylorSeer|F=1,B=0,W=8,I=2,MC=8,O=1,R=0.8|
+|**DBCache(U:Ultra)**|F=1,B=0,W=8,I=4,MC=10,R=0.8|DBCache(U:Ultra)+TS:TaylorSeer|F=1,B=0,W=8,I=4,MC=10,O=1,R=0.8|
 
 ## 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
 

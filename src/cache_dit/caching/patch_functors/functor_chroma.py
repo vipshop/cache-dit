@@ -42,9 +42,7 @@ class ChromaPatchFunctor(PatchFunctor):
             block._text_modulation = text_modulation
             block.forward = __patch_double_forward__.__get__(block)
 
-        for index_block, block in enumerate(
-            transformer.single_transformer_blocks
-        ):
+        for index_block, block in enumerate(transformer.single_transformer_blocks):
             assert isinstance(block, ChromaSingleTransformerBlock)
             start_idx = 3 * index_block
             block._start_idx = start_idx
@@ -61,16 +59,11 @@ class ChromaPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -110,9 +103,7 @@ def __patch_double_forward__(
     ) = self.norm1_context(encoder_hidden_states, emb=temb_txt)
     joint_attention_kwargs = joint_attention_kwargs or {}
     if attention_mask is not None:
-        attention_mask = (
-            attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
-        )
+        attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
 
     # Attention.
     attention_outputs = self.attn(
@@ -133,9 +124,7 @@ def __patch_double_forward__(
     hidden_states = hidden_states + attn_output
 
     norm_hidden_states = self.norm2(hidden_states)
-    norm_hidden_states = (
-        norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-    )
+    norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
     ff_output = self.ff(norm_hidden_states)
     ff_output = gate_mlp.unsqueeze(1) * ff_output
@@ -151,14 +140,11 @@ def __patch_double_forward__(
 
     norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
     norm_encoder_hidden_states = (
-        norm_encoder_hidden_states * (1 + c_scale_mlp[:, None])
-        + c_shift_mlp[:, None]
+        norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
     )
 
     context_ff_output = self.ff_context(norm_encoder_hidden_states)
-    encoder_hidden_states = (
-        encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
-    )
+    encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
     if encoder_hidden_states.dtype == torch.float16:
         encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
@@ -184,9 +170,7 @@ def __patch_single_forward__(
     joint_attention_kwargs = joint_attention_kwargs or {}
 
     if attention_mask is not None:
-        attention_mask = (
-            attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
-        )
+        attention_mask = attention_mask[:, None, None, :] * attention_mask[:, None, :, None]
 
     attn_output = self.attn(
         hidden_states=norm_hidden_states,
@@ -263,27 +247,20 @@ def __patch_transformer_forward__(
     ids = torch.cat((txt_ids, img_ids), dim=0)
     image_rotary_emb = self.pos_embed(ids)
 
-    if (
-        joint_attention_kwargs is not None
-        and "ip_adapter_image_embeds" in joint_attention_kwargs
-    ):
-        ip_adapter_image_embeds = joint_attention_kwargs.pop(
-            "ip_adapter_image_embeds"
-        )
+    if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
+        ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
         ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
         joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
 
     for index_block, block in enumerate(self.transformer_blocks):
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            encoder_hidden_states, hidden_states = (
-                self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    pooled_temb,
-                    image_rotary_emb,
-                    attention_mask,
-                )
+            encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                block,
+                hidden_states,
+                encoder_hidden_states,
+                pooled_temb,
+                image_rotary_emb,
+                attention_mask,
             )
 
         else:
@@ -299,22 +276,17 @@ def __patch_transformer_forward__(
         # TODO: Fuse controlnet into block forward
         # controlnet residual
         if controlnet_block_samples is not None:
-            interval_control = len(self.transformer_blocks) / len(
-                controlnet_block_samples
-            )
+            interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
             interval_control = int(np.ceil(interval_control))
             # For Xlabs ControlNet.
             if controlnet_blocks_repeat:
                 hidden_states = (
                     hidden_states
-                    + controlnet_block_samples[
-                        index_block % len(controlnet_block_samples)
-                    ]
+                    + controlnet_block_samples[index_block % len(controlnet_block_samples)]
                 )
             else:
                 hidden_states = (
-                    hidden_states
-                    + controlnet_block_samples[index_block // interval_control]
+                    hidden_states + controlnet_block_samples[index_block // interval_control]
                 )
 
     hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
@@ -348,9 +320,7 @@ def __patch_transformer_forward__(
             interval_control = int(np.ceil(interval_control))
             hidden_states[:, encoder_hidden_states.shape[1] :, ...] = (
                 hidden_states[:, encoder_hidden_states.shape[1] :, ...]
-                + controlnet_single_block_samples[
-                    index_block // interval_control
-                ]
+                + controlnet_single_block_samples[index_block // interval_control]
             )
 
     hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]

@@ -34,17 +34,11 @@ class ImageRewardScore:
     ):
         self.device = device
         if imagereward_model_path is None:
-            imagereward_model_path = os.environ.get(
-                "IMAGEREWARD_MODEL_DIR", None
-            )
+            imagereward_model_path = os.environ.get("IMAGEREWARD_MODEL_DIR", None)
 
         # Load ImageReward model
-        self.med_config = os.path.join(
-            imagereward_model_path, "med_config.json"
-        )
-        self.imagereward_path = os.path.join(
-            imagereward_model_path, "ImageReward.pt"
-        )
+        self.med_config = os.path.join(imagereward_model_path, "med_config.json")
+        self.imagereward_path = os.path.join(imagereward_model_path, "ImageReward.pt")
         if imagereward_model_path is not None:
             self.imagereward_model = RM.load(
                 self.imagereward_path,
@@ -139,11 +133,7 @@ def compute_reward_score(
         return int(match.group(1)) if match else filename
 
     img_dir: pathlib.Path = pathlib.Path(img_dir)
-    img_files = [
-        file
-        for ext in _IMAGE_EXTENSIONS
-        for file in img_dir.rglob("*.{}".format(ext))
-    ]
+    img_files = [file for ext in _IMAGE_EXTENSIONS for file in img_dir.rglob("*.{}".format(ext))]
     img_files = [file.as_posix() for file in img_files]
     img_files = sorted(img_files, key=natural_sort_key)
 

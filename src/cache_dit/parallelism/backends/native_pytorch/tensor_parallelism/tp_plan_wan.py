@@ -75,6 +75,7 @@ class DistributedRMSNorm(nn.Module):
         return x_normed
 
 
+@TensorParallelismPlannerRegister.register("ChronoEdit")
 @TensorParallelismPlannerRegister.register("Wan")
 class WanTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
@@ -83,12 +84,8 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert (
-            parallelism_config.tp_size is not None
-            and parallelism_config.tp_size > 1
-        ), (
-            "parallel_config.tp_size must be set and greater than 1 for "
-            "tensor parallelism"
+        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
@@ -109,7 +106,7 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):
-        for _, block in transformer.blocks.named_children():
+        def prepare_block(block: nn.Module):
             block.attn1.heads //= tp_mesh.size()
             block.attn2.heads //= tp_mesh.size()
             layer_plan = {
@@ -134,20 +131,20 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
-            block.attn1.norm_q = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn1.norm_q
-            )
-            block.attn1.norm_k = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn1.norm_k
-            )
-            block.attn2.norm_q = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn2.norm_q
-            )
-            block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(
-                tp_mesh, block.attn2.norm_k
-            )
+            block.attn1.norm_q = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn1.norm_q)
+            block.attn1.norm_k = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn1.norm_k)
+            block.attn2.norm_q = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn2.norm_q)
+            block.attn2.norm_k = DistributedRMSNorm.from_rmsnorm(tp_mesh, block.attn2.norm_k)
             if getattr(block.attn2, "norm_added_k", None):
                 block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
                     tp_mesh, block.attn2.norm_added_k
                 )
+
+        for _, block in transformer.blocks.named_children():
+            prepare_block(block)
+
+        if hasattr(transformer, "vace_blocks"):
+            for _, block in transformer.vace_blocks.named_children():
+                prepare_block(block)
+
         return transformer

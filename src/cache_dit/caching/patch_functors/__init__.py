@@ -13,3 +13,6 @@ from cache_dit.caching.patch_functors.functor_hunyuan_dit import (
 from cache_dit.caching.patch_functors.functor_qwen_image_controlnet import (
     QwenImageControlNetPatchFunctor,
 )
+from cache_dit.caching.patch_functors.functor_wan_vace import (
+    WanVACEPatchFunctor,
+)

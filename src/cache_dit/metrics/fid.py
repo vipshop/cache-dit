@@ -44,9 +44,7 @@ class ImagePathDataset(torch.utils.data.Dataset):
             img = cv2.cvtColor(file_or_img, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
         else:
-            raise ValueError(
-                "file_or_img must be a file path or an OpenCV image."
-            )
+            raise ValueError("file_or_img must be a file path or an OpenCV image.")
         if self.transforms is not None:
             img = self.transforms(img)
         return img
@@ -84,10 +82,7 @@ def get_activations(
 
     if batch_size > len(files_or_imgs):
         logger.info(
-            (
-                "Warning: batch size is bigger than the data size. "
-                "Setting batch size to data size"
-            )
+            ("Warning: batch size is bigger than the data size. " "Setting batch size to data size")
         )
         batch_size = len(files_or_imgs)
 
@@ -158,12 +153,8 @@ def calculate_frechet_distance(
     sigma1 = np.atleast_2d(sigma1)
     sigma2 = np.atleast_2d(sigma2)
 
-    assert (
-        mu1.shape == mu2.shape
-    ), "Training and test mean vectors have different lengths"
-    assert (
-        sigma1.shape == sigma2.shape
-    ), "Training and test covariances have different dimensions"
+    assert mu1.shape == mu2.shape, "Training and test mean vectors have different lengths"
+    assert sigma1.shape == sigma2.shape, "Training and test covariances have different dimensions"
 
     diff = mu1 - mu2
 
@@ -171,8 +162,7 @@ def calculate_frechet_distance(
     covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
     if not np.isfinite(covmean).all():
         msg = (
-            "fid calculation produces singular product; "
-            "adding %s to diagonal of cov estimates"
+            "fid calculation produces singular product; " "adding %s to diagonal of cov estimates"
         ) % eps
         print(msg)
         offset = np.eye(sigma1.shape[0]) * eps
@@ -290,25 +280,19 @@ class FrechetInceptionDistance:
                         for file in image_test_dir.rglob("*.{}".format(ext))
                     ]
                 )
-                image_true_files = [
-                    file.as_posix() for file in image_true_files
-                ]
-                image_test_files = [
-                    file.as_posix() for file in image_test_files
-                ]
+                image_true_files = [file.as_posix() for file in image_true_files]
+                image_test_files = [file.as_posix() for file in image_test_files]
 
                 # select valid files
                 image_true_files_selected = []
                 image_test_files_selected = []
-                for i in range(
-                    min(len(image_true_files), len(image_test_files))
-                ):
+                for i in range(min(len(image_true_files), len(image_test_files))):
                     selected_image_true = image_true_files[i]
                     selected_image_test = image_test_files[i]
                     # Image pair must have the same basename
-                    if os.path.basename(
-                        selected_image_test
-                    ) == os.path.basename(selected_image_true):
+                    if os.path.basename(selected_image_test) == os.path.basename(
+                        selected_image_true
+                    ):
                         image_true_files_selected.append(selected_image_true)
                         image_test_files_selected.append(selected_image_test)
                 image_true_files = image_true_files_selected.copy()
@@ -362,11 +346,9 @@ class FrechetInceptionDistance:
         video_test: str,
     ):
         if os.path.isfile(video_true) and os.path.isfile(video_test):
-            video_true_frames, video_test_frames, valid_frames = (
-                self._fetch_video_frames(
-                    video_true=video_true,
-                    video_test=video_test,
-                )
+            video_true_frames, video_test_frames, valid_frames = self._fetch_video_frames(
+                video_true=video_true,
+                video_test=video_test,
             )
         elif os.path.isdir(video_true) and os.path.isdir(video_test):
             # Glob videos
@@ -396,9 +378,7 @@ class FrechetInceptionDistance:
                 selected_video_true = video_true_files[i]
                 selected_video_test = video_test_files[i]
                 # Video pair must have the same basename
-                if os.path.basename(selected_video_test) == os.path.basename(
-                    selected_video_true
-                ):
+                if os.path.basename(selected_video_test) == os.path.basename(selected_video_true):
                     video_true_files_selected.append(selected_video_true)
                     video_test_files_selected.append(selected_video_test)
 
@@ -418,13 +398,9 @@ class FrechetInceptionDistance:
             video_test_frames = []
             valid_frames = 0
 
-            for video_true_, video_test_ in zip(
-                video_true_files, video_test_files
-            ):
-                video_true_frames_, video_test_frames_, valid_frames_ = (
-                    self._fetch_video_frames(
-                        video_true=video_true_, video_test=video_test_
-                    )
+            for video_true_, video_test_ in zip(video_true_files, video_test_files):
+                video_true_frames_, video_test_frames_, valid_frames_ = self._fetch_video_frames(
+                    video_true=video_true_, video_test=video_test_
                 )
                 video_true_frames.extend(video_true_frames_)
                 video_test_frames.extend(video_test_frames_)

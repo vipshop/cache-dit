@@ -106,9 +106,7 @@ class BlockAdapter:
         ]
     )
     check_prefixes: bool = True
-    allow_suffixes: List[str] = dataclasses.field(
-        default_factory=lambda: ["TransformerBlock"]
-    )
+    allow_suffixes: List[str] = dataclasses.field(default_factory=lambda: ["TransformerBlock"])
     check_suffixes: bool = False
     blocks_policy: str = dataclasses.field(
         default="max", metadata={"allowed_values": ["max", "min"]}
@@ -162,9 +160,7 @@ class BlockAdapter:
             self.check_forward_pattern = False
             self.check_num_outputs = False
         elif getattr(self.transformer, "_diffusers_hook", None) is not None:
-            logger.warning(
-                "_diffusers_hook is not None, force skip pattern check!"
-            )
+            logger.warning("_diffusers_hook is not None, force skip pattern check!")
             self.check_forward_pattern = False
             self.check_num_outputs = False
 
@@ -172,38 +168,25 @@ class BlockAdapter:
         # NOTE: This func should be call before normalize.
         # Allow empty `blocks_names`, we will auto fill it.
         # TODO: preprocess more empty attrs.
-        if (
-            self.transformer is not None
-            and self.blocks is not None
-            and self.blocks_name is None
-        ):
+        if self.transformer is not None and self.blocks is not None and self.blocks_name is None:
 
             def _find(transformer, blocks):
                 attr_names = dir(transformer)
                 assert isinstance(blocks, torch.nn.ModuleList)
                 blocks_name = None
                 for attr_name in attr_names:
-                    if (
-                        attr := getattr(transformer, attr_name, None)
-                    ) is not None:
-                        if isinstance(attr, torch.nn.ModuleList) and id(
-                            attr
-                        ) == id(blocks):
+                    if (attr := getattr(transformer, attr_name, None)) is not None:
+                        if isinstance(attr, torch.nn.ModuleList) and id(attr) == id(blocks):
                             blocks_name = attr_name
                             break
-                assert (
-                    blocks_name is not None
-                ), "No blocks_name match, please set it manually!"
+                assert blocks_name is not None, "No blocks_name match, please set it manually!"
                 return blocks_name
 
             if self.nested_depth(self.transformer) == 0:
                 if self.nested_depth(self.blocks) == 0:  # str
                     self.blocks_name = _find(self.transformer, self.blocks)
                 elif self.nested_depth(self.blocks) == 1:
-                    self.blocks_name = [
-                        _find(self.transformer, blocks)
-                        for blocks in self.blocks
-                    ]
+                    self.blocks_name = [_find(self.transformer, blocks) for blocks in self.blocks]
                 else:
                     raise ValueError(
                         "Blocks nested depth can't more than 1 if transformer "
@@ -214,19 +197,14 @@ class BlockAdapter:
                     assert len(self.transformer) == len(self.blocks)
                     self.blocks_name = [
                         _find(transformer, blocks)
-                        for transformer, blocks in zip(
-                            self.transformer, self.blocks
-                        )
+                        for transformer, blocks in zip(self.transformer, self.blocks)
                     ]
                 elif self.nested_depth(self.blocks) == 2:  # List[List[str]]
                     assert len(self.transformer) == len(self.blocks)
                     self.blocks_name = []
                     for i in range(len(self.blocks)):
                         self.blocks_name.append(
-                            [
-                                _find(self.transformer[i], blocks)
-                                for blocks in self.blocks[i]
-                            ]
+                            [_find(self.transformer[i], blocks) for blocks in self.blocks[i]]
                         )
                 else:
                     raise ValueError(
@@ -264,14 +242,10 @@ class BlockAdapter:
             "set all the transformer blocks configuration."
         )
         assert adapter.pipe is not None, "adapter.pipe can not be None."
-        assert (
-            adapter.forward_pattern is not None
-        ), "adapter.forward_pattern can not be None."
+        assert adapter.forward_pattern is not None, "adapter.forward_pattern can not be None."
         pipe = adapter.pipe
         if isinstance(pipe, FakeDiffusionPipeline):
-            raise ValueError(
-                "Can not auto block adapter for FakeDiffusionPipeline."
-            )
+            raise ValueError("Can not auto block adapter for FakeDiffusionPipeline.")
 
         assert hasattr(pipe, "transformer"), "pipe.transformer can not be None."
 
@@ -399,9 +373,7 @@ class BlockAdapter:
                             valid_count.append(len(blocks))
 
         if not valid_names:
-            raise ValueError(
-                "Auto selected transformer blocks failed, please set it manually."
-            )
+            raise ValueError("Auto selected transformer blocks failed, please set it manually.")
 
         final_name = valid_names[0]
         final_count = valid_count[0]
@@ -456,8 +428,7 @@ class BlockAdapter:
             return True
 
         assert (
-            forward_pattern.Supported
-            and forward_pattern in ForwardPattern.supported_patterns()
+            forward_pattern.Supported and forward_pattern in ForwardPattern.supported_patterns()
         ), f"Pattern {forward_pattern} is not support now!"
 
         # NOTE: Special case for HiDreamBlock
@@ -465,17 +436,15 @@ class BlockAdapter:
             if isinstance(block.block, torch.nn.Module):
                 block = block.block
 
-        forward_parameters = set(
-            inspect.signature(block.forward).parameters.keys()
-        )
+        forward_parameters = set(inspect.signature(block.forward).parameters.keys())
 
         in_matched = True
         out_matched = True
 
         if kwargs.get("check_num_outputs", True):
-            num_outputs = str(
-                inspect.signature(block.forward).return_annotation
-            ).count("torch.Tensor")
+            num_outputs = str(inspect.signature(block.forward).return_annotation).count(
+                "torch.Tensor"
+            )
 
             if num_outputs > 0 and len(forward_pattern.Out) != num_outputs:
                 # output pattern not match
@@ -497,14 +466,11 @@ class BlockAdapter:
 
         if not kwargs.get("check_forward_pattern", True):
             if logging:
-                logger.warning(
-                    f"Skipped Forward Pattern Check: {forward_pattern}"
-                )
+                logger.warning(f"Skipped Forward Pattern Check: {forward_pattern}")
             return True
 
         assert (
-            forward_pattern.Supported
-            and forward_pattern in ForwardPattern.supported_patterns()
+            forward_pattern.Supported and forward_pattern in ForwardPattern.supported_patterns()
         ), f"Pattern {forward_pattern} is not support now!"
 
         assert isinstance(transformer_blocks, torch.nn.ModuleList)
@@ -521,9 +487,7 @@ class BlockAdapter:
 
         pattern_matched = all(pattern_matched_states)  # all block match
         if pattern_matched and logging:
-            block_cls_names = [
-                block.__class__.__name__ for block in transformer_blocks
-            ]
+            block_cls_names = [block.__class__.__name__ for block in transformer_blocks]
             block_cls_names = list(set(block_cls_names))
             if len(block_cls_names) == 1:
                 block_cls_names = block_cls_names[0]
@@ -560,9 +524,7 @@ class BlockAdapter:
                     else:
                         normalized_attr = [attr]
                 else:  # [] empty
-                    normalized_attr = [
-                        [] for _ in range(len(adapter.transformer))
-                    ]
+                    normalized_attr = [[] for _ in range(len(adapter.transformer))]
 
             assert len(adapter.transformer) == len(normalized_attr)
             return normalized_attr
@@ -605,9 +567,7 @@ class BlockAdapter:
 
         # Also check Match Forward Pattern
         for i in range(len(adapter.transformer)):
-            for forward_pattern, blocks in zip(
-                adapter.forward_pattern[i], adapter.blocks[i]
-            ):
+            for forward_pattern, blocks in zip(adapter.forward_pattern[i], adapter.blocks[i]):
                 assert BlockAdapter.match_blocks_pattern(
                     blocks,
                     forward_pattern=forward_pattern,

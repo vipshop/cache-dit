@@ -1,7 +1,6 @@
-import gc
-import time
 import torch
 from typing import Callable, Optional, List
+from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -66,22 +65,14 @@ def quantize_ao(
             num_linear_layers += 1
             for exclude_name in exclude_layers:
                 if exclude_name in name:
-                    logger.info(
-                        f"Skip Quantization: {name} -> "
-                        f"pattern<{exclude_name}>"
-                    )
+                    logger.info(f"Skip Quantization: {name} -> " f"pattern<{exclude_name}>")
 
                     num_skip_linear += 1
                     return False
 
-            if (
-                per_row
-                and m.weight.dtype != torch.bfloat16
-                and quant_type == "fp8_w8a8_dq"
-            ):
+            if per_row and m.weight.dtype != torch.bfloat16 and quant_type == "fp8_w8a8_dq":
                 logger.info(
-                    f"Skip Quantization: {name} -> "
-                    f"pattern<dtype({m.weight.dtype})!=bfloat16>"
+                    f"Skip Quantization: {name} -> " f"pattern<dtype({m.weight.dtype})!=bfloat16>"
                 )
 
                 num_skip_linear += 1
@@ -114,9 +105,7 @@ def quantize_ao(
                         torch.float8_e4m3fn,
                     ),
                     granularity=(
-                        ((PerRow(), PerRow()))
-                        if per_row
-                        else ((PerTensor(), PerTensor()))
+                        ((PerRow(), PerRow())) if per_row else ((PerTensor(), PerTensor()))
                     ),
                 )
 
@@ -173,9 +162,7 @@ def quantize_ao(
                 )
 
             else:
-                raise ValueError(
-                    f"quant_type: {quant_type} is not supported now!"
-                )
+                raise ValueError(f"quant_type: {quant_type} is not supported now!")
 
         except ImportError as e:
             e.msg += (
@@ -213,15 +200,3 @@ def quantize_ao(
     module._quantize_type = quant_type
     module._is_quantized = True
     return module
-
-
-def maybe_empty_cache():
-    try:
-        time.sleep(1)
-        gc.collect()
-        torch.cuda.empty_cache()
-        time.sleep(1)
-        gc.collect()
-        torch.cuda.empty_cache()
-    except Exception:
-        pass

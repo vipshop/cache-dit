@@ -18,6 +18,7 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -28,17 +29,27 @@ print(args)
 rank, device = maybe_init_distributed(args)
 
 pipe: QwenImagePipeline = QwenImagePipeline.from_pretrained(
-    os.environ.get(
-        "QWEN_IMAGE_DIR",
-        "Qwen/Qwen-Image",
+    (
+        args.model_path
+        if args.model_path is not None
+        else os.environ.get(
+            "QWEN_IMAGE_DIR",
+            "Qwen/Qwen-Image",
+        )
     ),
     torch_dtype=torch.bfloat16,
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
-enable_quatization = args.quantize and GiB() < 96
+# Apply cache and tensor parallelism here
+if args.cache or args.parallel_type is not None:
+    cachify(args, pipe)
 
+
+# NOTE: Please handle to(device) after cachify(namely, after applying
+# tensor parallelism), in order to reduce the memory usage at the beginning.
+enable_quatization = args.quantize and GiB() < 96
 if GiB() < 96:
     if enable_quatization:
         # Only quantize text encoder module to fit in GPUs with
@@ -49,17 +60,9 @@ if GiB() < 96:
             pipe.text_encoder,
             quant_type=args.quantize_type,
         )
-        pipe.to(device)
 else:
     pipe.to(device)
 
-if GiB() <= 48 and not enable_quatization:
-    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-    pipe.vae.enable_tiling()
-
-# Apply cache and tensor parallelism here
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
 
 # Minimum 40GiB is required for tensor parallelism = 2
 if GiB() < 48 and not enable_quatization:
@@ -70,8 +73,15 @@ if GiB() < 48 and not enable_quatization:
     else:
         pipe.to(device)
 else:
-    pipe.to(device)
+    if not args.parallel_type == "tp":
+        pipe.enable_model_cpu_offload(device=device)
+    else:
+        pipe.to(device)
 
+
+if GiB() <= 48 and not enable_quatization:
+    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+    pipe.vae.enable_tiling()
 
 positive_magic = {
     "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
@@ -81,8 +91,12 @@ positive_magic = {
 # Generate image
 prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coffee 😊 $2 per cup," with a neon light beside it displaying "通义千问". Next to it hangs a poster showing a beautiful Chinese woman, and beneath the poster is written "π≈3.1415926-53589793-23846264-33832795-02384197". Ultra HD, 4K, cinematic composition"""
 
+if args.prompt is not None:
+    prompt = args.prompt
 # using an empty string if you do not have specific concept to remove
 negative_prompt = " "
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
@@ -94,11 +108,9 @@ def run_pipe(warmup: bool = False):
         negative_prompt=negative_prompt,
         width=1024 if args.width is None else args.width,
         height=1024 if args.height is None else args.height,
-        num_inference_steps=(
-            (50 if args.steps is None else args.steps) if not warmup else 5
-        ),
+        num_inference_steps=((50 if args.steps is None else args.steps) if not warmup else 5),
         true_cfg_scale=4.0,
-        generator=torch.Generator(device="cpu").manual_seed(42),
+        generator=torch.Generator(device="cpu").manual_seed(0),
         output_type="latent" if args.perf else "pil",
     )
     image = output.images[0] if not args.perf else None
@@ -112,11 +124,20 @@ if args.compile:
 # warmup
 _ = run_pipe(warmup=True)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 image = run_pipe()
 end = time.time()
 
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
+
 if rank == 0:
+    cache_dit.summary(pipe)
     time_cost = end - start
     save_path = f"qwen-image.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")

@@ -1,3 +1,4 @@
+import os
 from cache_dit.caching.forward_pattern import ForwardPattern
 from cache_dit.caching.block_adapters.block_adapters import BlockAdapter
 from cache_dit.caching.block_adapters.block_adapters import (
@@ -5,34 +6,54 @@ from cache_dit.caching.block_adapters.block_adapters import (
 )
 from cache_dit.caching.block_adapters.block_adapters import ParamsModifier
 from cache_dit.caching.block_adapters.block_registers import (
-    BlockAdapterRegistry,
+    BlockAdapterRegister,
 )
 
 
-@BlockAdapterRegistry.register("Flux")
+@BlockAdapterRegister.register("Flux")
 def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
     from cache_dit.utils import is_diffusers_at_least_0_3_5
+    from cache_dit.caching.patch_functors import FluxPatchFunctor
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
     transformer_cls_name: str = pipe.transformer.__class__.__name__
-    if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith(
-        "Nunchaku"
-    ):
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
-            ],
-            check_forward_pattern=True,
-            **kwargs,
+    if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith("Nunchaku"):
+        # NOTE(DefTruth): Users should never use this variable directly,
+        # it is only for developers to control whether to enable dummy
+        # blocks, default to enabled.
+        _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS = (
+            os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1") == "1"
         )
+
+        if not _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS:
+            return BlockAdapter(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=[
+                    pipe.transformer.transformer_blocks,
+                    pipe.transformer.single_transformer_blocks,
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_1,
+                    ForwardPattern.Pattern_1,
+                ],
+                check_forward_pattern=True,
+                **kwargs,
+            )
+        else:
+            return BlockAdapter(
+                pipe=pipe,
+                transformer=pipe.transformer,
+                blocks=(
+                    pipe.transformer.transformer_blocks + pipe.transformer.single_transformer_blocks
+                ),
+                blocks_name="transformer_blocks",
+                dummy_blocks_names=["single_transformer_blocks"],
+                patch_functor=FluxPatchFunctor(),
+                forward_pattern=ForwardPattern.Pattern_1,
+                **kwargs,
+            )
     else:
         return BlockAdapter(
             pipe=pipe,
@@ -50,7 +71,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
         )
 
 
-@BlockAdapterRegistry.register("Mochi")
+@BlockAdapterRegister.register("Mochi")
 def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import MochiTransformer3DModel
 
@@ -65,7 +86,7 @@ def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("CogVideoX")
+@BlockAdapterRegister.register("CogVideoX")
 def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogVideoXTransformer3DModel
 
@@ -80,17 +101,21 @@ def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Wan")
+@BlockAdapterRegister.register("Wan")
 def wan_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import (
         WanTransformer3DModel,
         WanVACETransformer3DModel,
     )
+    from cache_dit.caching.patch_functors import WanVACEPatchFunctor
 
     assert isinstance(
         pipe.transformer,
         (WanTransformer3DModel, WanVACETransformer3DModel),
     )
+    cls_name = pipe.transformer.__class__.__name__
+    patch_functor = WanVACEPatchFunctor() if cls_name.startswith("WanVACE") else None
+
     if getattr(pipe, "transformer_2", None):
         assert isinstance(
             pipe.transformer_2,
@@ -111,6 +136,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
                 ForwardPattern.Pattern_2,
                 ForwardPattern.Pattern_2,
             ],
+            patch_functor=patch_functor,
             check_forward_pattern=True,
             has_separate_cfg=True,
             **kwargs,
@@ -122,13 +148,14 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
             transformer=pipe.transformer,
             blocks=pipe.transformer.blocks,
             forward_pattern=ForwardPattern.Pattern_2,
+            patch_functor=patch_functor,
             check_forward_pattern=True,
             has_separate_cfg=True,
             **kwargs,
         )
 
 
-@BlockAdapterRegistry.register("HunyuanVideo")
+@BlockAdapterRegister.register("HunyuanVideo")
 def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanVideoTransformer3DModel
 
@@ -151,7 +178,7 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("QwenImage")
+@BlockAdapterRegister.register("QwenImage")
 def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import QwenImageTransformer2DModel
 
@@ -184,7 +211,7 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
         )
 
 
-@BlockAdapterRegistry.register("LTX")
+@BlockAdapterRegister.register("LTX")
 def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import LTXVideoTransformer3DModel
 
@@ -199,7 +226,7 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Allegro")
+@BlockAdapterRegister.register("Allegro")
 def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import AllegroTransformer3DModel
 
@@ -214,7 +241,7 @@ def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("CogView3Plus")
+@BlockAdapterRegister.register("CogView3Plus")
 def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogView3PlusTransformer2DModel
 
@@ -229,7 +256,7 @@ def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("CogView4")
+@BlockAdapterRegister.register("CogView4")
 def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogView4Transformer2DModel
 
@@ -245,7 +272,7 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Cosmos")
+@BlockAdapterRegister.register("Cosmos")
 def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CosmosTransformer3DModel
 
@@ -261,7 +288,7 @@ def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("EasyAnimate")
+@BlockAdapterRegister.register("EasyAnimate")
 def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import EasyAnimateTransformer3DModel
 
@@ -276,7 +303,7 @@ def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("SkyReelsV2")
+@BlockAdapterRegister.register("SkyReelsV2")
 def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SkyReelsV2Transformer3DModel
 
@@ -295,7 +322,7 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("StableDiffusion3")
+@BlockAdapterRegister.register("StableDiffusion3")
 def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SD3Transformer2DModel
 
@@ -310,7 +337,7 @@ def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("ConsisID")
+@BlockAdapterRegister.register("ConsisID")
 def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ConsisIDTransformer3DModel
 
@@ -325,7 +352,7 @@ def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("DiT")
+@BlockAdapterRegister.register("DiT")
 def dit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import DiTTransformer2DModel
     from cache_dit.caching.patch_functors import DiTPatchFunctor
@@ -342,7 +369,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Amused")
+@BlockAdapterRegister.register("Amused")
 def amused_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import UVit2DModel
 
@@ -357,7 +384,7 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Bria")
+@BlockAdapterRegister.register("Bria")
 def bria_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import BriaTransformer2DModel
 
@@ -378,14 +405,12 @@ def bria_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Lumina")
+@BlockAdapterRegister.register("Lumina")
 def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import Lumina2Transformer2DModel
     from diffusers import LuminaNextDiT2DModel
 
-    assert isinstance(
-        pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel)
-    )
+    assert isinstance(pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel))
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -396,7 +421,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("OmniGen")
+@BlockAdapterRegister.register("OmniGen")
 def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import OmniGenTransformer2DModel
 
@@ -411,7 +436,7 @@ def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("PixArt")
+@BlockAdapterRegister.register("PixArt")
 def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import PixArtTransformer2DModel
 
@@ -426,7 +451,7 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Sana")
+@BlockAdapterRegister.register("Sana")
 def sana_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SanaTransformer2DModel
 
@@ -441,7 +466,7 @@ def sana_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("StableAudio")
+@BlockAdapterRegister.register("StableAudio")
 def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import StableAudioDiTModel
 
@@ -456,7 +481,7 @@ def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("VisualCloze")
+@BlockAdapterRegister.register("VisualCloze")
 def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
     from cache_dit.utils import is_diffusers_at_least_0_3_5
@@ -494,7 +519,7 @@ def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
         )
 
 
-@BlockAdapterRegistry.register("AuraFlow")
+@BlockAdapterRegister.register("AuraFlow")
 def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import AuraFlowTransformer2DModel
 
@@ -509,7 +534,7 @@ def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Chroma")
+@BlockAdapterRegister.register("Chroma")
 def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ChromaTransformer2DModel
     from cache_dit.caching.patch_functors import ChromaPatchFunctor
@@ -533,7 +558,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("ShapE")
+@BlockAdapterRegister.register("ShapE")
 def shape_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import PriorTransformer
 
@@ -548,7 +573,7 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HiDream")
+@BlockAdapterRegister.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     # NOTE: Need to patch Transformer forward to fully support
     # double_stream_blocks and single_stream_blocks, namely, need
@@ -578,7 +603,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HunyuanDiT")
+@BlockAdapterRegister.register("HunyuanDiT")
 def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
     from cache_dit.caching.patch_functors import HunyuanDiTPatchFunctor
@@ -598,7 +623,7 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("HunyuanDiTPAG")
+@BlockAdapterRegister.register("HunyuanDiTPAG")
 def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanDiT2DModel
     from cache_dit.caching.patch_functors import HunyuanDiTPatchFunctor
@@ -615,7 +640,7 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegistry.register("Kandinsky5")
+@BlockAdapterRegister.register("Kandinsky5")
 def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import Kandinsky5Transformer3DModel
@@ -638,7 +663,7 @@ def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
         )
 
 
-@BlockAdapterRegistry.register("PRX")
+@BlockAdapterRegister.register("PRX")
 def prx_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import PRXTransformer2DModel
@@ -656,5 +681,59 @@ def prx_adapter(pipe, **kwargs) -> BlockAdapter:
     except ImportError:
         raise ImportError(
             "PRXTransformer2DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
+
+
+@BlockAdapterRegister.register("HunyuanImage")
+def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import HunyuanImageTransformer2DModel
+
+        assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_0,
+                ForwardPattern.Pattern_0,
+            ],
+            # set `has_separate_cfg` as True to enable separate cfg caching
+            # since in hyimage-2.1 the `guider_state` contains 2 input batches.
+            # The cfg is `enabled` by default in AdaptiveProjectedMixGuidance.
+            has_separate_cfg=True,
+            check_forward_pattern=True,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "HunyuanImageTransformer2DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
+
+
+@BlockAdapterRegister.register("ChronoEdit")
+def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import ChronoEditTransformer3DModel
+
+        assert isinstance(pipe.transformer, ChronoEditTransformer3DModel)
+        # Same as Wan 2.1 adapter
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.blocks,
+            forward_pattern=ForwardPattern.Pattern_2,
+            check_forward_pattern=True,
+            has_separate_cfg=True,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "ChronoEditTransformer3DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )

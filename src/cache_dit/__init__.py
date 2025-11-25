@@ -9,6 +9,7 @@ from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
 from cache_dit.caching import load_options
 from cache_dit.caching import enable_cache
+from cache_dit.caching import steps_mask
 from cache_dit.caching import disable_cache
 from cache_dit.caching import cache_type
 from cache_dit.caching import block_range
@@ -25,11 +26,12 @@ from cache_dit.caching import TaylorSeerCalibratorConfig
 from cache_dit.caching import FoCaCalibratorConfig
 from cache_dit.caching import supported_pipelines
 from cache_dit.caching import get_adapter
-from cache_dit.compile import set_compile_configs
 from cache_dit.parallelism import ParallelismBackend
 from cache_dit.parallelism import ParallelismConfig
-from cache_dit.utils import summary
-from cache_dit.utils import strify
+from cache_dit.compile import set_compile_configs
+from cache_dit.summary import supported_matrix
+from cache_dit.summary import summary
+from cache_dit.summary import strify
 
 try:
     from cache_dit.quantize import quantize
@@ -40,6 +42,46 @@ except ImportError as e:  # noqa: F841
         raise ImportError(
             "Quantization requires additional dependencies. "
             "Please install cache-dit[quantization] or cache-dit[all] "
+            f"to use this feature. Error message: {err_msg}"
+        )
+
+
+def enable_compute_comm_overlap():
+    try:
+        from cache_dit.compile import enable_compile_compute_comm_overlap
+
+        enable_compile_compute_comm_overlap()
+    except:  # noqa: E722
+        pass
+
+
+def disable_compute_comm_overlap():
+    try:
+        from cache_dit.compile import disable_compile_compute_comm_overlap
+
+        disable_compile_compute_comm_overlap()
+    except:  # noqa: E722
+        pass
+
+
+try:
+    from cache_dit.parallelism import disable_ulysses_anything
+    from cache_dit.parallelism import enable_ulysses_anything
+
+except ImportError as e:  # noqa: F841
+    err_msg = str(e)
+
+    def enable_ulysses_anything(*args, **kwargs):
+        raise ImportError(
+            "Ulysses Anything Attention requires additional dependencies. "
+            "Please install cache-dit[parallelism] or cache-dit[all] "
+            f"to use this feature. Error message: {err_msg}"
+        )
+
+    def disable_ulysses_anything(*args, **kwargs):
+        raise ImportError(
+            "Ulysses Anything Attention requires additional dependencies. "
+            "Please install cache-dit[parallelism] or cache-dit[all] "
             f"to use this feature. Error message: {err_msg}"
         )
 

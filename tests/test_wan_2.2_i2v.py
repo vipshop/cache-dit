@@ -26,9 +26,7 @@ image = load_image(
 )
 max_area = 480 * 832
 aspect_ratio = image.height / image.width
-mod_value = (
-    pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-)
+mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
 height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
 width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
 image = image.resize((width, height))

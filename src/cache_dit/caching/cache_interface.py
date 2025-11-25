@@ -3,7 +3,7 @@ from typing import Any, Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline, ModelMixin
 from cache_dit.caching.cache_types import CacheType
 from cache_dit.caching.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters import BlockAdapterRegistry
+from cache_dit.caching.block_adapters import BlockAdapterRegister
 from cache_dit.caching.cache_adapters import CachedAdapter
 from cache_dit.caching.cache_contexts import BasicCacheConfig
 from cache_dit.caching.cache_contexts import DBCacheConfig
@@ -101,6 +101,11 @@ def enable_cache(
                 residual_diff_threshold (`float`, *required*, defaults to 0.08):
                     the value of residual diff threshold, a higher value leads to faster performance at the
                     cost of lower precision.
+                max_accumulated_residual_diff_threshold (`float`, *optional*, defaults to None):
+                    The maximum accumulated relative l1 diff threshold for Cache. If set, when the
+                    accumulated relative l1 diff exceeds this threshold, the caching strategy will be
+                    disabled for current step. This is useful for some cases where the input condition
+                    changes significantly in a single step. Default None means this feature is disabled.
                 max_warmup_steps (`int`, *required*, defaults to 8):
                     DBCache does not apply the caching strategy when the number of running steps is less than
                     or equal to this value, ensuring the model sufficiently learns basic features during warmup.
@@ -129,6 +134,15 @@ def enable_cache(
                     num_inference_steps for DiffusionPipeline, used to adjust some internal settings
                     for better caching performance. For example, we will refresh the cache once the
                     executed steps exceed num_inference_steps if num_inference_steps is provided.
+                steps_computation_mask (`List[int]`, *optional*, defaults to None):
+                    This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list
+                    of length num_inference_steps indicating whether to compute each step or not.
+                    1 means must compute, 0 means use dynamic/static cache. If provided, will override
+                    other settings to decide whether to compute each step.
+                steps_computation_policy (`str`, *optional*, defaults to "dynamic"):
+                    The computation policy for steps when using steps_computation_mask. It can be
+                    "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
+                    in steps_computation_mask, while "static" means using static cache for those steps.
 
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
@@ -205,20 +219,14 @@ def enable_cache(
         "Bn_compute_blocks": kwargs.get("Bn_compute_blocks", None),
         "max_warmup_steps": kwargs.get("max_warmup_steps", None),
         "max_cached_steps": kwargs.get("max_cached_steps", None),
-        "max_continuous_cached_steps": kwargs.get(
-            "max_continuous_cached_steps", None
-        ),
+        "max_continuous_cached_steps": kwargs.get("max_continuous_cached_steps", None),
         "residual_diff_threshold": kwargs.get("residual_diff_threshold", None),
         "enable_separate_cfg": kwargs.get("enable_separate_cfg", None),
         "cfg_compute_first": kwargs.get("cfg_compute_first", None),
-        "cfg_diff_compute_separate": kwargs.get(
-            "cfg_diff_compute_separate", None
-        ),
+        "cfg_diff_compute_separate": kwargs.get("cfg_diff_compute_separate", None),
     }
 
-    deprecated_kwargs = {
-        k: v for k, v in deprecated_kwargs.items() if v is not None
-    }
+    deprecated_kwargs = {k: v for k, v in deprecated_kwargs.items() if v is not None}
 
     if deprecated_kwargs:
         logger.warning(
@@ -252,9 +260,7 @@ def enable_cache(
         calibrator_config = TaylorSeerCalibratorConfig(
             enable_calibrator=kwargs.get("enable_taylorseer"),
             enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer"),
-            calibrator_cache_type=kwargs.get(
-                "taylorseer_cache_type", "residual"
-            ),
+            calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
             taylorseer_order=kwargs.get("taylorseer_order", 1),
         )
 
@@ -294,7 +300,9 @@ def enable_cache(
 
         transformers = []
         if isinstance(pipe_or_adapter, DiffusionPipeline):
-            adapter = BlockAdapterRegistry.get_adapter(pipe_or_adapter)
+            adapter = BlockAdapterRegister.get_adapter(
+                pipe_or_adapter, skip_post_init=cache_config is None
+            )
             if adapter is None:
                 assert hasattr(pipe_or_adapter, "transformer"), (
                     "The given DiffusionPipeline does not have "
@@ -307,15 +315,12 @@ def enable_cache(
                 transformers = BlockAdapter.flatten(adapter.transformer)
         else:
             if not BlockAdapter.is_normalized(pipe_or_adapter):
-                pipe_or_adapter = BlockAdapter.normalize(
-                    pipe_or_adapter, unique=False
-                )
+                pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
             transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
         if len(transformers) == 0:
             logger.warning(
-                "No transformer is detected in the "
-                "BlockAdapter, skip enabling parallelism."
+                "No transformer is detected in the " "BlockAdapter, skip enabling parallelism."
             )
             return pipe_or_adapter
 
@@ -327,9 +332,7 @@ def enable_cache(
             )
         for i, transformer in enumerate(transformers):
             # Enable parallelism for the transformer inplace
-            transformers[i] = enable_parallelism(
-                transformer, parallelism_config
-            )
+            transformers[i] = enable_parallelism(transformer, parallelism_config)
     return pipe_or_adapter
 
 
@@ -340,19 +343,53 @@ def disable_cache(
     ],
 ):
     CachedAdapter.maybe_release_hooks(pipe_or_adapter)
-    logger.warning(
-        f"Cache Acceleration is disabled for: "
-        f"{pipe_or_adapter.__class__.__name__}."
-    )
+    logger.warning(f"Cache Acceleration is disabled for: " f"{pipe_or_adapter.__class__.__name__}.")
 
 
 def supported_pipelines(
     **kwargs,
 ) -> Tuple[int, List[str]]:
-    return BlockAdapterRegistry.supported_pipelines(**kwargs)
+    return BlockAdapterRegister.supported_pipelines(**kwargs)
 
 
 def get_adapter(
     pipe: DiffusionPipeline | str | Any,
 ) -> BlockAdapter:
-    return BlockAdapterRegistry.get_adapter(pipe)
+    return BlockAdapterRegister.get_adapter(pipe)
+
+
+def steps_mask(
+    compute_bins: List[int],
+    cache_bins: List[int],
+    total_steps: Optional[int] = None,
+) -> list[int]:
+    mask = []
+    step = 0
+    compute_bins = compute_bins.copy()
+    cache_bins = cache_bins.copy()
+    # reverse to use as stacks
+    compute_bins.reverse()
+    cache_bins.reverse()
+
+    if total_steps is not None:
+        assert (
+            sum(compute_bins) + sum(cache_bins) >= total_steps
+        ), "The sum of compute and cache intervals must be at least total_steps."
+    else:
+        total_steps = sum(compute_bins) + sum(cache_bins)
+
+    while step < total_steps:
+
+        if compute_bins:
+            ci = compute_bins.pop()
+            mask.extend([1] * ci)
+            step += ci
+        if cache_bins:
+            cai = cache_bins.pop()
+            mask.extend([0] * cai)
+            step += cai
+
+        if step >= total_steps:
+            break
+
+    return mask[:total_steps]

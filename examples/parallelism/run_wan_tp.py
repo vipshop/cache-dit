@@ -9,11 +9,13 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
+    MemoryTracker,
 )
 
 import cache_dit
@@ -23,19 +25,72 @@ print(args)
 
 rank, device = maybe_init_distributed(args)
 
-pipe = WanPipeline.from_pretrained(
-    os.environ.get(
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
         "WAN_2_2_DIR",
         "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
-        # "Wan-AI/Wan2.1-T2V-14B-Diffusers",
-    ),
+    )
+)
+pipe = WanPipeline.from_pretrained(
+    model_id,
     torch_dtype=torch.bfloat16,
 )
 
 if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
+    from cache_dit import (
+        ForwardPattern,
+        BlockAdapter,
+        ParamsModifier,
+        DBCacheConfig,
+    )
 
-pipe.enable_model_cpu_offload(device=device)
+    if "Wan2.1" in model_id:
+        cachify(args, pipe)
+    else:
+        # Wan 2.2 only
+        cachify(
+            args,
+            BlockAdapter(
+                pipe=pipe,
+                transformer=[
+                    pipe.transformer,
+                    pipe.transformer_2,
+                ],
+                blocks=[
+                    pipe.transformer.blocks,
+                    pipe.transformer_2.blocks,
+                ],
+                forward_pattern=[
+                    ForwardPattern.Pattern_2,
+                    ForwardPattern.Pattern_2,
+                ],
+                params_modifiers=[
+                    # high-noise transformer only have 30% steps
+                    ParamsModifier(
+                        cache_config=DBCacheConfig().reset(
+                            max_warmup_steps=4,
+                            max_cached_steps=8,
+                        ),
+                    ),
+                    ParamsModifier(
+                        cache_config=DBCacheConfig().reset(
+                            max_warmup_steps=2,
+                            max_cached_steps=20,
+                        ),
+                    ),
+                ],
+                has_separate_cfg=True,
+            ),
+        )
+
+# Enable memory savings
+if GiB() < 40:
+    pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
+
 assert isinstance(pipe.transformer, WanTransformer3DModel)
 
 pipe.set_progress_bar_config(disable=rank != 0)
@@ -43,12 +98,11 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe(warmup: bool = False):
     prompt = "A cat walks on the grass, realistic"
-    negative_prompt = "Bright tones, overexposed, static, blurred details, "
-    "subtitles, style, works, paintings, images, static, overall gray, "
-    "worst quality, low quality, JPEG compression residue, ugly, incomplete, "
-    "extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
-    "disfigured, misshapen limbs, fused fingers, still picture, messy "
-    "background, three legs, many people in the background, walking backwards"
+    if args.prompt is not None:
+        prompt = args.prompt
+    negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+    if args.negative_prompt is not None:
+        negative_prompt = args.negative_prompt
 
     seed = 1234
     generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -67,12 +121,24 @@ def run_pipe(warmup: bool = False):
     return output
 
 
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
+
 # warmup
 _ = run_pipe(warmup=True)
+
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
 
 start = time.time()
 video = run_pipe()
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

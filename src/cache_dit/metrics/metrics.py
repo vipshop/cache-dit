@@ -154,9 +154,7 @@ def compute_dir_metric(
     compute_file_func: callable = compute_psnr_file,
 ) -> Union[Tuple[float, int], Tuple[None, None]]:
     # Image
-    if isinstance(image_true_dir, np.ndarray) or isinstance(
-        image_test_dir, np.ndarray
-    ):
+    if isinstance(image_true_dir, np.ndarray) or isinstance(image_test_dir, np.ndarray):
         return compute_file_func(image_true_dir, image_test_dir), 1
     # File
     if not os.path.isdir(image_true_dir) or not os.path.isdir(image_test_dir):
@@ -170,18 +168,14 @@ def compute_dir_metric(
 
     image_true_dir: pathlib.Path = pathlib.Path(image_true_dir)
     image_true_files = [
-        file
-        for ext in _IMAGE_EXTENSIONS
-        for file in image_true_dir.rglob("*.{}".format(ext))
+        file for ext in _IMAGE_EXTENSIONS for file in image_true_dir.rglob("*.{}".format(ext))
     ]
     image_true_files = [file.as_posix() for file in image_true_files]
     image_true_files = sorted(image_true_files, key=natural_sort_key)
 
     image_test_dir: pathlib.Path = pathlib.Path(image_test_dir)
     image_test_files = [
-        file
-        for ext in _IMAGE_EXTENSIONS
-        for file in image_test_dir.rglob("*.{}".format(ext))
+        file for ext in _IMAGE_EXTENSIONS for file in image_test_dir.rglob("*.{}".format(ext))
     ]
     image_test_files = [file.as_posix() for file in image_test_files]
     image_test_files = sorted(image_test_files, key=natural_sort_key)
@@ -193,9 +187,7 @@ def compute_dir_metric(
         selected_image_true = image_true_files[i]
         selected_image_test = image_test_files[i]
         # Image pair must have the same basename
-        if os.path.basename(selected_image_test) == os.path.basename(
-            selected_image_true
-        ):
+        if os.path.basename(selected_image_test) == os.path.basename(selected_image_true):
             image_true_files_selected.append(selected_image_true)
             image_test_files_selected.append(selected_image_test)
 
@@ -203,8 +195,7 @@ def compute_dir_metric(
     image_test_files = image_test_files_selected.copy()
     if len(image_true_files) == 0:
         logger.error(
-            "No valid Image pairs, please note that Image "
-            "pairs must have the same basename."
+            "No valid Image pairs, please note that Image " "pairs must have the same basename."
         )
         return None, None
 
@@ -288,29 +279,19 @@ def compute_video_metric(
     PSNR = compute_video_psnr(video_true, video_test)
     """
     if os.path.isfile(video_true) and os.path.isfile(video_test):
-        video_true_frames, video_test_frames, valid_frames = (
-            _fetch_video_frames(
-                video_true=video_true,
-                video_test=video_test,
-            )
+        video_true_frames, video_test_frames, valid_frames = _fetch_video_frames(
+            video_true=video_true,
+            video_test=video_test,
         )
     elif os.path.isdir(video_true) and os.path.isdir(video_test):
         # Glob videos
         video_true_dir: pathlib.Path = pathlib.Path(video_true)
         video_true_files = sorted(
-            [
-                file
-                for ext in _VIDEO_EXTENSIONS
-                for file in video_true_dir.rglob("*.{}".format(ext))
-            ]
+            [file for ext in _VIDEO_EXTENSIONS for file in video_true_dir.rglob("*.{}".format(ext))]
         )
         video_test_dir: pathlib.Path = pathlib.Path(video_test)
         video_test_files = sorted(
-            [
-                file
-                for ext in _VIDEO_EXTENSIONS
-                for file in video_test_dir.rglob("*.{}".format(ext))
-            ]
+            [file for ext in _VIDEO_EXTENSIONS for file in video_test_dir.rglob("*.{}".format(ext))]
         )
         video_true_files = [file.as_posix() for file in video_true_files]
         video_test_files = [file.as_posix() for file in video_test_files]
@@ -322,9 +303,7 @@ def compute_video_metric(
             selected_video_true = video_true_files[i]
             selected_video_test = video_test_files[i]
             # Video pair must have the same basename
-            if os.path.basename(selected_video_test) == os.path.basename(
-                selected_video_true
-            ):
+            if os.path.basename(selected_video_test) == os.path.basename(selected_video_true):
                 video_true_files_selected.append(selected_video_true)
                 video_test_files_selected.append(selected_video_test)
 
@@ -332,8 +311,7 @@ def compute_video_metric(
         video_test_files = video_test_files_selected.copy()
         if len(video_true_files) == 0:
             logger.error(
-                "No valid Video pairs, please note that Video "
-                "pairs must have the same basename."
+                "No valid Video pairs, please note that Video " "pairs must have the same basename."
             )
             return None, None
         logger.debug(f"video_true_files: {video_true_files}")
@@ -345,10 +323,8 @@ def compute_video_metric(
         valid_frames = 0
 
         for video_true_, video_test_ in zip(video_true_files, video_test_files):
-            video_true_frames_, video_test_frames_, valid_frames_ = (
-                _fetch_video_frames(
-                    video_true=video_true_, video_test=video_test_
-                )
+            video_true_frames_, video_test_frames_, valid_frames_ = _fetch_video_frames(
+                video_true=video_true_, video_test=video_test_
             )
             video_true_frames.extend(video_true_frames_)
             video_test_frames.extend(video_test_frames_)
@@ -381,55 +357,39 @@ def compute_video_metric(
         return None, None
 
 
-compute_lpips: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
-    partial(
-        compute_dir_metric,
-        compute_file_func=compute_lpips_file,
-    )
+compute_lpips: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+    compute_dir_metric,
+    compute_file_func=compute_lpips_file,
 )
 
-compute_psnr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
-    partial(
-        compute_dir_metric,
-        compute_file_func=compute_psnr_file,
-    )
+compute_psnr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+    compute_dir_metric,
+    compute_file_func=compute_psnr_file,
 )
 
-compute_ssim: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
-    partial(
-        compute_dir_metric,
-        compute_file_func=compute_ssim_file,
-    )
+compute_ssim: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+    compute_dir_metric,
+    compute_file_func=compute_ssim_file,
 )
 
-compute_mse: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = (
-    partial(
-        compute_dir_metric,
-        compute_file_func=compute_mse_file,
-    )
+compute_mse: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+    compute_dir_metric,
+    compute_file_func=compute_mse_file,
 )
 
-compute_video_lpips: Callable[
-    ..., Union[Tuple[float, int], Tuple[None, None]]
-] = partial(
+compute_video_lpips: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
     compute_video_metric,
     compute_frame_func=compute_lpips_file,
 )
-compute_video_psnr: Callable[
-    ..., Union[Tuple[float, int], Tuple[None, None]]
-] = partial(
+compute_video_psnr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
     compute_video_metric,
     compute_frame_func=compute_psnr_file,
 )
-compute_video_ssim: Callable[
-    ..., Union[Tuple[float, int], Tuple[None, None]]
-] = partial(
+compute_video_ssim: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
     compute_video_metric,
     compute_frame_func=compute_ssim_file,
 )
-compute_video_mse: Callable[
-    ..., Union[Tuple[float, int], Tuple[None, None]]
-] = partial(
+compute_video_mse: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
     compute_video_metric,
     compute_frame_func=compute_mse_file,
 )
@@ -656,8 +616,7 @@ def entrypoint():
                 if value is None or n is None:
                     return
                 msg = (
-                    f"{img_true_info} vs {img_test_info}, "
-                    f"Num: {n}, {name.upper()}: {value:.5f}"
+                    f"{img_true_info} vs {img_test_info}, " f"Num: {n}, {name.upper()}: {value:.5f}"
                 )
                 METRICS_META[msg] = value
                 logger.info(msg)
@@ -760,9 +719,7 @@ def entrypoint():
         return args.video_source_dir is not None and args.ref_video is not None
 
     def _is_prompt_1vsN_pattern() -> bool:
-        return (
-            args.img_source_dir is not None and args.ref_prompt_true is not None
-        )
+        return args.img_source_dir is not None and args.ref_prompt_true is not None
 
     assert not all(
         (
@@ -785,9 +742,7 @@ def entrypoint():
         for item in os.listdir(args.img_source_dir):
             item_path = os.path.join(args.img_source_dir, item)
             if os.path.isdir(item_path):
-                if os.path.basename(item_path) == os.path.basename(
-                    args.ref_img_dir
-                ):
+                if os.path.basename(item_path) == os.path.basename(args.ref_img_dir):
                     continue
                 directories.append(item_path)
 
@@ -797,8 +752,7 @@ def entrypoint():
         directories = sorted(directories)
         if not DISABLE_VERBOSE:
             logger.info(
-                f"Compare {args.ref_img_dir} vs {directories}, "
-                f"Num compares: {len(directories)}"
+                f"Compare {args.ref_img_dir} vs {directories}, " f"Num compares: {len(directories)}"
             )
 
         for metric in args.metrics:
@@ -830,9 +784,7 @@ def entrypoint():
 
         video_source_selected = []
         for video_source_file in video_source_files:
-            if os.path.basename(video_source_file) == os.path.basename(
-                args.ref_video
-            ):
+            if os.path.basename(video_source_file) == os.path.basename(args.ref_video):
                 continue
             video_source_selected.append(video_source_file)
 
@@ -934,9 +886,7 @@ def entrypoint():
             escaped_tag = re.escape(tag)
             processed_tag = escaped_tag.replace(r"\ ", r"\s+")
 
-            pattern = re.compile(
-                rf"{processed_tag}:\s*(\d+\.?\d*)\D*", re.IGNORECASE
-            )
+            pattern = re.compile(rf"{processed_tag}:\s*(\d+\.?\d*)\D*", re.IGNORECASE)
 
             match = pattern.search(text)
 
@@ -1019,21 +969,17 @@ def entrypoint():
             if n := _parse_value(key, "Num"):
                 if not has_perf_texts:
                     format_str = (
-                        f"{header:<{max_key_len}}, Num: {n}, "
-                        f"{metric.upper()}: {value:<7.4f}"
+                        f"{header:<{max_key_len}}, Num: {n}, " f"{metric.upper()}: {value:<7.4f}"
                     )
                 else:
                     format_str = (
-                        f"{header:<{max_key_len}}, Num: {n}, "
-                        f"{metric.upper()}: {value:<7.4f}, "
+                        f"{header:<{max_key_len}}, Num: {n}, " f"{metric.upper()}: {value:<7.4f}, "
                     )
                     for perf_tag in args.perf_tags:
                         perf_value = _parse_perf(compare_tag, perf_tag)
                         perf_values.append(perf_value)
 
-                        perf_value = (
-                            f"{perf_value:<.2f}" if perf_value else None
-                        )
+                        perf_value = f"{perf_value:<.2f}" if perf_value else None
                         perf_msg = _perf_msg(perf_tag)
                         format_str += f"{perf_msg}: {perf_value}, "
 
@@ -1045,8 +991,7 @@ def entrypoint():
             elif n := _parse_value(key, "Frames"):
                 if not has_perf_texts:
                     format_str = (
-                        f"{header:<{max_key_len}}, Frames: {n}, "
-                        f"{metric.upper()}: {value:<7.4f}"
+                        f"{header:<{max_key_len}}, Frames: {n}, " f"{metric.upper()}: {value:<7.4f}"
                     )
                 else:
                     format_str = (
@@ -1057,9 +1002,7 @@ def entrypoint():
                         perf_value = _parse_perf(compare_tag, perf_tag)
                         perf_values.append(perf_value)
 
-                        perf_value = (
-                            f"{perf_value:<.2f}" if perf_value else None
-                        )
+                        perf_value = f"{perf_value:<.2f}" if perf_value else None
                         perf_msg = _perf_msg(perf_tag)
                         format_str += f"{perf_msg}: {perf_value}, "
                         perf_msgs.append(perf_msg)
@@ -1091,9 +1034,7 @@ def entrypoint():
                     config = config_part
 
                 metric_value = next(
-                    p.split(":")[1].strip()
-                    for p in parts
-                    if p.startswith(metric_upper)
+                    p.split(":")[1].strip() for p in parts if p.startswith(metric_upper)
                 )
 
                 perf_data = {}
@@ -1107,9 +1048,7 @@ def entrypoint():
                         perf_data[key] = value
                         all_headers.add(key)
 
-                row_data.append(
-                    {"Config": config, metric_upper: metric_value, **perf_data}
-                )
+                row_data.append({"Config": config, metric_upper: metric_value, **perf_data})
 
             sorted_headers = ["Config", metric_upper] + sorted(
                 [h for h in all_headers if h not in ["Config", metric_upper]]
@@ -1146,12 +1085,8 @@ def entrypoint():
                 ]
                 else False
             )
-            sorted_items = sorted(
-                selected_items.items(), key=lambda x: x[1], reverse=reverse
-            )
-            selected_keys = [
-                key.split(",")[0].strip() for key in selected_items.keys()
-            ]
+            sorted_items = sorted(selected_items.items(), key=lambda x: x[1], reverse=reverse)
+            selected_keys = [key.split(",")[0].strip() for key in selected_items.keys()]
             max_key_len = max(len(key) for key in selected_keys)
 
             ref_perf_values = _ref_perf(key=selected_keys[0])
@@ -1161,34 +1096,23 @@ def entrypoint():
                 max_perf_values = ref_perf_values.copy()
 
             for key, value in sorted_items:
-                format_str, perf_values, perf_msgs = _format_item(
-                    key, metric, value, max_key_len
-                )
+                format_str, perf_values, perf_msgs = _format_item(key, metric, value, max_key_len)
                 # skip 'None' msg but not 'NONE', 'NONE' means w/o cache
                 if "None" in format_str:
                     continue
 
-                if (
-                    not perf_values
-                    or None in perf_values
-                    or not perf_msgs
-                    or not args.cal_speedup
-                ):
+                if not perf_values or None in perf_values or not perf_msgs or not args.cal_speedup:
                     continue
 
                 if not max_perf_values:
                     max_perf_values = perf_values
                 else:
                     for i in range(len(max_perf_values)):
-                        max_perf_values[i] = max(
-                            max_perf_values[i], perf_values[i]
-                        )
+                        max_perf_values[i] = max(max_perf_values[i], perf_values[i])
 
             format_strs = []
             for key, value in sorted_items:
-                format_str, perf_values, perf_msgs = _format_item(
-                    key, metric, value, max_key_len
-                )
+                format_str, perf_values, perf_msgs = _format_item(key, metric, value, max_key_len)
 
                 # skip 'None' msg but not 'NONE', 'NONE' means w/o cache
                 if "None" in format_str:
@@ -1219,9 +1143,7 @@ def entrypoint():
             left_len = res_len // 2
             right_len = res_len - left_len
             print("-" * format_len)
-            print(
-                " " * left_len + f"Summary: {metric.upper()}" + " " * right_len
-            )
+            print(" " * left_len + f"Summary: {metric.upper()}" + " " * right_len)
             print("-" * format_len)
             for format_str in format_strs:
                 print(format_str)

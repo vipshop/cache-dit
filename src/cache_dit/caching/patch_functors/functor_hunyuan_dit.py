@@ -45,16 +45,11 @@ class HunyuanDiTPatchFunctor(PatchFunctor):
                 "the __patch_transformer_forward__ will overwrite the "
                 "parallized forward and cause a downgrade of performance."
             )
-            transformer.forward = __patch_transformer_forward__.__get__(
-                transformer
-            )
+            transformer.forward = __patch_transformer_forward__.__get__(transformer)
 
         transformer._is_patched = is_patched  # True or False
 
-        logger.info(
-            f"Applied {self.__class__.__name__} for {cls_name}, "
-            f"Patch: {is_patched}."
-        )
+        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
 
         return transformer
 
@@ -87,9 +82,7 @@ def __patch_block_forward__(
         hidden_states = self.skip_linear(cat)
 
     # 1. Self-Attention
-    norm_hidden_states = self.norm1(
-        hidden_states, temb
-    )  # checked: self.norm1 is correct
+    norm_hidden_states = self.norm1(hidden_states, temb)  # checked: self.norm1 is correct
     attn_output = self.attn1(
         norm_hidden_states,
         image_rotary_emb=image_rotary_emb,
@@ -144,16 +137,10 @@ def __patch_transformer_forward__(
     encoder_hidden_states_t5 = self.text_embedder(
         encoder_hidden_states_t5.view(-1, encoder_hidden_states_t5.shape[-1])
     )
-    encoder_hidden_states_t5 = encoder_hidden_states_t5.view(
-        batch_size, sequence_length, -1
-    )
+    encoder_hidden_states_t5 = encoder_hidden_states_t5.view(batch_size, sequence_length, -1)
 
-    encoder_hidden_states = torch.cat(
-        [encoder_hidden_states, encoder_hidden_states_t5], dim=1
-    )
-    text_embedding_mask = torch.cat(
-        [text_embedding_mask, text_embedding_mask_t5], dim=-1
-    )
+    encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states_t5], dim=1)
+    text_embedding_mask = torch.cat([text_embedding_mask, text_embedding_mask_t5], dim=-1)
     text_embedding_mask = text_embedding_mask.unsqueeze(2).bool()
 
     encoder_hidden_states = torch.where(
@@ -171,13 +158,8 @@ def __patch_transformer_forward__(
             skips=skips,
         )  # (N, L, D)
 
-    if (
-        controlnet_block_samples is not None
-        and len(controlnet_block_samples) != 0
-    ):
-        raise ValueError(
-            "The number of controls is not equal to the number of skip connections."
-        )
+    if controlnet_block_samples is not None and len(controlnet_block_samples) != 0:
+        raise ValueError("The number of controls is not equal to the number of skip connections.")
 
     # final layer
     hidden_states = self.norm_out(hidden_states, temb.to(torch.float32))

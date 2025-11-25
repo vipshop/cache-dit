@@ -11,7 +11,7 @@ from diffusers.pipelines.consisid.consisid_utils import (
     process_face_embeddings_infer,
 )
 from diffusers.utils import export_to_video
-from utils import get_args, strify, cachify
+from utils import get_args, strify, cachify, MemoryTracker
 import cache_dit
 
 
@@ -19,7 +19,11 @@ args = get_args()
 print(args)
 
 
-model_id = os.environ.get("CONSISID_DIR", "BestWishYsh/ConsisID-preview")
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get("CONSISID_DIR", "BestWishYsh/ConsisID-preview")
+)
 
 (
     face_helper_1,
@@ -37,6 +41,8 @@ pipe = ConsisIDPipeline.from_pretrained(
 
 # ConsisID works well with long and well-described prompts. Make sure the face in the image is clearly visible (e.g., preferably half-body or full-body).
 prompt = "The video captures a boy walking along a city street, filmed in black and white on a classic 35mm camera. His expression is thoughtful, his brow slightly furrowed as if he's lost in contemplation. The film grain adds a textured, timeless quality to the image, evoking a sense of nostalgia. Around him, the cityscape is filled with vintage buildings, cobblestone sidewalks, and softly blurred figures passing by, their outlines faint and indistinct. Streetlights cast a gentle glow, while shadows play across the boy's path, adding depth to the scene. The lighting highlights the boy's subtle smile, hinting at a fleeting moment of curiosity. The overall cinematic atmosphere, complete with classic film still aesthetics and dramatic contrasts, gives the scene an evocative and introspective feel."
+if args.prompt is not None:
+    prompt = args.prompt
 # image = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/consisid/consisid_input.png?download=true"
 image = "../data/consisid_input.png"
 
@@ -56,6 +62,10 @@ id_cond, id_vit_hidden, image, face_kps = process_face_embeddings_infer(
 if args.cache:
     cachify(args, pipe)
 
+memory_tracker = MemoryTracker() if args.track_memory else None
+if memory_tracker:
+    memory_tracker.__enter__()
+
 start = time.time()
 video = pipe(
     image=image,
@@ -70,6 +80,10 @@ video = pipe(
 ).frames[0]
 
 end = time.time()
+
+if memory_tracker:
+    memory_tracker.__exit__(None, None, None)
+    memory_tracker.report()
 
 cache_dit.summary(pipe, details=True)
 
