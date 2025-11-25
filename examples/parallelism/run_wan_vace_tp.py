@@ -66,6 +66,14 @@ if args.cache or args.parallel_type is not None:
 # Enable memory savings
 torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
+
+# Add quantization support
+if args.quantize:
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+    )
+
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
@@ -119,6 +127,10 @@ def run_pipe(warmup: bool = False):
     ).frames[0]
     return output
 
+
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe(warmup=True)
