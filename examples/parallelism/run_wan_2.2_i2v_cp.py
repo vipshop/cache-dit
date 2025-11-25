@@ -156,7 +156,7 @@ if args.compile or args.quantize:
 
 
 # warmup
-run_pipe()
+run_pipe(warmup=True)
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
