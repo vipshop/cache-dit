@@ -65,7 +65,8 @@ if args.cache or args.parallel_type is not None:
 
 # Enable memory savings
 torch.cuda.empty_cache()
-pipe.enable_model_cpu_offload(device=device)
+# TP mode is incompatible with CPU offload, use direct GPU loading
+pipe.to(device)
 
 # Add quantization support
 if args.quantize:
