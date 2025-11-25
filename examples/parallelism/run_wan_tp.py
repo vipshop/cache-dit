@@ -137,10 +137,9 @@ def run_pipe(warmup: bool = False):
 
 
 if args.attn is not None:
-    for transformer_name in ["transformer", "transformer_2"]:
-        transformer_module = getattr(pipe, transformer_name, None)
-        if transformer_module is not None and hasattr(transformer_module, "set_attention_backend"):
-            transformer_module.set_attention_backend(args.attn)
+    if hasattr(pipe.transformer, "set_attention_backend"):
+        pipe.transformer.set_attention_backend(args.attn)
+        print(f"Set attention backend to {args.attn}")
 
 
 if args.compile:
