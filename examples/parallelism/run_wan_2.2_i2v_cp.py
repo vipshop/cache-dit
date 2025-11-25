@@ -56,7 +56,7 @@ if args.quantize:
     )
 
 
-if args.cache:
+if args.cache or args.parallel_type is not None:
     from cache_dit import (
         ForwardPattern,
         BlockAdapter,
