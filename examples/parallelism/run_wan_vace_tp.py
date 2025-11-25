@@ -13,6 +13,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import (
 from diffusers.utils import export_to_video, load_image
 
 from utils import (
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -63,9 +64,13 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
-# Enable memory savings
 torch.cuda.empty_cache()
-pipe.enable_model_cpu_offload(device=device)
+# Enable memory savings
+if GiB() < 40:
+    pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
+
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
@@ -119,6 +124,10 @@ def run_pipe(warmup: bool = False):
     ).frames[0]
     return output
 
+
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe(warmup=True)

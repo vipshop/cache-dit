@@ -123,6 +123,10 @@ def run_pipe(warmup: bool = False):
     return output
 
 
+if args.compile:
+    cache_dit.set_compile_configs()
+    pipe.transformer = torch.compile(pipe.transformer)
+
 # warmup
 _ = run_pipe(warmup=True)
 
