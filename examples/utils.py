@@ -130,12 +130,14 @@ def get_args(
     )
     parser.add_argument(
         "--ulysses-anything",
+        "--uaa",
         action="store_true",
         default=False,
         help="Enable Ulysses Anything Attention for context parallelism",
     )
     parser.add_argument(
         "--disable-compute-comm-overlap",
+        "--dcco",
         action="store_true",
         default=False,
         help="Disable compute-communication overlap during compilation",

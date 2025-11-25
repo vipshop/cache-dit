@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2 align="center">
-        CacheDiT: A Unified and Flexible Inference Engine <br>with 🤗🎉 Hybrid Cache Acceleration and Parallelism for DiTs
+        CacheDiT: A PyTorch-native and Flexible Inference Engine <br>with 🤗🎉 Hybrid Cache Acceleration and Parallelism for DiTs
     </h2>
   </p>
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
