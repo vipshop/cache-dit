@@ -132,6 +132,8 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 def run_pipe(warmup: bool = False):
     num_inference_steps = 50 if not warmup else 5
+    if args.steps is not None:
+        num_inference_steps = args.steps
     video = pipe(
         image=image,
         prompt=prompt,
