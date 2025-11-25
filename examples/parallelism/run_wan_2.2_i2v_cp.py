@@ -151,8 +151,8 @@ if args.compile or args.quantize:
     assert isinstance(pipe.transformer, WanTransformer3DModel)
     assert isinstance(pipe.transformer_2, WanTransformer3DModel)
     cache_dit.set_compile_configs()
-    pipe.transformer.compile_repeated_blocks(fullgraph=True)
-    pipe.transformer_2.compile_repeated_blocks(fullgraph=True)
+    pipe.transformer.compile_repeated_blocks()
+    pipe.transformer_2.compile_repeated_blocks()
 
 
 # warmup
