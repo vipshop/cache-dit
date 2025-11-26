@@ -45,6 +45,29 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         return transformer
 
     @staticmethod
+    def parallelize_text_encoder(
+        transformer: nn.Module,
+        tp_mesh: DeviceMesh,
+    ):
+        for _, block in transformer.model.language_model.layers.named_children():
+            layer_plan = {
+                "self_attn.q_proj": ColwiseParallel(),
+                "self_attn.k_proj": ColwiseParallel(),
+                "self_attn.v_proj": ColwiseParallel(),
+                "self_attn.o_proj": RowwiseParallel(),
+                "mlp.gate_proj": ColwiseParallel(),
+                "mlp.up_proj": ColwiseParallel(),
+                "mlp.down_proj": RowwiseParallel(),
+            }
+
+            parallelize_module(
+                module=block,
+                device_mesh=tp_mesh,
+                parallelize_plan=layer_plan,
+            )
+        return transformer
+
+    @staticmethod
     def rerangege_swiglu_weight(weight: torch.Tensor, tp_size: int):
         weight = rearrange(weight, "r (g h d) -> r (h g d)", g=2, h=tp_size)
         return weight
@@ -104,7 +127,11 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
     ):
         tp_size = tp_mesh.get_group().size()
         for _, block in transformer.transformer_blocks.named_children():
+            # moving to cuda speed up the rearrangement process significantly
+            old_device = next(block.parameters()).device
+            block.to("cuda")
             self.rearrange_feedforward_weight(block, tp_size)
+            block.to(old_device)
             block.attn.heads //= tp_size
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
@@ -128,8 +155,14 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             )
 
         for _, block in transformer.single_transformer_blocks.named_children():
+            # moving to cuda speed up the rearrangement process significantly
+            old_device = next(block.parameters()).device
+            block.to("cuda")
             self.rearrange_singleblock_weight(block, tp_size)
+            block.to(old_device)
             block.attn.heads //= tp_size
+            block.attn.inner_dim //= tp_size
+            block.attn.mlp_hidden_dim //= tp_size
             layer_plan = {
                 "attn.to_qkv_mlp_proj": ColwiseParallel(),
                 "attn.to_out": RowwiseParallel(),

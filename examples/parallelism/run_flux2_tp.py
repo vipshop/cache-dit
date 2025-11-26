@@ -1,24 +1,27 @@
 import os
 import sys
 
+from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.tp_plan_flux2 import (
+    Flux2TensorParallelismPlanner,
+)
+
 sys.path.append("..")
 
 import time
-import torch
-from diffusers import (
-    Flux2Pipeline,
-    Flux2Transformer2DModel,
-)
-from utils import (
-    get_args,
-    strify,
-    cachify,
-    maybe_init_distributed,
-    maybe_destroy_distributed,
-    MemoryTracker,
-)
-import cache_dit
 
+import torch
+from diffusers import Flux2Pipeline, Flux2Transformer2DModel
+from torch.distributed import DeviceMesh, init_device_mesh
+from utils import (
+    MemoryTracker,
+    cachify,
+    get_args,
+    maybe_destroy_distributed,
+    maybe_init_distributed,
+    strify,
+)
+
+import cache_dit
 
 args = get_args()
 print(args)
@@ -39,6 +42,16 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
 
 if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
+
+# currently need to parallelize text_encoder here
+tp_mesh: DeviceMesh = init_device_mesh(
+    device_type="cuda",
+    mesh_shape=[torch.distributed.get_world_size()],
+)
+pipe.text_encoder = Flux2TensorParallelismPlanner.parallelize_text_encoder(
+    transformer=pipe.text_encoder,
+    tp_mesh=tp_mesh,
+)
 
 torch.cuda.empty_cache()
 pipe.enable_model_cpu_offload(device=device)
