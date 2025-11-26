@@ -137,6 +137,7 @@ def get_args(
     )
     parser.add_argument(
         "--ulysses-async-qkv-proj",
+        "--ulysses-async",
         "--uaqkv",
         action="store_true",
         default=False,
