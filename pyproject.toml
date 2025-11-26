@@ -78,3 +78,6 @@ local_scheme = "no-local-version"
 
 line-length = 80
 target-version = ["py310"]
+
+[tool.uv.sources]
+diffusers = { git = "https://github.com/huggingface/diffusers", rev = "b91e8c0d0b2caf8847b8c2d8562b2d56f9677165" }
