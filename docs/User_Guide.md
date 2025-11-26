@@ -771,7 +771,11 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 <div id="ulysses-async"></div>
 
+<div align="center">
+
 ![alt text](../assets/parallelism/async_ulysses.png)
+
+</div>
 
 Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses Context Parallelism. Currently, only the [FLUX.1](../examples/parallelism/) model is supported, and more models will be added in the future—stay tuned!
 
@@ -792,11 +796,14 @@ cache_dit.enable_cache(
 )
 ```
 
+<div align="center">
+
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
 |:---:|:---:|:---:|:---:|  
 |FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
-|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=200px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=200px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=200px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=200px>
+|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=220px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=220px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=220px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=220px>
 
+</div>
 
 ## ⚡️Hybrid Tensor Parallelism
 
