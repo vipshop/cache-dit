@@ -47,13 +47,6 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
-        if transformer is not None and self._cp_planner_preferred_native_diffusers:
-            assert isinstance(
-                transformer, FluxTransformer2DModel
-            ), "Transformer must be an instance of FluxTransformer2DModel"
-            if hasattr(transformer, "_cp_plan"):
-                if transformer._cp_plan is not None:
-                    return transformer._cp_plan
 
         experimental_ulysses_async_qkv_proj = kwargs.get(
             "experimental_ulysses_async_qkv_proj", False
@@ -71,6 +64,14 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
                 "Enabled experimental Async QKV Projection with Ulysses style "
                 "Context Parallelism for FluxTransformer2DModel."
             )
+
+        if transformer is not None and self._cp_planner_preferred_native_diffusers:
+            assert isinstance(
+                transformer, FluxTransformer2DModel
+            ), "Transformer must be an instance of FluxTransformer2DModel"
+            if hasattr(transformer, "_cp_plan"):
+                if transformer._cp_plan is not None:
+                    return transformer._cp_plan
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
