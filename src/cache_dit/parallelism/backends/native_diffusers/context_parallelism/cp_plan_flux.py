@@ -104,7 +104,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 
 
 # Async Ulysses QKV Proj for FLUX model
-def _ulysses_async_forward(
+def _ulysses_async_attn__call__(
     self: FluxAttnProcessor,
     attn: FluxAttention,
     hidden_states: torch.Tensor,
@@ -247,7 +247,7 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_async_forward(
+        return _ulysses_async_attn__call__(
             self,
             attn,
             hidden_states,
