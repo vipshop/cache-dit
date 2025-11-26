@@ -115,6 +115,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 
 
 # Async Ulysses QKV Proj for FLUX model
+@torch.compiler.allow_in_graph
 def _ulysses_attn_with_async_qkv_proj(
     self: FluxAttnProcessor,
     attn: FluxAttention,
