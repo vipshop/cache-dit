@@ -798,6 +798,10 @@ cache_dit.enable_cache(
 
 <div align="center">
 
+<p align="center">
+    Ulysses: Standard Ulysses Attention, Async Ulysses: Ulysses Attenton with Async QKV Projection
+</p>
+
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
 |:---:|:---:|:---:|:---:|  
 |FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
