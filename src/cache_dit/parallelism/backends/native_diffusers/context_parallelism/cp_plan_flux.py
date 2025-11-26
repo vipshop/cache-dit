@@ -1,7 +1,16 @@
 import torch
-from typing import Optional
+import functools
+from typing import Optional, Tuple, Dict, Any
+from torch.distributed import DeviceMesh
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers import FluxTransformer2DModel
+from diffusers.models.transformers.transformer_flux import (
+    FluxSingleTransformerBlock,
+    FluxAttnProcessor,
+    FluxAttention,
+    apply_rotary_emb,
+    dispatch_attention_fn,
+)
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -22,6 +31,11 @@ from .cp_plan_registers import (
 
 from cache_dit.logger import init_logger
 
+from .attention._distributed_primitives import _wait_tensor
+from .attention._distributed_primitives import _all_to_all_single_sync
+from .attention._distributed_primitives import _all_to_all_single_async
+
+
 logger = init_logger(__name__)
 
 
@@ -39,6 +53,14 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
+
+        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
+        if experimental_ulysses_async:
+            FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__  # type: ignore[method-assign]
+            FluxSingleTransformerBlock.forward = (  # type: ignore[method-assign]
+                __patch_FluxSingleTransformerBlock_ulysses_async_forward__
+            )
+            logger.info("Enabled experimental Async Ulysses Attention for Flux model.")
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
@@ -79,3 +101,216 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
+
+
+# Async Ulysses QKV Proj for FLUX model
+def _ulysses_async_forward(
+    self: FluxAttnProcessor,
+    attn: FluxAttention,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+    pre_query: Optional[torch.Tensor] = None,
+    pre_key: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+
+    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
+    world_size = self._parallel_config.context_parallel_config.ulysses_degree
+    group = ulysses_mesh.get_group()
+
+    value = attn.to_v(hidden_states)  # type: torch.Tensor
+    value = value.unflatten(-1, (attn.heads, -1))
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_value = attn.add_v_proj(encoder_hidden_states)  # type: torch.Tensor
+        encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
+        value = torch.cat([encoder_value, value], dim=1)
+
+    B, S_KV_LOCAL, H, D = value.shape
+    H_LOCAL = H // world_size
+
+    # Async all to all for value
+    value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    value = _all_to_all_single_async(value, group)
+
+    query = attn.to_q(hidden_states)
+    query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
+    query = attn.norm_q(query)
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_query = attn.add_q_proj(encoder_hidden_states)
+        encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
+        encoder_query = attn.norm_added_q(encoder_query)
+        query = torch.cat([encoder_query, query], dim=1)
+    if image_rotary_emb is not None:
+        query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+
+    # Async all to all for query
+    _, S_Q_LOCAL, _, _ = query.shape
+    query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    query = _all_to_all_single_async(query, group)
+
+    key = attn.to_k(hidden_states)  # type: torch.Tensor
+    key = key.unflatten(-1, (attn.heads, -1))
+    key = attn.norm_k(key)
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_key = attn.add_k_proj(encoder_hidden_states)
+        encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
+        encoder_key = attn.norm_added_k(encoder_key)
+        key = torch.cat([encoder_key, key], dim=1)
+    if image_rotary_emb is not None:
+        key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+
+    # Async all to all for key
+    key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    key = _all_to_all_single_async(key, group)
+
+    # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+    value = _wait_tensor(value)
+    value = (
+        value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    query = _wait_tensor(query)
+    query = (
+        query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    key = _wait_tensor(key)
+    key = (
+        key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    out = dispatch_attention_fn(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        backend=self._attention_backend,
+        parallel_config=None,  # set to None to avoid double parallelism
+    )
+
+    out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+
+    if encoder_hidden_states is not None:
+        # Must be sync all to all for out when encoder_hidden_states is used
+        out = _all_to_all_single_sync(out, group)
+        out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+
+        hidden_states = out.flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
+
+        encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
+            [
+                encoder_hidden_states.shape[1],
+                hidden_states.shape[1] - encoder_hidden_states.shape[1],
+            ],
+            dim=1,
+        )
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
+
+        return hidden_states, encoder_hidden_states
+    else:
+        # Can be async all to all for out when no encoder_hidden_states
+        shape = out.shape  # (world_size, H_LOCAL, B, S_Q_LOCAL, D)
+        out = _all_to_all_single_async(out, group)
+        hidden_states = out.reshape(shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        return hidden_states
+
+
+FluxAttnProcessor_original__call__ = FluxAttnProcessor.__call__
+
+
+@functools.wraps(FluxAttnProcessor_original__call__)
+def __patch_FluxAttnProcessor_ulysses_async__call__(
+    self: FluxAttnProcessor,
+    attn: "FluxAttention",
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+    pre_query: Optional[torch.Tensor] = None,
+    pre_key: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    if (
+        hasattr(self._parallel_config, "context_parallel_config")
+        and self._parallel_config.context_parallel_config is not None
+        and self._parallel_config.context_parallel_config.ulysses_degree > 1
+    ):
+        return _ulysses_async_forward(
+            self,
+            attn,
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask,
+            image_rotary_emb=image_rotary_emb,
+            pre_query=pre_query,
+            pre_key=pre_key,
+        )
+
+    # Otherwise, use the original call for non-ulysses case
+    return FluxAttnProcessor_original__call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=encoder_hidden_states,
+        attention_mask=attention_mask,
+        image_rotary_emb=image_rotary_emb,
+        pre_query=pre_query,
+        pre_key=pre_key,
+    )
+
+
+@functools.wraps(FluxSingleTransformerBlock.forward)
+def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
+    self: FluxSingleTransformerBlock,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    temb: torch.Tensor,
+    image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    text_seq_len = encoder_hidden_states.shape[1]
+    hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+    residual = hidden_states
+    norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
+    # mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+    joint_attention_kwargs = joint_attention_kwargs or {}
+    attn_output = self.attn(
+        hidden_states=norm_hidden_states,
+        image_rotary_emb=image_rotary_emb,
+        **joint_attention_kwargs,
+    )
+    # NOTE: Enable the out all2all overlap with mlp computation
+    mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+
+    # NOTE: Then ensure the attn_output is ready
+    attn_output = _wait_tensor(attn_output)
+    attn_output = attn_output.contiguous()
+    if attn_output.ndim == 4:
+        attn_output = attn_output.flatten(2, 3)
+
+    hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
+    gate = gate.unsqueeze(1)
+    hidden_states = gate * self.proj_out(hidden_states)
+    hidden_states = residual + hidden_states
+    if hidden_states.dtype == torch.float16:
+        hidden_states = hidden_states.clip(-65504, 65504)
+
+    encoder_hidden_states, hidden_states = (
+        hidden_states[:, :text_seq_len],
+        hidden_states[:, text_seq_len:],
+    )
+    return encoder_hidden_states, hidden_states
