@@ -235,7 +235,7 @@ def _ulysses_attn_with_async_qkv_proj(
         # Can be async all to all for out when no encoder_hidden_states
         shape = out.shape  # (world_size, H_LOCAL, B, S_Q_LOCAL, D)
         out = _all_to_all_single_async(out, group)
-        hidden_states = out.reshape(shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        hidden_states = out.reshape(shape).flatten(0, 1).permute(1, 2, 0, 3)
         return hidden_states
 
 
@@ -297,8 +297,10 @@ def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
 
     residual = hidden_states
     norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
-    # mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+
     joint_attention_kwargs = joint_attention_kwargs or {}
+    # Perform attention with Ulysses async QKV proj, the attn_output
+    # may be is an instance of AsyncCollectiveTensor.
     attn_output = self.attn(
         hidden_states=norm_hidden_states,
         image_rotary_emb=image_rotary_emb,
