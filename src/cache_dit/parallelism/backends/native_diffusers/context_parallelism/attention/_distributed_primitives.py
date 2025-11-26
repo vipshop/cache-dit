@@ -44,10 +44,19 @@ def _all_to_all_single_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
 ) -> torch.Tensor:
-    # TODO: should we use dist.all_to_all_single with async_op=True here?
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
     return x
+
+
+def _all_to_all_single_async_v2(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> dist.Work:
+    # TODO: should we use dist.all_to_all_single with async_op=True here?
+    x = x.flatten()
+    work = dist.all_to_all_single(x, x, None, None, group, async_op=True)
+    return work
 
 
 def _get_rank_world_size(
