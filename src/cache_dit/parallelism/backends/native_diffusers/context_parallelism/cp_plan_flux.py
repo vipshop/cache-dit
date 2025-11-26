@@ -56,8 +56,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 
         experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
         if experimental_ulysses_async:
-            FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__  # type: ignore[method-assign]
-            FluxSingleTransformerBlock.forward = (  # type: ignore[method-assign]
+            FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__
+            FluxSingleTransformerBlock.forward = (
                 __patch_FluxSingleTransformerBlock_ulysses_async_forward__
             )
             logger.info("Enabled experimental Async Ulysses Attention for Flux model.")
