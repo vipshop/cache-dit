@@ -805,7 +805,7 @@ cache_dit.enable_cache(
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
 |:---:|:---:|:---:|:---:|  
 |FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
-|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=220px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=220px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=220px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=220px>
+|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
 
 </div>
 
