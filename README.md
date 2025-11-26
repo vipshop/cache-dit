@@ -269,6 +269,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [🤖SCM: Steps Computation Masking](./docs/User_Guide.md#steps-mask)
 - [⚡️Hybrid Context Parallelism](./docs/User_Guide.md#context-parallelism)
 - [🤖UAA: Ulysses Anything Attention](./docs/User_Guide.md#ulysses-anything-attention)
+- [🤖Async Ulysses QKV Projection](./docs/User_Guide.md#ulysses-async)
 - [⚡️Hybrid Tensor Parallelism](./docs/User_Guide.md#tensor-parallelism)
 - [🤖Low-bits Quantization](./docs/User_Guide.md#quantization)
 - [🤖How to use FP8 Attention](./docs/User_Guide.md#fp8-attention)

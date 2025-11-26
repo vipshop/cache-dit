@@ -136,6 +136,14 @@ def get_args(
         help="Enable Ulysses Anything Attention for context parallelism",
     )
     parser.add_argument(
+        "--ulysses-async-qkv-proj",
+        "--ulysses-async",
+        "--uaqkv",
+        action="store_true",
+        default=False,
+        help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
+    )
+    parser.add_argument(
         "--disable-compute-comm-overlap",
         "--dcco",
         action="store_true",
@@ -173,6 +181,7 @@ def cachify(
             {
                 "attention_backend": ("_native_cudnn" if not args.attn else args.attn),
                 "experimental_ulysses_anything": args.ulysses_anything,
+                "experimental_ulysses_async_qkv_proj": args.ulysses_async_qkv_proj,
             }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
             else None
@@ -228,6 +237,8 @@ def strify(args, pipe_or_stats):
     )
     if args.ulysses_anything:
         base_str += "_ulysses_anything"
+    if args.ulysses_async_qkv_proj:
+        base_str += "_ulysses_async_qkv_proj"
     return base_str
 
 

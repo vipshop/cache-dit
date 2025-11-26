@@ -30,6 +30,7 @@
 - [🤖SCM: Steps Computation Masking](#steps-mask)
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
 - [🤖UAA: Ulysses Anything Attention](#ulysses-anything-attention)
+- [🤖Async Ulysses QKV Projection](#ulysses-async)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🤖Low-bits Quantization](#quantization)
 - [🤖How to use FP8 Attention](#fp8-attention)
@@ -766,6 +767,47 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 > [!Important]
 > Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the `cpu:gloo` commucation backend is not available.
 
+## 🤖Async Ulysses QKV Projection
+
+<div id="ulysses-async"></div>
+
+<div align="center">
+
+![alt text](../assets/parallelism/async_ulysses.png)
+
+</div>
+
+Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses Context Parallelism. Currently, only the [FLUX.1](../examples/parallelism/) model is supported, and more models will be added in the future—stay tuned!
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set `experimental_ulysses_async_qkv_proj` as True to enable Async Ulysses QKV Projection.
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2,
+        parallel_kwargs={
+            "experimental_ulysses_async_qkv_proj": True
+        },
+    ),
+)
+```
+
+<div align="center">
+
+<p align="center">
+    Ulysses: Standard Ulysses Attention, Async Ulysses: Ulysses Attenton with Async QKV Projection
+</p>
+
+|L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
+|:---:|:---:|:---:|:---:|  
+|FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
+|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
+
+</div>
 
 ## ⚡️Hybrid Tensor Parallelism
 
