@@ -54,13 +54,18 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
-        if experimental_ulysses_async:
+        experimental_ulysses_async_qkv_proj = kwargs.get(
+            "experimental_ulysses_async_qkv_proj", False
+        )
+        if experimental_ulysses_async_qkv_proj:
             FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__
             FluxSingleTransformerBlock.forward = (
                 __patch_FluxSingleTransformerBlock_ulysses_async_forward__
             )
-            logger.info("Enabled experimental Async Ulysses Attention for Flux model.")
+            logger.info(
+                "Enabled experimental Async QKV Projection with Ulysses style "
+                "Context Parallelism for FluxTransformer2DModel."
+            )
 
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
