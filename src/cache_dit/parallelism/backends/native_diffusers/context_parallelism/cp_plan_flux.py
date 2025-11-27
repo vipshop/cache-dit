@@ -40,7 +40,7 @@ from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
 logger = init_logger(__name__)
 
 
-@ContextParallelismPlannerRegister.register("Flux")
+@ContextParallelismPlannerRegister.register("FluxTransformer2DModel")
 class FluxContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
