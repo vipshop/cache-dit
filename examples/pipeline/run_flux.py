@@ -68,7 +68,7 @@ if args.prompt is not None:
 def run_pipe():
     steps = args.steps if args.steps is not None else 28
     if args.profile and args.steps is None:
-        steps = 1
+        steps = 3
     image = pipe(
         prompt,
         height=1024 if args.height is None else args.height,
