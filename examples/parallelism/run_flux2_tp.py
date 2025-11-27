@@ -73,6 +73,8 @@ torch.cuda.empty_cache()
 
 if not args.compile:
     pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
 
 assert isinstance(pipe.transformer, Flux2Transformer2DModel)
 
