@@ -28,7 +28,6 @@ rank, device = maybe_init_distributed(args)
 
 if GiB() < 128:
     assert args.quantize, "Quantization is required to fit FLUX.2 in <128GB memory."
-    args.quantize_type = "bitsandbytes_4bit"  # force 4-bit quantization
     assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
         f"Unsupported quantization type: {args.quantize_type}, only "
         "'bitsandbytes_4bit' and 'float8_weight_only' are supported."
