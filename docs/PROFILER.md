@@ -110,7 +110,7 @@ Creates a ProfilerContext from command-line arguments.
 - `--profile-name` (str): Profile name prefix (default: auto-generated timestamp)
 - `--profile-dir` (str): Output directory (default: $CACHE_DIT_TORCH_PROFILER_DIR or `/tmp/cache_dit_profiles`)
 - `--profile-activities` (list): Activities to profile - CPU, GPU, MEM (default: ["CPU", "GPU"])
-- `--profile-with-stack`: Record stack traces (default: False, enable for detailed debugging)
+- `--profile-with-stack`: Record stack traces (default: True, enable for detailed debugging)
 - `--profile-record-shapes`: Record tensor shapes (default: True)
 
 **Returns:**
@@ -121,7 +121,7 @@ Creates a ProfilerContext from command-line arguments.
 
 ### Controlling Trace File Size
 
-When `--profile` is enabled without specifying `--steps`, the inference steps are automatically reduced to 3 to keep trace files small. The profiler captures all operations during these steps.
+When `--profile` is enabled without specifying `--steps`, the inference steps are automatically reduced to 1 to keep trace files small. The profiler captures all operations during these steps.
 
 ```bash
 # Profile with 3 steps (small trace file, recommended)
@@ -198,7 +198,7 @@ with ProfilerContext(
     activities=["CPU", "GPU"],
     output_dir="/tmp/profiles",
     profile_name="my_inference",
-    with_stack=False,
+    with_stack=True,
     record_shapes=True,
 ):
     output = model(input)

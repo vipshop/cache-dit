@@ -279,6 +279,6 @@ def create_profiler_from_args(args, profile_name=None):
         activities=getattr(args, "profile_activities", ["CPU", "GPU"]),
         output_dir=getattr(args, "profile_dir", None),
         profile_name=profile_name or getattr(args, "profile_name", None),
-        with_stack=getattr(args, "profile_with_stack", False),
+        with_stack=getattr(args, "profile_with_stack", True),
         record_shapes=getattr(args, "profile_record_shapes", True),
     )
