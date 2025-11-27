@@ -115,6 +115,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 
 
 # Async Ulysses QKV Proj for FLUX model
+# Reference:
+# - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
 def _ulysses_attn_with_async_qkv_proj(
     self: FluxAttnProcessor,
     attn: FluxAttention,
