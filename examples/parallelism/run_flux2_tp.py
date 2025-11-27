@@ -49,23 +49,6 @@ if args.cache or args.parallel_type is not None:
         ),
     )
 
-# tp_mesh: DeviceMesh = init_device_mesh(
-#     device_type="cuda",
-#     mesh_shape=[torch.distributed.get_world_size()],
-# )
-# tp_planer = Flux2TensorParallelismPlanner()
-# tp_planer.parallelize_text_encoder(
-#     text_encoder=pipe.text_encoder,
-#     tp_mesh=tp_mesh,
-# )
-# pipe.text_encoder.to("cpu")
-# torch.cuda.empty_cache()
-
-# tp_planer.parallelize_transformer(
-#     transformer=pipe.transformer,
-#     tp_mesh=tp_mesh,
-# )
-# pipe.transformer.to("cpu")
 torch.cuda.empty_cache()
 
 pipe.enable_model_cpu_offload(device=device)
