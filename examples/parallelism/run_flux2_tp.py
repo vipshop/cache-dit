@@ -76,7 +76,10 @@ world_size = torch.distributed.get_world_size() if torch.distributed.is_initiali
 
 if world_size < 4 and GiB() <= 48:
     assert not args.compile, "Compilation requires more GPU memory. Please disable it."
-    pipe.enable_model_cpu_offload(device=device)
+    if world_size < 2:
+        pipe.enable_sequential_cpu_offload(device=device)
+    else:
+        pipe.enable_model_cpu_offload(device=device)
     print("Enabled model CPU offload.")
 else:
     pipe.to(device)
