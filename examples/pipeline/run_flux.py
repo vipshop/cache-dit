@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, cachify, MemoryTracker
+from utils import get_args, strify, cachify, MemoryTracker, create_profiler_from_args
 import cache_dit
 
 
@@ -80,11 +80,18 @@ def run_pipe():
 _ = run_pipe()
 
 memory_tracker = MemoryTracker() if args.track_memory else None
+
 if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-image = run_pipe()
+if args.profile:
+    profiler = create_profiler_from_args(args, profile_name="flux_inference")
+    with profiler:
+        image = run_pipe()
+    print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
+else:
+    image = run_pipe()
 end = time.time()
 
 if memory_tracker:

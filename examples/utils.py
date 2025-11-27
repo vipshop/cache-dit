@@ -142,6 +142,22 @@ def get_args(
         default=False,
         help="Disable compute-communication overlap during compilation",
     )
+    parser.add_argument("--profile", action="store_true", default=False)
+    parser.add_argument("--profile-name", type=str, default=None)
+    parser.add_argument("--profile-dir", type=str, default=None)
+    parser.add_argument(
+        "--profile-activities",
+        type=str,
+        nargs="+",
+        default=["CPU", "GPU"],
+        choices=["CPU", "GPU", "MEM"],
+    )
+    parser.add_argument("--profile-with-stack", action="store_true", default=False)
+    parser.add_argument("--profile-record-shapes", action="store_true", default=False)
+    parser.add_argument("--profile-wait", type=int, default=0)
+    parser.add_argument("--profile-warmup", type=int, default=1)
+    parser.add_argument("--profile-active", type=int, default=3)
+    parser.add_argument("--profile-repeat", type=int, default=1)
     return parser.parse_args() if parse else parser
 
 
@@ -257,3 +273,20 @@ def maybe_init_distributed(args=None):
 def maybe_destroy_distributed():
     if dist.is_initialized():
         dist.destroy_process_group()
+
+
+def create_profiler_from_args(args, profile_name=None):
+    from cache_dit.profiler import ProfilerContext
+
+    return ProfilerContext(
+        enabled=args.profile,
+        activities=getattr(args, "profile_activities", ["CPU", "GPU"]),
+        output_dir=getattr(args, "profile_dir", None),
+        profile_name=profile_name or getattr(args, "profile_name", None),
+        with_stack=getattr(args, "profile_with_stack", False),
+        record_shapes=getattr(args, "profile_record_shapes", True),
+        wait=getattr(args, "profile_wait", 0),
+        warmup=getattr(args, "profile_warmup", 1),
+        active=getattr(args, "profile_active", 3),
+        repeat=getattr(args, "profile_repeat", 1),
+    )
