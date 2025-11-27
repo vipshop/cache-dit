@@ -9,6 +9,7 @@ import torch
 from diffusers import Flux2Pipeline, Flux2Transformer2DModel
 from utils import (
     MemoryTracker,
+    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -73,7 +74,8 @@ torch.cuda.empty_cache()
 
 world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
 
-if not args.compile or world_size < 4:
+if world_size < 4 and GiB() <= 48:
+    assert not args.compile, "Compilation requires more GPU memory. Please disable it."
     pipe.enable_model_cpu_offload(device=device)
     print("Enabled model CPU offload.")
 else:
