@@ -48,14 +48,14 @@ tp_mesh: DeviceMesh = init_device_mesh(
     mesh_shape=[torch.distributed.get_world_size()],
 )
 tp_planer = Flux2TensorParallelismPlanner()
-pipe.text_encoder = tp_planer.parallelize_text_encoder(
+tp_planer.parallelize_text_encoder(
     transformer=pipe.text_encoder,
     tp_mesh=tp_mesh,
 )
 pipe.text_encoder.to("cpu")
 torch.cuda.empty_cache()
 
-pipe.transformer = tp_planer.parallelize_transformer(
+tp_planer.parallelize_transformer(
     transformer=pipe.transformer,
     tp_mesh=tp_mesh,
 )
@@ -81,7 +81,7 @@ if args.prompt is not None:
 
 
 def run_pipe(warmup: bool = False):
-    generator = torch.Generator("cpu").manual_seed(0)
+    generator = torch.Generator("cpu").manual_seed(42)
     image = pipe(
         prompt=prompt,
         # 28 steps can be a good trade-off
