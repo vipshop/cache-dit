@@ -137,7 +137,7 @@ def run_pipe(warmup: bool = False):
     image = pipe(
         prompt=prompt,
         # 28 steps can be a good trade-off
-        num_inference_steps=5 if warmup else (50 if args.steps is None else args.steps),
+        num_inference_steps=5 if warmup else (28 if args.steps is None else args.steps),
         guidance_scale=4,
         generator=generator,
     ).images[0]
