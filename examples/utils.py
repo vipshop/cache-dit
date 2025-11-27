@@ -153,7 +153,7 @@ def get_args(
         choices=["CPU", "GPU", "MEM"],
     )
     parser.add_argument("--profile-with-stack", action="store_true", default=False)
-    parser.add_argument("--profile-record-shapes", action="store_true", default=False)
+    parser.add_argument("--profile-record-shapes", action="store_true", default=True)
     parser.add_argument("--profile-wait", type=int, default=0)
     parser.add_argument("--profile-warmup", type=int, default=1)
     parser.add_argument("--profile-active", type=int, default=3)

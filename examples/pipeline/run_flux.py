@@ -66,11 +66,14 @@ if args.prompt is not None:
 
 
 def run_pipe():
+    steps = args.steps if args.steps is not None else 28
+    if args.profile and args.steps is None:
+        steps = 3
     image = pipe(
         prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
-        num_inference_steps=28 if args.steps is None else args.steps,
+        num_inference_steps=steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image

@@ -11,6 +11,18 @@ Add profiler to your example script with minimal changes:
 ```python
 from utils import create_profiler_from_args
 
+def run_pipe():
+    # Reduce steps when profiling to keep trace file small
+    steps = args.steps if args.steps is not None else 28
+    if args.profile and args.steps is None:
+        steps = 3
+    image = pipe(
+        prompt,
+        num_inference_steps=steps,
+        ...
+    ).images[0]
+    return image
+
 # Only create and use profiler when --profile is enabled
 if args.profile:
     profiler = create_profiler_from_args(args, profile_name="flux_inference")
@@ -36,11 +48,14 @@ pipe = FluxPipeline.from_pretrained(...)
 # ... model setup code ...
 
 def run_pipe():
+    steps = args.steps if args.steps is not None else 28
+    if args.profile and args.steps is None:
+        steps = 3
     image = pipe(
         prompt,
         height=1024,
         width=1024,
-        num_inference_steps=28,
+        num_inference_steps=steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
@@ -70,23 +85,14 @@ if memory_tracker:
 ## Command-Line Arguments
 
 ```bash
-# Enable profiler
+# Basic profiling
 python examples/pipeline/run_flux.py --profile
 
-# Custom profile name
-python examples/pipeline/run_flux.py --profile --profile-name my_run
+# With custom profile name and output directory
+python examples/pipeline/run_flux.py --profile --profile-name flux_test --profile-dir /tmp/profiles
 
-# Custom output directory
-python examples/pipeline/run_flux.py --profile --profile-dir /path/to/output
-
-# Profile CPU, GPU, and memory
+# Profile with memory tracking
 python examples/pipeline/run_flux.py --profile --profile-activities CPU GPU MEM
-
-# Enable stack traces (adds overhead, useful for debugging)
-python examples/pipeline/run_flux.py --profile --profile-with-stack
-
-# Disable shape recording
-python examples/pipeline/run_flux.py --profile --profile-record-shapes=False
 ```
 
 ## Parameters
@@ -109,13 +115,43 @@ Creates a ProfilerContext from command-line arguments.
 - `--profile-wait` (int): Steps to wait before profiling (default: 0)
 - `--profile-warmup` (int): Warmup steps (default: 1)
 - `--profile-active` (int): Active profiling steps (default: 3)
-- `--profile-repeat` (int): Repeat profiling cycle (default: 1)
+- `--profile-repeat` (int): Repeat profiling cycle (default: 1, recommended to keep at 1 for inference)
 
 **Returns:**
 - `ProfilerContext`: Context manager for profiling
 
 **Environment Variables:**
 - `CACHE_DIT_TORCH_PROFILER_DIR`: Default output directory
+
+### Understanding Profiler Schedule Parameters
+
+PyTorch profiler uses a scheduling mechanism to control when profiling happens:
+
+**`--profile-wait`**: Number of steps to skip before starting profiling
+- Used to skip initial overhead or compilation steps
+- Default: 0
+
+**`--profile-warmup`**: Number of warmup steps to record
+- These steps are profiled but marked as warmup in the trace
+- Default: 1
+
+**`--profile-active`**: Number of steps to actively profile
+- Main profiling steps that capture steady-state performance
+- Default: 3
+
+**Example Timeline** with default settings `wait=0, warmup=1, active=3`:
+```
+[warmup] [profile] [profile] [profile]
+```
+
+**Recommended Settings:**
+
+For diffusion inference (image/video generation):
+```bash
+python examples/pipeline/run_flux.py --profile
+```
+
+**Important:** When `--profile` is enabled without specifying `--steps`, the inference steps are automatically reduced to 3 to keep trace files small. This profiles 1 warmup step + 3 active steps, providing sufficient performance data while minimizing file size. If you need to profile with more steps, explicitly set `--steps`.
 
 ## View Results
 
