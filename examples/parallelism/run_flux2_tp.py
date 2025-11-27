@@ -71,7 +71,9 @@ if args.cache or args.parallel_type is not None:
 
 torch.cuda.empty_cache()
 
-if not args.compile:
+world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
+
+if not args.compile or world_size < 4:
     pipe.enable_model_cpu_offload(device=device)
 else:
     pipe.to(device)
