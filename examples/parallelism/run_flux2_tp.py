@@ -51,7 +51,8 @@ if args.cache or args.parallel_type is not None:
 
 torch.cuda.empty_cache()
 
-pipe.enable_model_cpu_offload(device=device)
+if not args.compile:
+    pipe.enable_model_cpu_offload(device=device)
 
 assert isinstance(pipe.transformer, Flux2Transformer2DModel)
 
