@@ -29,6 +29,10 @@ rank, device = maybe_init_distributed(args)
 if GiB() < 128:
     assert args.quantize, "Quantization is required to fit FLUX.2 in <128GB memory."
     args.quantize_type = "bitsandbytes_4bit"  # force 4-bit quantization
+    assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
+        f"Unsupported quantization type: {args.quantize_type}, only "
+        "'bitsandbytes_4bit' and 'float8_weight_only' are supported."
+    )
 
 
 pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
@@ -58,8 +62,20 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
         else None
     ),
 )
-pipe.to(device)
 
+if args.quantize and args.quantize_type == "float8_weight_only":
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "img_in",
+            "txt_in",
+        ],
+    )
+    pipe.text_encoder = cache_dit.quantize(
+        pipe.text_encoder,
+        quant_type=args.quantize_type,
+    )
 
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig, ParamsModifier
@@ -96,6 +112,11 @@ if args.cache or args.parallel_type is not None:
     )
 
 torch.cuda.empty_cache()
+
+if args.quantize_type == "bitsandbytes_4bit":
+    pipe.to(device)
+else:
+    pipe.enable_model_cpu_offload(device=device)
 
 assert isinstance(pipe.transformer, Flux2Transformer2DModel)
 
