@@ -838,7 +838,7 @@ cache_dit.enable_cache(
 
 <div id="parallel-text-encoder"></div>
 
-Users can set the extra_parallel_modules parameter (when using Tensor Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — for example, `text_encoder_2` in `FluxPipeline` and `text_encoder` in `Flux2Pipeline`. Currently, this feature is only supported in the native PyTorch backend (i.e., Tensor Parallelism). It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. Now, cache-dit supports text encoder parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev) and 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) models. cache-dit will support more models in the future.
+Users can set the `extra_parallel_modules` parameter (when using Tensor Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — e.g, `text_encoder_2` in `FluxPipeline` and `text_encoder` in `Flux2Pipeline`. Currently, this feature is only supported in the native PyTorch backend (i.e., Tensor Parallelism). It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. Now, cache-dit supports text encoder parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev) and 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) models. cache-dit will support more models in the future.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
