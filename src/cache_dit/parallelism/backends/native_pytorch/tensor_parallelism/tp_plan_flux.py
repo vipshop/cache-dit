@@ -26,7 +26,7 @@ logger = init_logger(__name__)
 @TensorParallelismPlannerRegister.register("Chroma")
 @TensorParallelismPlannerRegister.register("HunyuanImage")
 @TensorParallelismPlannerRegister.register("HunyuanVideo")
-@TensorParallelismPlannerRegister.register("Flux")
+@TensorParallelismPlannerRegister.register("FluxTransformer")
 class FluxTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
