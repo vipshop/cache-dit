@@ -52,12 +52,16 @@ pipe.text_encoder = tp_planer.parallelize_text_encoder(
     transformer=pipe.text_encoder,
     tp_mesh=tp_mesh,
 )
+pipe.text_encoder.to("cpu")
+torch.cuda.empty_cache()
+
 pipe.transformer = tp_planer.parallelize_transformer(
     transformer=pipe.transformer,
     tp_mesh=tp_mesh,
 )
-
+pipe.transformer.to("cpu")
 torch.cuda.empty_cache()
+
 pipe.enable_model_cpu_offload(device=device)
 
 assert isinstance(pipe.transformer, Flux2Transformer2DModel)
