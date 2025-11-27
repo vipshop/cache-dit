@@ -44,8 +44,8 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
 
         return transformer
 
-    @staticmethod
     def parallelize_text_encoder(
+        self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):

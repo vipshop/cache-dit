@@ -14,7 +14,7 @@ from diffusers import Flux2Pipeline, Flux2Transformer2DModel
 from torch.distributed import DeviceMesh, init_device_mesh
 from utils import (
     MemoryTracker,
-    cachify,
+    # cachify,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
@@ -40,16 +40,20 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
+# if args.cache or args.parallel_type is not None:
+#     cachify(args, pipe)
 
-# currently need to parallelize text_encoder here
 tp_mesh: DeviceMesh = init_device_mesh(
     device_type="cuda",
     mesh_shape=[torch.distributed.get_world_size()],
 )
-pipe.text_encoder = Flux2TensorParallelismPlanner.parallelize_text_encoder(
+tp_planer = Flux2TensorParallelismPlanner()
+pipe.text_encoder = tp_planer.parallelize_text_encoder(
     transformer=pipe.text_encoder,
+    tp_mesh=tp_mesh,
+)
+pipe.transformer = tp_planer.parallelize_transformer(
+    transformer=pipe.transformer,
     tp_mesh=tp_mesh,
 )
 
