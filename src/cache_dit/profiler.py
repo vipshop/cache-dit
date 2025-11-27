@@ -30,10 +30,6 @@ class ProfilerContext:
         profile_name: Optional[str] = None,
         with_stack: bool = False,
         record_shapes: bool = True,
-        wait: int = 0,
-        warmup: int = 1,
-        active: int = 3,
-        repeat: int = 1,
     ):
         self.enabled = enabled
         self.activities = activities or ["CPU", "GPU"]
@@ -41,10 +37,6 @@ class ProfilerContext:
         self.profile_name = profile_name or f"profile_{int(time.time())}"
         self.with_stack = with_stack
         self.record_shapes = record_shapes
-        self.wait = wait
-        self.warmup = warmup
-        self.active = active
-        self.repeat = repeat
 
         self.profiler = None
         self.trace_path = None
@@ -79,21 +71,12 @@ class ProfilerContext:
             logger.info("Started CUDA memory profiling")
 
         if torch_activities:
-            schedule = torch.profiler.schedule(
-                wait=self.wait, warmup=self.warmup, active=self.active, repeat=self.repeat
-            )
-
             self.profiler = profile(
                 activities=torch_activities,
-                schedule=schedule,
                 with_stack=self.with_stack,
                 record_shapes=self.record_shapes,
-                on_trace_ready=(
-                    torch.profiler.tensorboard_trace_handler(str(self.output_dir))
-                    if self.repeat > 1
-                    else None
-                ),
             )
+
             self.profiler.start()
             logger.info(
                 f"Started profiling. Traces will be saved to: {self.output_dir} "
@@ -107,11 +90,13 @@ class ProfilerContext:
             return
 
         if self.profiler is not None:
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+
             self.profiler.stop()
 
-            if self.repeat == 1:
-                logger.info(f"Exporting trace to: {self.trace_path}")
-                self.profiler.export_chrome_trace(str(self.trace_path))
+            logger.info(f"Exporting trace to: {self.trace_path}")
+            self.profiler.export_chrome_trace(str(self.trace_path))
 
             logger.info(f"Profiling completed. Trace saved to: {self.trace_path}")
 
@@ -131,10 +116,6 @@ class ProfilerContext:
             with open(memory_summary_path, "w") as f:
                 f.write(torch.cuda.memory_summary())
             logger.info(f"Memory summary saved to: {memory_summary_path}")
-
-    def step(self):
-        if self.enabled and self.profiler is not None:
-            self.profiler.step()
 
 
 def profile_function(

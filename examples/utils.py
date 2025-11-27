@@ -154,10 +154,6 @@ def get_args(
     )
     parser.add_argument("--profile-with-stack", action="store_true", default=False)
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
-    parser.add_argument("--profile-wait", type=int, default=0)
-    parser.add_argument("--profile-warmup", type=int, default=1)
-    parser.add_argument("--profile-active", type=int, default=3)
-    parser.add_argument("--profile-repeat", type=int, default=1)
     return parser.parse_args() if parse else parser
 
 
@@ -285,8 +281,4 @@ def create_profiler_from_args(args, profile_name=None):
         profile_name=profile_name or getattr(args, "profile_name", None),
         with_stack=getattr(args, "profile_with_stack", False),
         record_shapes=getattr(args, "profile_record_shapes", True),
-        wait=getattr(args, "profile_wait", 0),
-        warmup=getattr(args, "profile_warmup", 1),
-        active=getattr(args, "profile_active", 3),
-        repeat=getattr(args, "profile_repeat", 1),
     )

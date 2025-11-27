@@ -110,12 +110,8 @@ Creates a ProfilerContext from command-line arguments.
 - `--profile-name` (str): Profile name prefix (default: auto-generated timestamp)
 - `--profile-dir` (str): Output directory (default: $CACHE_DIT_TORCH_PROFILER_DIR or `/tmp/cache_dit_profiles`)
 - `--profile-activities` (list): Activities to profile - CPU, GPU, MEM (default: ["CPU", "GPU"])
-- `--profile-with-stack`: Record stack traces (default: False)
+- `--profile-with-stack`: Record stack traces (default: False, enable for detailed debugging)
 - `--profile-record-shapes`: Record tensor shapes (default: True)
-- `--profile-wait` (int): Steps to wait before profiling (default: 0)
-- `--profile-warmup` (int): Warmup steps (default: 1)
-- `--profile-active` (int): Active profiling steps (default: 3)
-- `--profile-repeat` (int): Repeat profiling cycle (default: 1, recommended to keep at 1 for inference)
 
 **Returns:**
 - `ProfilerContext`: Context manager for profiling
@@ -123,35 +119,17 @@ Creates a ProfilerContext from command-line arguments.
 **Environment Variables:**
 - `CACHE_DIT_TORCH_PROFILER_DIR`: Default output directory
 
-### Understanding Profiler Schedule Parameters
+### Controlling Trace File Size
 
-PyTorch profiler uses a scheduling mechanism to control when profiling happens:
+When `--profile` is enabled without specifying `--steps`, the inference steps are automatically reduced to 3 to keep trace files small. The profiler captures all operations during these steps.
 
-**`--profile-wait`**: Number of steps to skip before starting profiling
-- Used to skip initial overhead or compilation steps
-- Default: 0
-
-**`--profile-warmup`**: Number of warmup steps to record
-- These steps are profiled but marked as warmup in the trace
-- Default: 1
-
-**`--profile-active`**: Number of steps to actively profile
-- Main profiling steps that capture steady-state performance
-- Default: 3
-
-**Example Timeline** with default settings `wait=0, warmup=1, active=3`:
-```
-[warmup] [profile] [profile] [profile]
-```
-
-**Recommended Settings:**
-
-For diffusion inference (image/video generation):
 ```bash
+# Profile with 3 steps (small trace file, recommended)
 python examples/pipeline/run_flux.py --profile
-```
 
-**Important:** When `--profile` is enabled without specifying `--steps`, the inference steps are automatically reduced to 3 to keep trace files small. This profiles 1 warmup step + 3 active steps, providing sufficient performance data while minimizing file size. If you need to profile with more steps, explicitly set `--steps`.
+# Profile with full 28 steps (larger trace file)
+python examples/pipeline/run_flux.py --profile --steps 28
+```
 
 ## View Results
 
