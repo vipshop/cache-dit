@@ -16,9 +16,22 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     from cache_dit.utils import is_diffusers_at_least_0_3_5
     from cache_dit.caching.patch_functors import FluxPatchFunctor
 
-    assert isinstance(pipe.transformer, FluxTransformer2DModel)
+    supported_transformers = (FluxTransformer2DModel,)
+    try:
+        from diffusers import Flux2Transformer2DModel
+
+        supported_transformers += (Flux2Transformer2DModel,)
+    except ImportError:
+        Flux2Transformer2DModel = None
+
+    assert isinstance(pipe.transformer, supported_transformers)
+
     transformer_cls_name: str = pipe.transformer.__class__.__name__
-    if is_diffusers_at_least_0_3_5() and not transformer_cls_name.startswith("Nunchaku"):
+    if (
+        is_diffusers_at_least_0_3_5()
+        and not transformer_cls_name.startswith("Nunchaku")
+        and not transformer_cls_name.startswith("Flux2")
+    ):
         # NOTE(DefTruth): Users should never use this variable directly,
         # it is only for developers to control whether to enable dummy
         # blocks, default to enabled.
@@ -55,6 +68,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
                 **kwargs,
             )
     else:
+        # Case for Flux2Transformer2DModel and NunchakuFluxTransformer2DModel
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,

@@ -184,7 +184,12 @@ def cachify(
                 "experimental_ulysses_async_qkv_proj": args.ulysses_async_qkv_proj,
             }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
-            else None
+            else {
+                # Specify extra modules to be parallelized in addition to the main transformer,
+                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
+                # only supported in native pytorch backend (namely, Tensor Parallelism).
+                "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
+            }
         )
         cache_dit.enable_cache(
             pipe_or_adapter,

@@ -1,20 +1,15 @@
 import os
 import sys
 
-from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism import (
-    Flux2TensorParallelismPlanner,
-)
-
 sys.path.append("..")
 
 import time
 
 import torch
 from diffusers import Flux2Pipeline, Flux2Transformer2DModel
-from torch.distributed import DeviceMesh, init_device_mesh
 from utils import (
     MemoryTracker,
-    # cachify,
+    cachify,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
@@ -40,26 +35,37 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-# if args.cache or args.parallel_type is not None:
-#     cachify(args, pipe)
+if args.cache or args.parallel_type is not None:
+    cachify(
+        args,
+        pipe,
+        extra_parallel_modules=(
+            # Specify extra modules to be parallelized in addition to the main transformer,
+            # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
+            # only supported in native pytorch backend (namely, Tensor Parallelism).
+            [pipe.text_encoder]
+            if args.parallel_type == "tp"
+            else []
+        ),
+    )
 
-tp_mesh: DeviceMesh = init_device_mesh(
-    device_type="cuda",
-    mesh_shape=[torch.distributed.get_world_size()],
-)
-tp_planer = Flux2TensorParallelismPlanner()
-tp_planer.parallelize_text_encoder(
-    text_encoder=pipe.text_encoder,
-    tp_mesh=tp_mesh,
-)
-pipe.text_encoder.to("cpu")
-torch.cuda.empty_cache()
+# tp_mesh: DeviceMesh = init_device_mesh(
+#     device_type="cuda",
+#     mesh_shape=[torch.distributed.get_world_size()],
+# )
+# tp_planer = Flux2TensorParallelismPlanner()
+# tp_planer.parallelize_text_encoder(
+#     text_encoder=pipe.text_encoder,
+#     tp_mesh=tp_mesh,
+# )
+# pipe.text_encoder.to("cpu")
+# torch.cuda.empty_cache()
 
-tp_planer.parallelize_transformer(
-    transformer=pipe.transformer,
-    tp_mesh=tp_mesh,
-)
-pipe.transformer.to("cpu")
+# tp_planer.parallelize_transformer(
+#     transformer=pipe.transformer,
+#     tp_mesh=tp_mesh,
+# )
+# pipe.transformer.to("cpu")
 torch.cuda.empty_cache()
 
 pipe.enable_model_cpu_offload(device=device)

@@ -1,4 +1,5 @@
 import torch
+from transformers import T5EncoderModel
 from diffusers.models.transformers.transformer_flux import (
     FluxSingleTransformerBlock,
 )
@@ -48,14 +49,26 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
-        # TODO: Parallelize t5 text encoder via `apply_extra`
-        # abstract method and `extra_parallel_kwargs` ?
+
+        # Parallelize t5 text encoder for FLUX.1 via `extra_parallel_modules`
+        extra_parallel_modules = kwargs.get("extra_parallel_modules", [])
+        if extra_parallel_modules:
+            for module in extra_parallel_modules:
+                if isinstance(module, T5EncoderModel):
+                    module = self.parallelize_t5(
+                        module,
+                        tp_mesh=tp_mesh,
+                    )
+                    logger.info(
+                        f"Also applied Tensor Parallelism to extra module "
+                        f"{module.__class__.__name__}, id:{id(module)}"
+                    )
 
         return transformer
 
     def parallelize_t5(
         self,
-        text_encoder: nn.Module,
+        text_encoder: T5EncoderModel,
         tp_mesh: DeviceMesh,
     ):
         for i, block in enumerate(text_encoder.encoder.block):

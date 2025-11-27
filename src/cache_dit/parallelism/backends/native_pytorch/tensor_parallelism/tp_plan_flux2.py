@@ -12,6 +12,7 @@ from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, 
 
 from cache_dit.logger import init_logger
 from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.utils import maybe_empty_cache
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 
@@ -45,13 +46,13 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         if extra_parallel_modules:
             for module in extra_parallel_modules:
                 if isinstance(module, Mistral3ForConditionalGeneration):
+                    logger.info(
+                        f"Also apply Tensor Parallelism to extra module "
+                        f"{module.__class__.__name__}, id:{id(module)}"
+                    )
                     module = self.parallelize_text_encoder(
                         module,
                         tp_mesh=tp_mesh,
-                    )
-                    logger.info(
-                        f"Also applied Tensor Parallelism to extra module "
-                        f"{module.__class__.__name__}, id:{id(module)}"
                     )
 
         return transformer
@@ -77,6 +78,8 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        maybe_empty_cache()
+
         return text_encoder
 
     @classmethod
@@ -163,6 +166,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        maybe_empty_cache()
 
         for _, block in transformer.single_transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
@@ -182,4 +186,6 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        maybe_empty_cache()
+
         return transformer
