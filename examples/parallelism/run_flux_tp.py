@@ -63,12 +63,12 @@ if args.prompt is not None:
     prompt = args.prompt
 
 
-def run_pipe(pipe: FluxPipeline):
+def run_pipe(warmup: bool = False):
     image = pipe(
         prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
-        num_inference_steps=28 if args.steps is None else args.steps,
+        num_inference_steps=5 if warmup else (28 if args.steps is None else args.steps),
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
@@ -79,14 +79,14 @@ if args.compile:
     pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
-_ = run_pipe(pipe)
+_ = run_pipe(warmup=True)
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-image = run_pipe(pipe)
+image = run_pipe()
 end = time.time()
 
 if memory_tracker:
