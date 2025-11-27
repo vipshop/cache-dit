@@ -75,6 +75,7 @@ world_size = torch.distributed.get_world_size() if torch.distributed.is_initiali
 
 if not args.compile or world_size < 4:
     pipe.enable_model_cpu_offload(device=device)
+    print("Enabled model CPU offload.")
 else:
     pipe.to(device)
 
