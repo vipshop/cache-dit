@@ -2,15 +2,17 @@ import torch
 from diffusers.models.transformers.transformer_flux2 import (
     Flux2SingleTransformerBlock,
     Flux2TransformerBlock,
+    Flux2Transformer2DModel,
 )
 from einops import rearrange
-from torch import nn
+from transformers import Mistral3ForConditionalGeneration
 from torch.distributed import DeviceMesh, init_device_mesh
 
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
 from cache_dit.logger import init_logger
 from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.utils import maybe_empty_cache
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 
@@ -39,17 +41,28 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
-        # TODO: Parallelize t5 text encoder via `apply_extra`
-        # abstract method and `extra_parallel_kwargs` ?
+
+        extra_parallel_modules = kwargs.get("extra_parallel_modules", [])
+        if extra_parallel_modules:
+            for module in extra_parallel_modules:
+                if isinstance(module, Mistral3ForConditionalGeneration):
+                    logger.info(
+                        f"Also apply Tensor Parallelism to extra module "
+                        f"{module.__class__.__name__}, id:{id(module)}"
+                    )
+                    module = self.parallelize_text_encoder(
+                        module,
+                        tp_mesh=tp_mesh,
+                    )
 
         return transformer
 
     def parallelize_text_encoder(
         self,
-        transformer: nn.Module,
+        text_encoder: Mistral3ForConditionalGeneration,
         tp_mesh: DeviceMesh,
     ):
-        for _, block in transformer.model.language_model.layers.named_children():
+        for _, block in text_encoder.model.language_model.layers.named_children():
             layer_plan = {
                 "self_attn.q_proj": ColwiseParallel(),
                 "self_attn.k_proj": ColwiseParallel(),
@@ -65,27 +78,27 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
-        return transformer
+        maybe_empty_cache()
 
-    @staticmethod
-    def rerangege_swiglu_weight(weight: torch.Tensor, tp_size: int):
+        return text_encoder
+
+    @classmethod
+    def rerangege_swiglu_weight(cls, weight: torch.Tensor, tp_size: int):
         weight = rearrange(weight, "r (g h d) -> r (h g d)", g=2, h=tp_size)
         return weight
 
-    @staticmethod
-    def rearrange_feedforward_weight(block: Flux2TransformerBlock, tp_size):
+    @classmethod
+    def rearrange_feedforward_weight(cls, block: Flux2TransformerBlock, tp_size: int):
 
-        block.ff.linear_in.weight.data = Flux2TensorParallelismPlanner.rerangege_swiglu_weight(
+        block.ff.linear_in.weight.data = cls.rerangege_swiglu_weight(
             block.ff.linear_in.weight.data.T, tp_size
         ).T
-        block.ff_context.linear_in.weight.data = (
-            Flux2TensorParallelismPlanner.rerangege_swiglu_weight(
-                block.ff_context.linear_in.weight.data.T, tp_size
-            ).T
-        )
+        block.ff_context.linear_in.weight.data = cls.rerangege_swiglu_weight(
+            block.ff_context.linear_in.weight.data.T, tp_size
+        ).T
 
-    @staticmethod
-    def rearrange_singleblock_weight(block: Flux2SingleTransformerBlock, tp_size):
+    @classmethod
+    def rearrange_singleblock_weight(cls, block: Flux2SingleTransformerBlock, tp_size: int):
         attn = block.attn
         to_qkv_mlp_proj_weight = attn.to_qkv_mlp_proj.weight.data.T
         qkv, mlp = torch.split(
@@ -94,7 +107,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             dim=-1,
         )
 
-        mlp = Flux2TensorParallelismPlanner.rerangege_swiglu_weight(mlp, tp_size)
+        mlp = cls.rerangege_swiglu_weight(mlp, tp_size)
 
         def rerangege_qkv_weight(weight: torch.Tensor, tp_size: int):
             weight = rearrange(weight, "r (g h d) -> r (h g d)", g=3, h=tp_size)
@@ -122,7 +135,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
 
     def parallelize_transformer(
         self,
-        transformer: nn.Module,
+        transformer: Flux2Transformer2DModel,
         tp_mesh: DeviceMesh,
     ):
         tp_size = tp_mesh.get_group().size()
@@ -153,6 +166,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        maybe_empty_cache()
 
         for _, block in transformer.single_transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
@@ -172,4 +186,6 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        maybe_empty_cache()
+
         return transformer
