@@ -88,6 +88,7 @@ def get_args(
             "int4",
             "int4_weight_only",
             "bitsandbytes_4bit",
+            "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
     parser.add_argument(
@@ -150,7 +151,11 @@ def get_args(
         default=False,
         help="Disable compute-communication overlap during compilation",
     )
-    return parser.parse_args() if parse else parser
+    args_or_parser = parser.parse_args() if parse else parser
+    if parse:
+        if args_or_parser.quantize_type == "bnb_4bit":  # alias
+            args_or_parser.quantize_type = "bitsandbytes_4bit"
+    return args_or_parser
 
 
 def cachify(

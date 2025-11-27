@@ -54,6 +54,14 @@ def print_tensor(
     if disable:
         return
 
+    if x is None:
+        print(f"{name} is None")
+        return
+
+    if not isinstance(x, torch.Tensor):
+        print(f"{name} is not a tensor, type: {type(x)}")
+        return
+
     x = x.contiguous()
     if torch.distributed.is_initialized():
         # all gather hidden_states and check values mean
