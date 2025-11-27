@@ -80,10 +80,11 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 | 📚Model | Cache  | CP | TP | 📚Model | Cache  | CP | TP |
 |:---|:---|:---|:---|:---|:---|:---|:---|
-| **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
-| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[FLUX.1-Fill `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
-| **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
-| **🎉[Qwen...Edit](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🔥🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | 🔥✔️ | ✖️ | 🔥✔️ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[FLUX.1-Fill `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🎉[Qwen...Edit](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...E...Plus `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[Qwen...Lightning](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Light `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[Qwen...Control..](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...E...Light `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[Wan 2.1 I2V/T2V](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Mochi](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✔️ |
