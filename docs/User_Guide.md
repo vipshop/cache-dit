@@ -746,7 +746,7 @@ For example, in the T2I and I2V tasks, the length of prompts input by users is o
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
-Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce commucation latency.
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce communication latency.
 
 <div align="center">
 
@@ -794,12 +794,13 @@ cache_dit.enable_cache(
         },
     ),
 )
+# torchrun --nproc_per_node=2 parallel_cache_ulysses_async.py
 ```
 
 <div align="center">
 
 <p align="center">
-    Ulysses: Standard Ulysses Attention, Async Ulysses: Ulysses Attenton with Async QKV Projection
+    Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attenton with Async QKV Projection
 </p>
 
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
