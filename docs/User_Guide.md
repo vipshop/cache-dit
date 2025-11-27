@@ -845,13 +845,13 @@ Users can set the extra_parallel_modules parameter (when using Tensor Parallelis
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
+    pipe, 
     cache_config=DBCacheConfig(...),
     # Set tp_size > 1 to enable tensor parallelism.
     parallelism_config=ParallelismConfig(
         tp_size=2,
         parallel_kwargs={
-            "extra_parallel_modules": [text_encoder], # FLUX.2
+            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
         },
     ),
 )
