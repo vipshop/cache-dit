@@ -29,10 +29,9 @@ rank, device = maybe_init_distributed(args)
 if GiB() < 128:
     assert args.quantize, "Quantization is required to fit FLUX.2 in <128GB memory."
     assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
-        f"Unsupported quantization type: {args.quantize_type}, only "
-        "'bitsandbytes_4bit' and 'float8_weight_only' are supported."
+        f"Unsupported quantization type: {args.quantize_type}, only supported"
+        "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
     )
-
 
 pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     (
@@ -57,7 +56,7 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
                 components_to_quantize=["text_encoder", "transformer"],
             )
         )
-        if args.quantize and args.quantize_type == "bitsandbytes_4bit"
+        if args.quantize and args.quantize_type in ("bitsandbytes_4bit",)
         else None
     ),
 )
