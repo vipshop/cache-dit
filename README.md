@@ -272,6 +272,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [🤖UAA: Ulysses Anything Attention](./docs/User_Guide.md#ulysses-anything-attention)
 - [🤖Async Ulysses QKV Projection](./docs/User_Guide.md#ulysses-async)
 - [⚡️Hybrid Tensor Parallelism](./docs/User_Guide.md#tensor-parallelism)
+- [🤖Parallelize Text Encoder](./docs/User_Guide.md#parallel-text-encoder)
 - [🤖Low-bits Quantization](./docs/User_Guide.md#quantization)
 - [🤖How to use FP8 Attention](./docs/User_Guide.md#fp8-attention)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
