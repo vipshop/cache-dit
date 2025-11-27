@@ -214,6 +214,7 @@ def cachify(
                 if args.taylorseer
                 else None
             ),
+            params_modifiers=kwargs.get("params_modifiers", None),
             parallelism_config=(
                 ParallelismConfig(
                     ulysses_size=(

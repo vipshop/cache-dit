@@ -36,6 +36,8 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
 )
 
 if args.cache or args.parallel_type is not None:
+    from cache_dit import DBCacheConfig, ParamsModifier
+
     cachify(
         args,
         pipe,
@@ -47,6 +49,24 @@ if args.cache or args.parallel_type is not None:
             if args.parallel_type == "tp"
             else []
         ),
+        params_modifiers=[
+            ParamsModifier(
+                # Modified config only for transformer_blocks
+                # Must call the `reset` method of DBCacheConfig.
+                cache_config=DBCacheConfig().reset(
+                    residual_diff_threshold=args.rdt,
+                ),
+            ),
+            ParamsModifier(
+                # Modified config only for single_transformer_blocks
+                # NOTE: FLUX.2, single_transformer_blocks should have `higher`
+                # residual_diff_threshold because of the precision error
+                # accumulation from previous transformer_blocks
+                cache_config=DBCacheConfig().reset(
+                    residual_diff_threshold=args.rdt * 3,
+                ),
+            ),
+        ],
     )
 
 torch.cuda.empty_cache()
