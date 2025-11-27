@@ -49,7 +49,7 @@ tp_mesh: DeviceMesh = init_device_mesh(
 )
 tp_planer = Flux2TensorParallelismPlanner()
 tp_planer.parallelize_text_encoder(
-    transformer=pipe.text_encoder,
+    text_encoder=pipe.text_encoder,
     tp_mesh=tp_mesh,
 )
 pipe.text_encoder.to("cpu")
