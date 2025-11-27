@@ -1,7 +1,7 @@
 import os
 import sys
 
-from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism.tp_plan_flux2 import (
+from cache_dit.parallelism.backends.native_pytorch.tensor_parallelism import (
     Flux2TensorParallelismPlanner,
 )
 
@@ -33,7 +33,7 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
         args.model_path
         if args.model_path is not None
         else os.environ.get(
-            "FLUX2_DIR",
+            "FLUX_2_DIR",
             "black-forest-labs/FLUX.2-dev",
         )
     ),
