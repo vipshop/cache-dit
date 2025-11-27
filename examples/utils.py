@@ -152,7 +152,7 @@ def get_args(
         default=["CPU", "GPU"],
         choices=["CPU", "GPU", "MEM"],
     )
-    parser.add_argument("--profile-with-stack", action="store_true", default=False)
+    parser.add_argument("--profile-with-stack", action="store_true", default=True)
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
     return parser.parse_args() if parse else parser
 
