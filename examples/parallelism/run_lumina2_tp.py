@@ -43,8 +43,8 @@ pipe.set_progress_bar_config(disable=rank != 0)
 
 # Set default prompt
 prompt = (
-    "A serene photograph capturing the golden reflection of the sun on a vast"
-    " expanse of water. The sun is positioned at the top center, casting a brilliant, "
+    "A serene photograph capturing the golden reflection of the sun on a vast "
+    "expanse of water. The sun is positioned at the top center, casting a brilliant, "
     "shimmering trail of light across the rippling surface. The water is textured "
     "with gentle waves, creating a rhythmic pattern that leads the eye towards "
     "the horizon. The entire scene is bathed in warm, golden hues, enhancing the "
