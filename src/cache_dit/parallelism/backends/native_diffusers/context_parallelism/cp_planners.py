@@ -77,6 +77,7 @@ from .cp_plan_dit import DiTContextParallelismPlanner
 from .cp_plan_kandinsky import Kandinsky5ContextParallelismPlanner
 from .cp_plan_skyreels import SkyReelsV2ContextParallelismPlanner
 from .cp_plan_flux2 import Flux2ContextParallelismPlanner
+from .cp_plan_zimage import ZImageContextParallelismPlanner
 
 try:
     import nunchaku  # noqa: F401
@@ -114,6 +115,7 @@ __all__ = [
     "Kandinsky5ContextParallelismPlanner",
     "SkyReelsV2ContextParallelismPlanner",
     "Flux2ContextParallelismPlanner",
+    "ZImageContextParallelismPlanner",
 ]
 
 if _nunchaku_available:
