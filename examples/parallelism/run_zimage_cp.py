@@ -80,7 +80,6 @@ def run_pipe(warmup: bool = False):
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
-    pipe.text_encoder = torch.compile(pipe.text_encoder)
     pipe.vae = torch.compile(pipe.vae)
 
 # warmup
