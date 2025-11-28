@@ -1,5 +1,5 @@
 import torch
-from typing import Optional
+from typing import Optional, Union, List
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers import ZImageTransformer2DModel
 
@@ -81,9 +81,47 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             # NOTE: The 'all_final_layer' is a ModuleDict of several final layers,
             # each for a specific patch size combination, so we do not add hooks for it here.
             # So, we have to gather the output of the last transformer layer.
+            # "all_final_layer": ContextParallelOutput(gather_dim=1, expected_dims=3),
             f"layers.{num_layers - 1}": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
+
+
+# TODO: Add this utility function to diffusers to support ModuleDict, such as 'all_final_layer' in ZImage
+# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/hooks/context_parallel.py#L283
+def _find_submodule_by_name(
+    model: torch.nn.Module, name: str
+) -> Union[torch.nn.Module, List[torch.nn.Module]]:
+    if name == "":
+        return model
+    first_atom, remaining_name = name.split(".", 1) if "." in name else (name, "")
+    if first_atom == "*":
+        if not isinstance(model, torch.nn.ModuleList):
+            raise ValueError("Wildcard '*' can only be used with ModuleList")
+        submodules = []
+        for submodule in model:
+            subsubmodules = _find_submodule_by_name(submodule, remaining_name)
+            if not isinstance(subsubmodules, list):
+                if isinstance(subsubmodules, torch.nn.ModuleDict):
+                    subsubmodules = list(subsubmodules.values())
+                else:
+                    subsubmodules = [subsubmodules]
+            submodules.extend(subsubmodules)
+        return submodules
+    else:
+        if hasattr(model, first_atom):
+            submodule = getattr(model, first_atom)
+            if isinstance(submodule, torch.nn.ModuleDict):
+                if remaining_name == "":
+                    return list(submodule.values())
+                else:
+                    raise ValueError(
+                        f"Cannot access submodule '{remaining_name}' of ModuleDict '{first_atom}' directly. "
+                        f"Please specify the key of the ModuleDict first."
+                    )
+            return _find_submodule_by_name(submodule, remaining_name)
+        else:
+            raise ValueError(f"'{first_atom}' is not a submodule of '{model.__class__.__name__}'")
 
 
 # TODO: Add async Ulysses QKV proj for ZImage model
