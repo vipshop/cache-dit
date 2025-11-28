@@ -1,5 +1,4 @@
 import torch
-from diffusers import ZImageTransformer2DModel
 from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
@@ -11,6 +10,7 @@ from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlanne
 logger = init_logger(__name__)
 
 
+@TensorParallelismPlannerRegister.register("Lumina2")
 @TensorParallelismPlannerRegister.register("ZImage")
 class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
@@ -38,16 +38,19 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
 
     def parallelize_transformer(
         self,
-        transformer: ZImageTransformer2DModel,
+        transformer: torch.nn.Module,
         tp_mesh: DeviceMesh,
     ):
+        class_name = transformer.__class__.__name__
+
         def tp_shard_block(block, tp_size):
-            block.attention.heads //= tp_size
+            attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
+            getattr(block, attn_mod_name).heads //= tp_size
             layer_plan = {
-                "attention.to_q": ColwiseParallel(),
-                "attention.to_k": ColwiseParallel(),
-                "attention.to_v": ColwiseParallel(),
-                "attention.to_out.0": RowwiseParallel(),
+                f"{attn_mod_name}.to_q": ColwiseParallel(),
+                f"{attn_mod_name}.to_k": ColwiseParallel(),
+                f"{attn_mod_name}.to_v": ColwiseParallel(),
+                f"{attn_mod_name}.to_out.0": RowwiseParallel(),
                 "feed_forward.w1": ColwiseParallel(),
                 "feed_forward.w3": ColwiseParallel(),
                 "feed_forward.w2": RowwiseParallel(),
