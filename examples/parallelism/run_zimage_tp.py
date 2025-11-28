@@ -36,10 +36,7 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
 )
 
 if args.cache or args.parallel_type is not None:
-    cachify(
-        args,
-        pipe,
-    )
+    cachify(args, pipe)
 
 pipe.to(device)
 

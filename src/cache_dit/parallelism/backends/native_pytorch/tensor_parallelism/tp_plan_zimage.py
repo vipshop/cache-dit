@@ -68,3 +68,5 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
             tp_shard_block(block, tp_size)
         for _, block in transformer.layers.named_children():
             tp_shard_block(block, tp_size)
+
+        return transformer
