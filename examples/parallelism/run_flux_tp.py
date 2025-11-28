@@ -16,6 +16,7 @@ from utils import (
     maybe_init_distributed,
     maybe_destroy_distributed,
     MemoryTracker,
+    create_profiler_from_args,
 )
 import cache_dit
 
@@ -64,11 +65,14 @@ if args.prompt is not None:
 
 
 def run_pipe(warmup: bool = False):
+    steps = 5 if warmup else (28 if args.steps is None else args.steps)
+    if args.profile and args.steps is None and not warmup:
+        steps = 3
     image = pipe(
         prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
-        num_inference_steps=5 if warmup else (28 if args.steps is None else args.steps),
+        num_inference_steps=steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
@@ -86,7 +90,14 @@ if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-image = run_pipe()
+if args.profile:
+    profiler = create_profiler_from_args(args, profile_name="flux_tp_inference")
+    with profiler:
+        image = run_pipe()
+    if rank == 0:
+        print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
+else:
+    image = run_pipe()
 end = time.time()
 
 if memory_tracker:
