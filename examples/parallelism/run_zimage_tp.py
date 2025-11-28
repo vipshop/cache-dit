@@ -35,6 +35,12 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
+for mod in pipe.transformer.named_modules():
+    if isinstance(mod[1], torch.nn.Linear):
+        print(mod[0], mod[1])
+
+sys.exit(0)
+
 if args.cache or args.parallel_type is not None:
     cachify(
         args,
