@@ -114,7 +114,8 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 
 | 📚Model | Cache  | CP | TP | 📚Model | Cache  | CP | TP |
 |:---|:---|:---|:---|:---|:---|:---|:---|
-| **🔥[FLUX.2: 56B](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️🔥 | ✔️🔥 | ✔️🔥 | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🔥[FLUX.2: 56B](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️🔥 | ✔️🔥 | ✔️🔥 | **🔥[Z-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✖️ | ✖️ | ✖️ |
+| **🔥[Z-Image-Turbo](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️🔥 | ✖️ | ✔️🔥 | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[FLUX.1-Fill `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
@@ -127,7 +128,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 | **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
 | **🎉[ChronoEdit](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
 | **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️  | ✔️  |
-| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
+| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✔️ |
 | **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ | 
 | **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
 | **🎉[PixArt Sigma](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
