@@ -28,7 +28,7 @@ class ProfilerContext:
         activities: Optional[List[str]] = None,
         output_dir: Optional[str] = None,
         profile_name: Optional[str] = None,
-        with_stack: bool = False,
+        with_stack: bool = True,
         record_shapes: bool = True,
     ):
         self.enabled = enabled
