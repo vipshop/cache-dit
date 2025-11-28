@@ -53,11 +53,6 @@ if args.quantize:
             "rope_embedder",
         ],
     )
-    pipe.text_encoder = cache_dit.quantize(
-        pipe.text_encoder,
-        quant_type=args.quantize_type,
-    )
-
 
 if args.cache or args.parallel_type is not None:
     if args.cache:
