@@ -43,7 +43,6 @@ def maybe_empty_cache():
         pass
 
 
-@torch.compiler.disable
 def print_tensor(
     x: torch.Tensor,
     name: str,
