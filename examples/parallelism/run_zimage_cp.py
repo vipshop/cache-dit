@@ -39,6 +39,26 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
+if args.quantize:
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "noise_refiner",
+            "context_refiner",
+            "all_x_embedder",
+            "all_final_layer",
+            "t_embedder",
+            "cap_embedder",
+            "rope_embedder",
+        ],
+    )
+    pipe.text_encoder = cache_dit.quantize(
+        pipe.text_encoder,
+        quant_type=args.quantize_type,
+    )
+
+
 if args.cache or args.parallel_type is not None:
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
