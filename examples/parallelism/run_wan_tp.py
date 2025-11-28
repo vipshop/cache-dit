@@ -38,6 +38,21 @@ pipe = WanPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
+if args.quantize:
+    assert isinstance(args.quantize_type, str)
+    if hasattr(pipe, "transformer"):
+        if args.quantize_type.endswith("wo"):
+            pipe.transformer = cache_dit.quantize(
+                pipe.transformer,
+                quant_type=args.quantize_type,
+            )
+    if hasattr(pipe, "transformer_2"):
+        pipe.transformer_2 = cache_dit.quantize(
+            pipe.transformer_2,
+            quant_type=args.quantize_type,
+        )
+    print(f"Applied quantization: {args.quantize_type} to Wan transformers.")
+
 if args.cache or args.parallel_type is not None:
     from cache_dit import (
         ForwardPattern,
@@ -121,9 +136,17 @@ def run_pipe(warmup: bool = False):
     return output
 
 
+if args.attn is not None:
+    if hasattr(pipe.transformer, "set_attention_backend"):
+        pipe.transformer.set_attention_backend(args.attn)
+        print(f"Set attention backend to {args.attn}")
+
+
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
+    if hasattr(pipe, "transformer_2"):
+        pipe.transformer_2 = torch.compile(pipe.transformer_2)
 
 # warmup
 _ = run_pipe(warmup=True)

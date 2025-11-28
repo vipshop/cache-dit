@@ -151,6 +151,18 @@ def get_args(
         default=False,
         help="Disable compute-communication overlap during compilation",
     )
+    parser.add_argument("--profile", action="store_true", default=False)
+    parser.add_argument("--profile-name", type=str, default=None)
+    parser.add_argument("--profile-dir", type=str, default=None)
+    parser.add_argument(
+        "--profile-activities",
+        type=str,
+        nargs="+",
+        default=["CPU", "GPU"],
+        choices=["CPU", "GPU", "MEM"],
+    )
+    parser.add_argument("--profile-with-stack", action="store_true", default=True)
+    parser.add_argument("--profile-record-shapes", action="store_true", default=True)
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
         if args_or_parser.quantize_type == "bnb_4bit":  # alias
@@ -279,3 +291,16 @@ def maybe_init_distributed(args=None):
 def maybe_destroy_distributed():
     if dist.is_initialized():
         dist.destroy_process_group()
+
+
+def create_profiler_from_args(args, profile_name=None):
+    from cache_dit.profiler import ProfilerContext
+
+    return ProfilerContext(
+        enabled=args.profile,
+        activities=getattr(args, "profile_activities", ["CPU", "GPU"]),
+        output_dir=getattr(args, "profile_dir", None),
+        profile_name=profile_name or getattr(args, "profile_name", None),
+        with_stack=getattr(args, "profile_with_stack", True),
+        record_shapes=getattr(args, "profile_record_shapes", True),
+    )

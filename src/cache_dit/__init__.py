@@ -32,6 +32,11 @@ from cache_dit.compile import set_compile_configs
 from cache_dit.summary import supported_matrix
 from cache_dit.summary import summary
 from cache_dit.summary import strify
+from cache_dit.profiler import ProfilerContext
+from cache_dit.profiler import profile_function
+from cache_dit.profiler import create_profiler_context
+from cache_dit.profiler import get_profiler_output_dir
+from cache_dit.profiler import set_profiler_output_dir
 
 try:
     from cache_dit.quantize import quantize
