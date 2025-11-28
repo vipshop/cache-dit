@@ -38,7 +38,7 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
 if args.cache or args.parallel_type is not None:
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
-        args.max_warmup_steps = max(4, args.max_warmup_steps)
+        args.max_warmup_steps = min(4, args.max_warmup_steps)
 
     cachify(args, pipe)
 
