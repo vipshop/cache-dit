@@ -45,15 +45,16 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
 
         def tp_shard_block(block, tp_size):
             attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
+            ff_linear_name = "w" if class_name.startswith("ZImage") else "linear_"
             getattr(block, attn_mod_name).heads //= tp_size
             layer_plan = {
                 f"{attn_mod_name}.to_q": ColwiseParallel(),
                 f"{attn_mod_name}.to_k": ColwiseParallel(),
                 f"{attn_mod_name}.to_v": ColwiseParallel(),
                 f"{attn_mod_name}.to_out.0": RowwiseParallel(),
-                "feed_forward.w1": ColwiseParallel(),
-                "feed_forward.w3": ColwiseParallel(),
-                "feed_forward.w2": RowwiseParallel(),
+                f"feed_forward.{ff_linear_name}1": ColwiseParallel(),
+                f"feed_forward.{ff_linear_name}3": ColwiseParallel(),
+                f"feed_forward.{ff_linear_name}2": RowwiseParallel(),
                 # saving more memory at the cost of more communication
                 # "adaLN_modulation.0": ColwiseParallel(output_layouts=Replicate()),
             }
