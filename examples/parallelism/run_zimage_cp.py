@@ -80,7 +80,6 @@ def run_pipe(warmup: bool = False):
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
-    pipe.vae = torch.compile(pipe.vae)
 
 # warmup
 _ = run_pipe(warmup=True)
