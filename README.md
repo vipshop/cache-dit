@@ -277,7 +277,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 - [🤖How to use FP8 Attention](./docs/User_Guide.md#fp8-attention)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
 - [⚙️Torch Compile](./docs/User_Guide.md#️torch-compile)
-- [📊How to use Torch Profiler](./docs/PROFILER.md)
+- [📊Torch Profiler Usage](./docs/PROFILER.md)
 - [📚API Documents](./docs/User_Guide.md#api-documentation)
 
 ## 👋Contribute 
