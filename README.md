@@ -114,7 +114,8 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 
 | 📚Model | Cache  | CP | TP | 📚Model | Cache  | CP | TP |
 |:---|:---|:---|:---|:---|:---|:---|:---|
-| **🔥[FLUX.2: 56B](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️🔥 | ✔️🔥 | ✔️🔥 | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
+| **🔥[FLUX.2: 56B](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️🔥 | ✔️🔥 | ✔️🔥 | **🔥[Z-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✖️ | ✖️ | ✖️ |
+| **🔥[Z-Image-Turbo](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️🔥 | ✖️ | ✔️🔥 | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[FLUX.1-Fill `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
 | **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ |
@@ -127,7 +128,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 | **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
 | **🎉[ChronoEdit](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
 | **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️  | ✔️  |
-| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
+| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✔️ |
 | **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✖️ | 
 | **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
 | **🎉[PixArt Sigma](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✔️ | ✔️ | **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline)** | ✔️ | ✖️ | ✖️ |
@@ -298,7 +299,7 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 ## 🎉Projects Using CacheDiT
 
-Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh), [flux-fast](https://github.com/huggingface/flux-fast), and [sdnext](https://github.com/vladmandic/sdnext/discussions/4269). 🎉**CacheDiT** has been **recommended** by: [Wan 2.2](https://github.com/Wan-Video/Wan2.2), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video), [Kandinsky-5](https://github.com/ai-forever/Kandinsky-5), [LeMiCa](https://github.com/UnicomAI/LeMiCa), [🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit) and [HelloGitHub](https://hellogithub.com/repository/vipshop/cache-dit), among others.
+Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh), [flux-fast](https://github.com/huggingface/flux-fast), and [sdnext](https://github.com/vladmandic/sdnext/discussions/4269). 🎉**CacheDiT** has been **recommended** by: [Wan 2.2](https://github.com/Wan-Video/Wan2.2), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video), [Kandinsky-5](https://github.com/ai-forever/Kandinsky-5), [LeMiCa](https://github.com/UnicomAI/LeMiCa), [🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit), [HelloGitHub](https://hellogithub.com/repository/vipshop/cache-dit) and [GaintPandaLLM](https://mp.weixin.qq.com/s/ZBr3veg7EF5kuiHpYmGGjQ), among others.
 
 ## ©️Acknowledgements
 

@@ -751,3 +751,26 @@ def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
             "ChronoEditTransformer3DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )
+
+
+@BlockAdapterRegister.register("ZImage")
+def zimage_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import ZImageTransformer2DModel
+
+        assert isinstance(pipe.transformer, ZImageTransformer2DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.layers,
+            forward_pattern=ForwardPattern.Pattern_3,
+            # ZImage DON'T have 'hidden_states' (use 'x') in its block
+            # forward signature. So we disable the forward pattern check here.
+            check_forward_pattern=False,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "ZImageTransformer2DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
