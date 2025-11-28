@@ -18,6 +18,10 @@ from utils import (
 
 import cache_dit
 
+# NOTE: Only support context parallelism with 'native' attention backend
+# for ZImage due to the attention mask in ZImage is not None. Please use:
+# --parallel ulysses --attn native
+
 args = get_args()
 print(args)
 
