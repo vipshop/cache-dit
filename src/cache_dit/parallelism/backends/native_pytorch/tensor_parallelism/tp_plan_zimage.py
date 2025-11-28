@@ -42,7 +42,7 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
         tp_mesh: DeviceMesh,
     ):
         def tp_shard_block(block, tp_size):
-            block.attn.heads //= tp_size
+            block.attention.heads //= tp_size
             layer_plan = {
                 "attention.to_q": ColwiseParallel(),
                 "attention.to_k": ColwiseParallel(),
