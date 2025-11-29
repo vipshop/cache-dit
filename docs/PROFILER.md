@@ -1,7 +1,6 @@
 # Torch Profiler Usage
 
-Reference: Adapted from `sglang/python/sglang/bench_one_batch.py` and `sglang/python/sglang/srt/managers/scheduler_profiler_mixin.py`
-
+Reference: Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py .
 ## Quick Start
 
 ### Basic Usage
