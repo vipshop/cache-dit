@@ -49,6 +49,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         # work compatible with DBCache FnB0. The better way is to make DBCache fully
         # compatible with diffusers native context parallelism, e.g., check the split/gather
         # hooks in each block/layer in the initialization of DBCache.
+        # Issue: https://github.com/vipshop/cache-dit/issues/498
         maybe_patch_cp_find_submodule_by_name()
         # Otherwise, use the custom CP plan defined here, this maybe
         # a little different from the native diffusers implementation
