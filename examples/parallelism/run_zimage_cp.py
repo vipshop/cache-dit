@@ -58,8 +58,6 @@ if args.cache or args.parallel_type is not None:
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
-        # Temp workaroud for issue: https://github.com/vipshop/cache-dit/issues/498
-        # args.Bn = max(1, args.Bn)
 
     cachify(args, pipe)
 
