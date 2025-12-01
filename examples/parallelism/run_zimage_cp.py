@@ -69,6 +69,8 @@ assert isinstance(pipe.transformer, ZImageTransformer2DModel)
 if args.parallel_type is None:
     # native, flash, _native_cudnn, sage, etc.
     # _native_cudnn is faster than native(sdpa) on NVIDIA L20 with CUDA 12.9+.
+    # '_sdpa_cudnn' is only in cache-dit to support context parallelism
+    # with attn masks, e.g., ZImage. It is not in diffusers yet.
     if args.attn is not None:
         pipe.transformer.set_attention_backend(args.attn)
 
