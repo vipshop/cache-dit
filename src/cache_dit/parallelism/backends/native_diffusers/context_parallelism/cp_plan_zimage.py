@@ -250,7 +250,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
 # don't see any performance improvement by using dist.all_to_all_single for FLUX.1
 # and Z-Image on NVIDIA L20 while compile is enabled. Reference:
 # - https://github.com/pytorch/pytorch/blob/main/torch/distributed/_functional_collectives.py#L855
-def _ulysses_attn_with_async_qkv_proj_zimage_v2(
+def _ulysses_attn_with_async_qkv_proj_zimage_v2(  # noqa: F811
     self: ZSingleStreamAttnProcessor,
     attn: Attention,
     hidden_states: torch.Tensor,
