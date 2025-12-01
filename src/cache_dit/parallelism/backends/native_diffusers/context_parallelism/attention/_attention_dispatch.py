@@ -20,7 +20,7 @@ except ImportError:
     )
 from cache_dit.logger import init_logger
 from ._templated_ulysses_anything import TemplatedUlyssesAnythingAttention, TemplatedUlyssesAnythingAttentionFloat8
-from ._templated_ulysses_anything import is_ulysses_anything_enabled
+from ._templated_ulysses_anything import is_ulysses_anything_enabled, is_ulysses_anything_float8_enabled
 
 
 logger = init_logger(__name__)
@@ -129,8 +129,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             )
         elif _parallel_config.context_parallel_config.ulysses_degree > 1:
             if is_ulysses_anything_enabled():
-                if False:
-                    return TemplatedUlyssesAnythingAttention.apply(
+                if is_ulysses_anything_float8_enabled():
+                    return TemplatedUlyssesAnythingAttentionFloat8.apply(
                         query,
                         key,
                         value,
@@ -145,7 +145,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                         _parallel_config,
                     )
                 else:
-                    return TemplatedUlyssesAnythingAttentionFloat8.apply(
+                    return TemplatedUlyssesAnythingAttention.apply(
                         query,
                         key,
                         value,

@@ -32,6 +32,7 @@ __all__ = [
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
     "disable_ulysses_anything",
+    "is_ulysses_anything_float8_enabled",
 ]
 
 
@@ -324,6 +325,9 @@ def unshard_anything(
 _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
 )
+_CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = (
+    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FP8", "0") == "1"
+)
 
 
 def enable_ulysses_anything(**kwargs):
@@ -373,3 +377,8 @@ def disable_ulysses_anything(**kwargs):
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
     _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
     logger.info("Ulysses Anything Attention is manually disabled in cache-dit.")
+
+
+def is_ulysses_anything_float8_enabled(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
