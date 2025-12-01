@@ -94,9 +94,14 @@ def run_pipe(warmup: bool = False):
 
 if args.compile:
     cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune")
-    # assert isinstance(pipe.transformer, ZImageTransformer2DModel)
-    # pipe.transformer.compile_repeated_blocks()
+    if args.compile_repeated_blocks:
+        pipe.transformer.compile_repeated_blocks(
+            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default"
+        )
+    else:
+        pipe.transformer = torch.compile(
+            pipe.transformer, mode="max-autotune-no-cudagraphs" if args.max_autotune else "default"
+        )
 
 # warmup
 _ = run_pipe(warmup=True)
