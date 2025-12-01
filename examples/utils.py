@@ -61,6 +61,8 @@ def get_args(
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
+    parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
+    parser.add_argument("--max-autotune", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--Fn", type=int, default=8)
@@ -72,6 +74,7 @@ def get_args(
     parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
+    parser.add_argument("--steps-mask", "--scm", action="store_true", default=False)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
@@ -113,6 +116,9 @@ def get_args(
             # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
             "native",  # native pytorch attention: sdpa
             "_native_cudnn",
+            # '_sdpa_cudnn' is only in cache-dit to support context parallelism
+            # with attn masks, e.g., ZImage. It is not in diffusers yet.
+            "_sdpa_cudnn",
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
@@ -220,6 +226,7 @@ def cachify(
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
+                    steps_computation_mask=kwargs.get("steps_computation_mask", None),
                 )
                 if cache_config is None and args.cache
                 else cache_config
@@ -262,6 +269,8 @@ def strify(args, pipe_or_stats):
         base_str += "_ulysses_anything"
     if args.ulysses_async_qkv_proj:
         base_str += "_ulysses_async_qkv_proj"
+    if args.attn is not None:
+        base_str += f"_{args.attn.strip('_')}"
     return base_str
 
 

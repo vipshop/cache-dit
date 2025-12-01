@@ -3,6 +3,7 @@ from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers import ZImageTransformer2DModel
 
+
 try:
     from diffusers.models._modeling_parallel import (
         ContextParallelInput,
@@ -51,9 +52,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         # hooks in each block/layer in the initialization of DBCache.
         # Issue: https://github.com/vipshop/cache-dit/issues/498
         maybe_patch_cp_find_submodule_by_name()
-        # Otherwise, use the custom CP plan defined here, this maybe
-        # a little different from the native diffusers implementation
-        # for some models.
+        # TODO: Patch rotary embedding function to avoid complex number ops
         n_noise_refiner_layers = len(transformer.noise_refiner)  # 2
         n_context_refiner_layers = len(transformer.context_refiner)  # 2
         # num_layers = len(transformer.layers)  # 30
@@ -93,3 +92,12 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             # f"layers.{num_layers - 1}": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
+
+
+# TODO: Original implementation using complex numbers, which is not be supported in torch.compile yet.
+# May be Reference:
+# - https://github.com/triple-Mu/Z-Image-TensorRT/blob/4efc5749e9a0d22344e6c4b8a09d2223dd0a7e17/step_by_step/2-remove-complex-op.py#L26C1-L36C25
+# - https://github.com/huggingface/diffusers/pull/12725
+
+
+# TODO: Support Async Ulysses QKV projection for Z-Image
