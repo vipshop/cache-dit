@@ -118,7 +118,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 # Reference:
 # - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
 # - https://github.com/huggingface/diffusers/pull/12727 by @zhangtao0408
-def _ulysses_attn_with_async_qkv_proj(
+def _ulysses_attn_with_async_qkv_proj_flux(
     self: FluxAttnProcessor,
     attn: FluxAttention,
     hidden_states: torch.Tensor,
@@ -257,11 +257,12 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
     pre_key: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
-        hasattr(self._parallel_config, "context_parallel_config")
+        self._parallel_config is not None
+        and hasattr(self._parallel_config, "context_parallel_config")
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_attn_with_async_qkv_proj(
+        return _ulysses_attn_with_async_qkv_proj_flux(
             self,
             attn,
             hidden_states,
