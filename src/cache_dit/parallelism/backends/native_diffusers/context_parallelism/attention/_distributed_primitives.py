@@ -181,6 +181,7 @@ def _all_to_all_single_any_qkv_fp8(
     x_fp8_with_scale = torch.cat([x_fp8, scale.view(torch.float8_e4m3fn)], dim=-1)
     x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
     x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, output_split_sizes, input_split_sizes, group)
+    x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
     x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
     x = x_fp8.to(dtype) * scale.view(dtype)
     return x
