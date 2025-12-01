@@ -64,13 +64,12 @@ def _registry_pop_attn_backend(attn_backend: AttentionBackendName):
             _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
 
 
-def _append_new_attn_backend(member: str, value: str):
-    # _append_new_attn_backend("_SDPA_CUDNN", "_sdpa_cudnn")
-    enum_cls = AttentionBackendName
-    new_member = str.__new__(enum_cls, value)
+def _set_new_attn_backend(member: str, value: str):
+    # e.g., _set_new_attn_backend("_SDPA_CUDNN", "_sdpa_cudnn")
+    new_member = str.__new__(AttentionBackendName, value)
     new_member._name_ = member
     new_member._value_ = value
-    setattr(enum_cls, member, new_member)
+    setattr(AttentionBackendName, member, new_member)
     AttentionBackendName._member_map_[member] = new_member
     AttentionBackendName._member_names_.append(member)
     AttentionBackendName._value2member_map_[value] = new_member
@@ -84,7 +83,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     )
     _registry_pop_attn_backend(AttentionBackendName.NATIVE)
 
-    _ATTENTION_OPS_ALLOW_ATTN_MASK_BACKENDS = [
+    _ATTENTION_OPS_ALLOW_ATTN_MASK = [
         "_native_attention_forward_op",
         "_sdpa_cudnn_attention_forward_op",
     ]
@@ -108,7 +107,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         if attn_mask is not None:
             # NOTE(DefTruth): Check if forward_op is native attention forward op
             forward_op_name = forward_op.__name__
-            if forward_op_name not in _ATTENTION_OPS_ALLOW_ATTN_MASK_BACKENDS:
+            if forward_op_name not in _ATTENTION_OPS_ALLOW_ATTN_MASK:
                 raise ValueError(
                     "Templated context parallel attention with attn_mask "
                     "is only supported for native attention backend, "
@@ -357,8 +356,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     ):
         raise NotImplementedError("Backward for cudnn attention with sdpa is not implemented yet.")
 
-    # Register _native_cudnn_attention backend to allow attn mask while using context parallelism
-    _append_new_attn_backend("_SDPA_CUDNN", "_sdpa_cudnn")
+    # Register _sdpa_cudnn_attention backend to allow attn mask while using context parallelism
+    _set_new_attn_backend("_SDPA_CUDNN", "_sdpa_cudnn")
     assert hasattr(AttentionBackendName, "_SDPA_CUDNN")
 
     @_AttentionBackendRegistry.register(
@@ -412,6 +411,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                 out, lse = out
 
         return (out, lse) if return_lse else out
+
+    logger.info("Registered new attention backend: _SDPA_CUDNN")
 
 else:
     from diffusers.models.attention_dispatch import (
