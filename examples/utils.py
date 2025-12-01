@@ -115,6 +115,7 @@ def get_args(
             # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
             "native",  # native pytorch attention: sdpa
             "_native_cudnn",
+            "_sdpa_cudnn",  # only for context parallelism with attn mask support
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
@@ -264,6 +265,8 @@ def strify(args, pipe_or_stats):
         base_str += "_ulysses_anything"
     if args.ulysses_async_qkv_proj:
         base_str += "_ulysses_async_qkv_proj"
+    if args.attn is not None:
+        base_str += f"_attn_{args.attn}"
     return base_str
 
 

@@ -8,9 +8,6 @@ try:
         AttentionBackendName,
         _check_device,
         _check_shape,
-        _check_qkv_dtype_bf16_or_fp16,
-        _cudnn_attention_forward_op,
-        _cudnn_attention_backward_op,
         TemplatedRingAttention,
         TemplatedUlyssesAttention,
     )
@@ -31,7 +28,7 @@ logger = init_logger(__name__)
 
 __all__ = [
     "_native_attention",
-    "_native_cudnn_attention",
+    "_sdpa_cudnn_attention",
 ]
 
 # Enable custom native attention backend with context parallelism
@@ -56,7 +53,7 @@ def _is_native_attn_supported_context_parallel() -> bool:
         )
 
 
-def _pop_attn_backend(attn_backend: AttentionBackendName):
+def _registry_pop_attn_backend(attn_backend: AttentionBackendName):
     _AttentionBackendRegistry._backends.pop(attn_backend)
     _AttentionBackendRegistry._constraints.pop(attn_backend)
     _AttentionBackendRegistry._supported_arg_names.pop(attn_backend)
@@ -67,18 +64,29 @@ def _pop_attn_backend(attn_backend: AttentionBackendName):
             _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
 
 
+def _append_new_attn_backend(member: str, value: str):
+    # _append_new_attn_backend("_SDPA_CUDNN", "_sdpa_cudnn")
+    enum_cls = AttentionBackendName
+    new_member = str.__new__(enum_cls, value)
+    new_member._name_ = member
+    new_member._value_ = value
+    setattr(enum_cls, member, new_member)
+    AttentionBackendName._member_map_[member] = new_member
+    AttentionBackendName._member_names_.append(member)
+    AttentionBackendName._value2member_map_[value] = new_member
+
+
 if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     logger.warning(
-        "Re-registering NATIVE and _NATIVE_CUDNN attention backend to enable "
-        "context parallelism with attn mask. Or, you can disable this behavior "
-        "by export `CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0`."
+        "Re-registering NATIVE attention backend to enable context parallelism "
+        "with attn mask. Or, you can disable this behavior by export env: "
+        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
     )
-    _pop_attn_backend(AttentionBackendName.NATIVE)
-    _pop_attn_backend(AttentionBackendName._NATIVE_CUDNN)
+    _registry_pop_attn_backend(AttentionBackendName.NATIVE)
 
     _ATTENTION_OPS_ALLOW_ATTN_MASK_BACKENDS = [
         "_native_attention_forward_op",
-        "_cudnn_attention_forward_op",
+        "_sdpa_cudnn_attention_forward_op",
     ]
 
     # Re-define templated context parallel attention to support attn mask
@@ -298,13 +306,67 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             )
         return out
 
+    def _sdpa_cudnn_attention_forward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
+        return_lse: bool = False,
+        _save_ctx: bool = True,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        # Native attention does not return_lse
+        if return_lse:
+            raise ValueError("cudnn attention with sdpa does not support return_lse=True")
+
+        # used for backward pass
+        if _save_ctx:
+            ctx.save_for_backward(query, key, value)
+            ctx.attn_mask = attn_mask
+            ctx.dropout_p = dropout_p
+            ctx.is_causal = is_causal
+            ctx.scale = scale
+            ctx.enable_gqa = enable_gqa
+
+        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.CUDNN_ATTENTION):
+            out = torch.nn.functional.scaled_dot_product_attention(
+                query=query,
+                key=key,
+                value=value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                enable_gqa=enable_gqa,
+            )
+        out = out.permute(0, 2, 1, 3)
+
+        return out
+
+    def _sdpa_cudnn_attention_backward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+        **kwargs,
+    ):
+        raise NotImplementedError("Backward for cudnn attention with sdpa is not implemented yet.")
+
     # Register _native_cudnn_attention backend to allow attn mask while using context parallelism
+    _append_new_attn_backend("_SDPA_CUDNN", "_sdpa_cudnn")
+    assert hasattr(AttentionBackendName, "_SDPA_CUDNN")
+
     @_AttentionBackendRegistry.register(
-        AttentionBackendName._NATIVE_CUDNN,
-        constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+        AttentionBackendName._SDPA_CUDNN,  # type: AttentionBackendName
+        constraints=[_check_device, _check_shape],
         supports_context_parallel=True,
     )
-    def _native_cudnn_attention(
+    def _sdpa_cudnn_attention(
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
@@ -342,8 +404,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                 scale,
                 enable_gqa,
                 return_lse,
-                forward_op=_cudnn_attention_forward_op,
-                backward_op=_cudnn_attention_backward_op,
+                forward_op=_sdpa_cudnn_attention_forward_op,
+                backward_op=_sdpa_cudnn_attention_backward_op,
                 _parallel_config=_parallel_config,
             )
             if return_lse:
@@ -354,7 +416,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
 else:
     from diffusers.models.attention_dispatch import (
         _native_attention,
-        _native_cudnn_attention,
     )  # noqa: F401
+
+    _sdpa_cudnn_attention = None  # type: ignore[assignment]
 
     logger.info("Native attention backend already supports context parallelism.")
