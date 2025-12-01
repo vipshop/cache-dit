@@ -8,6 +8,9 @@ try:
         AttentionBackendName,
         _check_device,
         _check_shape,
+        _check_qkv_dtype_bf16_or_fp16,
+        _cudnn_attention_forward_op,
+        _cudnn_attention_backward_op,
         TemplatedRingAttention,
         TemplatedUlyssesAttention,
     )
@@ -28,6 +31,7 @@ logger = init_logger(__name__)
 
 __all__ = [
     "_native_attention",
+    "_native_cudnn_attention",
 ]
 
 # Enable custom native attention backend with context parallelism
@@ -52,25 +56,30 @@ def _is_native_attn_supported_context_parallel() -> bool:
         )
 
 
-if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
-    logger.warning(
-        "Re-registering NATIVE attention backend to enable context parallelism. "
-        "This is a temporary workaround and should be removed after the native "
-        "attention backend supports context parallelism natively. Please check: "
-        "https://github.com/huggingface/diffusers/pull/12563 for more details. "
-        "Or, you can disable this behavior by setting the environment variable "
-        "`CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0`."
-    )
-    _AttentionBackendRegistry._backends.pop(AttentionBackendName.NATIVE)
-    _AttentionBackendRegistry._constraints.pop(AttentionBackendName.NATIVE)
-    _AttentionBackendRegistry._supported_arg_names.pop(AttentionBackendName.NATIVE)
+def _pop_attn_backend(attn_backend: AttentionBackendName):
+    _AttentionBackendRegistry._backends.pop(attn_backend)
+    _AttentionBackendRegistry._constraints.pop(attn_backend)
+    _AttentionBackendRegistry._supported_arg_names.pop(attn_backend)
     if _is_native_attn_supported_context_parallel():
         if isinstance(_AttentionBackendRegistry._supports_context_parallel, dict):
-            _AttentionBackendRegistry._supports_context_parallel.pop(AttentionBackendName.NATIVE)
+            _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend)
         else:
-            _AttentionBackendRegistry._supports_context_parallel.remove(
-                AttentionBackendName.NATIVE.value
-            )
+            _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
+
+
+if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
+    logger.warning(
+        "Re-registering NATIVE and _NATIVE_CUDNN attention backend to enable "
+        "context parallelism with attn mask. Or, you can disable this behavior "
+        "by export `CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0`."
+    )
+    _pop_attn_backend(AttentionBackendName.NATIVE)
+    _pop_attn_backend(AttentionBackendName._NATIVE_CUDNN)
+
+    _ATTENTION_OPS_ALLOW_ATTN_MASK_BACKENDS = [
+        "_native_attention_forward_op",
+        "_cudnn_attention_forward_op",
+    ]
 
     # Re-define templated context parallel attention to support attn mask
     def _templated_context_parallel_attention_v2(
@@ -91,7 +100,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         if attn_mask is not None:
             # NOTE(DefTruth): Check if forward_op is native attention forward op
             forward_op_name = forward_op.__name__
-            if not forward_op_name == "_native_attention_forward_op":
+            if forward_op_name not in _ATTENTION_OPS_ALLOW_ATTN_MASK_BACKENDS:
                 raise ValueError(
                     "Templated context parallel attention with attn_mask "
                     "is only supported for native attention backend, "
@@ -239,6 +248,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
 
         return grad_query, grad_key, grad_value
 
+    # Re-register NATIVE attention backend to allow attn mask while using context parallelism
     @_AttentionBackendRegistry.register(
         AttentionBackendName.NATIVE,
         constraints=[_check_device, _check_shape],
@@ -288,9 +298,63 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             )
         return out
 
+    # Register _native_cudnn_attention backend to allow attn mask while using context parallelism
+    @_AttentionBackendRegistry.register(
+        AttentionBackendName._NATIVE_CUDNN,
+        constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+        supports_context_parallel=True,
+    )
+    def _native_cudnn_attention(
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
+        return_lse: bool = False,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ) -> torch.Tensor:
+        lse = None
+        if _parallel_config is None and not return_lse:
+            query, key, value = (x.permute(0, 2, 1, 3).contiguous() for x in (query, key, value))
+            with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.CUDNN_ATTENTION):
+                out = torch.nn.functional.scaled_dot_product_attention(
+                    query=query,
+                    key=key,
+                    value=value,
+                    attn_mask=attn_mask,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                    enable_gqa=enable_gqa,
+                )
+            out = out.permute(0, 2, 1, 3)
+        else:
+            out = _templated_context_parallel_attention_v2(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op=_cudnn_attention_forward_op,
+                backward_op=_cudnn_attention_backward_op,
+                _parallel_config=_parallel_config,
+            )
+            if return_lse:
+                out, lse = out
+
+        return (out, lse) if return_lse else out
+
 else:
     from diffusers.models.attention_dispatch import (
         _native_attention,
+        _native_cudnn_attention,
     )  # noqa: F401
 
     logger.info("Native attention backend already supports context parallelism.")
