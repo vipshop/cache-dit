@@ -68,6 +68,7 @@ assert isinstance(pipe.transformer, ZImageTransformer2DModel)
 # Allow customize attention backend for Single GPU inference
 if args.parallel_type is None:
     # native, flash, _native_cudnn, sage, etc.
+    # _native_cudnn is faster than native(sdpa) on NVIDIA L20 with CUDA 12.9+.
     if args.attn is not None:
         pipe.transformer.set_attention_backend(args.attn)
 
