@@ -1,7 +1,13 @@
 import torch
-from typing import Optional
+import functools
+from typing import Optional, Tuple
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers import ZImageTransformer2DModel
+from diffusers.models.transformers.transformer_z_image import (
+    ZSingleStreamAttnProcessor,
+    Attention,
+    dispatch_attention_fn,
+)
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -51,9 +57,10 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         # hooks in each block/layer in the initialization of DBCache.
         # Issue: https://github.com/vipshop/cache-dit/issues/498
         maybe_patch_cp_find_submodule_by_name()
-        # Otherwise, use the custom CP plan defined here, this maybe
-        # a little different from the native diffusers implementation
-        # for some models.
+
+        # NOTE: Patch rotary embedding function to avoid complex number ops
+        ZSingleStreamAttnProcessor.__call__ = __patch_ZSingleStreamAttnProcessor__call__
+
         n_noise_refiner_layers = len(transformer.noise_refiner)  # 2
         n_context_refiner_layers = len(transformer.context_refiner)  # 2
         # num_layers = len(transformer.layers)  # 30
@@ -93,3 +100,89 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             # f"layers.{num_layers - 1}": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
+
+
+# NOTE: Original implementation using complex numbers, which is not be supported in torch.compile yet.
+# Reference:
+# - https://github.com/triple-Mu/Z-Image-TensorRT/blob/4efc5749e9a0d22344e6c4b8a09d2223dd0a7e17/step_by_step/2-remove-complex-op.py#L26C1-L36C25
+def apply_rotary_emb_zimage(
+    x_in: torch.Tensor, freqs_cis: Tuple[torch.Tensor, torch.Tensor]
+) -> torch.Tensor:
+    x_fp32 = x_in.float()  # improve precision
+    x_fp32 = x_fp32.unflatten(-1, (-1, 2))
+    a, b = x_fp32.unbind(-1)  # [b, s, n, d//2]
+    c, d = freqs_cis  # [s, d//2]
+    c = c[None, :, None, :]  # [1, s, 1, d//2]
+    d = d[None, :, None, :]  # [1, s, 1, d//2]
+    real = (a * c - b * d).to(x_in.dtype)
+    imag = (b * c + a * d).to(x_in.dtype)
+    y = torch.stack([real, imag], dim=-1)
+    return y.flatten(-2)
+
+
+@functools.wraps(ZSingleStreamAttnProcessor.__call__)
+def __patch_ZSingleStreamAttnProcessor__call__(
+    self: ZSingleStreamAttnProcessor,
+    attn: Attention,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    freqs_cis: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    query = attn.to_q(hidden_states)
+    key = attn.to_k(hidden_states)
+    value = attn.to_v(hidden_states)
+
+    query = query.unflatten(-1, (attn.heads, -1))
+    key = key.unflatten(-1, (attn.heads, -1))
+    value = value.unflatten(-1, (attn.heads, -1))
+
+    # Apply Norms
+    if attn.norm_q is not None:
+        query = attn.norm_q(query)
+    if attn.norm_k is not None:
+        key = attn.norm_k(key)
+
+    dtype = query.dtype
+
+    # Apply RoPE
+    # NOTE: Original implementation using complex numbers, which is not be supported in torch.compile yet.
+    # def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
+    #     with torch.amp.autocast("cuda", enabled=False):
+    #         x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
+    #         freqs_cis = freqs_cis.unsqueeze(2)
+    #         x_out = torch.view_as_real(x * freqs_cis).flatten(3)
+    #         return x_out.type_as(x_in)  # todo
+
+    if freqs_cis is not None:
+        query = apply_rotary_emb_zimage(query, freqs_cis)
+        key = apply_rotary_emb_zimage(key, freqs_cis)
+
+    # Cast to correct dtype
+    query, key = query.to(dtype), key.to(dtype)
+
+    # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
+    if attention_mask is not None and attention_mask.ndim == 2:
+        attention_mask = attention_mask[:, None, None, :]
+
+    # Compute joint attention
+    hidden_states = dispatch_attention_fn(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        dropout_p=0.0,
+        is_causal=False,
+        backend=self._attention_backend,
+        parallel_config=self._parallel_config,
+    )
+
+    # Reshape back
+    hidden_states = hidden_states.flatten(2, 3)
+    hidden_states = hidden_states.to(dtype)
+
+    output = attn.to_out[0](hidden_states)
+    if len(attn.to_out) > 1:  # dropout
+        output = attn.to_out[1](output)
+
+    return output
