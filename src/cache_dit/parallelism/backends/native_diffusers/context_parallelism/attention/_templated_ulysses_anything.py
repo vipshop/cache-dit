@@ -21,6 +21,7 @@ from ._distributed_primitives import (
     _gather_size_by_comm,
     _all_to_all_single_any_o,
     _all_to_all_single_any_qkv,
+    _all_to_all_single_any_o_fp8,
     _all_to_all_single_any_qkv_fp8,
 )
 
@@ -180,7 +181,7 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out = _all_to_all_single_any_o(out, group).contiguous()
+        out = _all_to_all_single_any_o_fp8(out, group).contiguous()
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
