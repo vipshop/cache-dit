@@ -100,4 +100,4 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 # - https://github.com/huggingface/diffusers/pull/12725
 
 
-# TODO: Support Async QKV projection for ZImage context parallelism
+# TODO: Support Async Ulysses QKV projection for Z-Image
