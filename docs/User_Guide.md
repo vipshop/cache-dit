@@ -780,7 +780,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 </div>
 
-Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses Context Parallelism. Currently, only the [FLUX.1](../examples/parallelism/) and [Z-Image](https://github.com/Tongyi-MAI/Z-Image) models are supported, and more models will be added in the future—stay tuned!
+Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](../examples/parallelism/), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) and 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image) models are supported, and more models will be added in the future—stay tuned!
 
 ```python
 # pip3 install "cache-dit[parallelism]"
