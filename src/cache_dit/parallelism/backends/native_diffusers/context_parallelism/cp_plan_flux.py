@@ -257,7 +257,8 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
     pre_key: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
-        hasattr(self._parallel_config, "context_parallel_config")
+        self._parallel_config is not None
+        and hasattr(self._parallel_config, "context_parallel_config")
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):

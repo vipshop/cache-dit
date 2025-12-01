@@ -202,7 +202,7 @@ def cachify(
 
         parallel_kwargs = (
             {
-                "attention_backend": ("_native_cudnn" if not args.attn else args.attn),
+                "attention_backend": ("native" if not args.attn else args.attn),
                 "experimental_ulysses_anything": args.ulysses_anything,
                 "experimental_ulysses_async_qkv_proj": args.ulysses_async_qkv_proj,
             }

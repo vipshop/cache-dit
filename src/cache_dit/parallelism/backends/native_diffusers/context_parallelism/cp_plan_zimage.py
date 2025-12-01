@@ -257,8 +257,8 @@ def __patch_ZSingleStreamAttnProcessor_ulysses_async__call__(
     freqs_cis: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
-        is_ulysses_anything_enabled()
-        and self._parallel_config is not None
+        self._parallel_config is not None
+        and hasattr(self._parallel_config, "context_parallel_config")
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):

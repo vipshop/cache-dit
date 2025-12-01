@@ -58,9 +58,10 @@ def maybe_enable_context_parallelism(
                 if hasattr(transformer, "set_attention_backend"):
                     # native, _native_cudnn, flash, etc.
                     if attention_backend is None:
-                        # Now only _native_cudnn is supported for parallelism
-                        # issue: https://github.com/huggingface/diffusers/pull/12443
-                        transformer.set_attention_backend("_native_cudnn")
+                        # Default to native for context parallelism due to:
+                        # - attn mask support (re-registered in cache-dit)
+                        # - general compatibility with various models
+                        transformer.set_attention_backend("native")
                         logger.warning(
                             "attention_backend is None, set default attention backend "
                             "to _native_cudnn for parallelism because of the issue: "
