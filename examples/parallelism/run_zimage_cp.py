@@ -65,6 +65,11 @@ pipe.to(device)
 
 assert isinstance(pipe.transformer, ZImageTransformer2DModel)
 
+# Allow customize attention backend for Single GPU inference
+if args.parallel_type is None:
+    if args.attn is not None:
+        pipe.transformer.set_attention_backend(args.attn)
+
 pipe.set_progress_bar_config(disable=rank != 0)
 
 # Set default prompt
