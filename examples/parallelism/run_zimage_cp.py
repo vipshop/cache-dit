@@ -18,9 +18,9 @@ from utils import (
 
 import cache_dit
 
-# NOTE: Only support context parallelism with 'native' attention backend
-# for ZImage due to the attention mask in ZImage is not None. Please use:
-# --parallel ulysses --attn native
+# NOTE: Only support context parallelism with 'native/_sdpa_cudnn' attn backend
+# for Z-Image due to the attention mask in Z-Image is not None. Please use:
+# `--parallel ulysses --attn native` or `--attn _sdpa_cudnn`.
 
 args = get_args()
 print(args)
