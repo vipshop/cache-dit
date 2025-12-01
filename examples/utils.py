@@ -65,6 +65,8 @@ def get_args(
     parser.add_argument("--max-autotune", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
     parser.add_argument("--steps", type=int, default=None)
+    parser.add_argument("--warmup", type=int, default=None)
+    parser.add_argument("--repeat", type=int, default=None)
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
