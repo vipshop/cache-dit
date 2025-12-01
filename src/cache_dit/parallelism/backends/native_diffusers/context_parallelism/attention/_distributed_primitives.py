@@ -49,6 +49,28 @@ def _all_to_all_single_async(
     return x
 
 
+# Reference:
+# - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/ulysses.py#L86
+def _all_to_all_single_async_v2(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> callable:
+    x = x.flatten()
+    # NOTE: Maybe we should use dist.all_to_all_single instead of fc.all_to_all_single
+    # in order to avoid forced synchronization while using torch.compile? However, we
+    # don't see any performance improvement by using dist.all_to_all_single for FLUX.1
+    # and Z-Image on NVIDIA L20 while compile is enabled. Reference:
+    # - https://github.com/pytorch/pytorch/blob/main/torch/distributed/_functional_collectives.py#L855
+    output = torch.empty_like(x)
+    comm = dist.all_to_all_single(output, x, None, None, group=group, async_op=True)
+
+    def wait() -> torch.Tensor:
+        comm.wait()
+        return output
+
+    return wait
+
+
 def _get_rank_world_size(
     group: dist.ProcessGroup,
 ) -> Tuple[int, int]:
