@@ -19,7 +19,7 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 from cache_dit.logger import init_logger
-from ._templated_ulysses_anything import TemplatedUlyssesAnythingAttention
+from ._templated_ulysses_anything import TemplatedUlyssesAnythingAttention, TemplatedUlyssesAnythingAttentionFloat8
 from ._templated_ulysses_anything import is_ulysses_anything_enabled
 
 
@@ -129,20 +129,36 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             )
         elif _parallel_config.context_parallel_config.ulysses_degree > 1:
             if is_ulysses_anything_enabled():
-                return TemplatedUlyssesAnythingAttention.apply(
-                    query,
-                    key,
-                    value,
-                    attn_mask,
-                    dropout_p,
-                    is_causal,
-                    scale,
-                    enable_gqa,
-                    return_lse,
-                    forward_op,
-                    backward_op,
-                    _parallel_config,
-                )
+                if False:
+                    return TemplatedUlyssesAnythingAttention.apply(
+                        query,
+                        key,
+                        value,
+                        attn_mask,
+                        dropout_p,
+                        is_causal,
+                        scale,
+                        enable_gqa,
+                        return_lse,
+                        forward_op,
+                        backward_op,
+                        _parallel_config,
+                    )
+                else:
+                    return TemplatedUlyssesAnythingAttentionFloat8.apply(
+                        query,
+                        key,
+                        value,
+                        attn_mask,
+                        dropout_p,
+                        is_causal,
+                        scale,
+                        enable_gqa,
+                        return_lse,
+                        forward_op,
+                        backward_op,
+                        _parallel_config,
+                    )
             else:
                 return TemplatedUlyssesAttention.apply(
                     query,

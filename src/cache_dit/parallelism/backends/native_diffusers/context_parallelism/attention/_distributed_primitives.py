@@ -158,6 +158,38 @@ def _all_to_all_single_any_o(
 
 
 @torch.compiler.allow_in_graph
+def _all_to_all_single_any_qkv_fp8(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+    dtype = x.dtype
+    (world_size, S_LOCAL, B, H_LOCAL, D) = shape
+    input_split_sizes = [S_LOCAL] * world_size
+    # S_LOCAL maybe not equal for all ranks in dynamic shape case,
+    # since we don't know the actual shape before this timing, thus,
+    # we have to use all gather to collect the S_LOCAL first.
+    output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+    # NOTE: The `if` branch will introduce graph break for torch.compile,
+    # so, we choose to disable the even split optimization implementation
+    # _all_to_all_single for now.
+    x = x.flatten(1) # (world_size, S_LOCAL * B * H_LOCAL * D)
+    max_val = x.abs().amax(dim=1, keepdim=True).clamp(1e-4) # (world_size, 1)
+    scale = max_val / 448.0 # (world_size, 1)
+    x = torch.round(x / scale).to(torch.float8_e4m3fn) # (world_size, S_LOCAL * B * H_LOCAL * D)
+    x = x.view(shape) # (world_size, S_LOCAL, B, H_LOCAL, D)
+    x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+    scale = fc.all_to_all_single(scale, None, None, group=group)
+    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+    scale = _wait_tensor(scale) # (S_GLOBAL, 1)
+    repeats = torch.tensor(output_split_sizes, device=x.device)
+    scale = torch.repeat_interleave(scale, repeats)
+    scale = scale.view(-1, 1, 1, 1)
+    return x.to(dtype) * scale
+
+
+@torch.compiler.allow_in_graph
 def _gather_split_any_o(  # noqa: F811
     out: torch.Tensor,
     group: dist.ProcessGroup,
