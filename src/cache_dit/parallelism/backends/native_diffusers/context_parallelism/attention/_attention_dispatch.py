@@ -414,7 +414,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         return (out, lse) if return_lse else out
 
     logger.info(
-        "Registered new attention backend: _SDPA_CUDNN, You can disable it by: "
+        "Registered new attention backend: _SDPA_CUDNN, to enable "
+        "context parallelism with attn mask. You can disable it by: "
         "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
     )
 
