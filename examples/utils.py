@@ -74,6 +74,7 @@ def get_args(
     parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
+    parser.add_argument("--steps-mask", "--scm", action="store_true", default=False)
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
@@ -225,6 +226,7 @@ def cachify(
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
                     residual_diff_threshold=args.rdt,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
+                    steps_computation_mask=kwargs.get("steps_computation_mask", None),
                 )
                 if cache_config is None and args.cache
                 else cache_config
