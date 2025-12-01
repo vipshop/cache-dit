@@ -33,7 +33,9 @@ __all__ = [
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
     "disable_ulysses_anything",
+    "enable_ulysses_anything_float8",
     "is_ulysses_anything_float8_enabled",
+    "disable_ulysses_anything_float8",
 ]
 
 
@@ -380,6 +382,50 @@ def disable_ulysses_anything(**kwargs):
     logger.info("Ulysses Anything Attention is manually disabled in cache-dit.")
 
 
+def enable_ulysses_anything_float8(**kwargs):
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    try:
+        if _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8:
+            # function for TemplatedUlyssesAnythingAttention.
+            if EquipartitionSharder.shard != shard_anything:
+                EquipartitionSharder.shard = shard_anything
+                EquipartitionSharder.unshard = unshard_anything
+                logger.warning(
+                    "Ulysses Anything Attention Float8 is already enabled in cache-dit. "
+                    "but EquipartitionSharder.shard/unshard is not set correctly, "
+                    "resetting it to the correct shard/unshard_anything function."
+                )
+            return
+
+        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = True
+
+        logger.warning(
+            "Ulysses Anything Attention Float8 is enabled in cache-dit. "
+            "Please note that this is an experimental feature and "
+            "may not be fully tested."
+        )
+
+        # Ensure the EquipartitionSharder uses our modified shard_anything
+        # function for TemplatedUlyssesAnythingAttention.
+        if EquipartitionSharder.shard != shard_anything:
+            EquipartitionSharder.shard = shard_anything
+            EquipartitionSharder.unshard = unshard_anything
+            logger.info(
+                "EquipartitionSharder.shard/unshard is set to shard/unshard_anything function "
+                "for Ulysses Anything Attention Float8."
+            )
+    except Exception as e:
+        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
+        logger.error(f"Failed to enable Ulysses Anything Attention Float8 in cache-dit due to error: {e}")
+        pass
+
+
 def is_ulysses_anything_float8_enabled(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+
+
+def disable_ulysses_anything_float8_enabled(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
+    logger.info("Ulysses Anything Attention Float8 is manually disabled in cache-dit.")
