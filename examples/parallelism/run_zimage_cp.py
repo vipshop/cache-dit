@@ -62,12 +62,12 @@ if args.cache or args.parallel_type is not None:
     cachify(
         args,
         pipe,
-        # total 9 steps for distilled Z-Image-Turbo
+        # Total 9 steps for distilled Z-Image-Turbo
         # e.g, 111110101, 1: compute, 0: dynamic cache
         steps_computation_mask=(
             cache_dit.steps_mask(
-                compute_bins=[5, 1, 1],
-                cache_bins=[1, 1],
+                compute_bins=[5, 1, 1],  # 7 steps compute
+                cache_bins=[1, 1],  # max 2 steps cache
             )
             if args.steps_mask
             else None
