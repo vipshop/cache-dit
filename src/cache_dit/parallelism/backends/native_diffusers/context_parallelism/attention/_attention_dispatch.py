@@ -76,13 +76,6 @@ def _set_new_attn_backend(member: str, value: str):
 
 
 if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
-    logger.warning(
-        "Re-registering NATIVE attention backend to enable context parallelism "
-        "with attn mask. Or, you can disable this behavior by export env: "
-        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
-    )
-    _registry_pop_attn_backend(AttentionBackendName.NATIVE)
-
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
         "_native_attention_forward_op",
         "_sdpa_cudnn_attention_forward_op",
@@ -256,6 +249,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         return grad_query, grad_key, grad_value
 
     # Re-register NATIVE attention backend to allow attn mask while using context parallelism
+    _registry_pop_attn_backend(AttentionBackendName.NATIVE)
+
     @_AttentionBackendRegistry.register(
         AttentionBackendName.NATIVE,
         constraints=[_check_device, _check_shape],
@@ -304,6 +299,12 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                 _parallel_config=_parallel_config,
             )
         return out
+
+    logger.warning(
+        "Re-registered NATIVE attention backend to enable context parallelism "
+        "with attn mask. You can disable this behavior by export env: "
+        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
+    )
 
     def _sdpa_cudnn_attention_forward_op(
         ctx: torch.autograd.function.FunctionCtx,
@@ -412,7 +413,10 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
 
         return (out, lse) if return_lse else out
 
-    logger.info("Registered new attention backend: _SDPA_CUDNN")
+    logger.info(
+        "Registered new attention backend: _SDPA_CUDNN, You can disable it by: "
+        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
+    )
 
 else:
     from diffusers.models.attention_dispatch import (
