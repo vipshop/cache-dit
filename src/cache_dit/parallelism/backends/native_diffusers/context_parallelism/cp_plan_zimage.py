@@ -127,7 +127,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 # - https://github.com/huggingface/diffusers/pull/12725
 
 
-# TODO: Support Async Ulysses QKV projection for Z-Image
+# NOTE: Support Async Ulysses QKV projection for Z-Image
 def _ulysses_attn_with_async_qkv_proj_zimage(
     self: ZSingleStreamAttnProcessor,
     attn: Attention,
@@ -150,8 +150,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
             return x_out.type_as(x_in)  # todo
 
     dtype = hidden_states.dtype
-    # NOTE: Reorder to compute Value first to get oppurtunity to overlap
-    # the computation of norm and RoPE.
+    # NOTE: Reorder to compute Value first to get more oppurtunity to
+    # overlap the computation of norm_q/k and RoPE.
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
 
