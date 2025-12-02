@@ -539,24 +539,44 @@ def steps_mask(
             )
         elif total_steps < 16 and total_steps >= 8:
             # Mainly for distilled models with less steps, use smaller compute/cache bins
-            predefined_policies = {
-                "slow": [
-                    [6, 2, 1, 1, 1],  # = 11
-                    [1, 1, 1, 1],  # = 4
-                ],
-                "medium": [
-                    [4, 2, 1, 1, 1],  # = 9
-                    [1, 1, 2, 2],  # = 6
-                ],
-                "fast": [
-                    [3, 1, 1, 1, 1],  # = 7
-                    [1, 2, 2, 3],  # = 8
-                ],
-                "ultra": [
-                    [2, 1, 1, 1, 1],  # = 6
-                    [1, 2, 3, 3],  # = 9
-                ],
-            }
+            if total_steps > 8:
+                predefined_policies = {
+                    "slow": [
+                        [4, 2, 2, 2, 1],  # = 11
+                        [1, 1, 1, 1],  # = 4
+                    ],
+                    "medium": [
+                        [4, 2, 1, 1, 1],  # = 9
+                        [1, 1, 2, 2],  # = 6
+                    ],
+                    "fast": [
+                        [3, 1, 1, 1, 1],  # = 7
+                        [1, 2, 2, 3],  # = 8
+                    ],
+                    "ultra": [
+                        [2, 1, 1, 1, 1],  # = 6
+                        [1, 2, 3, 3],  # = 9
+                    ],
+                }
+            else:  # total_steps == 8
+                predefined_policies = {
+                    "slow": [
+                        [5, 1, 1],  # = 7
+                        [1],  # = 1
+                    ],
+                    "medium": [
+                        [4, 1, 1],  # = 6
+                        [1, 1],  # = 2
+                    ],
+                    "fast": [
+                        [3, 1, 1],  # = 5
+                        [1, 2],  # = 3
+                    ],
+                    "ultra": [
+                        [2, 1, 1],  # = 4
+                        [2, 2],  # = 4
+                    ],
+                }
             for policy in predefined_policies.values():
                 predefined_policies = _truncate_predefined_policies(
                     predefined_policies,
