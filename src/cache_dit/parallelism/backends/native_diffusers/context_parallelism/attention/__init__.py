@@ -9,6 +9,6 @@ from ._templated_ulysses_anything import (
     is_ulysses_anything_enabled,
     disable_ulysses_anything,
     enable_ulysses_anything_float8,
-    is_ulysses_anything_enabled_float8,
+    is_ulysses_anything_float8_enabled,
     disable_ulysses_anything_float8,
 )
