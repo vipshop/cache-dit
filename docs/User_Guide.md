@@ -662,8 +662,8 @@ cache_dit.enable_cache(
         # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
         # SCM=111111010010000010000100001, 1: compute, 0: cache.
         steps_computation_mask=cache_dit.steps_mask(
-            compute_bins=[6, 1, 1, 1, 1], # 10
-            cache_bins=[1, 2, 5, 5, 5], # 18
+            # e.g: slow, medium, fast, ultra.
+            mask_policy="fast", total_steps=28,
         ),
         # The policy for cache steps can be 'dynamic' or 'static'
         steps_computation_policy="dynamic",
