@@ -476,13 +476,13 @@ def steps_mask(
                         # Add 1 to each compute bin, e.g., total_steps=50,
                         # slow: 8 -> 8 + int(8 * (50 / 28)) = 22, 3 -> 3 + int(3 * (50 / 28)) = 8
                         # fast: 6 -> 6 + int(6 * (50 / 28)) = 16, 1 -> 1 + int(1 * (50 / 28)) = 2
-                        policy[0][i] += min(int(policy[0][i] * (total_steps / 28)), 1)
+                        policy[0][i] += max(int(policy[0][i] * (total_steps / 28)), 1)
                         if _sum_policy(policy) >= total_steps:
                             break
                         # Add 1 to each cache bin, e.g., total_steps=50,
                         # slow: 1 -> 1 + int(1 * (50 / 28)) = 2, 2 -> 2 + int(2 * (50 / 28)) = 5
                         # fast: 1 -> 1 + int(1 * (50 / 28)) = 2, 3 -> 3 + int(3 * (50 / 28)) = 8
-                        policy[1][i] += min(int(policy[1][i] * (total_steps / 28)), 1)
+                        policy[1][i] += max(int(policy[1][i] * (total_steps / 28)), 1)
                         if _sum_policy(policy) >= total_steps:
                             break
                     if _sum_policy(policy) >= total_steps:
