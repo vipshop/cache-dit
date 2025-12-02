@@ -102,7 +102,7 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
 
 
 @torch.compiler.disable
-def tensor_bitcast(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+def _tensor_bitcast(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     assert x.nbytes % dtype.itemsize == 0, f'x.nbytes must be divisible by {dtype.itemsize}'
     return x.view(dtype)
 
@@ -184,12 +184,12 @@ def _all_to_all_single_any_qkv_fp8(
     amax = x.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
     scale = amax / float8_max
     x_fp8 = (x / scale).to(torch.float8_e4m3fn)
-    x_fp8_with_scale = torch.cat([x_fp8, tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
+    x_fp8_with_scale = torch.cat([x_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
     x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
     x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, output_split_sizes, input_split_sizes, group)
     x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
     x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
-    x = x_fp8.to(dtype) * tensor_bitcast(scale, dtype)
+    x = x_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
     return x
 
 
@@ -207,7 +207,7 @@ def _all_to_all_single_any_o_fp8(
     amax = out.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
     scale = amax / float8_max
     out_fp8 = (out / scale).to(torch.float8_e4m3fn)
-    out_fp8_with_scale = torch.cat([out_fp8, tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
+    out_fp8_with_scale = torch.cat([out_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
 
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
@@ -232,7 +232,7 @@ def _all_to_all_single_any_o_fp8(
     # TODO: How to avoid extra memory IO access here?
     out_fp8_with_scale = torch.cat(out_fp8_with_scale.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
     out_fp8, scale = out_fp8_with_scale.split([D, itemsize], dim=-1)
-    out = out_fp8.to(dtype) * tensor_bitcast(scale, dtype)
+    out = out_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
     out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
     return out
 
