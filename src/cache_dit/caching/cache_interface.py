@@ -420,10 +420,10 @@ def steps_mask(
             Predefined mask policy. Options are "slow", "medium", "fast", "ultra".
             For examples, if total_steps=28, each policy corresponds to specific
             compute and cache bin configurations:
-                - "slow": compute_bins=[8, 3, 3, 2, 2], cache_bins=[1, 2, 2, 2, 3]
-                - "medium": compute_bins=[6, 2, 2, 2, 2], cache_bins=[1, 3, 3, 3, 4]
-                - "fast": compute_bins=[6, 1, 1, 1, 1], cache_bins=[1, 3, 4, 5, 5]
-                - "ultra": compute_bins=[4, 1, 1, 1, 1], cache_bins=[1, 4, 5, 6, 6]
+                - "slow": compute_bins=[8, 3, 3, 2, 1, 1], cache_bins=1, 2, 2, 2, 3]
+                - "medium": compute_bins=[6, 2, 2, 2, 2, 1], cache_bins=[1, 3, 3, 3, 3]
+                - "fast": compute_bins=[6, 1, 1, 1, 1], cache_bins=[1, 3, 4, 5, 4]
+                - "ultra": compute_bins=[4, 1, 1, 1, 1], cache_bins=[2, 5, 6, 7]
     Returns:
         `List[int]`: A list representing the step computation mask, where 1
         indicates a compute step and 0 indicates a cache step.
@@ -457,7 +457,7 @@ def steps_mask(
         ],
         "ultra": [
             [4, 1, 1, 1, 1],  # = 8 compute steps
-            [3, 5, 5, 7],  # = 20 cache steps
+            [2, 5, 6, 7],  # = 20 cache steps
         ],
     }
 
