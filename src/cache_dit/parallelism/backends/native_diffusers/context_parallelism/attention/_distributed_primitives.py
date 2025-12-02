@@ -100,11 +100,13 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     # Backend compiler `inductor` failed with aten._local_scalar_dense.default
     return gathered_sizes
 
+
 # NOTE: Temporary workaround for torch.compile issue with float8 tensor view.
 # Issue: https://github.com/vipshop/cache-dit/issues/513
 @torch.compiler.disable
 def _tensor_bitcast(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
-    assert x.nbytes % dtype.itemsize == 0, f'x.nbytes must be divisible by {dtype.itemsize}'
+    assert x.nbytes % dtype.itemsize == 0, f"x.nbytes must be divisible by {dtype.itemsize}"
+    x = x.contiguous()
     return x.view(dtype)
 
 
@@ -164,6 +166,30 @@ def _all_to_all_single_any_o(
     return out
 
 
+def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
+    shape = x.shape
+    dtype = x.dtype
+    itemsize = dtype.itemsize
+    float8_max = torch.finfo(torch.float8_e4m3fn).max
+    (world_size, S_LOCAL, B, H_LOCAL, D) = shape
+    amax = x.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
+    scale = amax / float8_max  # bfloat8 max
+    x_fp8 = (x / scale).to(torch.float8_e4m3fn)  # float8
+    # TODO: May implement custom fuse_cat_activation_scale triton kernel for better performance
+    # Currently, the _tensor_bitcast will break the torch.compile graph due to view operation.
+    x_fp8_with_scale = torch.cat([x_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
+    shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
+    x_fp8_with_scale = x_fp8_with_scale.flatten()
+    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
+    x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
+    x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
+    x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
+    # TODO: May implement custom fuse_activation_rescale triton kernel for better performance
+    x = x_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
+    x = x.reshape(shape)
+    return x
+
+
 @torch.compiler.allow_in_graph
 def _all_to_all_single_any_qkv_fp8(
     x: torch.Tensor,
@@ -187,7 +213,9 @@ def _all_to_all_single_any_qkv_fp8(
     x_fp8 = (x / scale).to(torch.float8_e4m3fn)
     x_fp8_with_scale = torch.cat([x_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
     x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
-    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, output_split_sizes, input_split_sizes, group)
+    x_fp8_with_scale = fc.all_to_all_single(
+        x_fp8_with_scale, output_split_sizes, input_split_sizes, group
+    )
     x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
     x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
     x = x_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
@@ -218,11 +246,15 @@ def _all_to_all_single_any_o_fp8(
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(out_fp8_with_scale, world_size, dim=0)]
+    input_split_sizes = [
+        o.shape[0] for o in torch.tensor_split(out_fp8_with_scale, world_size, dim=0)
+    ]
     # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
     # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
-    out_fp8_with_scale = fc.all_to_all_single(out_fp8_with_scale, output_split_sizes, input_split_sizes, group)
+    out_fp8_with_scale = fc.all_to_all_single(
+        out_fp8_with_scale, output_split_sizes, input_split_sizes, group
+    )
     out_fp8_with_scale = _wait_tensor(out_fp8_with_scale)  # (S_LOCAL*world_size, H_LOCAL, D)
     # NOTE: We can not simply reshape here, because the collective tensors
     # are stacked at dim=0(SeqLen), we need to first split them and then concat at
@@ -231,7 +263,9 @@ def _all_to_all_single_any_o_fp8(
     H_GLOBAL = H_LOCAL * world_size
     S_LOCAL = out_fp8_with_scale.shape[0] // world_size
     # TODO: How to avoid extra memory IO access here?
-    out_fp8_with_scale = torch.cat(out_fp8_with_scale.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
+    out_fp8_with_scale = torch.cat(
+        out_fp8_with_scale.tensor_split(world_size, dim=0), dim=1
+    )  # (B*S_LOCAL, H_GLOBAL, D)
     out_fp8, scale = out_fp8_with_scale.split([D, itemsize], dim=-1)
     out = out_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
     out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)

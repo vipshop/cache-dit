@@ -43,12 +43,15 @@ try:
 except ImportError as e:  # noqa: F841
     err_msg = str(e)
 
-    def quantize(*args, **kwargs):
+    def _raise_import_error(func_name: str):
         raise ImportError(
-            "Quantization requires additional dependencies. "
+            f"{func_name} requires additional dependencies. "
             "Please install cache-dit[quantization] or cache-dit[all] "
             f"to use this feature. Error message: {err_msg}"
         )
+
+    def quantize(*args, **kwargs):
+        _raise_import_error("quantize")
 
 
 def enable_compute_comm_overlap():
@@ -74,37 +77,36 @@ try:
     from cache_dit.parallelism import enable_ulysses_anything
     from cache_dit.parallelism import disable_ulysses_anything_float8
     from cache_dit.parallelism import enable_ulysses_anything_float8
+    from cache_dit.parallelism import disable_ulysses_float8
+    from cache_dit.parallelism import enable_ulysses_float8
 
 except ImportError as e:  # noqa: F841
     err_msg = str(e)
 
-    def enable_ulysses_anything(*args, **kwargs):
+    def _raise_import_error(func_name: str):  # noqa: F811
         raise ImportError(
-            "Ulysses Anything Attention requires additional dependencies. "
+            f"{func_name} requires additional dependencies. "
             "Please install cache-dit[parallelism] or cache-dit[all] "
             f"to use this feature. Error message: {err_msg}"
         )
+
+    def enable_ulysses_anything(*args, **kwargs):
+        _raise_import_error("enable_ulysses_anything")
 
     def disable_ulysses_anything(*args, **kwargs):
-        raise ImportError(
-            "Ulysses Anything Attention requires additional dependencies. "
-            "Please install cache-dit[parallelism] or cache-dit[all] "
-            f"to use this feature. Error message: {err_msg}"
-        )
+        _raise_import_error("disable_ulysses_anything")
 
     def enable_ulysses_anything_float8(*args, **kwargs):
-        raise ImportError(
-            "Ulysses Anything Attention Float8 requires additional dependencies. "
-            "Please install cache-dit[parallelism] or cache-dit[all] "
-            f"to use this feature. Error message: {err_msg}"
-        )
+        _raise_import_error("enable_ulysses_anything_float8")
 
     def disable_ulysses_anything_float8(*args, **kwargs):
-        raise ImportError(
-            "Ulysses Anything Attention Float8 requires additional dependencies. "
-            "Please install cache-dit[parallelism] or cache-dit[all] "
-            f"to use this feature. Error message: {err_msg}"
-        )
+        _raise_import_error("disable_ulysses_anything_float8")
+
+    def enable_ulysses_float8(*args, **kwargs):
+        _raise_import_error("enable_ulysses_float8")
+
+    def disable_ulysses_float8(*args, **kwargs):
+        _raise_import_error("disable_ulysses_float8")
 
 
 NONE = CacheType.NONE

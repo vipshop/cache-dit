@@ -23,12 +23,16 @@ from ._distributed_primitives import (
     _all_to_all_single_any_qkv,
     _all_to_all_single_any_o_fp8,
     _all_to_all_single_any_qkv_fp8,
+    _all_to_all_single_fp8,
+    _all_to_all_single,
 )
 
 logger = init_logger(__name__)
 
 __all__ = [
     "TemplatedUlyssesAnythingAttention",
+    "TemplatedUlyssesAnythingAttentionFloat8",
+    "TemplatedUlyssesAttentionFloat8",
     "EquipartitionSharder",
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
@@ -36,6 +40,9 @@ __all__ = [
     "enable_ulysses_anything_float8",
     "is_ulysses_anything_float8_enabled",
     "disable_ulysses_anything_float8",
+    "enable_ulysses_float8",
+    "is_ulysses_float8_enabled",
+    "disable_ulysses_float8",
 ]
 
 
@@ -142,6 +149,8 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
         **kwargs,
     ):
+        # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
+        # QK may cause more numerical instability than P@V matrix multiplication.
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
@@ -188,6 +197,7 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            # NOTE: DON'T use float8 all_to_all for lse, as it may cause numerical instability
             lse = (
                 _all_to_all_single_any_o(lse, group).squeeze(-1).contiguous()
             )  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -204,6 +214,90 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
     ):
         raise NotImplementedError(
             "Backward pass for Ulysses Anything Attention Float8 is not implemented yet."
+        )
+
+
+class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
+        # QK may cause more numerical instability than P@V matrix multiplication.
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        world_size = _parallel_config.context_parallel_config.ulysses_degree
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        B, S_Q_LOCAL, H, D = query.shape
+        _, S_KV_LOCAL, _, _ = key.shape
+        H_LOCAL = H // world_size
+        query = (
+            query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        )
+        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        value = (
+            value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        )
+        query, key, value = (_all_to_all_single_fp8(x, group) for x in (query, key, value))
+        query, key, value = (
+            x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value)
+        )
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=True,
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+        out = _all_to_all_single_fp8(out, group)
+        out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+
+        if return_lse:
+            lse = lse.reshape(B, world_size, S_Q_LOCAL, H_LOCAL).permute(1, 3, 0, 2).contiguous()
+            # NOTE: DON'T use float8 all_to_all for lse, as it may cause numerical instability
+            lse = _all_to_all_single(lse, group)
+            lse = lse.flatten(0, 1).permute(1, 2, 0).contiguous()
+        else:
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError(
+            "Backward pass for Ulysses Attention Float8 is not implemented yet."
         )
 
 
@@ -329,8 +423,9 @@ _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
 )
 _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = (
-    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FP8", "0") == "1"
+    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8", "0") == "1"
 )
+_CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = os.environ.get("CACHE_DIT_ENABELD_ULYSSES_FLOAT8", "0") == "1"
 
 
 def enable_ulysses_anything(**kwargs):
@@ -416,7 +511,9 @@ def enable_ulysses_anything_float8(**kwargs):
             )
     except Exception as e:
         _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
-        logger.error(f"Failed to enable Ulysses Anything Attention Float8 in cache-dit due to error: {e}")
+        logger.error(
+            f"Failed to enable Ulysses Anything Attention Float8 in cache-dit due to error: {e}"
+        )
         pass
 
 
@@ -429,3 +526,24 @@ def disable_ulysses_anything_float8(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
     logger.info("Ulysses Anything Attention Float8 is manually disabled in cache-dit.")
+
+
+def enable_ulysses_float8(**kwargs):
+    global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
+    _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = True
+    logger.warning(
+        "Ulysses Attention Float8 is enabled in cache-dit. "
+        "Please note that this is an experimental feature and "
+        "may not be fully tested."
+    )
+
+
+def is_ulysses_float8_enabled(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
+    return _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
+
+
+def disable_ulysses_float8(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
+    _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = False
+    logger.info("Ulysses Attention Float8 is manually disabled in cache-dit.")
