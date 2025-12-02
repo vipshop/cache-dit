@@ -456,7 +456,7 @@ def steps_mask(
             ],
             "ultra": [
                 [4, 1, 1, 1, 1],  # = 8 compute steps
-                [3, 5, 6, 8],  # = 20 cache steps
+                [3, 5, 5, 7],  # = 20 cache steps
             ],
         }
 
@@ -537,7 +537,7 @@ def steps_mask(
                         policy[0][-1] -= 1
                         if policy[0][-1] == 0:
                             policy[0].pop()
-        else:
+        elif total_steps < 8:
             raise ValueError(
                 "total_steps must be at least 8 to use predefined "
                 f"mask_policy, got total_steps={total_steps}."
