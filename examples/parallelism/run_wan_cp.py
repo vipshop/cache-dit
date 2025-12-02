@@ -15,6 +15,7 @@ from utils import (
     maybe_init_distributed,
     strify,
     MemoryTracker,
+    create_profiler_from_args,
 )
 
 import cache_dit
@@ -113,6 +114,8 @@ def run_pipe(warmup: bool = False):
     num_inference_steps = 30 if not warmup else 4
     if args.steps is not None and not warmup:
         num_inference_steps = args.steps
+    if args.profile and args.steps is None and not warmup:
+        num_inference_steps = 3
     output = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
@@ -143,7 +146,14 @@ if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-video = run_pipe()
+if args.profile:
+    profiler = create_profiler_from_args(args, profile_name="wan_cp_inference")
+    with profiler:
+        video = run_pipe()
+    if rank == 0:
+        print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
+else:
+    video = run_pipe()
 end = time.time()
 
 if memory_tracker:
