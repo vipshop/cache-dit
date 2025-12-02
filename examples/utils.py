@@ -278,7 +278,7 @@ def strify(args, pipe_or_stats):
     if args.ulysses_anything:
         base_str += "_ulysses_anything"
         if args.ulysses_anything_float8:
-            base_str += "_ulysses_anything_float8"
+            base_str += "_float8"
     if args.ulysses_async_qkv_proj:
         base_str += "_ulysses_async_qkv_proj"
     if args.attn is not None:
