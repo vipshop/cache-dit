@@ -427,6 +427,7 @@ def steps_mask(
         `List[int]`: A list representing the step computation mask, where 1
         indicates a compute step and 0 indicates a cache step.
     """
+    # Prefer compute/cache bins if both are provided
     if compute_bins is not None and cache_bins is not None:
         return _steps_mask(
             compute_bins=compute_bins,
