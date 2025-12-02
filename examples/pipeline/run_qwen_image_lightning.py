@@ -128,7 +128,11 @@ aspect_ratios = {
     "2:3": (1056, 1584),
 }
 
-width, height = aspect_ratios["16:9"]
+# Use command line args if provided, otherwise default to 16:9
+if args.width is not None and args.height is not None:
+    width, height = args.width, args.height
+else:
+    width, height = aspect_ratios["16:9"]
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 

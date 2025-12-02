@@ -136,6 +136,8 @@ def run_pipe(warmup: bool = False):
     generator = torch.Generator("cpu").manual_seed(0)
     image = pipe(
         prompt=prompt,
+        height=1024 if args.height is None else args.height,
+        width=1024 if args.width is None else args.width,
         # 28 steps can be a good trade-off
         num_inference_steps=5 if warmup else (28 if args.steps is None else args.steps),
         guidance_scale=4,

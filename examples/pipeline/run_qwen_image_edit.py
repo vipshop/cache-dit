@@ -41,7 +41,8 @@ elif torch.cuda.device_count() > 1 and pipe.device.type == "cpu":
     # Multi-GPU but model is on CPU (device_map was None): move to default GPU
     pipe.to("cuda")
 
-image = Image.open("../data/bear.png").convert("RGB")
+image_path = args.image_path if args.image_path else "../data/bear.png"
+image = Image.open(image_path).convert("RGB")
 prompt = "Only change the bear's color to purple"
 if args.prompt is not None:
     prompt = args.prompt
@@ -57,9 +58,11 @@ if args.compile:
         image=image,
         prompt=prompt,
         negative_prompt=" ",
+        height=1024 if args.height is None else args.height,
+        width=1024 if args.width is None else args.width,
         generator=torch.Generator(device="cpu").manual_seed(0),
         true_cfg_scale=4.0,
-        num_inference_steps=50,
+        num_inference_steps=50 if args.steps is None else args.steps,
     ).images[0]
 
 memory_tracker = MemoryTracker() if args.track_memory else None
@@ -72,9 +75,11 @@ image = pipe(
     image=image,
     prompt=prompt,
     negative_prompt=" ",
+    height=1024 if args.height is None else args.height,
+    width=1024 if args.width is None else args.width,
     generator=torch.Generator(device="cpu").manual_seed(0),
     true_cfg_scale=4.0,
-    num_inference_steps=50,
+    num_inference_steps=50 if args.steps is None else args.steps,
 ).images[0]
 
 end = time.time()
