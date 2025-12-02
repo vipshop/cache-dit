@@ -123,6 +123,7 @@ def get_args(
         "--negative-prompt", type=str, default=None, help="Override default negative prompt"
     )
     parser.add_argument("--model-path", type=str, default=None, help="Override model path")
+    parser.add_argument("--image-path", type=str, default=None, help="Override image path")
     parser.add_argument(
         "--track-memory",
         action="store_true",
