@@ -400,7 +400,7 @@ def steps_mask(
     compute_bins: Optional[List[int]] = None,
     cache_bins: Optional[List[int]] = None,
     total_steps: Optional[int] = None,
-    mask_policy: Optional[str] = None,
+    mask_policy: Optional[str] = "fast",
 ) -> list[int]:
     r"""
     Define a step computation mask based on compute and cache bins.
@@ -435,171 +435,169 @@ def steps_mask(
             cache_bins=cache_bins,
             total_steps=total_steps,
         )
-    elif mask_policy is not None:
-        assert (
-            total_steps is not None
-        ), "total_steps must be provided when using predefined mask_policy."
-        # 28 steps predefined policies
-        predefined_policies = {
-            # NOTE: last step will never cache by default
-            # mask: 11111111 0 111 00 111 00 11 00 1 000 1
-            "slow": [
-                [8, 3, 3, 2, 1, 1],  # = 18 compute steps
-                [1, 2, 2, 2, 3],  # = 10 cache steps
-            ],
-            "medium": [
-                [6, 2, 2, 2, 2, 1],  # = 15 compute steps
-                [1, 3, 3, 3, 3],  # = 13 cache steps
-            ],
-            "fast": [
-                [6, 1, 1, 1, 1, 1],  # = 11 compute steps
-                [1, 3, 4, 5, 4],  # = 17 cache steps
-            ],
-            "ultra": [
-                [4, 1, 1, 1, 1],  # = 8 compute steps
-                [3, 5, 5, 7],  # = 20 cache steps
-            ],
-        }
 
-        def _sum_policy(policy: List[List[int]]) -> int:
-            return sum(policy[0]) + sum(policy[1])
+    assert (
+        total_steps is not None
+    ), "total_steps must be provided when using predefined mask_policy."
+    # 28 steps predefined policies
+    predefined_policies = {
+        # NOTE: last step will never cache by default
+        # mask: 11111111 0 111 00 111 00 11 00 1 000 1
+        "slow": [
+            [8, 3, 3, 2, 1, 1],  # = 18 compute steps
+            [1, 2, 2, 2, 3],  # = 10 cache steps
+        ],
+        "medium": [
+            [6, 2, 2, 2, 2, 1],  # = 15 compute steps
+            [1, 3, 3, 3, 3],  # = 13 cache steps
+        ],
+        "fast": [
+            [6, 1, 1, 1, 1, 1],  # = 11 compute steps
+            [1, 3, 4, 5, 4],  # = 17 cache steps
+        ],
+        "ultra": [
+            [4, 1, 1, 1, 1],  # = 8 compute steps
+            [3, 5, 5, 7],  # = 20 cache steps
+        ],
+    }
 
-        def _truncate_policy(policy: List[List[int]], target_steps: int) -> List[List[int]]:
-            compute_bins, cache_bins = policy  # reference only
-            while _sum_policy(policy) > target_steps:
-                if cache_bins:
-                    cache_bins[-1] -= 1
-                    if cache_bins[-1] == 0:
-                        cache_bins.pop()
-                if _sum_policy(policy) <= target_steps:
-                    break
-                if compute_bins:
-                    compute_bins[-1] -= 1
-                    if compute_bins[-1] == 0:
-                        compute_bins.pop()
-                if _sum_policy(policy) <= target_steps:
-                    break
-            return [compute_bins, cache_bins]
+    def _sum_policy(policy: List[List[int]]) -> int:
+        return sum(policy[0]) + sum(policy[1])
 
-        def _truncate_predefined_policies(
-            policies: dict[str, List[List[int]]],
-            target_steps: int,
-        ) -> dict[str, List[List[int]]]:
-            truncated_policies = {}
-            for name, policy in policies.items():
-                truncated_policies[name] = _truncate_policy(policy, target_steps)
-            return truncated_policies
+    def _truncate_policy(policy: List[List[int]], target_steps: int) -> List[List[int]]:
+        compute_bins, cache_bins = policy  # reference only
+        while _sum_policy(policy) > target_steps:
+            if cache_bins:
+                cache_bins[-1] -= 1
+                if cache_bins[-1] == 0:
+                    cache_bins.pop()
+            if _sum_policy(policy) <= target_steps:
+                break
+            if compute_bins:
+                compute_bins[-1] -= 1
+                if compute_bins[-1] == 0:
+                    compute_bins.pop()
+            if _sum_policy(policy) <= target_steps:
+                break
+        return [compute_bins, cache_bins]
 
-        if total_steps > 28:
-            # Expand bins if total_steps exceed predefined sum
-            # For example, for total_steps=50, we will expand the bins
-            # of each policy until they can cover total_steps.
-            # This ensures the relative ratio of compute/cache steps
-            # remains consistent with the predefined policies.
-            for policy in predefined_policies.values():
-                min_bins_len = min(len(policy[0]), len(policy[1]))
-                compute_bins = copy.deepcopy(policy[0])
-                cache_bins = copy.deepcopy(policy[1])
-                while _sum_policy(policy) < total_steps:
-                    for i in range(min_bins_len):
-                        # Add 1 to each compute bin, e.g., total_steps=50,
-                        # slow: 8 -> 8 + int(8 * (50 / 28) * 0.5) = 14
-                        #       3 -> 3 + int(3 * (50 / 28) * 0.5) = 5
-                        # fast: 6 -> 6 + int(6 * (50 / 28) * 0.5) = 11
-                        #       1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
-                        policy[0][i] += max(int(compute_bins[i] * ((total_steps / 28) * 0.5)), 1)
-                        if _sum_policy(policy) >= total_steps:
-                            break
-                        # Add 1 to each cache bin, e.g., total_steps=50,
-                        # slow: 1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
-                        #       2 -> 2 + int(2 * (50 / 28) * 0.5) = 4
-                        # fast: 1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
-                        #       3 -> 3 + int(3 * (50 / 28) * 0.5) = 5
-                        policy[1][i] += max(int(cache_bins[i] * ((total_steps / 28) * 0.5)), 1)
-                        if _sum_policy(policy) >= total_steps:
-                            break
+    def _truncate_predefined_policies(
+        policies: dict[str, List[List[int]]],
+        target_steps: int,
+    ) -> dict[str, List[List[int]]]:
+        truncated_policies = {}
+        for name, policy in policies.items():
+            truncated_policies[name] = _truncate_policy(policy, target_steps)
+        return truncated_policies
+
+    if total_steps > 28:
+        # Expand bins if total_steps exceed predefined sum
+        # For example, for total_steps=50, we will expand the bins
+        # of each policy until they can cover total_steps.
+        # This ensures the relative ratio of compute/cache steps
+        # remains consistent with the predefined policies.
+        for policy in predefined_policies.values():
+            min_bins_len = min(len(policy[0]), len(policy[1]))
+            compute_bins = copy.deepcopy(policy[0])
+            cache_bins = copy.deepcopy(policy[1])
+            while _sum_policy(policy) < total_steps:
+                for i in range(min_bins_len):
+                    # Add 1 to each compute bin, e.g., total_steps=50,
+                    # slow: 8 -> 8 + int(8 * (50 / 28) * 0.5) = 14
+                    #       3 -> 3 + int(3 * (50 / 28) * 0.5) = 5
+                    # fast: 6 -> 6 + int(6 * (50 / 28) * 0.5) = 11
+                    #       1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
+                    policy[0][i] += max(int(compute_bins[i] * ((total_steps / 28) * 0.5)), 1)
                     if _sum_policy(policy) >= total_steps:
                         break
-                    # compute bin due to compute_bins always longer than cache_bins
-                    policy[0][-1] += 1
+                    # Add 1 to each cache bin, e.g., total_steps=50,
+                    # slow: 1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
+                    #       2 -> 2 + int(2 * (50 / 28) * 0.5) = 4
+                    # fast: 1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
+                    #       3 -> 3 + int(3 * (50 / 28) * 0.5) = 5
+                    policy[1][i] += max(int(cache_bins[i] * ((total_steps / 28) * 0.5)), 1)
                     if _sum_policy(policy) >= total_steps:
                         break
+                if _sum_policy(policy) >= total_steps:
+                    break
+                # compute bin due to compute_bins always longer than cache_bins
+                policy[0][-1] += 1
+                if _sum_policy(policy) >= total_steps:
+                    break
 
-            # truncate to exact total_steps
-            predefined_policies = _truncate_predefined_policies(
-                predefined_policies,
-                total_steps,
-            )
-
-        elif total_steps < 28 and total_steps >= 16:
-            # Truncate bins to fit total_steps
-            predefined_policies = _truncate_predefined_policies(
-                predefined_policies,
-                total_steps,
-            )
-        elif total_steps < 16 and total_steps >= 8:
-            # Mainly for distilled models with less steps, use smaller compute/cache bins
-            if total_steps > 8:
-                predefined_policies = {
-                    "slow": [
-                        [4, 2, 2, 2, 1],  # = 11
-                        [1, 1, 1, 1],  # = 4
-                    ],
-                    "medium": [
-                        [4, 2, 1, 1, 1],  # = 9
-                        [1, 1, 2, 2],  # = 6
-                    ],
-                    "fast": [
-                        [3, 1, 1, 1, 1],  # = 7
-                        [1, 2, 2, 3],  # = 8
-                    ],
-                    "ultra": [
-                        [2, 1, 1, 1, 1],  # = 6
-                        [1, 2, 3, 3],  # = 9
-                    ],
-                }
-            else:  # total_steps == 8
-                predefined_policies = {
-                    "slow": [
-                        [5, 1, 1],  # = 7
-                        [1],  # = 1
-                    ],
-                    "medium": [
-                        [4, 1, 1],  # = 6
-                        [1, 1],  # = 2
-                    ],
-                    "fast": [
-                        [3, 1, 1],  # = 5
-                        [1, 2],  # = 3
-                    ],
-                    "ultra": [
-                        [2, 1, 1],  # = 4
-                        [2, 2],  # = 4
-                    ],
-                }
-            for policy in predefined_policies.values():
-                predefined_policies = _truncate_predefined_policies(
-                    predefined_policies,
-                    total_steps,
-                )
-        elif total_steps < 8:
-            raise ValueError(
-                "total_steps must be at least 8 to use predefined "
-                f"mask_policy, got total_steps={total_steps}."
-            )
-
-        if mask_policy not in predefined_policies:
-            raise ValueError(
-                f"mask_policy {mask_policy} is not valid. "
-                f"Choose from {list(predefined_policies.keys())}."
-            )
-        compute_bins, cache_bins = predefined_policies[mask_policy]
-        # Will truncate if exceeded total_steps
-        compute_mask = _steps_mask(
-            compute_bins=compute_bins, cache_bins=cache_bins, total_steps=total_steps
+        # truncate to exact total_steps
+        predefined_policies = _truncate_predefined_policies(
+            predefined_policies,
+            total_steps,
         )
-        # Force last step to compute
-        compute_mask[-1] = 1
-        return compute_mask
-    else:
-        raise ValueError("Either compute_bins and cache_bins or " "mask_policy must be provided.")
+
+    elif total_steps < 28 and total_steps >= 16:
+        # Truncate bins to fit total_steps
+        predefined_policies = _truncate_predefined_policies(
+            predefined_policies,
+            total_steps,
+        )
+    elif total_steps < 16 and total_steps >= 8:
+        # Mainly for distilled models with less steps, use smaller compute/cache bins
+        if total_steps > 8:
+            predefined_policies = {
+                "slow": [
+                    [4, 2, 2, 2, 1],  # = 11
+                    [1, 1, 1, 1],  # = 4
+                ],
+                "medium": [
+                    [4, 2, 1, 1, 1],  # = 9
+                    [1, 1, 2, 2],  # = 6
+                ],
+                "fast": [
+                    [3, 1, 1, 1, 1],  # = 7
+                    [1, 2, 2, 3],  # = 8
+                ],
+                "ultra": [
+                    [2, 1, 1, 1, 1],  # = 6
+                    [1, 2, 3, 3],  # = 9
+                ],
+            }
+        else:  # total_steps == 8
+            predefined_policies = {
+                "slow": [
+                    [5, 1, 1],  # = 7
+                    [1],  # = 1
+                ],
+                "medium": [
+                    [4, 1, 1],  # = 6
+                    [1, 1],  # = 2
+                ],
+                "fast": [
+                    [3, 1, 1],  # = 5
+                    [1, 2],  # = 3
+                ],
+                "ultra": [
+                    [2, 1, 1],  # = 4
+                    [2, 2],  # = 4
+                ],
+            }
+        for policy in predefined_policies.values():
+            predefined_policies = _truncate_predefined_policies(
+                predefined_policies,
+                total_steps,
+            )
+    elif total_steps < 8:
+        raise ValueError(
+            "total_steps must be at least 8 to use predefined "
+            f"mask_policy, got total_steps={total_steps}."
+        )
+
+    if mask_policy not in predefined_policies:
+        raise ValueError(
+            f"mask_policy {mask_policy} is not valid. "
+            f"Choose from {list(predefined_policies.keys())}."
+        )
+    compute_bins, cache_bins = predefined_policies[mask_policy]
+    # Will truncate if exceeded total_steps
+    compute_mask = _steps_mask(
+        compute_bins=compute_bins, cache_bins=cache_bins, total_steps=total_steps
+    )
+    # Force last step to compute
+    compute_mask[-1] = 1
+    return compute_mask
