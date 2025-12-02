@@ -54,6 +54,7 @@ def maybe_enable_context_parallelism(
             experimental_ulysses_anything = parallelism_config.parallel_kwargs.get(
                 "experimental_ulysses_anything", False
             )
+            # Float8 all_to_all for Ulysses Attention/Ulysses Anything Attention
             experimental_ulysses_float8 = parallelism_config.parallel_kwargs.get(
                 "experimental_ulysses_float8", False
             )
