@@ -9,7 +9,6 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
-    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
@@ -87,10 +86,10 @@ if args.cache or args.parallel_type is not None:
 
 assert isinstance(pipe.transformer, WanTransformer3DModel)
 # Enable memory savings
-if GiB() < 40:
-    pipe.enable_model_cpu_offload(device=device)
-else:
-    pipe.to(device)
+# The model weights for Wan-AI/Wan2.2-T2V-A14B-Diffusers will occupy over 50 GB of memory.
+# If enable_model_cpu_offload is not enabled, even running on an H100 with CP (possibly "CheckPoint" or a similar memory-saving technique) will result in an OOM (Out Of Memory) error.
+# This is essential to avoid OOM errors when running the model.
+pipe.enable_model_cpu_offload(device=device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
@@ -131,10 +130,6 @@ if args.attn is not None:
     if hasattr(pipe.transformer, "set_attention_backend"):
         pipe.transformer.set_attention_backend(args.attn)
         print(f"Set attention backend to {args.attn}")
-    if hasattr(pipe, "transformer_2") and hasattr(pipe.transformer_2, "set_attention_backend"):
-        pipe.transformer_2.set_attention_backend(args.attn)
-        print(f"Set attention backend to {args.attn} for transformer_2")
-
 
 if args.compile:
     cache_dit.set_compile_configs()

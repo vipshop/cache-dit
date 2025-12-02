@@ -442,7 +442,6 @@ def __patch_WanAttnProcessor_ulysses_async__call__(
         and hasattr(self._parallel_config, "context_parallel_config")
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
-        and not is_ulysses_anything_enabled()
     ):
         return _ulysses_attn_with_async_qkv_proj_wan(
             self,
@@ -452,15 +451,16 @@ def __patch_WanAttnProcessor_ulysses_async__call__(
             attention_mask,
             rotary_emb,
         )
-    else:
-        return WanAttnProcessor_original__call__(
-            self,
-            attn,
-            hidden_states,
-            encoder_hidden_states,
-            attention_mask,
-            rotary_emb,
-        )
+
+    # Otherwise, use the original call for non-ulysses case
+    return WanAttnProcessor_original__call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states,
+        attention_mask,
+        rotary_emb,
+    )
 
 
 @ContextParallelismPlannerRegister.register("WanVACETransformer3D")
