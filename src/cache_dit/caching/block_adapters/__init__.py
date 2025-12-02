@@ -188,7 +188,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
             **kwargs,
         )
     else:
-        # Wan 2.1
+        # Wan 2.1 or Transformer only case
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
