@@ -76,9 +76,11 @@ if args.cache:
             max_continuous_cached_steps=args.max_continuous_cached_steps,
             residual_diff_threshold=args.rdt,
             # LeMiCa or EasyCache style Mask for 28 steps, e.g,
-            # 111111010010000010000100001, 1: compute, 0: cache.
+            # slow: 11111111 0 111 00 111 00 11 00 1 000 1,
+            # 1: full compute steps, 0: dynamic/static cache.
             steps_computation_mask=cache_dit.steps_mask(
-                mask_policy=args.step_mask, total_steps=28 if args.steps is None else args.steps
+                mask_policy=args.step_mask,  # slow, medium, fast, ultra.
+                total_steps=28 if args.steps is None else args.steps,
             ),
             # The policy for cache steps can be 'dynamic' or 'static'
             steps_computation_policy=args.step_policy,

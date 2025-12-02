@@ -440,23 +440,23 @@ def steps_mask(
         ), "total_steps must be provided when using predefined mask_policy."
         # 28 steps predefined policies
         predefined_policies = {
-            # last step will never cache
-            # slow: 11111111 0 111 00 111 00 11 00 11 00 1
+            # NOTE: last step will never cache by default
+            # mask: 11111111 0 111 00 111 00 11 00 1 000 1
             "slow": [
-                [8, 3, 3, 2, 2, 1],
-                [1, 2, 2, 2, 2],
+                [8, 3, 3, 2, 1, 1],  # = 18 compute steps
+                [1, 2, 2, 2, 3],  # = 10 cache steps
             ],
             "medium": [
-                [6, 2, 2, 2, 2, 1],
-                [1, 3, 3, 3, 3],
+                [6, 2, 2, 2, 2, 1],  # = 15 compute steps
+                [1, 3, 3, 3, 3],  # = 13 cache steps
             ],
             "fast": [
-                [6, 1, 1, 1, 1, 1],
-                [1, 3, 4, 5, 4],
+                [6, 1, 1, 1, 1, 1],  # = 11 compute steps
+                [1, 3, 4, 5, 4],  # = 17 cache steps
             ],
             "ultra": [
-                [4, 1, 1, 1, 1, 1],
-                [1, 4, 5, 6, 5],
+                [4, 1, 1, 1, 1],  # = 8 compute steps
+                [3, 5, 6, 8],  # = 20 cache steps
             ],
         }
 
