@@ -18,9 +18,9 @@ from utils import (
 
 import cache_dit
 
-# NOTE: Only support context parallelism with 'native' attention backend
-# for ZImage due to the attention mask in ZImage is not None. Please use:
-# --parallel ulysses --attn native
+# NOTE: Only support context parallelism with 'native/_sdpa_cudnn' attn backend
+# for Z-Image due to the attention mask in Z-Image is not None. Please use:
+# `--parallel ulysses --attn native` or `--attn _sdpa_cudnn`.
 
 args = get_args()
 print(args)
@@ -58,14 +58,34 @@ if args.cache or args.parallel_type is not None:
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
-        # Temp workaroud for issue: https://github.com/vipshop/cache-dit/issues/498
-        args.Bn = max(1, args.Bn)
 
-    cachify(args, pipe)
+    cachify(
+        args,
+        pipe,
+        # Total 9 steps for distilled Z-Image-Turbo
+        # e.g, 111110101, 1: compute, 0: dynamic cache
+        steps_computation_mask=(
+            cache_dit.steps_mask(
+                compute_bins=[5, 1, 1],  # 7 steps compute
+                cache_bins=[1, 1],  # max 2 steps cache
+            )
+            if args.steps_mask
+            else None
+        ),
+    )
 
 pipe.to(device)
 
 assert isinstance(pipe.transformer, ZImageTransformer2DModel)
+
+# Allow customize attention backend for Single GPU inference
+if args.parallel_type is None:
+    # native, flash, _native_cudnn, sage, etc.
+    # _native_cudnn is faster than native(sdpa) on NVIDIA L20 with CUDA 12.9+.
+    # '_sdpa_cudnn' is only in cache-dit to support context parallelism
+    # with attn masks, e.g., Z-Image. It is not in diffusers yet.
+    if args.attn is not None:
+        pipe.transformer.set_attention_backend(args.attn)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
@@ -96,17 +116,30 @@ def run_pipe(warmup: bool = False):
 
 if args.compile:
     cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
+    if args.compile_repeated_blocks:
+        pipe.transformer.compile_repeated_blocks(
+            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default"
+        )
+    else:
+        pipe.transformer = torch.compile(
+            pipe.transformer, mode="max-autotune-no-cudagraphs" if args.max_autotune else "default"
+        )
 
 # warmup
-_ = run_pipe(warmup=True)
+if args.warmup is not None:
+    for _ in range(args.warmup):
+        _ = run_pipe(warmup=True)
+else:
+    _ = run_pipe(warmup=True)
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-image = run_pipe()
+repeat = args.repeat if args.repeat is not None else 1
+for _ in range(repeat):
+    image = run_pipe()
 end = time.time()
 
 if memory_tracker:
@@ -116,7 +149,7 @@ if memory_tracker:
 if rank == 0:
     cache_dit.summary(pipe)
 
-    time_cost = end - start
+    time_cost = (end - start) / repeat
     save_path = f"zimage.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")

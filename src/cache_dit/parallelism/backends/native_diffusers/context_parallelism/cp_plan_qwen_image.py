@@ -1,6 +1,15 @@
 import torch
+import functools
 from typing import Optional
+from torch.distributed import DeviceMesh
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers import QwenImageTransformer2DModel
+from diffusers.models.transformers.transformer_qwenimage import (
+    QwenDoubleStreamAttnProcessor2_0,
+    dispatch_attention_fn,
+    apply_rotary_emb_qwen,
+    Attention,
+)
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -19,6 +28,11 @@ from .cp_plan_registers import (
     ContextParallelismPlannerRegister,
 )
 
+from .attention._distributed_primitives import _wait_tensor
+from .attention._distributed_primitives import _all_to_all_single_sync
+from .attention._distributed_primitives import _all_to_all_single_async
+from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
+
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -35,8 +49,24 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # NOTE: Set it as False to use custom CP plan defined here.
         self._cp_planner_preferred_native_diffusers = False
 
+        experimental_ulysses_async_qkv_proj = kwargs.get(
+            "experimental_ulysses_async_qkv_proj", False
+        )
+        if experimental_ulysses_async_qkv_proj:
+            assert not is_ulysses_anything_enabled(), (
+                "experimental_ulysses_async_qkv_proj is not compatible with "
+                "experimental_ulysses_anything, please disable one of them."
+            )
+            QwenDoubleStreamAttnProcessor2_0.__call__ = (
+                __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
+            )
+
+            logger.info(
+                "Enabled experimental Async QKV Projection with Ulysses style "
+                "Context Parallelism for QwenImageTransformer2DModel."
+            )
+
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
-            from diffusers import QwenImageTransformer2DModel
 
             assert isinstance(
                 transformer, QwenImageTransformer2DModel
@@ -95,3 +125,194 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
+
+
+# NOTE: Support Async Ulysses QKV projection for Qwen-Image
+def _ulysses_attn_with_async_qkv_proj_qwen_image(
+    self: QwenDoubleStreamAttnProcessor2_0,
+    attn: Attention,
+    hidden_states: torch.FloatTensor,  # Image stream
+    encoder_hidden_states: torch.FloatTensor = None,  # Text stream
+    encoder_hidden_states_mask: torch.FloatTensor = None,
+    attention_mask: Optional[torch.FloatTensor] = None,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+) -> torch.FloatTensor:
+    if encoder_hidden_states is None:
+        raise ValueError(
+            "QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)"
+        )
+
+    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
+    world_size = self._parallel_config.context_parallel_config.ulysses_degree
+    group = ulysses_mesh.get_group()
+
+    seq_txt = encoder_hidden_states.shape[1]
+
+    # NOTE: Reorder to compute Value first to get more oppurtunity to
+    # overlap the computation of norm_q/k and RoPE.
+    img_value = attn.to_v(hidden_states)
+    txt_value = attn.add_v_proj(encoder_hidden_states)
+    img_value = img_value.unflatten(-1, (attn.heads, -1))
+    txt_value = txt_value.unflatten(-1, (attn.heads, -1))
+    joint_value = torch.cat([txt_value, img_value], dim=1)
+
+    B, S_KV_LOCAL, H, D = joint_value.shape
+    H_LOCAL = H // world_size
+
+    # 0. Async all to all for value
+    joint_value = (
+        joint_value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D)
+        .permute(2, 1, 0, 3, 4)
+        .contiguous()
+    )
+    joint_value = _all_to_all_single_async(joint_value, group)
+
+    # Compute QKV for image stream (sample projections)
+    img_query = attn.to_q(hidden_states)
+    # Compute QKV for text stream (context projections)
+    txt_query = attn.add_q_proj(encoder_hidden_states)
+    # Reshape for multi-head attention
+    img_query = img_query.unflatten(-1, (attn.heads, -1))
+    txt_query = txt_query.unflatten(-1, (attn.heads, -1))
+    # Apply QK normalization
+    if attn.norm_q is not None:
+        img_query = attn.norm_q(img_query)
+    if attn.norm_added_q is not None:
+        txt_query = attn.norm_added_q(txt_query)
+    # Apply RoPE
+    if image_rotary_emb is not None:
+        img_freqs, txt_freqs = image_rotary_emb
+        img_query = apply_rotary_emb_qwen(img_query, img_freqs, use_real=False)
+        txt_query = apply_rotary_emb_qwen(txt_query, txt_freqs, use_real=False)
+    # Concatenate for joint attention
+    # Order: [text, image]
+    joint_query = torch.cat([txt_query, img_query], dim=1)
+
+    # 1. Async all to all for query
+    _, S_Q_LOCAL, _, _ = joint_query.shape
+    joint_query = (
+        joint_query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D)
+        .permute(2, 1, 0, 3, 4)
+        .contiguous()
+    )
+    joint_query = _all_to_all_single_async(joint_query, group)
+
+    img_key = attn.to_k(hidden_states)
+    txt_key = attn.add_k_proj(encoder_hidden_states)
+    img_key = img_key.unflatten(-1, (attn.heads, -1))
+    txt_key = txt_key.unflatten(-1, (attn.heads, -1))
+    if attn.norm_k is not None:
+        img_key = attn.norm_k(img_key)
+    if attn.norm_added_k is not None:
+        txt_key = attn.norm_added_k(txt_key)
+    # Apply RoPE
+    if image_rotary_emb is not None:
+        img_freqs, txt_freqs = image_rotary_emb
+        img_key = apply_rotary_emb_qwen(img_key, img_freqs, use_real=False)
+        txt_key = apply_rotary_emb_qwen(txt_key, txt_freqs, use_real=False)
+    joint_key = torch.cat([txt_key, img_key], dim=1)
+
+    # 2. Async all to all for key
+    joint_key = (
+        joint_key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    )
+    joint_key = _all_to_all_single_async(joint_key, group)
+
+    # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+    joint_value = _wait_tensor(joint_value)
+    joint_value = (
+        joint_value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    joint_query = _wait_tensor(joint_query)
+    joint_query = (
+        joint_query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    joint_key = _wait_tensor(joint_key)
+    joint_key = (
+        joint_key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    # Compute joint attention
+    out = dispatch_attention_fn(
+        joint_query,
+        joint_key,
+        joint_value,
+        attn_mask=attention_mask,
+        dropout_p=0.0,
+        is_causal=False,
+        backend=self._attention_backend,
+        parallel_config=None,  # set to None to avoid double parallelism
+    )
+
+    out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+    out = _all_to_all_single_sync(out, group)
+    joint_hidden_states = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+
+    # Reshape back
+    joint_hidden_states = joint_hidden_states.flatten(2, 3)
+    joint_hidden_states = joint_hidden_states.to(joint_query.dtype)
+
+    # Split attention outputs back
+    txt_attn_output = joint_hidden_states[:, :seq_txt, :]  # Text part
+    img_attn_output = joint_hidden_states[:, seq_txt:, :]  # Image part
+
+    # Apply output projections
+    img_attn_output = attn.to_out[0](img_attn_output)
+    if len(attn.to_out) > 1:
+        img_attn_output = attn.to_out[1](img_attn_output)  # dropout
+
+    txt_attn_output = attn.to_add_out(txt_attn_output)
+
+    return img_attn_output, txt_attn_output
+
+
+QwenDoubleStreamAttnProcessor2_0_original__call__ = QwenDoubleStreamAttnProcessor2_0.__call__
+
+
+@functools.wraps(QwenDoubleStreamAttnProcessor2_0_original__call__)
+def __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__(
+    self: QwenDoubleStreamAttnProcessor2_0,
+    attn: Attention,
+    hidden_states: torch.FloatTensor,  # Image stream
+    encoder_hidden_states: torch.FloatTensor = None,  # Text stream
+    encoder_hidden_states_mask: torch.FloatTensor = None,
+    attention_mask: Optional[torch.FloatTensor] = None,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+) -> torch.FloatTensor:
+    if (
+        self._parallel_config is not None
+        and hasattr(self._parallel_config, "context_parallel_config")
+        and self._parallel_config.context_parallel_config is not None
+        and self._parallel_config.context_parallel_config.ulysses_degree > 1
+        and is_ulysses_anything_enabled()
+    ):
+        return _ulysses_attn_with_async_qkv_proj_qwen_image(
+            self,
+            attn,
+            hidden_states,
+            encoder_hidden_states,
+            encoder_hidden_states_mask,
+            attention_mask,
+            image_rotary_emb,
+        )
+    else:
+        return QwenDoubleStreamAttnProcessor2_0_original__call__(
+            self,
+            attn,
+            hidden_states,
+            encoder_hidden_states,
+            encoder_hidden_states_mask,
+            attention_mask,
+            image_rotary_emb,
+        )
