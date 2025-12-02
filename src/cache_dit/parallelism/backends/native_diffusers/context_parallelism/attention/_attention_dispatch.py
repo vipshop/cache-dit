@@ -19,8 +19,16 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 from cache_dit.logger import init_logger
-from ._templated_ulysses_anything import TemplatedUlyssesAnythingAttention, TemplatedUlyssesAnythingAttentionFloat8
-from ._templated_ulysses_anything import is_ulysses_anything_enabled, is_ulysses_anything_float8_enabled
+from ._templated_ulysses_anything import (
+    TemplatedUlyssesAnythingAttention,
+    TemplatedUlyssesAnythingAttentionFloat8,
+    TemplatedUlyssesAttentionFloat8,
+)
+from ._templated_ulysses_anything import (
+    is_ulysses_anything_enabled,
+    is_ulysses_anything_float8_enabled,
+    is_ulysses_float8_enabled,
+)
 
 
 logger = init_logger(__name__)
@@ -160,20 +168,36 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                         _parallel_config,
                     )
             else:
-                return TemplatedUlyssesAttention.apply(
-                    query,
-                    key,
-                    value,
-                    attn_mask,
-                    dropout_p,
-                    is_causal,
-                    scale,
-                    enable_gqa,
-                    return_lse,
-                    forward_op,
-                    backward_op,
-                    _parallel_config,
-                )
+                if is_ulysses_float8_enabled():
+                    return TemplatedUlyssesAttentionFloat8.apply(
+                        query,
+                        key,
+                        value,
+                        attn_mask,
+                        dropout_p,
+                        is_causal,
+                        scale,
+                        enable_gqa,
+                        return_lse,
+                        forward_op,
+                        backward_op,
+                        _parallel_config,
+                    )
+                else:
+                    return TemplatedUlyssesAttention.apply(
+                        query,
+                        key,
+                        value,
+                        attn_mask,
+                        dropout_p,
+                        is_causal,
+                        scale,
+                        enable_gqa,
+                        return_lse,
+                        forward_op,
+                        backward_op,
+                        _parallel_config,
+                    )
         else:
             raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 
