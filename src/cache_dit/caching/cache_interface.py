@@ -511,11 +511,11 @@ def steps_mask(
                         if _sum_policy(policy) >= total_steps:
                             break
                         # Add 1 to each cache bin, e.g., total_steps=50,
-                        # slow: 1 -> 1 + int(1 * (50 / 28) * 1.0) = 2
-                        #       2 -> 2 + int(2 * (50 / 28) * 1.0) = 5
-                        # fast: 1 -> 1 + int(1 * (50 / 28) * 1.0) = 2
-                        #       3 -> 3 + int(3 * (50 / 28) * 1.0) = 6
-                        policy[1][i] += max(int(cache_bins[i] * ((total_steps / 28) * 1.0)), 1)
+                        # slow: 1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
+                        #       2 -> 2 + int(2 * (50 / 28) * 0.5) = 4
+                        # fast: 1 -> 1 + int(1 * (50 / 28) * 0.5) = 2
+                        #       3 -> 3 + int(3 * (50 / 28) * 0.5) = 5
+                        policy[1][i] += max(int(cache_bins[i] * ((total_steps / 28) * 0.5)), 1)
                         if _sum_policy(policy) >= total_steps:
                             break
                     if _sum_policy(policy) >= total_steps:
@@ -574,8 +574,12 @@ def steps_mask(
                 f"Choose from {list(predefined_policies.keys())}."
             )
         compute_bins, cache_bins = predefined_policies[mask_policy]
-        return _steps_mask(
-            compute_bins=compute_bins,
-            cache_bins=cache_bins,
-            total_steps=total_steps,  # will truncate if exceeded total_steps
+        # Will truncate if exceeded total_steps
+        compute_mask = _steps_mask(
+            compute_bins=compute_bins, cache_bins=cache_bins, total_steps=total_steps
         )
+        # Force last step to compute
+        compute_mask[-1] = 1
+        return compute_mask
+    else:
+        raise ValueError("Either compute_bins and cache_bins or " "mask_policy must be provided.")
