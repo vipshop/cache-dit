@@ -146,11 +146,11 @@ def get_args(
         help="Enable Ulysses Anything Attention for context parallelism",
     )
     parser.add_argument(
-        "--ulysses-anything-float8",
-        "--uaa-fp8",
+        "--ulysses-float8",
+        "--ufp8",
         action="store_true",
         default=False,
-        help="Enable Ulysses Anything Attention Float8 for context parallelism",
+        help="Enable Ulysses Attention/UAA Float8 for context parallelism",
     )
     parser.add_argument(
         "--ulysses-async-qkv-proj",
@@ -214,7 +214,7 @@ def cachify(
             {
                 "attention_backend": ("native" if not args.attn else args.attn),
                 "experimental_ulysses_anything": args.ulysses_anything,
-                "experimental_ulysses_anything_float8": args.ulysses_anything_float8,
+                "experimental_ulysses_float8": args.ulysses_float8,
                 "experimental_ulysses_async_qkv_proj": args.ulysses_async_qkv_proj,
             }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
@@ -280,6 +280,9 @@ def strify(args, pipe_or_stats):
         base_str += "_ulysses_anything"
         if args.ulysses_anything_float8:
             base_str += "_float8"
+    else:
+        if args.ulysses_float8:
+            base_str += "_ulysses_float8"
     if args.ulysses_async_qkv_proj:
         base_str += "_ulysses_async_qkv_proj"
     if args.attn is not None:
