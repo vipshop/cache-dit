@@ -203,7 +203,7 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         *args,
     ):
         raise NotImplementedError(
-            "Backward pass for Ulysses Anything Attention is not implemented yet."
+            "Backward pass for Ulysses Anything Attention Float8 is not implemented yet."
         )
 
 
