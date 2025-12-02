@@ -1,4 +1,6 @@
 import os
+import torch
+from typing import List, Tuple, Union
 from cache_dit.caching.forward_pattern import ForwardPattern
 from cache_dit.caching.block_adapters.block_adapters import BlockAdapter
 from cache_dit.caching.block_adapters.block_adapters import (
@@ -8,6 +10,32 @@ from cache_dit.caching.block_adapters.block_adapters import ParamsModifier
 from cache_dit.caching.block_adapters.block_registers import (
     BlockAdapterRegister,
 )
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
+
+
+def _relaxed_assert_transformer(
+    transformer: torch.nn.Module,
+    allow_classes: Union[torch.nn.Module, List[torch.nn.Module], Tuple[torch.nn.Module]],
+) -> None:
+    if not isinstance(allow_classes, (list, tuple)):
+        allow_classes = (allow_classes,)
+    _imported_module_ = transformer.__module__
+    if _imported_module_.startswith("diffusers"):
+        # Only apply strict check for Diffusers transformers
+        assert isinstance(transformer, allow_classes), (
+            f"Transformer class {transformer.__class__.__name__} not in "
+            f"allowed classes: {[cls.__name__ for cls in allow_classes]}"
+        )
+    else:
+        # Otherwise, just log a warning and skip strict type check, e.g:
+        # sglang/multimodal_gen/runtime/models/dits/flux.py#L411
+        logger.warning(
+            f"Transformer class {transformer.__class__.__name__} is from "
+            f"{_imported_module_} not diffusers, skipping strict type check "
+            "in BlockAdapter."
+        )
 
 
 @BlockAdapterRegister.register("Flux")
@@ -24,7 +52,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     except ImportError:
         Flux2Transformer2DModel = None
 
-    assert isinstance(pipe.transformer, supported_transformers)
+    _relaxed_assert_transformer(pipe.transformer, supported_transformers)
 
     transformer_cls_name: str = pipe.transformer.__class__.__name__
     if (
@@ -89,7 +117,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
 def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import MochiTransformer3DModel
 
-    assert isinstance(pipe.transformer, MochiTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, MochiTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -104,7 +132,7 @@ def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
 def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogVideoXTransformer3DModel
 
-    assert isinstance(pipe.transformer, CogVideoXTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, CogVideoXTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -123,7 +151,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
     )
     from cache_dit.caching.patch_functors import WanVACEPatchFunctor
 
-    assert isinstance(
+    _relaxed_assert_transformer(
         pipe.transformer,
         (WanTransformer3DModel, WanVACETransformer3DModel),
     )
@@ -131,7 +159,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
     patch_functor = WanVACEPatchFunctor() if cls_name.startswith("WanVACE") else None
 
     if getattr(pipe, "transformer_2", None):
-        assert isinstance(
+        _relaxed_assert_transformer(
             pipe.transformer_2,
             (WanTransformer3DModel, WanVACETransformer3DModel),
         )
@@ -156,7 +184,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
             **kwargs,
         )
     else:
-        # Wan 2.1
+        # Wan 2.1 or Transformer only case
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
@@ -173,7 +201,7 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
 def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanVideoTransformer3DModel
 
-    assert isinstance(pipe.transformer, HunyuanVideoTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, HunyuanVideoTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -196,7 +224,7 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
 def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import QwenImageTransformer2DModel
 
-    assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, QwenImageTransformer2DModel)
 
     pipe_cls_name: str = pipe.__class__.__name__
     if pipe_cls_name.startswith("QwenImageControlNet"):
@@ -229,7 +257,7 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
 def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import LTXVideoTransformer3DModel
 
-    assert isinstance(pipe.transformer, LTXVideoTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, LTXVideoTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -244,7 +272,7 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
 def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import AllegroTransformer3DModel
 
-    assert isinstance(pipe.transformer, AllegroTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, AllegroTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -259,7 +287,7 @@ def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
 def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogView3PlusTransformer2DModel
 
-    assert isinstance(pipe.transformer, CogView3PlusTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, CogView3PlusTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -274,7 +302,7 @@ def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
 def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogView4Transformer2DModel
 
-    assert isinstance(pipe.transformer, CogView4Transformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, CogView4Transformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -290,7 +318,7 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
 def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CosmosTransformer3DModel
 
-    assert isinstance(pipe.transformer, CosmosTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, CosmosTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -306,7 +334,7 @@ def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
 def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import EasyAnimateTransformer3DModel
 
-    assert isinstance(pipe.transformer, EasyAnimateTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, EasyAnimateTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -321,7 +349,7 @@ def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
 def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SkyReelsV2Transformer3DModel
 
-    assert isinstance(pipe.transformer, SkyReelsV2Transformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, SkyReelsV2Transformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -340,7 +368,7 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
 def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SD3Transformer2DModel
 
-    assert isinstance(pipe.transformer, SD3Transformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, SD3Transformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -355,7 +383,7 @@ def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
 def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ConsisIDTransformer3DModel
 
-    assert isinstance(pipe.transformer, ConsisIDTransformer3DModel)
+    _relaxed_assert_transformer(pipe.transformer, ConsisIDTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -371,7 +399,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import DiTTransformer2DModel
     from cache_dit.caching.patch_functors import DiTPatchFunctor
 
-    assert isinstance(pipe.transformer, DiTTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, DiTTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -387,7 +415,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
 def amused_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import UVit2DModel
 
-    assert isinstance(pipe.transformer, UVit2DModel)
+    _relaxed_assert_transformer(pipe.transformer, UVit2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -402,7 +430,7 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
 def bria_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import BriaTransformer2DModel
 
-    assert isinstance(pipe.transformer, BriaTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, BriaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -424,7 +452,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import Lumina2Transformer2DModel
     from diffusers import LuminaNextDiT2DModel
 
-    assert isinstance(pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel))
+    _relaxed_assert_transformer(pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel))
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -439,7 +467,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
 def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import OmniGenTransformer2DModel
 
-    assert isinstance(pipe.transformer, OmniGenTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, OmniGenTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -454,7 +482,7 @@ def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
 def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import PixArtTransformer2DModel
 
-    assert isinstance(pipe.transformer, PixArtTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, PixArtTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -469,7 +497,7 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
 def sana_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SanaTransformer2DModel
 
-    assert isinstance(pipe.transformer, SanaTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, SanaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -484,7 +512,7 @@ def sana_adapter(pipe, **kwargs) -> BlockAdapter:
 def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import StableAudioDiTModel
 
-    assert isinstance(pipe.transformer, StableAudioDiTModel)
+    _relaxed_assert_transformer(pipe.transformer, StableAudioDiTModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -500,7 +528,7 @@ def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
     from cache_dit.utils import is_diffusers_at_least_0_3_5
 
-    assert isinstance(pipe.transformer, FluxTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, FluxTransformer2DModel)
     if is_diffusers_at_least_0_3_5():
         return BlockAdapter(
             pipe=pipe,
@@ -537,7 +565,7 @@ def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
 def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import AuraFlowTransformer2DModel
 
-    assert isinstance(pipe.transformer, AuraFlowTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, AuraFlowTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -553,7 +581,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ChromaTransformer2DModel
     from cache_dit.caching.patch_functors import ChromaPatchFunctor
 
-    assert isinstance(pipe.transformer, ChromaTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, ChromaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -576,7 +604,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
 def shape_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import PriorTransformer
 
-    assert isinstance(pipe.prior, PriorTransformer)
+    _relaxed_assert_transformer(pipe.prior, PriorTransformer)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.prior,
@@ -597,7 +625,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HiDreamImageTransformer2DModel
     from cache_dit.caching.patch_functors import HiDreamPatchFunctor
 
-    assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+    _relaxed_assert_transformer(pipe.transformer, HiDreamImageTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -622,7 +650,7 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
     from cache_dit.caching.patch_functors import HunyuanDiTPatchFunctor
 
-    assert isinstance(
+    _relaxed_assert_transformer(
         pipe.transformer,
         (HunyuanDiT2DModel, HunyuanDiT2DControlNetModel),
     )
@@ -642,7 +670,7 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanDiT2DModel
     from cache_dit.caching.patch_functors import HunyuanDiTPatchFunctor
 
-    assert isinstance(pipe.transformer, HunyuanDiT2DModel)
+    _relaxed_assert_transformer(pipe.transformer, HunyuanDiT2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -659,7 +687,7 @@ def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import Kandinsky5Transformer3DModel
 
-        assert isinstance(pipe.transformer, Kandinsky5Transformer3DModel)
+        _relaxed_assert_transformer(pipe.transformer, Kandinsky5Transformer3DModel)
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
@@ -682,7 +710,7 @@ def prx_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import PRXTransformer2DModel
 
-        assert isinstance(pipe.transformer, PRXTransformer2DModel)
+        _relaxed_assert_transformer(pipe.transformer, PRXTransformer2DModel)
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
@@ -704,7 +732,7 @@ def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import HunyuanImageTransformer2DModel
 
-        assert isinstance(pipe.transformer, HunyuanImageTransformer2DModel)
+        _relaxed_assert_transformer(pipe.transformer, HunyuanImageTransformer2DModel)
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
@@ -735,7 +763,7 @@ def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import ChronoEditTransformer3DModel
 
-        assert isinstance(pipe.transformer, ChronoEditTransformer3DModel)
+        _relaxed_assert_transformer(pipe.transformer, ChronoEditTransformer3DModel)
         # Same as Wan 2.1 adapter
         return BlockAdapter(
             pipe=pipe,
@@ -758,7 +786,7 @@ def zimage_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import ZImageTransformer2DModel
 
-        assert isinstance(pipe.transformer, ZImageTransformer2DModel)
+        _relaxed_assert_transformer(pipe.transformer, ZImageTransformer2DModel)
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
