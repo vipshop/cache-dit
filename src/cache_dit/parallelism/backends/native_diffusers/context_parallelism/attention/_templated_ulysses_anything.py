@@ -21,6 +21,8 @@ from ._distributed_primitives import (
     _gather_size_by_comm,
     _all_to_all_single_any_o,
     _all_to_all_single_any_qkv,
+    _all_to_all_single_any_o_fp8,
+    _all_to_all_single_any_qkv_fp8,
 )
 
 logger = init_logger(__name__)
@@ -31,6 +33,9 @@ __all__ = [
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
     "disable_ulysses_anything",
+    "enable_ulysses_anything_float8",
+    "is_ulysses_anything_float8_enabled",
+    "disable_ulysses_anything_float8",
 ]
 
 
@@ -115,6 +120,90 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
     ):
         raise NotImplementedError(
             "Backward pass for Ulysses Anything Attention is not implemented yet."
+        )
+
+
+class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
+
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+        **kwargs,
+    ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        world_size = _parallel_config.context_parallel_config.ulysses_degree
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        B, S_Q_LOCAL, H, D = query.shape
+        _, S_KV_LOCAL, _, _ = key.shape
+        H_LOCAL = H // world_size
+        # (world_size, S_LOCAL, B, H_LOCAL, D)
+        query = (
+            query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        )
+        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        value = (
+            value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        )
+        query, key, value = (_all_to_all_single_any_qkv_fp8(x, group) for x in (query, key, value))
+        # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+        query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=True,
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
+        out = _all_to_all_single_any_o_fp8(out, group).contiguous()
+
+        if return_lse:
+            # lse: (B, S_Q_GLOBAL, H_LOCAL)
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse = (
+                _all_to_all_single_any_o(lse, group).squeeze(-1).contiguous()
+            )  # (B, S_Q_LOCAL, H_GLOBAL)
+        else:
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError(
+            "Backward pass for Ulysses Anything Attention Float8 is not implemented yet."
         )
 
 
@@ -239,6 +328,9 @@ def unshard_anything(
 _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
 )
+_CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = (
+    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FP8", "0") == "1"
+)
 
 
 def enable_ulysses_anything(**kwargs):
@@ -288,3 +380,52 @@ def disable_ulysses_anything(**kwargs):
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
     _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
     logger.info("Ulysses Anything Attention is manually disabled in cache-dit.")
+
+
+def enable_ulysses_anything_float8(**kwargs):
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    try:
+        if _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8:
+            # function for TemplatedUlyssesAnythingAttention.
+            if EquipartitionSharder.shard != shard_anything:
+                EquipartitionSharder.shard = shard_anything
+                EquipartitionSharder.unshard = unshard_anything
+                logger.warning(
+                    "Ulysses Anything Attention Float8 is already enabled in cache-dit. "
+                    "but EquipartitionSharder.shard/unshard is not set correctly, "
+                    "resetting it to the correct shard/unshard_anything function."
+                )
+            return
+
+        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = True
+
+        logger.warning(
+            "Ulysses Anything Attention Float8 is enabled in cache-dit. "
+            "Please note that this is an experimental feature and "
+            "may not be fully tested."
+        )
+
+        # Ensure the EquipartitionSharder uses our modified shard_anything
+        # function for TemplatedUlyssesAnythingAttention.
+        if EquipartitionSharder.shard != shard_anything:
+            EquipartitionSharder.shard = shard_anything
+            EquipartitionSharder.unshard = unshard_anything
+            logger.info(
+                "EquipartitionSharder.shard/unshard is set to shard/unshard_anything function "
+                "for Ulysses Anything Attention Float8."
+            )
+    except Exception as e:
+        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
+        logger.error(f"Failed to enable Ulysses Anything Attention Float8 in cache-dit due to error: {e}")
+        pass
+
+
+def is_ulysses_anything_float8_enabled(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+
+
+def disable_ulysses_anything_float8(**kwargs) -> bool:
+    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
+    logger.info("Ulysses Anything Attention Float8 is manually disabled in cache-dit.")

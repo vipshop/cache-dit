@@ -158,6 +158,80 @@ def _all_to_all_single_any_o(
 
 
 @torch.compiler.allow_in_graph
+def _all_to_all_single_any_qkv_fp8(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+    dtype = x.dtype
+    itemsize = dtype.itemsize
+    float8_max = torch.finfo(torch.float8_e4m3fn).max
+    (world_size, S_LOCAL, B, H_LOCAL, D) = shape
+    input_split_sizes = [S_LOCAL] * world_size
+    # S_LOCAL maybe not equal for all ranks in dynamic shape case,
+    # since we don't know the actual shape before this timing, thus,
+    # we have to use all gather to collect the S_LOCAL first.
+    output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+    # NOTE: The `if` branch will introduce graph break for torch.compile,
+    # so, we choose to disable the even split optimization implementation
+    # _all_to_all_single for now.
+    amax = x.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
+    scale = amax / float8_max
+    x_fp8 = (x / scale).to(torch.float8_e4m3fn)
+    x_fp8_with_scale = torch.cat([x_fp8, scale.view(torch.float8_e4m3fn)], dim=-1)
+    x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
+    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, output_split_sizes, input_split_sizes, group)
+    x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
+    x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
+    x = x_fp8.to(dtype) * scale.view(dtype)
+    return x
+
+
+@torch.compiler.allow_in_graph
+def _all_to_all_single_any_o_fp8(
+    out: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    rank, world_size = _get_rank_world_size(group)
+    shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    dtype = out.dtype
+    itemsize = dtype.itemsize
+    float8_max = torch.finfo(torch.float8_e4m3fn).max
+    (B, S_GLOBAL, H_LOCAL, D) = shape
+    amax = out.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
+    scale = amax / float8_max
+    out_fp8 = (out / scale).to(torch.float8_e4m3fn)
+    out_fp8_with_scale = torch.cat([out_fp8, scale.view(torch.float8_e4m3fn)], dim=-1)
+
+    # NOTE: The `if` branch will introduce graph break for torch.compile,
+    # so, we choose to disable the even split optimization implementation
+    # _all_to_all_single for now.
+    out_fp8_with_scale = out_fp8_with_scale.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
+    # NOTE: May use tensor_split here to ensure the same split policy
+    # that we have used in the EquipartitionSharder sharding strategy. Please
+    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
+    # all of which are views of input, thus may not introduce extra IO access.
+    input_split_sizes = [o.shape[0] for o in torch.tensor_split(out_fp8_with_scale, world_size, dim=0)]
+    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
+    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
+    output_split_sizes = [input_split_sizes[rank]] * world_size
+    out_fp8_with_scale = fc.all_to_all_single(out_fp8_with_scale, output_split_sizes, input_split_sizes, group)
+    out_fp8_with_scale = _wait_tensor(out_fp8_with_scale)  # (S_LOCAL*world_size, H_LOCAL, D)
+    # NOTE: We can not simply reshape here, because the collective tensors
+    # are stacked at dim=0(SeqLen), we need to first split them and then concat at
+    # dim=1(Head), otherwise the result will be incorrect due to the linear layout
+    # of the tensor in memory.
+    H_GLOBAL = H_LOCAL * world_size
+    S_LOCAL = out_fp8_with_scale.shape[0] // world_size
+    # TODO: How to avoid extra memory IO access here?
+    out_fp8_with_scale = torch.cat(out_fp8_with_scale.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
+    out_fp8, scale = out_fp8_with_scale.split([D, itemsize], dim=-1)
+    out = out_fp8.to(dtype) * scale.view(dtype)
+    out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+    return out
+
+
+@torch.compiler.allow_in_graph
 def _gather_split_any_o(  # noqa: F811
     out: torch.Tensor,
     group: dist.ProcessGroup,
