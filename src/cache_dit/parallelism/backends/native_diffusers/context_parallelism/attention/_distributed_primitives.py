@@ -100,7 +100,8 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     # Backend compiler `inductor` failed with aten._local_scalar_dense.default
     return gathered_sizes
 
-
+# NOTE: Temporary workaround for torch.compile issue with float8 tensor view.
+# Issue: https://github.com/vipshop/cache-dit/issues/513
 @torch.compiler.disable
 def _tensor_bitcast(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     assert x.nbytes % dtype.itemsize == 0, f'x.nbytes must be divisible by {dtype.itemsize}'
