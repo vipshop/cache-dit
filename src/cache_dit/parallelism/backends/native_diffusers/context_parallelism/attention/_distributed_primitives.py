@@ -106,6 +106,7 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
 @torch.compiler.disable
 def _tensor_bitcast(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     assert x.nbytes % dtype.itemsize == 0, f"x.nbytes must be divisible by {dtype.itemsize}"
+    x = x.contiguous()
     return x.view(dtype)
 
 
@@ -172,8 +173,9 @@ def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
     float8_max = torch.finfo(torch.float8_e4m3fn).max
     (world_size, S_LOCAL, B, H_LOCAL, D) = shape
     amax = x.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
-    scale = amax / float8_max
-    x_fp8 = (x / scale).to(torch.float8_e4m3fn)
+    scale = amax / float8_max  # bfloat8 max
+    x_fp8 = (x / scale).to(torch.float8_e4m3fn)  # float8
+    # TODO: May implement custom cat_activation_scale triton kernel for better performance
     x_fp8_with_scale = torch.cat([x_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
     shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x_fp8_with_scale = x_fp8_with_scale.flatten()
@@ -181,6 +183,7 @@ def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
     x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
     x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
     x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
+    # TODO: May implement custom cat_activation_scale triton kernel for better performance
     x = x_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
     x = x.reshape(shape)
     return x
