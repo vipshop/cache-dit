@@ -28,6 +28,11 @@ from .cp_plan_registers import (
     ContextParallelismPlannerRegister,
 )
 
+from .attention._distributed_primitives import _wait_tensor
+from .attention._distributed_primitives import _all_to_all_single_sync
+from .attention._distributed_primitives import _all_to_all_single_async
+from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
+
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -47,6 +52,21 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
         if cls_name.startswith("ChronoEditTransformer3D"):
             self._cp_planner_preferred_native_diffusers = False
 
+        experimental_ulysses_async_qkv_proj = kwargs.get(
+            "experimental_ulysses_async_qkv_proj", False
+        )
+        if experimental_ulysses_async_qkv_proj:
+            assert not is_ulysses_anything_enabled(), (
+                "experimental_ulysses_async_qkv_proj is not compatible with "
+                "experimental_ulysses_anything, please disable one of them."
+            )
+            WanAttnProcessor.__call__ = __patch_WanAttnProcessor_ulysses_async__call__
+
+            logger.info(
+                "Enabled experimental Async QKV Projection with Ulysses style "
+                "Context Parallelism for WanTransformer3DModel."
+            )
+
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
@@ -56,7 +76,8 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         if cls_name.startswith("ChronoEditTransformer3D"):
-            WanAttnProcessor.__call__ = __patch_WanAttnProcessor__call__
+            if not experimental_ulysses_async_qkv_proj:
+                WanAttnProcessor.__call__ = __patch_WanAttnProcessor__call__
             _cp_plan = {
                 # Pattern of rope, split_output=True (split output rather than input):
                 #    un-split input
@@ -245,6 +266,201 @@ def __patch_WanAttnProcessor__call__(
     hidden_states = attn.to_out[0](hidden_states)
     hidden_states = attn.to_out[1](hidden_states)
     return hidden_states
+
+
+# NOTE: Support Async Ulysses QKV projection for Wan
+def _ulysses_attn_with_async_qkv_proj_wan(
+    self: WanAttnProcessor,
+    attn: "WanAttention",
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+) -> torch.Tensor:
+    from torch.distributed import DeviceMesh
+
+    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
+    world_size = self._parallel_config.context_parallel_config.ulysses_degree
+    group = ulysses_mesh.get_group()
+
+    encoder_hidden_states_img = None
+    if attn.add_k_proj is not None:
+        # 512 is the context length of the text encoder, hardcoded for now
+        image_context_length = encoder_hidden_states.shape[1] - 512
+        encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
+        encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
+
+    # NOTE: Reorder to compute Value first to get more opportunity to
+    # overlap the computation of norm_q/k and RoPE.
+    query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+
+    B, S_KV_LOCAL, H_TIMES_D = value.shape
+    H = attn.heads
+    D = H_TIMES_D // H
+    H_LOCAL = H // world_size
+
+    value = value.unflatten(2, (H, D))
+
+    # 0. Async all to all for value
+    value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    value = _all_to_all_single_async(value, group)
+
+    # Compute Q and apply normalization
+    query = attn.norm_q(query)
+    query = query.unflatten(2, (H, D))
+
+    # Apply RoPE to query
+    if rotary_emb is not None:
+
+        def apply_rotary_emb(
+            hidden_states: torch.Tensor,
+            freqs_cos: torch.Tensor,
+            freqs_sin: torch.Tensor,
+        ):
+            x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
+            cos = freqs_cos[..., 0::2]
+            sin = freqs_sin[..., 1::2]
+            out = torch.empty_like(hidden_states)
+            out[..., 0::2] = x1 * cos - x2 * sin
+            out[..., 1::2] = x1 * sin + x2 * cos
+            return out.type_as(hidden_states)
+
+        query = apply_rotary_emb(query, *rotary_emb)
+
+    # 1. Async all to all for query
+    _, S_Q_LOCAL, _, _ = query.shape
+    query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    query = _all_to_all_single_async(query, group)
+
+    # Compute K and apply normalization
+    key = attn.norm_k(key)
+    key = key.unflatten(2, (H, D))
+
+    # Apply RoPE to key
+    if rotary_emb is not None:
+        key = apply_rotary_emb(key, *rotary_emb)
+
+    # 2. Async all to all for key
+    key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    key = _all_to_all_single_async(key, group)
+
+    # Wait for value
+    value = _wait_tensor(value)
+    value = (
+        value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    # Wait for query
+    query = _wait_tensor(query)
+    query = (
+        query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    # Wait for key
+    key = _wait_tensor(key)
+    key = (
+        key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
+        .flatten(0, 1)
+        .permute(1, 0, 2, 3)
+        .contiguous()
+    )
+
+    # I2V task - handle image encoder hidden states
+    hidden_states_img = None
+    if encoder_hidden_states_img is not None:
+        key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
+        key_img = attn.norm_added_k(key_img)
+
+        key_img = key_img.unflatten(2, (attn.heads, -1))
+        value_img = value_img.unflatten(2, (attn.heads, -1))
+
+        hidden_states_img = dispatch_attention_fn(
+            query,
+            key_img,
+            value_img,
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=None,
+        )
+        hidden_states_img = hidden_states_img.flatten(2, 3)
+        hidden_states_img = hidden_states_img.type_as(query)
+
+    # Compute attention
+    hidden_states = dispatch_attention_fn(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        dropout_p=0.0,
+        is_causal=False,
+        backend=self._attention_backend,
+        parallel_config=None,  # set to None to avoid double parallelism
+    )
+
+    hidden_states = (
+        hidden_states.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D)
+        .permute(1, 3, 0, 2, 4)
+        .contiguous()
+    )
+    hidden_states = _all_to_all_single_sync(hidden_states, group)
+    hidden_states = hidden_states.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+
+    # Reshape back
+    hidden_states = hidden_states.flatten(2, 3)
+    hidden_states = hidden_states.type_as(query)
+
+    if hidden_states_img is not None:
+        hidden_states = hidden_states + hidden_states_img
+
+    hidden_states = attn.to_out[0](hidden_states)
+    hidden_states = attn.to_out[1](hidden_states)
+    return hidden_states
+
+
+WanAttnProcessor_original__call__ = WanAttnProcessor.__call__
+
+
+@functools.wraps(WanAttnProcessor_original__call__)
+def __patch_WanAttnProcessor_ulysses_async__call__(
+    self: WanAttnProcessor,
+    attn: "WanAttention",
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+) -> torch.Tensor:
+    if (
+        self._parallel_config is not None
+        and hasattr(self._parallel_config, "context_parallel_config")
+        and self._parallel_config.context_parallel_config is not None
+        and self._parallel_config.context_parallel_config.ulysses_degree > 1
+        and not is_ulysses_anything_enabled()
+    ):
+        return _ulysses_attn_with_async_qkv_proj_wan(
+            self,
+            attn,
+            hidden_states,
+            encoder_hidden_states,
+            attention_mask,
+            rotary_emb,
+        )
+    else:
+        return WanAttnProcessor_original__call__(
+            self,
+            attn,
+            hidden_states,
+            encoder_hidden_states,
+            attention_mask,
+            rotary_emb,
+        )
 
 
 @ContextParallelismPlannerRegister.register("WanVACETransformer3D")
