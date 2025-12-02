@@ -36,25 +36,6 @@ step_mask_aliases = {
 if args.step_mask in step_mask_aliases:
     args.step_mask = step_mask_aliases[args.step_mask]
 
-# Define different step computation masks for 28 steps
-step_computation_masks = {
-    "slow": cache_dit.steps_mask(
-        compute_bins=[8, 3, 3, 2, 2],  # 18
-        cache_bins=[1, 2, 2, 2, 3],  # 10
-    ),
-    "medium": cache_dit.steps_mask(
-        compute_bins=[6, 2, 2, 2, 2],  # 14
-        cache_bins=[1, 3, 3, 3, 4],  # 14
-    ),
-    "fast": cache_dit.steps_mask(
-        compute_bins=[6, 1, 1, 1, 1],  # 10
-        cache_bins=[1, 3, 4, 5, 5],  # 18
-    ),
-    "ultra": cache_dit.steps_mask(
-        compute_bins=[4, 1, 1, 1, 1],  # 8
-        cache_bins=[1, 4, 5, 6, 6],  # 20
-    ),
-}
 
 step_computation_dynamic_policy_rdt = {
     "slow": 0.20,
@@ -96,7 +77,9 @@ if args.cache:
             residual_diff_threshold=args.rdt,
             # LeMiCa or EasyCache style Mask for 28 steps, e.g,
             # 111111010010000010000100001, 1: compute, 0: cache.
-            steps_computation_mask=step_computation_masks[args.step_mask],
+            steps_computation_mask=cache_dit.steps_mask(
+                mask_policy=args.step_mask, total_steps=28 if args.steps is None else args.steps
+            ),
             # The policy for cache steps can be 'dynamic' or 'static'
             steps_computation_policy=args.step_policy,
         ),
