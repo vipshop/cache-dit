@@ -400,7 +400,7 @@ def steps_mask(
     compute_bins: Optional[List[int]] = None,
     cache_bins: Optional[List[int]] = None,
     total_steps: Optional[int] = None,
-    mask_policy: Optional[str] = "fast",
+    mask_policy: Optional[str] = "medium",
 ) -> list[int]:
     r"""
     Define a step computation mask based on compute and cache bins.
@@ -416,7 +416,7 @@ def steps_mask(
             Total number of steps for which the mask is generated.
             If provided, the sum of compute_bins and cache_bins must be at
             least total_steps.
-        mask_policy (`str`, *optional*, defaults to "slow"):
+        mask_policy (`str`, *optional*, defaults to "medium"):
             Predefined mask policy. Options are "slow", "medium", "fast", "ultra".
             For examples, if total_steps=28, each policy corresponds to specific
             compute and cache bin configurations:
