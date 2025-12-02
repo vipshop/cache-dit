@@ -664,6 +664,9 @@ cache_dit.enable_cache(
         steps_computation_mask=cache_dit.steps_mask(
             # e.g: slow, medium, fast, ultra.
             mask_policy="fast", total_steps=28,
+            # Or, you can use bins setting to get custom mask.
+            # compute_bins=[6, 1, 1, 1, 1], # 10
+            # cache_bins=[1, 2, 5, 5, 5], # 18
         ),
         # The policy for cache steps can be 'dynamic' or 'static'
         steps_computation_policy="dynamic",
