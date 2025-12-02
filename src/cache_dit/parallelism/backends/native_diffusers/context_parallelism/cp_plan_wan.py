@@ -292,22 +292,30 @@ def _ulysses_attn_with_async_qkv_proj_wan(
 
     # NOTE: Reorder to compute Value first to get more opportunity to
     # overlap the computation of norm_q/k and RoPE.
-    query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+    # Step 1: Project and prepare Value, then start async communication
+    value = attn.to_v(hidden_states)
+    value = value.unflatten(2, (attn.heads, -1))
+    if encoder_hidden_states is not None:
+        encoder_value = attn.add_v_proj(encoder_hidden_states)
+        encoder_value = encoder_value.unflatten(2, (attn.heads, -1))
+        value = torch.cat([encoder_value, value], dim=1)
 
-    B, S_KV_LOCAL, H_TIMES_D = value.shape
-    H = attn.heads
-    D = H_TIMES_D // H
+    B, S_KV_LOCAL, H, D = value.shape
     H_LOCAL = H // world_size
-
-    value = value.unflatten(2, (H, D))
 
     # 0. Async all to all for value
     value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
     value = _all_to_all_single_async(value, group)
 
-    # Compute Q and apply normalization
+    # Step 2: While value is communicating, compute Query
+    query = attn.to_q(hidden_states)
+    query = query.unflatten(2, (attn.heads, -1))
     query = attn.norm_q(query)
-    query = query.unflatten(2, (H, D))
+    if encoder_hidden_states is not None:
+        encoder_query = attn.add_q_proj(encoder_hidden_states)
+        encoder_query = encoder_query.unflatten(2, (attn.heads, -1))
+        encoder_query = attn.norm_added_q(encoder_query)
+        query = torch.cat([encoder_query, query], dim=1)
 
     # Apply RoPE to query
     if rotary_emb is not None:
@@ -332,9 +340,15 @@ def _ulysses_attn_with_async_qkv_proj_wan(
     query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
     query = _all_to_all_single_async(query, group)
 
-    # Compute K and apply normalization
+    # Step 3: While query is communicating, compute Key
+    key = attn.to_k(hidden_states)
+    key = key.unflatten(2, (attn.heads, -1))
     key = attn.norm_k(key)
-    key = key.unflatten(2, (H, D))
+    if encoder_hidden_states is not None:
+        encoder_key = attn.add_k_proj(encoder_hidden_states)
+        encoder_key = encoder_key.unflatten(2, (attn.heads, -1))
+        encoder_key = attn.norm_added_k(encoder_key)
+        key = torch.cat([encoder_key, key], dim=1)
 
     # Apply RoPE to key
     if rotary_emb is not None:
@@ -371,7 +385,20 @@ def _ulysses_attn_with_async_qkv_proj_wan(
         .contiguous()
     )
 
+    # Compute attention
+    hidden_states = dispatch_attention_fn(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        dropout_p=0.0,
+        is_causal=False,
+        backend=self._attention_backend,
+        parallel_config=None,  # set to None to avoid double parallelism
+    )
+
     # I2V task - handle image encoder hidden states
+    # Note: This cross-attention also needs to be computed with the distributed query
     hidden_states_img = None
     if encoder_hidden_states_img is not None:
         key_img, value_img = _get_added_kv_projections(attn, encoder_hidden_states_img)
@@ -390,21 +417,8 @@ def _ulysses_attn_with_async_qkv_proj_wan(
             backend=self._attention_backend,
             parallel_config=None,
         )
-        hidden_states_img = hidden_states_img.flatten(2, 3)
-        hidden_states_img = hidden_states_img.type_as(query)
 
-    # Compute attention
-    hidden_states = dispatch_attention_fn(
-        query,
-        key,
-        value,
-        attn_mask=attention_mask,
-        dropout_p=0.0,
-        is_causal=False,
-        backend=self._attention_backend,
-        parallel_config=None,  # set to None to avoid double parallelism
-    )
-
+    # All-to-all to convert back from (full_head, local_seq) to (local_head, full_seq)
     hidden_states = (
         hidden_states.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D)
         .permute(1, 3, 0, 2, 4)
@@ -417,7 +431,17 @@ def _ulysses_attn_with_async_qkv_proj_wan(
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.type_as(query)
 
+    # Also need to all-to-all the image cross-attention output
     if hidden_states_img is not None:
+        hidden_states_img = (
+            hidden_states_img.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D)
+            .permute(1, 3, 0, 2, 4)
+            .contiguous()
+        )
+        hidden_states_img = _all_to_all_single_sync(hidden_states_img, group)
+        hidden_states_img = hidden_states_img.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        hidden_states_img = hidden_states_img.flatten(2, 3)
+        hidden_states_img = hidden_states_img.type_as(query)
         hidden_states = hidden_states + hidden_states_img
 
     hidden_states = attn.to_out[0](hidden_states)
