@@ -559,6 +559,7 @@ def steps_mask(
                 ],
             }
         else:  # total_steps == 8
+            # cases: 8 steps distilled models
             predefined_policies = {
                 "slow": [
                     [5, 1, 1],  # = 7
@@ -583,10 +584,25 @@ def steps_mask(
                 total_steps,
             )
     elif total_steps < 8:
-        raise ValueError(
-            "total_steps must be at least 8 to use predefined "
-            f"mask_policy, got total_steps={total_steps}."
-        )
+        # case: 4 or 6 steps distilled models
+        assert total_steps in (
+            4,
+            6,
+        ), "Only total_steps=4 or 6 is supported for predefined masks "
+        f"while total_steps < 8. Got total_steps={total_steps}."
+        constant_plicy_4_steps = [[2, 1], [1]]
+        constant_plicy_6_steps = [[3, 1], [2]]
+        if total_steps == 4:
+            constant_plicy = constant_plicy_4_steps
+        else:
+            constant_plicy = constant_plicy_6_steps
+
+        predefined_policies = {
+            "slow": constant_plicy,
+            "medium": constant_plicy,
+            "fast": constant_plicy,
+            "ultra": constant_plicy,
+        }
 
     if mask_policy not in predefined_policies:
         raise ValueError(
