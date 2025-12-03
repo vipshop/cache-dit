@@ -87,10 +87,8 @@ if args.cache or args.parallel_type is not None:
 
 assert isinstance(pipe.transformer, WanTransformer3DModel)
 # Enable memory savings
-if GiB() < 40:
+if GiB() < 96:
     pipe.enable_model_cpu_offload(device=device)
-else:
-    pipe.to(device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
