@@ -34,44 +34,6 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     return x
 
 
-def _all_to_all_single_sync(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    return _all_to_all_single(x, group)
-
-
-def _all_to_all_single_async(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    x = x.flatten()
-    x = fc.all_to_all_single(x, None, None, group)
-    return x
-
-
-# Reference:
-# - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/ulysses.py#L86
-def _all_to_all_single_async_v2(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> callable:
-    x = x.flatten()
-    # NOTE: Maybe we should use dist.all_to_all_single instead of fc.all_to_all_single
-    # in order to avoid forced synchronization while using torch.compile? However, we
-    # don't see any performance improvement by using dist.all_to_all_single for FLUX.1
-    # and Z-Image on NVIDIA L20 while compile is enabled. Reference:
-    # - https://github.com/pytorch/pytorch/blob/main/torch/distributed/_functional_collectives.py#L855
-    output = torch.empty_like(x)
-    comm = dist.all_to_all_single(output, x, None, None, group=group, async_op=True)
-
-    def wait() -> torch.Tensor:
-        comm.wait()
-        return output
-
-    return wait
-
-
 def _get_rank_world_size(
     group: dist.ProcessGroup,
 ) -> Tuple[int, int]:
@@ -264,3 +226,76 @@ def _gather_split_any_o(  # noqa: F811
     # (B, S_GLOBAL, H_GLOBAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
     out = out_gathered.tensor_split(world_size, dim=1)[rank]
     return out
+
+
+def _all_to_all_single_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    shape = x.shape
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        out = _wait_tensor(x)
+        out = out.reshape(shape)
+        return out
+
+    return wait
+
+
+# Reference:
+# - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/ulysses.py#L86
+def _all_to_all_single_async_v2(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> callable:
+    x = x.flatten()
+    # NOTE: Maybe we should use dist.all_to_all_single instead of fc.all_to_all_single
+    # in order to avoid forced synchronization while using torch.compile? However, we
+    # don't see any performance improvement by using dist.all_to_all_single for FLUX.1
+    # and Z-Image on NVIDIA L20 while compile is enabled. Reference:
+    # - https://github.com/pytorch/pytorch/blob/main/torch/distributed/_functional_collectives.py#L855
+    output = torch.empty_like(x)
+    comm = dist.all_to_all_single(output, x, None, None, group=group, async_op=True)
+
+    def wait() -> torch.Tensor:
+        comm.wait()
+        return output
+
+    return wait
+
+
+def _all_to_all_single_fp8_async(x: torch.Tensor, group) -> callable:
+    shape = x.shape
+    x_fp8_with_scale = per_token_quant_fp8(x)  # type: torch.Tensor
+    shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
+    x_fp8_with_scale = x_fp8_with_scale.flatten()
+    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x_fp8_with_scale
+        x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
+        x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
+        x = per_token_dequant_fp8(x_fp8_with_scale)
+        x = x.reshape(shape)
+
+    return wait
+
+
+def _all_to_all_single_async_fn() -> callable:
+    from ._templated_ulysses_anything import is_ulysses_float8_enabled
+
+    if is_ulysses_float8_enabled():
+        return _all_to_all_single_fp8_async
+    else:
+        return _all_to_all_single_async
+
+
+def _all_to_all_single_fn() -> callable:
+    from ._templated_ulysses_anything import is_ulysses_float8_enabled
+
+    if is_ulysses_float8_enabled():
+        return _all_to_all_single_fp8
+    else:
+        return _all_to_all_single
