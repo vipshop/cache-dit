@@ -107,9 +107,9 @@ def run_pipe():
         control_image=control_image.convert("RGB"),
         control_mask=mask_image,
         controlnet_conditioning_scale=1.0,
-        width=mask_image.size[0],
-        height=mask_image.size[1],
-        num_inference_steps=50,
+        width=mask_image.size[0] if args.width is None else args.width,
+        height=mask_image.size[1] if args.height is None else args.height,
+        num_inference_steps=50 if args.steps is None else args.steps,
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(0),
     ).images[0]

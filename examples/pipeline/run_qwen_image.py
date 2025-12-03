@@ -102,7 +102,7 @@ if args.compile:
         negative_prompt=negative_prompt,
         width=width,
         height=height,
-        num_inference_steps=50,
+        num_inference_steps=50 if args.steps is None else args.steps,
         true_cfg_scale=4.0,
         generator=torch.Generator(device="cpu").manual_seed(42),
     ).images[0]
@@ -119,7 +119,7 @@ image = pipe(
     negative_prompt=negative_prompt,
     width=width,
     height=height,
-    num_inference_steps=50,
+    num_inference_steps=50 if args.steps is None else args.steps,
     true_cfg_scale=4.0,
     generator=torch.Generator(device="cpu").manual_seed(42),
 ).images[0]

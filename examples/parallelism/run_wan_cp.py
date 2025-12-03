@@ -86,7 +86,7 @@ if args.cache or args.parallel_type is not None:
         )
 
 assert isinstance(pipe.transformer, WanTransformer3DModel)
-# Enable memory savings
+
 # The model weights for Wan-AI/Wan2.2-T2V-A14B-Diffusers will occupy over 50 GB of memory.
 # If enable_model_cpu_offload is not enabled, even running on an H100 with CP (possibly "CheckPoint" or a similar memory-saving technique) will result in an OOM (Out Of Memory) error.
 # This is essential to avoid OOM errors when running the model.

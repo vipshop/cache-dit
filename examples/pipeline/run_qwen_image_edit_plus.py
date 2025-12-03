@@ -65,9 +65,11 @@ inputs = {
     "generator": torch.Generator(device="cpu").manual_seed(0),
     "true_cfg_scale": 4.0,
     "negative_prompt": " ",
-    "num_inference_steps": 40,
+    "num_inference_steps": 40 if args.steps is None else args.steps,
     "guidance_scale": 1.0,
     "num_images_per_prompt": 1,
+    "height": 1024 if args.height is None else args.height,
+    "width": 1024 if args.width is None else args.width,
 }
 
 if args.compile:
