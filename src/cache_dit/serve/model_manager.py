@@ -101,9 +101,15 @@ class ModelManager:
                 f"Enabling parallelism: type={self.parallel_type}, args={self.parallel_args}"
             )
             from cache_dit import ParallelismConfig
+            import torch.distributed as dist
+
+            world_size = dist.get_world_size() if dist.is_initialized() else 1
 
             parallelism_config = ParallelismConfig(
-                parallelism_type=self.parallel_type, **self.parallel_args
+                ulysses_size=world_size if self.parallel_type == "ulysses" else None,
+                ring_size=world_size if self.parallel_type == "ring" else None,
+                tp_size=world_size if self.parallel_type == "tp" else None,
+                parallel_kwargs=self.parallel_args,
             )
 
         if cache_config_obj is not None:
