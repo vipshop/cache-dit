@@ -77,6 +77,19 @@ def get_args(
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
     parser.add_argument("--steps-mask", "--scm", action="store_true", default=False)
+    parser.add_argument(
+        "--mask-policy",
+        type=str,
+        default=None,
+        choices=[
+            None,
+            "slow",
+            "medium",
+            "fast",
+            "ultra",
+        ],
+        help="Pre-defined steps computation mask policy",
+    )
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)

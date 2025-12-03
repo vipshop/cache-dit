@@ -558,6 +558,26 @@ def steps_mask(
                     [1, 2, 3, 3],  # = 9
                 ],
             }
+            # Specifical case for Z-Image-Turbo with 9 steps
+            if total_steps == 9:
+                predefined_policies = {
+                    "slow": [
+                        [5, 2, 1],  # = 8
+                        [1],  # = 1
+                    ],
+                    "medium": [
+                        [5, 1, 1],  # = 7
+                        [1, 1],  # = 2
+                    ],
+                    "fast": [
+                        [4, 1, 1],  # = 6
+                        [1, 2],  # = 3
+                    ],
+                    "ultra": [
+                        [3, 1, 1],  # = 5
+                        [2, 2],  # = 4
+                    ],
+                }
         else:  # total_steps == 8
             # cases: 8 steps distilled models
             predefined_policies = {
