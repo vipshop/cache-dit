@@ -275,27 +275,56 @@ def launch_server(args=None):
     model_manager.load_model()
     logger.info("Model loaded successfully!")
 
-    # Only start HTTP server on rank 0 in distributed setting
-    if rank == 0:
-        app = create_app(model_manager)
+    # For TP, we need all ranks to participate in inference
+    # We use a simple broadcast mechanism to synchronize requests
+    if args.parallel_type == "tp":
+        import torch.distributed as dist
 
-        logger.info(f"Starting server at http://{args.host}:{args.port}")
-        logger.info(f"API docs at http://{args.host}:{args.port}/docs")
+        if rank == 0:
+            # Rank 0: Start HTTP server and broadcast requests to other ranks
+            from cache_dit.serve.tp_worker import TPCoordinator
 
-        uvicorn.run(
-            app,
-            host=args.host,
-            port=args.port,
-            workers=args.workers,
-            log_level="info",
-        )
+            coordinator = TPCoordinator(model_manager, rank, dist.get_world_size())
+            app = create_app(coordinator)
+
+            logger.info(f"Starting TP server (rank 0) at http://{args.host}:{args.port}")
+            logger.info(f"API docs at http://{args.host}:{args.port}/docs")
+
+            uvicorn.run(
+                app,
+                host=args.host,
+                port=args.port,
+                workers=1,  # Must be 1 for TP
+                log_level="info",
+            )
+        else:
+            # Other ranks: Run worker loop to receive and execute requests
+            from cache_dit.serve.tp_worker import run_tp_worker
+
+            logger.info(f"Starting TP worker (rank {rank})")
+            run_tp_worker(model_manager, rank)
     else:
-        logger.info(f"Rank {rank}: Model loaded, waiting for inference requests from rank 0...")
-        # Keep the process alive to handle distributed inference
-        import time
+        # Single GPU or Context Parallelism
+        if rank == 0:
+            app = create_app(model_manager)
 
-        while True:
-            time.sleep(1)
+            logger.info(f"Starting server at http://{args.host}:{args.port}")
+            logger.info(f"API docs at http://{args.host}:{args.port}/docs")
+
+            uvicorn.run(
+                app,
+                host=args.host,
+                port=args.port,
+                workers=args.workers,
+                log_level="info",
+            )
+        else:
+            # For Context Parallelism, other ranks keep the process alive
+            logger.info(f"Rank {rank}: Worker process ready for distributed inference")
+            import time
+
+            while True:
+                time.sleep(1)
 
 
 if __name__ == "__main__":

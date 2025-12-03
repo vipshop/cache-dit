@@ -89,6 +89,8 @@ curl -X POST http://localhost:8000/generate \
 
 ### Parallelism
 - `--parallel-type` - Parallelism type (tp/ulysses/ring)
+  - **Tensor Parallelism (tp)**: Supported via broadcast-based synchronization
+  - **Context Parallelism (ulysses/ring)**: Supported
 - `--compile` - Enable torch.compile (enables auto warmup per shape)
 
 ### Memory
