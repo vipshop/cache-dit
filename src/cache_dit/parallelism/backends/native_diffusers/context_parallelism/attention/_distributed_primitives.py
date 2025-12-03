@@ -169,7 +169,7 @@ def _all_to_all_single_any_o(
 
 def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
     shape = x.shape
-    x_fp8_with_scale = per_token_quant_fp8_merge_scale(x)
+    x_fp8_with_scale = per_token_quant_fp8_merge_scale(x) # type: torch.Tensor
     shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x_fp8_with_scale = x_fp8_with_scale.flatten()
     x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
