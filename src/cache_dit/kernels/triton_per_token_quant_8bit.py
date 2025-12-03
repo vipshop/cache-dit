@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 
-__all__ = ['per_token_quant_fp8_merge_scale']
+__all__ = ['per_token_quant_fp8_merge_scale', 'per_token_dequant_fp8']
 
 
 @triton.jit
@@ -32,9 +32,9 @@ def _per_token_quant_8bit_merge_scale(
     x_s_inv = 1.0 / x_s
 
     x_s = x_s.to(x_ptr.dtype.element_ty)
-    u16 = tl.cast(x_s, tl.uint16, bitcast=True)
-    b0 = (u16 & 0x00FF).to(tl.uint8)
-    b1 = ((u16 >> 8) & 0x00FF).to(tl.uint8)
+    s16 = tl.cast(x_s, tl.int16, bitcast=True)
+    b0 = (s16 & 0x00FF).to(tl.int8)
+    b1 = ((s16 >> 8) & 0x00FF).to(tl.int8)
     tl.store(y_s_ptr, tl.cast(b0, y_ptr.dtype.element_ty, bitcast=True))
     tl.store(y_s_ptr + 1, tl.cast(b1, y_ptr.dtype.element_ty, bitcast=True))
 
@@ -46,12 +46,41 @@ def _per_token_quant_8bit_merge_scale(
         tl.store(y_ptr + cols, x_q, mask=mask)
 
 
-def per_token_quant_fp8_merge_scale(x: torch.Tensor):
-    finfo = torch.finfo(torch.float8_e4m3fn)
+@triton.jit
+def _per_token_dequant_8bit(
+        y_ptr: tl.tensor,
+        x_ptr: tl.tensor,
+        H: tl.int32,
+        BLOCK: tl.constexpr,
+):
+    s_id = tl.program_id(0).to(tl.int64)
+    y_ptr += s_id * H
+    x_ptr += s_id * (H + 2)
+
+    x_s_ptr = x_ptr + H
+    b0 = tl.load(x_s_ptr)[None]
+    b1 = tl.load(x_s_ptr + 1)[None]
+    h16 = b0.to(tl.int16)
+    l16 = b1.to(tl.int16)
+    s16 = (h16 & 0x00FF) | ((l16 & 0x00FF) << 8)
+    x_s = tl.cast(s16, tl.bfloat16, bitcast=True).to(tl.float32)
+
+    for h in range(0, H, BLOCK):
+        cols = h + tl.arange(0, BLOCK).to(tl.int64)
+        mask = cols < H
+        x = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+        x = x * x_s
+        tl.store(y_ptr + cols, x, mask=mask)
+
+
+def per_token_quant_fp8_merge_scale(x: torch.Tensor) -> torch.Tensor:
+    assert x.dtype == torch.bfloat16, f'expected bfloat16 but got {x.dtype}'
+    dtype = torch.float8_e4m3fn
+    finfo = torch.iinfo(dtype)
     shape = x.shape
     x = x.reshape(-1, shape[-1]).contiguous()
     M, N = x.shape
-    y = torch.empty((M, N + 2), dtype=torch.float8_e4m3fn, device=x.device)
+    y = torch.empty((M, N + 2), dtype=dtype, device=x.device)
 
     BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
     num_warps = min(max(BLOCK // 256, 1), 8)
@@ -64,6 +93,28 @@ def per_token_quant_fp8_merge_scale(x: torch.Tensor):
             eps=1e-4,
             bit8_min=finfo.min,
             bit8_max=finfo.max,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+    return y
+
+
+def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
+    assert x.dtype == torch.float8_e4m3fn, f'expected float8_e4m3fn but got {x.dtype}'
+    shape = x.shape
+    x = x.reshape(-1, shape[-1]).contiguous()
+    M, N = x.shape
+    N -= 2
+    y = torch.empty((M, N), dtype=torch.bfloat16, device=x.device)
+
+    BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
+    num_warps = min(max(BLOCK // 256, 1), 8)
+
+    with torch.cuda.device(x.device):
+        _per_token_dequant_8bit[(M,)](
+            y,
+            x,
+            N,
             BLOCK=BLOCK,
             num_warps=num_warps,
         )

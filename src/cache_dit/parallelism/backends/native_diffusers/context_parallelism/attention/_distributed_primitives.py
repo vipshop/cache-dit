@@ -6,6 +6,7 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 
 from cache_dit.logger import init_logger
+from cache_dit.kernels import per_token_quant_fp8_merge_scale, per_token_dequant_fp8
 
 logger = init_logger(__name__)
 
@@ -168,24 +169,13 @@ def _all_to_all_single_any_o(
 
 def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
     shape = x.shape
-    dtype = x.dtype
-    itemsize = dtype.itemsize
-    float8_max = torch.finfo(torch.float8_e4m3fn).max
-    (world_size, S_LOCAL, B, H_LOCAL, D) = shape
-    amax = x.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
-    scale = amax / float8_max  # bfloat8 max
-    x_fp8 = (x / scale).to(torch.float8_e4m3fn)  # float8
-    # TODO: May implement custom fuse_cat_activation_scale triton kernel for better performance
-    # Currently, the _tensor_bitcast will break the torch.compile graph due to view operation.
-    x_fp8_with_scale = torch.cat([x_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
+    x_fp8_with_scale = per_token_quant_fp8_merge_scale(x)
     shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x_fp8_with_scale = x_fp8_with_scale.flatten()
     x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
     x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
     x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
-    x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
-    # TODO: May implement custom fuse_activation_rescale triton kernel for better performance
-    x = x_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
+    x = per_token_dequant_fp8(x_fp8_with_scale)
     x = x.reshape(shape)
     return x
 
@@ -196,9 +186,6 @@ def _all_to_all_single_any_qkv_fp8(
     group: dist.ProcessGroup,
 ) -> torch.Tensor:
     shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
-    dtype = x.dtype
-    itemsize = dtype.itemsize
-    float8_max = torch.finfo(torch.float8_e4m3fn).max
     (world_size, S_LOCAL, B, H_LOCAL, D) = shape
     input_split_sizes = [S_LOCAL] * world_size
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
@@ -208,17 +195,13 @@ def _all_to_all_single_any_qkv_fp8(
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    amax = x.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
-    scale = amax / float8_max
-    x_fp8 = (x / scale).to(torch.float8_e4m3fn)
-    x_fp8_with_scale = torch.cat([x_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
+    x_fp8_with_scale = per_token_quant_fp8_merge_scale(x)
     x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
     x_fp8_with_scale = fc.all_to_all_single(
         x_fp8_with_scale, output_split_sizes, input_split_sizes, group
     )
     x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
-    x_fp8, scale = x_fp8_with_scale.split([D, itemsize], dim=-1)
-    x = x_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
+    x = per_token_dequant_fp8(x_fp8_with_scale)
     return x
 
 
@@ -229,14 +212,8 @@ def _all_to_all_single_any_o_fp8(
 ) -> torch.Tensor:
     rank, world_size = _get_rank_world_size(group)
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
-    dtype = out.dtype
-    itemsize = dtype.itemsize
-    float8_max = torch.finfo(torch.float8_e4m3fn).max
     (B, S_GLOBAL, H_LOCAL, D) = shape
-    amax = out.abs().amax(dim=-1, keepdim=True).clamp(1e-4)
-    scale = amax / float8_max
-    out_fp8 = (out / scale).to(torch.float8_e4m3fn)
-    out_fp8_with_scale = torch.cat([out_fp8, _tensor_bitcast(scale, torch.float8_e4m3fn)], dim=-1)
+    out_fp8_with_scale = per_token_quant_fp8_merge_scale(out)
 
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
@@ -266,8 +243,7 @@ def _all_to_all_single_any_o_fp8(
     out_fp8_with_scale = torch.cat(
         out_fp8_with_scale.tensor_split(world_size, dim=0), dim=1
     )  # (B*S_LOCAL, H_GLOBAL, D)
-    out_fp8, scale = out_fp8_with_scale.split([D, itemsize], dim=-1)
-    out = out_fp8.to(dtype) * _tensor_bitcast(scale, dtype)
+    out = per_token_dequant_fp8(out_fp8_with_scale)
     out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
     return out
 
