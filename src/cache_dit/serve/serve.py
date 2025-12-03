@@ -275,9 +275,9 @@ def launch_server(args=None):
     model_manager.load_model()
     logger.info("Model loaded successfully!")
 
-    # For TP, we need all ranks to participate in inference
+    # For TP and CP, we need all ranks to participate in inference
     # We use a simple broadcast mechanism to synchronize requests
-    if args.parallel_type == "tp":
+    if args.parallel_type in ["tp", "ulysses", "ring"]:
         import torch.distributed as dist
 
         if rank == 0:
@@ -287,24 +287,26 @@ def launch_server(args=None):
             coordinator = TPCoordinator(model_manager, rank, dist.get_world_size())
             app = create_app(coordinator)
 
-            logger.info(f"Starting TP server (rank 0) at http://{args.host}:{args.port}")
+            logger.info(
+                f"Starting distributed server (rank 0, {args.parallel_type}) at http://{args.host}:{args.port}"
+            )
             logger.info(f"API docs at http://{args.host}:{args.port}/docs")
 
             uvicorn.run(
                 app,
                 host=args.host,
                 port=args.port,
-                workers=1,  # Must be 1 for TP
+                workers=1,  # Must be 1 for distributed
                 log_level="info",
             )
         else:
             # Other ranks: Run worker loop to receive and execute requests
             from cache_dit.serve.tp_worker import run_tp_worker
 
-            logger.info(f"Starting TP worker (rank {rank})")
+            logger.info(f"Starting distributed worker (rank {rank}, {args.parallel_type})")
             run_tp_worker(model_manager, rank)
     else:
-        # Single GPU or Context Parallelism
+        # Single GPU mode
         if rank == 0:
             app = create_app(model_manager)
 
@@ -319,8 +321,8 @@ def launch_server(args=None):
                 log_level="info",
             )
         else:
-            # For Context Parallelism, other ranks keep the process alive
-            logger.info(f"Rank {rank}: Worker process ready for distributed inference")
+            # This should not happen in single GPU mode
+            logger.warning(f"Rank {rank}: Unexpected rank in single GPU mode")
             import time
 
             while True:
