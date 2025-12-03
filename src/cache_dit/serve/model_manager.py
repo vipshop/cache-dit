@@ -120,7 +120,7 @@ class ModelManager:
                 parallel_kwargs=self.parallel_args,
             )
 
-        if cache_config_obj is not None or parallelism_config is not None:
+        if cache_config_obj is not None:
             cache_dit.enable_cache(
                 self.pipe,
                 cache_config=cache_config_obj,
