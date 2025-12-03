@@ -32,11 +32,13 @@ def _per_token_quant_8bit_merge_scale(
     x_s_inv = 1.0 / x_s
 
     x_s = x_s.to(x_ptr.dtype.element_ty)
-    s16 = tl.cast(x_s, tl.int16, bitcast=True)
-    b0 = (s16 & 0x00FF).to(tl.int8)
-    b1 = ((s16 >> 8) & 0x00FF).to(tl.int8)
-    tl.store(y_s_ptr, tl.cast(b0, y_ptr.dtype.element_ty, bitcast=True))
-    tl.store(y_s_ptr + 1, tl.cast(b1, y_ptr.dtype.element_ty, bitcast=True))
+    s16 = x_s.cast(tl.int16, bitcast=True)
+    lo = (s16 & 0xFF).to(tl.int8)
+    hi = ((s16 >> 8) & 0xFF).to(tl.int8)
+    lo = lo.cast(y_ptr.dtype.element_ty, bitcast=True)
+    hi = hi.cast(y_ptr.dtype.element_ty, bitcast=True)
+    tl.store(y_s_ptr, lo)
+    tl.store(y_s_ptr + 1, hi)
 
     for h in range(0, H, BLOCK):
         cols = h + tl.arange(0, BLOCK).to(tl.int64)
@@ -58,12 +60,13 @@ def _per_token_dequant_8bit(
     x_ptr += s_id * (H + 2)
 
     x_s_ptr = x_ptr + H
-    b0 = tl.load(x_s_ptr)[None]
-    b1 = tl.load(x_s_ptr + 1)[None]
-    h16 = tl.cast(b0, tl.int8, bitcast=True).to(tl.int16)
-    l16 = tl.cast(b1, tl.int8, bitcast=True).to(tl.int16)
-    s16 = (h16 & 0x00FF) | ((l16 & 0x00FF) << 8)
-    x_s = tl.cast(s16, tl.bfloat16, bitcast=True).to(tl.float32)
+    lo = tl.load(x_s_ptr)[None]
+    hi = tl.load(x_s_ptr + 1)[None]
+    lo = lo.cast(tl.int8, bitcast=True).to(tl.int16)
+    hi = hi.cast(tl.int8, bitcast=True).to(tl.int16)
+    s16 = (lo & 0xFF) | ((hi & 0xFF) << 8)
+    s16 = s16.cast(tl.bfloat16, bitcast=True)
+    x_s = s16.to(tl.float32)
 
     for h in range(0, H, BLOCK):
         cols = h + tl.arange(0, BLOCK).to(tl.int64)
