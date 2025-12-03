@@ -11,10 +11,10 @@ Adapted from [SGLang](https://github.com/sgl-project/sglang)'s serving architect
 pip install -e ".[serving]"
 
 # Start server with cache enabled
-cache-dit-serve --model-path Qwen/Qwen-Image --cache
+cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache
 
 # Or use python module
-python -m cache_dit.serve.serve --model-path Qwen/Qwen-Image --cache
+python -m cache_dit.serve.serve --model-path black-forest-labs/FLUX.1-dev --cache
 
 # Test
 curl http://localhost:8000/health
@@ -27,14 +27,14 @@ curl http://localhost:8000/health
 ```bash
 # Using command line tool
 cache-dit-serve \
-    --model-path Qwen/Qwen-Image \
+    --model-path black-forest-labs/FLUX.1-dev \
     --host 0.0.0.0 \
     --port 8000 \
     --cache
 
 # Or using python module
 python -m cache_dit.serve.serve \
-    --model-path Qwen/Qwen-Image \
+    --model-path black-forest-labs/FLUX.1-dev \
     --host 0.0.0.0 \
     --port 8000 \
     --cache
@@ -158,14 +158,14 @@ All models supported by cache-dit:
 ### Basic Generation
 
 ```bash
-cache-dit-serve --model-path Qwen/Qwen-Image --cache
+cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache
 ```
 
 ### With Custom Cache Settings
 
 ```bash
 cache-dit-serve \
-    --model-path Qwen/Qwen-Image \
+    --model-path black-forest-labs/FLUX.1-dev \
     --cache \
     --rdt 0.15 \
     --Fn 8
@@ -175,7 +175,7 @@ cache-dit-serve \
 
 ```bash
 cache-dit-serve \
-    --model-path Qwen/Qwen-Image \
+    --model-path black-forest-labs/FLUX.1-dev \
     --enable-cpu-offload \
     --device-map balanced
 ```
@@ -183,7 +183,7 @@ cache-dit-serve \
 ### Without Cache
 
 ```bash
-cache-dit-serve --model-path Qwen/Qwen-Image
+cache-dit-serve --model-path black-forest-labs/FLUX.1-dev
 # Don't add --cache flag to disable cache
 ```
 
