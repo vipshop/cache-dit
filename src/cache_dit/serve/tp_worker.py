@@ -34,6 +34,11 @@ class TPCoordinator:
         self.world_size = world_size
         logger.info(f"TPCoordinator initialized: rank={rank}, world_size={world_size}")
 
+    @property
+    def pipe(self):
+        """Expose the underlying model_manager's pipe for compatibility."""
+        return self.model_manager.pipe
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         """
         Generate images using TP.
