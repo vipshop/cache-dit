@@ -76,7 +76,7 @@ def _per_token_dequant_8bit(
 def per_token_quant_fp8_merge_scale(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16, f'expected bfloat16 but got {x.dtype}'
     dtype = torch.float8_e4m3fn
-    finfo = torch.iinfo(dtype)
+    finfo = torch.finfo(dtype)
     shape = x.shape
     x = x.reshape(-1, shape[-1]).contiguous()
     M, N = x.shape
