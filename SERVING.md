@@ -7,10 +7,13 @@ Adapted from [SGLang](https://github.com/sgl-project/sglang)'s serving architect
 ## Quick Start
 
 ```bash
-# Install dependencies
-pip install fastapi uvicorn pydantic
+# Install cache-dit with serving dependencies
+pip install -e ".[serving]"
 
 # Start server with cache enabled
+cache-dit-serve --model-path Qwen/Qwen-Image --cache
+
+# Or use python module
 python -m cache_dit.serve.serve --model-path Qwen/Qwen-Image --cache
 
 # Test
@@ -22,6 +25,14 @@ curl http://localhost:8000/health
 ### Start Server
 
 ```bash
+# Using command line tool
+cache-dit-serve \
+    --model-path Qwen/Qwen-Image \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --cache
+
+# Or using python module
 python -m cache_dit.serve.serve \
     --model-path Qwen/Qwen-Image \
     --host 0.0.0.0 \
@@ -147,13 +158,13 @@ All models supported by cache-dit:
 ### Basic Generation
 
 ```bash
-python -m cache_dit.serve.serve --model-path Qwen/Qwen-Image --cache
+cache-dit-serve --model-path Qwen/Qwen-Image --cache
 ```
 
 ### With Custom Cache Settings
 
 ```bash
-python -m cache_dit.serve.serve \
+cache-dit-serve \
     --model-path Qwen/Qwen-Image \
     --cache \
     --rdt 0.15 \
@@ -163,7 +174,7 @@ python -m cache_dit.serve.serve \
 ### Memory Optimization
 
 ```bash
-python -m cache_dit.serve.serve \
+cache-dit-serve \
     --model-path Qwen/Qwen-Image \
     --enable-cpu-offload \
     --device-map balanced
@@ -172,9 +183,8 @@ python -m cache_dit.serve.serve \
 ### Without Cache
 
 ```bash
-python -m cache_dit.serve.serve \
-    --model-path Qwen/Qwen-Image
-    # Don't add --cache flag to disable cache
+cache-dit-serve --model-path Qwen/Qwen-Image
+# Don't add --cache flag to disable cache
 ```
 
 ## Attribution
