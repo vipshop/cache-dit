@@ -24,6 +24,43 @@ curl http://localhost:8000/health
 
 ## Generate Images
 
+### Using Client Script
+
+```bash
+python -m cache_dit.serve.client \
+    --prompt "A beautiful sunset over the ocean" \
+    --width 1024 \
+    --height 1024 \
+    --steps 50 \
+    --output output.png
+```
+
+### Using Python
+
+```python
+import requests
+import base64
+from PIL import Image
+from io import BytesIO
+
+response = requests.post(
+    "http://localhost:8000/generate",
+    json={
+        "prompt": "A beautiful sunset over the ocean",
+        "width": 1024,
+        "height": 1024,
+        "num_inference_steps": 50
+    }
+)
+
+result = response.json()
+img_data = base64.b64decode(result["images"][0])
+img = Image.open(BytesIO(img_data))
+img.save("output.png")
+```
+
+### Using curl + jq
+
 ```bash
 curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
@@ -32,7 +69,7 @@ curl -X POST http://localhost:8000/generate \
     "width": 1024,
     "height": 1024,
     "num_inference_steps": 50
-  }'
+  }' | jq -r '.images[0]' | base64 -d > output.png
 ```
 
 ## Key Arguments
