@@ -132,12 +132,10 @@ class ModelManager:
                 parallelism_config=parallelism_config,
             )
 
-        # Move pipeline to CUDA for single GPU or TP mode
-        # For CP (ulysses/ring), the framework handles device placement
+        # Move pipeline to CUDA
         if self.device_map is None and self.device == "cuda":
-            if self.parallel_type is None or self.parallel_type == "tp":
-                logger.info("Moving pipeline to CUDA")
-                self.pipe.to("cuda")
+            logger.info("Moving pipeline to CUDA")
+            self.pipe.to("cuda")
 
         if self.enable_cpu_offload and torch.cuda.device_count() <= 1:
             logger.info("Enabling CPU offload")
