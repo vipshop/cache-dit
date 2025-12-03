@@ -585,11 +585,10 @@ def steps_mask(
             )
     elif total_steps < 8:
         # case: 4 or 6 steps distilled models
-        assert total_steps in (
-            4,
-            6,
-        ), "Only total_steps=4 or 6 is supported for predefined masks "
-        f"while total_steps < 8. Got total_steps={total_steps}."
+        assert total_steps in (4, 6), (
+            "Only total_steps=4 or 6 is supported for predefined masks "
+            f"while total_steps < 8. Got total_steps={total_steps}."
+        )
         constant_plicy_4_steps = [[2, 1], [1]]
         constant_plicy_6_steps = [[3, 1], [2]]
         if total_steps == 4:
