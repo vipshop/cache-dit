@@ -126,7 +126,21 @@ class ModelManager:
 
         stats = None
         if self.enable_cache:
-            stats = cache_dit.summary(self.pipe)
+            stats_list = cache_dit.summary(self.pipe)
+            # Convert List[CacheStats] to dict for JSON serialization
+            if stats_list:
+                stats = {
+                    "cache_stats": [
+                        {
+                            "cache_options": str(s.cache_options) if s.cache_options else None,
+                            "cached_steps": list(s.cached_steps) if s.cached_steps else [],
+                            "parallelism_config": (
+                                str(s.parallelism_config) if s.parallelism_config else None
+                            ),
+                        }
+                        for s in stats_list
+                    ]
+                }
 
         images_base64 = []
         for image in output.images:
