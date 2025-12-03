@@ -174,7 +174,10 @@ class ModelManager:
 
         generator = None
         if request.seed is not None:
-            generator = torch.Generator(device="cpu").manual_seed(request.seed)
+            # Use the same device as the model
+            # In TP mode, the model is on GPU, so generator should be on GPU too
+            device = next(self.pipe.transformer.parameters()).device
+            generator = torch.Generator(device=device).manual_seed(request.seed)
 
         start_time = time.time()
 
