@@ -53,6 +53,8 @@ class ModelManager:
         enable_cpu_offload: bool = False,
         device_map: Optional[str] = None,
         enable_compile: bool = False,
+        parallel_type: Optional[str] = None,
+        parallel_args: Optional[Dict[str, Any]] = None,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,10 +64,14 @@ class ModelManager:
         self.enable_cpu_offload = enable_cpu_offload
         self.device_map = device_map
         self.enable_compile = enable_compile
+        self.parallel_type = parallel_type
+        self.parallel_args = parallel_args or {}
         self.pipe = None
         self.warmed_up_shapes = set()
 
-        logger.info(f"Initializing ModelManager: model_path={model_path}, device={self.device}")
+        logger.info(
+            f"Initializing ModelManager: model_path={model_path}, device={self.device}, parallel_type={parallel_type}"
+        )
 
     def load_model(self):
         """Load the diffusion model."""
@@ -77,26 +83,37 @@ class ModelManager:
             device_map=self.device_map,
         )
 
+        cache_config_obj = None
         if self.enable_cache:
             logger.info("Enabling DBCache acceleration")
             from cache_dit import DBCacheConfig
 
-            default_cache_config = DBCacheConfig(
+            cache_config_obj = DBCacheConfig(
                 residual_diff_threshold=0.08,
-                enable_separate_cfg=True,
             )
-
             if self.cache_config:
                 for key, value in self.cache_config.items():
-                    setattr(default_cache_config, key, value)
+                    setattr(cache_config_obj, key, value)
 
-            cache_dit.enable_cache(
-                self.pipe,
-                cache_config=default_cache_config,
+        parallelism_config = None
+        if self.parallel_type is not None or self.parallel_args:
+            logger.info(
+                f"Enabling parallelism: type={self.parallel_type}, args={self.parallel_args}"
+            )
+            from cache_dit import ParallelismConfig
+
+            parallelism_config = ParallelismConfig(
+                parallelism_type=self.parallel_type, **self.parallel_args
             )
 
-        # Move to GPU if not using device_map
-        if self.device_map is None and self.device == "cuda":
+        if cache_config_obj is not None:
+            cache_dit.enable_cache(
+                self.pipe,
+                cache_config=cache_config_obj,
+                parallelism_config=parallelism_config,
+            )
+
+        if self.device_map is None and self.device == "cuda" and self.parallel_type is None:
             logger.info("Moving pipeline to CUDA")
             self.pipe.to("cuda")
 
