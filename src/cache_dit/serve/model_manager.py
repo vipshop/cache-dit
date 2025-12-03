@@ -189,16 +189,30 @@ class ModelManager:
 
         start_time = time.time()
 
-        output = self.pipe(
-            prompt=request.prompt,
-            negative_prompt=request.negative_prompt,
-            width=request.width,
-            height=request.height,
-            num_inference_steps=request.num_inference_steps,
-            guidance_scale=request.guidance_scale,
-            generator=generator,
-            num_images_per_prompt=request.num_images,
-        )
+        # Build kwargs for pipe call
+        pipe_kwargs = {
+            "prompt": request.prompt,
+            "width": request.width,
+            "height": request.height,
+            "num_inference_steps": request.num_inference_steps,
+            "guidance_scale": request.guidance_scale,
+            "generator": generator,
+            "num_images_per_prompt": request.num_images,
+        }
+
+        # Some pipelines (like Flux2Pipeline) don't support negative_prompt
+        if request.negative_prompt:
+            try:
+                import inspect
+
+                sig = inspect.signature(self.pipe.__call__)
+                if "negative_prompt" in sig.parameters:
+                    pipe_kwargs["negative_prompt"] = request.negative_prompt
+            except Exception:
+                # If we can't inspect, try to add it anyway
+                pipe_kwargs["negative_prompt"] = request.negative_prompt
+
+        output = self.pipe(**pipe_kwargs)
 
         time_cost = time.time() - start_time
 
