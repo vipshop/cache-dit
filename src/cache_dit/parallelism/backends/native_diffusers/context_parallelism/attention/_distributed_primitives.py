@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 
 from cache_dit.logger import init_logger
-from cache_dit.kernels import per_token_quant_fp8_merge_scale, per_token_dequant_fp8
+from cache_dit.kernels import per_token_quant_fp8, per_token_dequant_fp8
 
 logger = init_logger(__name__)
 
@@ -169,7 +169,7 @@ def _all_to_all_single_any_o(
 
 def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
     shape = x.shape
-    x_fp8_with_scale = per_token_quant_fp8_merge_scale(x) # type: torch.Tensor
+    x_fp8_with_scale = per_token_quant_fp8(x)  # type: torch.Tensor
     shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x_fp8_with_scale = x_fp8_with_scale.flatten()
     x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
@@ -195,7 +195,7 @@ def _all_to_all_single_any_qkv_fp8(
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    x_fp8_with_scale = per_token_quant_fp8_merge_scale(x)
+    x_fp8_with_scale = per_token_quant_fp8(x)
     x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
     x_fp8_with_scale = fc.all_to_all_single(
         x_fp8_with_scale, output_split_sizes, input_split_sizes, group
@@ -213,7 +213,7 @@ def _all_to_all_single_any_o_fp8(
     rank, world_size = _get_rank_world_size(group)
     shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
-    out_fp8_with_scale = per_token_quant_fp8_merge_scale(out)
+    out_fp8_with_scale = per_token_quant_fp8(out)
 
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
