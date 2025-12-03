@@ -73,12 +73,13 @@ def _per_token_dequant_8bit(
         tl.store(y_ptr + cols, x, mask=mask)
 
 
+@torch.compiler.disable
 def per_token_quant_fp8_merge_scale(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16, f'expected bfloat16 but got {x.dtype}'
     dtype = torch.float8_e4m3fn
     finfo = torch.finfo(dtype)
-    shape = x.shape
-    x = x.reshape(-1, shape[-1]).contiguous()
+    *shape, H = x.shape
+    x = x.reshape(-1, H).contiguous()
     M, N = x.shape
     y = torch.empty((M, N + 2), dtype=dtype, device=x.device)
 
@@ -96,13 +97,14 @@ def per_token_quant_fp8_merge_scale(x: torch.Tensor) -> torch.Tensor:
             BLOCK=BLOCK,
             num_warps=num_warps,
         )
-    return y
+    return y.reshape(*shape, H + 2)
 
 
+@torch.compiler.disable
 def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.float8_e4m3fn, f'expected float8_e4m3fn but got {x.dtype}'
-    shape = x.shape
-    x = x.reshape(-1, shape[-1]).contiguous()
+    *shape, H = x.shape
+    x = x.reshape(-1, H).contiguous()
     M, N = x.shape
     N -= 2
     y = torch.empty((M, N), dtype=torch.bfloat16, device=x.device)
@@ -118,4 +120,4 @@ def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
             BLOCK=BLOCK,
             num_warps=num_warps,
         )
-    return y
+    return y.reshape(*shape, H - 2)
