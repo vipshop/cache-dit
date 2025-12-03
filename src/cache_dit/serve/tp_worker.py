@@ -66,8 +66,13 @@ class TPCoordinator:
             )
         dist.broadcast(request_tensor, src=0)
 
-        # All ranks execute inference (including rank 0)
-        response = self.model_manager.generate(request)
+        # IMPORTANT: Rank 0 must also deserialize the broadcasted request
+        # to ensure all ranks use exactly the same request object
+        broadcasted_request_data = request_tensor[:request_size].cpu().numpy().tobytes()
+        broadcasted_request = pickle.loads(broadcasted_request_data)
+
+        # All ranks execute inference with the broadcasted request
+        response = self.model_manager.generate(broadcasted_request)
 
         # Rank 0 returns the result
         return response

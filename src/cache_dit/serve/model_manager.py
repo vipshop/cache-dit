@@ -173,15 +173,26 @@ class ModelManager:
 
         self._warmup_if_needed(request.width, request.height, request.prompt)
 
-        logger.info(f"Generating image: prompt='{request.prompt[:50]}...'")
+        # If no seed is provided, generate one deterministically
+        seed = request.seed
+        if seed is None and self.parallel_type == "tp":
+            # Use a deterministic seed based on prompt hash to ensure reproducibility
+            # All ranks will compute the same hash
+            import hashlib
+
+            seed = int(hashlib.md5(request.prompt.encode()).hexdigest()[:8], 16)
+            logger.info(f"TP mode: auto-generated seed {seed} from prompt hash")
+
+        logger.info(f"Generating image: prompt='{request.prompt[:50]}...', seed={seed}")
 
         generator = None
-        if request.seed is not None:
+        if seed is not None:
             # IMPORTANT: Always use CPU generator for TP mode
             # GPU generators on different devices produce different random sequences,
             # causing inconsistent results across ranks and blurry images.
             # CPU generator ensures all ranks use the same random sequence.
-            generator = torch.Generator(device="cpu").manual_seed(request.seed)
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+            logger.debug(f"Created generator with seed {seed} on CPU")
 
         start_time = time.time()
 
