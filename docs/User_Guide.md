@@ -649,15 +649,14 @@ It is a list of length num_inference_steps indicating whether to compute each st
 ```python
 from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
-# Scheme: Hybrid DBCache + LeMiCa/EasyCache + TaylorSeer
+# Scheme: Hybrid DBCache + SCM + TaylorSeer
 cache_dit.enable_cache(
     pipe_or_adapter,
     cache_config=DBCacheConfig(
         # Basic DBCache configs
         Fn_compute_blocks=8,
         Bn_compute_blocks=0,
-        # keep is the same as first compute bin
-        max_warmup_steps=6,  
+        # NOTE: warmup steps is not required now!
         residual_diff_threshold=0.12,
         # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
         # SCM=111111010010000010000100001, 1: compute, 0: cache.
