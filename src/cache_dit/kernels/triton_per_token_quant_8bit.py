@@ -60,8 +60,8 @@ def _per_token_dequant_8bit(
     x_s_ptr = x_ptr + H
     b0 = tl.load(x_s_ptr)[None]
     b1 = tl.load(x_s_ptr + 1)[None]
-    h16 = b0.to(tl.int16)
-    l16 = b1.to(tl.int16)
+    h16 = tl.cast(b0, tl.int8, bitcast=True).to(tl.int16)
+    l16 = tl.cast(b1, tl.int8, bitcast=True).to(tl.int16)
     s16 = (h16 & 0x00FF) | ((l16 & 0x00FF) << 8)
     x_s = tl.cast(s16, tl.bfloat16, bitcast=True).to(tl.float32)
 
