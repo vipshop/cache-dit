@@ -201,10 +201,30 @@ def parse_args():
     return args
 
 
+def maybe_init_distributed(args):
+    import torch.distributed as dist
+
+    if args.parallel_type is not None:
+        dist.init_process_group(
+            backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
+        )
+        rank = dist.get_rank()
+        device = torch.device("cuda", rank % torch.cuda.device_count())
+        torch.cuda.set_device(device)
+        return rank, device
+    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 def launch_server(args=None):
     """Launch the serving server."""
     if args is None:
         args = parse_args()
+
+    rank, device = maybe_init_distributed(args)
+    if args.parallel_type is not None:
+        import torch.distributed as dist
+
+        logger.info(f"Initialized distributed: rank={rank}, world_size={dist.get_world_size()}")
 
     torch_dtype = getattr(torch, args.dtype)
 
@@ -223,15 +243,19 @@ def launch_server(args=None):
         }
 
     parallel_args = {}
-    if hasattr(args, "attn") and args.attn is not None:
-        parallel_args["attn_backend"] = args.attn
-    if args.parallel_type is not None:
+    if args.parallel_type in ["ulysses", "ring"]:
+        if hasattr(args, "attn") and args.attn is not None:
+            parallel_args["attention_backend"] = args.attn
+        else:
+            parallel_args["attention_backend"] = "native"
         if hasattr(args, "ulysses_anything") and args.ulysses_anything:
-            parallel_args["ulysses_anything"] = True
+            parallel_args["experimental_ulysses_anything"] = True
         if hasattr(args, "ulysses_float8") and args.ulysses_float8:
-            parallel_args["ulysses_float8"] = True
+            parallel_args["experimental_ulysses_float8"] = True
         if hasattr(args, "ulysses_async_qkv_proj") and args.ulysses_async_qkv_proj:
-            parallel_args["ulysses_async_qkv_proj"] = True
+            parallel_args["experimental_ulysses_async_qkv_proj"] = True
+    elif args.parallel_type == "tp":
+        pass
 
     logger.info("Initializing model manager...")
     model_manager = ModelManager(

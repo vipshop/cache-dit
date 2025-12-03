@@ -96,7 +96,7 @@ class ModelManager:
                     setattr(cache_config_obj, key, value)
 
         parallelism_config = None
-        if self.parallel_type is not None or self.parallel_args:
+        if self.parallel_type is not None:
             logger.info(
                 f"Enabling parallelism: type={self.parallel_type}, args={self.parallel_args}"
             )
@@ -120,7 +120,7 @@ class ModelManager:
                 parallel_kwargs=self.parallel_args,
             )
 
-        if cache_config_obj is not None:
+        if cache_config_obj is not None or parallelism_config is not None:
             cache_dit.enable_cache(
                 self.pipe,
                 cache_config=cache_config_obj,
