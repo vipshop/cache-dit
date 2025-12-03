@@ -125,16 +125,19 @@ class ModelManager:
                 parallel_kwargs=self.parallel_args,
             )
 
-        if cache_config_obj is not None:
+        if cache_config_obj is not None or parallelism_config is not None:
             cache_dit.enable_cache(
                 self.pipe,
                 cache_config=cache_config_obj,
                 parallelism_config=parallelism_config,
             )
 
-        if self.device_map is None and self.device == "cuda" and self.parallel_type is None:
-            logger.info("Moving pipeline to CUDA")
-            self.pipe.to("cuda")
+        # Move pipeline to CUDA for single GPU or TP mode
+        # For CP (ulysses/ring), the framework handles device placement
+        if self.device_map is None and self.device == "cuda":
+            if self.parallel_type is None or self.parallel_type == "tp":
+                logger.info("Moving pipeline to CUDA")
+                self.pipe.to("cuda")
 
         if self.enable_cpu_offload and torch.cuda.device_count() <= 1:
             logger.info("Enabling CPU offload")
