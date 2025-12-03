@@ -31,9 +31,8 @@ from .cp_plan_registers import (
 
 from cache_dit.logger import init_logger
 
-from .attention._distributed_primitives import _wait_tensor
-from .attention._distributed_primitives import _all_to_all_single_sync
-from .attention._distributed_primitives import _all_to_all_single_async
+from .attention._distributed_primitives import _all_to_all_single_fn
+from .attention._distributed_primitives import _all_to_all_single_async_fn
 from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
 
 
@@ -114,6 +113,10 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
+_all_to_all_single = _all_to_all_single_fn()
+_all_to_all_single_async = _all_to_all_single_async_fn()
+
+
 # Async Ulysses QKV Proj for FLUX model
 # Reference:
 # - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
@@ -179,29 +182,14 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     key = _all_to_all_single_async(key, group)
 
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-    value = _wait_tensor(value)
-    value = (
-        value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    value = value()
+    value = value.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
-    query = _wait_tensor(query)
-    query = (
-        query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    query = query()
+    query = query.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
-    key = _wait_tensor(key)
-    key = (
-        key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    key = key()
+    key = key.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
     out = dispatch_attention_fn(
         query,
@@ -216,7 +204,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
 
     if encoder_hidden_states is not None:
         # Must be sync all to all for out when encoder_hidden_states is used
-        out = _all_to_all_single_sync(out, group)
+        out = _all_to_all_single(out, group)
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
 
         hidden_states = out.flatten(2, 3)
@@ -236,10 +224,8 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         return hidden_states, encoder_hidden_states
     else:
         # Can be async all to all for out when no encoder_hidden_states
-        shape = out.shape  # (world_size, H_LOCAL, B, S_Q_LOCAL, D)
         out = _all_to_all_single_async(out, group)
-        hidden_states = out.reshape(shape).flatten(0, 1).permute(1, 2, 0, 3)
-        return hidden_states
+        return out
 
 
 FluxAttnProcessor_original__call__ = FluxAttnProcessor.__call__
@@ -314,7 +300,8 @@ def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
     mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
 
     # NOTE: Then ensure the attn_output is ready
-    attn_output = _wait_tensor(attn_output)
+    attn_output = attn_output()  # type: torch.Tensor
+    attn_output = attn_output.flatten(0, 1).permute(1, 2, 0, 3)
     attn_output = attn_output.contiguous()
     if attn_output.ndim == 4:
         attn_output = attn_output.flatten(2, 3)

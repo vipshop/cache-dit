@@ -28,9 +28,8 @@ from .cp_plan_registers import (
     ContextParallelismPlannerRegister,
 )
 
-from .attention._distributed_primitives import _wait_tensor
-from .attention._distributed_primitives import _all_to_all_single_sync
-from .attention._distributed_primitives import _all_to_all_single_async
+from .attention._distributed_primitives import _all_to_all_single_fn
+from .attention._distributed_primitives import _all_to_all_single_async_fn
 from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
 
 from cache_dit.logger import init_logger
@@ -127,6 +126,10 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
+_all_to_all_single = _all_to_all_single_fn()
+_all_to_all_single_async = _all_to_all_single_async_fn()
+
+
 # NOTE: Support Async Ulysses QKV projection for Qwen-Image
 def _ulysses_attn_with_async_qkv_proj_qwen_image(
     self: QwenDoubleStreamAttnProcessor2_0,
@@ -219,29 +222,14 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     joint_key = _all_to_all_single_async(joint_key, group)
 
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-    joint_value = _wait_tensor(joint_value)
-    joint_value = (
-        joint_value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    joint_value = joint_value()  # type: torch.Tensor
+    joint_value = joint_value.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
-    joint_query = _wait_tensor(joint_query)
-    joint_query = (
-        joint_query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    joint_query = joint_query()  # type: torch.Tensor
+    joint_query = joint_query.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
-    joint_key = _wait_tensor(joint_key)
-    joint_key = (
-        joint_key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    joint_key = joint_key()  # type: torch.Tensor
+    joint_key = joint_key.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
     # Compute joint attention
     out = dispatch_attention_fn(
@@ -256,7 +244,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     )
 
     out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    out = _all_to_all_single_sync(out, group)
+    out = _all_to_all_single(out, group)  # type: torch.Tensor
     joint_hidden_states = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
 
     # Reshape back
