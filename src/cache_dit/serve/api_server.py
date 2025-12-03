@@ -1,0 +1,116 @@
+"""FastAPI HTTP Server for cache-dit.
+
+Adapted from SGLang's HTTP server:
+https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/http_server.py
+"""
+
+import asyncio
+from typing import Optional, Dict, Any
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from cache_dit.serve.model_manager import ModelManager, GenerateRequest
+from cache_dit.logger import init_logger
+
+logger = init_logger(__name__)
+
+# Global model manager
+_global_model_manager: Optional[ModelManager] = None
+
+
+class GenerateRequestAPI(BaseModel):
+    """API request model for image generation."""
+
+    prompt: str = Field(..., description="Text prompt")
+    negative_prompt: Optional[str] = Field("", description="Negative prompt")
+    width: int = Field(1024, description="Image width", ge=64, le=2048)
+    height: int = Field(1024, description="Image height", ge=64, le=2048)
+    num_inference_steps: int = Field(50, description="Number of inference steps", ge=1, le=200)
+    guidance_scale: float = Field(7.5, description="Guidance scale", ge=0.0, le=20.0)
+    seed: Optional[int] = Field(None, description="Random seed")
+    num_images: int = Field(1, description="Number of images to generate", ge=1, le=4)
+
+
+class GenerateResponseAPI(BaseModel):
+    """API response model for image generation."""
+
+    images: list[str] = Field(..., description="Base64 encoded images")
+    stats: Optional[Dict[str, Any]] = Field(None, description="Cache statistics")
+    time_cost: Optional[float] = Field(None, description="Generation time in seconds")
+
+
+def create_app(model_manager: ModelManager) -> FastAPI:
+    """Create FastAPI application."""
+    global _global_model_manager
+    _global_model_manager = model_manager
+
+    app = FastAPI(
+        title="Cache-DiT Serving API",
+        description="Text-to-image model serving API with cache-dit acceleration",
+        version="1.0.0",
+    )
+
+    @app.get("/health")
+    async def health():
+        """Health check endpoint."""
+        if _global_model_manager is None or _global_model_manager.pipe is None:
+            return Response(status_code=503, content="Model not loaded")
+        return Response(status_code=200, content="OK")
+
+    @app.get("/get_model_info")
+    async def get_model_info():
+        """Get model information."""
+        if _global_model_manager is None:
+            raise HTTPException(status_code=503, detail="Model manager not initialized")
+
+        return JSONResponse(content=_global_model_manager.get_model_info())
+
+    @app.post("/generate", response_model=GenerateResponseAPI)
+    async def generate(request: GenerateRequestAPI):
+        """Generate images from text prompt."""
+        if _global_model_manager is None:
+            raise HTTPException(status_code=503, detail="Model manager not initialized")
+
+        if _global_model_manager.pipe is None:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+
+        try:
+            gen_request = GenerateRequest(
+                prompt=request.prompt,
+                negative_prompt=request.negative_prompt,
+                width=request.width,
+                height=request.height,
+                num_inference_steps=request.num_inference_steps,
+                guidance_scale=request.guidance_scale,
+                seed=request.seed,
+                num_images=request.num_images,
+            )
+
+            # Run in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, _global_model_manager.generate, gen_request)
+
+            return GenerateResponseAPI(
+                images=response.images,
+                stats=response.stats,
+                time_cost=response.time_cost,
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating image: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+    @app.post("/flush_cache")
+    async def flush_cache():
+        """Flush cache."""
+        if _global_model_manager is None or _global_model_manager.pipe is None:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+
+        try:
+            return JSONResponse(content={"message": "Cache flushed successfully"})
+        except Exception as e:
+            logger.error(f"Error flushing cache: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to flush cache: {str(e)}")
+
+    return app
