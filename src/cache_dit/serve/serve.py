@@ -275,18 +275,27 @@ def launch_server(args=None):
     model_manager.load_model()
     logger.info("Model loaded successfully!")
 
-    app = create_app(model_manager)
+    # Only start HTTP server on rank 0 in distributed setting
+    if rank == 0:
+        app = create_app(model_manager)
 
-    logger.info(f"Starting server at http://{args.host}:{args.port}")
-    logger.info(f"API docs at http://{args.host}:{args.port}/docs")
+        logger.info(f"Starting server at http://{args.host}:{args.port}")
+        logger.info(f"API docs at http://{args.host}:{args.port}/docs")
 
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        workers=args.workers,
-        log_level="info",
-    )
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            workers=args.workers,
+            log_level="info",
+        )
+    else:
+        logger.info(f"Rank {rank}: Model loaded, waiting for inference requests from rank 0...")
+        # Keep the process alive to handle distributed inference
+        import time
+
+        while True:
+            time.sleep(1)
 
 
 if __name__ == "__main__":
