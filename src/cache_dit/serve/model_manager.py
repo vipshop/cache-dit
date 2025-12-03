@@ -52,6 +52,7 @@ class ModelManager:
         cache_config: Optional[Dict[str, Any]] = None,
         enable_cpu_offload: bool = False,
         device_map: Optional[str] = None,
+        enable_compile: bool = False,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,7 +61,9 @@ class ModelManager:
         self.cache_config = cache_config or {}
         self.enable_cpu_offload = enable_cpu_offload
         self.device_map = device_map
+        self.enable_compile = enable_compile
         self.pipe = None
+        self.warmed_up_shapes = set()
 
         logger.info(f"Initializing ModelManager: model_path={model_path}, device={self.device}")
 
@@ -79,7 +82,7 @@ class ModelManager:
             from cache_dit import DBCacheConfig
 
             default_cache_config = DBCacheConfig(
-                residual_diff_threshold=0.12,
+                residual_diff_threshold=0.08,
                 enable_separate_cfg=True,
             )
 
@@ -92,16 +95,44 @@ class ModelManager:
                 cache_config=default_cache_config,
             )
 
+        # Move to GPU if not using device_map
+        if self.device_map is None and self.device == "cuda":
+            logger.info("Moving pipeline to CUDA")
+            self.pipe.to("cuda")
+
         if self.enable_cpu_offload and torch.cuda.device_count() <= 1:
             logger.info("Enabling CPU offload")
             self.pipe.enable_model_cpu_offload()
 
+        if self.enable_compile:
+            logger.info("Enabling torch.compile")
+            cache_dit.set_compile_configs()
+            self.pipe.transformer = torch.compile(self.pipe.transformer)
+
         logger.info("Model loaded successfully")
 
+    def _warmup_if_needed(self, width: int, height: int, prompt: str):
+        shape_key = (width, height)
+        if self.enable_compile and shape_key not in self.warmed_up_shapes:
+            logger.info(f"Warming up for shape {width}x{height}...")
+            try:
+                _ = self.pipe(
+                    prompt=prompt,
+                    height=height,
+                    width=width,
+                    num_inference_steps=4,
+                    guidance_scale=1.0,
+                )
+                self.warmed_up_shapes.add(shape_key)
+                logger.info(f"Warmup completed for {width}x{height}")
+            except Exception as e:
+                logger.warning(f"Warmup failed: {e}")
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
-        """Generate images from text prompt."""
         if self.pipe is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        self._warmup_if_needed(request.width, request.height, request.prompt)
 
         logger.info(f"Generating image: prompt='{request.prompt[:50]}...'")
 

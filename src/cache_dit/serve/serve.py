@@ -107,12 +107,13 @@ def launch_server(args=None):
     logger.info("Initializing model manager...")
     model_manager = ModelManager(
         model_path=args.model_path,
-        device=args.device,
+        device=args.device or "cuda",
         torch_dtype=torch_dtype,
         enable_cache=enable_cache,
         cache_config=cache_config,
         enable_cpu_offload=args.enable_cpu_offload,
         device_map=args.device_map,
+        enable_compile=args.compile,
     )
 
     logger.info("Loading model...")
