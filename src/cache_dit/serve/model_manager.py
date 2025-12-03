@@ -177,10 +177,11 @@ class ModelManager:
 
         generator = None
         if request.seed is not None:
-            # Use the same device as the model
-            # In TP mode, the model is on GPU, so generator should be on GPU too
-            device = next(self.pipe.transformer.parameters()).device
-            generator = torch.Generator(device=device).manual_seed(request.seed)
+            # IMPORTANT: Always use CPU generator for TP mode
+            # GPU generators on different devices produce different random sequences,
+            # causing inconsistent results across ranks and blurry images.
+            # CPU generator ensures all ranks use the same random sequence.
+            generator = torch.Generator(device="cpu").manual_seed(request.seed)
 
         start_time = time.time()
 
