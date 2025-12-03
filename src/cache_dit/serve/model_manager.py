@@ -171,15 +171,10 @@ class ModelManager:
 
         self._warmup_if_needed(request.width, request.height, request.prompt)
 
-        # If no seed is provided, generate one deterministically
         seed = request.seed
-        if seed is None and self.parallel_type == "tp":
-            # Use a deterministic seed based on prompt hash to ensure reproducibility
-            # All ranks will compute the same hash
-            import hashlib
-
-            seed = int(hashlib.md5(request.prompt.encode()).hexdigest()[:8], 16)
-            logger.info(f"TP mode: auto-generated seed {seed} from prompt hash")
+        if seed is None and self.parallel_type in ["tp", "ulysses", "ring"]:
+            seed = 42
+            logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
         logger.info(f"Generating image: prompt='{request.prompt[:50]}...', seed={seed}")
 
@@ -206,6 +201,13 @@ class ModelManager:
         )
 
         time_cost = time.time() - start_time
+
+        # Debug: Check output shape in distributed mode
+        if self.parallel_type is not None:
+            import torch.distributed as dist
+
+            rank = dist.get_rank()
+            logger.info(f"Rank {rank}: Generated {len(output.images)} images")
 
         stats = None
         if self.enable_cache:
