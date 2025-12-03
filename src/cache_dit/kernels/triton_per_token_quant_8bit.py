@@ -9,10 +9,10 @@ __all__ = ['per_token_quant_fp8_merge_scale', 'per_token_dequant_fp8']
 def _per_token_quant_8bit_merge_scale(
         y_ptr: tl.tensor,
         x_ptr: tl.tensor,
-        H: tl.int32,
-        eps: tl.float32,
-        bit8_min: tl.float32,
-        bit8_max: tl.float32,
+        H: int,
+        eps: float,
+        bit8_min: float,
+        bit8_max: float,
         BLOCK: tl.constexpr,
 ):
     s_id = tl.program_id(0).to(tl.int64)
@@ -50,7 +50,7 @@ def _per_token_quant_8bit_merge_scale(
 def _per_token_dequant_8bit(
         y_ptr: tl.tensor,
         x_ptr: tl.tensor,
-        H: tl.int32,
+        H: int,
         BLOCK: tl.constexpr,
 ):
     s_id = tl.program_id(0).to(tl.int64)
@@ -73,7 +73,6 @@ def _per_token_dequant_8bit(
         tl.store(y_ptr + cols, x, mask=mask)
 
 
-@torch.compiler.disable
 def per_token_quant_fp8_merge_scale(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16, f'expected bfloat16 but got {x.dtype}'
     dtype = torch.float8_e4m3fn
@@ -100,7 +99,6 @@ def per_token_quant_fp8_merge_scale(x: torch.Tensor) -> torch.Tensor:
     return y.reshape(*shape, H + 2)
 
 
-@torch.compiler.disable
 def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.float8_e4m3fn, f'expected float8_e4m3fn but got {x.dtype}'
     *shape, H = x.shape
