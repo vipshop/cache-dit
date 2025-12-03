@@ -125,9 +125,6 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 # - https://github.com/triple-Mu/Z-Image-TensorRT/blob/4efc5749e9a0d22344e6c4b8a09d2223dd0a7e17/step_by_step/2-remove-complex-op.py#L26C1-L36C25
 # - https://github.com/huggingface/diffusers/pull/12725
 
-_all_to_all_single = _all_to_all_single_fn()
-_all_to_all_single_async = _all_to_all_single_async_fn()
-
 
 # NOTE: Support Async Ulysses QKV projection for Z-Image
 def _ulysses_attn_with_async_qkv_proj_zimage(
@@ -142,6 +139,9 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
+
+    _all_to_all_single = _all_to_all_single_fn()
+    _all_to_all_single_async = _all_to_all_single_async_fn()
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:

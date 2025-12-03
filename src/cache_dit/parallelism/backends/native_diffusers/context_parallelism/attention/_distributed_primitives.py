@@ -274,6 +274,7 @@ def _all_to_all_single_fp8_async(x: torch.Tensor, group) -> callable:
     x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)  # noqa: F823
 
     def wait() -> torch.Tensor:
+        nonlocal x_fp8_with_scale
         x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)  # noqa: F823
         x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
         out = per_token_dequant_fp8(x_fp8_with_scale)

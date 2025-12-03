@@ -126,10 +126,6 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-_all_to_all_single = _all_to_all_single_fn()
-_all_to_all_single_async = _all_to_all_single_async_fn()
-
-
 # NOTE: Support Async Ulysses QKV projection for Qwen-Image
 def _ulysses_attn_with_async_qkv_proj_qwen_image(
     self: QwenDoubleStreamAttnProcessor2_0,
@@ -148,6 +144,9 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
+
+    _all_to_all_single = _all_to_all_single_fn()
+    _all_to_all_single_async = _all_to_all_single_async_fn()
 
     seq_txt = encoder_hidden_states.shape[1]
 

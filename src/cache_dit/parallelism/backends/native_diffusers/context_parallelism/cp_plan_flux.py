@@ -113,10 +113,6 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-_all_to_all_single = _all_to_all_single_fn()
-_all_to_all_single_async = _all_to_all_single_async_fn()
-
-
 # Async Ulysses QKV Proj for FLUX model
 # Reference:
 # - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
@@ -135,6 +131,9 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
+
+    _all_to_all_single = _all_to_all_single_fn()
+    _all_to_all_single_async = _all_to_all_single_async_fn()
 
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
@@ -204,7 +203,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
 
     if encoder_hidden_states is not None:
         # Must be sync all to all for out when encoder_hidden_states is used
-        out = _all_to_all_single(out, group)
+        out = _all_to_all_single(out, group)  # type: torch.Tensor
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
 
         hidden_states = out.flatten(2, 3)
