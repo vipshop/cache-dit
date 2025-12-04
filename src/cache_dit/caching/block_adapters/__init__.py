@@ -201,23 +201,49 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
 def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanVideoTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, HunyuanVideoTransformer3DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.transformer_blocks,
-            pipe.transformer.single_transformer_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_0,
-            ForwardPattern.Pattern_0,
-        ],
-        check_forward_pattern=True,
-        # The type hint in diffusers is wrong
-        check_num_outputs=False,
-        **kwargs,
-    )
+    transformer_cls_name: str = pipe.transformer.__class__.__name__
+    supported_transformers = (HunyuanVideoTransformer3DModel,)
+    try:
+        from diffusers import HunyuanVideo15Transformer3DModel
+
+        supported_transformers += (HunyuanVideo15Transformer3DModel,)
+    except ImportError:
+        if transformer_cls_name.startswith("HunyuanVideo15"):
+            logger.warning(
+                "HunyuanVideo15Transformer3DModel is not available in the current "
+                "diffusers version >=0.36.dev0. Please install the latest diffusers "
+                "from source to use HunyuanVideo15 model."
+            )
+
+    _relaxed_assert_transformer(pipe.transformer, supported_transformers)
+
+    if transformer_cls_name.startswith("HunyuanVideo15"):
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.transformer_blocks,
+            forward_pattern=ForwardPattern.Pattern_0,
+            check_forward_pattern=True,
+            **kwargs,
+        )
+    else:
+        # HunyuanVideo 1.0
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_0,
+                ForwardPattern.Pattern_0,
+            ],
+            check_forward_pattern=True,
+            # The type hint in diffusers is wrong
+            check_num_outputs=False,
+            **kwargs,
+        )
 
 
 @BlockAdapterRegister.register("QwenImage")
