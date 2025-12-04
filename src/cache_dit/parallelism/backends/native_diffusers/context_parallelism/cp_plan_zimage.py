@@ -26,8 +26,8 @@ from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
 )
-from .attention._distributed_primitives import _unified_all_to_all_fn
-from .attention._distributed_primitives import _unified_all_to_all_async_fn
+from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
+from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
 from .attention._templated_ulysses import is_ulysses_anything_enabled
 from ..utils import maybe_patch_cp_find_submodule_by_name
 
@@ -137,11 +137,10 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
 ) -> torch.Tensor:
 
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
-    world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
 
-    _all_to_all_single = _unified_all_to_all_fn()
-    _all_to_all_single_async = _unified_all_to_all_async_fn()
+    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
+    _all_to_all_qkv_async_func = _unified_all_to_all_qkv_async_fn()
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
@@ -157,12 +156,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
 
-    B, S_KV_LOCAL, H, D = value.shape
-    H_LOCAL = H // world_size
-
     # 0. Async all to all for value
-    value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    value = _all_to_all_single_async(value, group)
+    value = _all_to_all_qkv_async_func(value, group)
 
     query = attn.to_q(hidden_states)  # type: torch.Tensor
     query = query.unflatten(-1, (attn.heads, -1))
@@ -172,9 +167,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         query = apply_rotary_emb(query, freqs_cis)
 
     # 1. Async all to all for query
-    _, S_Q_LOCAL, _, _ = query.shape
-    query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    query = _all_to_all_single_async(query, group)
+    query = _all_to_all_qkv_async_func(query, group)
 
     key = attn.to_k(hidden_states)  # type: torch.Tensor
     key = key.unflatten(-1, (attn.heads, -1))
@@ -184,18 +177,12 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         key = apply_rotary_emb(key, freqs_cis)
 
     # 2. Async all to all for key
-    key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    key = _all_to_all_single_async(key, group)
+    key = _all_to_all_qkv_async_func(key, group)
 
-    # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+    # 3. Ensure the query, key, value are ready
     value = value()
-    value = value.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
-
     query = query()
-    query = query.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
-
     key = key()
-    key = key.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
     # Cast to correct dtype
     query, key = query.to(dtype), key.to(dtype)
@@ -216,9 +203,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         parallel_config=None,  # set to None to avoid double parallelism
     )
 
-    out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    out = _all_to_all_single(out, group)
-    hidden_states = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+    out = _all_to_all_o_async_func(out, group)
+    hidden_states = out()  # type: torch.Tensor
 
     # Reshape back
     hidden_states = hidden_states.flatten(2, 3)

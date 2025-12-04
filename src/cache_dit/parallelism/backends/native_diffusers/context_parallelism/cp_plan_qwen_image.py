@@ -28,8 +28,8 @@ from .cp_plan_registers import (
     ContextParallelismPlannerRegister,
 )
 
-from .attention._distributed_primitives import _unified_all_to_all_fn
-from .attention._distributed_primitives import _unified_all_to_all_async_fn
+from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
+from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
 from .attention._templated_ulysses import is_ulysses_anything_enabled
 
 from cache_dit.logger import init_logger
@@ -142,11 +142,10 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         )
 
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
-    world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
 
-    _all_to_all_single = _unified_all_to_all_fn()
-    _all_to_all_single_async = _unified_all_to_all_async_fn()
+    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
+    _all_to_all_qkv_async_func = _unified_all_to_all_qkv_async_fn()
 
     seq_txt = encoder_hidden_states.shape[1]
 
@@ -158,16 +157,8 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     txt_value = txt_value.unflatten(-1, (attn.heads, -1))
     joint_value = torch.cat([txt_value, img_value], dim=1)
 
-    B, S_KV_LOCAL, H, D = joint_value.shape
-    H_LOCAL = H // world_size
-
     # 0. Async all to all for value
-    joint_value = (
-        joint_value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D)
-        .permute(2, 1, 0, 3, 4)
-        .contiguous()
-    )
-    joint_value = _all_to_all_single_async(joint_value, group)
+    joint_value = _all_to_all_qkv_async_func(joint_value, group)
 
     # Compute QKV for image stream (sample projections)
     img_query = attn.to_q(hidden_states)
@@ -191,13 +182,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     joint_query = torch.cat([txt_query, img_query], dim=1)
 
     # 1. Async all to all for query
-    _, S_Q_LOCAL, _, _ = joint_query.shape
-    joint_query = (
-        joint_query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D)
-        .permute(2, 1, 0, 3, 4)
-        .contiguous()
-    )
-    joint_query = _all_to_all_single_async(joint_query, group)
+    joint_query = _all_to_all_qkv_async_func(joint_query, group)
 
     img_key = attn.to_k(hidden_states)
     txt_key = attn.add_k_proj(encoder_hidden_states)
@@ -215,20 +200,14 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     joint_key = torch.cat([txt_key, img_key], dim=1)
 
     # 2. Async all to all for key
-    joint_key = (
-        joint_key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    )
-    joint_key = _all_to_all_single_async(joint_key, group)
+    joint_key = _all_to_all_qkv_async_func(joint_key, group)
 
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
     joint_value = joint_value()  # type: torch.Tensor
-    joint_value = joint_value.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
     joint_query = joint_query()  # type: torch.Tensor
-    joint_query = joint_query.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
     joint_key = joint_key()  # type: torch.Tensor
-    joint_key = joint_key.flatten(0, 1).permute(1, 0, 2, 3).contiguous()
 
     # Compute joint attention
     out = dispatch_attention_fn(
@@ -242,9 +221,8 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         parallel_config=None,  # set to None to avoid double parallelism
     )
 
-    out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    out = _all_to_all_single(out, group)  # type: torch.Tensor
-    joint_hidden_states = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+    out = _all_to_all_o_async_func(out, group)
+    joint_hidden_states = out()  # type: torch.Tensor
 
     # Reshape back
     joint_hidden_states = joint_hidden_states.flatten(2, 3)
@@ -282,7 +260,6 @@ def __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__(
         and hasattr(self._parallel_config, "context_parallel_config")
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
-        and is_ulysses_anything_enabled()
     ):
         return _ulysses_attn_with_async_qkv_proj_qwen_image(
             self,
