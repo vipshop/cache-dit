@@ -17,7 +17,10 @@ print(args)
 model_id = (
     args.model_path
     if args.model_path is not None
-    else os.environ.get("HUNYUAN_VIDEO_1_5_DIR", "hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v")
+    else os.environ.get(
+        "HUNYUAN_VIDEO_1_5_DIR",
+        "hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v",
+    )
 )
 
 pipe = HunyuanVideo15Pipeline.from_pretrained(
