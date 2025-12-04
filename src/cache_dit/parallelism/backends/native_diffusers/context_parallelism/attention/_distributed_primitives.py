@@ -1,5 +1,5 @@
 import functools
-from typing import Tuple, List
+from typing import Tuple, List, Callable
 
 import torch
 import torch.distributed as dist
@@ -32,44 +32,6 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     x = x.reshape(shape)
     x = _wait_tensor(x)
     return x
-
-
-def _all_to_all_single_sync(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    return _all_to_all_single(x, group)
-
-
-def _all_to_all_single_async(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    x = x.flatten()
-    x = fc.all_to_all_single(x, None, None, group)
-    return x
-
-
-# Reference:
-# - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/ulysses.py#L86
-def _all_to_all_single_async_v2(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> callable:
-    x = x.flatten()
-    # NOTE: Maybe we should use dist.all_to_all_single instead of fc.all_to_all_single
-    # in order to avoid forced synchronization while using torch.compile? However, we
-    # don't see any performance improvement by using dist.all_to_all_single for FLUX.1
-    # and Z-Image on NVIDIA L20 while compile is enabled. Reference:
-    # - https://github.com/pytorch/pytorch/blob/main/torch/distributed/_functional_collectives.py#L855
-    output = torch.empty_like(x)
-    comm = dist.all_to_all_single(output, x, None, None, group=group, async_op=True)
-
-    def wait() -> torch.Tensor:
-        comm.wait()
-        return output
-
-    return wait
 
 
 def _get_rank_world_size(
@@ -264,3 +226,141 @@ def _gather_split_any_o(  # noqa: F811
     # (B, S_GLOBAL, H_GLOBAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
     out = out_gathered.tensor_split(world_size, dim=1)[rank]
     return out
+
+
+# Asynchronous all to all variants. Currently only non-any_qkvo version is supported.
+# TODO: Implement any_qkvo asynchronous all to all variants.
+def _all_to_all_single_qkv_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    _, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H, D = x.shape
+    H_LOCAL = H // world_size
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        out = _wait_tensor(x)
+        # (world_size, S_LOCAL, B, H_LOCAL, D)
+        # -> (S_GLOBAL, B, H_LOCAL, D)
+        # -> (B, S_GLOBAL, H_LOCAL, D)
+        out = out.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        return out
+
+    return wait
+
+
+def _all_to_all_single_o_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    _, world_size = _get_rank_world_size(group)
+    B, S_GLOBAL, H_LOCAL, D = x.shape
+    S_LOCAL = S_GLOBAL // world_size
+    # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
+    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        out = _wait_tensor(x)
+        # (world_size, H_LOCAL, B, S_LOCAL, D)
+        # -> (H_GLOBAL, B, S_LOCAL, D)
+        # -> (B, S_LOCAL, H_GLOBAL, D)
+        out = out.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        return out
+
+    return wait
+
+
+def _all_to_all_single_qkv_fp8_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> Callable[[], torch.Tensor]:
+    _, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H, D = x.shape
+    H_LOCAL = H // world_size
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+
+    x_fp8_with_scale = per_token_quant_fp8(x)  # type: torch.Tensor
+    shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
+    x_fp8_with_scale = x_fp8_with_scale.flatten()
+    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x_fp8_with_scale
+        x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
+        x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
+        out = per_token_dequant_fp8(x_fp8_with_scale)
+        # (world_size, S_LOCAL, B, H_LOCAL, D)
+        # -> (S_GLOBAL, B, H_LOCAL, D)
+        # -> (B, S_GLOBAL, H_LOCAL, D)
+        out = out.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        return out
+
+    return wait
+
+
+def _all_to_all_single_o_fp8_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> Callable[[], torch.Tensor]:
+    _, world_size = _get_rank_world_size(group)
+    B, S_GLOBAL, H_LOCAL, D = x.shape
+    S_LOCAL = S_GLOBAL // world_size
+    # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
+    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+
+    x_fp8_with_scale = per_token_quant_fp8(x)
+    shape_with_scale = x_fp8_with_scale.shape  # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
+    x_fp8_with_scale = x_fp8_with_scale.flatten()
+    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x_fp8_with_scale
+        x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
+        x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
+        out = per_token_dequant_fp8(x_fp8_with_scale)
+        # (world_size, H_LOCAL, B, S_LOCAL, D)
+        # -> (H_GLOBAL, B, S_LOCAL, D)
+        # -> (B, H_GLOBAL, S_LOCAL, D)
+        out = out.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        return out
+
+    return wait
+
+
+# Unified functions to select proper all to all implementations according to
+# Ulysses Float8 or other settings. Mainly used in Async Ulysses Attention.
+# TODO: Refactor basic any_qkvo and non-any_qkvo all2all functions to have
+# the same output shape, thus make the unified functions more general and clean.
+
+
+def _unified_all_to_all_qkv_async_fn() -> Callable[[], torch.Tensor]:
+    # TODO: Add any_qkvo async all2all support.
+    from ._templated_ulysses import is_ulysses_float8_enabled
+
+    if is_ulysses_float8_enabled():
+        return _all_to_all_single_qkv_fp8_async
+    else:
+        return _all_to_all_single_qkv_async
+
+
+def _unified_all_to_all_o_async_fn() -> Callable[[], torch.Tensor]:
+    # TODO: Add any_qkvo all2all support.
+    from ._templated_ulysses import is_ulysses_float8_enabled
+
+    if is_ulysses_float8_enabled():
+        return _all_to_all_single_o_fp8_async
+    else:
+        return _all_to_all_single_o_async

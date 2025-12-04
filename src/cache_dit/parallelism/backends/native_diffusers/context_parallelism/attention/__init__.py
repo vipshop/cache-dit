@@ -4,7 +4,7 @@ def maybe_resigter_native_attention_backend():
     from ._attention_dispatch import _native_attention, _sdpa_cudnn_attention
 
 
-from ._templated_ulysses_anything import (
+from ._templated_ulysses import (
     enable_ulysses_anything,
     is_ulysses_anything_enabled,
     disable_ulysses_anything,

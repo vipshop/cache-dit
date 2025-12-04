@@ -26,11 +26,9 @@ from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
 )
-from .attention._distributed_primitives import _wait_tensor
-from .attention._distributed_primitives import _all_to_all_single_sync
-from .attention._distributed_primitives import _all_to_all_single_async
-from .attention._distributed_primitives import _all_to_all_single_async_v2
-from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
+from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
+from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
+from .attention._templated_ulysses import is_ulysses_anything_enabled
 from ..utils import maybe_patch_cp_find_submodule_by_name
 
 from cache_dit.logger import init_logger
@@ -139,8 +137,10 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
 ) -> torch.Tensor:
 
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
-    world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
+
+    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
+    _all_to_all_qkv_async_func = _unified_all_to_all_qkv_async_fn()
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
@@ -156,12 +156,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
 
-    B, S_KV_LOCAL, H, D = value.shape
-    H_LOCAL = H // world_size
-
     # 0. Async all to all for value
-    value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    value = _all_to_all_single_async(value, group)
+    value = _all_to_all_qkv_async_func(value, group)
 
     query = attn.to_q(hidden_states)  # type: torch.Tensor
     query = query.unflatten(-1, (attn.heads, -1))
@@ -171,9 +167,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         query = apply_rotary_emb(query, freqs_cis)
 
     # 1. Async all to all for query
-    _, S_Q_LOCAL, _, _ = query.shape
-    query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    query = _all_to_all_single_async(query, group)
+    query = _all_to_all_qkv_async_func(query, group)
 
     key = attn.to_k(hidden_states)  # type: torch.Tensor
     key = key.unflatten(-1, (attn.heads, -1))
@@ -183,33 +177,12 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         key = apply_rotary_emb(key, freqs_cis)
 
     # 2. Async all to all for key
-    key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    key = _all_to_all_single_async(key, group)
+    key = _all_to_all_qkv_async_func(key, group)
 
-    # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-    value = _wait_tensor(value)
-    value = (
-        value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
-
-    query = _wait_tensor(query)
-    query = (
-        query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
-
-    key = _wait_tensor(key)
-    key = (
-        key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
+    # 3. Ensure the query, key, value are ready
+    value = value()
+    query = query()
+    key = key()
 
     # Cast to correct dtype
     query, key = query.to(dtype), key.to(dtype)
@@ -228,132 +201,10 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         is_causal=False,
         backend=self._attention_backend,
         parallel_config=None,  # set to None to avoid double parallelism
-    )
+    )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    out = _all_to_all_single_sync(out, group)
-    hidden_states = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
-
-    # Reshape back
-    hidden_states = hidden_states.flatten(2, 3)
-    hidden_states = hidden_states.to(dtype)
-
-    output = attn.to_out[0](hidden_states)
-    if len(attn.to_out) > 1:  # dropout
-        output = attn.to_out[1](output)
-
-    return output
-
-
-# NOTE: Maybe we should use dist.all_to_all_single instead of fc.all_to_all_single
-# in order to avoid forced synchronization while using torch.compile? However, we
-# don't see any performance improvement by using dist.all_to_all_single for FLUX.1
-# and Z-Image on NVIDIA L20 while compile is enabled. Reference:
-# - https://github.com/pytorch/pytorch/blob/main/torch/distributed/_functional_collectives.py#L855
-def _ulysses_attn_with_async_qkv_proj_zimage_v2(  # noqa: F811
-    self: ZSingleStreamAttnProcessor,
-    attn: Attention,
-    hidden_states: torch.Tensor,
-    encoder_hidden_states: Optional[torch.Tensor] = None,
-    attention_mask: Optional[torch.Tensor] = None,
-    freqs_cis: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-
-    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
-    world_size = self._parallel_config.context_parallel_config.ulysses_degree
-    group = ulysses_mesh.get_group()
-
-    # Apply RoPE
-    def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-        with torch.amp.autocast("cuda", enabled=False):
-            x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-            freqs_cis = freqs_cis.unsqueeze(2)
-            x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-            return x_out.type_as(x_in)  # todo
-
-    dtype = hidden_states.dtype
-    # NOTE: Reorder to compute Value first to get more oppurtunity to
-    # overlap the computation of norm_q/k and RoPE.
-    value = attn.to_v(hidden_states)  # type: torch.Tensor
-    value = value.unflatten(-1, (attn.heads, -1))
-
-    B, S_KV_LOCAL, H, D = value.shape
-    H_LOCAL = H // world_size
-
-    # 0. Async all to all for value
-    value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    value_wait = _all_to_all_single_async_v2(value, group)
-
-    query = attn.to_q(hidden_states)  # type: torch.Tensor
-    query = query.unflatten(-1, (attn.heads, -1))
-    if attn.norm_q is not None:  # Apply Norms
-        query = attn.norm_q(query)
-    if freqs_cis is not None:  # Apply RoPE
-        query = apply_rotary_emb(query, freqs_cis)
-
-    # 1. Async all to all for query
-    _, S_Q_LOCAL, _, _ = query.shape
-    query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    query_wait = _all_to_all_single_async_v2(query, group)
-
-    key = attn.to_k(hidden_states)  # type: torch.Tensor
-    key = key.unflatten(-1, (attn.heads, -1))
-    if attn.norm_k is not None:  # Apply Norms
-        key = attn.norm_k(key)
-    if freqs_cis is not None:  # Apply RoPE
-        key = apply_rotary_emb(key, freqs_cis)
-
-    # 2. Async all to all for key
-    key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    key_wait = _all_to_all_single_async_v2(key, group)
-
-    # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-    value = value_wait()
-    value = (
-        value.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
-
-    query = query_wait()
-    query = (
-        query.reshape(world_size, S_Q_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
-
-    key = key_wait()
-    key = (
-        key.reshape(world_size, S_KV_LOCAL, B, H_LOCAL, D)
-        .flatten(0, 1)
-        .permute(1, 0, 2, 3)
-        .contiguous()
-    )
-
-    # Cast to correct dtype
-    query, key = query.to(dtype), key.to(dtype)
-
-    # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
-    if attention_mask is not None and attention_mask.ndim == 2:
-        attention_mask = attention_mask[:, None, None, :]
-
-    # Compute joint attention
-    out = dispatch_attention_fn(
-        query,
-        key,
-        value,
-        attn_mask=attention_mask,
-        dropout_p=0.0,
-        is_causal=False,
-        backend=self._attention_backend,
-        parallel_config=None,  # set to None to avoid double parallelism
-    )
-
-    out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    out = _all_to_all_single_sync(out, group)
-    hidden_states = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+    out = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+    hidden_states = out()  # type: torch.Tensor
 
     # Reshape back
     hidden_states = hidden_states.flatten(2, 3)
