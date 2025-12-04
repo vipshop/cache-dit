@@ -39,6 +39,10 @@ class TPCoordinator:
         """Expose the underlying model_manager's pipe for compatibility."""
         return self.model_manager.pipe
 
+    def get_model_info(self):
+        """Get model information from the underlying model manager."""
+        return self.model_manager.get_model_info()
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         """
         Generate images using TP.
