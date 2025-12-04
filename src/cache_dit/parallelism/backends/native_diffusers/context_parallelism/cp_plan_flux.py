@@ -187,12 +187,12 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         attn_mask=attention_mask,
         backend=self._attention_backend,
         parallel_config=None,  # set to None to avoid double parallelism
-    )
+    )  # (B, S_GLOBAL, H_LOCAL, D)
 
     if encoder_hidden_states is not None:
         # 4. Must be sync all to all for out when encoder_hidden_states is used
         out = _all_to_all_o_async_func(out, group)  # type: torch.Tensor
-        out = out()  # (B, H_GLOBAL, S_LOCAL, D)
+        out = out()  # (B, S_LOCAL, H_GLOBAL, D)
 
         hidden_states = out.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -287,7 +287,8 @@ def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
     mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
 
     # NOTE: Then ensure the attn_output is ready
-    attn_output = attn_output()  # type: torch.Tensor
+    if not isinstance(attn_output, torch.Tensor):
+        attn_output = attn_output()  # type: torch.Tensor
     attn_output = attn_output.contiguous()
     if attn_output.ndim == 4:
         attn_output = attn_output.flatten(2, 3)

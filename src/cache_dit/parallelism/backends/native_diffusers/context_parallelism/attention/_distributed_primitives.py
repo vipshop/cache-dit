@@ -274,8 +274,8 @@ def _all_to_all_single_o_async(
         out = _wait_tensor(x)
         # (world_size, H_LOCAL, B, S_LOCAL, D)
         # -> (H_GLOBAL, B, S_LOCAL, D)
-        # -> (B, H_GLOBAL, S_LOCAL, D)
-        out = out.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        # -> (B, S_LOCAL, H_GLOBAL, D)
+        out = out.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
         return out
 
     return wait

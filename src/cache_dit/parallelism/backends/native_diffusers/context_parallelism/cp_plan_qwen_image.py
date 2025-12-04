@@ -219,9 +219,9 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         is_causal=False,
         backend=self._attention_backend,
         parallel_config=None,  # set to None to avoid double parallelism
-    )
+    )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out = _all_to_all_o_async_func(out, group)
+    out = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
     joint_hidden_states = out()  # type: torch.Tensor
 
     # Reshape back
