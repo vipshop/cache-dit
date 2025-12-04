@@ -66,11 +66,19 @@ if args.cache or args.parallel_type is not None:
         # e.g, 111110101, 1: compute, 0: dynamic cache
         steps_computation_mask=(
             cache_dit.steps_mask(
-                compute_bins=[5, 1, 1],  # 7 steps compute
-                cache_bins=[1, 1],  # max 2 steps cache
+                # slow, medium, fast, ultra.
+                mask_policy=args.mask_policy,
+                total_steps=9,
             )
-            if args.steps_mask
-            else None
+            if args.mask_policy is not None
+            else (
+                cache_dit.steps_mask(
+                    compute_bins=[5, 1, 1],  # = 7 (compute steps)
+                    cache_bins=[1, 1],  # = 2 (dynamic cache steps)
+                )
+                if args.steps_mask
+                else None
+            )
         ),
     )
 
