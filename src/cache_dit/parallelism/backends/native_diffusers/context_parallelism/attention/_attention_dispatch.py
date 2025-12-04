@@ -19,12 +19,12 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 from cache_dit.logger import init_logger
-from ._templated_ulysses_anything import (
+from ._templated_ulysses import (
     TemplatedUlyssesAnythingAttention,
     TemplatedUlyssesAnythingAttentionFloat8,
     TemplatedUlyssesAttentionFloat8,
 )
-from ._templated_ulysses_anything import (
+from ._templated_ulysses import (
     is_ulysses_anything_enabled,
     is_ulysses_anything_float8_enabled,
     is_ulysses_float8_enabled,

@@ -1,5 +1,5 @@
 import functools
-from typing import Tuple, List
+from typing import Tuple, List, Callable
 
 import torch
 import torch.distributed as dist
@@ -228,6 +228,8 @@ def _gather_split_any_o(  # noqa: F811
     return out
 
 
+# Asynchronous all to all variants. Currently only non-any_qkvo version is supported.
+# TODO: Implement any_qkvo asynchronous all to all variants.
 def _all_to_all_single_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -249,7 +251,7 @@ def _all_to_all_single_async(
 def _all_to_all_single_async_v2(
     x: torch.Tensor,
     group: dist.ProcessGroup,
-) -> callable:
+) -> Callable[[], torch.Tensor]:
     x = x.flatten()
     # NOTE: Maybe we should use dist.all_to_all_single instead of fc.all_to_all_single
     # in order to avoid forced synchronization while using torch.compile? However, we
@@ -266,7 +268,10 @@ def _all_to_all_single_async_v2(
     return wait
 
 
-def _all_to_all_single_fp8_async(x: torch.Tensor, group) -> callable:
+def _all_to_all_single_fp8_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> Callable[[], torch.Tensor]:
     shape = x.shape
     x_fp8_with_scale = per_token_quant_fp8(x)  # type: torch.Tensor
     shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
@@ -284,8 +289,12 @@ def _all_to_all_single_fp8_async(x: torch.Tensor, group) -> callable:
     return wait
 
 
-def _all_to_all_single_async_fn() -> callable:
-    from ._templated_ulysses_anything import is_ulysses_float8_enabled
+# Unified functions to select proper all to all implementations according to
+# Ulysses Float8 or other settings.
+# TODO: Refactor basic any_qkvo and non-any_qkvo all2all functions to have
+# the same output shape, thus make the unified functions more general and clean.
+def _unified_all_to_all_async_fn() -> Callable[[], torch.Tensor]:
+    from ._templated_ulysses import is_ulysses_float8_enabled
 
     if is_ulysses_float8_enabled():
         return _all_to_all_single_fp8_async
@@ -293,8 +302,8 @@ def _all_to_all_single_async_fn() -> callable:
         return _all_to_all_single_async
 
 
-def _all_to_all_single_fn() -> callable:
-    from ._templated_ulysses_anything import is_ulysses_float8_enabled
+def _unified_all_to_all_fn() -> Callable[[], torch.Tensor]:
+    from ._templated_ulysses import is_ulysses_float8_enabled
 
     if is_ulysses_float8_enabled():
         return _all_to_all_single_fp8

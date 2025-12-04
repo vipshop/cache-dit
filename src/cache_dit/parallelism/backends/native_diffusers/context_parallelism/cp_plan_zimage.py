@@ -26,9 +26,9 @@ from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
 )
-from .attention._distributed_primitives import _all_to_all_single_fn
-from .attention._distributed_primitives import _all_to_all_single_async_fn
-from .attention._templated_ulysses_anything import is_ulysses_anything_enabled
+from .attention._distributed_primitives import _unified_all_to_all_fn
+from .attention._distributed_primitives import _unified_all_to_all_async_fn
+from .attention._templated_ulysses import is_ulysses_anything_enabled
 from ..utils import maybe_patch_cp_find_submodule_by_name
 
 from cache_dit.logger import init_logger
@@ -140,8 +140,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     world_size = self._parallel_config.context_parallel_config.ulysses_degree
     group = ulysses_mesh.get_group()
 
-    _all_to_all_single = _all_to_all_single_fn()
-    _all_to_all_single_async = _all_to_all_single_async_fn()
+    _all_to_all_single = _unified_all_to_all_fn()
+    _all_to_all_single_async = _unified_all_to_all_async_fn()
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
