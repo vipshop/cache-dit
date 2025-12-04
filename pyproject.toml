@@ -33,6 +33,12 @@ metrics = [
     "lpips==0.1.4",
 ]
 
+serving = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0",
+]
+
 dev = [
     "packaging",
     "pre-commit",
@@ -53,6 +59,7 @@ all = [
     "cache-dit[parallelism]",
     "cache-dit[quantization]",
     "cache-dit[metrics]",
+    "cache-dit[serving]",
 ]
 
 [project.urls]
@@ -64,6 +71,7 @@ GitHub = "https://github.com/vipshop/cache-dit"
 [project.scripts]
 
 cache-dit-metrics-cli = "cache_dit.metrics:main"
+cache-dit-serve = "cache_dit.serve.serve:launch_server"
 
 [build-system]
 

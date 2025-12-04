@@ -9,13 +9,13 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
-    GiB,
     cachify,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
     MemoryTracker,
+    create_profiler_from_args,
 )
 
 import cache_dit
@@ -86,30 +86,41 @@ if args.cache or args.parallel_type is not None:
         )
 
 assert isinstance(pipe.transformer, WanTransformer3DModel)
-# Enable memory savings
-if GiB() < 96:
-    pipe.enable_model_cpu_offload(device=device)
+
+# The model weights for Wan-AI/Wan2.2-T2V-A14B-Diffusers will occupy over 50 GB of memory.
+# If enable_model_cpu_offload is not enabled, even running on an H100 with CP (possibly "CheckPoint" or a similar memory-saving technique) will result in an OOM (Out Of Memory) error.
+# This is essential to avoid OOM errors when running the model.
+pipe.enable_model_cpu_offload(device=device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
+# Set default prompt
+prompt = "A cat walks on the grass, realistic"
+if args.prompt is not None:
+    prompt = args.prompt
+
+negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+if args.negative_prompt is not None:
+    negative_prompt = args.negative_prompt
+
+height = 480 if args.height is None else args.height
+width = 832 if args.width is None else args.width
+
 
 def run_pipe(warmup: bool = False):
-    prompt = "A cat walks on the grass, realistic"
-    if args.prompt is not None:
-        prompt = args.prompt
-    negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
-    if args.negative_prompt is not None:
-        negative_prompt = args.negative_prompt
-
     seed = 1234
     generator = torch.Generator(device="cpu").manual_seed(seed)
 
     num_inference_steps = 30 if not warmup else 4
+    if args.steps is not None and not warmup:
+        num_inference_steps = args.steps
+    if args.profile and args.steps is None and not warmup:
+        num_inference_steps = 3
     output = pipe(
         prompt=prompt,
         negative_prompt=negative_prompt,
-        height=480,
-        width=832,
+        height=height,
+        width=width,
         num_frames=49,
         guidance_scale=5.0,
         generator=generator,
@@ -117,6 +128,11 @@ def run_pipe(warmup: bool = False):
     ).frames[0]
     return output
 
+
+if args.attn is not None:
+    if hasattr(pipe.transformer, "set_attention_backend"):
+        pipe.transformer.set_attention_backend(args.attn)
+        print(f"Set attention backend to {args.attn}")
 
 if args.compile:
     cache_dit.set_compile_configs()
@@ -130,7 +146,14 @@ if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-video = run_pipe()
+if args.profile:
+    profiler = create_profiler_from_args(args, profile_name="wan_cp_inference")
+    with profiler:
+        video = run_pipe()
+    if rank == 0:
+        print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
+else:
+    video = run_pipe()
 end = time.time()
 
 if memory_tracker:
@@ -141,9 +164,9 @@ if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"wan.{strify(args, pipe)}.mp4"
+    save_path = f"wan.{height}x{width}.{strify(args, pipe)}.mp4"
     print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
+    print(f"Saving video to {save_path}")
     export_to_video(video, save_path, fps=16)
 
 maybe_destroy_distributed()
