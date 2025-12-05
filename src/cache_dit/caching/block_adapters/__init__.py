@@ -201,23 +201,54 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
 def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanVideoTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, HunyuanVideoTransformer3DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.transformer_blocks,
-            pipe.transformer.single_transformer_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_0,
-            ForwardPattern.Pattern_0,
-        ],
-        check_forward_pattern=True,
-        # The type hint in diffusers is wrong
-        check_num_outputs=False,
-        **kwargs,
-    )
+    transformer_cls_name: str = pipe.transformer.__class__.__name__
+    supported_transformers = (HunyuanVideoTransformer3DModel,)
+    try:
+        from diffusers import HunyuanVideo15Transformer3DModel
+
+        supported_transformers += (HunyuanVideo15Transformer3DModel,)
+    except ImportError:
+        if transformer_cls_name.startswith("HunyuanVideo15"):
+            logger.warning(
+                "HunyuanVideo15Transformer3DModel is not available in the current "
+                "diffusers version >=0.36.dev0. Please install the latest diffusers "
+                "from source to use HunyuanVideo-1.5 model."
+            )
+
+    _relaxed_assert_transformer(pipe.transformer, supported_transformers)
+
+    if transformer_cls_name.startswith("HunyuanVideo15"):
+        # HunyuanVideo 1.5, has speparate cfg for conditional and unconditional forward
+        # Reference:
+        # - https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v/blob/main/guider/guider_config.json#L4
+        # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/hunyuan_video1_5/pipeline_hunyuan_video1_5.py#L753
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=pipe.transformer.transformer_blocks,
+            forward_pattern=ForwardPattern.Pattern_0,
+            check_forward_pattern=True,
+            has_separate_cfg=True,
+            **kwargs,
+        )
+    else:
+        # HunyuanVideo 1.0
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_0,
+                ForwardPattern.Pattern_0,
+            ],
+            check_forward_pattern=True,
+            # The type hint in diffusers is wrong
+            check_num_outputs=False,
+            **kwargs,
+        )
 
 
 @BlockAdapterRegister.register("QwenImage")
@@ -800,5 +831,33 @@ def zimage_adapter(pipe, **kwargs) -> BlockAdapter:
     except ImportError:
         raise ImportError(
             "ZImageTransformer2DModel is not available in the current diffusers version. "
+            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
+        )
+
+
+@BlockAdapterRegister.register("OvisImage")
+def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import OvisImageTransformer2DModel
+
+        _relaxed_assert_transformer(pipe.transformer, OvisImageTransformer2DModel)
+        return BlockAdapter(
+            pipe=pipe,
+            transformer=pipe.transformer,
+            blocks=[
+                pipe.transformer.transformer_blocks,
+                pipe.transformer.single_transformer_blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_1,
+                ForwardPattern.Pattern_1,
+            ],
+            check_forward_pattern=True,
+            has_separate_cfg=True,
+            **kwargs,
+        )
+    except ImportError:
+        raise ImportError(
+            "OvisImageTransformer2DModel is not available in the current diffusers version. "
             "Please upgrade diffusers>=0.36.dev0 to use this adapter."
         )
