@@ -218,12 +218,17 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     _relaxed_assert_transformer(pipe.transformer, supported_transformers)
 
     if transformer_cls_name.startswith("HunyuanVideo15"):
+        # HunyuanVideo 1.5, has speparate cfg for conditional and unconditional forward
+        # Reference:
+        # - https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-Diffusers-480p_t2v/blob/main/guider/guider_config.json#L4
+        # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/hunyuan_video1_5/pipeline_hunyuan_video1_5.py#L753
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
             blocks=pipe.transformer.transformer_blocks,
             forward_pattern=ForwardPattern.Pattern_0,
             check_forward_pattern=True,
+            has_separate_cfg=True,
             **kwargs,
         )
     else:

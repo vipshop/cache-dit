@@ -58,7 +58,10 @@ if memory_tracker:
 def run_pipe(warmup: bool = False):
     output = pipe(
         prompt=prompt,
-        num_inference_steps=5 if warmup else 50,
+        height=480 if args.height is None else args.height,
+        width=720 if args.width is None else args.width,
+        num_frames=49,
+        num_inference_steps=5 if warmup else (50 if args.steps is None else args.steps),
         generator=torch.Generator("cpu").manual_seed(0),
     ).frames[0]
     return output
