@@ -12,6 +12,7 @@ Inspired by SGLang's distributed architecture.
 import logging
 import pickle
 import time
+import threading
 
 import torch
 import torch.distributed as dist
@@ -19,6 +20,9 @@ import torch.distributed as dist
 from cache_dit.serve.model_manager import GenerateRequest, GenerateResponse
 
 logger = logging.getLogger(__name__)
+
+HEARTBEAT_INTERVAL = 300
+HEARTBEAT_SIZE = -1
 
 
 class TPCoordinator:
@@ -32,7 +36,12 @@ class TPCoordinator:
         self.model_manager = model_manager
         self.rank = rank
         self.world_size = world_size
+        self._last_broadcast_time = time.time()
+        self._heartbeat_lock = threading.Lock()
+        self._stop_heartbeat = False
+        self._heartbeat_thread = None
         logger.info(f"TPCoordinator initialized: rank={rank}, world_size={world_size}")
+        self._start_heartbeat()
 
     @property
     def pipe(self):
@@ -43,32 +52,54 @@ class TPCoordinator:
         """Get model information from the underlying model manager."""
         return self.model_manager.get_model_info()
 
+    def _start_heartbeat(self):
+        def heartbeat_loop():
+            while not self._stop_heartbeat:
+                time.sleep(HEARTBEAT_INTERVAL)
+                with self._heartbeat_lock:
+                    if time.time() - self._last_broadcast_time > HEARTBEAT_INTERVAL:
+                        try:
+                            size_tensor = torch.tensor(
+                                [HEARTBEAT_SIZE], dtype=torch.long, device="cuda"
+                            )
+                            dist.broadcast(size_tensor, src=0)
+                            self._last_broadcast_time = time.time()
+                            logger.debug("Heartbeat sent to workers")
+                        except Exception as e:
+                            logger.error(f"Heartbeat failed: {e}")
+
+        self._heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+        self._heartbeat_thread.start()
+        logger.info(f"Heartbeat thread started (interval={HEARTBEAT_INTERVAL}s)")
+
+    def stop(self):
+        self._stop_heartbeat = True
+        if self._heartbeat_thread:
+            self._heartbeat_thread.join(timeout=1)
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         """
         Generate images using TP.
 
         This method broadcasts the request to all ranks and collects the result.
         """
-        # Serialize request
-        request_data = pickle.dumps(request)
-        request_size = len(request_data)
+        with self._heartbeat_lock:
+            torch.cuda.synchronize()
 
-        # Broadcast request size
-        size_tensor = torch.tensor([request_size], dtype=torch.long, device="cuda")
-        dist.broadcast(size_tensor, src=0)
+            request_data = pickle.dumps(request)
+            request_size = len(request_data)
 
-        # Broadcast request data
-        request_tensor = torch.frombuffer(request_data, dtype=torch.uint8).cuda()
-        # Pad to make it divisible by world_size for efficient broadcast
-        padded_size = ((request_size + self.world_size - 1) // self.world_size) * self.world_size
-        if padded_size > request_size:
-            request_tensor = torch.cat(
-                [
-                    request_tensor,
-                    torch.zeros(padded_size - request_size, dtype=torch.uint8, device="cuda"),
-                ]
-            )
-        dist.broadcast(request_tensor, src=0)
+            size_tensor = torch.tensor([request_size], dtype=torch.long, device="cuda")
+            dist.broadcast(size_tensor, src=0)
+
+            padded_size = (
+                (request_size + self.world_size - 1) // self.world_size
+            ) * self.world_size
+            request_tensor = torch.zeros(padded_size, dtype=torch.uint8, device="cuda")
+            request_tensor[:request_size].copy_(torch.frombuffer(request_data, dtype=torch.uint8))
+            dist.broadcast(request_tensor, src=0)
+
+            self._last_broadcast_time = time.time()
 
         # IMPORTANT: Rank 0 must also deserialize the broadcasted request
         # to ensure all ranks use exactly the same request object
@@ -92,23 +123,25 @@ def run_tp_worker(model_manager, rank: int):
 
     while True:
         try:
-            # Receive request size
+            torch.cuda.synchronize()
+
             size_tensor = torch.tensor([0], dtype=torch.long, device="cuda")
             dist.broadcast(size_tensor, src=0)
             request_size = size_tensor.item()
 
-            # Receive request data
+            if request_size == HEARTBEAT_SIZE:
+                logger.debug(f"Rank {rank} received heartbeat")
+                continue
+
             padded_size = (
                 (request_size + dist.get_world_size() - 1) // dist.get_world_size()
             ) * dist.get_world_size()
             request_tensor = torch.zeros(padded_size, dtype=torch.uint8, device="cuda")
             dist.broadcast(request_tensor, src=0)
 
-            # Deserialize request
             request_data = request_tensor[:request_size].cpu().numpy().tobytes()
             request = pickle.loads(request_data)
 
-            # Execute inference
             logger.debug(f"Rank {rank} executing inference...")
             _ = model_manager.generate(request)
             logger.debug(f"Rank {rank} inference completed")
@@ -116,6 +149,14 @@ def run_tp_worker(model_manager, rank: int):
         except KeyboardInterrupt:
             logger.info(f"TP worker {rank} shutting down...")
             break
+        except RuntimeError as e:
+            if "NCCL" in str(e) or "timeout" in str(e).lower():
+                logger.error(f"TP worker {rank} NCCL error: {e}")
+                dist.destroy_process_group()
+                break
+            else:
+                logger.error(f"TP worker {rank} error: {e}", exc_info=True)
+                time.sleep(0.1)
         except Exception as e:
             logger.error(f"TP worker {rank} error: {e}", exc_info=True)
-            time.sleep(0.1)  # Avoid busy loop on repeated errors
+            time.sleep(0.1)
