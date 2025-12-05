@@ -212,7 +212,7 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
             logger.warning(
                 "HunyuanVideo15Transformer3DModel is not available in the current "
                 "diffusers version >=0.36.dev0. Please install the latest diffusers "
-                "from source to use HunyuanVideo15 model."
+                "from source to use HunyuanVideo-1.5 model."
             )
 
     _relaxed_assert_transformer(pipe.transformer, supported_transformers)
