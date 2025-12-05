@@ -151,6 +151,11 @@ class ModelManager:
     def _warmup_if_needed(self, width: int, height: int, prompt: str):
         shape_key = (width, height)
         if self.enable_compile and shape_key not in self.warmed_up_shapes:
+            if self.parallel_type in ["tp", "ulysses", "ring"]:
+                import torch.distributed as dist
+
+                dist.barrier()
+
             logger.info(f"Warming up for shape {width}x{height}...")
             try:
                 _ = self.pipe(
@@ -164,6 +169,11 @@ class ModelManager:
                 logger.info(f"Warmup completed for {width}x{height}")
             except Exception as e:
                 logger.warning(f"Warmup failed: {e}")
+
+            if self.parallel_type in ["tp", "ulysses", "ring"]:
+                import torch.distributed as dist
+
+                dist.barrier()
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         if self.pipe is None:
@@ -186,6 +196,11 @@ class ModelManager:
             # CPU generator ensures all ranks use the same random sequence.
             generator = torch.Generator(device="cpu").manual_seed(seed)
             logger.debug(f"Created generator with seed {seed} on CPU")
+
+        if self.parallel_type in ["tp", "ulysses", "ring"]:
+            import torch.distributed as dist
+
+            dist.barrier()
 
         start_time = time.time()
 
@@ -213,6 +228,11 @@ class ModelManager:
                 pipe_kwargs["negative_prompt"] = request.negative_prompt
 
         output = self.pipe(**pipe_kwargs)
+
+        if self.parallel_type in ["tp", "ulysses", "ring"]:
+            import torch.distributed as dist
+
+            dist.barrier()
 
         time_cost = time.time() - start_time
 
