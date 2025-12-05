@@ -37,11 +37,10 @@ if args.quantize:
             "embed",
         ],
     )
-    pipe.text_encoder_2 = cache_dit.quantize(
-        pipe.text_encoder_2,
+    pipe.text_encoder = cache_dit.quantize(
+        pipe.text_encoder,
         quant_type=args.quantize_type,
     )
-    print(f"Applied quantization: {args.quantize_type} to Transformer and Text Encoder 2.")
 
 pipe.to("cuda")
 
