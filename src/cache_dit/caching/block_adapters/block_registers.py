@@ -25,6 +25,7 @@ class BlockAdapterRegister:
         "Kandinsky5",
         "ChronoEdit",
         "HunyuanVideo15",
+        "OvisImage",
     ]
 
     @classmethod
