@@ -280,6 +280,9 @@ def launch_server(args=None):
     if args.parallel_type in ["tp", "ulysses", "ring"]:
         import torch.distributed as dist
 
+        dist.barrier()
+        logger.info(f"Rank {rank}: All ranks ready, starting service...")
+
         if rank == 0:
             # Rank 0: Start HTTP server and broadcast requests to other ranks
             from cache_dit.serve.tp_worker import TPCoordinator
