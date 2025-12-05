@@ -15,7 +15,6 @@ except ImportError:
         "Please install latest version of diffusers from source: \n"
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
-from cache_dit.logger import init_logger
 from ._distributed_primitives import (
     _get_rank_world_size,
     _gather_size_by_comm,
@@ -27,7 +26,10 @@ from ._distributed_primitives import (
     _all_to_all_single,
 )
 
+from cache_dit.logger import init_logger
+
 logger = init_logger(__name__)
+
 
 __all__ = [
     "TemplatedUlyssesAnythingAttention",
