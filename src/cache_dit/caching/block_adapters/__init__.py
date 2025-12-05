@@ -840,8 +840,7 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import OvisImageTransformer2DModel
 
-        # _relaxed_assert_transformer(pipe.transformer, OvisImageTransformer2DModel)
-        assert isinstance(pipe.transformer, OvisImageTransformer2DModel)
+        _relaxed_assert_transformer(pipe.transformer, OvisImageTransformer2DModel)
         return BlockAdapter(
             pipe=pipe,
             transformer=pipe.transformer,
