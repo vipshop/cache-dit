@@ -30,15 +30,10 @@ def _per_token_quant_8bit(
     _absmax = tl.max(_absmax)
     x_s = _absmax / bit8_max
     x_s_inv = 1.0 / x_s
-
     x_s = x_s.to(x_ptr.dtype.element_ty)
-    s16 = x_s.cast(tl.int16, bitcast=True)
-    lo = (s16 & 0xFF).to(tl.int8)
-    hi = ((s16 >> 8) & 0xFF).to(tl.int8)
-    lo = lo.cast(y_ptr.dtype.element_ty, bitcast=True)
-    hi = hi.cast(y_ptr.dtype.element_ty, bitcast=True)
-    tl.store(y_s_ptr, lo)
-    tl.store(y_s_ptr + 1, hi)
+
+    y_s_ptr = y_s_ptr.to(tl.pointer_type(x_ptr.dtype.element_ty, 1))
+    tl.store(y_s_ptr, x_s)
 
     for h in range(0, H, BLOCK):
         cols = h + tl.arange(0, BLOCK).to(tl.int64)
@@ -60,13 +55,8 @@ def _per_token_dequant_8bit(
     x_ptr += s_id * (H + 2)
 
     x_s_ptr = x_ptr + H
-    lo = tl.load(x_s_ptr)[None]
-    hi = tl.load(x_s_ptr + 1)[None]
-    lo = lo.cast(tl.int8, bitcast=True).to(tl.int16)
-    hi = hi.cast(tl.int8, bitcast=True).to(tl.int16)
-    s16 = (lo & 0xFF) | ((hi & 0xFF) << 8)
-    s16 = s16.cast(tl.bfloat16, bitcast=True)
-    x_s = s16.to(tl.float32)
+    x_s_ptr = x_s_ptr.to(tl.pointer_type(y_ptr.dtype.element_ty, 1))
+    x_s = tl.load(x_s_ptr).to(tl.float32)
 
     for h in range(0, H, BLOCK):
         cols = h + tl.arange(0, BLOCK).to(tl.int64)
