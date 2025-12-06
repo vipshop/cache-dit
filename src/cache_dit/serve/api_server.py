@@ -15,8 +15,8 @@ from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
-# Global model manager
 _global_model_manager: Optional[ModelManager] = None
+_request_semaphore: Optional[asyncio.Semaphore] = None
 
 
 class GenerateRequestAPI(BaseModel):
@@ -42,8 +42,9 @@ class GenerateResponseAPI(BaseModel):
 
 def create_app(model_manager: ModelManager) -> FastAPI:
     """Create FastAPI application."""
-    global _global_model_manager
+    global _global_model_manager, _request_semaphore
     _global_model_manager = model_manager
+    _request_semaphore = asyncio.Semaphore(1)
 
     app = FastAPI(
         title="Cache-DiT Serving API",
@@ -75,31 +76,33 @@ def create_app(model_manager: ModelManager) -> FastAPI:
         if _global_model_manager.pipe is None:
             raise HTTPException(status_code=503, detail="Model not loaded")
 
-        try:
-            gen_request = GenerateRequest(
-                prompt=request.prompt,
-                negative_prompt=request.negative_prompt,
-                width=request.width,
-                height=request.height,
-                num_inference_steps=request.num_inference_steps,
-                guidance_scale=request.guidance_scale,
-                seed=request.seed,
-                num_images=request.num_images,
-            )
+        async with _request_semaphore:
+            try:
+                gen_request = GenerateRequest(
+                    prompt=request.prompt,
+                    negative_prompt=request.negative_prompt,
+                    width=request.width,
+                    height=request.height,
+                    num_inference_steps=request.num_inference_steps,
+                    guidance_scale=request.guidance_scale,
+                    seed=request.seed,
+                    num_images=request.num_images,
+                )
 
-            # Run in thread pool to avoid blocking event loop
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, _global_model_manager.generate, gen_request)
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None, _global_model_manager.generate, gen_request
+                )
 
-            return GenerateResponseAPI(
-                images=response.images,
-                stats=response.stats,
-                time_cost=response.time_cost,
-            )
+                return GenerateResponseAPI(
+                    images=response.images,
+                    stats=response.stats,
+                    time_cost=response.time_cost,
+                )
 
-        except Exception as e:
-            logger.error(f"Error generating image: {str(e)}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error generating image: {str(e)}", exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
     @app.post("/flush_cache")
     async def flush_cache():
