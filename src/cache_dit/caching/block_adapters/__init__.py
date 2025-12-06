@@ -1,6 +1,6 @@
 import os
 import torch
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 from cache_dit.caching.forward_pattern import ForwardPattern
 from cache_dit.caching.block_adapters.block_adapters import BlockAdapter
 from cache_dit.caching.block_adapters.block_adapters import (
@@ -15,25 +15,37 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-def _relaxed_assert_transformer(
+def _relaxed_assert(
     transformer: torch.nn.Module,
-    allow_classes: Union[torch.nn.Module, List[torch.nn.Module], Tuple[torch.nn.Module]],
+    allow_classes: Optional[
+        Union[
+            torch.nn.Module,
+            List[torch.nn.Module],
+            Tuple[torch.nn.Module],
+        ]
+    ] = None,
 ) -> None:
-    if not isinstance(allow_classes, (list, tuple)):
+    if allow_classes is not None and not isinstance(allow_classes, (list, tuple)):
         allow_classes = (allow_classes,)
     _imported_module_ = transformer.__module__
     if _imported_module_.startswith("diffusers"):
         # Only apply strict check for Diffusers transformers
-        assert isinstance(transformer, allow_classes), (
-            f"Transformer class {transformer.__class__.__name__} not in "
-            f"allowed classes: {[cls.__name__ for cls in allow_classes]}"
-        )
+        if allow_classes is not None:
+            assert isinstance(transformer, allow_classes), (
+                f"Transformer class {transformer.__class__.__name__} not in "
+                f"allowed classes: {[cls.__name__ for cls in allow_classes]}"
+            )
+        else:
+            logger.warning(
+                "No allowed classes provided for transformer strict type check "
+                "in BlockAdapter. Skipping strict type check."
+            )
     else:
         # Otherwise, just log a warning and skip strict type check, e.g:
         # sglang/multimodal_gen/runtime/models/dits/flux.py#L411
         logger.warning(
             f"Transformer class {transformer.__class__.__name__} is from "
-            f"{_imported_module_} not diffusers, skipping strict type check "
+            f"{_imported_module_.split('.')[0]} not diffusers, skipping strict type check "
             "in BlockAdapter."
         )
 
@@ -50,9 +62,9 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
 
         supported_transformers += (Flux2Transformer2DModel,)
     except ImportError:
-        Flux2Transformer2DModel = None
+        Flux2Transformer2DModel = None  # requires diffusers>=0.36.dev0
 
-    _relaxed_assert_transformer(pipe.transformer, supported_transformers)
+    _relaxed_assert(pipe.transformer, supported_transformers)
 
     transformer_cls_name: str = pipe.transformer.__class__.__name__
     if (
@@ -117,7 +129,7 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
 def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import MochiTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, MochiTransformer3DModel)
+    _relaxed_assert(pipe.transformer, MochiTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -132,7 +144,7 @@ def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
 def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogVideoXTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, CogVideoXTransformer3DModel)
+    _relaxed_assert(pipe.transformer, CogVideoXTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -151,15 +163,15 @@ def wan_adapter(pipe, **kwargs) -> BlockAdapter:
     )
     from cache_dit.caching.patch_functors import WanVACEPatchFunctor
 
-    _relaxed_assert_transformer(
+    _relaxed_assert(
         pipe.transformer,
         (WanTransformer3DModel, WanVACETransformer3DModel),
     )
-    cls_name = pipe.transformer.__class__.__name__
+    cls_name = pipe.transformer.__class__.__name__  # type: str
     patch_functor = WanVACEPatchFunctor() if cls_name.startswith("WanVACE") else None
 
     if getattr(pipe, "transformer_2", None):
-        _relaxed_assert_transformer(
+        _relaxed_assert(
             pipe.transformer_2,
             (WanTransformer3DModel, WanVACETransformer3DModel),
         )
@@ -208,14 +220,9 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
 
         supported_transformers += (HunyuanVideo15Transformer3DModel,)
     except ImportError:
-        if transformer_cls_name.startswith("HunyuanVideo15"):
-            logger.warning(
-                "HunyuanVideo15Transformer3DModel is not available in the current "
-                "diffusers version >=0.36.dev0. Please install the latest diffusers "
-                "from source to use HunyuanVideo-1.5 model."
-            )
+        HunyuanVideo15Transformer3DModel = None  # requires diffusers>=0.36.dev0
 
-    _relaxed_assert_transformer(pipe.transformer, supported_transformers)
+    _relaxed_assert(pipe.transformer, supported_transformers)
 
     if transformer_cls_name.startswith("HunyuanVideo15"):
         # HunyuanVideo 1.5, has speparate cfg for conditional and unconditional forward
@@ -253,9 +260,12 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("QwenImage")
 def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
-    from diffusers import QwenImageTransformer2DModel
+    try:
+        from diffusers import QwenImageTransformer2DModel
+    except ImportError:
+        QwenImageTransformer2DModel = None  # requires diffusers>=0.35.2
 
-    _relaxed_assert_transformer(pipe.transformer, QwenImageTransformer2DModel)
+    _relaxed_assert(pipe.transformer, QwenImageTransformer2DModel)
 
     pipe_cls_name: str = pipe.__class__.__name__
     if pipe_cls_name.startswith("QwenImageControlNet"):
@@ -288,7 +298,7 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
 def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import LTXVideoTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, LTXVideoTransformer3DModel)
+    _relaxed_assert(pipe.transformer, LTXVideoTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -303,7 +313,7 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
 def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import AllegroTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, AllegroTransformer3DModel)
+    _relaxed_assert(pipe.transformer, AllegroTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -318,7 +328,7 @@ def allegro_adapter(pipe, **kwargs) -> BlockAdapter:
 def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogView3PlusTransformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, CogView3PlusTransformer2DModel)
+    _relaxed_assert(pipe.transformer, CogView3PlusTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -333,7 +343,7 @@ def cogview3plus_adapter(pipe, **kwargs) -> BlockAdapter:
 def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CogView4Transformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, CogView4Transformer2DModel)
+    _relaxed_assert(pipe.transformer, CogView4Transformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -349,7 +359,7 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
 def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import CosmosTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, CosmosTransformer3DModel)
+    _relaxed_assert(pipe.transformer, CosmosTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -365,7 +375,7 @@ def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
 def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import EasyAnimateTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, EasyAnimateTransformer3DModel)
+    _relaxed_assert(pipe.transformer, EasyAnimateTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -380,7 +390,7 @@ def easyanimate_adapter(pipe, **kwargs) -> BlockAdapter:
 def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SkyReelsV2Transformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, SkyReelsV2Transformer3DModel)
+    _relaxed_assert(pipe.transformer, SkyReelsV2Transformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -399,7 +409,7 @@ def skyreelsv2_adapter(pipe, **kwargs) -> BlockAdapter:
 def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SD3Transformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, SD3Transformer2DModel)
+    _relaxed_assert(pipe.transformer, SD3Transformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -414,7 +424,7 @@ def sd3_adapter(pipe, **kwargs) -> BlockAdapter:
 def consisid_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ConsisIDTransformer3DModel
 
-    _relaxed_assert_transformer(pipe.transformer, ConsisIDTransformer3DModel)
+    _relaxed_assert(pipe.transformer, ConsisIDTransformer3DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -430,7 +440,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import DiTTransformer2DModel
     from cache_dit.caching.patch_functors import DiTPatchFunctor
 
-    _relaxed_assert_transformer(pipe.transformer, DiTTransformer2DModel)
+    _relaxed_assert(pipe.transformer, DiTTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -446,7 +456,7 @@ def dit_adapter(pipe, **kwargs) -> BlockAdapter:
 def amused_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import UVit2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, UVit2DModel)
+    _relaxed_assert(pipe.transformer, UVit2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -459,9 +469,12 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("Bria")
 def bria_adapter(pipe, **kwargs) -> BlockAdapter:
-    from diffusers import BriaTransformer2DModel
+    try:
+        from diffusers import BriaTransformer2DModel
+    except ImportError:
+        BriaTransformer2DModel = None  # requires diffusers>=0.36.dev0
 
-    _relaxed_assert_transformer(pipe.transformer, BriaTransformer2DModel)
+    _relaxed_assert(pipe.transformer, BriaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -483,7 +496,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import Lumina2Transformer2DModel
     from diffusers import LuminaNextDiT2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel))
+    _relaxed_assert(pipe.transformer, (Lumina2Transformer2DModel, LuminaNextDiT2DModel))
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -498,7 +511,7 @@ def lumina2_adapter(pipe, **kwargs) -> BlockAdapter:
 def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import OmniGenTransformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, OmniGenTransformer2DModel)
+    _relaxed_assert(pipe.transformer, OmniGenTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -513,7 +526,7 @@ def omnigen_adapter(pipe, **kwargs) -> BlockAdapter:
 def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import PixArtTransformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, PixArtTransformer2DModel)
+    _relaxed_assert(pipe.transformer, PixArtTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -528,7 +541,7 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
 def sana_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import SanaTransformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, SanaTransformer2DModel)
+    _relaxed_assert(pipe.transformer, SanaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -543,7 +556,7 @@ def sana_adapter(pipe, **kwargs) -> BlockAdapter:
 def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import StableAudioDiTModel
 
-    _relaxed_assert_transformer(pipe.transformer, StableAudioDiTModel)
+    _relaxed_assert(pipe.transformer, StableAudioDiTModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -559,7 +572,7 @@ def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
     from cache_dit.utils import is_diffusers_at_least_0_3_5
 
-    _relaxed_assert_transformer(pipe.transformer, FluxTransformer2DModel)
+    _relaxed_assert(pipe.transformer, FluxTransformer2DModel)
     if is_diffusers_at_least_0_3_5():
         return BlockAdapter(
             pipe=pipe,
@@ -596,7 +609,7 @@ def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
 def auraflow_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import AuraFlowTransformer2DModel
 
-    _relaxed_assert_transformer(pipe.transformer, AuraFlowTransformer2DModel)
+    _relaxed_assert(pipe.transformer, AuraFlowTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -612,7 +625,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import ChromaTransformer2DModel
     from cache_dit.caching.patch_functors import ChromaPatchFunctor
 
-    _relaxed_assert_transformer(pipe.transformer, ChromaTransformer2DModel)
+    _relaxed_assert(pipe.transformer, ChromaTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -635,7 +648,7 @@ def chroma_adapter(pipe, **kwargs) -> BlockAdapter:
 def shape_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import PriorTransformer
 
-    _relaxed_assert_transformer(pipe.prior, PriorTransformer)
+    _relaxed_assert(pipe.prior, PriorTransformer)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.prior,
@@ -656,7 +669,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HiDreamImageTransformer2DModel
     from cache_dit.caching.patch_functors import HiDreamPatchFunctor
 
-    _relaxed_assert_transformer(pipe.transformer, HiDreamImageTransformer2DModel)
+    _relaxed_assert(pipe.transformer, HiDreamImageTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -681,7 +694,7 @@ def hunyuandit_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanDiT2DModel, HunyuanDiT2DControlNetModel
     from cache_dit.caching.patch_functors import HunyuanDiTPatchFunctor
 
-    _relaxed_assert_transformer(
+    _relaxed_assert(
         pipe.transformer,
         (HunyuanDiT2DModel, HunyuanDiT2DControlNetModel),
     )
@@ -701,7 +714,7 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import HunyuanDiT2DModel
     from cache_dit.caching.patch_functors import HunyuanDiTPatchFunctor
 
-    _relaxed_assert_transformer(pipe.transformer, HunyuanDiT2DModel)
+    _relaxed_assert(pipe.transformer, HunyuanDiT2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
@@ -717,147 +730,129 @@ def hunyuanditpag_adapter(pipe, **kwargs) -> BlockAdapter:
 def kandinsky5_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import Kandinsky5Transformer3DModel
-
-        _relaxed_assert_transformer(pipe.transformer, Kandinsky5Transformer3DModel)
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=pipe.transformer.visual_transformer_blocks,
-            forward_pattern=ForwardPattern.Pattern_3,  # or Pattern_2
-            has_separate_cfg=True,
-            check_forward_pattern=False,
-            check_num_outputs=False,
-            **kwargs,
-        )
     except ImportError:
-        raise ImportError(
-            "Kandinsky5Transformer3DModel is not available in the current diffusers version. "
-            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
-        )
+        Kandinsky5Transformer3DModel = None  # requires diffusers>=0.36.dev
+
+    _relaxed_assert(pipe.transformer, Kandinsky5Transformer3DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.visual_transformer_blocks,
+        forward_pattern=ForwardPattern.Pattern_3,  # or Pattern_2
+        has_separate_cfg=True,
+        check_forward_pattern=False,
+        check_num_outputs=False,
+        **kwargs,
+    )
 
 
 @BlockAdapterRegister.register("PRX")
 def prx_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import PRXTransformer2DModel
-
-        _relaxed_assert_transformer(pipe.transformer, PRXTransformer2DModel)
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=pipe.transformer.blocks,
-            forward_pattern=ForwardPattern.Pattern_3,
-            check_forward_pattern=True,
-            check_num_outputs=False,
-            **kwargs,
-        )
     except ImportError:
-        raise ImportError(
-            "PRXTransformer2DModel is not available in the current diffusers version. "
-            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
-        )
+        PRXTransformer2DModel = None  # requires diffusers>=0.36.dev0
+
+    _relaxed_assert(pipe.transformer, PRXTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.blocks,
+        forward_pattern=ForwardPattern.Pattern_3,
+        check_forward_pattern=True,
+        check_num_outputs=False,
+        **kwargs,
+    )
 
 
 @BlockAdapterRegister.register("HunyuanImage")
 def hunyuan_image_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import HunyuanImageTransformer2DModel
-
-        _relaxed_assert_transformer(pipe.transformer, HunyuanImageTransformer2DModel)
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_0,
-                ForwardPattern.Pattern_0,
-            ],
-            # set `has_separate_cfg` as True to enable separate cfg caching
-            # since in hyimage-2.1 the `guider_state` contains 2 input batches.
-            # The cfg is `enabled` by default in AdaptiveProjectedMixGuidance.
-            has_separate_cfg=True,
-            check_forward_pattern=True,
-            **kwargs,
-        )
     except ImportError:
-        raise ImportError(
-            "HunyuanImageTransformer2DModel is not available in the current diffusers version. "
-            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
-        )
+        HunyuanImageTransformer2DModel = None  # requires diffusers>=0.36
+
+    _relaxed_assert(pipe.transformer, HunyuanImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_0,
+        ],
+        # set `has_separate_cfg` as True to enable separate cfg caching
+        # since in hyimage-2.1 the `guider_state` contains 2 input batches.
+        # The cfg is `enabled` by default in AdaptiveProjectedMixGuidance.
+        has_separate_cfg=True,
+        check_forward_pattern=True,
+        **kwargs,
+    )
 
 
 @BlockAdapterRegister.register("ChronoEdit")
 def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import ChronoEditTransformer3DModel
-
-        _relaxed_assert_transformer(pipe.transformer, ChronoEditTransformer3DModel)
-        # Same as Wan 2.1 adapter
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=pipe.transformer.blocks,
-            forward_pattern=ForwardPattern.Pattern_2,
-            check_forward_pattern=True,
-            has_separate_cfg=True,
-            **kwargs,
-        )
     except ImportError:
-        raise ImportError(
-            "ChronoEditTransformer3DModel is not available in the current diffusers version. "
-            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
-        )
+        ChronoEditTransformer3DModel = None  # requires diffusers>=0.36.dev
+
+    _relaxed_assert(pipe.transformer, ChronoEditTransformer3DModel)
+    # Same as Wan 2.1 adapter
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.blocks,
+        forward_pattern=ForwardPattern.Pattern_2,
+        check_forward_pattern=True,
+        has_separate_cfg=True,
+        **kwargs,
+    )
 
 
 @BlockAdapterRegister.register("ZImage")
 def zimage_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import ZImageTransformer2DModel
-
-        _relaxed_assert_transformer(pipe.transformer, ZImageTransformer2DModel)
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=pipe.transformer.layers,
-            forward_pattern=ForwardPattern.Pattern_3,
-            # ZImage DON'T have 'hidden_states' (use 'x') in its block
-            # forward signature. So we disable the forward pattern check here.
-            check_forward_pattern=False,
-            **kwargs,
-        )
     except ImportError:
-        raise ImportError(
-            "ZImageTransformer2DModel is not available in the current diffusers version. "
-            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
-        )
+        ZImageTransformer2DModel = None  # requires diffusers>=0.36.dev0
+
+    _relaxed_assert(pipe.transformer, ZImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.layers,
+        forward_pattern=ForwardPattern.Pattern_3,
+        # ZImage DON'T have 'hidden_states' (use 'x') in its block
+        # forward signature. So we disable the forward pattern check here.
+        check_forward_pattern=False,
+        **kwargs,
+    )
 
 
 @BlockAdapterRegister.register("OvisImage")
 def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import OvisImageTransformer2DModel
-
-        _relaxed_assert_transformer(pipe.transformer, OvisImageTransformer2DModel)
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
-            ],
-            check_forward_pattern=True,
-            has_separate_cfg=True,
-            **kwargs,
-        )
     except ImportError:
-        raise ImportError(
-            "OvisImageTransformer2DModel is not available in the current diffusers version. "
-            "Please upgrade diffusers>=0.36.dev0 to use this adapter."
-        )
+        OvisImageTransformer2DModel = None  # requires diffusers>=0.36.dev
+
+    _relaxed_assert(pipe.transformer, OvisImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_1,
+        ],
+        check_forward_pattern=True,
+        has_separate_cfg=True,
+        **kwargs,
+    )

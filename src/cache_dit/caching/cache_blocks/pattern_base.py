@@ -22,7 +22,7 @@ try:
     from diffusers.hooks.context_parallel import ContextParallelSplitHook
 except ImportError:
     ContextParallelSplitHook = None
-    logger.warning(
+    logger.debug(
         "Context parallelism in cache-dit requires 'diffusers>=0.36.dev0.\n"
         "Please install latest version of diffusers from source via: \n"
         "pip3 install git+https://github.com/huggingface/diffusers.git"
