@@ -12,8 +12,8 @@
   </p>
 
 <p align="center">
-<a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img width="820" alt="image" src="https://github.com/user-attachments/assets/e30d29ba-de49-4cef-9375-2f626a4a097c" /> </a> <br>
-<a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img src="https://img.shields.io/badge/🔥🔥🔥Important_News-SGLang_Diffusion_x_Cache_DiT_is_ready_!🔥🔥🔥-hotpink.svg"> </a>
+  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img height="300px" alt="image" src="https://github.com/user-attachments/assets/e30d29ba-de49-4cef-9375-2f626a4a097c" /> </a> <br>
+  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img src="https://img.shields.io/badge/🔥🔥🔥Latest_Important_News:-SGLang_Diffusion_x_Cache_DiT_is_ready_!🔥🔥🔥-hotpink.svg"> </a>
 </p>
 
 |Baseline|SCM S S*|SCM F D*|SCM U D*|+TS|+compile|+FP8*|   
