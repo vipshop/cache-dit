@@ -11,11 +11,6 @@
     </h2>
   </p>
 
-<p align="center">
-  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img height="300px" alt="image" src="https://github.com/user-attachments/assets/e30d29ba-de49-4cef-9375-2f626a4a097c" /> </a> <br>
-  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img src="https://img.shields.io/badge/🔥🔥🔥Latest_Important_News:-SGLang_Diffusion_x_Cache_DiT_is_ready_!🔥🔥🔥-hotpink.svg"> </a>
-</p>
-
 |Baseline|SCM S S*|SCM F D*|SCM U D*|+TS|+compile|+FP8*|   
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.4s|11.4s|8.2s|8.2s|**🎉7.1s**|**🎉4.5s**|
@@ -38,6 +33,13 @@
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1312x1312.C0_Q0_NONE_Ulysses2.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|
 |1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
 |✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|
+
+<p align="center">
+<!--
+  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img width="820px" alt="image" src="https://github.com/user-attachments/assets/e30d29ba-de49-4cef-9375-2f626a4a097c" /> </a> <br>
+-->
+  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img src="https://img.shields.io/badge/🔥🔥🔥Latest_Important_News:-SGLang_Diffusion_x_Cache_DiT_is_ready_!🔥🔥🔥-hotpink.svg"> </a>
+</p>
 
 </div>
 
@@ -304,7 +306,7 @@ How to contribute? Star ⭐️ this repo to support us or check [CONTRIBUTE.md](
 
 ## 🎉Projects Using CacheDiT
 
-Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh), [flux-fast](https://github.com/huggingface/flux-fast), [sdnext](https://github.com/vladmandic/sdnext/discussions/4269) and 🔥[SGLang Diffusion](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md). 🎉CacheDiT has been **recommended** by: 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image), 🔥[Wan 2.2](https://github.com/Wan-Video/Wan2.2), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[LongCat-Video](https://github.com/meituan-longcat/LongCat-Video), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [Kandinsky-5](https://github.com/ai-forever/Kandinsky-5), [LeMiCa](https://github.com/UnicomAI/LeMiCa), [🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit), [HelloGitHub](https://hellogithub.com/repository/vipshop/cache-dit) and [GaintPandaCV](https://mp.weixin.qq.com/s/ZBr3veg7EF5kuiHpYmGGjQ).
+Here is a curated list of open-source projects integrating **CacheDiT**, including popular repositories like [jetson-containers](https://github.com/dusty-nv/jetson-containers/blob/master/packages/diffusion/cache_edit/build.sh), [flux-fast](https://github.com/huggingface/flux-fast), [sdnext](https://github.com/vladmandic/sdnext/discussions/4269) and 🔥[SGLang Diffusion](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md). 🎉CacheDiT has been **recommended** by many famous opensource projects: 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image), 🔥[Wan 2.2](https://github.com/Wan-Video/Wan2.2), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[LongCat-Video](https://github.com/meituan-longcat/LongCat-Video), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [Kandinsky-5](https://github.com/ai-forever/Kandinsky-5), [LeMiCa](https://github.com/UnicomAI/LeMiCa), [🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit), [HelloGitHub](https://hellogithub.com/repository/vipshop/cache-dit) and [GaintPandaCV](https://mp.weixin.qq.com/s/ZBr3veg7EF5kuiHpYmGGjQ).
 
 ## ©️Acknowledgements
 
