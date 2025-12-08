@@ -347,8 +347,9 @@ def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
     ```py
     >>> from cache_dit import DBCacheConfig
     >>> from diffusers import DiffusionPipeline
+    >>> # Init cache context with num_inference_steps=None (default)
     >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-    >>> pipe = enable_cache(pipe.transformer, cache_config=DBCacheConfig(...))
+    >>> pipe = cache_dit.enable_cache(pipe.transformer, cache_config=DBCacheConfig(...))
     >>> # Assume num_inference_steps is 28, and we want to refresh the context
     >>> cache_dit.refresh_context(transformer, num_inference_steps=28, verbose=True)
     >>> output = pipe(...) # Just call the pipe as normal.
