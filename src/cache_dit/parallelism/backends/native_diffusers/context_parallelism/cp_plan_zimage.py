@@ -140,7 +140,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     group = ulysses_mesh.get_group()
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qkv_async_func = _unified_all_to_all_qkv_async_fn()
+    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(disable_fp8=True)
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
@@ -151,13 +152,18 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
             return x_out.type_as(x_in)  # todo
 
     dtype = hidden_states.dtype
-    # NOTE: Reorder to compute Value first to get more oppurtunity to
-    # overlap the computation of norm_q/k and RoPE.
-    value = attn.to_v(hidden_states)  # type: torch.Tensor
-    value = value.unflatten(-1, (attn.heads, -1))
+    # NOTE: Reorder to compute K first to get more oppurtunity to
+    # overlap the computation of Q/V proj and K FP16/BF16 all2all comm.
 
-    # 0. Async all to all for value
-    value = _all_to_all_qkv_async_func(value, group)
+    key = attn.to_k(hidden_states)  # type: torch.Tensor
+    key = key.unflatten(-1, (attn.heads, -1))
+    if attn.norm_k is not None:  # Apply Norms
+        key = attn.norm_k(key)
+    if freqs_cis is not None:  # Apply RoPE
+        key = apply_rotary_emb(key, freqs_cis)
+
+    # 0. Async all to all for key
+    key_wait = _all_to_all_k_async_func(key, group)
 
     query = attn.to_q(hidden_states)  # type: torch.Tensor
     query = query.unflatten(-1, (attn.heads, -1))
@@ -167,22 +173,18 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         query = apply_rotary_emb(query, freqs_cis)
 
     # 1. Async all to all for query
-    query = _all_to_all_qkv_async_func(query, group)
+    query_wait = _all_to_all_qv_async_func(query, group)
 
-    key = attn.to_k(hidden_states)  # type: torch.Tensor
-    key = key.unflatten(-1, (attn.heads, -1))
-    if attn.norm_k is not None:  # Apply Norms
-        key = attn.norm_k(key)
-    if freqs_cis is not None:  # Apply RoPE
-        key = apply_rotary_emb(key, freqs_cis)
+    value = attn.to_v(hidden_states)  # type: torch.Tensor
+    value = value.unflatten(-1, (attn.heads, -1))
 
-    # 2. Async all to all for key
-    key = _all_to_all_qkv_async_func(key, group)
+    # 2. Async all to all for value
+    value_wait = _all_to_all_qv_async_func(value, group)
 
     # 3. Ensure the query, key, value are ready
-    value = value()
-    query = query()
-    key = key()
+    query = query_wait()
+    value = value_wait()
+    key = key_wait()
 
     # Cast to correct dtype
     query, key = query.to(dtype), key.to(dtype)
@@ -203,8 +205,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
-    hidden_states = out()  # type: torch.Tensor
+    out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+    hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back
     hidden_states = hidden_states.flatten(2, 3)
