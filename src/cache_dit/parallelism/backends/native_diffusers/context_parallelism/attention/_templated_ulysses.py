@@ -76,21 +76,6 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        # B, S_Q_LOCAL, H, D = query.shape
-        # _, S_KV_LOCAL, _, _ = key.shape
-        # H_LOCAL = H // world_size
-        # # (world_size, S_LOCAL, B, H_LOCAL, D)
-        # query = (
-        #     query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        # )
-        # key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        # value = (
-        #     value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        # )
-        # query, key, value = (_all_to_all_single_any_qkv(x, group) for x in (query, key, value))
-        # # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-        # query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
-
         query_wait = _all_to_all_single_any_qkv_async(query, group)
         key_wait = _all_to_all_single_any_qkv_async(key, group)
         value_wait = _all_to_all_single_any_qkv_async(value, group)
@@ -117,7 +102,6 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        # out = _all_to_all_single_any_o(out, group).contiguous()
         out_wait = _all_to_all_single_any_o_async(out, group)
 
         if return_lse:
@@ -126,9 +110,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             lse_wait = _all_to_all_single_any_o_async(lse, group)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
-            # lse = (
-            #     _all_to_all_single_any_o(lse, group).squeeze(-1).contiguous()
-            # )  # (B, S_Q_LOCAL, H_GLOBAL)
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
         else:
             out = out_wait()  # type: torch.Tensor
             lse = None
@@ -173,21 +155,6 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
-
-        # B, S_Q_LOCAL, H, D = query.shape
-        # _, S_KV_LOCAL, _, _ = key.shape
-        # H_LOCAL = H // world_size
-        # # (world_size, S_LOCAL, B, H_LOCAL, D)
-        # query = (
-        #     query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        # )
-        # key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        # value = (
-        #     value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        # )
-        # query, key, value = (_all_to_all_single_any_qkv_fp8(x, group) for x in (query, key, value))
-        # # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-        # query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
 
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
