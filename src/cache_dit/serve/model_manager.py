@@ -31,7 +31,17 @@ class GenerateRequest:
     guidance_scale: float = 7.5
     seed: Optional[int] = None
     num_images: int = 1
-    image_urls: Optional[List[str]] = None  # For image editing
+    image_urls: Optional[List[str]] = None
+    
+    def __repr__(self):
+        image_urls_repr = None
+        if self.image_urls:
+            image_urls_repr = [f"<data:{len(url)} chars>" if len(url) > 100 else url for url in self.image_urls]
+        return (f"GenerateRequest(prompt={self.prompt[:50]!r}..., "
+                f"width={self.width}, height={self.height}, "
+                f"num_inference_steps={self.num_inference_steps}, "
+                f"guidance_scale={self.guidance_scale}, seed={self.seed}, "
+                f"num_images={self.num_images}, image_urls={image_urls_repr})")
 
 
 @dataclass
