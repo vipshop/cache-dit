@@ -125,6 +125,7 @@ if memory_tracker:
 
 steps = [8, 16, 28, 40, 50]
 for i in range(len(steps)):
+    print("-" * 150)
     start = time.time()
     image = run_pipe(steps=steps[i])
     end = time.time()
