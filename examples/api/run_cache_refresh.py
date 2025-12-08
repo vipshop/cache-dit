@@ -131,12 +131,12 @@ for i in range(len(steps)):
     end = time.time()
     time_cost = end - start
 
-    cache_dit.summary(pipe.transformer)
-
     save_path = f"flux.steps{steps[i]}.{strify(args, pipe.transformer)}.png"
+    image.save(save_path)
+
+    cache_dit.summary(pipe.transformer)
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
-    image.save(save_path)
 
 
 if memory_tracker:

@@ -700,15 +700,15 @@ class CachedAdapter:
             )
             # Re-create new context with old init kwargs updated by
             # force_refresh_kwargs.
-            if verbose:
-                logger.info(
-                    f"✅ Refreshing cache context: {context_name}, "
-                    f"{cls._config_messages(logging=False, **new_init_kwargs)}"
-                )
             context_manager.reset_context(
                 context_name,
                 **new_init_kwargs,
             )
+            if verbose:
+                logger.info(
+                    f"✅ Refreshed cache context: {context_name}, "
+                    f"{cls._config_messages(logging=False, **new_init_kwargs)}"
+                )
             # reset _context_kwargs for transformer
             if hasattr(transformer, "_context_kwargs"):
                 # Will overwrite the _context_kwargs by last context kwargs.
