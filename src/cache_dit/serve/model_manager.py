@@ -90,11 +90,6 @@ class ModelManager:
         if self.enable_cache:
             logger.info("Enabling DBCache acceleration")
             from cache_dit import DBCacheConfig
-            import os
-
-            # Skip forward pattern check in serving to speed up initialization
-            # This is safe for officially supported models
-            os.environ["CACHE_DIT_SKIP_PATTERN_CHECK"] = "1"
 
             cache_config_obj = DBCacheConfig(
                 residual_diff_threshold=0.08,
