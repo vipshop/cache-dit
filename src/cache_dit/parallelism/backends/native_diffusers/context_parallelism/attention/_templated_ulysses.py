@@ -271,7 +271,7 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
             out, lse, *_ = out
 
         # NOTE: DON'T use float8 all_to_all for out and lse, as it may
-        # cause numerical instability.
+        # cause more numerical instability.
         out_wait = _all_to_all_single_o_async(out, group)
 
         if return_lse:
