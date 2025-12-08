@@ -26,7 +26,6 @@ from ._templated_ulysses import (
 )
 from ._templated_ulysses import (
     is_ulysses_anything_enabled,
-    is_ulysses_anything_float8_enabled,
     is_ulysses_float8_enabled,
 )
 
@@ -137,7 +136,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             )
         elif _parallel_config.context_parallel_config.ulysses_degree > 1:
             if is_ulysses_anything_enabled():
-                if is_ulysses_anything_float8_enabled():
+                if is_ulysses_float8_enabled():
                     return TemplatedUlyssesAnythingAttentionFloat8.apply(
                         query,
                         key,
