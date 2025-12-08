@@ -25,15 +25,6 @@ def _wait_tensor(tensor) -> torch.Tensor:
     return tensor
 
 
-def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
-    shape = x.shape
-    x = x.flatten()
-    x = fc.all_to_all_single(x, None, None, group)
-    x = x.reshape(shape)
-    x = _wait_tensor(x)
-    return x
-
-
 def _get_rank_world_size(
     group: dist.ProcessGroup,
 ) -> Tuple[int, int]:
@@ -64,22 +55,154 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     return gathered_sizes
 
 
-# NOTE: Temporary workaround for torch.compile issue with float8 tensor view.
-# Issue: https://github.com/vipshop/cache-dit/issues/513
-@torch.compiler.disable
-def _tensor_bitcast(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
-    assert x.nbytes % dtype.itemsize == 0, f"x.nbytes must be divisible by {dtype.itemsize}"
-    x = x.contiguous()
-    return x.view(dtype)
+# Asynchronous all to all variants.
+# NOTE: We should always use the asynchronous all to all variant to keep the uified output shape
+# for any_qkvo and non-any_qkvo cases, otherwise, the output shape will be different, which makes
+# the unified function implementation complex and ugly.
 
 
-@torch.compiler.allow_in_graph
-def _all_to_all_single_any_qkv(
+def _all_to_all_single_qkv_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
 ) -> torch.Tensor:
-    shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
-    (world_size, S_LOCAL, B, H_LOCAL, D) = shape
+    r"""
+    x: torch.Tensor, shape (B, S_LOCAL, H, D)
+    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+    """
+    _, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H, D = x.shape
+    H_LOCAL = H // world_size
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        # (world_size, S_LOCAL, B, H_LOCAL, D)
+        # -> (S_GLOBAL, B, H_LOCAL, D)
+        # -> (B, S_GLOBAL, H_LOCAL, D)
+        x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        return x
+
+    return wait
+
+
+def _all_to_all_single_o_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    r"""
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
+    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+    """
+    _, world_size = _get_rank_world_size(group)
+    B, S_GLOBAL, H_LOCAL, D = x.shape
+    S_LOCAL = S_GLOBAL // world_size
+    # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
+    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        # (world_size, H_LOCAL, B, S_LOCAL, D)
+        # -> (H_GLOBAL, B, S_LOCAL, D)
+        # -> (B, S_LOCAL, H_GLOBAL, D)
+        x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        return x
+
+    return wait
+
+
+def _all_to_all_single_qkv_fp8_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_LOCAL, H, D)
+    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+    """
+    _, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H, D = x.shape
+    H_LOCAL = H // world_size
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+
+    x = per_token_quant_fp8(x)  # type: torch.Tensor
+    shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        x = x.reshape(shape_with_scale)
+        x = per_token_dequant_fp8(x)
+        # (world_size, S_LOCAL, B, H_LOCAL, D)
+        # -> (S_GLOBAL, B, H_LOCAL, D)
+        # -> (B, S_GLOBAL, H_LOCAL, D)
+        x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        return x
+
+    return wait
+
+
+def _all_to_all_single_o_fp8_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
+    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+    """
+    _, world_size = _get_rank_world_size(group)
+    B, S_GLOBAL, H_LOCAL, D = x.shape
+    S_LOCAL = S_GLOBAL // world_size
+    # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
+    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
+    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+
+    x = per_token_quant_fp8(x)
+    shape_with_scale = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
+    x = x.flatten()
+    x = fc.all_to_all_single(x, None, None, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        x = x.reshape(shape_with_scale)
+        x = per_token_dequant_fp8(x)
+        # (world_size, H_LOCAL, B, S_LOCAL, D)
+        # -> (H_GLOBAL, B, S_LOCAL, D)
+        # -> (B, H_GLOBAL, S_LOCAL, D)
+        x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        return x
+
+    return wait
+
+
+@torch.compiler.allow_in_graph
+def _all_to_all_single_any_qkv_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_LOCAL, H, D)
+    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+    """
+    _, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H, D = x.shape
+    # Assume H is divisible by world_size
+    H_LOCAL = H // world_size
+    # (world_size, S_LOCAL, B, H_LOCAL, D)
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+
     input_split_sizes = [S_LOCAL] * world_size
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
@@ -90,65 +213,75 @@ def _all_to_all_single_any_qkv(
     # _all_to_all_single for now.
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
-    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
-    return x
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+        # (S_GLOBAL, B, H_LOCAL, D)
+        # -> (B, S_GLOBAL, H_LOCAL, D)
+        x = x.permute(1, 0, 2, 3).contiguous()
+        return x
+
+    return wait
 
 
 @torch.compiler.allow_in_graph
-def _all_to_all_single_any_o(
-    out: torch.Tensor,
+def _all_to_all_single_any_o_async(
+    x: torch.Tensor,
     group: dist.ProcessGroup,
-) -> torch.Tensor:
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
+    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+    """
     rank, world_size = _get_rank_world_size(group)
-    shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
-    # NOTE: The `if` branch will introduce graph break for torch.compile,
-    # so, we choose to disable the even split optimization implementation
-    # _all_to_all_single for now.
-    out = out.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
+    x = x.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
     # NOTE: May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(out, world_size, dim=0)]
+    input_split_sizes = [o.shape[0] for o in torch.tensor_split(x, world_size, dim=0)]
     # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
     # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
-    out = fc.all_to_all_single(out, output_split_sizes, input_split_sizes, group)
-    out = _wait_tensor(out)  # (S_LOCAL*world_size, H_LOCAL, D)
-    # NOTE: We can not simply reshape here, because the collective tensors
-    # are stacked at dim=0(SeqLen), we need to first split them and then concat at
-    # dim=1(Head), otherwise the result will be incorrect due to the linear layout
-    # of the tensor in memory.
-    H_GLOBAL = H_LOCAL * world_size
-    S_LOCAL = out.shape[0] // world_size
-    # TODO: How to avoid extra memory IO access here?
-    out = torch.cat(out.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
-    out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
-    return out
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
+        # NOTE: We can not simply reshape here, because the collective tensors
+        # are stacked at dim=0(SeqLen), we need to first split them and then concat at
+        # dim=1(Head), otherwise the result will be incorrect due to the linear layout
+        # of the tensor in memory.
+        H_GLOBAL = H_LOCAL * world_size
+        S_LOCAL = x.shape[0] // world_size
+        # TODO: How to avoid extra memory IO access here?
+        x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
+        x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        return x
 
-def _all_to_all_single_fp8(x: torch.Tensor, group) -> torch.Tensor:
-    shape = x.shape
-    x_fp8_with_scale = per_token_quant_fp8(x)  # type: torch.Tensor
-    shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
-    x_fp8_with_scale = x_fp8_with_scale.flatten()
-    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
-    x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
-    x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
-    x = per_token_dequant_fp8(x_fp8_with_scale)
-    x = x.reshape(shape)
-    return x
+    return wait
 
 
 @torch.compiler.allow_in_graph
-def _all_to_all_single_any_qkv_fp8(
+def _all_to_all_single_any_qkv_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
-) -> torch.Tensor:
-    shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
-    (world_size, S_LOCAL, B, H_LOCAL, D) = shape
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_LOCAL, H, D)
+    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+    """
+    _, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H, D = x.shape
+    # Assume H is divisible by world_size
+    H_LOCAL = H // world_size
+    # (world_size, S_LOCAL, B, H_LOCAL, D)
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+
     input_split_sizes = [S_LOCAL] * world_size
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
@@ -157,185 +290,62 @@ def _all_to_all_single_any_qkv_fp8(
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    x_fp8_with_scale = per_token_quant_fp8(x)
-    x_fp8_with_scale = x_fp8_with_scale.flatten(0, 1)
-    x_fp8_with_scale = fc.all_to_all_single(
-        x_fp8_with_scale, output_split_sizes, input_split_sizes, group
-    )
-    x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
-    x = per_token_dequant_fp8(x_fp8_with_scale)
-    return x
+    x = per_token_quant_fp8(x)
+    x = x.flatten(0, 1)
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        x = per_token_dequant_fp8(x)
+        x = x.permute(1, 0, 2, 3).contiguous()
+        return x
+
+    return wait
 
 
 @torch.compiler.allow_in_graph
-def _all_to_all_single_any_o_fp8(
-    out: torch.Tensor,
+def _all_to_all_single_any_o_fp8_async(
+    x: torch.Tensor,
     group: dist.ProcessGroup,
-) -> torch.Tensor:
+) -> Callable[..., torch.Tensor]:
+    r"""
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
+    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+    """
     rank, world_size = _get_rank_world_size(group)
-    shape = out.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
-    out_fp8_with_scale = per_token_quant_fp8(out)
+    x = per_token_quant_fp8(x)
 
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    out_fp8_with_scale = out_fp8_with_scale.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
+    x = x.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
     # NOTE: May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [
-        o.shape[0] for o in torch.tensor_split(out_fp8_with_scale, world_size, dim=0)
-    ]
+    input_split_sizes = [o.shape[0] for o in torch.tensor_split(x, world_size, dim=0)]
     # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
     # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
     output_split_sizes = [input_split_sizes[rank]] * world_size
-    out_fp8_with_scale = fc.all_to_all_single(
-        out_fp8_with_scale, output_split_sizes, input_split_sizes, group
-    )
-    out_fp8_with_scale = _wait_tensor(out_fp8_with_scale)  # (S_LOCAL*world_size, H_LOCAL, D)
-    # NOTE: We can not simply reshape here, because the collective tensors
-    # are stacked at dim=0(SeqLen), we need to first split them and then concat at
-    # dim=1(Head), otherwise the result will be incorrect due to the linear layout
-    # of the tensor in memory.
-    H_GLOBAL = H_LOCAL * world_size
-    S_LOCAL = out_fp8_with_scale.shape[0] // world_size
-    # TODO: How to avoid extra memory IO access here?
-    out_fp8_with_scale = torch.cat(
-        out_fp8_with_scale.tensor_split(world_size, dim=0), dim=1
-    )  # (B*S_LOCAL, H_GLOBAL, D)
-    out = per_token_dequant_fp8(out_fp8_with_scale)
-    out = out.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
-    return out
-
-
-@torch.compiler.allow_in_graph
-def _gather_split_any_o(  # noqa: F811
-    out: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    # NOTE: This is an alternative implementation of _all_to_all_single
-    # for any o. It use all_gather and split, which may be less efficient.
-    rank, world_size = _get_rank_world_size(group)
-    # (B, S_GLOBAL, H_LOCAL, D)
-    # all gather to get (B, S_GLOBAL, H_GLOBAL, D) at H_GLOBAL dim
-    out_gathered = [torch.empty_like(out) for _ in range(world_size)]
-    dist.all_gather(out_gathered, out, group=group)
-    out_gathered = torch.cat(out_gathered, dim=2)
-    # (B, S_GLOBAL, H_GLOBAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-    out = out_gathered.tensor_split(world_size, dim=1)[rank]
-    return out
-
-
-# Asynchronous all to all variants. Currently only non-any_qkvo version is supported.
-# TODO: Implement any_qkvo asynchronous all to all variants.
-def _all_to_all_single_qkv_async(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    _, world_size = _get_rank_world_size(group)
-    B, S_LOCAL, H, D = x.shape
-    H_LOCAL = H // world_size
-    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
-
-    x = x.flatten()
-    x = fc.all_to_all_single(x, None, None, group)
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x
-        out = _wait_tensor(x)
-        # (world_size, S_LOCAL, B, H_LOCAL, D)
-        # -> (S_GLOBAL, B, H_LOCAL, D)
-        # -> (B, S_GLOBAL, H_LOCAL, D)
-        out = out.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
-        return out
-
-    return wait
-
-
-def _all_to_all_single_o_async(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> torch.Tensor:
-    _, world_size = _get_rank_world_size(group)
-    B, S_GLOBAL, H_LOCAL, D = x.shape
-    S_LOCAL = S_GLOBAL // world_size
-    # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
-    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
-
-    x = x.flatten()
-    x = fc.all_to_all_single(x, None, None, group)
-
-    def wait() -> torch.Tensor:
-        nonlocal x
-        out = _wait_tensor(x)
-        # (world_size, H_LOCAL, B, S_LOCAL, D)
-        # -> (H_GLOBAL, B, S_LOCAL, D)
-        # -> (B, S_LOCAL, H_GLOBAL, D)
-        out = out.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
-        return out
-
-    return wait
-
-
-def _all_to_all_single_qkv_fp8_async(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> Callable[[], torch.Tensor]:
-    _, world_size = _get_rank_world_size(group)
-    B, S_LOCAL, H, D = x.shape
-    H_LOCAL = H // world_size
-    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
-
-    x_fp8_with_scale = per_token_quant_fp8(x)  # type: torch.Tensor
-    shape_with_scale = x_fp8_with_scale.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
-    x_fp8_with_scale = x_fp8_with_scale.flatten()
-    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
-
-    def wait() -> torch.Tensor:
-        nonlocal x_fp8_with_scale
-        x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
-        x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
-        out = per_token_dequant_fp8(x_fp8_with_scale)
-        # (world_size, S_LOCAL, B, H_LOCAL, D)
-        # -> (S_GLOBAL, B, H_LOCAL, D)
-        # -> (B, S_GLOBAL, H_LOCAL, D)
-        out = out.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
-        return out
-
-    return wait
-
-
-def _all_to_all_single_o_fp8_async(
-    x: torch.Tensor,
-    group: dist.ProcessGroup,
-) -> Callable[[], torch.Tensor]:
-    _, world_size = _get_rank_world_size(group)
-    B, S_GLOBAL, H_LOCAL, D = x.shape
-    S_LOCAL = S_GLOBAL // world_size
-    # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
-    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
-
-    x_fp8_with_scale = per_token_quant_fp8(x)
-    shape_with_scale = x_fp8_with_scale.shape  # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
-    x_fp8_with_scale = x_fp8_with_scale.flatten()
-    x_fp8_with_scale = fc.all_to_all_single(x_fp8_with_scale, None, None, group)
-
-    def wait() -> torch.Tensor:
-        nonlocal x_fp8_with_scale
-        x_fp8_with_scale = _wait_tensor(x_fp8_with_scale)
-        x_fp8_with_scale = x_fp8_with_scale.reshape(shape_with_scale)
-        out = per_token_dequant_fp8(x_fp8_with_scale)
-        # (world_size, H_LOCAL, B, S_LOCAL, D)
-        # -> (H_GLOBAL, B, S_LOCAL, D)
-        # -> (B, H_GLOBAL, S_LOCAL, D)
-        out = out.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
-        return out
+        x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
+        # NOTE: We can not simply reshape here, because the collective tensors
+        # are stacked at dim=0(SeqLen), we need to first split them and then concat at
+        # dim=1(Head), otherwise the result will be incorrect due to the linear layout
+        # of the tensor in memory.
+        H_GLOBAL = H_LOCAL * world_size
+        S_LOCAL = x.shape[0] // world_size
+        # TODO: How to avoid extra memory IO access here?
+        x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
+        x = per_token_dequant_fp8(x)
+        x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        return x
 
     return wait
 
@@ -346,21 +356,33 @@ def _all_to_all_single_o_fp8_async(
 # the same output shape, thus make the unified functions more general and clean.
 
 
-def _unified_all_to_all_qkv_async_fn() -> Callable[[], torch.Tensor]:
-    # TODO: Add any_qkvo async all2all support.
+def _unified_all_to_all_qkv_async_fn(
+    disable_fp8: bool = False,
+) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
+    from ._templated_ulysses import is_ulysses_anything_enabled
 
-    if is_ulysses_float8_enabled():
-        return _all_to_all_single_qkv_fp8_async
+    if is_ulysses_anything_enabled():
+        if is_ulysses_float8_enabled() and not disable_fp8:
+            return _all_to_all_single_any_qkv_fp8_async
+        return _all_to_all_single_any_qkv_async
     else:
+        if is_ulysses_float8_enabled() and not disable_fp8:
+            return _all_to_all_single_qkv_fp8_async
         return _all_to_all_single_qkv_async
 
 
-def _unified_all_to_all_o_async_fn() -> Callable[[], torch.Tensor]:
-    # TODO: Add any_qkvo all2all support.
+def _unified_all_to_all_o_async_fn(
+    disable_fp8: bool = False,
+) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
+    from ._templated_ulysses import is_ulysses_anything_enabled
 
-    if is_ulysses_float8_enabled():
-        return _all_to_all_single_o_fp8_async
+    if is_ulysses_anything_enabled():
+        if is_ulysses_float8_enabled() and not disable_fp8:
+            return _all_to_all_single_any_o_fp8_async
+        return _all_to_all_single_any_o_async
     else:
+        if is_ulysses_float8_enabled() and not disable_fp8:
+            return _all_to_all_single_o_fp8_async
         return _all_to_all_single_o_async

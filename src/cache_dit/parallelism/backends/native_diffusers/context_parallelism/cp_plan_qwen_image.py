@@ -30,7 +30,6 @@ from .cp_plan_registers import (
 
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._templated_ulysses import is_ulysses_anything_enabled
 
 from cache_dit.logger import init_logger
 
@@ -52,10 +51,6 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             "experimental_ulysses_async_qkv_proj", False
         )
         if experimental_ulysses_async_qkv_proj:
-            assert not is_ulysses_anything_enabled(), (
-                "experimental_ulysses_async_qkv_proj is not compatible with "
-                "experimental_ulysses_anything, please disable one of them."
-            )
             QwenDoubleStreamAttnProcessor2_0.__call__ = (
                 __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
             )
@@ -145,20 +140,19 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     group = ulysses_mesh.get_group()
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qkv_async_func = _unified_all_to_all_qkv_async_fn()
+    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(disable_fp8=True)
 
     seq_txt = encoder_hidden_states.shape[1]
 
-    # NOTE: Reorder to compute Value first to get more oppurtunity to
-    # overlap the computation of norm_q/k and RoPE.
     img_value = attn.to_v(hidden_states)
     txt_value = attn.add_v_proj(encoder_hidden_states)
     img_value = img_value.unflatten(-1, (attn.heads, -1))
     txt_value = txt_value.unflatten(-1, (attn.heads, -1))
     joint_value = torch.cat([txt_value, img_value], dim=1)
 
-    # 0. Async all to all for value
-    joint_value = _all_to_all_qkv_async_func(joint_value, group)
+    # Async all to all for value
+    joint_value_wait = _all_to_all_qv_async_func(joint_value, group)
 
     # Compute QKV for image stream (sample projections)
     img_query = attn.to_q(hidden_states)
@@ -181,8 +175,8 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     # Order: [text, image]
     joint_query = torch.cat([txt_query, img_query], dim=1)
 
-    # 1. Async all to all for query
-    joint_query = _all_to_all_qkv_async_func(joint_query, group)
+    # Async all to all for query
+    joint_query_wait = _all_to_all_qv_async_func(joint_query, group)
 
     img_key = attn.to_k(hidden_states)
     txt_key = attn.add_k_proj(encoder_hidden_states)
@@ -199,15 +193,13 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         txt_key = apply_rotary_emb_qwen(txt_key, txt_freqs, use_real=False)
     joint_key = torch.cat([txt_key, img_key], dim=1)
 
-    # 2. Async all to all for key
-    joint_key = _all_to_all_qkv_async_func(joint_key, group)
+    # Async all to all for key
+    joint_key_wait = _all_to_all_k_async_func(joint_key, group)
 
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-    joint_value = joint_value()  # type: torch.Tensor
-
-    joint_query = joint_query()  # type: torch.Tensor
-
-    joint_key = joint_key()  # type: torch.Tensor
+    joint_value = joint_value_wait()  # type: torch.Tensor
+    joint_query = joint_query_wait()  # type: torch.Tensor
+    joint_key = joint_key_wait()  # type: torch.Tensor
 
     # Compute joint attention
     out = dispatch_attention_fn(
@@ -221,8 +213,8 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
-    joint_hidden_states = out()  # type: torch.Tensor
+    out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+    joint_hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back
     joint_hidden_states = joint_hidden_states.flatten(2, 3)
