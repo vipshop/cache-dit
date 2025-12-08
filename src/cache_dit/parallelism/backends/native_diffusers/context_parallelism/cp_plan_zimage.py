@@ -152,8 +152,6 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
             return x_out.type_as(x_in)  # todo
 
     dtype = hidden_states.dtype
-    # NOTE: Reorder to compute K first to get more oppurtunity to
-    # overlap the computation of Q/V proj and K FP16/BF16 all2all comm.
 
     key = attn.to_k(hidden_states)  # type: torch.Tensor
     key = key.unflatten(-1, (attn.heads, -1))
@@ -162,7 +160,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         key = apply_rotary_emb(key, freqs_cis)
 
-    # 0. Async all to all for key
+    # Async all to all for key
     key_wait = _all_to_all_k_async_func(key, group)
 
     query = attn.to_q(hidden_states)  # type: torch.Tensor
@@ -172,16 +170,16 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         query = apply_rotary_emb(query, freqs_cis)
 
-    # 1. Async all to all for query
+    # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)
 
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
 
-    # 2. Async all to all for value
+    # Async all to all for value
     value_wait = _all_to_all_qv_async_func(value, group)
 
-    # 3. Ensure the query, key, value are ready
+    # Ensure the query, key, value are ready
     query = query_wait()
     value = value_wait()
     key = key_wait()

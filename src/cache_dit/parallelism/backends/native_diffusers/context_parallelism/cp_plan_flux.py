@@ -135,23 +135,6 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
     _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(disable_fp8=True)
 
-    # NOTE: Reorder to compute K first to get more oppurtunity to
-    # overlap the computation of Q/V proj and K FP16/BF16 all2all comm.
-
-    key = attn.to_k(hidden_states)  # type: torch.Tensor
-    key = key.unflatten(-1, (attn.heads, -1))
-    key = attn.norm_k(key)
-    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-        encoder_key = attn.add_k_proj(encoder_hidden_states)
-        encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-        encoder_key = attn.norm_added_k(encoder_key)
-        key = torch.cat([encoder_key, key], dim=1)
-    if image_rotary_emb is not None:
-        key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-
-    # 0. Async all to all for key
-    key_wait = _all_to_all_k_async_func(key, group)
-
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
     if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
@@ -159,7 +142,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
         value = torch.cat([encoder_value, value], dim=1)
 
-    # 1. Async all to all for value
+    # Async all to all for value
     value_wait = _all_to_all_qv_async_func(value, group)
 
     query = attn.to_q(hidden_states)
@@ -173,10 +156,24 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     if image_rotary_emb is not None:
         query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
 
-    # 2. Async all to all for query
+    # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)
 
-    # 3. Ensure the query, key, value are ready
+    key = attn.to_k(hidden_states)  # type: torch.Tensor
+    key = key.unflatten(-1, (attn.heads, -1))
+    key = attn.norm_k(key)
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_key = attn.add_k_proj(encoder_hidden_states)
+        encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
+        encoder_key = attn.norm_added_k(encoder_key)
+        key = torch.cat([encoder_key, key], dim=1)
+    if image_rotary_emb is not None:
+        key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+
+    # Async all to all for key
+    key_wait = _all_to_all_k_async_func(key, group)
+
+    # Ensure the query, key, value are ready
     value = value_wait()
     query = query_wait()
     key = key_wait()
@@ -191,7 +188,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
     if encoder_hidden_states is not None:
-        # 4. Must be sync all to all for out when encoder_hidden_states is used
+        # Must be sync all to all for out when encoder_hidden_states is used
         out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
         out = out_wait()  # type: torch.Tensor
 
@@ -211,7 +208,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
 
         return hidden_states, encoder_hidden_states
     else:
-        # 4. Can be async all to all for out when no encoder_hidden_states
+        # Can be async all to all for out when no encoder_hidden_states
         out_wait = _all_to_all_o_async_func(out, group)
         return out_wait
 
