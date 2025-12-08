@@ -132,7 +132,8 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     group = ulysses_mesh.get_group()
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qkv_async_func = _unified_all_to_all_qkv_async_fn()
+    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(disable_fp8=True)
 
     # NOTE: Reorder to compute Value first to get more oppurtunity to
     # overlap the computation of norm_q/k and RoPE.
@@ -145,21 +146,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         value = torch.cat([encoder_value, value], dim=1)
 
     # 0. Async all to all for value
-    value = _all_to_all_qkv_async_func(value, group)
-
-    query = attn.to_q(hidden_states)
-    query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-    query = attn.norm_q(query)
-    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-        encoder_query = attn.add_q_proj(encoder_hidden_states)
-        encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-        encoder_query = attn.norm_added_q(encoder_query)
-        query = torch.cat([encoder_query, query], dim=1)
-    if image_rotary_emb is not None:
-        query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-
-    # 1. Async all to all for query
-    query = _all_to_all_qkv_async_func(query, group)
+    value_wait = _all_to_all_qv_async_func(value, group)
 
     key = attn.to_k(hidden_states)  # type: torch.Tensor
     key = key.unflatten(-1, (attn.heads, -1))
@@ -172,13 +159,27 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     if image_rotary_emb is not None:
         key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
-    # 2. Async all to all for key
-    key = _all_to_all_qkv_async_func(key, group)
+    # 1. Async all to all for key
+    key_wait = _all_to_all_k_async_func(key, group)
+
+    query = attn.to_q(hidden_states)
+    query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
+    query = attn.norm_q(query)
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_query = attn.add_q_proj(encoder_hidden_states)
+        encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
+        encoder_query = attn.norm_added_q(encoder_query)
+        query = torch.cat([encoder_query, query], dim=1)
+    if image_rotary_emb is not None:
+        query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+
+    # 2. Async all to all for query
+    query_wait = _all_to_all_qv_async_func(query, group)
 
     # 3. Ensure the query, key, value are ready
-    value = value()
-    query = query()
-    key = key()
+    value = value_wait()
+    query = query_wait()
+    key = key_wait()
 
     out = dispatch_attention_fn(
         query,
@@ -191,8 +192,8 @@ def _ulysses_attn_with_async_qkv_proj_flux(
 
     if encoder_hidden_states is not None:
         # 4. Must be sync all to all for out when encoder_hidden_states is used
-        out = _all_to_all_o_async_func(out, group)  # type: torch.Tensor
-        out = out()  # (B, S_LOCAL, H_GLOBAL, D)
+        out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+        out = out_wait()  # type: torch.Tensor
 
         hidden_states = out.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -211,8 +212,8 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         return hidden_states, encoder_hidden_states
     else:
         # 4. Can be async all to all for out when no encoder_hidden_states
-        out = _all_to_all_o_async_func(out, group)
-        return out
+        out_wait = _all_to_all_o_async_func(out, group)
+        return out_wait
 
 
 FluxAttnProcessor_original__call__ = FluxAttnProcessor.__call__
@@ -278,7 +279,7 @@ def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
     joint_attention_kwargs = joint_attention_kwargs or {}
     # Perform attention with Ulysses async QKV proj, the attn_output
     # may be is an instance of AsyncCollectiveTensor.
-    attn_output = self.attn(
+    attn_output_wait = self.attn(
         hidden_states=norm_hidden_states,
         image_rotary_emb=image_rotary_emb,
         **joint_attention_kwargs,
@@ -287,8 +288,10 @@ def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
     mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
 
     # NOTE: Then ensure the attn_output is ready
-    if not isinstance(attn_output, torch.Tensor):
-        attn_output = attn_output()  # type: torch.Tensor
+    if not isinstance(attn_output_wait, torch.Tensor):
+        attn_output = attn_output_wait()  # type: torch.Tensor
+    else:
+        attn_output = attn_output_wait
     attn_output = attn_output.contiguous()
     if attn_output.ndim == 4:
         attn_output = attn_output.flatten(2, 3)

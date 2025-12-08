@@ -346,21 +346,25 @@ def _all_to_all_single_o_fp8_async(
 # the same output shape, thus make the unified functions more general and clean.
 
 
-def _unified_all_to_all_qkv_async_fn() -> Callable[[], torch.Tensor]:
+def _unified_all_to_all_qkv_async_fn(
+    disable_fp8: bool = False,
+) -> Callable[..., torch.Tensor]:
     # TODO: Add any_qkvo async all2all support.
     from ._templated_ulysses import is_ulysses_float8_enabled
 
-    if is_ulysses_float8_enabled():
+    if is_ulysses_float8_enabled() and not disable_fp8:
         return _all_to_all_single_qkv_fp8_async
     else:
         return _all_to_all_single_qkv_async
 
 
-def _unified_all_to_all_o_async_fn() -> Callable[[], torch.Tensor]:
+def _unified_all_to_all_o_async_fn(
+    disable_fp8: bool = False,
+) -> Callable[..., torch.Tensor]:
     # TODO: Add any_qkvo all2all support.
     from ._templated_ulysses import is_ulysses_float8_enabled
 
-    if is_ulysses_float8_enabled():
+    if is_ulysses_float8_enabled() and not disable_fp8:
         return _all_to_all_single_o_fp8_async
     else:
         return _all_to_all_single_o_async
