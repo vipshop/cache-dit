@@ -203,15 +203,19 @@ class ModelManager:
                     response = requests.get(url, timeout=30)
                     response.raise_for_status()
                     image = Image.open(BytesIO(response.content)).convert("RGB")
-                elif len(url) > 100 and '/' not in url and '\\' not in url:
+                elif len(url) > 100:
                     log_desc = f"raw base64 string (length: {len(url)})"
                     logger.info(f"Loading image {idx+1} from {log_desc}")
                     try:
-                        img_data = base64.b64decode(url)
+                        img_data = base64.b64decode(url, validate=True)
                         image = Image.open(BytesIO(img_data)).convert("RGB")
                     except Exception:
-                        logger.info(f"Base64 decode failed, treating as local path")
-                        image = Image.open(url).convert("RGB")
+                        import os
+                        if os.path.exists(url):
+                            logger.info(f"Base64 decode failed, treating as local path")
+                            image = Image.open(url).convert("RGB")
+                        else:
+                            raise
                 else:
                     log_desc = f"local path: {url}"
                     logger.info(f"Loading image {idx+1} from {log_desc}")
