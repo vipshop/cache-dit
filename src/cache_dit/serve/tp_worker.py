@@ -155,8 +155,8 @@ def run_tp_worker(model_manager, rank: int):
                 dist.destroy_process_group()
                 break
             else:
-                logger.error(f"TP worker {rank} error: {e}", exc_info=True)
+                logger.error(f"TP worker {rank} error: {type(e).__name__}: {e}")
                 time.sleep(0.1)
         except Exception as e:
-            logger.error(f"TP worker {rank} error: {e}", exc_info=True)
+            logger.error(f"TP worker {rank} error: {type(e).__name__}: {e}")
             time.sleep(0.1)

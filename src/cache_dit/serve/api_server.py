@@ -106,7 +106,7 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                 )
 
             except Exception as e:
-                logger.error(f"Error generating image: {str(e)}", exc_info=True)
+                logger.error(f"Error generating image: {type(e).__name__}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
     @app.post("/flush_cache")
