@@ -339,39 +339,40 @@ def enable_cache(
 
 
 def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
-    # Refresh cache context for the given transformer. This is useful when
-    # the users run into transformer-only case with dynamic num_inference_steps.
-    # For example, when num_inference_steps changes significantly between different
-    # requests, the cache context should be refreshed to avoid potential
-    # precision degradation. Usage:
-    # ```py
-    # >>> from cache_dit import refresh_context, DBCacheConfig
-    # >>> from diffusers import DiffusionPipeline
-    # >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-    # >>> pipe = enable_cache(pipe.transformer, cache_config=DBCacheConfig(...))
-    # >>> # Assume num_inference_steps is 28, and we want to refresh the context
-    # >>> refresh_context(transformer, num_inference_steps=28, verbose=True)
-    # >>> output = pipe(...) # Just call the pipe as normal.
-    # >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
-    # >>> # Update the cache context with new num_inference_steps=50.
-    # >>> refresh_context(pipe.transformer, num_inference_steps=50, verbose=True)
-    # >>> output = pipe(...) # Just call the pipe as normal.
-    # >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
-    # >>> # Update the cache context with new cache_config.
-    # >>> refresh_context(
-    #     pipe.transformer,
-    #     cache_config=DBCacheConfig(
-    #         residual_diff_threshold=0.1,
-    #         max_warmup_steps=10,
-    #         max_cached_steps=20,
-    #         max_continuous_cached_steps=4,
-    #         num_inference_steps=50,
-    #     ),
-    #     verbose=True,
-    # )
-    # >>> output = pipe(...) # Just call the pipe as normal.
-    # >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
-    # ```
+    r"""Refresh cache context for the given transformer. This is useful when
+    the users run into transformer-only case with dynamic num_inference_steps.
+    For example, when num_inference_steps changes significantly between different
+    requests, the cache context should be refreshed to avoid potential
+    precision degradation. Usage:
+    ```py
+    >>> from cache_dit import DBCacheConfig
+    >>> from diffusers import DiffusionPipeline
+    >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+    >>> pipe = enable_cache(pipe.transformer, cache_config=DBCacheConfig(...))
+    >>> # Assume num_inference_steps is 28, and we want to refresh the context
+    >>> cache_dit.refresh_context(transformer, num_inference_steps=28, verbose=True)
+    >>> output = pipe(...) # Just call the pipe as normal.
+    >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    >>> # Update the cache context with new num_inference_steps=50.
+    >>> cache_dit.refresh_context(pipe.transformer, num_inference_steps=50, verbose=True)
+    >>> output = pipe(...) # Just call the pipe as normal.
+    >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    >>> # Update the cache context with new cache_config.
+    >>> cache_dit.refresh_context(
+        pipe.transformer,
+        cache_config=DBCacheConfig(
+            residual_diff_threshold=0.1,
+            max_warmup_steps=10,
+            max_cached_steps=20,
+            max_continuous_cached_steps=4,
+            num_inference_steps=50,
+        ),
+        verbose=True,
+    )
+    >>> output = pipe(...) # Just call the pipe as normal.
+    >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    ```
+    """
     if force_refresh_kwargs:
         if "cache_config" not in force_refresh_kwargs:
             verbose = force_refresh_kwargs.pop("verbose", True)
