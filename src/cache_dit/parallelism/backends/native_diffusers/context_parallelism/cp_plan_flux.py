@@ -33,8 +33,6 @@ from cache_dit.logger import init_logger
 
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._templated_ulysses import is_ulysses_anything_enabled
-
 
 logger = init_logger(__name__)
 
@@ -51,10 +49,6 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
             "experimental_ulysses_async_qkv_proj", False
         )
         if experimental_ulysses_async_qkv_proj:
-            assert not is_ulysses_anything_enabled(), (
-                "experimental_ulysses_async_qkv_proj is not compatible with "
-                "experimental_ulysses_anything, please disable one of them."
-            )
             FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__
             FluxSingleTransformerBlock.forward = (
                 __patch_FluxSingleTransformerBlock_ulysses_async_forward__

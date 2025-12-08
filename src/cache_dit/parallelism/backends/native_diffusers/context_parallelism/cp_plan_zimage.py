@@ -28,7 +28,6 @@ from .cp_plan_registers import (
 )
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._templated_ulysses import is_ulysses_anything_enabled
 from ..utils import maybe_patch_cp_find_submodule_by_name
 
 from cache_dit.logger import init_logger
@@ -59,10 +58,6 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             "experimental_ulysses_async_qkv_proj", False
         )
         if experimental_ulysses_async_qkv_proj:
-            assert not is_ulysses_anything_enabled(), (
-                "experimental_ulysses_async_qkv_proj is not compatible with "
-                "experimental_ulysses_anything, please disable one of them."
-            )
             ZSingleStreamAttnProcessor.__call__ = (
                 __patch_ZSingleStreamAttnProcessor_ulysses_async__call__
             )
