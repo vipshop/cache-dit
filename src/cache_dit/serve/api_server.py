@@ -30,7 +30,10 @@ class GenerateRequestAPI(BaseModel):
     guidance_scale: float = Field(7.5, description="Guidance scale", ge=0.0, le=20.0)
     seed: Optional[int] = Field(None, description="Random seed")
     num_images: int = Field(1, description="Number of images to generate", ge=1, le=4)
-    image_urls: Optional[List[str]] = Field(None, description="Input image URLs for image editing")
+    image_urls: Optional[List[str]] = Field(
+        None, 
+        description="Input images for image editing. Supports: URLs (http/https), local file paths, base64 strings (with or without data URI prefix)"
+    )
 
 
 class GenerateResponseAPI(BaseModel):
