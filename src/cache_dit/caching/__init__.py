@@ -29,6 +29,7 @@ from cache_dit.caching.cache_blocks import UnifiedBlocks
 from cache_dit.caching.cache_adapters import CachedAdapter
 
 from cache_dit.caching.cache_interface import enable_cache
+from cache_dit.caching.cache_interface import refresh_context
 from cache_dit.caching.cache_interface import disable_cache
 from cache_dit.caching.cache_interface import supported_pipelines
 from cache_dit.caching.cache_interface import get_adapter

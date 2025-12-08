@@ -13,6 +13,7 @@ from cache_dit.caching.cache_contexts import CalibratorConfig
 from cache_dit.caching.params_modifier import ParamsModifier
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.parallelism import enable_parallelism
+from cache_dit.caching.utils import load_options
 
 from cache_dit.logger import init_logger
 
@@ -335,6 +336,24 @@ def enable_cache(
             # Enable parallelism for the transformer inplace
             transformers[i] = enable_parallelism(transformer, parallelism_config)
     return pipe_or_adapter
+
+
+def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
+    # Refresh cache context for the given transformer. This is useful when
+    # the users run into transformer-only case with dynamic num_inference_steps.
+    # For example, when num_inference_steps changes significantly between different
+    # requests, the cache context should be refreshed to avoid potential
+    # precision degradation. Usage:
+    # ```py
+    # >>> from cache_dit import refresh_context
+    # >>> # Assume `transformer` is a transformer-only model with cache enabled.
+    # >>> refresh_context(transformer, num_inference_steps=50)
+    if force_refresh_kwargs:
+        if "cache_config" not in force_refresh_kwargs:
+            # Assume force_refresh_kwargs is passed as dict, e.g.,
+            # {"num_inference_steps": 50}
+            force_refresh_kwargs = load_options(force_refresh_kwargs, reset=True)
+    CachedAdapter.maybe_refresh_context(transformer, **force_refresh_kwargs)
 
 
 def disable_cache(

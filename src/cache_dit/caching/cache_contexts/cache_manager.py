@@ -20,7 +20,6 @@ class ContextNotExistError(Exception):
 
 
 class CachedContextManager:
-    # Each Pipeline should have it's own context manager instance.
 
     def __init__(self, name: str = None, persistent_context: bool = False):
         self.name = name
@@ -56,7 +55,10 @@ class CachedContextManager:
         if num_inference_steps is not None:
             current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
             return current_step == num_inference_steps - 1
-        return False
+        # If num_inference_steps is None, always return True, thus will make
+        # `apply_stats_hooks` called after each forward when persistent_context is True.
+        # Otherwise, we will lost the accurate cached stats after each forward.
+        return True
 
     @torch.compiler.disable
     def new_context(self, *args, **kwargs) -> CachedContext:
@@ -90,11 +92,11 @@ class CachedContextManager:
                 raise ContextNotExistError("Context not exist!")
             _context = self._cached_context_manager[cached_context]
 
-        if self._persistent_context:
-            assert _context.cache_config.num_inference_steps is not None, (
-                "When persistent_context is True, num_inference_steps must be set "
-                "in cache_config for proper cache refreshing."
-            )
+        # if self._persistent_context:
+        #     assert _context.cache_config.num_inference_steps is not None, (
+        #         "When persistent_context is True, num_inference_steps must be set "
+        #         "in cache_config for proper cache refreshing."
+        #     )
 
         num_inference_steps = _context.cache_config.num_inference_steps
         if num_inference_steps is not None:
