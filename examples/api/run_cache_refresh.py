@@ -17,6 +17,12 @@ parser.add_argument(
     default=False,
     help="Disable BlockAdapter or not",
 )
+parser.add_argument(
+    "--summary",
+    action="store_true",
+    default=False,
+    help="Print summary of the model after each inference",
+)
 args = parser.parse_args()
 print(args)
 
@@ -134,9 +140,10 @@ for i in range(len(steps)):
     save_path = f"flux.steps{steps[i]}.{strify(args, pipe.transformer)}.png"
     image.save(save_path)
 
-    cache_dit.summary(pipe.transformer)
-    print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
+    if args.summary:
+        cache_dit.summary(pipe.transformer)
+        print(f"Time cost: {time_cost:.2f}s")
+        print(f"Saving image to {save_path}")
 
 
 if memory_tracker:
