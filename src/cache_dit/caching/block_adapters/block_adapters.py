@@ -131,15 +131,6 @@ class BlockAdapter:
             logger.warning("pipe is None, use FakeDiffusionPipeline instead.")
 
     def maybe_skip_checks(self):
-        import os
-
-        # Check environment variable to skip pattern check
-        if os.environ.get("CACHE_DIT_SKIP_PATTERN_CHECK", "0") == "1":
-            self.check_forward_pattern = False
-            self.check_num_outputs = False
-            logger.info("Skipping forward pattern check due to CACHE_DIT_SKIP_PATTERN_CHECK=1")
-            return
-
         if self.check_forward_pattern is None:
             if self.transformer is not None:
                 if self.nested_depth(self.transformer) == 0:
