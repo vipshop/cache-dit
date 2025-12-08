@@ -22,8 +22,10 @@ from ._distributed_primitives import (
     _all_to_all_single_any_qkv,
     _all_to_all_single_any_o_fp8,
     _all_to_all_single_any_qkv_fp8,
+    _all_to_all_single_qkv_async,
     _all_to_all_single_o_async,
     _all_to_all_single_qkv_fp8_async,
+    _all_to_all_single_o_fp8_async,
 )
 
 from cache_dit.logger import init_logger
@@ -236,8 +238,6 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         backward_op,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
-        # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
-        # QK may cause more numerical instability than P@V matrix multiplication.
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
@@ -246,12 +246,16 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         ctx._parallel_config = _parallel_config
 
         # Use async all_to_all to overlap comm and quant/dequant computation
+        # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
+        # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
+        # numerical instability. So we only use float8 all_to_all for Q, V and O.
+        key_wait = _all_to_all_single_qkv_async(key, group)
         query_wait = _all_to_all_single_qkv_fp8_async(query, group)
-        key_wait = _all_to_all_single_qkv_fp8_async(key, group)
         value_wait = _all_to_all_single_qkv_fp8_async(value, group)
+
         query = query_wait()  # type: torch.Tensor
-        key = key_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
 
         out = forward_op(
             ctx,
@@ -270,11 +274,11 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        # NOTE: DON'T use float8 all_to_all for out and lse, as it may
-        # cause more numerical instability.
-        out_wait = _all_to_all_single_o_async(out, group)
+        out_wait = _all_to_all_single_o_fp8_async(out, group)
 
         if return_lse:
+            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
+            # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
             lse_wait = _all_to_all_single_o_async(lse, group)
             out = out_wait()  # type: torch.Tensor
