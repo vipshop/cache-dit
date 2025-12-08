@@ -345,14 +345,40 @@ def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
     # requests, the cache context should be refreshed to avoid potential
     # precision degradation. Usage:
     # ```py
-    # >>> from cache_dit import refresh_context
-    # >>> # Assume `transformer` is a transformer-only model with cache enabled.
-    # >>> refresh_context(transformer, num_inference_steps=50)
+    # >>> from cache_dit import refresh_context, DBCacheConfig
+    # >>> from diffusers import DiffusionPipeline
+    # >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+    # >>> pipe = enable_cache(pipe.transformer, cache_config=DBCacheConfig(...))
+    # >>> # Assume num_inference_steps is 28, and we want to refresh the context
+    # >>> refresh_context(transformer, num_inference_steps=28, verbose=True)
+    # >>> output = pipe(...) # Just call the pipe as normal.
+    # >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    # >>> # Update the cache context with new num_inference_steps=50.
+    # >>> refresh_context(pipe.transformer, num_inference_steps=50, verbose=True)
+    # >>> output = pipe(...) # Just call the pipe as normal.
+    # >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    # >>> # Update the cache context with new cache_config.
+    # >>> refresh_context(
+    #     pipe.transformer,
+    #     cache_config=DBCacheConfig(
+    #         residual_diff_threshold=0.1,
+    #         max_warmup_steps=10,
+    #         max_cached_steps=20,
+    #         max_continuous_cached_steps=4,
+    #         num_inference_steps=50,
+    #     ),
+    #     verbose=True,
+    # )
+    # >>> output = pipe(...) # Just call the pipe as normal.
+    # >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    # ```
     if force_refresh_kwargs:
         if "cache_config" not in force_refresh_kwargs:
+            verbose = force_refresh_kwargs.pop("verbose", True)
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
             force_refresh_kwargs = load_options(force_refresh_kwargs, reset=True)
+            force_refresh_kwargs["verbose"] = verbose
     CachedAdapter.maybe_refresh_context(transformer, **force_refresh_kwargs)
 
 

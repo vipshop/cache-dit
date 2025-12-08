@@ -7,7 +7,6 @@ import torch.distributed as dist
 
 from cache_dit.caching.cache_contexts.calibrators import CalibratorBase
 from cache_dit.caching.cache_contexts.cache_context import (
-    BasicCacheConfig,
     CachedContext,
 )
 from cache_dit.logger import init_logger
@@ -62,13 +61,6 @@ class CachedContextManager:
 
     @torch.compiler.disable
     def new_context(self, *args, **kwargs) -> CachedContext:
-        if self._persistent_context:
-            cache_config: BasicCacheConfig = kwargs.get("cache_config", None)
-            assert cache_config is not None and cache_config.num_inference_steps is not None, (
-                "When persistent_context is True, num_inference_steps "
-                "must be set in cache_config for proper cache refreshing."
-                f"\nkwargs: {kwargs}"
-            )
         _context = CachedContext(*args, **kwargs)
         # NOTE: Patch args and kwargs for implicit refresh.
         _context._init_args = args  # maybe empty tuple: ()
@@ -91,12 +83,6 @@ class CachedContextManager:
             if cached_context not in self._cached_context_manager:
                 raise ContextNotExistError("Context not exist!")
             _context = self._cached_context_manager[cached_context]
-
-        # if self._persistent_context:
-        #     assert _context.cache_config.num_inference_steps is not None, (
-        #         "When persistent_context is True, num_inference_steps must be set "
-        #         "in cache_config for proper cache refreshing."
-        #     )
 
         num_inference_steps = _context.cache_config.num_inference_steps
         if num_inference_steps is not None:

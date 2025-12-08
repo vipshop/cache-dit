@@ -56,10 +56,6 @@ if args.cache:
                     ForwardPattern.Pattern_1,
                     ForwardPattern.Pattern_1,
                 ],
-                # Set is False for transformers that do not come from Diffusers.
-                # check_forward_pattern=pipe.transformer.__module__.startswith(
-                #     "diffusers"
-                # ),
             )
             if not args.no_adapt
             else pipe.transformer
@@ -72,8 +68,9 @@ if args.cache:
                 max_cached_steps=args.max_cached_steps,
                 max_continuous_cached_steps=args.max_continuous_cached_steps,
                 residual_diff_threshold=args.rdt,
-                # NOTE: num_inference_steps is required for Transformer-only interface
-                num_inference_steps=28 if args.steps is None else args.steps,
+                # NOTE: num_inference_steps can be None here, we will
+                # set it properly during cache refreshing.
+                num_inference_steps=None,
             )
             if args.cache
             else None
@@ -101,13 +98,11 @@ if args.prompt is not None:
     prompt = args.prompt
 
 
-steps = 28 if args.steps is None else args.steps
-
-
-def run_pipe():
+def run_pipe(steps: int = 28):
     cache_dit.refresh_context(
         pipe.transformer,
         num_inference_steps=steps,
+        verbose=True,
     )
     image = pipe(
         prompt,
@@ -123,26 +118,26 @@ if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
 
-# warmup
-_ = run_pipe()
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
     memory_tracker.__enter__()
 
-start = time.time()
-for _ in range(args.repeat):
-    image = run_pipe()
-end = time.time()
+steps = [8, 16, 28, 40, 50]
+for i in range(len(steps)):
+    start = time.time()
+    image = run_pipe(steps=steps[i])
+    end = time.time()
+    time_cost = end - start
+
+    cache_dit.summary(pipe.transformer)
+
+    save_path = f"flux.steps{steps[i]}.{strify(args, pipe.transformer)}.png"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving image to {save_path}")
+    image.save(save_path)
+
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
     memory_tracker.report()
-
-cache_dit.summary(pipe.transformer)
-
-time_cost = end - start / args.repeat
-save_path = f"flux.{strify(args, pipe.transformer)}.png"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving image to {save_path}")
-image.save(save_path)

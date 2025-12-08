@@ -276,6 +276,7 @@ class CachedAdapter:
 
     @classmethod
     def _modify_context_params(
+        cls,
         new_context_kwargs: Dict[str, Any],
         old_context_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -302,16 +303,19 @@ class CachedAdapter:
         return modified_context_kwargs
 
     @classmethod
-    def _config_messages(cls, **contexts_kwargs):
+    def _config_messages(cls, logging: bool = True, **contexts_kwargs):
         cache_config: BasicCacheConfig = contexts_kwargs.get("cache_config", None)
         calibrator_config: CalibratorConfig = contexts_kwargs.get("calibrator_config", None)
+        message = ""
         if cache_config is not None:
             message = f"Collected Context Config: {cache_config.strify()}"
             if calibrator_config is not None:
                 message += f", Calibrator Config: {calibrator_config.strify(details=True)}"
             else:
                 message += ", Calibrator Config: None"
+        if logging:
             logger.info(message)
+        return message
 
     @classmethod
     def mock_blocks(
@@ -662,6 +666,7 @@ class CachedAdapter:
         transformer: torch.nn.Module,
         **force_refresh_kwargs,
     ):
+        verbose = force_refresh_kwargs.pop("verbose", True)
         # Get context manager from transformer
         if not hasattr(transformer, "_context_manager"):
             logger.warning(
@@ -685,7 +690,7 @@ class CachedAdapter:
 
         for context_name in context_names:
             current_context = context_manager.get_context(context_name)
-            old_init_kwargs = getattr(current_context._init_kwargs, {})  # type: dict
+            old_init_kwargs = getattr(current_context, "_init_kwargs", {})  # type: dict
             new_init_kwargs = copy.deepcopy(old_init_kwargs)
             # Remove old context
             context_manager.remove_context(context_name)
@@ -693,13 +698,19 @@ class CachedAdapter:
                 force_refresh_kwargs,
                 new_init_kwargs,
             )
-            # Re-create new context with old init kwargs updated by force_refresh_kwargs
+            # Re-create new context with old init kwargs updated by
+            # force_refresh_kwargs.
+            if verbose:
+                logger.info(
+                    f"\nRefreshing cache context: {context_name}, "
+                    f"{cls._config_messages(logging=False, **new_init_kwargs)}"
+                )
             context_manager.reset_context(
                 context_name,
                 **new_init_kwargs,
             )
-            logger.info(
-                f"Refreshed cache context: {context_name}, "
-                f"old init kwargs: {old_init_kwargs}, "
-                f"new init kwargs: {new_init_kwargs}."
-            )
+            # reset _context_kwargs for transformer
+            if hasattr(transformer, "_context_kwargs"):
+                # Will overwrite the _context_kwargs by last context kwargs.
+                # Only used for strify utilization.
+                transformer._context_kwargs = new_init_kwargs
