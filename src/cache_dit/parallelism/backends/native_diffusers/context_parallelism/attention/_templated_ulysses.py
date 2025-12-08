@@ -245,12 +245,13 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        query = _all_to_all_single_qkv_fp8_async(query, group)
-        key = _all_to_all_single_qkv_fp8_async(key, group)
-        value = _all_to_all_single_qkv_fp8_async(value, group)
-        query = query()  # type: torch.Tensor
-        key = key()  # type: torch.Tensor
-        value = value()  # type: torch.Tensor
+        # Use async all_to_all to overlap comm and quant/dequant computation
+        query_wait = _all_to_all_single_qkv_fp8_async(query, group)
+        key_wait = _all_to_all_single_qkv_fp8_async(key, group)
+        value_wait = _all_to_all_single_qkv_fp8_async(value, group)
+        query = query_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
 
         out = forward_op(
             ctx,
@@ -271,15 +272,16 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
 
         # NOTE: DON'T use float8 all_to_all for out and lse, as it may
         # cause numerical instability.
-        out = _all_to_all_single_o_async(out, group)
+        out_wait = _all_to_all_single_o_async(out, group)
 
         if return_lse:
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse = _all_to_all_single_o_async(lse, group)
-            out = out()  # type: torch.Tensor
-            lse = lse().squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+            lse_wait = _all_to_all_single_o_async(lse, group)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
         else:
-            out = out()  # type: torch.Tensor
+            out = out_wait()  # type: torch.Tensor
             lse = None
 
         return (out, lse) if return_lse else out
