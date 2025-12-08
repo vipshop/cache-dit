@@ -182,35 +182,38 @@ class ModelManager:
         for idx, url in enumerate(image_urls):
             try:
                 if url.startswith('data:image/'):
-                    # Handle data URI format: data:image/png;base64,iVBORw0KG...
-                    logger.info(f"Loading image {idx+1} from data URI")
+                    log_desc = f"data URI (length: {len(url)})"
+                    logger.info(f"Loading image {idx+1} from {log_desc}")
                     header, base64_data = url.split(',', 1)
                     img_data = base64.b64decode(base64_data)
                     image = Image.open(BytesIO(img_data)).convert("RGB")
                 elif url.startswith(('http://', 'https://')):
-                    # Download from URL
-                    logger.info(f"Downloading image {idx+1} from URL: {url[:50]}...")
+                    log_desc = f"URL: {url[:80]}{'...' if len(url) > 80 else ''}"
+                    logger.info(f"Downloading image {idx+1} from {log_desc}")
                     response = requests.get(url, timeout=30)
                     response.raise_for_status()
                     image = Image.open(BytesIO(response.content)).convert("RGB")
                 elif len(url) > 100 and '/' not in url and '\\' not in url:
-                    # Likely a raw base64 string (no data URI prefix)
-                    logger.info(f"Loading image {idx+1} from raw base64 string")
+                    log_desc = f"raw base64 string (length: {len(url)})"
+                    logger.info(f"Loading image {idx+1} from {log_desc}")
                     try:
                         img_data = base64.b64decode(url)
                         image = Image.open(BytesIO(img_data)).convert("RGB")
                     except Exception:
-                        # If base64 decode fails, treat as local path
-                        logger.info(f"Base64 decode failed, treating as local path: {url}")
+                        logger.info(f"Base64 decode failed, treating as local path")
                         image = Image.open(url).convert("RGB")
                 else:
-                    # Load from local path
-                    logger.info(f"Loading image {idx+1} from local path: {url}")
+                    log_desc = f"local path: {url}"
+                    logger.info(f"Loading image {idx+1} from {log_desc}")
                     image = Image.open(url).convert("RGB")
                 images.append(image)
                 logger.info(f"Image {idx+1} loaded successfully: {image.size}")
             except Exception as e:
-                logger.error(f"Failed to load image {idx+1} from {url[:100]}...: {e}")
+                if len(url) > 100:
+                    error_url = f"<data of length {len(url)}>"
+                else:
+                    error_url = url
+                logger.error(f"Failed to load image {idx+1} from {error_url}: {e}")
                 raise RuntimeError(f"Failed to load image {idx+1}: {e}")
         
         return images
