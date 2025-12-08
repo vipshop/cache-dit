@@ -22,8 +22,8 @@ from ._distributed_primitives import (
     _all_to_all_single_any_qkv,
     _all_to_all_single_any_o_fp8,
     _all_to_all_single_any_qkv_fp8,
-    _all_to_all_single_fp8,
-    _all_to_all_single,
+    _all_to_all_single_o_async,
+    _all_to_all_single_qkv_fp8_async,
 )
 
 from cache_dit.logger import init_logger
@@ -239,27 +239,18 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
         # QK may cause more numerical instability than P@V matrix multiplication.
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
-        world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        B, S_Q_LOCAL, H, D = query.shape
-        _, S_KV_LOCAL, _, _ = key.shape
-        H_LOCAL = H // world_size
-        query = (
-            query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        )
-        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        value = (
-            value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        )
-        query, key, value = (_all_to_all_single_fp8(x, group) for x in (query, key, value))
-        query, key, value = (
-            x.flatten(0, 1).permute(1, 0, 2, 3).contiguous() for x in (query, key, value)
-        )
+        query = _all_to_all_single_qkv_fp8_async(query, group)
+        key = _all_to_all_single_qkv_fp8_async(key, group)
+        value = _all_to_all_single_qkv_fp8_async(value, group)
+        query = query()  # type: torch.Tensor
+        key = key()  # type: torch.Tensor
+        value = value()  # type: torch.Tensor
 
         out = forward_op(
             ctx,
@@ -278,16 +269,17 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out = out.reshape(B, world_size, S_Q_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-        out = _all_to_all_single_fp8(out, group)
-        out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        # NOTE: DON'T use float8 all_to_all for out and lse, as it may
+        # cause numerical instability.
+        out = _all_to_all_single_o_async(out, group)
 
         if return_lse:
-            lse = lse.reshape(B, world_size, S_Q_LOCAL, H_LOCAL).permute(1, 3, 0, 2).contiguous()
-            # NOTE: DON'T use float8 all_to_all for lse, as it may cause numerical instability
-            lse = _all_to_all_single(lse, group)
-            lse = lse.flatten(0, 1).permute(1, 2, 0).contiguous()
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse = _all_to_all_single_o_async(lse, group)
+            out = out()  # type: torch.Tensor
+            lse = lse().squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
         else:
+            out = out()  # type: torch.Tensor
             lse = None
 
         return (out, lse) if return_lse else out
