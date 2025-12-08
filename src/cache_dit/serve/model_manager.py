@@ -7,10 +7,12 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/token
 import time
 import base64
 import torch
+import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from diffusers import DiffusionPipeline
+from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
 
@@ -29,6 +31,7 @@ class GenerateRequest:
     guidance_scale: float = 7.5
     seed: Optional[int] = None
     num_images: int = 1
+    image_urls: Optional[List[str]] = None  # For image editing
 
 
 @dataclass
@@ -175,6 +178,32 @@ class ModelManager:
 
                 dist.barrier()
 
+    def _load_images_from_urls(self, image_urls: List[str]) -> Optional[List[Image.Image]]:
+        """Load images from URLs or local paths."""
+        if not image_urls:
+            return None
+        
+        images = []
+        for url in image_urls:
+            try:
+                if url.startswith(('http://', 'https://')):
+                    # Download from URL
+                    logger.info(f"Downloading image from URL: {url}")
+                    response = requests.get(url, timeout=30)
+                    response.raise_for_status()
+                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                else:
+                    # Load from local path
+                    logger.info(f"Loading image from local path: {url}")
+                    image = Image.open(url).convert("RGB")
+                images.append(image)
+                logger.info(f"Image loaded successfully: {image.size}")
+            except Exception as e:
+                logger.error(f"Failed to load image from {url}: {e}")
+                raise RuntimeError(f"Failed to load image from {url}: {e}")
+        
+        return images
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         if self.pipe is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -186,7 +215,9 @@ class ModelManager:
             seed = 42
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
-        logger.info(f"Generating image: prompt='{request.prompt[:50]}...', seed={seed}")
+        is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
+        mode_str = "edit" if is_edit_mode else "generation"
+        logger.info(f"Image {mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
 
         generator = None
         if seed is not None:
@@ -214,6 +245,17 @@ class ModelManager:
             "generator": generator,
             "num_images_per_prompt": request.num_images,
         }
+
+        # Load input images for editing if provided
+        if is_edit_mode:
+            input_images = self._load_images_from_urls(request.image_urls)
+            if input_images:
+                # For FLUX.2, pass single image or multiple images
+                if len(input_images) == 1:
+                    pipe_kwargs["image"] = input_images[0]
+                else:
+                    pipe_kwargs["image"] = input_images
+                logger.info(f"Loaded {len(input_images)} input image(s) for editing")
 
         # Some pipelines (like Flux2Pipeline) don't support negative_prompt
         if request.negative_prompt:
