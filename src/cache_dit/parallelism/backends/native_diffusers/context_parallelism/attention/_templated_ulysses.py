@@ -18,10 +18,10 @@ except ImportError:
 from ._distributed_primitives import (
     _get_rank_world_size,
     _gather_size_by_comm,
-    _all_to_all_single_any_o,
-    _all_to_all_single_any_qkv,
-    _all_to_all_single_any_o_fp8,
-    _all_to_all_single_any_qkv_fp8,
+    _all_to_all_single_any_o_async,
+    _all_to_all_single_any_qkv_async,
+    _all_to_all_single_any_o_fp8_async,
+    _all_to_all_single_any_qkv_fp8_async,
     _all_to_all_single_qkv_async,
     _all_to_all_single_o_async,
     _all_to_all_single_qkv_fp8_async,
@@ -70,27 +70,34 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         **kwargs,
     ):
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
-        world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        B, S_Q_LOCAL, H, D = query.shape
-        _, S_KV_LOCAL, _, _ = key.shape
-        H_LOCAL = H // world_size
-        # (world_size, S_LOCAL, B, H_LOCAL, D)
-        query = (
-            query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        )
-        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        value = (
-            value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        )
-        query, key, value = (_all_to_all_single_any_qkv(x, group) for x in (query, key, value))
-        # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-        query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
+        # B, S_Q_LOCAL, H, D = query.shape
+        # _, S_KV_LOCAL, _, _ = key.shape
+        # H_LOCAL = H // world_size
+        # # (world_size, S_LOCAL, B, H_LOCAL, D)
+        # query = (
+        #     query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        # )
+        # key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        # value = (
+        #     value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        # )
+        # query, key, value = (_all_to_all_single_any_qkv(x, group) for x in (query, key, value))
+        # # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+        # query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
+
+        query_wait = _all_to_all_single_any_qkv_async(query, group)
+        key_wait = _all_to_all_single_any_qkv_async(key, group)
+        value_wait = _all_to_all_single_any_qkv_async(value, group)
+
+        query = query_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
 
         out = forward_op(
             ctx,
@@ -110,15 +117,20 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out = _all_to_all_single_any_o(out, group).contiguous()
+        # out = _all_to_all_single_any_o(out, group).contiguous()
+        out_wait = _all_to_all_single_any_o_async(out, group)
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse = (
-                _all_to_all_single_any_o(lse, group).squeeze(-1).contiguous()
-            )  # (B, S_Q_LOCAL, H_GLOBAL)
+            lse_wait = _all_to_all_single_any_o_async(lse, group)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            # lse = (
+            #     _all_to_all_single_any_o(lse, group).squeeze(-1).contiguous()
+            # )  # (B, S_Q_LOCAL, H_GLOBAL)
         else:
+            out = out_wait()  # type: torch.Tensor
             lse = None
 
         return (out, lse) if return_lse else out
@@ -156,27 +168,42 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
         # QK may cause more numerical instability than P@V matrix multiplication.
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
-        world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        B, S_Q_LOCAL, H, D = query.shape
-        _, S_KV_LOCAL, _, _ = key.shape
-        H_LOCAL = H // world_size
-        # (world_size, S_LOCAL, B, H_LOCAL, D)
-        query = (
-            query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        )
-        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        value = (
-            value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        )
-        query, key, value = (_all_to_all_single_any_qkv_fp8(x, group) for x in (query, key, value))
-        # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-        query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
+        # B, S_Q_LOCAL, H, D = query.shape
+        # _, S_KV_LOCAL, _, _ = key.shape
+        # H_LOCAL = H // world_size
+        # # (world_size, S_LOCAL, B, H_LOCAL, D)
+        # query = (
+        #     query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        # )
+        # key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        # value = (
+        #     value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        # )
+        # query, key, value = (_all_to_all_single_any_qkv_fp8(x, group) for x in (query, key, value))
+        # # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+        # query, key, value = (x.permute(1, 0, 2, 3).contiguous() for x in (query, key, value))
+
+        # Use async all_to_all to overlap comm and quant/dequant computation
+        # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
+        # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
+        # numerical instability. So we only use float8 all_to_all for Q, V and O.
+        # TODO: We should relax this design and support all QKV in float8 format while
+        # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
+        # stability. Using this smooth technique before All-to-All on K may introduce
+        # extra AllReduce communication overhead.
+        key_wait = _all_to_all_single_any_qkv_async(key, group)
+        query_wait = _all_to_all_single_any_qkv_fp8_async(query, group)
+        value_wait = _all_to_all_single_any_qkv_fp8_async(value, group)
+
+        query = query_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
 
         out = forward_op(
             ctx,
@@ -195,17 +222,18 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out = _all_to_all_single_any_o_fp8(out, group).contiguous()
+        out_wait = _all_to_all_single_any_o_fp8_async(out, group)
 
         if return_lse:
-            # lse: (B, S_Q_GLOBAL, H_LOCAL)
+            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
+            # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            # NOTE: DON'T use float8 all_to_all for lse, as it may cause numerical instability
-            lse = (
-                _all_to_all_single_any_o(lse, group).squeeze(-1).contiguous()
-            )  # (B, S_Q_LOCAL, H_GLOBAL)
+            lse_wait = _all_to_all_single_any_o_async(lse, group)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
         else:
+            out = out_wait()  # type: torch.Tensor
             lse = None
 
         return (out, lse) if return_lse else out
