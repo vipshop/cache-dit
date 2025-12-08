@@ -31,6 +31,7 @@
 - [⚡️Hybrid Context Parallelism](#context-parallelism)
 - [🤖UAA: Ulysses Anything Attention](#ulysses-anything-attention)
 - [🤖Async Ulysses QKV Projection](#ulysses-async)
+- [🤖Async FP8 Ulysses Attention](#ulysses-async-fp8)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🤖Parallelize Text Encoder](#parallel-text-encoder)
 - [🤖Low-bits Quantization](#quantization)
@@ -814,6 +815,43 @@ cache_dit.enable_cache(
 |<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
 
 </div>
+
+## 🤖Async FP8 Ulysses Attention
+
+<div id="ulysses-async-fp8"></div>
+
+<div align="center">
+
+![alt text](../assets/parallelism/async_ulysses_fp8.png)
+
+</div>
+
+cache-dit has implemented **Async FP8 Ulysses Attention** for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `experimental_ulysses_float8=True`. To maintain higher precision during softmax computation—where `Softmax(Q@K^T)` is sensitive to numerical instability—we currently retain `K in FP16/BF16` format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set `experimental_ulysses_float8` as True to enable Async FP8 Ulysses Attention
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2,
+        parallel_kwargs={
+            "experimental_ulysses_float8": True
+        },
+    ),
+)
+# torchrun --nproc_per_node=2 parallel_cache_ulysses_float8.py
+```
+
+|L20x2 w/ Ulysses| w/ Ulysses FP8|w/ Ulysses + compile|w/ Ulysses FP8 + compile|
+|:---:|:---:|:---:|:---:|
+|FLUX.1, 13.87s|**🎉13.36s**|12.21s|**🎉11.54s**|
+|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|
+
+
 
 ## ⚡️Hybrid Tensor Parallelism
 
