@@ -41,9 +41,6 @@ __all__ = [
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
     "disable_ulysses_anything",
-    "enable_ulysses_anything_float8",
-    "is_ulysses_anything_float8_enabled",
-    "disable_ulysses_anything_float8",
     "enable_ulysses_float8",
     "is_ulysses_float8_enabled",
     "disable_ulysses_float8",
@@ -477,7 +474,7 @@ def disable_ulysses_anything(**kwargs):
 
 
 # Float8 flags for Ulysses/Ulysses Anything Attention
-def enable_ulysses_anything_float8(**kwargs):
+def _enable_ulysses_anything_float8(**kwargs):
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     try:
         if _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8:
@@ -517,12 +514,12 @@ def enable_ulysses_anything_float8(**kwargs):
         pass
 
 
-def is_ulysses_anything_float8_enabled(**kwargs) -> bool:
+def _is_ulysses_anything_float8_enabled(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
 
 
-def disable_ulysses_anything_float8(**kwargs) -> bool:
+def _disable_ulysses_anything_float8(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
     logger.info("Ulysses Anything Attention Float8 is manually disabled in cache-dit.")
@@ -532,7 +529,7 @@ def enable_ulysses_float8(**kwargs):
 
     # Check if Ulysses Anything Attention is already enabled
     if is_ulysses_anything_enabled():
-        enable_ulysses_anything_float8()
+        _enable_ulysses_anything_float8()
         return
 
     global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
@@ -546,7 +543,7 @@ def enable_ulysses_float8(**kwargs):
 
 def is_ulysses_float8_enabled(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
-    return _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 or is_ulysses_anything_float8_enabled()
+    return _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 or _is_ulysses_anything_float8_enabled()
 
 
 def disable_ulysses_float8(**kwargs) -> bool:
@@ -554,4 +551,4 @@ def disable_ulysses_float8(**kwargs) -> bool:
     _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = False
     logger.info("Ulysses Attention Float8 is manually disabled in cache-dit.")
     if is_ulysses_anything_enabled():
-        disable_ulysses_anything_float8()
+        _disable_ulysses_anything_float8()
