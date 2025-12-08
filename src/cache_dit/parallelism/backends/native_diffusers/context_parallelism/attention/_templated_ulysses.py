@@ -250,7 +250,9 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
         # numerical instability. So we only use float8 all_to_all for Q, V and O.
         # TODO: We should relax this design and support all QKV in float8 format while
-        # the K-smooth (e.g., in SageAttention) is used to improve numerical stability.
+        # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
+        # stability. Using this smooth technique before All-to-All on K may introduce
+        # extra AllReduce communication overhead.
         key_wait = _all_to_all_single_qkv_async(key, group)
         query_wait = _all_to_all_single_qkv_fp8_async(query, group)
         value_wait = _all_to_all_single_qkv_fp8_async(value, group)
