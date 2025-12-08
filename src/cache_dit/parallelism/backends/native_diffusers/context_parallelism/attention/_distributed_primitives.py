@@ -359,28 +359,30 @@ def _all_to_all_single_any_o_fp8_async(
 def _unified_all_to_all_qkv_async_fn(
     disable_fp8: bool = False,
 ) -> Callable[..., torch.Tensor]:
-    from ._templated_ulysses import is_ulysses_float8_enabled, is_ulysses_anything_enabled
+    from ._templated_ulysses import is_ulysses_float8_enabled
+    from ._templated_ulysses import is_ulysses_anything_enabled
 
-    if is_ulysses_float8_enabled() and not disable_fp8:
-        if is_ulysses_anything_enabled():
+    if is_ulysses_anything_enabled():
+        if is_ulysses_float8_enabled() and not disable_fp8:
             return _all_to_all_single_any_qkv_fp8_async
-        return _all_to_all_single_qkv_fp8_async
+        return _all_to_all_single_any_qkv_async
     else:
-        if is_ulysses_anything_enabled():
-            return _all_to_all_single_any_qkv_async
+        if is_ulysses_float8_enabled() and not disable_fp8:
+            return _all_to_all_single_qkv_fp8_async
         return _all_to_all_single_qkv_async
 
 
 def _unified_all_to_all_o_async_fn(
     disable_fp8: bool = False,
 ) -> Callable[..., torch.Tensor]:
-    from ._templated_ulysses import is_ulysses_float8_enabled, is_ulysses_anything_enabled
+    from ._templated_ulysses import is_ulysses_float8_enabled
+    from ._templated_ulysses import is_ulysses_anything_enabled
 
-    if is_ulysses_float8_enabled() and not disable_fp8:
-        if is_ulysses_anything_enabled():
+    if is_ulysses_anything_enabled():
+        if is_ulysses_float8_enabled() and not disable_fp8:
             return _all_to_all_single_any_o_fp8_async
-        return _all_to_all_single_o_fp8_async
+        return _all_to_all_single_any_o_async
     else:
-        if is_ulysses_anything_enabled():
-            return _all_to_all_single_any_o_async
+        if is_ulysses_float8_enabled() and not disable_fp8:
+            return _all_to_all_single_o_fp8_async
         return _all_to_all_single_o_async

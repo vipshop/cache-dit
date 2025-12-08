@@ -476,6 +476,7 @@ def disable_ulysses_anything(**kwargs):
     logger.info("Ulysses Anything Attention is manually disabled in cache-dit.")
 
 
+# Float8 flags for Ulysses/Ulysses Anything Attention
 def enable_ulysses_anything_float8(**kwargs):
     global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     try:
@@ -528,6 +529,12 @@ def disable_ulysses_anything_float8(**kwargs) -> bool:
 
 
 def enable_ulysses_float8(**kwargs):
+
+    # Check if Ulysses Anything Attention is already enabled
+    if is_ulysses_anything_enabled():
+        enable_ulysses_anything_float8()
+        return
+
     global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
     _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = True
     logger.warning(
@@ -539,10 +546,12 @@ def enable_ulysses_float8(**kwargs):
 
 def is_ulysses_float8_enabled(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
-    return _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
+    return _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 or is_ulysses_anything_float8_enabled()
 
 
 def disable_ulysses_float8(**kwargs) -> bool:
     global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
     _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = False
     logger.info("Ulysses Attention Float8 is manually disabled in cache-dit.")
+    if is_ulysses_anything_enabled():
+        disable_ulysses_anything_float8()

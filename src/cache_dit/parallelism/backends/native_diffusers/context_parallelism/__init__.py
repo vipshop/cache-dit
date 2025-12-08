@@ -12,7 +12,6 @@ from ..utils import (
 from .attention import maybe_resigter_native_attention_backend
 from .attention import (
     enable_ulysses_anything,
-    enable_ulysses_anything_float8,
     enable_ulysses_float8,
 )
 from .cp_planners import *
@@ -58,13 +57,13 @@ def maybe_enable_context_parallelism(
             experimental_ulysses_float8 = parallelism_config.parallel_kwargs.get(
                 "experimental_ulysses_float8", False
             )
+
+            # Must call enable_ulysses_anything before enable_ulysses_float8.
             if experimental_ulysses_anything:
                 enable_ulysses_anything()
-                if experimental_ulysses_float8:
-                    enable_ulysses_anything_float8()
-            else:
-                if experimental_ulysses_float8:
-                    enable_ulysses_float8()
+
+            if experimental_ulysses_float8:
+                enable_ulysses_float8()
 
             attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
             if hasattr(transformer, "enable_parallelism"):
