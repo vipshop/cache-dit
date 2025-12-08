@@ -219,14 +219,21 @@ class ModelManager:
         if self.pipe is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        self._warmup_if_needed(request.width, request.height, request.prompt)
+        is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
+        input_images = None
+        if is_edit_mode:
+            input_images = self._load_images_from_urls(request.image_urls)
+            if input_images:
+                logger.info(f"Loaded {len(input_images)} input image(s) for editing")
+        
+        if not is_edit_mode:
+            self._warmup_if_needed(request.width, request.height, request.prompt)
 
         seed = request.seed
         if seed is None and self.parallel_type in ["tp", "ulysses", "ring"]:
             seed = 42
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
-        is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
         mode_str = "edit" if is_edit_mode else "generation"
         logger.info(f"Image {mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
 
@@ -257,16 +264,13 @@ class ModelManager:
             "num_images_per_prompt": request.num_images,
         }
 
-        # Load input images for editing if provided
-        if is_edit_mode:
-            input_images = self._load_images_from_urls(request.image_urls)
-            if input_images:
-                # For FLUX.2, pass single image or multiple images
-                if len(input_images) == 1:
-                    pipe_kwargs["image"] = input_images[0]
-                else:
-                    pipe_kwargs["image"] = input_images
-                logger.info(f"Loaded {len(input_images)} input image(s) for editing")
+        # Add input images to pipe_kwargs if in edit mode
+        if is_edit_mode and input_images:
+            # For FLUX.2, pass single image or multiple images
+            if len(input_images) == 1:
+                pipe_kwargs["image"] = input_images[0]
+            else:
+                pipe_kwargs["image"] = input_images
 
         # Some pipelines (like Flux2Pipeline) don't support negative_prompt
         if request.negative_prompt:
