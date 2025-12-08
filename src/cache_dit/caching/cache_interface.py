@@ -345,6 +345,7 @@ def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
     requests, the cache context should be refreshed to avoid potential
     precision degradation. Usage:
     ```py
+    >>> import cache_dit
     >>> from cache_dit import DBCacheConfig
     >>> from diffusers import DiffusionPipeline
     >>> # Init cache context with num_inference_steps=None (default)
