@@ -702,7 +702,7 @@ class CachedAdapter:
             # force_refresh_kwargs.
             if verbose:
                 logger.info(
-                    f"✅Refreshing cache context: {context_name}, "
+                    f"✅ Refreshing cache context: {context_name}, "
                     f"{cls._config_messages(logging=False, **new_init_kwargs)}"
                 )
             context_manager.reset_context(
