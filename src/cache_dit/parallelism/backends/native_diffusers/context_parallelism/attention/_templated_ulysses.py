@@ -249,6 +249,8 @@ class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
         # numerical instability. So we only use float8 all_to_all for Q, V and O.
+        # TODO: We should relax this design and support all QKV in float8 format while
+        # the K-smooth (e.g., in SageAttention) is used to improve numerical stability.
         key_wait = _all_to_all_single_qkv_async(key, group)
         query_wait = _all_to_all_single_qkv_fp8_async(query, group)
         value_wait = _all_to_all_single_qkv_fp8_async(value, group)
