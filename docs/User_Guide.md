@@ -367,6 +367,43 @@ cache_dit.enable_cache(
 )
 ```
 
+If you need to use a **different** num_inference_steps for each user request instead of a fixed value, you should use it in conjunction with `refresh_context` API. Before performing inference for each user request, update the cache context based on the actual number of steps. Please refer to [📚run_cache_refresh](https://github.com/vipshop/cache-dit/blob/main/examples/api) as an example.
+
+```python
+import cache_dit
+from cache_dit import DBCacheConfig
+from diffusers import DiffusionPipeline
+
+# Init cache context with num_inference_steps=None (default)
+pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+pipe = cache_dit.enable_cache(pipe.transformer, cache_config=DBCacheConfig(num_inference_steps=None))
+
+# Assume num_inference_steps is 28, and we want to refresh the context
+cache_dit.refresh_context(transformer, num_inference_steps=28, verbose=True)
+output = pipe(...) # Just call the pipe as normal.
+stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+
+# Update the cache context with new num_inference_steps=50.
+cache_dit.refresh_context(pipe.transformer, num_inference_steps=50, verbose=True)
+output = pipe(...) # Just call the pipe as normal.
+stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+
+# Update the cache context with new cache_config.
+cache_dit.refresh_context(
+    pipe.transformer,
+    cache_config=DBCacheConfig(
+        residual_diff_threshold=0.1,
+        max_warmup_steps=10,
+        max_cached_steps=20,
+        max_continuous_cached_steps=4,
+        num_inference_steps=50,
+    ),
+    verbose=True,
+)
+output = pipe(...) # Just call the pipe as normal.
+stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+```
+
 ### 📚How to use ParamsModifier
 
 Sometimes you may encounter more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`), or FLUX.1, which has multiple transformer blocks (namely `single_transformer_blocks` and `transformer_blocks`). cache-dit will assign separate cache contexts for different `blocks` instances but share the same `cache_config` by default. Users who want to achieve fine-grained control over different cache contexts can consider using `ParamsModifier`. Just pass the `ParamsModifier` per `blocks` to the `BlockAdapter` or `enable_cache(...)` API. Then, the shared `cache_config` will be overwritten by the new configurations from the `ParamsModifier`. For example:
