@@ -47,29 +47,14 @@ _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH = bool(
 )
 
 
-def _is_native_attn_supported_context_parallel() -> bool:
-    try:
-        return (
-            AttentionBackendName.NATIVE in _AttentionBackendRegistry._supports_context_parallel
-            and _AttentionBackendRegistry._supports_context_parallel[AttentionBackendName.NATIVE]
-        )
-    except Exception:
-        assert isinstance(_AttentionBackendRegistry._supports_context_parallel, set)
-        return (
-            AttentionBackendName.NATIVE.value
-            in _AttentionBackendRegistry._supports_context_parallel
-        )
-
-
 def _registry_pop_attn_backend(attn_backend: AttentionBackendName):
     _AttentionBackendRegistry._backends.pop(attn_backend)
     _AttentionBackendRegistry._constraints.pop(attn_backend)
     _AttentionBackendRegistry._supported_arg_names.pop(attn_backend)
-    if _is_native_attn_supported_context_parallel():
-        if isinstance(_AttentionBackendRegistry._supports_context_parallel, dict):
-            _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend)
-        else:
-            _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
+    if isinstance(_AttentionBackendRegistry._supports_context_parallel, dict):
+        _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend)
+    else:
+        _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
 
 
 def _set_new_attn_backend(member: str, value: str):
@@ -294,7 +279,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
     logger.warning(
         "Re-registered NATIVE attention backend to enable context parallelism "
-        "with attn mask. You can disable this behavior by export env: "
+        "with attn mask in cache-dit. You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
@@ -406,8 +391,8 @@ if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         return (out, lse) if return_lse else out
 
     logger.info(
-        "Registered new attention backend: _SDPA_CUDNN, to enable "
-        "context parallelism with attn mask. You can disable it by: "
+        "Registered new attention backend: _SDPA_CUDNN, to enable context"
+        "parallelism with attn mask in cache-dit. You can disable it by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
@@ -462,7 +447,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
     logger.warning(
         "Re-registered SAGE attention backend to enable context parallelism "
-        "with attn mask. You can disable this behavior by export env: "
+        "with FP8 Attention in cache-dit. You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
