@@ -284,11 +284,20 @@ class CachedAdapter:
         if "cache_config" in new_context_kwargs:
             new_cache_config = new_context_kwargs.get("cache_config", None)
             new_calibrator_config = new_context_kwargs.get("calibrator_config", None)
+            # Modify cache_config
             if new_cache_config is not None:
                 assert isinstance(new_cache_config, BasicCacheConfig), (
                     f"cache_config must be BasicCacheConfig, but got " f"{type(new_cache_config)}."
                 )
-                modified_context_kwargs["cache_config"].update(**new_cache_config.as_dict())
+                if modified_context_kwargs.get("cache_config", None) is None:
+                    modified_context_kwargs["cache_config"] = new_cache_config
+                else:
+                    assert isinstance(modified_context_kwargs["cache_config"], BasicCacheConfig), (
+                        f"cache_config must be BasicCacheConfig, but got "
+                        f"{type(modified_context_kwargs['cache_config'])}."
+                    )
+                    modified_context_kwargs["cache_config"].update(**new_cache_config.as_dict())
+            # Modify calibrator_config
             if new_calibrator_config is not None:
                 assert isinstance(new_calibrator_config, CalibratorConfig), (
                     f"calibrator_config must be CalibratorConfig, but got "
@@ -297,6 +306,12 @@ class CachedAdapter:
                 if modified_context_kwargs.get("calibrator_config", None) is None:
                     modified_context_kwargs["calibrator_config"] = new_calibrator_config
                 else:
+                    assert isinstance(
+                        modified_context_kwargs["calibrator_config"], CalibratorConfig
+                    ), (
+                        f"calibrator_config must be CalibratorConfig, but got "
+                        f"{type(modified_context_kwargs['calibrator_config'])}."
+                    )
                     modified_context_kwargs["calibrator_config"].update(
                         **new_calibrator_config.as_dict()
                     )
