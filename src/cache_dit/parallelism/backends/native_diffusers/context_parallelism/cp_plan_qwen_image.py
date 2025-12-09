@@ -30,7 +30,7 @@ from .cp_plan_registers import (
 
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._templated_ulysses import _prepare_extra_comm_kwargs
+from .attention._distributed_primitives import _prepare_extra_comm_kwargs
 
 from cache_dit.logger import init_logger
 

@@ -64,7 +64,7 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     return gathered_sizes
 
 
-# Asynchronous all to all variants.
+# Helper functions to pad/unpad head dimension for QKV and O projections
 def _maybe_pad_qkv_head(
     x: torch.Tensor,
     H: int,
@@ -150,6 +150,18 @@ def _maybe_unpad_o_head(
     return x.contiguous()
 
 
+# Helper functions to for all-to-all communication with Ulysses Attention
+def _prepare_extra_comm_kwargs(
+    query: torch.Tensor,
+    **kwargs,
+) -> dict:
+    num_qo_head = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
+    extra_kwargs = {}
+    extra_kwargs["num_qo_head"] = num_qo_head
+    # Add other kwargs if needed in future
+    return extra_kwargs
+
+
 def _all_to_all_single_qkv_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -193,7 +205,7 @@ def _all_to_all_single_o_async(
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
-    H = kwargs.get("H", None)
+    H = kwargs.get("num_qo_head", None)
     _, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     B, S_GLOBAL, H_LOCAL, D = x.shape
@@ -265,7 +277,7 @@ def _all_to_all_single_o_fp8_async(
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
-    H = kwargs.get("H", None)
+    H = kwargs.get("num_qo_head", None)
     _, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     B, S_GLOBAL, H_LOCAL, D = x.shape
@@ -346,7 +358,7 @@ def _all_to_all_single_any_o_async(
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
-    H = kwargs.get("H", None)
+    H = kwargs.get("num_qo_head", None)
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
@@ -433,7 +445,7 @@ def _all_to_all_single_any_o_fp8_async(
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
-    H = kwargs.get("H", None)
+    H = kwargs.get("num_qo_head", None)
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)

@@ -14,10 +14,10 @@ except ImportError:
     )
 
 
-__all__ = ["_UnifiedTemplatedRingAttention", "_TemplatedRingAttention"]
+__all__ = ["UnifiedTemplatedRingAttention"]
 
 
-class _UnifiedTemplatedRingAttention(torch.autograd.Function):
+class UnifiedTemplatedRingAttention(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx: torch.autograd.function.FunctionCtx,

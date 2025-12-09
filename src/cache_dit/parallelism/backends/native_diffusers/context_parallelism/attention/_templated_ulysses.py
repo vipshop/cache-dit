@@ -26,6 +26,7 @@ from ._distributed_primitives import (
     _all_to_all_single_o_async,
     _all_to_all_single_qkv_fp8_async,
     _all_to_all_single_o_fp8_async,
+    _prepare_extra_comm_kwargs,
 )
 
 from cache_dit.logger import init_logger
@@ -34,12 +35,7 @@ logger = init_logger(__name__)
 
 
 __all__ = [
-    "_UnifiedTemplatedUlyssesAttention",
-    "_TemplatedUlyssesAttention",
-    "_TemplatedUlyssesAttentionFloat8",
-    "_TemplatedUlyssesAnythingAttention",
-    "_TemplatedUlyssesAnythingAttentionFloat8",
-    "_prepare_extra_comm_kwargs",
+    "UnifiedTemplatedUlyssesAttention",
     "EquipartitionSharder",
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
@@ -50,7 +46,7 @@ __all__ = [
 ]
 
 
-class _UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
+class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
     """A unified wrapper for Ulysses Attention and Ulysses Attention Float8."""
 
     @staticmethod
@@ -131,18 +127,6 @@ class _UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
                     backward_op,
                     _parallel_config,
                 )
-
-
-# Helper functions to for all-to-all communication with Ulysses Attention
-def _prepare_extra_comm_kwargs(
-    query: torch.Tensor,
-    **kwargs,
-) -> dict:
-    H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
-    extra_kwargs = {}
-    extra_kwargs["H"] = H
-    # Add other kwargs if needed in future
-    return extra_kwargs
 
 
 # Re-implement Ulysses Attention with custom async all-to-all communication in cache-dit
