@@ -34,9 +34,11 @@ logger = init_logger(__name__)
 
 
 __all__ = [
-    "TemplatedUlyssesAnythingAttention",
-    "TemplatedUlyssesAnythingAttentionFloat8",
-    "TemplatedUlyssesAttentionFloat8",
+    "_UnifiedTemplatedUlyssesAttention",
+    "_TemplatedUlyssesAttention",
+    "_TemplatedUlyssesAttentionFloat8",
+    "_TemplatedUlyssesAnythingAttention",
+    "_TemplatedUlyssesAnythingAttentionFloat8",
     "EquipartitionSharder",
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
@@ -47,7 +49,252 @@ __all__ = [
 ]
 
 
-class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
+class _UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
+    """A unified wrapper for Ulysses Attention and Ulysses Attention Float8."""
+
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        if is_ulysses_anything_enabled():
+            if is_ulysses_float8_enabled():
+                return _TemplatedUlyssesAnythingAttentionFloat8.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+            else:
+                return _TemplatedUlyssesAnythingAttention.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+        else:
+            if is_ulysses_float8_enabled():
+                return _TemplatedUlyssesAttentionFloat8.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+            else:
+                return _TemplatedUlyssesAttention.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+
+
+# Re-implement Ulysses Attention with custom async all-to-all communication in cache-dit
+# Use '_' prefix to avoid name conflict with diffusers' TemplatedUlyssesAttention.
+class _TemplatedUlyssesAttention(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        query_wait = _all_to_all_single_qkv_async(query, group)
+        key_wait = _all_to_all_single_qkv_async(key, group)
+        value_wait = _all_to_all_single_qkv_async(value, group)
+
+        query = query_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=True,
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        out_wait = _all_to_all_single_o_async(out, group)
+
+        if return_lse:
+            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
+            # cause more numerical instability.
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse_wait = _all_to_all_single_o_async(lse, group)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+        else:
+            out = out_wait()  # type: torch.Tensor
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError(
+            "Backward pass for Ulysses Attention in cache-dit is not implemented yet."
+        )
+
+
+class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        # Use async all_to_all to overlap comm and quant/dequant computation
+        # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
+        # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
+        # numerical instability. So we only use float8 all_to_all for Q, V and O.
+        # TODO: We should relax this design and support all QKV in float8 format while
+        # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
+        # stability. Using this smooth technique before All-to-All on K may introduce
+        # extra AllReduce communication overhead.
+        key_wait = _all_to_all_single_qkv_async(key, group)
+        query_wait = _all_to_all_single_qkv_fp8_async(query, group)
+        value_wait = _all_to_all_single_qkv_fp8_async(value, group)
+
+        query = query_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=True,
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        out_wait = _all_to_all_single_o_fp8_async(out, group)
+
+        if return_lse:
+            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
+            # cause more numerical instability.
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse_wait = _all_to_all_single_o_async(lse, group)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+        else:
+            out = out_wait()  # type: torch.Tensor
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError(
+            "Backward pass for Ulysses Attention Float8 in cache-dit is not implemented yet."
+        )
+
+
+class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
 
     @staticmethod
     def forward(
@@ -121,11 +368,11 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         *args,
     ):
         raise NotImplementedError(
-            "Backward pass for Ulysses Anything Attention is not implemented yet."
+            "Backward pass for Ulysses Anything Attention in cache-dit is not implemented yet."
         )
 
 
-class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
+class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
 
     @staticmethod
     def forward(
@@ -209,91 +456,7 @@ class TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         *args,
     ):
         raise NotImplementedError(
-            "Backward pass for Ulysses Anything Attention Float8 is not implemented yet."
-        )
-
-
-class TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask: Optional[torch.Tensor],
-        dropout_p: float,
-        is_causal: bool,
-        scale: Optional[float],
-        enable_gqa: bool,
-        return_lse: bool,
-        forward_op,
-        backward_op,
-        _parallel_config: Optional["ParallelConfig"] = None,
-    ):
-        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
-        group = ulysses_mesh.get_group()
-
-        ctx.forward_op = forward_op
-        ctx.backward_op = backward_op
-        ctx._parallel_config = _parallel_config
-
-        # Use async all_to_all to overlap comm and quant/dequant computation
-        # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
-        # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
-        # numerical instability. So we only use float8 all_to_all for Q, V and O.
-        # TODO: We should relax this design and support all QKV in float8 format while
-        # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
-        # stability. Using this smooth technique before All-to-All on K may introduce
-        # extra AllReduce communication overhead.
-        key_wait = _all_to_all_single_qkv_async(key, group)
-        query_wait = _all_to_all_single_qkv_fp8_async(query, group)
-        value_wait = _all_to_all_single_qkv_fp8_async(value, group)
-
-        query = query_wait()  # type: torch.Tensor
-        value = value_wait()  # type: torch.Tensor
-        key = key_wait()  # type: torch.Tensor
-
-        out = forward_op(
-            ctx,
-            query,
-            key,
-            value,
-            attn_mask,
-            dropout_p,
-            is_causal,
-            scale,
-            enable_gqa,
-            return_lse,
-            _save_ctx=True,
-            _parallel_config=_parallel_config,
-        )
-        if return_lse:
-            out, lse, *_ = out
-
-        out_wait = _all_to_all_single_o_fp8_async(out, group)
-
-        if return_lse:
-            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
-            # cause more numerical instability.
-            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_o_async(lse, group)
-            out = out_wait()  # type: torch.Tensor
-            lse = lse_wait()  # type: torch.Tensor
-            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
-        else:
-            out = out_wait()  # type: torch.Tensor
-            lse = None
-
-        return (out, lse) if return_lse else out
-
-    @staticmethod
-    def backward(
-        ctx: torch.autograd.function.FunctionCtx,
-        grad_out: torch.Tensor,
-        *args,
-    ):
-        raise NotImplementedError(
-            "Backward pass for Ulysses Attention Float8 is not implemented yet."
+            "Backward pass for Ulysses Anything Attention Float8 in cache-dit is not implemented yet."
         )
 
 
