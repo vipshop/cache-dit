@@ -52,7 +52,6 @@ if args.cache:
     cache_dit.enable_cache(
         (
             BlockAdapter(
-                pipe=None,
                 transformer=pipe.transformer,
                 blocks=[
                     pipe.transformer.transformer_blocks,
