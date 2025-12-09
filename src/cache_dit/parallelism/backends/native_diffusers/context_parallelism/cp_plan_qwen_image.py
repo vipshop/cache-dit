@@ -198,9 +198,9 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     joint_value_wait = _all_to_all_qv_async_func(joint_value, group, **comm_kwargs)
 
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
-    joint_value = joint_value_wait()  # type: torch.Tensor
     joint_query = joint_query_wait()  # type: torch.Tensor
     joint_key = joint_key_wait()  # type: torch.Tensor
+    joint_value = joint_value_wait()  # type: torch.Tensor
 
     # Compute joint attention
     out = dispatch_attention_fn(
