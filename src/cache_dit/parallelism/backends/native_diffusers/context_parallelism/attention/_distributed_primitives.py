@@ -40,6 +40,10 @@ def _get_rank_world_size(
 
 @functools.lru_cache(maxsize=128)
 def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
+    r"""Gather the local sequence length from all ranks.
+    S_LOCAL: int, local sequence length
+    return: List[int], list of sequence lengths from all ranks
+    """
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     comm_backends = str(dist.get_backend(group=group))
@@ -61,8 +65,6 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
 
 
 # Asynchronous all to all variants.
-
-
 def _maybe_pad_qkv_head(
     x: torch.Tensor,
     H: int,
