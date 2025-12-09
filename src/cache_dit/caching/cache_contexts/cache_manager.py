@@ -56,7 +56,7 @@ class CachedContextManager:
             return current_step == num_inference_steps - 1
         # If num_inference_steps is None, always return True, thus will make
         # `apply_stats_hooks` called after each forward when persistent_context is True.
-        # Otherwise, we will lost the accurate cached stats after each forward.
+        # Otherwise, we will lost the accurate cached stats after each request.
         return True
 
     @torch.compiler.disable
