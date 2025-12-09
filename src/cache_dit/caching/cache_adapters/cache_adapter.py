@@ -681,7 +681,7 @@ class CachedAdapter:
         transformer: torch.nn.Module,
         **force_refresh_kwargs,
     ):
-        verbose = force_refresh_kwargs.pop("verbose", True)
+        verbose = force_refresh_kwargs.pop("verbose", False)
         # Get context manager from transformer
         if not hasattr(transformer, "_context_manager"):
             logger.warning(

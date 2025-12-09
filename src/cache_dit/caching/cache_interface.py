@@ -377,7 +377,7 @@ def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
     """
     if force_refresh_kwargs:
         if "cache_config" not in force_refresh_kwargs:
-            verbose = force_refresh_kwargs.pop("verbose", True)
+            verbose = force_refresh_kwargs.pop("verbose", False)
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
             force_refresh_kwargs = load_options(force_refresh_kwargs, reset=True)
