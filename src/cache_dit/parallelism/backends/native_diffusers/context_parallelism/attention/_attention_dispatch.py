@@ -27,8 +27,8 @@ except ImportError:
     )
 from cache_dit.logger import init_logger
 
-from ._templated_ring import _UnifiedTemplatedRingAttention
-from ._templated_ulysses import _UnifiedTemplatedUlyssesAttention
+from ._templated_ring import UnifiedTemplatedRingAttention
+from ._templated_ulysses import UnifiedTemplatedUlyssesAttention
 
 logger = init_logger(__name__)
 
@@ -106,7 +106,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
         # TODO: add support for unified attention with ring/ulysses degree both being > 1
         if _parallel_config.context_parallel_config.ring_degree > 1:
-            return _UnifiedTemplatedRingAttention.apply(
+            return UnifiedTemplatedRingAttention.apply(
                 query,
                 key,
                 value,
@@ -121,7 +121,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
                 _parallel_config,
             )
         elif _parallel_config.context_parallel_config.ulysses_degree > 1:
-            return _UnifiedTemplatedUlyssesAttention.apply(
+            return UnifiedTemplatedUlyssesAttention.apply(
                 query,
                 key,
                 value,
