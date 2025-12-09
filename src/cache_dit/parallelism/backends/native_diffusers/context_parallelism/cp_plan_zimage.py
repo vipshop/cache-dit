@@ -146,6 +146,17 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
             return x_out.type_as(x_in)  # todo
 
     dtype = hidden_states.dtype
+    query = attn.to_q(hidden_states)  # type: torch.Tensor
+    query = query.unflatten(-1, (attn.heads, -1))
+    if attn.norm_q is not None:  # Apply Norms
+        query = attn.norm_q(query)
+    if freqs_cis is not None:  # Apply RoPE
+        query = apply_rotary_emb(query, freqs_cis)
+
+    comm_kwargs = _prepare_extra_comm_kwargs(key)
+
+    # Async all to all for query
+    query_wait = _all_to_all_qv_async_func(query, group)
 
     key = attn.to_k(hidden_states)  # type: torch.Tensor
     key = key.unflatten(-1, (attn.heads, -1))
@@ -154,20 +165,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         key = apply_rotary_emb(key, freqs_cis)
 
-    comm_kwargs = _prepare_extra_comm_kwargs(key)
-
     # Async all to all for key
     key_wait = _all_to_all_k_async_func(key, group, **comm_kwargs)
-
-    query = attn.to_q(hidden_states)  # type: torch.Tensor
-    query = query.unflatten(-1, (attn.heads, -1))
-    if attn.norm_q is not None:  # Apply Norms
-        query = attn.norm_q(query)
-    if freqs_cis is not None:  # Apply RoPE
-        query = apply_rotary_emb(query, freqs_cis)
-
-    # Async all to all for query
-    query_wait = _all_to_all_qv_async_func(query, group)
 
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
@@ -177,8 +176,8 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
 
     # Ensure the query, key, value are ready
     query = query_wait()
-    value = value_wait()
     key = key_wait()
+    value = value_wait()
 
     # Cast to correct dtype
     query, key = query.to(dtype), key.to(dtype)

@@ -128,18 +128,6 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
     _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(disable_fp8=True)
 
-    value = attn.to_v(hidden_states)  # type: torch.Tensor
-    value = value.unflatten(-1, (attn.heads, -1))
-    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-        encoder_value = attn.add_v_proj(encoder_hidden_states)  # type: torch.Tensor
-        encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
-        value = torch.cat([encoder_value, value], dim=1)
-
-    comm_kwargs = _prepare_extra_comm_kwargs(value)
-
-    # Async all to all for value
-    value_wait = _all_to_all_qv_async_func(value, group, **comm_kwargs)
-
     query = attn.to_q(hidden_states)
     query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
     query = attn.norm_q(query)
@@ -150,6 +138,8 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         query = torch.cat([encoder_query, query], dim=1)
     if image_rotary_emb is not None:
         query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+
+    comm_kwargs = _prepare_extra_comm_kwargs(query)
 
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group, **comm_kwargs)
@@ -168,10 +158,20 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     # Async all to all for key
     key_wait = _all_to_all_k_async_func(key, group, **comm_kwargs)
 
+    value = attn.to_v(hidden_states)  # type: torch.Tensor
+    value = value.unflatten(-1, (attn.heads, -1))
+    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
+        encoder_value = attn.add_v_proj(encoder_hidden_states)  # type: torch.Tensor
+        encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
+        value = torch.cat([encoder_value, value], dim=1)
+
+    # Async all to all for value
+    value_wait = _all_to_all_qv_async_func(value, group, **comm_kwargs)
+
     # Ensure the query, key, value are ready
-    value = value_wait()
     query = query_wait()
     key = key_wait()
+    value = value_wait()
 
     out = dispatch_attention_fn(
         query,
