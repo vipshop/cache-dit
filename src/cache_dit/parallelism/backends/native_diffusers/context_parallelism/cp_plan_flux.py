@@ -33,7 +33,7 @@ from cache_dit.logger import init_logger
 
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._distributed_primitives import _prepare_extra_comm_kwargs
+from .attention._distributed_primitives import _prepare_ulysses_comm_metadata
 
 logger = init_logger(__name__)
 
@@ -135,7 +135,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
         value = torch.cat([encoder_value, value], dim=1)
 
-    comm_kwargs = _prepare_extra_comm_kwargs(value)
+    comm_kwargs = _prepare_ulysses_comm_metadata(value)
 
     # Async all to all for value
     value_wait = _all_to_all_qv_async_func(value, group, **comm_kwargs)

@@ -28,7 +28,7 @@ from .cp_plan_registers import (
 )
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._distributed_primitives import _prepare_extra_comm_kwargs
+from .attention._distributed_primitives import _prepare_ulysses_comm_metadata
 from ..utils import _maybe_patch_find_submodule
 
 from cache_dit.logger import init_logger
@@ -153,7 +153,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         query = apply_rotary_emb(query, freqs_cis)
 
-    comm_kwargs = _prepare_extra_comm_kwargs(key)
+    comm_kwargs = _prepare_ulysses_comm_metadata(key)
 
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)

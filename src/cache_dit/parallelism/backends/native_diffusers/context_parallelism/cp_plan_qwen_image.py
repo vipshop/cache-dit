@@ -30,7 +30,7 @@ from .cp_plan_registers import (
 
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._distributed_primitives import _prepare_extra_comm_kwargs
+from .attention._distributed_primitives import _prepare_ulysses_comm_metadata
 
 from cache_dit.logger import init_logger
 
@@ -165,7 +165,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     # Order: [text, image]
     joint_query = torch.cat([txt_query, img_query], dim=1)
 
-    comm_kwargs = _prepare_extra_comm_kwargs(joint_query)
+    comm_kwargs = _prepare_ulysses_comm_metadata(joint_query)
 
     # Async all to all for query
     joint_query_wait = _all_to_all_qv_async_func(joint_query, group, **comm_kwargs)

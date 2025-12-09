@@ -80,8 +80,8 @@ def _maybe_pad_qkv_head(
     if H % world_size != 0:
         H_PAD = world_size - (H % world_size)
         NEW_H_LOCAL = (H + H_PAD) // world_size
-        # e.g., Allow: H=30, world_size=8 -> NEW_H_LOCAL=4, PAD=2.
-        # NOT ALLOW: H=30, world_size=16 -> NEW_H_LOCAL=2, PAD=14.
+        # e.g., Allow: H=30, world_size=8 -> NEW_H_LOCAL=4, H_PAD=2.
+        # NOT ALLOW: H=30, world_size=16 -> NEW_H_LOCAL=2, H_PAD=14.
         assert (
             H_PAD < NEW_H_LOCAL
         ), f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
@@ -151,7 +151,7 @@ def _maybe_unpad_o_head(
 
 
 # Helper functions to for all-to-all communication with Ulysses Attention
-def _prepare_extra_comm_kwargs(
+def _prepare_ulysses_comm_metadata(
     query: torch.Tensor,
     **kwargs,
 ) -> dict:

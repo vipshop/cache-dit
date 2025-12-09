@@ -26,7 +26,7 @@ from ._distributed_primitives import (
     _all_to_all_single_o_async,
     _all_to_all_single_qkv_fp8_async,
     _all_to_all_single_o_fp8_async,
-    _prepare_extra_comm_kwargs,
+    _prepare_ulysses_comm_metadata,
 )
 
 from cache_dit.logger import init_logger
@@ -155,7 +155,7 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_extra_comm_kwargs(query)
+        kwargs = _prepare_ulysses_comm_metadata(query)
         query_wait = _all_to_all_single_qkv_async(query, group, **kwargs)
         key_wait = _all_to_all_single_qkv_async(key, group, **kwargs)
         value_wait = _all_to_all_single_qkv_async(value, group, **kwargs)
@@ -231,7 +231,7 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_extra_comm_kwargs(query)
+        kwargs = _prepare_ulysses_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
@@ -320,7 +320,7 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_extra_comm_kwargs(query)
+        kwargs = _prepare_ulysses_comm_metadata(query)
         query_wait = _all_to_all_single_any_qkv_async(query, group, **kwargs)
         key_wait = _all_to_all_single_any_qkv_async(key, group, **kwargs)
         value_wait = _all_to_all_single_any_qkv_async(value, group, **kwargs)
@@ -401,7 +401,7 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_extra_comm_kwargs(query)
+        kwargs = _prepare_ulysses_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
