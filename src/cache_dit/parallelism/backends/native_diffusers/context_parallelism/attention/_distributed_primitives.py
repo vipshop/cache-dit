@@ -41,7 +41,7 @@ def _get_rank_world_size(
 @functools.lru_cache(maxsize=128)
 def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     r"""Gather the local size from all ranks.
-    size: int, local size length
+    size: int, local size
     return: List[int], list of size from all ranks
     """
     world_size = dist.get_world_size(group=group)
