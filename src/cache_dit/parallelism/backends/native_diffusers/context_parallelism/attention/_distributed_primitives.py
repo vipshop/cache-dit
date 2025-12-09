@@ -167,7 +167,7 @@ def _all_to_all_single_qkv_async(
     x = fc.all_to_all_single(x, None, None, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x, H, H_PAD
+        nonlocal x, H_PAD
         x = _wait_tensor(x)
         # (world_size, S_LOCAL, B, H_LOCAL, D)
         # -> (S_GLOBAL, B, H_LOCAL, D)
@@ -200,7 +200,7 @@ def _all_to_all_single_o_async(
     x = fc.all_to_all_single(x, None, None, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)
         # (world_size, H_LOCAL, B, S_LOCAL, D)
         # -> (H_GLOBAL, B, S_LOCAL, D)
@@ -233,7 +233,7 @@ def _all_to_all_single_qkv_fp8_async(
     x = fc.all_to_all_single(x, None, None, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)
         x = x.reshape(shape_with_scale)
         x = per_token_dequant_fp8(x)
@@ -270,7 +270,7 @@ def _all_to_all_single_o_fp8_async(
     x = fc.all_to_all_single(x, None, None, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)
         x = x.reshape(shape_with_scale)
         x = per_token_dequant_fp8(x)
@@ -312,7 +312,7 @@ def _all_to_all_single_any_qkv_async(
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
         # (S_GLOBAL, B, H_LOCAL, D)
         # -> (B, S_GLOBAL, H_LOCAL, D)
@@ -350,7 +350,7 @@ def _all_to_all_single_any_o_async(
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
         # NOTE: We can not simply reshape here, because the collective tensors
         # are stacked at dim=0(SeqLen), we need to first split them and then concat at
@@ -396,7 +396,7 @@ def _all_to_all_single_any_qkv_fp8_async(
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)
         x = per_token_dequant_fp8(x)
         x = x.permute(1, 0, 2, 3).contiguous()
@@ -437,7 +437,7 @@ def _all_to_all_single_any_o_fp8_async(
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H_PAD
         x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
         # NOTE: We can not simply reshape here, because the collective tensors
         # are stacked at dim=0(SeqLen), we need to first split them and then concat at
