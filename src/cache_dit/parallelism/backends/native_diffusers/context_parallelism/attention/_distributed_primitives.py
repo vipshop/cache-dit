@@ -151,6 +151,7 @@ def _maybe_unpad_o_head(
 def _all_to_all_single_qkv_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    **kwargs,
 ) -> torch.Tensor:
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D)
@@ -182,12 +183,15 @@ def _all_to_all_single_qkv_async(
 def _all_to_all_single_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
-    H: int = None,  # passed by users
+    **kwargs,
 ) -> torch.Tensor:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
+    # Assume H is provided in kwargs, since we can't infer H from x's shape.
+    # The padding logic needs H to determine if padding is necessary.
+    H = kwargs.get("H", None)
     _, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     B, S_GLOBAL, H_LOCAL, D = x.shape
@@ -215,6 +219,7 @@ def _all_to_all_single_o_async(
 def _all_to_all_single_qkv_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    **kwargs,
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D)
@@ -250,12 +255,15 @@ def _all_to_all_single_qkv_fp8_async(
 def _all_to_all_single_o_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
-    H: int = None,  # passed by users
+    **kwargs,
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
+    # Assume H is provided in kwargs, since we can't infer H from x's shape.
+    # The padding logic needs H to determine if padding is necessary.
+    H = kwargs.get("H", None)
     _, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     B, S_GLOBAL, H_LOCAL, D = x.shape
@@ -288,6 +296,7 @@ def _all_to_all_single_o_fp8_async(
 def _all_to_all_single_any_qkv_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    **kwargs,
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D)
@@ -327,12 +336,15 @@ def _all_to_all_single_any_qkv_async(
 def _all_to_all_single_any_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
-    H: int = None,  # passed by users
+    **kwargs,
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
+    # Assume H is provided in kwargs, since we can't infer H from x's shape.
+    # The padding logic needs H to determine if padding is necessary.
+    H = kwargs.get("H", None)
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
@@ -371,6 +383,7 @@ def _all_to_all_single_any_o_async(
 def _all_to_all_single_any_qkv_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    **kwargs,
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D)
@@ -410,12 +423,15 @@ def _all_to_all_single_any_qkv_fp8_async(
 def _all_to_all_single_any_o_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
-    H: int = None,  # passed by users
+    **kwargs,
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
+    # Assume H is provided in kwargs, since we can't infer H from x's shape.
+    # The padding logic needs H to determine if padding is necessary.
+    H = kwargs.get("H", None)
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)

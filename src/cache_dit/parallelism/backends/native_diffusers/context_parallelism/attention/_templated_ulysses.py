@@ -39,6 +39,7 @@ __all__ = [
     "_TemplatedUlyssesAttentionFloat8",
     "_TemplatedUlyssesAnythingAttention",
     "_TemplatedUlyssesAnythingAttentionFloat8",
+    "_prepare_extra_comm_kwargs",
     "EquipartitionSharder",
     "enable_ulysses_anything",
     "is_ulysses_anything_enabled",
@@ -132,6 +133,18 @@ class _UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
                 )
 
 
+# Helper functions to for all-to-all communication with Ulysses Attention
+def _prepare_extra_comm_kwargs(
+    query: torch.Tensor,
+    **kwargs,
+) -> dict:
+    H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
+    extra_kwargs = {}
+    extra_kwargs["H"] = H
+    # Add other kwargs if needed in future
+    return extra_kwargs
+
+
 # Re-implement Ulysses Attention with custom async all-to-all communication in cache-dit
 # Use '_' prefix to avoid name conflict with diffusers' TemplatedUlyssesAttention.
 class _TemplatedUlyssesAttention(torch.autograd.Function):
@@ -158,10 +171,10 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
-        query_wait = _all_to_all_single_qkv_async(query, group)
-        key_wait = _all_to_all_single_qkv_async(key, group)
-        value_wait = _all_to_all_single_qkv_async(value, group)
+        kwargs = _prepare_extra_comm_kwargs(query)
+        query_wait = _all_to_all_single_qkv_async(query, group, **kwargs)
+        key_wait = _all_to_all_single_qkv_async(key, group, **kwargs)
+        value_wait = _all_to_all_single_qkv_async(value, group, **kwargs)
 
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
@@ -183,13 +196,13 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out_wait = _all_to_all_single_o_async(out, group, H)
+        out_wait = _all_to_all_single_o_async(out, group, **kwargs)
 
         if return_lse:
             # NOTE: DON'T use float8 all_to_all for out and lse, as it may
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_o_async(lse, group, H)
+            lse_wait = _all_to_all_single_o_async(lse, group, **kwargs)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -234,7 +247,7 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
+        kwargs = _prepare_extra_comm_kwargs(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
@@ -243,9 +256,9 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
         # stability. Using this smooth technique before All-to-All on K may introduce
         # extra AllReduce communication overhead.
-        key_wait = _all_to_all_single_qkv_async(key, group)
-        query_wait = _all_to_all_single_qkv_fp8_async(query, group)
-        value_wait = _all_to_all_single_qkv_fp8_async(value, group)
+        key_wait = _all_to_all_single_qkv_async(key, group, **kwargs)
+        query_wait = _all_to_all_single_qkv_fp8_async(query, group, **kwargs)
+        value_wait = _all_to_all_single_qkv_fp8_async(value, group, **kwargs)
 
         query = query_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
@@ -268,13 +281,13 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out_wait = _all_to_all_single_o_fp8_async(out, group, H)
+        out_wait = _all_to_all_single_o_fp8_async(out, group, **kwargs)
 
         if return_lse:
             # NOTE: DON'T use float8 all_to_all for out and lse, as it may
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_o_async(lse, group, H)
+            lse_wait = _all_to_all_single_o_async(lse, group, **kwargs)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -323,10 +336,10 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
-        query_wait = _all_to_all_single_any_qkv_async(query, group)
-        key_wait = _all_to_all_single_any_qkv_async(key, group)
-        value_wait = _all_to_all_single_any_qkv_async(value, group)
+        kwargs = _prepare_extra_comm_kwargs(query)
+        query_wait = _all_to_all_single_any_qkv_async(query, group, **kwargs)
+        key_wait = _all_to_all_single_any_qkv_async(key, group, **kwargs)
+        value_wait = _all_to_all_single_any_qkv_async(value, group, **kwargs)
 
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
@@ -350,12 +363,12 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out_wait = _all_to_all_single_any_o_async(out, group, H)
+        out_wait = _all_to_all_single_any_o_async(out, group, **kwargs)
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_any_o_async(lse, group, H)
+            lse_wait = _all_to_all_single_any_o_async(lse, group, **kwargs)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -404,7 +417,7 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
+        kwargs = _prepare_extra_comm_kwargs(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
@@ -413,9 +426,9 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
         # stability. Using this smooth technique before All-to-All on K may introduce
         # extra AllReduce communication overhead.
-        key_wait = _all_to_all_single_any_qkv_async(key, group)
-        query_wait = _all_to_all_single_any_qkv_fp8_async(query, group)
-        value_wait = _all_to_all_single_any_qkv_fp8_async(value, group)
+        key_wait = _all_to_all_single_any_qkv_async(key, group, **kwargs)
+        query_wait = _all_to_all_single_any_qkv_fp8_async(query, group, **kwargs)
+        value_wait = _all_to_all_single_any_qkv_fp8_async(value, group, **kwargs)
 
         query = query_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
@@ -438,13 +451,13 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out_wait = _all_to_all_single_any_o_fp8_async(out, group, H)
+        out_wait = _all_to_all_single_any_o_fp8_async(out, group, **kwargs)
 
         if return_lse:
             # NOTE: DON'T use float8 all_to_all for out and lse, as it may
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_any_o_async(lse, group, H)
+            lse_wait = _all_to_all_single_any_o_async(lse, group, **kwargs)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)

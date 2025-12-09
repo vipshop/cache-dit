@@ -33,6 +33,7 @@ from cache_dit.logger import init_logger
 
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
+from .attention._templated_ulysses import _prepare_extra_comm_kwargs
 
 logger = init_logger(__name__)
 
@@ -134,8 +135,10 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
         value = torch.cat([encoder_value, value], dim=1)
 
+    comm_kwargs = _prepare_extra_comm_kwargs(value)
+
     # Async all to all for value
-    value_wait = _all_to_all_qv_async_func(value, group)
+    value_wait = _all_to_all_qv_async_func(value, group, **comm_kwargs)
 
     query = attn.to_q(hidden_states)
     query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
@@ -148,9 +151,8 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     if image_rotary_emb is not None:
         query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
 
-    H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
     # Async all to all for query
-    query_wait = _all_to_all_qv_async_func(query, group)
+    query_wait = _all_to_all_qv_async_func(query, group, **comm_kwargs)
 
     key = attn.to_k(hidden_states)  # type: torch.Tensor
     key = key.unflatten(-1, (attn.heads, -1))
@@ -164,7 +166,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
     # Async all to all for key
-    key_wait = _all_to_all_k_async_func(key, group)
+    key_wait = _all_to_all_k_async_func(key, group, **comm_kwargs)
 
     # Ensure the query, key, value are ready
     value = value_wait()
@@ -182,7 +184,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
 
     if encoder_hidden_states is not None:
         # Must be sync all to all for out when encoder_hidden_states is used
-        out_wait = _all_to_all_o_async_func(out, group, H)  # (B, S_LOCAL, H_GLOBAL, D)
+        out_wait = _all_to_all_o_async_func(out, group, **comm_kwargs)  # (B, S_LOCAL, H_GLOBAL, D)
         out = out_wait()  # type: torch.Tensor
 
         hidden_states = out.flatten(2, 3)
@@ -202,7 +204,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         return hidden_states, encoder_hidden_states
     else:
         # Can be async all to all for out when no encoder_hidden_states
-        out_wait = _all_to_all_o_async_func(out, group, H)
+        out_wait = _all_to_all_o_async_func(out, group, **comm_kwargs)  # (B, S_LOCAL, H_GLOBAL, D)
         return out_wait
 
 

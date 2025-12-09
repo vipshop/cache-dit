@@ -28,6 +28,7 @@ from .cp_plan_registers import (
 )
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
+from .attention._templated_ulysses import _prepare_extra_comm_kwargs
 from ..utils import _maybe_patch_find_submodule
 
 from cache_dit.logger import init_logger
@@ -153,8 +154,10 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         key = apply_rotary_emb(key, freqs_cis)
 
+    comm_kwargs = _prepare_extra_comm_kwargs(key)
+
     # Async all to all for key
-    key_wait = _all_to_all_k_async_func(key, group)
+    key_wait = _all_to_all_k_async_func(key, group, **comm_kwargs)
 
     query = attn.to_q(hidden_states)  # type: torch.Tensor
     query = query.unflatten(-1, (attn.heads, -1))
@@ -163,7 +166,6 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         query = apply_rotary_emb(query, freqs_cis)
 
-    H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)
 
@@ -171,7 +173,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     value = value.unflatten(-1, (attn.heads, -1))
 
     # Async all to all for value
-    value_wait = _all_to_all_qv_async_func(value, group)
+    value_wait = _all_to_all_qv_async_func(value, group, **comm_kwargs)
 
     # Ensure the query, key, value are ready
     query = query_wait()
@@ -197,7 +199,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out_wait = _all_to_all_o_async_func(out, group, H)  # (B, S_LOCAL, H_GLOBAL, D)
+    out_wait = _all_to_all_o_async_func(out, group, **comm_kwargs)  # (B, S_LOCAL, H_GLOBAL, D)
     hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back
