@@ -295,7 +295,7 @@ def strify(args, pipe_or_stats):
     else:
         if args.ulysses_float8:
             base_str += "_ulysses_float8"
-    if args._ulysses_async:
+    if args.ulysses_async:
         base_str += "_ulysses_async"
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
