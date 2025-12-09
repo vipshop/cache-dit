@@ -165,10 +165,10 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     # Order: [text, image]
     joint_query = torch.cat([txt_query, img_query], dim=1)
 
-    comm_metadata = _prepare_ulysses_comm_metadata(joint_query)
+    metadata = _prepare_ulysses_comm_metadata(joint_query)
 
     # Async all to all for query
-    joint_query_wait = _all_to_all_qv_async_func(joint_query, group, **comm_metadata)
+    joint_query_wait = _all_to_all_qv_async_func(joint_query, group, **metadata)
 
     img_key = attn.to_k(hidden_states)
     txt_key = attn.add_k_proj(encoder_hidden_states)
@@ -186,7 +186,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     joint_key = torch.cat([txt_key, img_key], dim=1)
 
     # Async all to all for key
-    joint_key_wait = _all_to_all_k_async_func(joint_key, group, **comm_metadata)
+    joint_key_wait = _all_to_all_k_async_func(joint_key, group, **metadata)
 
     img_value = attn.to_v(hidden_states)
     txt_value = attn.add_v_proj(encoder_hidden_states)
@@ -195,7 +195,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     joint_value = torch.cat([txt_value, img_value], dim=1)
 
     # Async all to all for value
-    joint_value_wait = _all_to_all_qv_async_func(joint_value, group, **comm_metadata)
+    joint_value_wait = _all_to_all_qv_async_func(joint_value, group, **metadata)
 
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
     joint_query = joint_query_wait()  # type: torch.Tensor
@@ -214,7 +214,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out_wait = _all_to_all_o_async_func(out, group, **comm_metadata)  # (B, S_LOCAL, H_GLOBAL, D)
+    out_wait = _all_to_all_o_async_func(out, group, **metadata)  # (B, S_LOCAL, H_GLOBAL, D)
     joint_hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back
