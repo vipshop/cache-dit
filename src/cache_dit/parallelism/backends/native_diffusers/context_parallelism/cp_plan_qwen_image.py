@@ -47,10 +47,8 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         # NOTE: Set it as False to use custom CP plan defined here.
         self._cp_planner_preferred_native_diffusers = False
 
-        experimental_ulysses_async_qkv_proj = kwargs.get(
-            "experimental_ulysses_async_qkv_proj", False
-        )
-        if experimental_ulysses_async_qkv_proj:
+        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
+        if experimental_ulysses_async:
             QwenDoubleStreamAttnProcessor2_0.__call__ = (
                 __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
             )

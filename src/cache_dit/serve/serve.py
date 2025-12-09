@@ -107,7 +107,6 @@ def get_args(
         help="Enable Ulysses Attention/UAA Float8 for context parallelism",
     )
     parser.add_argument(
-        "--ulysses-async-qkv-proj",
         "--ulysses-async",
         "--uaqkv",
         action="store_true",
@@ -252,8 +251,8 @@ def launch_server(args=None):
             parallel_args["experimental_ulysses_anything"] = True
         if hasattr(args, "ulysses_float8") and args.ulysses_float8:
             parallel_args["experimental_ulysses_float8"] = True
-        if hasattr(args, "ulysses_async_qkv_proj") and args.ulysses_async_qkv_proj:
-            parallel_args["experimental_ulysses_async_qkv_proj"] = True
+        if hasattr(args, "ulysses_async") and args.ulysses_async:
+            parallel_args["experimental_ulysses_async"] = True
     elif args.parallel_type == "tp":
         pass
 

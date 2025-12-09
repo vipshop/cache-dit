@@ -820,7 +820,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 </div>
 
-Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](../examples/parallelism/), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) and 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image) models are supported, and more models will be added in the future—stay tuned!
+Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image) and 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image) models are supported, and more models will be added in the future—stay tuned!
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -829,11 +829,11 @@ from cache_dit import ParallelismConfig
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
-    # Set `experimental_ulysses_async_qkv_proj` as True to enable Async Ulysses QKV Projection.
+    # Set `experimental_ulysses_async` as True to enable Async Ulysses QKV Projection.
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
         parallel_kwargs={
-            "experimental_ulysses_async_qkv_proj": True
+            "experimental_ulysses_async": True
         },
     ),
 )
