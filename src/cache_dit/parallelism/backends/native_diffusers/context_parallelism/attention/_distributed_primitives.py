@@ -12,7 +12,7 @@ logger = init_logger(__name__)
 
 # Some helper distributed primitive functions for context parallel attention.
 
-# NOTE: We should always use the asynchronous all to all variant to keep the uified input/output shape
+# NOTE: We should always use the asynchronous all to all variants to keep the uified input/output shape
 # for any_qkvo and non-any_qkvo cases, otherwise, the input/output shape will be different, which makes
 # the unified function implementation complex and ugly.
 
