@@ -9,14 +9,14 @@ try:
         _find_submodule_by_name as _find_submodule_by_name_for_context_parallel,
     )
 
-    def native_diffusers_parallelism_available() -> bool:
+    def _is_diffusers_parallelism_available() -> bool:
         return True
 
 except ImportError:
     ContextParallelConfig = None
     _find_submodule_by_name_for_context_parallel = None
 
-    def native_diffusers_parallelism_available() -> bool:
+    def _is_diffusers_parallelism_available() -> bool:
         return False
 
 
@@ -29,7 +29,7 @@ logger = init_logger(__name__)
 # This function is only used when diffusers native context parallelism is enabled and can compatible with the
 # original one.
 if (
-    native_diffusers_parallelism_available()
+    _is_diffusers_parallelism_available()
     and _find_submodule_by_name_for_context_parallel is not None
 ):
 
@@ -77,17 +77,15 @@ if (
                     f"'{first_atom}' is not a submodule of '{model.__class__.__name__}'"
                 )
 
-    def maybe_patch_cp_find_submodule_by_name():
+    def _maybe_patch_find_submodule():
         if (
             diffusers.hooks.context_parallel._find_submodule_by_name
             != _patch_find_submodule_by_name
         ):
             diffusers.hooks.context_parallel._find_submodule_by_name = _patch_find_submodule_by_name
-            logger.info(
-                "Patched diffusers.hooks.context_parallel._find_submodule_by_name for ModuleDict support."
-            )
+            logger.info("Patched _find_submodule_by_name for torch.nn.ModuleDict support.")
 
 else:
 
-    def maybe_patch_cp_find_submodule_by_name():
+    def _maybe_patch_find_submodule():
         pass

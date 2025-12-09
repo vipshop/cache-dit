@@ -6,20 +6,21 @@ from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
 from ..utils import (
-    native_diffusers_parallelism_available,
+    _is_diffusers_parallelism_available,
     ContextParallelConfig,
 )
-from .attention import maybe_resigter_native_attention_backend
-from .attention import (
+from .attention import _maybe_resigter_attn_backends
+from .attention._templated_ulysses import (
     enable_ulysses_anything,
     enable_ulysses_float8,
 )
-from .cp_planners import *
 
 try:
-    maybe_resigter_native_attention_backend()
+    _maybe_resigter_attn_backends()
 except ImportError as e:
     raise ImportError(e)
+
+from .cp_planners import *
 
 logger = init_logger(__name__)
 
@@ -41,7 +42,7 @@ def maybe_enable_context_parallelism(
 
     if (
         parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER
-        and native_diffusers_parallelism_available()
+        and _is_diffusers_parallelism_available()
     ):
         cp_config = None
         if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:

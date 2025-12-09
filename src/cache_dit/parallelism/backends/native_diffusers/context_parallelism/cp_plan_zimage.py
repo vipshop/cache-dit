@@ -28,7 +28,7 @@ from .cp_plan_registers import (
 )
 from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
 from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from ..utils import maybe_patch_cp_find_submodule_by_name
+from ..utils import _maybe_patch_find_submodule
 
 from cache_dit.logger import init_logger
 
@@ -70,7 +70,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         # compatible with diffusers native context parallelism, e.g., check the split/gather
         # hooks in each block/layer in the initialization of DBCache.
         # Issue: https://github.com/vipshop/cache-dit/issues/498
-        maybe_patch_cp_find_submodule_by_name()
+        _maybe_patch_find_submodule()
         # TODO: Patch rotary embedding function to avoid complex number ops
         n_noise_refiner_layers = len(transformer.noise_refiner)  # 2
         n_context_refiner_layers = len(transformer.context_refiner)  # 2
@@ -103,7 +103,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             "layers.*": {
                 "freqs_cis": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
             },
-            # NEED: call maybe_patch_cp_find_submodule_by_name to support ModuleDict like 'all_final_layer'
+            # NEED: call _maybe_patch_find_submodule to support ModuleDict like 'all_final_layer'
             "all_final_layer": ContextParallelOutput(gather_dim=1, expected_dims=3),
             # NOTE: The 'all_final_layer' is a ModuleDict of several final layers,
             # each for a specific patch size combination, so we do not add hooks for it here.
