@@ -48,7 +48,7 @@ def print_tensor(
     name: str,
     dim: int = 1,
     no_dist_shape: bool = True,
-    disable: bool = False,
+    disable: bool = True,
 ):
     if disable:
         return
@@ -73,11 +73,12 @@ def print_tensor(
         else:
             x_shape = x.shape
 
-        if torch.distributed.get_rank() == 0:
-            print(
-                f"{name}, mean: {gather_x.float().mean().item()}, "
-                f"std: {gather_x.float().std().item()}, shape: {x_shape}"
-            )
+        rank = torch.distributed.get_rank()
+        print(
+            f"\nrank: {rank}, {name}, mean: {gather_x.float().mean().item()}, "
+            f"std: {gather_x.float().std().item()}, shape: {x_shape}",
+            flush=True,
+        )
     else:
         print(
             f"{name}, mean: {x.float().mean().item()}, "

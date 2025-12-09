@@ -158,6 +158,7 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
+        H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
         query_wait = _all_to_all_single_qkv_async(query, group)
         key_wait = _all_to_all_single_qkv_async(key, group)
         value_wait = _all_to_all_single_qkv_async(value, group)
@@ -165,7 +166,6 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
-
         out = forward_op(
             ctx,
             query,
@@ -183,13 +183,13 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out_wait = _all_to_all_single_o_async(out, group)
+        out_wait = _all_to_all_single_o_async(out, group, H)
 
         if return_lse:
             # NOTE: DON'T use float8 all_to_all for out and lse, as it may
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_o_async(lse, group)
+            lse_wait = _all_to_all_single_o_async(lse, group, H)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)

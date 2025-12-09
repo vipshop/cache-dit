@@ -62,6 +62,91 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
 # Asynchronous all to all variants.
 
 
+def _maybe_pad_qkv_head(
+    x: torch.Tensor,
+    H: int,
+    group: dist.ProcessGroup,
+) -> Tuple[torch.Tensor, int]:
+    r"""Maybe pad the head dimension to be divisible by world_size.
+    x: torch.Tensor, shape (B, S_LOCAL, H, D)
+    H: int, original global head num
+    return: Tuple[torch.Tensor, int], padded tensor (B, S_LOCAL, H + H_PAD, D) and H_PAD
+    """
+    _, world_size = _get_rank_world_size(group)
+    H_PAD = 0
+    if H % world_size != 0:
+        H_PAD = world_size - (H % world_size)
+        NEW_H_LOCAL = (H + H_PAD) // world_size
+        # e.g., Allow: H=30, world_size=8 -> NEW_H_LOCAL=4, PAD=2.
+        # NOT ALLOW: H=30, world_size=16 -> NEW_H_LOCAL=2, PAD=14.
+        assert (
+            H_PAD < NEW_H_LOCAL
+        ), f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
+        x = torch.nn.functional.pad(x, (0, 0, 0, H_PAD)).contiguous()
+    return x, H_PAD
+
+
+def _maybe_unpad_qkv_head(
+    x: torch.Tensor,
+    H_PAD: int,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    r"""Maybe unpad the head dimension.
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL + H_PAD, D)
+    H_PAD: int, head padding num
+    return: torch.Tensor, unpadded tensor (B, S_GLOBAL, H_LOCAL, D)
+    """
+    rank, world_size = _get_rank_world_size(group)
+    # Only the last rank may have padding
+    if H_PAD > 0 and rank == world_size - 1:
+        x = x[:, :, :-H_PAD, :]
+    return x.contiguous()
+
+
+def _maybe_pad_o_head(
+    x: torch.Tensor,
+    H: int,
+    group: dist.ProcessGroup,
+) -> Tuple[torch.Tensor, int]:
+    r"""Maybe pad the head dimension to be divisible by world_size.
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
+    H: int, original global head num
+    return: Tuple[torch.Tensor, int], padded tensor (B, S_GLOBAL, H_LOCAL + H_PAD, D) and H_PAD
+    """
+    if H is None:
+        return x, 0
+
+    rank, world_size = _get_rank_world_size(group)
+    H_PAD = 0
+    # Only the last rank may need padding
+    if H % world_size != 0:
+        # We need to broadcast H_PAD to all ranks to keep consistency
+        # in unpadding step later for all ranks.
+        H_PAD = world_size - (H % world_size)
+        NEW_H_LOCAL = (H + H_PAD) // world_size
+        assert (
+            H_PAD < NEW_H_LOCAL
+        ), f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
+        if rank == world_size - 1:
+            x = torch.nn.functional.pad(x, (0, 0, 0, H_PAD)).contiguous()
+    return x, H_PAD
+
+
+def _maybe_unpad_o_head(
+    x: torch.Tensor,
+    H_PAD: int,
+    group: dist.ProcessGroup,
+) -> torch.Tensor:
+    r"""Maybe unpad the head dimension.
+    x: torch.Tensor, shape (B, S_LOCAL, H_GLOBAL + H_PAD, D)
+    H_PAD: int, head padding num
+    return: torch.Tensor, unpadded tensor (B, S_LOCAL, H_GLOBAL, D)
+    """
+    if H_PAD > 0:
+        x = x[:, :, :-H_PAD, :]
+    return x.contiguous()
+
+
 def _all_to_all_single_qkv_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
@@ -72,7 +157,8 @@ def _all_to_all_single_qkv_async(
     """
     _, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H, D = x.shape
-    H_LOCAL = H // world_size
+    x, H_PAD = _maybe_pad_qkv_head(x, H, group)
+    H_LOCAL = (H + H_PAD) // world_size
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
     _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
 
@@ -80,12 +166,13 @@ def _all_to_all_single_qkv_async(
     x = fc.all_to_all_single(x, None, None, group)
 
     def wait() -> torch.Tensor:
-        nonlocal x
+        nonlocal x, H, H_PAD
         x = _wait_tensor(x)
         # (world_size, S_LOCAL, B, H_LOCAL, D)
         # -> (S_GLOBAL, B, H_LOCAL, D)
         # -> (B, S_GLOBAL, H_LOCAL, D)
         x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
     return wait
@@ -94,12 +181,14 @@ def _all_to_all_single_qkv_async(
 def _all_to_all_single_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    H: int = None,  # passed by users
 ) -> torch.Tensor:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
     _, world_size = _get_rank_world_size(group)
+    x, H_PAD = _maybe_pad_o_head(x, H, group)
     B, S_GLOBAL, H_LOCAL, D = x.shape
     S_LOCAL = S_GLOBAL // world_size
     # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
@@ -116,6 +205,7 @@ def _all_to_all_single_o_async(
         # -> (H_GLOBAL, B, S_LOCAL, D)
         # -> (B, S_LOCAL, H_GLOBAL, D)
         x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
     return wait
@@ -131,7 +221,8 @@ def _all_to_all_single_qkv_fp8_async(
     """
     _, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H, D = x.shape
-    H_LOCAL = H // world_size
+    x, H_PAD = _maybe_pad_qkv_head(x, H, group)
+    H_LOCAL = (H + H_PAD) // world_size
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
     _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
 
@@ -149,6 +240,7 @@ def _all_to_all_single_qkv_fp8_async(
         # -> (S_GLOBAL, B, H_LOCAL, D)
         # -> (B, S_GLOBAL, H_LOCAL, D)
         x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
     return wait
@@ -157,12 +249,14 @@ def _all_to_all_single_qkv_fp8_async(
 def _all_to_all_single_o_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    H: int = None,  # passed by users
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
     _, world_size = _get_rank_world_size(group)
+    x, H_PAD = _maybe_pad_o_head(x, H, group)
     B, S_GLOBAL, H_LOCAL, D = x.shape
     S_LOCAL = S_GLOBAL // world_size
     # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
@@ -183,6 +277,7 @@ def _all_to_all_single_o_fp8_async(
         # -> (H_GLOBAL, B, S_LOCAL, D)
         # -> (B, H_GLOBAL, S_LOCAL, D)
         x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+        x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
     return wait
@@ -199,8 +294,8 @@ def _all_to_all_single_any_qkv_async(
     """
     _, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H, D = x.shape
-    # Assume H is divisible by world_size
-    H_LOCAL = H // world_size
+    x, H_PAD = _maybe_pad_qkv_head(x, H, group)
+    H_LOCAL = (H + H_PAD) // world_size
     # (world_size, S_LOCAL, B, H_LOCAL, D)
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
 
@@ -221,6 +316,7 @@ def _all_to_all_single_any_qkv_async(
         # (S_GLOBAL, B, H_LOCAL, D)
         # -> (B, S_GLOBAL, H_LOCAL, D)
         x = x.permute(1, 0, 2, 3).contiguous()
+        x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
     return wait
@@ -230,12 +326,14 @@ def _all_to_all_single_any_qkv_async(
 def _all_to_all_single_any_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    H: int = None,  # passed by users
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
     rank, world_size = _get_rank_world_size(group)
+    x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
@@ -262,6 +360,7 @@ def _all_to_all_single_any_o_async(
         # TODO: How to avoid extra memory IO access here?
         x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
         x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
     return wait
@@ -278,8 +377,8 @@ def _all_to_all_single_any_qkv_fp8_async(
     """
     _, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H, D = x.shape
-    # Assume H is divisible by world_size
-    H_LOCAL = H // world_size
+    x, H_PAD = _maybe_pad_qkv_head(x, H, group)
+    H_LOCAL = (H + H_PAD) // world_size
     # (world_size, S_LOCAL, B, H_LOCAL, D)
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
 
@@ -300,6 +399,7 @@ def _all_to_all_single_any_qkv_fp8_async(
         x = _wait_tensor(x)
         x = per_token_dequant_fp8(x)
         x = x.permute(1, 0, 2, 3).contiguous()
+        x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
     return wait
@@ -309,12 +409,14 @@ def _all_to_all_single_any_qkv_fp8_async(
 def _all_to_all_single_any_o_fp8_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
+    H: int = None,  # passed by users
 ) -> Callable[..., torch.Tensor]:
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
     rank, world_size = _get_rank_world_size(group)
+    x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
     x = per_token_quant_fp8(x)
@@ -346,6 +448,7 @@ def _all_to_all_single_any_o_fp8_async(
         x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
         x = per_token_dequant_fp8(x)
         x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
     return wait
