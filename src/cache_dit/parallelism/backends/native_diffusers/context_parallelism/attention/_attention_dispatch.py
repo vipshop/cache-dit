@@ -391,7 +391,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         return (out, lse) if return_lse else out
 
     logger.info(
-        "Registered new attention backend: _SDPA_CUDNN, to enable context"
+        "Registered new attention backend: _SDPA_CUDNN, to enable context "
         "parallelism with attn mask in cache-dit. You can disable it by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
