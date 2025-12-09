@@ -241,15 +241,12 @@ def _all_to_all_single_qkv_uneven_heads_async(
     """
     rank, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H_GLOBAL, D = x.shape
-    all_num_heads = [i.size(2) for i in torch.tensor_split(x, world_size, dim=2)]
-    H_LOCAL = all_num_heads[rank]
+    input_split_sizes = [i.size(2) for i in torch.tensor_split(x, world_size, dim=2)]
+    H_LOCAL = input_split_sizes[rank]
     # [H_GLOBAL, B, S_LOCAL, D]
     x = x.permute(2, 0, 1, 3).contiguous()
-    # [H_GLOBAL * B * S_LOCAL * D]
-    x = x.flatten()
-    input_split_sizes = [num_heads * B * S_LOCAL * D for num_heads in all_num_heads]
-    output_split_sizes = [H_LOCAL * B * S_LOCAL * D] * world_size
-    # [H_GLOBAL * B * S_LOCAL * D]
+    output_split_sizes = [H_LOCAL] * world_size
+    # [H_GLOBAL, B, S_LOCAL, D]
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
@@ -279,18 +276,17 @@ def _all_to_all_single_o_uneven_heads_async(
     # The padding logic needs H to determine if padding is necessary.
     B, S_GLOBAL, H_LOCAL, D = x.shape
     rank, world_size = _get_rank_world_size(group)
-    all_num_heads = _gather_size_by_comm(H_LOCAL, group)
-    H_GLOBAL = sum(all_num_heads)
+    output_split_sizes = _gather_size_by_comm(H_LOCAL, group)
+    H_GLOBAL = sum(output_split_sizes)
     S_LOCAL = S_GLOBAL // world_size
     # [B, world_size, S_LOCAL, H_LOCAL, D]
     x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D)
     # [world_size, H_LOCAL, B, S_LOCAL, D]
     x = x.permute(1, 3, 0, 2, 4).contiguous()
-    # [world_size * H_LOCAL * B * S_LOCAL * D]
-    x = x.flatten()
-    input_split_sizes = [H_LOCAL * B * S_LOCAL * D] * world_size
-    output_split_sizes = [num_heads * B * S_LOCAL * D for num_heads in all_num_heads]
-    # [world_size, H_LOCAL, B, S_LOCAL, D]
+    # [world_size * H_LOCAL, B, S_LOCAL, D]
+    x = x.flatten(0, 1)
+    input_split_sizes = [H_LOCAL] * world_size
+    # [world_size * H_LOCAL, B, S_LOCAL, D]
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
