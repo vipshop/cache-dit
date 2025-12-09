@@ -314,6 +314,8 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
         **kwargs,
     ):
+        # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
+        # QK may cause more numerical instability than P@V matrix multiplication.
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
