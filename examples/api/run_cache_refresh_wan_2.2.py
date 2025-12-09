@@ -51,22 +51,6 @@ if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
     )
 
 
-def split_inference_steps(num_inference_steps: int = 30) -> tuple[int, int]:
-    if pipe.config.boundary_ratio is not None:
-        boundary_timestep = pipe.config.boundary_ratio * pipe.scheduler.config.num_train_timesteps
-    else:
-        boundary_timestep = None
-    pipe.scheduler.set_timesteps(num_inference_steps, device="cuda")
-    timesteps = pipe.scheduler.timesteps
-    num_high_noise_steps = 0  # high-noise steps for transformer
-    for t in timesteps:
-        if boundary_timestep is not None and t >= boundary_timestep:
-            num_high_noise_steps += 1
-    # low-noise steps for transformer_2
-    num_low_noise_steps = num_inference_steps - num_high_noise_steps
-    return num_high_noise_steps, num_low_noise_steps
-
-
 if args.cache:
     from cache_dit import (
         BlockAdapter,
@@ -173,6 +157,22 @@ if args.prompt is not None:
 negative_prompt = ""
 if args.negative_prompt is not None:
     negative_prompt = args.negative_prompt
+
+
+def split_inference_steps(num_inference_steps: int = 30) -> tuple[int, int]:
+    if pipe.config.boundary_ratio is not None:
+        boundary_timestep = pipe.config.boundary_ratio * pipe.scheduler.config.num_train_timesteps
+    else:
+        boundary_timestep = None
+    pipe.scheduler.set_timesteps(num_inference_steps, device="cuda")
+    timesteps = pipe.scheduler.timesteps
+    num_high_noise_steps = 0  # high-noise steps for transformer
+    for t in timesteps:
+        if boundary_timestep is not None and t >= boundary_timestep:
+            num_high_noise_steps += 1
+    # low-noise steps for transformer_2
+    num_low_noise_steps = num_inference_steps - num_high_noise_steps
+    return num_high_noise_steps, num_low_noise_steps
 
 
 def run_pipe(steps: int = 30):
