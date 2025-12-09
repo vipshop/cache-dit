@@ -12,6 +12,10 @@ logger = init_logger(__name__)
 
 # Some helper distributed primitive functions for context parallel attention.
 
+# NOTE: We should always use the asynchronous all to all variants to keep the uified input/output shape
+# for any_qkvo and non-any_qkvo cases, otherwise, the input/output shape will be different, which makes
+# the unified function implementation complex and ugly.
+
 
 # Reference:
 # - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L827
@@ -56,9 +60,6 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
 
 
 # Asynchronous all to all variants.
-# NOTE: We should always use the asynchronous all to all variant to keep the uified output shape
-# for any_qkvo and non-any_qkvo cases, otherwise, the output shape will be different, which makes
-# the unified function implementation complex and ugly.
 
 
 def _all_to_all_single_qkv_async(

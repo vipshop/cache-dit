@@ -117,6 +117,12 @@ class BasicCacheConfig:
             base_str += f"_SCM{''.join(map(str, self.steps_computation_mask))}"
             base_str += f"_{self.steps_computation_policy}"
 
+        if self.num_inference_steps is not None:
+            base_str += f"_N{self.num_inference_steps}"
+
+        if self.enable_separate_cfg is not None:
+            base_str += f"_CFG{int(self.enable_separate_cfg)}"
+
         return base_str
 
 

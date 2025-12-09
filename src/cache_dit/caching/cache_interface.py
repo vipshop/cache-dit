@@ -13,6 +13,7 @@ from cache_dit.caching.cache_contexts import CalibratorConfig
 from cache_dit.caching.params_modifier import ParamsModifier
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.parallelism import enable_parallelism
+from cache_dit.caching.utils import load_options
 
 from cache_dit.logger import init_logger
 
@@ -335,6 +336,53 @@ def enable_cache(
             # Enable parallelism for the transformer inplace
             transformers[i] = enable_parallelism(transformer, parallelism_config)
     return pipe_or_adapter
+
+
+def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
+    r"""Refresh cache context for the given transformer. This is useful when
+    the users run into transformer-only case with dynamic num_inference_steps.
+    For example, when num_inference_steps changes significantly between different
+    requests, the cache context should be refreshed to avoid potential
+    precision degradation. Usage:
+    ```py
+    >>> import cache_dit
+    >>> from cache_dit import DBCacheConfig
+    >>> from diffusers import DiffusionPipeline
+    >>> # Init cache context with num_inference_steps=None (default)
+    >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+    >>> pipe = cache_dit.enable_cache(pipe.transformer, cache_config=DBCacheConfig(...))
+    >>> # Assume num_inference_steps is 28, and we want to refresh the context
+    >>> cache_dit.refresh_context(transformer, num_inference_steps=28, verbose=True)
+    >>> output = pipe(...) # Just call the pipe as normal.
+    >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    >>> # Update the cache context with new num_inference_steps=50.
+    >>> cache_dit.refresh_context(pipe.transformer, num_inference_steps=50, verbose=True)
+    >>> output = pipe(...) # Just call the pipe as normal.
+    >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    >>> # Update the cache context with new cache_config.
+    >>> cache_dit.refresh_context(
+        pipe.transformer,
+        cache_config=DBCacheConfig(
+            residual_diff_threshold=0.1,
+            max_warmup_steps=10,
+            max_cached_steps=20,
+            max_continuous_cached_steps=4,
+            num_inference_steps=50,
+        ),
+        verbose=True,
+    )
+    >>> output = pipe(...) # Just call the pipe as normal.
+    >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
+    ```
+    """
+    if force_refresh_kwargs:
+        if "cache_config" not in force_refresh_kwargs:
+            verbose = force_refresh_kwargs.pop("verbose", False)
+            # Assume force_refresh_kwargs is passed as dict, e.g.,
+            # {"num_inference_steps": 50}
+            force_refresh_kwargs = load_options(force_refresh_kwargs, reset=True)
+            force_refresh_kwargs["verbose"] = verbose
+    CachedAdapter.maybe_refresh_context(transformer, **force_refresh_kwargs)
 
 
 def disable_cache(
