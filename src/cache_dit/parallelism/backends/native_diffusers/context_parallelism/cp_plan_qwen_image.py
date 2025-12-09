@@ -173,6 +173,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     # Order: [text, image]
     joint_query = torch.cat([txt_query, img_query], dim=1)
 
+    H = joint_query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
     # Async all to all for query
     joint_query_wait = _all_to_all_qv_async_func(joint_query, group)
 
@@ -211,7 +212,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+    out_wait = _all_to_all_o_async_func(out, group, H)  # (B, S_LOCAL, H_GLOBAL, D)
     joint_hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back

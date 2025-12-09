@@ -4,6 +4,7 @@ from typing import Tuple, List, Callable
 import torch
 import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
+import torch.nn.functional as F
 
 from cache_dit.logger import init_logger
 from cache_dit.kernels import per_token_quant_fp8, per_token_dequant_fp8
@@ -82,7 +83,7 @@ def _maybe_pad_qkv_head(
         assert (
             H_PAD < NEW_H_LOCAL
         ), f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
-        x = torch.nn.functional.pad(x, (0, 0, 0, H_PAD)).contiguous()
+        x = F.pad(x, (0, 0, 0, H_PAD)).contiguous()
     return x, H_PAD
 
 
@@ -128,7 +129,7 @@ def _maybe_pad_o_head(
             H_PAD < NEW_H_LOCAL
         ), f"Padding head num {H_PAD} should be less than new local head num {NEW_H_LOCAL}"
         if rank == world_size - 1:
-            x = torch.nn.functional.pad(x, (0, 0, 0, H_PAD)).contiguous()
+            x = F.pad(x, (0, 0, 0, H_PAD)).contiguous()
     return x, H_PAD
 
 

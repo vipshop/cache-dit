@@ -148,6 +148,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
     if image_rotary_emb is not None:
         query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
 
+    H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)
 
@@ -181,7 +182,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
 
     if encoder_hidden_states is not None:
         # Must be sync all to all for out when encoder_hidden_states is used
-        out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+        out_wait = _all_to_all_o_async_func(out, group, H)  # (B, S_LOCAL, H_GLOBAL, D)
         out = out_wait()  # type: torch.Tensor
 
         hidden_states = out.flatten(2, 3)
@@ -201,7 +202,7 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         return hidden_states, encoder_hidden_states
     else:
         # Can be async all to all for out when no encoder_hidden_states
-        out_wait = _all_to_all_o_async_func(out, group)
+        out_wait = _all_to_all_o_async_func(out, group, H)
         return out_wait
 
 

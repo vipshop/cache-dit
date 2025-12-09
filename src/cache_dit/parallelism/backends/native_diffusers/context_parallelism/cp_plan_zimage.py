@@ -163,6 +163,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         query = apply_rotary_emb(query, freqs_cis)
 
+    H = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)
 
@@ -196,7 +197,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out_wait = _all_to_all_o_async_func(out, group)  # (B, S_LOCAL, H_GLOBAL, D)
+    out_wait = _all_to_all_o_async_func(out, group, H)  # (B, S_LOCAL, H_GLOBAL, D)
     hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back
