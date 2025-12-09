@@ -34,6 +34,7 @@ logger = init_logger(__name__)
 
 
 __all__ = [
+    "_UnifiedTemplatedUlyssesAttention",
     "_TemplatedUlyssesAttention",
     "_TemplatedUlyssesAttentionFloat8",
     "_TemplatedUlyssesAnythingAttention",
@@ -46,6 +47,89 @@ __all__ = [
     "is_ulysses_float8_enabled",
     "disable_ulysses_float8",
 ]
+
+
+class _UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
+    """A unified wrapper for Ulysses Attention and Ulysses Attention Float8."""
+
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        if is_ulysses_anything_enabled():
+            if is_ulysses_float8_enabled():
+                return _TemplatedUlyssesAnythingAttentionFloat8.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+            else:
+                return _TemplatedUlyssesAnythingAttention.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+        else:
+            if is_ulysses_float8_enabled():
+                return _TemplatedUlyssesAttentionFloat8.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
+            else:
+                return _TemplatedUlyssesAttention.apply(
+                    query,
+                    key,
+                    value,
+                    attn_mask,
+                    dropout_p,
+                    is_causal,
+                    scale,
+                    enable_gqa,
+                    return_lse,
+                    forward_op,
+                    backward_op,
+                    _parallel_config,
+                )
 
 
 # Re-implement Ulysses Attention with custom async all-to-all communication in cache-dit

@@ -27,18 +27,8 @@ except ImportError:
     )
 from cache_dit.logger import init_logger
 
-from ._templated_ring import _TemplatedRingAttention
-from ._templated_ulysses import (
-    _TemplatedUlyssesAttention,
-    _TemplatedUlyssesAttentionFloat8,
-    _TemplatedUlyssesAnythingAttention,
-    _TemplatedUlyssesAnythingAttentionFloat8,
-)
-from ._templated_ulysses import (
-    is_ulysses_anything_enabled,
-    is_ulysses_float8_enabled,
-)
-
+from ._templated_ring import _UnifiedTemplatedRingAttention
+from ._templated_ulysses import _UnifiedTemplatedUlyssesAttention
 
 logger = init_logger(__name__)
 
@@ -52,8 +42,8 @@ __all__ = [
 # Enable custom native attention backend with context parallelism
 # by default. Users can set the environment variable to 0 to disable
 # this behavior. Default to enabled for better compatibility.
-_CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH = bool(
-    int(os.getenv("CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH", "1"))
+_CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH = bool(
+    int(os.getenv("CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH", "1"))
 )
 
 
@@ -93,14 +83,14 @@ def _set_new_attn_backend(member: str, value: str):
     AttentionBackendName._value2member_map_[value] = new_member
 
 
-if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
+if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
         "_native_attention_forward_op",
         "_sdpa_cudnn_attention_forward_op",
     ]
 
     # Re-define templated context parallel attention to support attn mask
-    def _templated_context_parallel_attention_v2(
+    def _unified_templated_context_parallel_attention(
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
@@ -131,7 +121,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
 
         # TODO: add support for unified attention with ring/ulysses degree both being > 1
         if _parallel_config.context_parallel_config.ring_degree > 1:
-            return _TemplatedRingAttention.apply(
+            return _UnifiedTemplatedRingAttention.apply(
                 query,
                 key,
                 value,
@@ -146,68 +136,20 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                 _parallel_config,
             )
         elif _parallel_config.context_parallel_config.ulysses_degree > 1:
-            if is_ulysses_anything_enabled():
-                if is_ulysses_float8_enabled():
-                    return _TemplatedUlyssesAnythingAttentionFloat8.apply(
-                        query,
-                        key,
-                        value,
-                        attn_mask,
-                        dropout_p,
-                        is_causal,
-                        scale,
-                        enable_gqa,
-                        return_lse,
-                        forward_op,
-                        backward_op,
-                        _parallel_config,
-                    )
-                else:
-                    return _TemplatedUlyssesAnythingAttention.apply(
-                        query,
-                        key,
-                        value,
-                        attn_mask,
-                        dropout_p,
-                        is_causal,
-                        scale,
-                        enable_gqa,
-                        return_lse,
-                        forward_op,
-                        backward_op,
-                        _parallel_config,
-                    )
-            else:
-                if is_ulysses_float8_enabled():
-                    return _TemplatedUlyssesAttentionFloat8.apply(
-                        query,
-                        key,
-                        value,
-                        attn_mask,
-                        dropout_p,
-                        is_causal,
-                        scale,
-                        enable_gqa,
-                        return_lse,
-                        forward_op,
-                        backward_op,
-                        _parallel_config,
-                    )
-                else:
-                    return _TemplatedUlyssesAttention.apply(
-                        query,
-                        key,
-                        value,
-                        attn_mask,
-                        dropout_p,
-                        is_causal,
-                        scale,
-                        enable_gqa,
-                        return_lse,
-                        forward_op,
-                        backward_op,
-                        _parallel_config,
-                    )
+            return _UnifiedTemplatedUlyssesAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
         else:
             raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 
@@ -334,7 +276,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             )
             out = out.permute(0, 2, 1, 3)
         else:
-            out = _templated_context_parallel_attention_v2(
+            out = _unified_templated_context_parallel_attention(
                 query,
                 key,
                 value,
@@ -353,7 +295,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     logger.warning(
         "Re-registered NATIVE attention backend to enable context parallelism "
         "with attn mask. You can disable this behavior by export env: "
-        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
+        "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
     def _sdpa_cudnn_attention_forward_op(
@@ -444,7 +386,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                 )
             out = out.permute(0, 2, 1, 3)
         else:
-            out = _templated_context_parallel_attention_v2(
+            out = _unified_templated_context_parallel_attention(
                 query,
                 key,
                 value,
@@ -466,7 +408,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     logger.info(
         "Registered new attention backend: _SDPA_CUDNN, to enable "
         "context parallelism with attn mask. You can disable it by: "
-        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
+        "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
     _registry_pop_attn_backend(AttentionBackendName.SAGE)
@@ -499,7 +441,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
             if return_lse:
                 out, lse, *_ = out
         else:
-            out = _templated_context_parallel_attention_v2(
+            out = _unified_templated_context_parallel_attention(
                 query,
                 key,
                 value,
@@ -521,7 +463,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
     logger.warning(
         "Re-registered SAGE attention backend to enable context parallelism "
         "with attn mask. You can disable this behavior by export env: "
-        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
+        "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
 else:
@@ -532,4 +474,4 @@ else:
 
     _sdpa_cudnn_attention = None  # type: ignore[assignment]
 
-    logger.info("Native attention backend already supports context parallelism.")
+    logger.info("Skipped custom attention backend registration in cache-dit.")
