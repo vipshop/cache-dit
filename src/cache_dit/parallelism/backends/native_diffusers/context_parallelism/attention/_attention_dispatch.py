@@ -8,8 +8,15 @@ try:
         AttentionBackendName,
         _check_device,
         _check_shape,
-        TemplatedRingAttention,
-        TemplatedUlyssesAttention,
+        _check_qkv_dtype_bf16_or_fp16,
+        _check_device_cuda,
+    )
+
+    # For sage attention backend re-registration
+    from diffusers.models.attention_dispatch import (
+        sageattn,
+        _sage_attention_forward_op,
+        _sage_attention_backward_op,
     )
     from diffusers.models._modeling_parallel import ParallelConfig
 except ImportError:
@@ -19,10 +26,13 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 from cache_dit.logger import init_logger
+
+from ._templated_ring import _TemplatedRingAttention
 from ._templated_ulysses import (
-    TemplatedUlyssesAnythingAttention,
-    TemplatedUlyssesAnythingAttentionFloat8,
-    TemplatedUlyssesAttentionFloat8,
+    _TemplatedUlyssesAttention,
+    _TemplatedUlyssesAttentionFloat8,
+    _TemplatedUlyssesAnythingAttention,
+    _TemplatedUlyssesAnythingAttentionFloat8,
 )
 from ._templated_ulysses import (
     is_ulysses_anything_enabled,
@@ -36,6 +46,7 @@ logger = init_logger(__name__)
 __all__ = [
     "_native_attention",
     "_sdpa_cudnn_attention",
+    "_sage_attention",
 ]
 
 # Enable custom native attention backend with context parallelism
@@ -120,7 +131,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
 
         # TODO: add support for unified attention with ring/ulysses degree both being > 1
         if _parallel_config.context_parallel_config.ring_degree > 1:
-            return TemplatedRingAttention.apply(
+            return _TemplatedRingAttention.apply(
                 query,
                 key,
                 value,
@@ -137,7 +148,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         elif _parallel_config.context_parallel_config.ulysses_degree > 1:
             if is_ulysses_anything_enabled():
                 if is_ulysses_float8_enabled():
-                    return TemplatedUlyssesAnythingAttentionFloat8.apply(
+                    return _TemplatedUlyssesAnythingAttentionFloat8.apply(
                         query,
                         key,
                         value,
@@ -152,7 +163,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                         _parallel_config,
                     )
                 else:
-                    return TemplatedUlyssesAnythingAttention.apply(
+                    return _TemplatedUlyssesAnythingAttention.apply(
                         query,
                         key,
                         value,
@@ -168,7 +179,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                     )
             else:
                 if is_ulysses_float8_enabled():
-                    return TemplatedUlyssesAttentionFloat8.apply(
+                    return _TemplatedUlyssesAttentionFloat8.apply(
                         query,
                         key,
                         value,
@@ -183,7 +194,7 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
                         _parallel_config,
                     )
                 else:
-                    return TemplatedUlyssesAttention.apply(
+                    return _TemplatedUlyssesAttention.apply(
                         query,
                         key,
                         value,
@@ -458,9 +469,65 @@ if _CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH:
         "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
     )
 
+    _registry_pop_attn_backend(AttentionBackendName.SAGE)
+
+    @_AttentionBackendRegistry.register(
+        AttentionBackendName.SAGE,
+        constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+        supports_context_parallel=True,
+    )
+    def _sage_attention(
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        return_lse: bool = False,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ) -> torch.Tensor:
+        lse = None
+        if _parallel_config is None:
+            out = sageattn(
+                q=query,
+                k=key,
+                v=value,
+                tensor_layout="NHD",
+                is_causal=is_causal,
+                sm_scale=scale,
+                return_lse=return_lse,
+            )
+            if return_lse:
+                out, lse, *_ = out
+        else:
+            out = _templated_context_parallel_attention_v2(
+                query,
+                key,
+                value,
+                None,
+                0.0,
+                is_causal,
+                scale,
+                False,
+                return_lse,
+                forward_op=_sage_attention_forward_op,
+                backward_op=_sage_attention_backward_op,
+                _parallel_config=_parallel_config,
+            )
+            if return_lse:
+                out, lse = out
+
+        return (out, lse) if return_lse else out
+
+    logger.warning(
+        "Re-registered SAGE attention backend to enable context parallelism "
+        "with attn mask. You can disable this behavior by export env: "
+        "export CACHE_DIT_ENABLE_CUSTOM_CP_NATIVE_ATTN_DISPATCH=0."
+    )
+
 else:
     from diffusers.models.attention_dispatch import (
         _native_attention,
+        _sage_attention,
     )  # noqa: F401
 
     _sdpa_cudnn_attention = None  # type: ignore[assignment]
