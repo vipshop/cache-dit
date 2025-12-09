@@ -45,10 +45,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         **kwargs,
     ) -> ContextParallelModelPlan:
 
-        experimental_ulysses_async_qkv_proj = kwargs.get(
-            "experimental_ulysses_async_qkv_proj", False
-        )
-        if experimental_ulysses_async_qkv_proj:
+        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
+        if experimental_ulysses_async:
             FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__
             FluxSingleTransformerBlock.forward = (
                 __patch_FluxSingleTransformerBlock_ulysses_async_forward__
