@@ -153,7 +153,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     if freqs_cis is not None:  # Apply RoPE
         query = apply_rotary_emb(query, freqs_cis)
 
-    comm_kwargs = _prepare_ulysses_comm_metadata(key)
+    comm_metadata = _prepare_ulysses_comm_metadata(key)
 
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group)
@@ -166,13 +166,13 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         key = apply_rotary_emb(key, freqs_cis)
 
     # Async all to all for key
-    key_wait = _all_to_all_k_async_func(key, group, **comm_kwargs)
+    key_wait = _all_to_all_k_async_func(key, group, **comm_metadata)
 
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
 
     # Async all to all for value
-    value_wait = _all_to_all_qv_async_func(value, group, **comm_kwargs)
+    value_wait = _all_to_all_qv_async_func(value, group, **comm_metadata)
 
     # Ensure the query, key, value are ready
     query = query_wait()
@@ -198,7 +198,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
-    out_wait = _all_to_all_o_async_func(out, group, **comm_kwargs)  # (B, S_LOCAL, H_GLOBAL, D)
+    out_wait = _all_to_all_o_async_func(out, group, **comm_metadata)  # (B, S_LOCAL, H_GLOBAL, D)
     hidden_states = out_wait()  # type: torch.Tensor
 
     # Reshape back

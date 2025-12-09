@@ -231,7 +231,7 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_ulysses_comm_metadata(query)
+        metadata = _prepare_ulysses_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
@@ -240,9 +240,9 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
         # stability. Using this smooth technique before All-to-All on K may introduce
         # extra AllReduce communication overhead.
-        key_wait = _all_to_all_single_qkv_async(key, group, **kwargs)
-        query_wait = _all_to_all_single_qkv_fp8_async(query, group, **kwargs)
-        value_wait = _all_to_all_single_qkv_fp8_async(value, group, **kwargs)
+        key_wait = _all_to_all_single_qkv_async(key, group, **metadata)
+        query_wait = _all_to_all_single_qkv_fp8_async(query, group, **metadata)
+        value_wait = _all_to_all_single_qkv_fp8_async(value, group, **metadata)
 
         query = query_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
@@ -265,13 +265,13 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out_wait = _all_to_all_single_o_fp8_async(out, group, **kwargs)
+        out_wait = _all_to_all_single_o_fp8_async(out, group, **metadata)
 
         if return_lse:
             # NOTE: DON'T use float8 all_to_all for out and lse, as it may
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_o_async(lse, group, **kwargs)
+            lse_wait = _all_to_all_single_o_async(lse, group, **metadata)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -320,10 +320,10 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_ulysses_comm_metadata(query)
-        query_wait = _all_to_all_single_any_qkv_async(query, group, **kwargs)
-        key_wait = _all_to_all_single_any_qkv_async(key, group, **kwargs)
-        value_wait = _all_to_all_single_any_qkv_async(value, group, **kwargs)
+        metadata = _prepare_ulysses_comm_metadata(query)
+        query_wait = _all_to_all_single_any_qkv_async(query, group, **metadata)
+        key_wait = _all_to_all_single_any_qkv_async(key, group, **metadata)
+        value_wait = _all_to_all_single_any_qkv_async(value, group, **metadata)
 
         query = query_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
@@ -347,12 +347,12 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             out, lse, *_ = out
 
         # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
-        out_wait = _all_to_all_single_any_o_async(out, group, **kwargs)
+        out_wait = _all_to_all_single_any_o_async(out, group, **metadata)
 
         if return_lse:
             # lse: (B, S_Q_GLOBAL, H_LOCAL)
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_any_o_async(lse, group, **kwargs)
+            lse_wait = _all_to_all_single_any_o_async(lse, group, **metadata)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -401,7 +401,7 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        kwargs = _prepare_ulysses_comm_metadata(query)
+        metadata = _prepare_ulysses_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
@@ -410,9 +410,9 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         # the K-per-channel-smooth (e.g., in SageAttention) is used to improve numerical
         # stability. Using this smooth technique before All-to-All on K may introduce
         # extra AllReduce communication overhead.
-        key_wait = _all_to_all_single_any_qkv_async(key, group, **kwargs)
-        query_wait = _all_to_all_single_any_qkv_fp8_async(query, group, **kwargs)
-        value_wait = _all_to_all_single_any_qkv_fp8_async(value, group, **kwargs)
+        key_wait = _all_to_all_single_any_qkv_async(key, group, **metadata)
+        query_wait = _all_to_all_single_any_qkv_fp8_async(query, group, **metadata)
+        value_wait = _all_to_all_single_any_qkv_fp8_async(value, group, **metadata)
 
         query = query_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
@@ -435,13 +435,13 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         if return_lse:
             out, lse, *_ = out
 
-        out_wait = _all_to_all_single_any_o_fp8_async(out, group, **kwargs)
+        out_wait = _all_to_all_single_any_o_fp8_async(out, group, **metadata)
 
         if return_lse:
             # NOTE: DON'T use float8 all_to_all for out and lse, as it may
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
-            lse_wait = _all_to_all_single_any_o_async(lse, group, **kwargs)
+            lse_wait = _all_to_all_single_any_o_async(lse, group, **metadata)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
