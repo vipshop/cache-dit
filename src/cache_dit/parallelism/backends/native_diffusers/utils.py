@@ -83,7 +83,7 @@ if (
             != _patch_find_submodule_by_name
         ):
             diffusers.hooks.context_parallel._find_submodule_by_name = _patch_find_submodule_by_name
-            logger.info("Patched _find_submodule_by_name for torch.nn.ModuleDict support.")
+            logger.info("Patched _find_submodule_by_name to support ModuleDict.")
 
 else:
 
