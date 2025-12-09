@@ -808,7 +808,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 </div>
 
-✅**Any Head Num**: By the way, Ulysses Attention and UAA in cache-dit now **support arbitrary numbers of heads** via additional padding/unpadding operations implemented before and after all-to-all communication. The overhead incurred by these extra padding/unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
+✅**Any Head Num**: By the way, Ulysses Attention and UAA in cache-dit now **support arbitrary numbers of heads** via additional padding and unpadding operations implemented before and after all-to-all communication. The overhead incurred by these extra padding/unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
 
 <div align="center">
 
