@@ -794,6 +794,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 <div align="center">
 
 <p align="center">
+    ✅<b>Any Sequence Length</b><br>
     U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
     FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
 </p>
@@ -812,6 +813,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 <div align="center">
 
 <p align="center">
+    ✅<b>Any Head Num</b><br>
     Ulysses: Ulysses Attention, <b>FP8 Ulysses: Ulysses w/ FP8 All2All</b>, Device: NVIDIA L20<br>
     🔥<b>Z-Image</b> (Head=30, ❌<b>CAN NOT</b> divisible by 4), 1024x1024, 9 steps.
 </p>
