@@ -5,7 +5,7 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/ht
 """
 
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -30,6 +30,10 @@ class GenerateRequestAPI(BaseModel):
     guidance_scale: float = Field(7.5, description="Guidance scale", ge=0.0, le=20.0)
     seed: Optional[int] = Field(None, description="Random seed")
     num_images: int = Field(1, description="Number of images to generate", ge=1, le=4)
+    image_urls: Optional[List[str]] = Field(
+        None, 
+        description="Input images for image editing. Supports: URLs (http/https), local file paths, base64 strings (with or without data URI prefix)"
+    )
 
 
 class GenerateResponseAPI(BaseModel):
@@ -87,6 +91,7 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     guidance_scale=request.guidance_scale,
                     seed=request.seed,
                     num_images=request.num_images,
+                    image_urls=request.image_urls,
                 )
 
                 loop = asyncio.get_event_loop()
@@ -101,7 +106,7 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                 )
 
             except Exception as e:
-                logger.error(f"Error generating image: {str(e)}", exc_info=True)
+                logger.error(f"Error generating image: {type(e).__name__}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
     @app.post("/flush_cache")

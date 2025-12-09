@@ -7,10 +7,12 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/token
 import time
 import base64
 import torch
+import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from diffusers import DiffusionPipeline
+from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
 
@@ -29,6 +31,17 @@ class GenerateRequest:
     guidance_scale: float = 7.5
     seed: Optional[int] = None
     num_images: int = 1
+    image_urls: Optional[List[str]] = None
+    
+    def __repr__(self):
+        image_urls_repr = None
+        if self.image_urls:
+            image_urls_repr = [f"<data:{len(url)} chars>" if len(url) > 100 else url for url in self.image_urls]
+        return (f"GenerateRequest(prompt={self.prompt[:50]!r}..., "
+                f"width={self.width}, height={self.height}, "
+                f"num_inference_steps={self.num_inference_steps}, "
+                f"guidance_scale={self.guidance_scale}, seed={self.seed}, "
+                f"num_images={self.num_images}, image_urls={image_urls_repr})")
 
 
 @dataclass
@@ -170,18 +183,76 @@ class ModelManager:
 
                 dist.barrier()
 
+    def _load_images_from_urls(self, image_urls: List[str]) -> Optional[List[Image.Image]]:
+        """Load images from URLs, local paths, or base64 strings."""
+        if not image_urls:
+            return None
+        
+        images = []
+        for idx, url in enumerate(image_urls):
+            try:
+                if url.startswith('data:image/'):
+                    log_desc = f"data URI (length: {len(url)})"
+                    logger.info(f"Loading image {idx+1} from {log_desc}")
+                    header, base64_data = url.split(',', 1)
+                    img_data = base64.b64decode(base64_data)
+                    image = Image.open(BytesIO(img_data)).convert("RGB")
+                elif url.startswith(('http://', 'https://')):
+                    log_desc = f"URL: {url[:80]}{'...' if len(url) > 80 else ''}"
+                    logger.info(f"Downloading image {idx+1} from {log_desc}")
+                    response = requests.get(url, timeout=30)
+                    response.raise_for_status()
+                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                elif len(url) > 100:
+                    log_desc = f"raw base64 string (length: {len(url)})"
+                    logger.info(f"Loading image {idx+1} from {log_desc}")
+                    try:
+                        img_data = base64.b64decode(url, validate=True)
+                        image = Image.open(BytesIO(img_data)).convert("RGB")
+                    except Exception:
+                        import os
+                        if os.path.exists(url):
+                            logger.info(f"Base64 decode failed, treating as local path")
+                            image = Image.open(url).convert("RGB")
+                        else:
+                            raise
+                else:
+                    log_desc = f"local path: {url}"
+                    logger.info(f"Loading image {idx+1} from {log_desc}")
+                    image = Image.open(url).convert("RGB")
+                images.append(image)
+                logger.info(f"Image {idx+1} loaded successfully: {image.size}")
+            except Exception as e:
+                if len(url) > 100:
+                    error_url = f"<data of length {len(url)}>"
+                else:
+                    error_url = url
+                logger.error(f"Failed to load image {idx+1} from {error_url}: {e}")
+                raise RuntimeError(f"Failed to load image {idx+1}: {e}")
+        
+        return images
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         if self.pipe is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        self._warmup_if_needed(request.width, request.height, request.prompt)
+        is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
+        input_images = None
+        if is_edit_mode:
+            input_images = self._load_images_from_urls(request.image_urls)
+            if input_images:
+                logger.info(f"Loaded {len(input_images)} input image(s) for editing")
+        
+        if not is_edit_mode:
+            self._warmup_if_needed(request.width, request.height, request.prompt)
 
         seed = request.seed
         if seed is None and self.parallel_type in ["tp", "ulysses", "ring"]:
             seed = 42
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
-        logger.info(f"Generating image: prompt='{request.prompt[:50]}...', seed={seed}")
+        mode_str = "edit" if is_edit_mode else "generation"
+        logger.info(f"Image {mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
 
         generator = None
         if seed is not None:
@@ -209,6 +280,14 @@ class ModelManager:
             "generator": generator,
             "num_images_per_prompt": request.num_images,
         }
+
+        # Add input images to pipe_kwargs if in edit mode
+        if is_edit_mode and input_images:
+            # For FLUX.2, pass single image or multiple images
+            if len(input_images) == 1:
+                pipe_kwargs["image"] = input_images[0]
+            else:
+                pipe_kwargs["image"] = input_images
 
         # Some pipelines (like Flux2Pipeline) don't support negative_prompt
         if request.negative_prompt:
