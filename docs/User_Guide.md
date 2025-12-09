@@ -379,7 +379,7 @@ pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 pipe = cache_dit.enable_cache(pipe.transformer, cache_config=DBCacheConfig(num_inference_steps=None))
 
 # Assume num_inference_steps is 28, and we want to refresh the context
-cache_dit.refresh_context(transformer, num_inference_steps=28, verbose=True)
+cache_dit.refresh_context(pipe.transformer, num_inference_steps=28, verbose=True)
 output = pipe(...) # Just call the pipe as normal.
 stats = cache_dit.summary(pipe.transformer) # Then, get the summary
 
