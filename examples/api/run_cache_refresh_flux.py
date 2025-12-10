@@ -7,6 +7,13 @@ import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args, strify, MemoryTracker
+from cache_dit import (
+    BlockAdapter,
+    ForwardPattern,
+    ParamsModifier,
+    DBCacheConfig,
+    TaylorSeerCalibratorConfig,
+)
 import cache_dit
 
 
@@ -46,12 +53,6 @@ pipe = FluxPipeline.from_pretrained(
 ).to("cuda")
 
 if args.cache:
-    from cache_dit import (
-        BlockAdapter,
-        ForwardPattern,
-        ParamsModifier,
-        DBCacheConfig,
-    )
 
     assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
@@ -117,6 +118,9 @@ def run_pipe(steps: int = 28):
             # if cache config is provided. Otherwise, we will skip it.
             cache_config=DBCacheConfig().reset(
                 num_inference_steps=steps,
+            ),
+            calibrator_config=TaylorSeerCalibratorConfig().reset(
+                taylorseer_order=1,
             ),
             verbose=True,
         )
