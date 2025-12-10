@@ -158,11 +158,10 @@ if rank == 0:
 
     time_cost = end - start
     print(f"Time cost: {time_cost:.2f}s")
-    
+
     save_path = f"flux2_edit.{strify(args, pipe)}.png"
     print(f"Saving edited image to {save_path}")
     image.save(save_path)
-    print(f"Image saved successfully!")
+    print("Image saved successfully!")
 
 maybe_destroy_distributed()
-
