@@ -10,6 +10,7 @@ from cache_dit.caching.block_adapters.block_adapters import ParamsModifier
 from cache_dit.caching.block_adapters.block_registers import (
     BlockAdapterRegister,
 )
+from cache_dit.envs import ENV
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -75,11 +76,8 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
         # NOTE(DefTruth): Users should never use this variable directly,
         # it is only for developers to control whether to enable dummy
         # blocks, default to enabled.
-        _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS = (
-            os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1") == "1"
-        )
 
-        if not _CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS:
+        if not ENV.CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS:
             return BlockAdapter(
                 pipe=pipe,
                 transformer=pipe.transformer,

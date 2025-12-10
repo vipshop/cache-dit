@@ -396,6 +396,8 @@ cache_dit.refresh_context(
         max_warmup_steps=10,
         max_cached_steps=20,
         max_continuous_cached_steps=4,
+        # The cache settings should all be located in the cache config 
+        # if cache config is provided. Otherwise, we will skip it.
         num_inference_steps=50,
     ),
     verbose=True,

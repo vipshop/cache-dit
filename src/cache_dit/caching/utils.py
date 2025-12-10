@@ -12,11 +12,20 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
                 TaylorSeerCalibratorConfig,
             )
 
-            cache_context_kwargs["calibrator_config"] = TaylorSeerCalibratorConfig(
-                enable_calibrator=kwargs.get("enable_taylorseer"),
-                enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer", False),
-                calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
-                taylorseer_order=kwargs.get("taylorseer_order", 1),
+            cache_context_kwargs["calibrator_config"] = (
+                TaylorSeerCalibratorConfig(
+                    enable_calibrator=kwargs.get("enable_taylorseer"),
+                    enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer", False),
+                    calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
+                    taylorseer_order=kwargs.get("taylorseer_order", 1),
+                )
+                if not reset
+                else TaylorSeerCalibratorConfig().reset(
+                    enable_calibrator=kwargs.get("enable_taylorseer"),
+                    enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer", False),
+                    calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
+                    taylorseer_order=kwargs.get("taylorseer_order", 1),
+                )
             )
 
         if "cache_type" not in kwargs:

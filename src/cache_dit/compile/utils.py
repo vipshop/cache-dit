@@ -1,7 +1,6 @@
-import os
-
 import torch
 import torch.distributed as dist
+from cache_dit.envs import ENV
 from cache_dit.logger import init_logger, logging_rank_0
 
 logger = init_logger(__name__)
@@ -9,44 +8,29 @@ logger = init_logger(__name__)
 
 def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
     mode = kwargs.get("epilogue_prologue_fusion", False)
-    CACHE_DIT_EPILOGUE_PROLOGUE_FUSION = bool(
-        int(os.environ.get("CACHE_DIT_EPILOGUE_PROLOGUE_FUSION", "0"))
-    )
 
-    if CACHE_DIT_EPILOGUE_PROLOGUE_FUSION:
+    if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION:
         logging_rank_0(
             logger,
             "CACHE_DIT_EPILOGUE_PROLOGUE_FUSION is set to 1. \n"
             "Force enable epilogue and prologue fusion.",
         )
 
-    return CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or mode
-
-
-_CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = (
-    os.environ.get(
-        "CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP",
-        "1",
-    )
-    == "1"
-)
+    return ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or mode
 
 
 def enable_compile_compute_comm_overlap():
-    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
-    _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = True
+    ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = True
     logger.info("Enabled compile compute-communication overlap manually.")
 
 
 def disable_compile_compute_comm_overlap():
-    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
-    _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = False
+    ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = False
     logger.info("Disabled compile compute-communication overlap manually.")
 
 
 def is_compile_compute_comm_overlap_enabled() -> bool:
-    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
-    return _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
+    return ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
 
 
 def set_compile_configs(
@@ -81,10 +65,7 @@ def set_compile_configs(
     if not descent_tuning:
         return
 
-    FORCE_DISABLE_CUSTOM_COMPILE_CONFIG = (
-        os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0") == "1"
-    )
-    if FORCE_DISABLE_CUSTOM_COMPILE_CONFIG:
+    if ENV.CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG:
         logging_rank_0(
             logger,
             "CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG is set to 1. \n"

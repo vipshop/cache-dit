@@ -1,4 +1,3 @@
-import os
 import copy
 import functools
 from typing import Optional, Tuple, List
@@ -34,6 +33,7 @@ from ._distributed_primitives import (
     _prepare_ulysses_comm_metadata,
 )
 
+from cache_dit.envs import ENV
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -48,6 +48,7 @@ __all__ = [
     "enable_ulysses_float8",
     "is_ulysses_float8_enabled",
     "disable_ulysses_float8",
+    "is_ulysses_heads_no_padding",
 ]
 
 
@@ -71,6 +72,7 @@ class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
         if is_ulysses_anything_enabled():
+            # Ulysses Anything Attention: Any sequence length and any head num supported.
             if is_ulysses_float8_enabled():
                 return _TemplatedUlyssesAnythingAttentionFloat8.apply(
                     query,
@@ -102,6 +104,7 @@ class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
                     _parallel_config,
                 )
         else:
+            # Ulysses Attention: Support even sequence length and any head num.
             if is_ulysses_float8_enabled():
                 return _TemplatedUlyssesAttentionFloat8.apply(
                     query,
@@ -118,7 +121,7 @@ class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
                     _parallel_config,
                 )
             else:
-                if is_ulysses_uneven_heads_comm_no_pad():
+                if is_ulysses_heads_no_padding():
                     return _TemplatedUlyssesAttentionUnEvenHeads.apply(
                         query,
                         key,
@@ -681,29 +684,13 @@ def unshard_anything(
 
 
 # Environment variable flags for Ulysses Attention variants in cache-dit.
-# TODO: Move these flags to a unified config management module, e.g., env.py.
-_CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
-    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
-)
-_CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = (
-    os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8", "0") == "1"
-)
-_CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = os.environ.get("CACHE_DIT_ENABELD_ULYSSES_FLOAT8", "0") == "1"
-
-_CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD = (
-    os.environ.get("CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD", "0") == "1"
-)
-
-
-def is_ulysses_uneven_heads_comm_no_pad() -> bool:
-    global _CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD
-    return _CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD
+def is_ulysses_heads_no_padding() -> bool:
+    return ENV.CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD
 
 
 def enable_ulysses_anything(**kwargs):
-    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
     try:
-        if _CACHE_DIT_ENABELD_ULYSSES_ANYTHING:
+        if ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING:
             # function for TemplatedUlyssesAnythingAttention.
             if EquipartitionSharder.shard != shard_anything:
                 EquipartitionSharder.shard = shard_anything
@@ -715,7 +702,7 @@ def enable_ulysses_anything(**kwargs):
                 )
             return
 
-        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = True
+        ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING = True
 
         logger.warning(
             "Ulysses Anything Attention is enabled in cache-dit. "
@@ -733,27 +720,24 @@ def enable_ulysses_anything(**kwargs):
                 "for Ulysses Anything Attention."
             )
     except Exception as e:
-        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
+        ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
         logger.error(f"Failed to enable Ulysses Anything Attention in cache-dit due to error: {e}")
         pass
 
 
 def is_ulysses_anything_enabled(**kwargs) -> bool:
-    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
-    return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
+    return ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING
 
 
 def disable_ulysses_anything(**kwargs):
-    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING
-    _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
+    ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
     logger.info("Ulysses Anything Attention is manually disabled in cache-dit.")
 
 
 # Float8 flags for Ulysses/Ulysses Anything Attention
 def _enable_ulysses_anything_float8(**kwargs):
-    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
     try:
-        if _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8:
+        if ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8:
             # function for TemplatedUlyssesAnythingAttention.
             if EquipartitionSharder.shard != shard_anything:
                 EquipartitionSharder.shard = shard_anything
@@ -765,7 +749,7 @@ def _enable_ulysses_anything_float8(**kwargs):
                 )
             return
 
-        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = True
+        ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = True
 
         logger.warning(
             "Ulysses Anything Attention Float8 is enabled in cache-dit. "
@@ -783,7 +767,7 @@ def _enable_ulysses_anything_float8(**kwargs):
                 "for Ulysses Anything Attention Float8."
             )
     except Exception as e:
-        _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
+        ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
         logger.error(
             f"Failed to enable Ulysses Anything Attention Float8 in cache-dit due to error: {e}"
         )
@@ -791,13 +775,11 @@ def _enable_ulysses_anything_float8(**kwargs):
 
 
 def _is_ulysses_anything_float8_enabled(**kwargs) -> bool:
-    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
-    return _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
+    return ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
 
 
 def _disable_ulysses_anything_float8(**kwargs) -> bool:
-    global _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8
-    _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
+    ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
     logger.info("Ulysses Anything Attention Float8 is manually disabled in cache-dit.")
 
 
@@ -808,8 +790,7 @@ def enable_ulysses_float8(**kwargs):
         _enable_ulysses_anything_float8()
         return
 
-    global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
-    _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = True
+    ENV.CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = True
     logger.warning(
         "Ulysses Attention Float8 is enabled in cache-dit. "
         "Please note that this is an experimental feature and "
@@ -818,13 +799,11 @@ def enable_ulysses_float8(**kwargs):
 
 
 def is_ulysses_float8_enabled(**kwargs) -> bool:
-    global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
-    return _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 or _is_ulysses_anything_float8_enabled()
+    return ENV.CACHE_DIT_ENABELD_ULYSSES_FLOAT8 or _is_ulysses_anything_float8_enabled()
 
 
 def disable_ulysses_float8(**kwargs) -> bool:
-    global _CACHE_DIT_ENABELD_ULYSSES_FLOAT8
-    _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = False
+    ENV.CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = False
     logger.info("Ulysses Attention Float8 is manually disabled in cache-dit.")
     if is_ulysses_anything_enabled():
         _disable_ulysses_anything_float8()
