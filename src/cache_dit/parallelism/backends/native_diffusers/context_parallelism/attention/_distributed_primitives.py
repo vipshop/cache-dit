@@ -39,10 +39,10 @@ def _get_rank_world_size(
 
 
 @functools.lru_cache(maxsize=128)
-def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
-    r"""Gather the local sequence length from all ranks.
-    S_LOCAL: int, local sequence length
-    return: List[int], list of sequence lengths from all ranks
+def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
+    r"""Gather the local size from all ranks.
+    size: int, local size
+    return: List[int], list of size from all ranks
     """
     world_size = dist.get_world_size(group=group)
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
@@ -54,7 +54,7 @@ def _gather_size_by_comm(S_LOCAL: int, group: dist.ProcessGroup) -> List[int]:
     ]
     dist.all_gather(
         gathered_sizes,
-        torch.tensor([S_LOCAL], device=gather_device, dtype=torch.int64),
+        torch.tensor([size], device=gather_device, dtype=torch.int64),
         group=group,
     )
 
@@ -225,6 +225,77 @@ def _all_to_all_single_o_async(
         # -> (B, S_LOCAL, H_GLOBAL, D)
         x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
         x = _maybe_unpad_o_head(x, H_PAD, group)
+        return x
+
+    return wait
+
+
+def _all_to_all_single_qkv_uneven_heads_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+    **kwargs,
+) -> torch.Tensor:
+    r"""
+    x: torch.Tensor, shape (B, S_LOCAL, H_GLOBAL, D)
+    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+    """
+    rank, world_size = _get_rank_world_size(group)
+    B, S_LOCAL, H_GLOBAL, D = x.shape
+    input_split_sizes = [i.size(2) for i in torch.tensor_split(x, world_size, dim=2)]
+    H_LOCAL = input_split_sizes[rank]
+    # [H_GLOBAL, B, S_LOCAL, D]
+    x = x.permute(2, 0, 1, 3).contiguous()
+    output_split_sizes = [H_LOCAL] * world_size
+    # [H_GLOBAL, B, S_LOCAL, D]
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        # [world_size, H_LOCAL, B, S_LOCAL, D]
+        x = x.reshape(world_size, H_LOCAL, B, S_LOCAL, D)
+        # [B, world_size, S_LOCAL, H_LOCAL, D]
+        x = x.permute(2, 0, 3, 1, 4).contiguous()
+        # [B, S_GLOBAL, H_LOCAL, D]
+        x = x.reshape(B, world_size * S_LOCAL, H_LOCAL, D)
+        return x
+
+    return wait
+
+
+def _all_to_all_single_o_uneven_heads_async(
+    x: torch.Tensor,
+    group: dist.ProcessGroup,
+    **kwargs,
+) -> torch.Tensor:
+    r"""
+    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
+    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+    """
+    # Assume H is provided in kwargs, since we can't infer H from x's shape.
+    # The padding logic needs H to determine if padding is necessary.
+    B, S_GLOBAL, H_LOCAL, D = x.shape
+    rank, world_size = _get_rank_world_size(group)
+    output_split_sizes = _gather_size_by_comm(H_LOCAL, group)
+    H_GLOBAL = sum(output_split_sizes)
+    S_LOCAL = S_GLOBAL // world_size
+    # [B, world_size, S_LOCAL, H_LOCAL, D]
+    x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D)
+    # [world_size, H_LOCAL, B, S_LOCAL, D]
+    x = x.permute(1, 3, 0, 2, 4).contiguous()
+    # [world_size * H_LOCAL, B, S_LOCAL, D]
+    x = x.flatten(0, 1)
+    input_split_sizes = [H_LOCAL] * world_size
+    # [world_size * H_LOCAL, B, S_LOCAL, D]
+    x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
+
+    def wait() -> torch.Tensor:
+        nonlocal x
+        x = _wait_tensor(x)
+        # [H_GLOBAL, B, S_LOCAL, D]
+        x = x.reshape(H_GLOBAL, B, S_LOCAL, D)
+        # [B, S_LOCAL, H_GLOBAL, D]
+        x = x.permute(1, 2, 0, 3).contiguous()
         return x
 
     return wait
