@@ -320,7 +320,6 @@ def _all_to_all_single_o_uneven_heads_async(
     rank, world_size = _get_rank_world_size(group)
     # e.g, H = 30, world_size = 4, output_split_sizes = [8, 8, 8, 6]
     output_split_sizes = _split_head_sizes(H, group)
-    # output_split_sizes = _gather_size_by_comm(H_LOCAL, group)
 
     H_GLOBAL = sum(output_split_sizes)
     S_LOCAL = S_GLOBAL // world_size
@@ -462,7 +461,6 @@ def _all_to_all_single_any_qkv_async(
     return wait
 
 
-@torch.compiler.allow_in_graph
 def _all_to_all_single_any_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
