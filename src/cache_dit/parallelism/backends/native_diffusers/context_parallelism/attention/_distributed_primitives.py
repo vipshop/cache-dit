@@ -282,6 +282,10 @@ def _all_to_all_single_qkv_uneven_heads_async(
     """
     rank, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H_GLOBAL, D = x.shape
+    # NOTE: May use tensor_split here to ensure the same split policy
+    # that we have used in the EquipartitionSharder sharding strategy. Please
+    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
+    # all of which are views of input, thus may not introduce extra IO access.
     input_split_sizes = [i.size(2) for i in torch.tensor_split(x, world_size, dim=2)]
     H_LOCAL = input_split_sizes[rank]
     # [H_GLOBAL, B, S_LOCAL, D]
@@ -478,30 +482,24 @@ def _all_to_all_single_any_o_async(
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
-
-    x = x.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
     # NOTE: May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(x, world_size, dim=0)]
-    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
-    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
-    output_split_sizes = [input_split_sizes[rank]] * world_size
+    input_split_sizes = [o.size(1) for o in torch.tensor_split(x, world_size, dim=1)]
+    # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
+    # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
+    S_LOCAL = input_split_sizes[rank]
+    x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
+    output_split_sizes = [S_LOCAL] * world_size
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
-        x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
-        # NOTE: We can not simply reshape here, because the collective tensors
-        # are stacked at dim=0(SeqLen), we need to first split them and then concat at
-        # dim=1(Head), otherwise the result will be incorrect due to the linear layout
-        # of the tensor in memory.
-        H_GLOBAL = H_LOCAL * world_size
-        S_LOCAL = x.shape[0] // world_size
-        # TODO: How to avoid extra memory IO access here?
-        x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
-        x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+        x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
+        x = x.permute(2, 1, 0, 3, 4).contiguous()
+        x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
         x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
@@ -564,36 +562,27 @@ def _all_to_all_single_any_o_fp8_async(
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
-    (B, S_GLOBAL, H_LOCAL, D) = shape
     x = per_token_quant_fp8(x)
-
-    # NOTE: The `if` branch will introduce graph break for torch.compile,
-    # so, we choose to disable the even split optimization implementation
-    # _all_to_all_single for now.
-    x = x.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
+    (B, S_GLOBAL, H_LOCAL, D) = shape
     # NOTE: May use tensor_split here to ensure the same split policy
     # that we have used in the EquipartitionSharder sharding strategy. Please
     # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
     # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(x, world_size, dim=0)]
-    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
-    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
-    output_split_sizes = [input_split_sizes[rank]] * world_size
+    input_split_sizes = [o.size(1) for o in torch.tensor_split(x, world_size, dim=1)]
+    # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
+    # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
+    S_LOCAL = input_split_sizes[rank]
+    x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
+    output_split_sizes = [S_LOCAL] * world_size
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
-        x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
-        # NOTE: We can not simply reshape here, because the collective tensors
-        # are stacked at dim=0(SeqLen), we need to first split them and then concat at
-        # dim=1(Head), otherwise the result will be incorrect due to the linear layout
-        # of the tensor in memory.
-        H_GLOBAL = H_LOCAL * world_size
-        S_LOCAL = x.shape[0] // world_size
-        # TODO: How to avoid extra memory IO access here?
-        x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
+        x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
         x = per_token_dequant_fp8(x)
-        x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
+        x = x.permute(2, 1, 0, 3, 4).contiguous()
+        x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
         x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 

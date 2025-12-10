@@ -32,16 +32,20 @@ class GenerateRequest:
     seed: Optional[int] = None
     num_images: int = 1
     image_urls: Optional[List[str]] = None
-    
+
     def __repr__(self):
         image_urls_repr = None
         if self.image_urls:
-            image_urls_repr = [f"<data:{len(url)} chars>" if len(url) > 100 else url for url in self.image_urls]
-        return (f"GenerateRequest(prompt={self.prompt[:50]!r}..., "
-                f"width={self.width}, height={self.height}, "
-                f"num_inference_steps={self.num_inference_steps}, "
-                f"guidance_scale={self.guidance_scale}, seed={self.seed}, "
-                f"num_images={self.num_images}, image_urls={image_urls_repr})")
+            image_urls_repr = [
+                f"<data:{len(url)} chars>" if len(url) > 100 else url for url in self.image_urls
+            ]
+        return (
+            f"GenerateRequest(prompt={self.prompt[:50]!r}..., "
+            f"width={self.width}, height={self.height}, "
+            f"num_inference_steps={self.num_inference_steps}, "
+            f"guidance_scale={self.guidance_scale}, seed={self.seed}, "
+            f"num_images={self.num_images}, image_urls={image_urls_repr})"
+        )
 
 
 @dataclass
@@ -187,17 +191,17 @@ class ModelManager:
         """Load images from URLs, local paths, or base64 strings."""
         if not image_urls:
             return None
-        
+
         images = []
         for idx, url in enumerate(image_urls):
             try:
-                if url.startswith('data:image/'):
+                if url.startswith("data:image/"):
                     log_desc = f"data URI (length: {len(url)})"
                     logger.info(f"Loading image {idx+1} from {log_desc}")
-                    header, base64_data = url.split(',', 1)
+                    header, base64_data = url.split(",", 1)
                     img_data = base64.b64decode(base64_data)
                     image = Image.open(BytesIO(img_data)).convert("RGB")
-                elif url.startswith(('http://', 'https://')):
+                elif url.startswith(("http://", "https://")):
                     log_desc = f"URL: {url[:80]}{'...' if len(url) > 80 else ''}"
                     logger.info(f"Downloading image {idx+1} from {log_desc}")
                     response = requests.get(url, timeout=30)
@@ -211,8 +215,9 @@ class ModelManager:
                         image = Image.open(BytesIO(img_data)).convert("RGB")
                     except Exception:
                         import os
+
                         if os.path.exists(url):
-                            logger.info(f"Base64 decode failed, treating as local path")
+                            logger.info("Base64 decode failed, treating as local path")
                             image = Image.open(url).convert("RGB")
                         else:
                             raise
@@ -229,7 +234,7 @@ class ModelManager:
                     error_url = url
                 logger.error(f"Failed to load image {idx+1} from {error_url}: {e}")
                 raise RuntimeError(f"Failed to load image {idx+1}: {e}")
-        
+
         return images
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
@@ -242,7 +247,7 @@ class ModelManager:
             input_images = self._load_images_from_urls(request.image_urls)
             if input_images:
                 logger.info(f"Loaded {len(input_images)} input image(s) for editing")
-        
+
         if not is_edit_mode:
             self._warmup_if_needed(request.width, request.height, request.prompt)
 
