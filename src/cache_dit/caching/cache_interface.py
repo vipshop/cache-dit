@@ -13,7 +13,6 @@ from cache_dit.caching.cache_contexts import CalibratorConfig
 from cache_dit.caching.params_modifier import ParamsModifier
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.parallelism import enable_parallelism
-from cache_dit.caching.utils import load_options
 
 from cache_dit.logger import init_logger
 
@@ -338,7 +337,10 @@ def enable_cache(
     return pipe_or_adapter
 
 
-def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
+def refresh_context(
+    transformer: torch.nn.Module,
+    **force_refresh_kwargs,
+):
     r"""Refresh cache context for the given transformer. This is useful when
     the users run into transformer-only case with dynamic num_inference_steps.
     For example, when num_inference_steps changes significantly between different
@@ -380,9 +382,26 @@ def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
             verbose = force_refresh_kwargs.pop("verbose", False)
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
-            force_refresh_kwargs = load_options(force_refresh_kwargs, reset=True)
+            from cache_dit.caching.utils import load_options
+
+            force_refresh_kwargs = load_options(
+                force_refresh_kwargs,
+                reset=True,
+            )
             force_refresh_kwargs["verbose"] = verbose
-    CachedAdapter.maybe_refresh_context(transformer, **force_refresh_kwargs)
+        else:
+            allowed_keys = {"cache_config", "calibrator_config", "verbose"}
+            not_allowed_keys = set(force_refresh_kwargs.keys()) - allowed_keys
+            if not_allowed_keys:
+                logger.warning(
+                    f"force_refresh_kwargs contains cache_config, please put the extra "
+                    f"kwargs: {not_allowed_keys} into cache_config directly. Ohtherwise, "
+                    f"these kwargs will be ignored."
+                )
+    CachedAdapter.maybe_refresh_context(
+        transformer,
+        **force_refresh_kwargs,
+    )
 
 
 def disable_cache(
