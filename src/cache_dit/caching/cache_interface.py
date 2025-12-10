@@ -13,7 +13,6 @@ from cache_dit.caching.cache_contexts import CalibratorConfig
 from cache_dit.caching.params_modifier import ParamsModifier
 from cache_dit.parallelism import ParallelismConfig
 from cache_dit.parallelism import enable_parallelism
-from cache_dit.caching.utils import load_options
 
 from cache_dit.logger import init_logger
 
@@ -383,6 +382,8 @@ def refresh_context(
             verbose = force_refresh_kwargs.pop("verbose", False)
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
+            from cache_dit.caching.utils import load_options
+
             force_refresh_kwargs = load_options(
                 force_refresh_kwargs,
                 reset=True,
