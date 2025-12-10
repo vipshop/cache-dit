@@ -22,36 +22,36 @@ class ENV(object):
     # Enable Ulysses Anything Attention by setting the environment variable to 1.
     # Otherwise, users can set it by 'exprimental_ulysses_anything' argument in
     # ContextParallelism.
-    CACHE_DIT_ENABELD_ULYSSES_ANYTHING: bool = (
-        os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
+    CACHE_DIT_ENABELD_ULYSSES_ANYTHING: bool = bool(
+        int(os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0"))
     )
 
     # Enable Ulysses Anything Attention Float8 by setting the environment variable to 1.
     # Otherwise, users can set it by 'experimental_ulysses_anything=True' and
     # 'experimental_ulysses_float=True' arguments in ContextParallelism.
-    CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8: bool = (
-        os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8", "0") == "1"
+    CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8: bool = bool(
+        int(os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8", "0"))
     )
 
     # Enable Ulysses Attention by setting the environment variable to 1.
     # Otherwise, users can set it by 'experimental_ulysses_float8' argument in
     # ContextParallelism.
-    CACHE_DIT_ENABELD_ULYSSES_FLOAT8: bool = (
-        os.environ.get("CACHE_DIT_ENABELD_ULYSSES_FLOAT8", "0") == "1"
+    CACHE_DIT_ENABELD_ULYSSES_FLOAT8: bool = bool(
+        int(os.environ.get("CACHE_DIT_ENABELD_ULYSSES_FLOAT8", "0"))
     )
 
     # Enable unpadded communication for uneven attention heads without padding
     # by setting the environment variable to 1.
-    CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD: bool = (
-        os.environ.get("CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD", "0") == "1"
+    CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD: bool = bool(
+        int(os.environ.get("CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD", "0"))
     )
 
     # Models ENVs
 
     # Users should never use this variable directly, it is only for developers
     # to control whether to enable dummy blocks for FLUX, default to enabled.
-    CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS: bool = (
-        os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1") == "1"
+    CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS: bool = bool(
+        int(os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1"))
     )
 
     # Torch compile ENVs
@@ -64,17 +64,13 @@ class ENV(object):
     # Enable compile compute-communication (all reduce) overlap in cache-dit by
     # default. Users can set the environment variable to 0 to disable this behavior.
     # Default to enabled for better performance.
-    CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP: bool = (
-        os.environ.get(
-            "CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP",
-            "1",
-        )
-        == "1"
+    CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP: bool = bool(
+        int(os.environ.get("CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP", "1"))
     )
 
     # Force disable custom compile config in cache-dit by setting the environment
     # variable to 1. Otherwise, cache-dit will set custom compile configs for
     # better performance during torch.compile.
-    CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG: bool = (
-        os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0") == "1"
+    CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG: bool = bool(
+        int(os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0"))
     )
