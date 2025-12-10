@@ -78,6 +78,7 @@ class ModelManager:
         enable_compile: bool = False,
         parallel_type: Optional[str] = None,
         parallel_args: Optional[Dict[str, Any]] = None,
+        attn_backend: Optional[str] = None,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -89,11 +90,13 @@ class ModelManager:
         self.enable_compile = enable_compile
         self.parallel_type = parallel_type
         self.parallel_args = parallel_args or {}
+        self.attn_backend = attn_backend
         self.pipe = None
         self.warmed_up_shapes = set()
 
         logger.info(
-            f"Initializing ModelManager: model_path={model_path}, device={self.device}, parallel_type={parallel_type}"
+            f"Initializing ModelManager: model_path={model_path}, device={self.device}, "
+            f"parallel_type={parallel_type}, attn_backend={attn_backend}"
         )
 
     def load_model(self):
@@ -158,6 +161,15 @@ class ModelManager:
         if self.enable_cpu_offload and torch.cuda.device_count() <= 1:
             logger.info("Enabling CPU offload")
             self.pipe.enable_model_cpu_offload()
+
+        if self.attn_backend is not None:
+            if hasattr(self.pipe.transformer, "set_attention_backend"):
+                logger.info(f"Setting attention backend to {self.attn_backend}")
+                self.pipe.transformer.set_attention_backend(self.attn_backend)
+            else:
+                logger.warning(
+                    f"Transformer does not support set_attention_backend, ignoring --attn {self.attn_backend}"
+                )
 
         if self.enable_compile:
             logger.info("Enabling torch.compile")

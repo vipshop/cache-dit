@@ -268,6 +268,7 @@ def launch_server(args=None):
         enable_compile=args.compile,
         parallel_type=args.parallel_type,
         parallel_args=parallel_args,
+        attn_backend=args.attn,
     )
 
     logger.info("Loading model...")
