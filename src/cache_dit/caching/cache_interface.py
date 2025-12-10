@@ -382,6 +382,15 @@ def refresh_context(transformer: torch.nn.Module, **force_refresh_kwargs):
             # {"num_inference_steps": 50}
             force_refresh_kwargs = load_options(force_refresh_kwargs, reset=True)
             force_refresh_kwargs["verbose"] = verbose
+        else:
+            allowed_keys = {"cache_config", "calibrator_config", "verbose"}
+            not_allowed_keys = set(force_refresh_kwargs.keys()) - allowed_keys
+            if not_allowed_keys:
+                logger.warning(
+                    f"force_refresh_kwargs contains cache_config, please put the extra "
+                    f"kwargs: {not_allowed_keys} into cache_config directly. Ohtherwise, "
+                    f"these kwargs will be ignored."
+                )
     CachedAdapter.maybe_refresh_context(transformer, **force_refresh_kwargs)
 
 
