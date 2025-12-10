@@ -828,7 +828,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 We have also implemented a ✅**padding-free** version that support any head num. Please be informed that this solution cannot be used when seq len is not divisible by world size. Users can enable this feature through environment variables:
 
 ```bash
-export _CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD=1 # NOT WORK if seq len is also not divisible by world size
+export CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD=1 # NOT WORK if seq len is also not divisible by world size
 ```
 
 > [!Important]
