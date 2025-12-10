@@ -98,8 +98,9 @@ def get_args(
         "--quantize-type",
         "--q-type",
         type=str,
-        default="float8_weight_only",
+        default=None,
         choices=[
+            None,
             "float8",
             "float8_weight_only",
             "int8",
@@ -197,6 +198,8 @@ def get_args(
         if args_or_parser.quantize_type is not None:
             # Force enable quantization if quantize_type is specified
             args_or_parser.quantize = True
+        if args_or_parser.quantize and args_or_parser.quantize_type is None:
+            args_or_parser.quantize_type = "float8_weight_only"
         if args_or_parser.quantize_type == "bnb_4bit":  # alias
             args_or_parser.quantize_type = "bitsandbytes_4bit"
     return args_or_parser

@@ -7,7 +7,7 @@ logger = init_logger(__name__)
 
 def quantize(
     module: torch.nn.Module,
-    quant_type: str = "float8_weight_only",
+    quant_type: Optional[str] = None,
     backend: str = "ao",
     exclude_layers: List[str] = [
         "embedder",
@@ -17,6 +17,10 @@ def quantize(
     **kwargs,
 ) -> torch.nn.Module:
     assert isinstance(module, torch.nn.Module)
+
+    if quant_type is None:
+        quant_type = "float8_weight_only"
+        logger.warning(f"quant_type is not specified, using default: {quant_type}")
 
     if backend.lower() in ("ao", "torchao"):
         from cache_dit.quantize.backends.torchao import quantize_ao
