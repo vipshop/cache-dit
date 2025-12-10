@@ -12,6 +12,25 @@ from cache_dit.kernels import per_token_quant_fp8, per_token_dequant_fp8
 logger = init_logger(__name__)
 
 # Some helper distributed primitive functions for context parallel attention.
+__all__ = [
+    # All to all for Ulysses Attention
+    "_all_to_all_single_qkv_async",
+    "_all_to_all_single_o_async",
+    "_all_to_all_single_qkv_uneven_heads_async",
+    "_all_to_all_single_o_uneven_heads_async",
+    "_all_to_all_single_qkv_fp8_async",
+    "_all_to_all_single_o_fp8_async",
+    # All to all for Ulysses Anything Attention
+    "_all_to_all_single_any_qkv_async",
+    "_all_to_all_single_any_o_async",
+    "_all_to_all_single_any_qkv_fp8_async",
+    "_all_to_all_single_any_o_fp8_async",
+    # Helper functions for preparing communication metadata
+    "_prepare_ulysses_comm_metadata",
+    # Unified functions for Async Ulysses QKV/O Projection
+    "_unified_all_to_all_qkv_async_fn",
+    "_unified_all_to_all_o_async_fn",
+]
 
 # NOTE: We should always use the asynchronous all to all variants to keep the uified input/output shape
 # for any_qkvo and non-any_qkvo cases, otherwise, the input/output shape will be different, which makes
@@ -62,6 +81,28 @@ def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     # NOTE: DON'T use tolist here due to graph break - Explanation:
     # Backend compiler `inductor` failed with aten._local_scalar_dense.default
     return gathered_sizes
+
+
+def _split_head_sizes(
+    H: int,
+    group: dist.ProcessGroup,
+) -> List[int]:
+    r"""Split the head dimension size by world_size.
+    H: int, global head num
+    return: List[int], list of local head num for each rank
+    """
+    assert H is not None, "Global head num H must be provided."
+    rank, world_size = _get_rank_world_size(group)
+    # e.g, H = 30, world_size = 4, output_split_sizes = [8, 8, 8, 6]
+    output_split_sizes = []
+    base_head_num = H // world_size
+    remainder = H % world_size
+    for i in range(world_size):
+        if i < remainder:
+            output_split_sizes.append(base_head_num + 1)
+        else:
+            output_split_sizes.append(base_head_num)
+    return output_split_sizes
 
 
 # Helper functions to pad/unpad head dimension for QKV and O projections
@@ -235,7 +276,7 @@ def _all_to_all_single_qkv_uneven_heads_async(
     group: dist.ProcessGroup,
     **kwargs,
 ) -> torch.Tensor:
-    r"""
+    r"""Another variant for uneven head splits without padding.
     x: torch.Tensor, shape (B, S_LOCAL, H_GLOBAL, D)
     return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
     """
@@ -268,15 +309,18 @@ def _all_to_all_single_o_uneven_heads_async(
     group: dist.ProcessGroup,
     **kwargs,
 ) -> torch.Tensor:
-    r"""
+    r"""Another variant for uneven head splits without padding.
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
     return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
+    H = kwargs.get("num_qo_head", None)
     B, S_GLOBAL, H_LOCAL, D = x.shape
     rank, world_size = _get_rank_world_size(group)
-    output_split_sizes = _gather_size_by_comm(H_LOCAL, group)
+    # e.g, H = 30, world_size = 4, output_split_sizes = [8, 8, 8, 6]
+    output_split_sizes = _split_head_sizes(H, group)
+
     H_GLOBAL = sum(output_split_sizes)
     S_LOCAL = S_GLOBAL // world_size
     # [B, world_size, S_LOCAL, H_LOCAL, D]

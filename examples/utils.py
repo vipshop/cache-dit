@@ -70,7 +70,7 @@ def get_args(
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
+    parser.add_argument("--max-warmup-steps", "--wa", type=int, default=8)
     parser.add_argument("--warmup-interval", "--wi", type=int, default=1)
     parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
     parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
@@ -90,9 +90,9 @@ def get_args(
         ],
         help="Pre-defined steps computation mask policy",
     )
-    parser.add_argument("--height", type=int, default=None)
-    parser.add_argument("--width", type=int, default=None)
-    parser.add_argument("--quantize", "-q", action="store_true", default=False)
+    parser.add_argument("--height", "--h", type=int, default=None)
+    parser.add_argument("--width", "--w", type=int, default=None)
+    parser.add_argument("--quantize", "--q", action="store_true", default=False)
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -281,10 +281,13 @@ def cachify(
 
 
 def strify(args, pipe_or_stats):
+    base_str = ""
+    if args.height is not None and args.width is not None:
+        base_str += f"{args.height}x{args.width}_"
     quantize_type = args.quantize_type if args.quantize else ""
     if quantize_type != "":
         quantize_type = f"_{quantize_type}"
-    base_str = (
+    base_str += (
         f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
