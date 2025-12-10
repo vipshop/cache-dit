@@ -680,6 +680,8 @@ def unshard_anything(
     return tensor
 
 
+# Environment variable flags for Ulysses Attention variants in cache-dit.
+# TODO: Move these flags to a unified config management module, e.g., env.py.
 _CACHE_DIT_ENABELD_ULYSSES_ANYTHING = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING", "0") == "1"
 )
