@@ -96,9 +96,11 @@ def get_args(
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
+        "--q-type",
         type=str,
-        default="float8_weight_only",
+        default=None,
         choices=[
+            None,
             "float8",
             "float8_weight_only",
             "int8",
@@ -194,6 +196,11 @@ def get_args(
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
+        if args_or_parser.quantize_type is not None:
+            # Force enable quantization if quantize_type is specified
+            args_or_parser.quantize = True
+        if args_or_parser.quantize and args_or_parser.quantize_type is None:
+            args_or_parser.quantize_type = "float8_weight_only"
         if args_or_parser.quantize_type == "bnb_4bit":  # alias
             args_or_parser.quantize_type = "bitsandbytes_4bit"
     return args_or_parser
