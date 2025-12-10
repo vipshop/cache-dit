@@ -23,6 +23,12 @@ parser.add_argument(
     default=False,
     help="Print summary of the model after each inference",
 )
+parser.add_argument(
+    "--refresh-use-cache-config",
+    action="store_true",
+    default=False,
+    help="Use the cache config during cache refreshing",
+)
 args = parser.parse_args()
 print(args)
 
@@ -104,11 +110,22 @@ if args.prompt is not None:
 
 
 def run_pipe(steps: int = 28):
-    cache_dit.refresh_context(
-        pipe.transformer,
-        num_inference_steps=steps,
-        verbose=True,
-    )
+    if args.refresh_use_cache_config:
+        cache_dit.refresh_context(
+            pipe.transformer,
+            # The cache settings should all be located in the cache config
+            # if cache config is provided. Otherwise, we will skip it.
+            cache_config=DBCacheConfig().reset(
+                num_inference_steps=steps,
+            ),
+            verbose=True,
+        )
+    else:
+        cache_dit.refresh_context(
+            pipe.transformer,
+            num_inference_steps=steps,
+            verbose=True,
+        )
     image = pipe(
         prompt,
         height=1024 if args.height is None else args.height,
