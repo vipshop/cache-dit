@@ -122,7 +122,7 @@ if args.negative_prompt is not None:
 height = 480 if args.height is None else args.height
 width = 832 if args.width is None else args.width
 
-if height > 480 or width > 832:
+if height >= 480 or width >= 832:
     assert isinstance(pipe.vae, AutoencoderKLWan)
     pipe.vae.enable_tiling()
 
