@@ -619,6 +619,9 @@ def _unified_all_to_all_qkv_async_fn(
         return _all_to_all_single_any_qkv_async
     else:
         if is_ulysses_float8_enabled() and not disable_fp8:
+            assert (
+                not is_ulysses_heads_no_padding()
+            ), "FP8 and ulysses heads no padding both enabled is not supported."
             return _all_to_all_single_qkv_fp8_async
         if is_ulysses_heads_no_padding():
             return _all_to_all_single_qkv_uneven_heads_async
@@ -638,6 +641,9 @@ def _unified_all_to_all_o_async_fn(
         return _all_to_all_single_any_o_async
     else:
         if is_ulysses_float8_enabled() and not disable_fp8:
+            assert (
+                not is_ulysses_heads_no_padding()
+            ), "FP8 and ulysses heads no padding both enabled is not supported."
             return _all_to_all_single_o_fp8_async
         if is_ulysses_heads_no_padding():
             return _all_to_all_single_o_uneven_heads_async
