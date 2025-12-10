@@ -91,6 +91,7 @@ def _split_head_sizes(
     H: int, global head num
     return: List[int], list of local head num for each rank
     """
+    assert H is not None, "Global head num H must be provided."
     rank, world_size = _get_rank_world_size(group)
     # e.g, H = 30, world_size = 4, output_split_sizes = [8, 8, 8, 6]
     output_split_sizes = []
