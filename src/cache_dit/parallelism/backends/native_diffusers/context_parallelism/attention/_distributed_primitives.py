@@ -461,6 +461,7 @@ def _all_to_all_single_any_qkv_async(
     return wait
 
 
+@torch.compiler.allow_in_graph
 def _all_to_all_single_any_o_async(
     x: torch.Tensor,
     group: dist.ProcessGroup,
