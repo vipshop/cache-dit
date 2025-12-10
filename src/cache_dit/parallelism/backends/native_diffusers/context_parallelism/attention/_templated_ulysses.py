@@ -18,14 +18,19 @@ except ImportError:
 from ._distributed_primitives import (
     _get_rank_world_size,
     _gather_size_by_comm,
+    # All to all for Ulysses Attention
+    _all_to_all_single_o_async,
+    _all_to_all_single_qkv_fp8_async,
+    _all_to_all_single_o_fp8_async,
+    _all_to_all_single_qkv_uneven_heads_async,
+    _all_to_all_single_o_uneven_heads_async,
+    # All to all for Ulysses Anything Attention
     _all_to_all_single_any_o_async,
     _all_to_all_single_any_qkv_async,
     _all_to_all_single_any_o_fp8_async,
     _all_to_all_single_any_qkv_fp8_async,
     _all_to_all_single_qkv_async,
-    _all_to_all_single_o_async,
-    _all_to_all_single_qkv_fp8_async,
-    _all_to_all_single_o_fp8_async,
+    # Helper functions for preparing communication metadata
     _prepare_ulysses_comm_metadata,
 )
 
@@ -47,7 +52,7 @@ __all__ = [
 
 
 class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
-    """A unified wrapper for Ulysses Attention and Ulysses Attention Float8."""
+    """A unified wrapper for all Ulysses Attention variants in cache-dit."""
 
     @staticmethod
     def forward(
@@ -113,20 +118,36 @@ class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
                     _parallel_config,
                 )
             else:
-                return _TemplatedUlyssesAttention.apply(
-                    query,
-                    key,
-                    value,
-                    attn_mask,
-                    dropout_p,
-                    is_causal,
-                    scale,
-                    enable_gqa,
-                    return_lse,
-                    forward_op,
-                    backward_op,
-                    _parallel_config,
-                )
+                if is_ulysses_uneven_heads_comm_no_pad():
+                    return _TemplatedUlyssesAttentionUnEvenHeads.apply(
+                        query,
+                        key,
+                        value,
+                        attn_mask,
+                        dropout_p,
+                        is_causal,
+                        scale,
+                        enable_gqa,
+                        return_lse,
+                        forward_op,
+                        backward_op,
+                        _parallel_config,
+                    )
+                else:
+                    return _TemplatedUlyssesAttention.apply(
+                        query,
+                        key,
+                        value,
+                        attn_mask,
+                        dropout_p,
+                        is_causal,
+                        scale,
+                        enable_gqa,
+                        return_lse,
+                        forward_op,
+                        backward_op,
+                        _parallel_config,
+                    )
 
 
 # Re-implement Ulysses Attention with custom async all-to-all communication in cache-dit
@@ -187,6 +208,85 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
             # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
             lse_wait = _all_to_all_single_o_async(lse, group, **metadata)
+            out = out_wait()  # type: torch.Tensor
+            lse = lse_wait()  # type: torch.Tensor
+            lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
+        else:
+            out = out_wait()  # type: torch.Tensor
+            lse = None
+
+        return (out, lse) if return_lse else out
+
+    @staticmethod
+    def backward(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+    ):
+        raise NotImplementedError(
+            "Backward pass for Ulysses Attention in cache-dit is not implemented yet."
+        )
+
+
+class _TemplatedUlyssesAttentionUnEvenHeads(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        group = ulysses_mesh.get_group()
+
+        ctx.forward_op = forward_op
+        ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
+
+        metadata = _prepare_ulysses_comm_metadata(query)
+        # Async all to all for query, key, value with uneven heads communication
+        query_wait = _all_to_all_single_qkv_uneven_heads_async(query, group, **metadata)
+        key_wait = _all_to_all_single_qkv_uneven_heads_async(key, group, **metadata)
+        value_wait = _all_to_all_single_qkv_uneven_heads_async(value, group, **metadata)
+
+        query = query_wait()  # type: torch.Tensor
+        key = key_wait()  # type: torch.Tensor
+        value = value_wait()  # type: torch.Tensor
+
+        out = forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx=True,
+            _parallel_config=_parallel_config,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+        # out: (B, S_Q_GLOBAL, H_LOCAL, D) -> (B, S_Q_LOCAL, H_GLOBAL, D)
+        out_wait = _all_to_all_single_o_uneven_heads_async(out, group, **metadata)
+
+        if return_lse:
+            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
+            # cause more numerical instability.
+            lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
+            lse_wait = _all_to_all_single_o_uneven_heads_async(lse, group, **metadata)
             out = out_wait()  # type: torch.Tensor
             lse = lse_wait()  # type: torch.Tensor
             lse = lse.squeeze(-1).contiguous()  # (B, S_Q_LOCAL, H_GLOBAL)
@@ -587,6 +687,15 @@ _CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = (
     os.environ.get("CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8", "0") == "1"
 )
 _CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = os.environ.get("CACHE_DIT_ENABELD_ULYSSES_FLOAT8", "0") == "1"
+
+_CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD = (
+    os.environ.get("_CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD", "0") == "1"
+)
+
+
+def is_ulysses_uneven_heads_comm_no_pad() -> bool:
+    global _CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD
+    return _CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD
 
 
 def enable_ulysses_anything(**kwargs):
