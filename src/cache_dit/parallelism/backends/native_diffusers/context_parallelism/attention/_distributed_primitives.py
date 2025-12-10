@@ -282,6 +282,10 @@ def _all_to_all_single_qkv_uneven_heads_async(
     """
     rank, world_size = _get_rank_world_size(group)
     B, S_LOCAL, H_GLOBAL, D = x.shape
+    # NOTE: May use tensor_split here to ensure the same split policy
+    # that we have used in the EquipartitionSharder sharding strategy. Please
+    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
+    # all of which are views of input, thus may not introduce extra IO access.
     input_split_sizes = [i.size(2) for i in torch.tensor_split(x, world_size, dim=2)]
     H_LOCAL = input_split_sizes[rank]
     # [H_GLOBAL, B, S_LOCAL, D]
@@ -478,8 +482,13 @@ def _all_to_all_single_any_o_async(
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
-
+    # NOTE: May use tensor_split here to ensure the same split policy
+    # that we have used in the EquipartitionSharder sharding strategy. Please
+    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
+    # all of which are views of input, thus may not introduce extra IO access.
     input_split_sizes = [o.size(1) for o in torch.tensor_split(x, world_size, dim=1)]
+    # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
+    # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
     S_LOCAL = input_split_sizes[rank]
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
     output_split_sizes = [S_LOCAL] * world_size
@@ -555,8 +564,13 @@ def _all_to_all_single_any_o_fp8_async(
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
     x = per_token_quant_fp8(x)
     (B, S_GLOBAL, H_LOCAL, D) = shape
-
+    # NOTE: May use tensor_split here to ensure the same split policy
+    # that we have used in the EquipartitionSharder sharding strategy. Please
+    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
+    # all of which are views of input, thus may not introduce extra IO access.
     input_split_sizes = [o.size(1) for o in torch.tensor_split(x, world_size, dim=1)]
+    # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
+    # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
     S_LOCAL = input_split_sizes[rank]
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
     output_split_sizes = [S_LOCAL] * world_size
