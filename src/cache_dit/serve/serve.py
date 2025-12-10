@@ -73,6 +73,7 @@ def get_args(
         choices=[
             None,
             "flash",
+            "_flash_3",
             "native",
             "_native_cudnn",
             "_sdpa_cudnn",
