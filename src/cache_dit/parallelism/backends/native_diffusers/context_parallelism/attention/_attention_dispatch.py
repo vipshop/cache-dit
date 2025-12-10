@@ -1,4 +1,3 @@
-import os
 import torch
 from typing import Optional
 
@@ -26,6 +25,7 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 from cache_dit.logger import init_logger
+from cache_dit.envs import ENV
 
 from ._templated_ring import UnifiedTemplatedRingAttention
 from ._templated_ulysses import UnifiedTemplatedUlyssesAttention
@@ -38,13 +38,6 @@ __all__ = [
     "_sdpa_cudnn_attention",
     "_sage_attention",
 ]
-
-# Enable custom native attention backend with context parallelism
-# by default. Users can set the environment variable to 0 to disable
-# this behavior. Default to enabled for better compatibility.
-_CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH = bool(
-    int(os.getenv("CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH", "1"))
-)
 
 
 def _registry_pop_attn_backend(attn_backend: AttentionBackendName):
@@ -68,7 +61,10 @@ def _set_new_attn_backend(member: str, value: str):
     AttentionBackendName._value2member_map_[value] = new_member
 
 
-if _CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
+# Enable custom native attention backend with context parallelism
+# by default. Users can set the environment variable to 0 to disable
+# this behavior. Default to enabled for better compatibility.
+if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
         "_native_attention_forward_op",
         "_sdpa_cudnn_attention_forward_op",
