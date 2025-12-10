@@ -281,10 +281,13 @@ def cachify(
 
 
 def strify(args, pipe_or_stats):
+    base_str = ""
+    if args.height is not None and args.width is not None:
+        base_str += f"{args.height}x{args.width}_"
     quantize_type = args.quantize_type if args.quantize else ""
     if quantize_type != "":
         quantize_type = f"_{quantize_type}"
-    base_str = (
+    base_str += (
         f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
         f"{cache_dit.strify(pipe_or_stats)}"
     )
