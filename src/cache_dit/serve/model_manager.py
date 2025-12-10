@@ -4,14 +4,17 @@ Adapted from SGLang's model management:
 https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/tokenizer_manager.py
 """
 
+import os
 import time
 import base64
+import tempfile
 import torch
 import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_video
 from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
@@ -21,7 +24,7 @@ logger = init_logger(__name__)
 
 @dataclass
 class GenerateRequest:
-    """Image generation request."""
+    """Image/Video generation request."""
 
     prompt: str
     negative_prompt: Optional[str] = ""
@@ -32,23 +35,30 @@ class GenerateRequest:
     seed: Optional[int] = None
     num_images: int = 1
     image_urls: Optional[List[str]] = None
-    
+    num_frames: Optional[int] = None
+    fps: Optional[int] = 16
+
     def __repr__(self):
         image_urls_repr = None
         if self.image_urls:
-            image_urls_repr = [f"<data:{len(url)} chars>" if len(url) > 100 else url for url in self.image_urls]
-        return (f"GenerateRequest(prompt={self.prompt[:50]!r}..., "
-                f"width={self.width}, height={self.height}, "
-                f"num_inference_steps={self.num_inference_steps}, "
-                f"guidance_scale={self.guidance_scale}, seed={self.seed}, "
-                f"num_images={self.num_images}, image_urls={image_urls_repr})")
+            image_urls_repr = [
+                f"<data:{len(url)} chars>" if len(url) > 100 else url for url in self.image_urls
+            ]
+        return (
+            f"GenerateRequest(prompt={self.prompt[:50]!r}..., "
+            f"width={self.width}, height={self.height}, "
+            f"num_inference_steps={self.num_inference_steps}, "
+            f"guidance_scale={self.guidance_scale}, seed={self.seed}, "
+            f"num_images={self.num_images}, image_urls={image_urls_repr})"
+        )
 
 
 @dataclass
 class GenerateResponse:
-    """Image generation response."""
+    """Image/Video generation response."""
 
-    images: List[str]  # Base64 encoded images
+    images: Optional[List[str]] = None  # Base64 encoded images
+    video: Optional[str] = None  # Base64 encoded video (mp4)
     stats: Optional[Dict[str, Any]] = None
     time_cost: Optional[float] = None
 
@@ -187,17 +197,17 @@ class ModelManager:
         """Load images from URLs, local paths, or base64 strings."""
         if not image_urls:
             return None
-        
+
         images = []
         for idx, url in enumerate(image_urls):
             try:
-                if url.startswith('data:image/'):
+                if url.startswith("data:image/"):
                     log_desc = f"data URI (length: {len(url)})"
                     logger.info(f"Loading image {idx+1} from {log_desc}")
-                    header, base64_data = url.split(',', 1)
+                    header, base64_data = url.split(",", 1)
                     img_data = base64.b64decode(base64_data)
                     image = Image.open(BytesIO(img_data)).convert("RGB")
-                elif url.startswith(('http://', 'https://')):
+                elif url.startswith(("http://", "https://")):
                     log_desc = f"URL: {url[:80]}{'...' if len(url) > 80 else ''}"
                     logger.info(f"Downloading image {idx+1} from {log_desc}")
                     response = requests.get(url, timeout=30)
@@ -210,12 +220,7 @@ class ModelManager:
                         img_data = base64.b64decode(url, validate=True)
                         image = Image.open(BytesIO(img_data)).convert("RGB")
                     except Exception:
-                        import os
-                        if os.path.exists(url):
-                            logger.info(f"Base64 decode failed, treating as local path")
-                            image = Image.open(url).convert("RGB")
-                        else:
-                            raise
+                        raise
                 else:
                     log_desc = f"local path: {url}"
                     logger.info(f"Loading image {idx+1} from {log_desc}")
@@ -229,7 +234,7 @@ class ModelManager:
                     error_url = url
                 logger.error(f"Failed to load image {idx+1} from {error_url}: {e}")
                 raise RuntimeError(f"Failed to load image {idx+1}: {e}")
-        
+
         return images
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
@@ -237,13 +242,14 @@ class ModelManager:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
         is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
+        is_video_mode = request.num_frames is not None and request.num_frames > 1
         input_images = None
         if is_edit_mode:
             input_images = self._load_images_from_urls(request.image_urls)
             if input_images:
                 logger.info(f"Loaded {len(input_images)} input image(s) for editing")
-        
-        if not is_edit_mode:
+
+        if not is_edit_mode and not is_video_mode:
             self._warmup_if_needed(request.width, request.height, request.prompt)
 
         seed = request.seed
@@ -251,8 +257,13 @@ class ModelManager:
             seed = 42
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
-        mode_str = "edit" if is_edit_mode else "generation"
-        logger.info(f"Image {mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
+        if is_video_mode:
+            mode_str = "video generation"
+        elif is_edit_mode:
+            mode_str = "edit"
+        else:
+            mode_str = "generation"
+        logger.info(f"{mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
 
         generator = None
         if seed is not None:
@@ -280,6 +291,10 @@ class ModelManager:
             "generator": generator,
             "num_images_per_prompt": request.num_images,
         }
+
+        # Add num_frames for video generation
+        if is_video_mode:
+            pipe_kwargs["num_frames"] = request.num_frames
 
         # Add input images to pipe_kwargs if in edit mode
         if is_edit_mode and input_images:
@@ -315,7 +330,10 @@ class ModelManager:
             import torch.distributed as dist
 
             rank = dist.get_rank()
-            logger.info(f"Rank {rank}: Generated {len(output.images)} images")
+            if is_video_mode:
+                logger.info(f"Rank {rank}: Generated video with {len(output.frames[0])} frames")
+            else:
+                logger.info(f"Rank {rank}: Generated {len(output.images)} images")
 
         stats = None
         if self.enable_cache:
@@ -335,17 +353,40 @@ class ModelManager:
                     ]
                 }
 
-        images_base64 = []
-        for image in output.images:
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            images_base64.append(img_str)
+        images_base64 = None
+        video_base64 = None
 
-        logger.info(f"Image generation completed in {time_cost:.2f}s")
+        if is_video_mode:
+            video_frames = output.frames[0]
+            logger.info(
+                f"Video generation completed with {len(video_frames)} frames in {time_cost:.2f}s"
+            )
+
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+
+            try:
+                export_to_video(video_frames, tmp_path, fps=request.fps)
+
+                with open(tmp_path, "rb") as f:
+                    video_bytes = f.read()
+                    video_base64 = base64.b64encode(video_bytes).decode()
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        else:
+            images_base64 = []
+            for image in output.images:
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                images_base64.append(img_str)
+
+            logger.info(f"Image generation completed in {time_cost:.2f}s")
 
         return GenerateResponse(
             images=images_base64,
+            video=video_base64,
             stats=stats,
             time_cost=time_cost,
         )
