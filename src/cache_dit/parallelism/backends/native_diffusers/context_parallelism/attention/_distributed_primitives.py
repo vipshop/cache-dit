@@ -196,7 +196,7 @@ def _prepare_ulysses_comm_metadata(
     query: torch.Tensor,
     **kwargs,
 ) -> dict:
-    num_qo_head = query.shape[2]  # (B, S_LOCAL, H_GLOBAL, D)
+    num_qo_head = query.shape[2] # (B, S_LOCAL, H_GLOBAL, D)
     extra_kwargs = {}
     extra_kwargs["num_qo_head"] = num_qo_head
     # Add other kwargs if needed in future
@@ -217,7 +217,7 @@ def _all_to_all_single_qkv_async(
     x, H_PAD = _maybe_pad_qkv_head(x, H, group)
     H_LOCAL = (H + H_PAD) // world_size
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+    _shape = x.shape # (world_size, S_LOCAL, B, H_LOCAL, D)
 
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
@@ -253,7 +253,7 @@ def _all_to_all_single_o_async(
     S_LOCAL = S_GLOBAL // world_size
     # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
     x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+    _shape = x.shape # (world_size, H_LOCAL, B, S_LOCAL, D)
 
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
@@ -359,10 +359,10 @@ def _all_to_all_single_qkv_fp8_async(
     x, H_PAD = _maybe_pad_qkv_head(x, H, group)
     H_LOCAL = (H + H_PAD) // world_size
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+    _shape = x.shape # (world_size, S_LOCAL, B, H_LOCAL, D)
 
-    x = per_token_quant_fp8(x)  # type: torch.Tensor
-    shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
+    x = per_token_quant_fp8(x) # type: torch.Tensor
+    shape_with_scale = x.shape # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
 
@@ -399,10 +399,10 @@ def _all_to_all_single_o_fp8_async(
     S_LOCAL = S_GLOBAL // world_size
     # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
     x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-    _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+    _shape = x.shape # (world_size, H_LOCAL, B, S_LOCAL, D)
 
     x = per_token_quant_fp8(x)
-    shape_with_scale = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
+    shape_with_scale = x.shape # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
 
@@ -446,12 +446,12 @@ def _all_to_all_single_any_qkv_async(
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
+    x = x.flatten(0, 1) # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
-        x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
+        x = _wait_tensor(x) # (S_GLOBAL, B, H_LOCAL, D)
         # (S_GLOBAL, B, H_LOCAL, D)
         # -> (B, S_GLOBAL, H_LOCAL, D)
         x = x.permute(1, 0, 2, 3).contiguous()
@@ -476,32 +476,21 @@ def _all_to_all_single_any_o_async(
     H = kwargs.get("num_qo_head", None)
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
-    shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    shape = x.shape # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
 
-    x = x.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
-    # NOTE: May use tensor_split here to ensure the same split policy
-    # that we have used in the EquipartitionSharder sharding strategy. Please
-    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
-    # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(x, world_size, dim=0)]
-    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
-    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
-    output_split_sizes = [input_split_sizes[rank]] * world_size
+    input_split_sizes = [o.size(1) for o in torch.tensor_split(x, world_size, dim=1)]
+    S_LOCAL = input_split_sizes[rank]
+    x = x.permute(1, 0, 2, 3).contiguous() # (S_GLOBAL, B, H_LOCAL, D)
+    output_split_sizes = [S_LOCAL] * world_size
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
-        x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
-        # NOTE: We can not simply reshape here, because the collective tensors
-        # are stacked at dim=0(SeqLen), we need to first split them and then concat at
-        # dim=1(Head), otherwise the result will be incorrect due to the linear layout
-        # of the tensor in memory.
-        H_GLOBAL = H_LOCAL * world_size
-        S_LOCAL = x.shape[0] // world_size
-        # TODO: How to avoid extra memory IO access here?
-        x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
-        x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        x = _wait_tensor(x) # (S_GLOBAL, B, H_LOCAL, D)
+        x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
+        x = x.permute(2, 1, 0, 3, 4).contiguous()
+        x = x.reshape(B,  S_LOCAL, world_size * H_LOCAL, D)
         x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
@@ -563,37 +552,22 @@ def _all_to_all_single_any_o_fp8_async(
     H = kwargs.get("num_qo_head", None)
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
-    shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
+    shape = x.shape # (B, S_GLOBAL, H_LOCAL, D)
     (B, S_GLOBAL, H_LOCAL, D) = shape
     x = per_token_quant_fp8(x)
 
-    # NOTE: The `if` branch will introduce graph break for torch.compile,
-    # so, we choose to disable the even split optimization implementation
-    # _all_to_all_single for now.
-    x = x.flatten(0, 1).contiguous()  # (B*S_GLOBAL, H_LOCAL, D)
-    # NOTE: May use tensor_split here to ensure the same split policy
-    # that we have used in the EquipartitionSharder sharding strategy. Please
-    # note that the 'tensor_split' Splits a tensor into multiple sub-tensors,
-    # all of which are views of input, thus may not introduce extra IO access.
-    input_split_sizes = [o.shape[0] for o in torch.tensor_split(x, world_size, dim=0)]
-    # input_split: e.g, B*S_GLOBAL=1*9 input splits across ranks [[5,4], [5,4],..]
-    # output_split: e.g, B*S_GLOBAL=1*9 output splits across ranks [[5,5], [4,4],..]
-    output_split_sizes = [input_split_sizes[rank]] * world_size
+    input_split_sizes = [o.size(1) for o in torch.tensor_split(x, world_size, dim=1)]
+    S_LOCAL = input_split_sizes[rank]
+    x = x.permute(1, 0, 2, 3).contiguous() # (S_GLOBAL, B, H_LOCAL, D)
+    output_split_sizes = [S_LOCAL] * world_size
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
-        x = _wait_tensor(x)  # (S_LOCAL*world_size, H_LOCAL, D)
-        # NOTE: We can not simply reshape here, because the collective tensors
-        # are stacked at dim=0(SeqLen), we need to first split them and then concat at
-        # dim=1(Head), otherwise the result will be incorrect due to the linear layout
-        # of the tensor in memory.
-        H_GLOBAL = H_LOCAL * world_size
-        S_LOCAL = x.shape[0] // world_size
-        # TODO: How to avoid extra memory IO access here?
-        x = torch.cat(x.tensor_split(world_size, dim=0), dim=1)  # (B*S_LOCAL, H_GLOBAL, D)
-        x = per_token_dequant_fp8(x)
-        x = x.reshape(B, S_LOCAL, H_GLOBAL, D)  # (B, S_LOCAL, H_GLOBAL, D)
+        x = _wait_tensor(x) # (S_GLOBAL, B, H_LOCAL, D)
+        x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
+        x = x.permute(2, 1, 0, 3, 4).contiguous()
+        x = x.reshape(B,  S_LOCAL, world_size * H_LOCAL, D)
         x = _maybe_unpad_o_head(x, H_PAD, group)
         return x
 
