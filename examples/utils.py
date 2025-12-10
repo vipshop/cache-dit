@@ -70,7 +70,7 @@ def get_args(
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
+    parser.add_argument("--max-warmup-steps", "--wa", type=int, default=8)
     parser.add_argument("--warmup-interval", "--wi", type=int, default=1)
     parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
     parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
@@ -90,8 +90,8 @@ def get_args(
         ],
         help="Pre-defined steps computation mask policy",
     )
-    parser.add_argument("--height", type=int, default=None)
-    parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--height", "--h", "-h", type=int, default=None)
+    parser.add_argument("--width", "--w", "-w", type=int, default=None)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
