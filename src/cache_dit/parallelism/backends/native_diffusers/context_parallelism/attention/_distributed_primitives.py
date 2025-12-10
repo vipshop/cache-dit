@@ -611,6 +611,7 @@ def _unified_all_to_all_qkv_async_fn(
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
     from ._templated_ulysses import is_ulysses_anything_enabled
+    from ._templated_ulysses import is_ulysses_heads_no_padding
 
     if is_ulysses_anything_enabled():
         if is_ulysses_float8_enabled() and not disable_fp8:
@@ -619,6 +620,8 @@ def _unified_all_to_all_qkv_async_fn(
     else:
         if is_ulysses_float8_enabled() and not disable_fp8:
             return _all_to_all_single_qkv_fp8_async
+        if is_ulysses_heads_no_padding():
+            return _all_to_all_single_qkv_uneven_heads_async
         return _all_to_all_single_qkv_async
 
 
@@ -627,6 +630,7 @@ def _unified_all_to_all_o_async_fn(
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
     from ._templated_ulysses import is_ulysses_anything_enabled
+    from ._templated_ulysses import is_ulysses_heads_no_padding
 
     if is_ulysses_anything_enabled():
         if is_ulysses_float8_enabled() and not disable_fp8:
@@ -635,4 +639,6 @@ def _unified_all_to_all_o_async_fn(
     else:
         if is_ulysses_float8_enabled() and not disable_fp8:
             return _all_to_all_single_o_fp8_async
+        if is_ulysses_heads_no_padding():
+            return _all_to_all_single_o_uneven_heads_async
         return _all_to_all_single_o_async
