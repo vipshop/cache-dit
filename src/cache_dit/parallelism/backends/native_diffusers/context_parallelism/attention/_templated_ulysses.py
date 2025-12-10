@@ -72,6 +72,7 @@ class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
         if is_ulysses_anything_enabled():
+            # Ulysses Anything Attention: Any sequence length and any head num supported.
             if is_ulysses_float8_enabled():
                 return _TemplatedUlyssesAnythingAttentionFloat8.apply(
                     query,
@@ -103,6 +104,7 @@ class UnifiedTemplatedUlyssesAttention(torch.autograd.Function):
                     _parallel_config,
                 )
         else:
+            # Ulysses Attention: Support even sequence length and any head num.
             if is_ulysses_float8_enabled():
                 return _TemplatedUlyssesAttentionFloat8.apply(
                     query,
