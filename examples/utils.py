@@ -90,9 +90,9 @@ def get_args(
         ],
         help="Pre-defined steps computation mask policy",
     )
-    parser.add_argument("--height", "--h", "-h", type=int, default=None)
-    parser.add_argument("--width", "--w", "-w", type=int, default=None)
-    parser.add_argument("--quantize", "-q", action="store_true", default=False)
+    parser.add_argument("--height", "--h", type=int, default=None)
+    parser.add_argument("--width", "--w", type=int, default=None)
+    parser.add_argument("--quantize", "--q", action="store_true", default=False)
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
