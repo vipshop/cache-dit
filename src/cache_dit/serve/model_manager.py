@@ -301,12 +301,13 @@ class ModelManager:
             "num_inference_steps": request.num_inference_steps,
             "guidance_scale": request.guidance_scale,
             "generator": generator,
-            "num_images_per_prompt": request.num_images,
         }
 
         # Add num_frames for video generation
         if is_video_mode:
             pipe_kwargs["num_frames"] = request.num_frames
+        else:
+            pipe_kwargs["num_images_per_prompt"] = request.num_images
 
         # Add input images to pipe_kwargs if in edit mode
         if is_edit_mode and input_images:
