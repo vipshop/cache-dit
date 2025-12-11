@@ -48,18 +48,14 @@ def call_api(prompt, image_url, name="test", **kwargs):
 
 
 def test_basic():
-    image_url = (
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    image_url = "https://www.modelscope.cn/models/Wan-AI/Wan2.2-I2V-A14B/resolve/master/examples/i2v_input.JPG"
     prompt = "Summer beach vacation style, a white cat wearing sunglasses sits on a surfboard. The fluffy-furred feline gazes directly at the camera with a relaxed expression. Blurred beach scenery forms the background featuring crystal-clear waters, distant green hills, and a blue sky dotted with white clouds. The cat assumes a naturally relaxed posture, as if savoring the sea breeze and warm sunlight. A close-up shot highlights the feline's intricate details and the refreshing atmosphere of the seaside."
 
     return call_api(prompt=prompt, image_url=image_url, name="wan_i2v_basic")
 
 
 def test_with_negative_prompt():
-    image_url = (
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    image_url = "https://www.modelscope.cn/models/Wan-AI/Wan2.2-I2V-A14B/resolve/master/examples/i2v_input.JPG"
     prompt = "A white cat on a surfboard at the beach, enjoying the summer vacation"
     negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 
@@ -72,17 +68,8 @@ def test_with_negative_prompt():
     )
 
 
-def test_custom_image():
-    image_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png"
-    prompt = "A cat walking in a beautiful garden with flowers"
-
-    return call_api(prompt=prompt, image_url=image_url, name="wan_i2v_custom", seed=999)
-
-
 def test_short_video():
-    image_url = (
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    image_url = "https://www.modelscope.cn/models/Wan-AI/Wan2.2-I2V-A14B/resolve/master/examples/i2v_input.JPG"
     prompt = "A cat on a surfboard, gentle waves in the background"
 
     return call_api(
@@ -96,9 +83,7 @@ def test_short_video():
 
 
 def test_with_base64_image():
-    image_url = (
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    image_url = "https://www.modelscope.cn/models/Wan-AI/Wan2.2-I2V-A14B/resolve/master/examples/i2v_input.JPG"
     response = requests.get(image_url)
     img = Image.open(BytesIO(response.content))
 
@@ -121,13 +106,10 @@ if __name__ == "__main__":
     print("\n2. With negative prompt:")
     test_with_negative_prompt()
 
-    print("\n3. Custom image:")
-    test_custom_image()
-
-    print("\n4. Short video:")
+    print("\n3. Short video:")
     test_short_video()
 
-    print("\n5. Base64 encoded image:")
+    print("\n4. Base64 encoded image:")
     test_with_base64_image()
 
     print("\nAll tests completed!")

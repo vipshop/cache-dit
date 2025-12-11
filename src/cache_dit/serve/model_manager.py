@@ -18,6 +18,7 @@ from diffusers.utils import export_to_video
 from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
+from diffusers import WanImageToVideoPipeline
 
 logger = init_logger(__name__)
 
@@ -103,11 +104,19 @@ class ModelManager:
         """Load the diffusion model."""
         logger.info(f"Loading model: {self.model_path}")
 
-        self.pipe = DiffusionPipeline.from_pretrained(
-            self.model_path,
-            torch_dtype=self.torch_dtype,
-            device_map=self.device_map,
-        )
+        if "Wan2.2-I2V-A14B-Diffusers" in self.model_path:
+            logger.info("Detected Wan2.2-I2V model, using WanImageToVideoPipeline")
+            self.pipe = WanImageToVideoPipeline.from_pretrained(
+                self.model_path,
+                torch_dtype=self.torch_dtype,
+                device_map=self.device_map,
+            )
+        else:
+            self.pipe = DiffusionPipeline.from_pretrained(
+                self.model_path,
+                torch_dtype=self.torch_dtype,
+                device_map=self.device_map,
+            )
 
         cache_config_obj = None
         if self.enable_cache:
