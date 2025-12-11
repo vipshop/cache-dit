@@ -62,6 +62,8 @@ def get_args(
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
+    parser.add_argument("--compile-vae", action="store_true", default=False)
+    parser.add_argument("--compile-text-encoder", action="store_true", default=False)
     parser.add_argument("--max-autotune", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
     parser.add_argument("--steps", type=int, default=None)

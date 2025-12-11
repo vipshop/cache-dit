@@ -111,6 +111,7 @@ if args.fuse_lora:
     pipe.fuse_lora()
     pipe.unload_lora_weights()
 
+
 # Apply cache and context parallelism here
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig
@@ -148,7 +149,6 @@ if args.quantize and args.quantize_type != "bitsandbytes_4bit":
             "txt_in",
         ],
     )
-
 
 if GiB() < 48 and not args.quantize:
     # NOTE: Enable cpu offload before enabling context parallelism will
@@ -223,7 +223,6 @@ if args.compile:
         pipe.text_encoder.model.language_model = torch.compile(
             pipe.text_encoder.model.language_model
         )
-
 
 # warmup
 _ = run_pipe()
