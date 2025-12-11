@@ -220,6 +220,9 @@ if args.compile:
         pipe.vae.decoder = torch.compile(pipe.vae.decoder)
     if args.compile_text_encoder:
         assert isinstance(pipe.text_encoder, Qwen2_5_VLForConditionalGeneration)
+        # NOTE: .tolist() op in visual model will raise spamming warnings, so we temporarily
+        # disable compiling visual model here.
+        # pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
         pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
         pipe.text_encoder.model.language_model = torch.compile(
             pipe.text_encoder.model.language_model
