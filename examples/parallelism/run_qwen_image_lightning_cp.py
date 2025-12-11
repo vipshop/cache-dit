@@ -50,34 +50,40 @@ scheduler_config = {
 }
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
-pipe = QwenImagePipeline.from_pretrained(
+
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get("QWEN_IMAGE_DIR", "Qwen/Qwen-Image")
+)
+
+quantization_config = (
     (
-        args.model_path
-        if args.model_path is not None
-        else os.environ.get(
-            "QWEN_IMAGE_DIR",
-            "Qwen/Qwen-Image",
+        PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16,
+            },
+            # Always use bnb 4bit quantization for text encoder when quantizing to
+            # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
+            components_to_quantize=(
+                ["text_encoder", "transformer"]
+                if args.quantize_type == "bitsandbytes_4bit"
+                else ["text_encoder"]
+            ),
         )
-    ),
+    )
+    if args.quantize
+    else None
+)
+
+pipe = QwenImagePipeline.from_pretrained(
+    model_id,
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
-    # Always use bnb 4bit quantization for text encoder when quantizing to
-    # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
-    quantization_config=(
-        (
-            PipelineQuantizationConfig(
-                quant_backend="bitsandbytes_4bit",
-                quant_kwargs={
-                    "load_in_4bit": True,
-                    "bnb_4bit_quant_type": "nf4",
-                    "bnb_4bit_compute_dtype": torch.bfloat16,
-                },
-                components_to_quantize=["text_encoder"],
-            )
-        )
-        if args.quantize
-        else None
-    ),
+    quantization_config=quantization_config,
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
@@ -97,10 +103,12 @@ pipe.load_lora_weights(
     ),
 )
 
-pipe.fuse_lora()
-pipe.unload_lora_weights()
+if args.fuse_lora:
+    pipe.fuse_lora()
+    pipe.unload_lora_weights()
 
-if args.quantize:
+
+if args.quantize and args.quantize_type != "bitsandbytes_4bit":
     # Quantize the transformer according to custom quantize
     # type passed from args.
     pipe.transformer = cache_dit.quantize(
@@ -145,6 +153,10 @@ else:
     pipe.to(device)
 
 
+width = 1024 if args.width is None else args.width
+height = 1024 if args.height is None else args.height
+
+
 if GiB() <= 48 and not args.quantize:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
@@ -166,9 +178,6 @@ if args.negative_prompt is not None:
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
-width = 1024 if args.width is None else args.width
-height = 1024 if args.height is None else args.height
-
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
@@ -188,7 +197,6 @@ def run_pipe(warmup: bool = False):
 
 if args.compile:
     cache_dit.set_compile_configs()
-    pipe.text_encoder = torch.compile(pipe.text_encoder)
     pipe.transformer = torch.compile(pipe.transformer)
 
 
