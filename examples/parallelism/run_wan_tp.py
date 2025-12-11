@@ -38,21 +38,6 @@ pipe = WanPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-if args.quantize:
-    assert isinstance(args.quantize_type, str)
-    if hasattr(pipe, "transformer"):
-        if args.quantize_type.endswith("wo"):
-            pipe.transformer = cache_dit.quantize(
-                pipe.transformer,
-                quant_type=args.quantize_type,
-            )
-    if hasattr(pipe, "transformer_2"):
-        pipe.transformer_2 = cache_dit.quantize(
-            pipe.transformer_2,
-            quant_type=args.quantize_type,
-        )
-    print(f"Applied quantization: {args.quantize_type} to Wan transformers.")
-
 if args.cache or args.parallel_type is not None:
     from cache_dit import (
         ForwardPattern,
@@ -99,6 +84,24 @@ if args.cache or args.parallel_type is not None:
                 has_separate_cfg=True,
             ),
         )
+
+# WARN: Must apply quantization after tensor parallelism is applied.
+# torchao is compatible with tensor parallelism but requires to be
+# applied after TP.
+if args.quantize:
+    assert isinstance(args.quantize_type, str)
+    if hasattr(pipe, "transformer"):
+        if args.quantize_type.endswith("wo"):
+            pipe.transformer = cache_dit.quantize(
+                pipe.transformer,
+                quant_type=args.quantize_type,
+            )
+    if hasattr(pipe, "transformer_2"):
+        pipe.transformer_2 = cache_dit.quantize(
+            pipe.transformer_2,
+            quant_type=args.quantize_type,
+        )
+    print(f"Applied quantization: {args.quantize_type} to Wan transformers.")
 
 # Enable memory savings
 if GiB() < 40:
