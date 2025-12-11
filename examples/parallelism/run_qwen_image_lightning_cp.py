@@ -81,28 +81,19 @@ pipe.load_lora_weights(
 pipe.fuse_lora()
 pipe.unload_lora_weights()
 
-enable_quatization = args.quantize and GiB() < 96
-if GiB() < 96:
-    if enable_quatization:
-        pipe.transformer = cache_dit.quantize(
-            pipe.transformer,
-            quant_type=args.quantize_type,
-            exclude_layers=[
-                "img_in",
-                "txt_in",
-            ],
-        )
-        pipe.text_encoder = cache_dit.quantize(
-            pipe.text_encoder,
-            quant_type=args.quantize_type,
-        )
-        pipe.to(device)
-else:
-    pipe.to(device)
-
-if GiB() <= 48 and not enable_quatization:
-    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-    pipe.vae.enable_tiling()
+if args.quantize:
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "img_in",
+            "txt_in",
+        ],
+    )
+    pipe.text_encoder = cache_dit.quantize(
+        pipe.text_encoder,
+        quant_type=args.quantize_type,
+    )
 
 # Apply cache and context parallelism here
 if args.cache or args.parallel_type is not None:
@@ -127,13 +118,19 @@ if args.cache or args.parallel_type is not None:
     )
 
 
-if GiB() < 96 and not enable_quatization:
+if GiB() < 96 and not args.quantize:
     # NOTE: Enable cpu offload before enabling context parallelism will
     # raise shape error after first pipe call, so we enable it after.
     # It seems a bug of diffusers that cpu offload is not fully
     # compatible with context parallelism, visa versa.
     pipe.enable_model_cpu_offload(device=device)
+else:
+    pipe.to(device)
 
+
+if GiB() <= 48 and not args.quantize:
+    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
+    pipe.vae.enable_tiling()
 
 positive_magic = {
     "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
