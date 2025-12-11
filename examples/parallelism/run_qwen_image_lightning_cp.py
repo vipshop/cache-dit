@@ -12,6 +12,8 @@ from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
+from diffusers.quantizers import PipelineQuantizationConfig
+
 from utils import (
     GiB,
     get_args,
@@ -59,6 +61,23 @@ pipe = QwenImagePipeline.from_pretrained(
     ),
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
+    # Always use bnb 4bit quantization for text encoder when quantizing to
+    # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
+    quantization_config=(
+        (
+            PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={
+                    "load_in_4bit": True,
+                    "bnb_4bit_quant_type": "nf4",
+                    "bnb_4bit_compute_dtype": torch.bfloat16,
+                },
+                components_to_quantize=["text_encoder"],
+            )
+        )
+        if args.quantize
+        else None
+    ),
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
@@ -82,6 +101,8 @@ pipe.fuse_lora()
 pipe.unload_lora_weights()
 
 if args.quantize:
+    # Quantize the transformer according to custom quantize
+    # type passed from args.
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
@@ -89,10 +110,6 @@ if args.quantize:
             "img_in",
             "txt_in",
         ],
-    )
-    pipe.text_encoder = cache_dit.quantize(
-        pipe.text_encoder,
-        quant_type=args.quantize_type,
     )
 
 # Apply cache and context parallelism here
@@ -127,10 +144,8 @@ if GiB() < 96 and not args.quantize:
 else:
     pipe.to(device)
 
-width = 1024 if args.width is None else args.width
-height = 1024 if args.height is None else args.height
 
-if GiB() <= 48 and (not args.quantize or (max(height, width) > 1024)):
+if GiB() <= 48 and not args.quantize:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
 
@@ -151,6 +166,9 @@ if args.negative_prompt is not None:
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
+width = 1024 if args.width is None else args.width
+height = 1024 if args.height is None else args.height
+
 
 def run_pipe(warmup: bool = False):
     # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
@@ -170,6 +188,7 @@ def run_pipe(warmup: bool = False):
 
 if args.compile:
     cache_dit.set_compile_configs()
+    pipe.text_encoder = torch.compile(pipe.text_encoder)
     pipe.transformer = torch.compile(pipe.transformer)
 
 
