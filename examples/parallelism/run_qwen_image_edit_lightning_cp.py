@@ -212,7 +212,10 @@ def run_pipe():
 
 
 if args.compile:
-    cache_dit.set_compile_configs()
+    cache_dit.set_compile_configs(
+        capture_scalar_outputs=True,  # .tolist(), .item()
+        capture_dynamic_output_shape_ops=True,
+    )
     torch.set_float32_matmul_precision("high")
     pipe.transformer = torch.compile(pipe.transformer)
     if args.compile_vae:
@@ -220,6 +223,7 @@ if args.compile:
         pipe.vae.decoder = torch.compile(pipe.vae.decoder)
     if args.compile_text_encoder:
         assert isinstance(pipe.text_encoder, Qwen2_5_VLForConditionalGeneration)
+        pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
         pipe.text_encoder.model.language_model = torch.compile(
             pipe.text_encoder.model.language_model
         )
