@@ -214,6 +214,8 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
+    # TODO: Split output before all to all to apply Async all to all,
+    # overlap comm and compute of _to_out and to_add_out projections.
     out_wait = _all_to_all_o_async_func(out, group, **metadata)  # (B, S_LOCAL, H_GLOBAL, D)
     joint_hidden_states = out_wait()  # type: torch.Tensor
 

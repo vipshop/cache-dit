@@ -195,6 +195,9 @@ if args.prompt is not None:
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
+image1 = image1.resize((width, height))
+image2 = image2.resize((width, height))
+
 
 def run_pipe():
     inputs = {
