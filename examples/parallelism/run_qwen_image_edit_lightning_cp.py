@@ -212,10 +212,7 @@ def run_pipe():
 
 
 if args.compile:
-    cache_dit.set_compile_configs(
-        capture_scalar_outputs=True,  # .tolist(), .item()
-        capture_dynamic_output_shape_ops=True,
-    )
+    cache_dit.set_compile_configs()
     torch.set_float32_matmul_precision("high")
     pipe.transformer = torch.compile(pipe.transformer)
     if args.compile_vae:
