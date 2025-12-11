@@ -60,7 +60,7 @@ prompt = "The magician bear is on the left, the alchemist bear is on the right, 
 if args.prompt is not None:
     prompt = args.prompt
 inputs = {
-    "image": [image1, image2],  # 960x720, 512x512
+    "image": [image1, image2],
     "prompt": prompt,
     "generator": torch.Generator(device="cpu").manual_seed(0),
     "true_cfg_scale": 4.0,
