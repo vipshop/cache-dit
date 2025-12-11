@@ -92,6 +92,7 @@ pipe = QwenImageEditPlusPipeline.from_pretrained(
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
+
 steps = 8 if args.steps is None else args.steps
 assert steps in [8, 4]
 
