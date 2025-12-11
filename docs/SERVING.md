@@ -173,18 +173,6 @@ torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --cache --parallel-type tp
 ```
 
-### Image-to-Video (Wan2.2-I2V)
-```bash
-cache-dit-serve --model-path Wan-AI/Wan2.2-I2V-A14B-Diffusers \
-    --cache --enable-cpu-offload
-```
-
-### Image-to-Video with Context Parallelism
-```bash
-torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
-    --model-path Wan-AI/Wan2.2-I2V-A14B-Diffusers \
-    --cache --parallel-type ulysses --enable-cpu-offload
-```
 
 ## Attribution
 
