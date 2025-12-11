@@ -39,6 +39,8 @@ def set_compile_configs(
     force_disable_compile_caches: bool = False,
     use_fast_math: bool = False,
     compute_comm_overlap: bool = True,
+    capture_scalar_outputs: bool = False,
+    capture_dynamic_output_shape_ops: bool = False,
     **kwargs,  # other kwargs
 ):
     # Alway increase recompile_limit for dynamic shape compilation
@@ -61,6 +63,11 @@ def set_compile_configs(
             torch._inductor.config.intra_node_bw = (
                 64 if "L20" in torch.cuda.get_device_name() else 300
             )
+
+    # https://docs.pytorch.org/docs/stable/nested.html#data-dependent-operation-within-torch-compile
+    if hasattr(torch._dynamo.config, "capture_scalar_outputs"):
+        torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
+        torch._dynamo.config.capture_dynamic_output_shape_ops = capture_dynamic_output_shape_ops
 
     if not descent_tuning:
         return

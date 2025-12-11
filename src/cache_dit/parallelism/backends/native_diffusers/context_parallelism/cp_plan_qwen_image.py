@@ -144,6 +144,17 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
 
     seq_txt = encoder_hidden_states.shape[1]
 
+    img_value = attn.to_v(hidden_states)
+    txt_value = attn.add_v_proj(encoder_hidden_states)
+    img_value = img_value.unflatten(-1, (attn.heads, -1))
+    txt_value = txt_value.unflatten(-1, (attn.heads, -1))
+    joint_value = torch.cat([txt_value, img_value], dim=1)
+
+    metadata = _prepare_ulysses_comm_metadata(joint_value)
+
+    # Async all to all for value
+    joint_value_wait = _all_to_all_qv_async_func(joint_value, group, **metadata)
+
     # Compute QKV for image stream (sample projections)
     img_query = attn.to_q(hidden_states)
     # Compute QKV for text stream (context projections)
@@ -164,8 +175,6 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     # Concatenate for joint attention
     # Order: [text, image]
     joint_query = torch.cat([txt_query, img_query], dim=1)
-
-    metadata = _prepare_ulysses_comm_metadata(joint_query)
 
     # Async all to all for query
     joint_query_wait = _all_to_all_qv_async_func(joint_query, group, **metadata)
@@ -188,19 +197,10 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     # Async all to all for key
     joint_key_wait = _all_to_all_k_async_func(joint_key, group, **metadata)
 
-    img_value = attn.to_v(hidden_states)
-    txt_value = attn.add_v_proj(encoder_hidden_states)
-    img_value = img_value.unflatten(-1, (attn.heads, -1))
-    txt_value = txt_value.unflatten(-1, (attn.heads, -1))
-    joint_value = torch.cat([txt_value, img_value], dim=1)
-
-    # Async all to all for value
-    joint_value_wait = _all_to_all_qv_async_func(joint_value, group, **metadata)
-
     # (S_GLOBAL, B, H_LOCAL, D) -> (B, S_GLOBAL, H_LOCAL, D)
+    joint_value = joint_value_wait()  # type: torch.Tensor
     joint_query = joint_query_wait()  # type: torch.Tensor
     joint_key = joint_key_wait()  # type: torch.Tensor
-    joint_value = joint_value_wait()  # type: torch.Tensor
 
     # Compute joint attention
     out = dispatch_attention_fn(
@@ -214,6 +214,8 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         parallel_config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
+    # TODO: Split output before all to all to apply Async all to all,
+    # overlap comm and compute of _to_out and to_add_out projections.
     out_wait = _all_to_all_o_async_func(out, group, **metadata)  # (B, S_LOCAL, H_GLOBAL, D)
     joint_hidden_states = out_wait()  # type: torch.Tensor
 

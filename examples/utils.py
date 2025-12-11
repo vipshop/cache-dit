@@ -62,6 +62,8 @@ def get_args(
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
+    parser.add_argument("--compile-vae", action="store_true", default=False)
+    parser.add_argument("--compile-text-encoder", action="store_true", default=False)
     parser.add_argument("--max-autotune", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
     parser.add_argument("--steps", type=int, default=None)
@@ -103,10 +105,13 @@ def get_args(
             None,
             "float8",
             "float8_weight_only",
+            "float8_wo",  # alias for float8_weight_only
             "int8",
             "int8_weight_only",
+            "int8_wo",  # alias for int8_weight_only
             "int4",
             "int4_weight_only",
+            "int4_wo",  # alias for int4_weight_only
             "bitsandbytes_4bit",
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
@@ -201,6 +206,13 @@ def get_args(
             args_or_parser.quantize = True
         if args_or_parser.quantize and args_or_parser.quantize_type is None:
             args_or_parser.quantize_type = "float8_weight_only"
+        # Handle alias for quantize_type
+        if args_or_parser.quantize_type == "float8_wo":  # alias
+            args_or_parser.quantize_type = "float8_weight_only"
+        if args_or_parser.quantize_type == "int8_wo":  # alias
+            args_or_parser.quantize_type = "int8_weight_only"
+        if args_or_parser.quantize_type == "int4_wo":  # alias
+            args_or_parser.quantize_type = "int4_weight_only"
         if args_or_parser.quantize_type == "bnb_4bit":  # alias
             args_or_parser.quantize_type = "bitsandbytes_4bit"
     return args_or_parser

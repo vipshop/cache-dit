@@ -6,12 +6,16 @@ sys.path.append("..")
 import time
 import torch
 import math
+from PIL import Image
+from io import BytesIO
+import requests
 from diffusers import (
-    QwenImagePipeline,
+    QwenImageEditPlusPipeline,
     QwenImageTransformer2DModel,
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
+from transformers import Qwen2_5_VLForConditionalGeneration
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from utils import (
@@ -54,7 +58,7 @@ scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 model_id = (
     args.model_path
     if args.model_path is not None
-    else os.environ.get("QWEN_IMAGE_DIR", "Qwen/Qwen-Image")
+    else os.environ.get("QWEN_IMAGE_EDIT_2509_DIR", "Qwen/Qwen-Image-Edit-2509")
 )
 
 quantization_config = (
@@ -79,7 +83,7 @@ quantization_config = (
     else None
 )
 
-pipe = QwenImagePipeline.from_pretrained(
+pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id,
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
@@ -92,14 +96,14 @@ steps = 8 if args.steps is None else args.steps
 assert steps in [8, 4]
 
 pipe.load_lora_weights(
-    os.environ.get(
-        "QWEN_IMAGE_LIGHT_DIR",
-        "lightx2v/Qwen-Image-Lightning",
+    os.path.join(
+        os.environ.get("QWEN_IMAGE_LIGHT_DIR", "lightx2v/Qwen-Image-Lightning"),
+        "Qwen-Image-Edit-2509",
     ),
     weight_name=(
-        "Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors"
+        "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors"
         if steps > 4
-        else "Qwen-Image-Lightning-4steps-V1.0-bf16.safetensors"
+        else "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors"
     ),
 )
 
@@ -107,18 +111,6 @@ if args.fuse_lora:
     pipe.fuse_lora()
     pipe.unload_lora_weights()
 
-
-if args.quantize and args.quantize_type != "bitsandbytes_4bit":
-    # Quantize the transformer according to custom quantize
-    # type passed from args.
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-        ],
-    )
 
 # Apply cache and context parallelism here
 if args.cache or args.parallel_type is not None:
@@ -143,11 +135,29 @@ if args.cache or args.parallel_type is not None:
     )
 
 
-if GiB() < 96 and not args.quantize:
+# WARN: Must apply quantization after tensor parallelism is applied.
+# torchao is compatible with tensor parallelism but requires to be
+# applied after TP.
+if args.quantize and args.quantize_type != "bitsandbytes_4bit":
+    # Quantize the transformer according to custom quantize
+    # type passed from args.
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "img_in",
+            "txt_in",
+        ],
+    )
+
+if GiB() < 48 and not args.quantize:
     # NOTE: Enable cpu offload before enabling context parallelism will
     # raise shape error after first pipe call, so we enable it after.
     # It seems a bug of diffusers that cpu offload is not fully
     # compatible with context parallelism, visa versa.
+    assert (
+        not args.compile
+    ), "Cannot enable compile with cpu offload due to the compatibility issue."
     pipe.enable_model_cpu_offload(device=device)
 else:
     pipe.to(device)
@@ -161,47 +171,65 @@ if GiB() <= 48 and not args.quantize:
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
 
-positive_magic = {
-    "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
-    "zh": ", 超清，4K，电影级构图.",  # for chinese prompt
-}
+image1 = Image.open(
+    BytesIO(
+        requests.get(
+            "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/edit2509/edit2509_1.jpg"
+        ).content
+    )
+)
 
-# Generate image
-prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coffee 😊 $2 per cup," with a neon light beside it displaying "通义千问". Next to it hangs a poster showing a beautiful Chinese woman, and beneath the poster is written "π≈3.1415926-53589793-23846264-33832795-02384197". Ultra HD, 4K, cinematic composition"""
+image2 = Image.open(
+    BytesIO(
+        requests.get(
+            "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/edit2509/edit2509_2.jpg"
+        ).content
+    )
+)
 
+prompt = "The magician bear is on the left, the alchemist bear is on the right, facing each other in the central park square."
 if args.prompt is not None:
     prompt = args.prompt
-# using an empty string if you do not have specific concept to remove
-negative_prompt = " "
-if args.negative_prompt is not None:
-    negative_prompt = args.negative_prompt
+
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
 
-def run_pipe(warmup: bool = False):
-    # do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
-    output = pipe(
-        prompt=prompt + positive_magic["en"],
-        negative_prompt=negative_prompt,
-        width=width,
-        height=height,
-        num_inference_steps=steps if not warmup else steps,
-        true_cfg_scale=1.0,  # means no separate cfg
-        generator=torch.Generator(device="cpu").manual_seed(0),
-        output_type="latent" if args.perf else "pil",
-    )
+def run_pipe():
+    inputs = {
+        "image": [image1, image2],
+        "prompt": prompt,
+        "generator": torch.Generator(device="cpu").manual_seed(0),
+        "true_cfg_scale": 1.0,  # means no separate cfg for lightning models
+        "negative_prompt": " ",
+        "num_inference_steps": steps,
+        "height": height,
+        "width": width,
+    }
+    output = pipe(**inputs)
     image = output.images[0] if not args.perf else None
     return image
 
 
 if args.compile:
     cache_dit.set_compile_configs()
+    torch.set_float32_matmul_precision("high")
     pipe.transformer = torch.compile(pipe.transformer)
-
+    if args.compile_vae:
+        pipe.vae.encoder = torch.compile(pipe.vae.encoder)
+        pipe.vae.decoder = torch.compile(pipe.vae.decoder)
+    if args.compile_text_encoder:
+        assert isinstance(pipe.text_encoder, Qwen2_5_VLForConditionalGeneration)
+        # NOTE: .tolist() op in visual model will raise spamming warnings, so we temporarily
+        # disable compiling visual model here.
+        # pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
+        pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
+        pipe.text_encoder.model.language_model = torch.compile(
+            pipe.text_encoder.model.language_model
+        )
 
 # warmup
-_ = run_pipe(warmup=True)
+_ = run_pipe()
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
@@ -220,7 +248,7 @@ if rank == 0:
     stats = cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"qwen-image-lightning.{steps}steps.{strify(args, stats)}.png"
+    save_path = f"qwen-image-edit-lightning.{steps}steps.{strify(args, stats)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     image.save(save_path)
