@@ -130,6 +130,7 @@ def get_args(
         choices=[
             None,
             "flash",
+            "_flash_3",  # FlashAttention-3
             # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
             "native",  # native pytorch attention: sdpa
             "_native_cudnn",

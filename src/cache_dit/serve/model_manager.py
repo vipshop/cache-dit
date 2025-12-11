@@ -4,14 +4,17 @@ Adapted from SGLang's model management:
 https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/tokenizer_manager.py
 """
 
+import os
 import time
 import base64
+import tempfile
 import torch
 import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_video
 from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
@@ -21,7 +24,7 @@ logger = init_logger(__name__)
 
 @dataclass
 class GenerateRequest:
-    """Image generation request."""
+    """Image/Video generation request."""
 
     prompt: str
     negative_prompt: Optional[str] = ""
@@ -32,6 +35,8 @@ class GenerateRequest:
     seed: Optional[int] = None
     num_images: int = 1
     image_urls: Optional[List[str]] = None
+    num_frames: Optional[int] = None
+    fps: Optional[int] = 16
 
     def __repr__(self):
         image_urls_repr = None
@@ -50,9 +55,10 @@ class GenerateRequest:
 
 @dataclass
 class GenerateResponse:
-    """Image generation response."""
+    """Image/Video generation response."""
 
-    images: List[str]  # Base64 encoded images
+    images: Optional[List[str]] = None  # Base64 encoded images
+    video: Optional[str] = None  # Base64 encoded video (mp4)
     stats: Optional[Dict[str, Any]] = None
     time_cost: Optional[float] = None
 
@@ -72,6 +78,7 @@ class ModelManager:
         enable_compile: bool = False,
         parallel_type: Optional[str] = None,
         parallel_args: Optional[Dict[str, Any]] = None,
+        attn_backend: Optional[str] = None,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,11 +90,13 @@ class ModelManager:
         self.enable_compile = enable_compile
         self.parallel_type = parallel_type
         self.parallel_args = parallel_args or {}
+        self.attn_backend = attn_backend
         self.pipe = None
         self.warmed_up_shapes = set()
 
         logger.info(
-            f"Initializing ModelManager: model_path={model_path}, device={self.device}, parallel_type={parallel_type}"
+            f"Initializing ModelManager: model_path={model_path}, device={self.device}, "
+            f"parallel_type={parallel_type}, attn_backend={attn_backend}"
         )
 
     def load_model(self):
@@ -153,6 +162,15 @@ class ModelManager:
             logger.info("Enabling CPU offload")
             self.pipe.enable_model_cpu_offload()
 
+        if self.attn_backend is not None:
+            if hasattr(self.pipe.transformer, "set_attention_backend"):
+                logger.info(f"Setting attention backend to {self.attn_backend}")
+                self.pipe.transformer.set_attention_backend(self.attn_backend)
+            else:
+                logger.warning(
+                    f"Transformer does not support set_attention_backend, ignoring --attn {self.attn_backend}"
+                )
+
         if self.enable_compile:
             logger.info("Enabling torch.compile")
             cache_dit.set_compile_configs()
@@ -214,13 +232,7 @@ class ModelManager:
                         img_data = base64.b64decode(url, validate=True)
                         image = Image.open(BytesIO(img_data)).convert("RGB")
                     except Exception:
-                        import os
-
-                        if os.path.exists(url):
-                            logger.info("Base64 decode failed, treating as local path")
-                            image = Image.open(url).convert("RGB")
-                        else:
-                            raise
+                        raise
                 else:
                     log_desc = f"local path: {url}"
                     logger.info(f"Loading image {idx+1} from {log_desc}")
@@ -242,13 +254,14 @@ class ModelManager:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
         is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
+        is_video_mode = request.num_frames is not None and request.num_frames > 1
         input_images = None
         if is_edit_mode:
             input_images = self._load_images_from_urls(request.image_urls)
             if input_images:
                 logger.info(f"Loaded {len(input_images)} input image(s) for editing")
 
-        if not is_edit_mode:
+        if not is_edit_mode and not is_video_mode:
             self._warmup_if_needed(request.width, request.height, request.prompt)
 
         seed = request.seed
@@ -256,8 +269,13 @@ class ModelManager:
             seed = 42
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
-        mode_str = "edit" if is_edit_mode else "generation"
-        logger.info(f"Image {mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
+        if is_video_mode:
+            mode_str = "video generation"
+        elif is_edit_mode:
+            mode_str = "edit"
+        else:
+            mode_str = "generation"
+        logger.info(f"{mode_str}: prompt='{request.prompt[:50]}...', seed={seed}")
 
         generator = None
         if seed is not None:
@@ -283,8 +301,13 @@ class ModelManager:
             "num_inference_steps": request.num_inference_steps,
             "guidance_scale": request.guidance_scale,
             "generator": generator,
-            "num_images_per_prompt": request.num_images,
         }
+
+        # Add num_frames for video generation
+        if is_video_mode:
+            pipe_kwargs["num_frames"] = request.num_frames
+        else:
+            pipe_kwargs["num_images_per_prompt"] = request.num_images
 
         # Add input images to pipe_kwargs if in edit mode
         if is_edit_mode and input_images:
@@ -320,7 +343,10 @@ class ModelManager:
             import torch.distributed as dist
 
             rank = dist.get_rank()
-            logger.info(f"Rank {rank}: Generated {len(output.images)} images")
+            if is_video_mode:
+                logger.info(f"Rank {rank}: Generated video with {len(output.frames[0])} frames")
+            else:
+                logger.info(f"Rank {rank}: Generated {len(output.images)} images")
 
         stats = None
         if self.enable_cache:
@@ -340,17 +366,40 @@ class ModelManager:
                     ]
                 }
 
-        images_base64 = []
-        for image in output.images:
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            images_base64.append(img_str)
+        images_base64 = None
+        video_base64 = None
 
-        logger.info(f"Image generation completed in {time_cost:.2f}s")
+        if is_video_mode:
+            video_frames = output.frames[0]
+            logger.info(
+                f"Video generation completed with {len(video_frames)} frames in {time_cost:.2f}s"
+            )
+
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+
+            try:
+                export_to_video(video_frames, tmp_path, fps=request.fps)
+
+                with open(tmp_path, "rb") as f:
+                    video_bytes = f.read()
+                    video_base64 = base64.b64encode(video_bytes).decode()
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        else:
+            images_base64 = []
+            for image in output.images:
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_str = base64.b64encode(buffered.getvalue()).decode()
+                images_base64.append(img_str)
+
+            logger.info(f"Image generation completed in {time_cost:.2f}s")
 
         return GenerateResponse(
             images=images_base64,
+            video=video_base64,
             stats=stats,
             time_cost=time_cost,
         )

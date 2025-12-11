@@ -20,12 +20,12 @@ _request_semaphore: Optional[asyncio.Semaphore] = None
 
 
 class GenerateRequestAPI(BaseModel):
-    """API request model for image generation."""
+    """API request model for image/video generation."""
 
     prompt: str = Field(..., description="Text prompt")
     negative_prompt: Optional[str] = Field("", description="Negative prompt")
-    width: int = Field(1024, description="Image width", ge=64, le=2048)
-    height: int = Field(1024, description="Image height", ge=64, le=2048)
+    width: int = Field(1024, description="Image/Video width", ge=64, le=2048)
+    height: int = Field(1024, description="Image/Video height", ge=64, le=2048)
     num_inference_steps: int = Field(50, description="Number of inference steps", ge=1, le=200)
     guidance_scale: float = Field(7.5, description="Guidance scale", ge=0.0, le=20.0)
     seed: Optional[int] = Field(None, description="Random seed")
@@ -34,12 +34,17 @@ class GenerateRequestAPI(BaseModel):
         None,
         description="Input images for image editing. Supports: URLs (http/https), local file paths, base64 strings (with or without data URI prefix)",
     )
+    num_frames: Optional[int] = Field(
+        None, description="Number of frames for video generation", ge=1, le=200
+    )
+    fps: Optional[int] = Field(16, description="Frames per second for video output", ge=1, le=60)
 
 
 class GenerateResponseAPI(BaseModel):
-    """API response model for image generation."""
+    """API response model for image/video generation."""
 
-    images: list[str] = Field(..., description="Base64 encoded images")
+    images: Optional[list[str]] = Field(None, description="Base64 encoded images")
+    video: Optional[str] = Field(None, description="Base64 encoded video (mp4)")
     stats: Optional[Dict[str, Any]] = Field(None, description="Cache statistics")
     time_cost: Optional[float] = Field(None, description="Generation time in seconds")
 
@@ -92,6 +97,8 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     seed=request.seed,
                     num_images=request.num_images,
                     image_urls=request.image_urls,
+                    num_frames=request.num_frames,
+                    fps=request.fps,
                 )
 
                 loop = asyncio.get_event_loop()
@@ -101,6 +108,7 @@ def create_app(model_manager: ModelManager) -> FastAPI:
 
                 return GenerateResponseAPI(
                     images=response.images,
+                    video=response.video,
                     stats=response.stats,
                     time_cost=response.time_cost,
                 )

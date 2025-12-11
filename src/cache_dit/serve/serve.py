@@ -73,6 +73,7 @@ def get_args(
         choices=[
             None,
             "flash",
+            "_flash_3",
             "native",
             "_native_cudnn",
             "_sdpa_cudnn",
@@ -268,6 +269,7 @@ def launch_server(args=None):
         enable_compile=args.compile,
         parallel_type=args.parallel_type,
         parallel_args=parallel_args,
+        attn_backend=args.attn,
     )
 
     logger.info("Loading model...")
