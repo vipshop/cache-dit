@@ -1,6 +1,6 @@
 # Cache-DiT Serving
 
-HTTP serving for text-to-image diffusion models with cache-dit acceleration.
+HTTP serving for diffusion models with cache-dit acceleration. Supports **text-to-image**, **image editing**, **multi-image editing**, and **text-to-video** generation.
 
 Adapted from [SGLang](https://github.com/sgl-project/sglang).
 
@@ -14,28 +14,33 @@ cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache
 curl http://localhost:8000/health
 ```
 
+## Supported Tasks
+
+### Text-to-Image
+Generate images from text prompts using models like FLUX, Qwen-Image, CogView3+/4, HunyuanDiT, etc.
+
+### Image Editing
+Edit single images with text instructions (e.g., "Put a birthday hat on the dog").
+
+### Multi-Image Editing
+Combine multiple images with text prompts (e.g., "Dog chases frisbee" with dog and frisbee images).
+
+### Text-to-Video
+Generate videos from text prompts using models like Wan, HunyuanVideo, Mochi, LTX-Video, etc.
+
+See [tests/serving/](https://github.com/vipshop/cache-dit/tree/main/tests/serving) for detailed examples.
+
 ## API Endpoints
 
 - `GET /health` - Health check
 - `GET /get_model_info` - Model information
-- `POST /generate` - Generate images
+- `POST /generate` - Generate images/videos
 - `POST /flush_cache` - Flush cache
 - `GET /docs` - API documentation
 
-## Generate Images
+## Usage Examples
 
-### Using Client Script
-
-```bash
-python -m cache_dit.serve.client \
-    --prompt "A beautiful sunset over the ocean" \
-    --width 1024 \
-    --height 1024 \
-    --steps 50 \
-    --output output.png
-```
-
-### Using Python
+### Text-to-Image
 
 ```python
 import requests
@@ -53,23 +58,43 @@ response = requests.post(
     }
 )
 
-result = response.json()
-img_data = base64.b64decode(result["images"][0])
-img = Image.open(BytesIO(img_data))
-img.save("output.png")
+img_data = base64.b64decode(response.json()["images"][0])
+Image.open(BytesIO(img_data)).save("output.png")
 ```
 
-### Using curl + jq
+### Image Editing
 
-```bash
-curl -X POST http://localhost:8000/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "A beautiful sunset over the ocean",
-    "width": 1024,
-    "height": 1024,
-    "num_inference_steps": 50
-  }' | jq -r '.images[0]' | base64 -d > output.png
+```python
+response = requests.post(
+    "http://localhost:8000/generate",
+    json={
+        "prompt": "Put a birthday hat on the dog",
+        "image_urls": ["https://example.com/dog.png"],
+        "width": 1024,
+        "height": 1024,
+        "num_inference_steps": 50
+    }
+)
+```
+
+### Text-to-Video
+
+```python
+response = requests.post(
+    "http://localhost:8000/generate",
+    json={
+        "prompt": "A cat walks on the grass, realistic",
+        "width": 832,
+        "height": 480,
+        "num_frames": 49,
+        "fps": 16,
+        "num_inference_steps": 30
+    }
+)
+
+video_data = base64.b64decode(response.json()["video"])
+with open("output.mp4", "wb") as f:
+    f.write(video_data)
 ```
 
 ## Key Arguments
@@ -97,14 +122,14 @@ curl -X POST http://localhost:8000/generate \
 - `--enable-cpu-offload` - Enable CPU offload
 - `--device-map` - Device map strategy
 
-## Examples
+## Server Examples
 
 ### Basic
 ```bash
 cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache
 ```
 
-### With Compile (Auto Warmup)
+### With Compile
 ```bash
 cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache --compile
 ```
@@ -113,25 +138,19 @@ cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache --compile
 ```bash
 torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --model-path black-forest-labs/FLUX.1-dev \
-    --cache \
-    --parallel-type ulysses
+    --cache --parallel-type ulysses
 ```
 
 ### Tensor Parallelism
 ```bash
 torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --model-path black-forest-labs/FLUX.1-dev \
-    --cache \
-    --parallel-type tp
+    --cache --parallel-type tp
 ```
-
-## Supported Models
-
-Flux, Qwen-Image, Wan, CogView3+/4, HunyuanDiT/Video, Mochi, LTX-Video, etc.
 
 ## Attribution
 
-Adapted from [SGLang](https://github.com/sgl-project/sglang):
+Serving code mostly adapted from [SGLang](https://github.com/sgl-project/sglang):
 - [tokenizer_manager.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/tokenizer_manager.py)
 - [http_server.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/http_server.py)
 - [launch_server.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/launch_server.py)
