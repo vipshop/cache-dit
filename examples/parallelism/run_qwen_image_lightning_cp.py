@@ -127,8 +127,10 @@ if GiB() < 96 and not args.quantize:
 else:
     pipe.to(device)
 
+width = (1024 if args.width is None else args.width,)
+height = (1024 if args.height is None else args.height,)
 
-if GiB() <= 48 and not args.quantize:
+if GiB() <= 48 and (not args.quantize or (max(height, width) > 1024)):
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
 
@@ -155,8 +157,8 @@ def run_pipe(warmup: bool = False):
     output = pipe(
         prompt=prompt + positive_magic["en"],
         negative_prompt=negative_prompt,
-        width=1024 if args.width is None else args.width,
-        height=1024 if args.height is None else args.height,
+        width=width,
+        height=height,
         num_inference_steps=steps if not warmup else steps,
         true_cfg_scale=1.0,  # means no separate cfg
         generator=torch.Generator(device="cpu").manual_seed(0),
