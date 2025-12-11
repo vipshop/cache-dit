@@ -1,6 +1,6 @@
 # Cache-DiT Serving
 
-HTTP serving for diffusion models with cache-dit acceleration. Supports **text-to-image**, **image editing**, **multi-image editing**, and **text-to-video** generation.
+HTTP serving for diffusion models with cache-dit acceleration. Supports **text-to-image**, **image editing**, **multi-image editing**, **text-to-video**, and **image-to-video** generation.
 
 Adapted from [SGLang](https://github.com/sgl-project/sglang).
 
@@ -27,6 +27,9 @@ Combine multiple images with text prompts (e.g., "Dog chases frisbee" with dog a
 
 ### Text-to-Video
 Generate videos from text prompts using models like Wan, HunyuanVideo, Mochi, LTX-Video, etc.
+
+### Image-to-Video
+Generate videos from input images with text prompts using models like Wan2.2-I2V.
 
 See [tests/serving/](https://github.com/vipshop/cache-dit/tree/main/tests/serving) for detailed examples.
 
@@ -97,6 +100,28 @@ with open("output.mp4", "wb") as f:
     f.write(video_data)
 ```
 
+### Image-to-Video
+
+```python
+response = requests.post(
+    "http://localhost:8000/generate",
+    json={
+        "prompt": "A cat on a surfboard at the beach, summer vacation style",
+        "image_urls": ["https://example.com/cat.jpg"],
+        "width": 832,
+        "height": 480,
+        "num_frames": 49,
+        "fps": 16,
+        "guidance_scale": 3.5,
+        "num_inference_steps": 50
+    }
+)
+
+video_data = base64.b64decode(response.json()["video"])
+with open("output.mp4", "wb") as f:
+    f.write(video_data)
+```
+
 ## Key Arguments
 
 ### Server
@@ -146,6 +171,19 @@ torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
 torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --model-path black-forest-labs/FLUX.1-dev \
     --cache --parallel-type tp
+```
+
+### Image-to-Video (Wan2.2-I2V)
+```bash
+cache-dit-serve --model-path Wan-AI/Wan2.2-I2V-A14B-Diffusers \
+    --cache --enable-cpu-offload
+```
+
+### Image-to-Video with Context Parallelism
+```bash
+torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
+    --model-path Wan-AI/Wan2.2-I2V-A14B-Diffusers \
+    --cache --parallel-type ulysses --enable-cpu-offload
 ```
 
 ## Attribution
