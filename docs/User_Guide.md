@@ -9,8 +9,13 @@
 
 ## 📖Table of Contents
 
-<div id="contents"></div>  
+<div id="contents"></div>
 
+### 🚀Quick Links
+- [🌐HTTP Serving](./SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text-to-video** generation
+- [❓FAQ](../FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips
+
+### 📚Documentation
 - [⚙️Installation](#️installation)
 - [🔥Supported DiTs](#supported)
 - [🔥Benchmarks](#benchmarks)
