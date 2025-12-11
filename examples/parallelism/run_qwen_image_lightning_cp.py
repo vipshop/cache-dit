@@ -127,8 +127,8 @@ if GiB() < 96 and not args.quantize:
 else:
     pipe.to(device)
 
-width = (1024 if args.width is None else args.width,)
-height = (1024 if args.height is None else args.height,)
+width = 1024 if args.width is None else args.width
+height = 1024 if args.height is None else args.height
 
 if GiB() <= 48 and (not args.quantize or (max(height, width) > 1024)):
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
