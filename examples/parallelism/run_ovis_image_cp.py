@@ -38,7 +38,7 @@ pipe = OvisImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-if args.cache:
+if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.transformer, OvisImageTransformer2DModel)
