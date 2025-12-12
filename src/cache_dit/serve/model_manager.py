@@ -23,6 +23,50 @@ from diffusers import WanImageToVideoPipeline
 logger = init_logger(__name__)
 
 
+def load_quantization_config(quantize_config_module: str):
+    """Load quantization config from a custom module."""
+
+    from diffusers.quantizers import PipelineQuantizationConfig
+
+    logger.info(f"Loading quantization config from: {quantize_config_module}")
+
+    try:
+        import importlib.util
+        import sys
+
+        # Load the custom module
+        spec = importlib.util.spec_from_file_location(
+            "quantize_config_module", quantize_config_module
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError(f"Cannot load module from {quantize_config_module}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["quantize_config_module"] = module
+        spec.loader.exec_module(module)
+
+        # Get the quantization config from the module
+        if not hasattr(module, "get_quantization_config"):
+            raise ValueError(
+                f"Module {quantize_config_module} must have a 'get_quantization_config()' function"
+            )
+
+        quantization_config = module.get_quantization_config()
+
+        if not isinstance(quantization_config, PipelineQuantizationConfig):
+            raise ValueError(
+                f"get_quantization_config() must return a PipelineQuantizationConfig object, "
+                f"got {type(quantization_config)}"
+            )
+
+        logger.info("Successfully loaded quantization config from custom module")
+        return quantization_config
+
+    except Exception as e:
+        logger.error(f"Failed to load quantization config from {quantize_config_module}: {e}")
+        raise
+
+
 @dataclass
 class GenerateRequest:
     """Image/Video generation request."""
@@ -80,6 +124,8 @@ class ModelManager:
         parallel_type: Optional[str] = None,
         parallel_args: Optional[Dict[str, Any]] = None,
         attn_backend: Optional[str] = None,
+        quantize: bool = False,
+        quantize_config_module: Optional[str] = None,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -92,6 +138,8 @@ class ModelManager:
         self.parallel_type = parallel_type
         self.parallel_args = parallel_args or {}
         self.attn_backend = attn_backend
+        self.quantize = quantize
+        self.quantize_config_module = quantize_config_module
         self.pipe = None
         self.warmed_up_shapes = set()
 
@@ -104,18 +152,27 @@ class ModelManager:
         """Load the diffusion model."""
         logger.info(f"Loading model: {self.model_path}")
 
+        # Load quantization config
+        quantization_config = None
+        if self.quantize and self.quantize_config_module:
+            quantization_config = load_quantization_config(self.quantize_config_module)
+        elif self.quantize:
+            logger.warning("Quantization enabled but no quantize_config_module provided")
+
         if "Wan2.2-I2V-A14B-Diffusers" in self.model_path:
             logger.info("Detected Wan2.2-I2V model, using WanImageToVideoPipeline")
             self.pipe = WanImageToVideoPipeline.from_pretrained(
                 self.model_path,
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
+                quantization_config=quantization_config,
             )
         else:
             self.pipe = DiffusionPipeline.from_pretrained(
                 self.model_path,
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
+                quantization_config=quantization_config,
             )
 
         cache_config_obj = None
@@ -224,19 +281,19 @@ class ModelManager:
             try:
                 if url.startswith("data:image/"):
                     log_desc = f"data URI (length: {len(url)})"
-                    logger.info(f"Loading image {idx+1} from {log_desc}")
+                    logger.info(f"Loading image {idx + 1} from {log_desc}")
                     header, base64_data = url.split(",", 1)
                     img_data = base64.b64decode(base64_data)
                     image = Image.open(BytesIO(img_data)).convert("RGB")
                 elif url.startswith(("http://", "https://")):
                     log_desc = f"URL: {url[:80]}{'...' if len(url) > 80 else ''}"
-                    logger.info(f"Downloading image {idx+1} from {log_desc}")
+                    logger.info(f"Downloading image {idx + 1} from {log_desc}")
                     response = requests.get(url, timeout=30)
                     response.raise_for_status()
                     image = Image.open(BytesIO(response.content)).convert("RGB")
                 elif len(url) > 100:
                     log_desc = f"raw base64 string (length: {len(url)})"
-                    logger.info(f"Loading image {idx+1} from {log_desc}")
+                    logger.info(f"Loading image {idx + 1} from {log_desc}")
                     try:
                         img_data = base64.b64decode(url, validate=True)
                         image = Image.open(BytesIO(img_data)).convert("RGB")
@@ -244,17 +301,17 @@ class ModelManager:
                         raise
                 else:
                     log_desc = f"local path: {url}"
-                    logger.info(f"Loading image {idx+1} from {log_desc}")
+                    logger.info(f"Loading image {idx + 1} from {log_desc}")
                     image = Image.open(url).convert("RGB")
                 images.append(image)
-                logger.info(f"Image {idx+1} loaded successfully: {image.size}")
+                logger.info(f"Image {idx + 1} loaded successfully: {image.size}")
             except Exception as e:
                 if len(url) > 100:
                     error_url = f"<data of length {len(url)}>"
                 else:
                     error_url = url
-                logger.error(f"Failed to load image {idx+1} from {error_url}: {e}")
-                raise RuntimeError(f"Failed to load image {idx+1}: {e}")
+                logger.error(f"Failed to load image {idx + 1} from {error_url}: {e}")
+                raise RuntimeError(f"Failed to load image {idx + 1}: {e}")
 
         return images
 
