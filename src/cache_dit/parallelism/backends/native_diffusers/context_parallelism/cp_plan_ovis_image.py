@@ -3,14 +3,22 @@ import functools
 from typing import Optional, Tuple, Dict, Any
 from torch.distributed import DeviceMesh
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers import FluxTransformer2DModel
-from diffusers.models.transformers.transformer_flux import (
-    FluxSingleTransformerBlock,
-    FluxAttnProcessor,
-    FluxAttention,
-    apply_rotary_emb,
-    dispatch_attention_fn,
-)
+
+try:
+    from diffusers import OvisImageTransformer2DModel
+    from diffusers.models.transformers.transformer_ovis_image import (
+        OvisImageSingleTransformerBlock,
+        OvisImageAttnProcessor,
+        OvisImageAttention,
+        apply_rotary_emb,
+        dispatch_attention_fn,
+    )
+except ImportError:
+    raise ImportError(
+        "OvisImageTransformer2DModel requires the 'diffusers>=0.36.dev0'."
+        "Please install latest version of diffusers from source: \n"
+        "pip3 install git+https://github.com/huggingface/diffusers.git"
+    )
 
 try:
     from diffusers.models._modeling_parallel import (
@@ -38,8 +46,8 @@ from .attention._distributed_primitives import _prepare_ulysses_comm_metadata
 logger = init_logger(__name__)
 
 
-@ContextParallelismPlannerRegister.register("FluxTransformer2DModel")
-class FluxContextParallelismPlanner(ContextParallelismPlanner):
+@ContextParallelismPlannerRegister.register("OvisImageTransformer2DModel")
+class OvisImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
@@ -48,19 +56,19 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 
         experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
         if experimental_ulysses_async:
-            FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__
-            FluxSingleTransformerBlock.forward = (
-                __patch_FluxSingleTransformerBlock_ulysses_async_forward__
+            OvisImageAttnProcessor.__call__ = __patch_OvisImageAttnProcessor_ulysses_async__call__
+            OvisImageSingleTransformerBlock.forward = (
+                __patch_OvisImageSingleTransformerBlock_ulysses_async_forward__
             )
             logger.info(
                 "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for FluxTransformer2DModel."
+                "Context Parallelism for OvisImageTransformer2DModel."
             )
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
-                transformer, FluxTransformer2DModel
-            ), "Transformer must be an instance of FluxTransformer2DModel"
+                transformer, OvisImageTransformer2DModel
+            ), "Transformer must be an instance of OvisImageTransformer2DModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
@@ -69,7 +77,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         # a little different from the native diffusers implementation
         # for some models.
         _cp_plan = {
-            # Here is a Transformer level CP plan for Flux, which will
+            # Here is a Transformer level CP plan for OvisImage, which will
             # only apply the only 1 split hook (pre_forward) on the forward
             # of Transformer, and gather the output after Transformer forward.
             # Pattern of transformer forward, split_output=False:
@@ -106,13 +114,10 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-# Async Ulysses QKV Proj for FLUX model
-# Reference:
-# - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
-# - https://github.com/huggingface/diffusers/pull/12727 by @zhangtao0408
-def _ulysses_attn_with_async_qkv_proj_flux(
-    self: FluxAttnProcessor,
-    attn: FluxAttention,
+# Async Ulysses QKV Proj for OvisImage model
+def _ulysses_attn_with_async_qkv_proj_ovis_image(
+    self: OvisImageAttnProcessor,
+    attn: OvisImageAttention,
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor = None,
     attention_mask: Optional[torch.Tensor] = None,
@@ -206,17 +211,19 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         return out_wait
 
 
-FluxAttnProcessor_original__call__ = FluxAttnProcessor.__call__
+OvisImageAttnProcessor_original__call__ = OvisImageAttnProcessor.__call__
 
 
-@functools.wraps(FluxAttnProcessor_original__call__)
-def __patch_FluxAttnProcessor_ulysses_async__call__(
-    self: FluxAttnProcessor,
-    attn: "FluxAttention",
+@functools.wraps(OvisImageAttnProcessor_original__call__)
+def __patch_OvisImageAttnProcessor_ulysses_async__call__(
+    self: OvisImageAttnProcessor,
+    attn: "OvisImageAttention",
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor = None,
     attention_mask: Optional[torch.Tensor] = None,
     image_rotary_emb: Optional[torch.Tensor] = None,
+    pre_query: Optional[torch.Tensor] = None,
+    pre_key: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
         self._parallel_config is not None
@@ -224,29 +231,33 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_attn_with_async_qkv_proj_flux(
+        return _ulysses_attn_with_async_qkv_proj_ovis_image(
             self,
             attn,
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
             image_rotary_emb=image_rotary_emb,
+            pre_query=pre_query,
+            pre_key=pre_key,
         )
 
     # Otherwise, use the original call for non-ulysses case
-    return FluxAttnProcessor_original__call__(
+    return OvisImageAttnProcessor_original__call__(
         self,
         attn,
         hidden_states,
         encoder_hidden_states=encoder_hidden_states,
         attention_mask=attention_mask,
         image_rotary_emb=image_rotary_emb,
+        pre_query=pre_query,
+        pre_key=pre_key,
     )
 
 
-@functools.wraps(FluxSingleTransformerBlock.forward)
-def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
-    self: FluxSingleTransformerBlock,
+@functools.wraps(OvisImageSingleTransformerBlock.forward)
+def __patch_OvisImageSingleTransformerBlock_ulysses_async_forward__(
+    self: OvisImageSingleTransformerBlock,
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     temb: torch.Tensor,
@@ -269,7 +280,10 @@ def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
         **joint_attention_kwargs,
     )
     # NOTE: Enable the out all2all overlap with mlp computation
-    mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
+    mlp_hidden_states, mlp_hidden_gate = torch.split(
+        self.proj_mlp(norm_hidden_states), [self.mlp_hidden_dim, self.mlp_hidden_dim], dim=-1
+    )
+    mlp_hidden_states = self.act_mlp(mlp_hidden_gate) * mlp_hidden_states
 
     # NOTE: Then ensure the attn_output is ready
     if not isinstance(attn_output_wait, torch.Tensor):

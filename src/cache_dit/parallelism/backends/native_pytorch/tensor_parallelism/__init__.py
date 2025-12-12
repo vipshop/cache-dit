@@ -12,7 +12,14 @@ from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
-from .tp_planners import *
+
+try:
+    from .tp_plan_registers import TensorParallelismPlannerRegister
+    from .tp_planners import _activate_tp_planners
+
+    _activate_tp_planners()
+except ImportError as e:
+    raise ImportError(e)
 
 logger = init_logger(__name__)
 

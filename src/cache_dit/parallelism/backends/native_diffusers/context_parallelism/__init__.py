@@ -5,22 +5,25 @@ from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
-from ..utils import (
-    _is_diffusers_parallelism_available,
-    ContextParallelConfig,
-)
-from .attention import _maybe_resigter_attn_backends
-from .attention._templated_ulysses import (
-    enable_ulysses_anything,
-    enable_ulysses_float8,
-)
 
 try:
+    from ..utils import (
+        _is_diffusers_parallelism_available,
+        ContextParallelConfig,
+    )
+    from .attention import _maybe_resigter_attn_backends
+    from .attention._templated_ulysses import (
+        enable_ulysses_anything,
+        enable_ulysses_float8,
+    )
+    from .cp_plan_registers import ContextParallelismPlannerRegister
+    from .cp_planners import _activate_cp_planners
+
     _maybe_resigter_attn_backends()
+    _activate_cp_planners()
 except ImportError as e:
     raise ImportError(e)
 
-from .cp_planners import *
 
 logger = init_logger(__name__)
 
