@@ -18,6 +18,7 @@ from diffusers.utils import export_to_video
 from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
+from diffusers import WanImageToVideoPipeline
 
 logger = init_logger(__name__)
 
@@ -103,11 +104,19 @@ class ModelManager:
         """Load the diffusion model."""
         logger.info(f"Loading model: {self.model_path}")
 
-        self.pipe = DiffusionPipeline.from_pretrained(
-            self.model_path,
-            torch_dtype=self.torch_dtype,
-            device_map=self.device_map,
-        )
+        if "Wan2.2-I2V-A14B-Diffusers" in self.model_path:
+            logger.info("Detected Wan2.2-I2V model, using WanImageToVideoPipeline")
+            self.pipe = WanImageToVideoPipeline.from_pretrained(
+                self.model_path,
+                torch_dtype=self.torch_dtype,
+                device_map=self.device_map,
+            )
+        else:
+            self.pipe = DiffusionPipeline.from_pretrained(
+                self.model_path,
+                torch_dtype=self.torch_dtype,
+                device_map=self.device_map,
+            )
 
         cache_config_obj = None
         if self.enable_cache:
@@ -255,11 +264,14 @@ class ModelManager:
 
         is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
         is_video_mode = request.num_frames is not None and request.num_frames > 1
+        is_image2video_mode = is_edit_mode and is_video_mode
         input_images = None
         if is_edit_mode:
             input_images = self._load_images_from_urls(request.image_urls)
             if input_images:
-                logger.info(f"Loaded {len(input_images)} input image(s) for editing")
+                logger.info(
+                    f"Loaded {len(input_images)} input image(s) for {'image2video' if is_image2video_mode else 'editing'}"
+                )
 
         if not is_edit_mode and not is_video_mode:
             self._warmup_if_needed(request.width, request.height, request.prompt)
@@ -269,7 +281,9 @@ class ModelManager:
             seed = 42
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
-        if is_video_mode:
+        if is_image2video_mode:
+            mode_str = "image2video"
+        elif is_video_mode:
             mode_str = "video generation"
         elif is_edit_mode:
             mode_str = "edit"
@@ -309,10 +323,13 @@ class ModelManager:
         else:
             pipe_kwargs["num_images_per_prompt"] = request.num_images
 
-        # Add input images to pipe_kwargs if in edit mode
+        # Add input images to pipe_kwargs if in edit mode or image2video mode
         if is_edit_mode and input_images:
-            # For FLUX.2, pass single image or multiple images
-            if len(input_images) == 1:
+            # For image2video, always use single image (first one if multiple provided)
+            if is_image2video_mode:
+                pipe_kwargs["image"] = input_images[0]
+                logger.info(f"Using first image for image2video: {input_images[0].size}")
+            elif len(input_images) == 1:
                 pipe_kwargs["image"] = input_images[0]
             else:
                 pipe_kwargs["image"] = input_images
