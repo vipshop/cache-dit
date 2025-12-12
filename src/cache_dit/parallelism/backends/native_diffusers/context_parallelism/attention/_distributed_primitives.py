@@ -1,5 +1,5 @@
 import functools
-from typing import Tuple, List, Callable
+from typing import Tuple, List, Callable, Optional
 
 import torch
 import torch.distributed as dist
@@ -596,18 +596,19 @@ def _all_to_all_single_any_o_fp8_async(
 
 
 def _unified_all_to_all_qkv_async_fn(
-    disable_fp8: bool = False,
+    fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
     from ._templated_ulysses import is_ulysses_anything_enabled
     from ._templated_ulysses import is_ulysses_heads_no_padding
 
+    _force_disable_float8 = (fp8 is not None) and (not fp8)
     if is_ulysses_anything_enabled():
-        if is_ulysses_float8_enabled() and not disable_fp8:
+        if is_ulysses_float8_enabled() and not _force_disable_float8:
             return _all_to_all_single_any_qkv_fp8_async
         return _all_to_all_single_any_qkv_async
     else:
-        if is_ulysses_float8_enabled() and not disable_fp8:
+        if is_ulysses_float8_enabled() and not _force_disable_float8:
             assert (
                 not is_ulysses_heads_no_padding()
             ), "FP8 and ulysses heads no padding both enabled is not supported."
@@ -618,18 +619,19 @@ def _unified_all_to_all_qkv_async_fn(
 
 
 def _unified_all_to_all_o_async_fn(
-    disable_fp8: bool = False,
+    fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
     from ._templated_ulysses import is_ulysses_anything_enabled
     from ._templated_ulysses import is_ulysses_heads_no_padding
 
+    _force_disable_float8 = (fp8 is not None) and (not fp8)
     if is_ulysses_anything_enabled():
-        if is_ulysses_float8_enabled() and not disable_fp8:
+        if is_ulysses_float8_enabled() and not _force_disable_float8:
             return _all_to_all_single_any_o_fp8_async
         return _all_to_all_single_any_o_async
     else:
-        if is_ulysses_float8_enabled() and not disable_fp8:
+        if is_ulysses_float8_enabled() and not _force_disable_float8:
             assert (
                 not is_ulysses_heads_no_padding()
             ), "FP8 and ulysses heads no padding both enabled is not supported."

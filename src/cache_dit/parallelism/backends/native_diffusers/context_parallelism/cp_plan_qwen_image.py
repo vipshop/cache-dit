@@ -140,7 +140,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
     _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
-    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(disable_fp8=True)
+    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(fp8=False)
 
     seq_txt = encoder_hidden_states.shape[1]
 

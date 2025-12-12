@@ -6,8 +6,22 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import OvisImagePipeline, OvisImageTransformer2DModel
-from utils import get_args, strify, cachify, MemoryTracker, create_profiler_from_args
+from utils import (
+    get_args,
+    strify,
+    cachify,
+    maybe_init_distributed,
+    maybe_destroy_distributed,
+    MemoryTracker,
+    create_profiler_from_args,
+)
 import cache_dit
+
+
+args = get_args()
+print(args)
+
+rank, device = maybe_init_distributed(args)
 
 args = get_args()
 print(args)
@@ -24,7 +38,7 @@ pipe = OvisImagePipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-if args.cache:
+if args.cache or args.parallel_type is not None:
     cachify(args, pipe)
 
 assert isinstance(pipe.transformer, OvisImageTransformer2DModel)
@@ -44,16 +58,12 @@ if args.quantize:
 
 pipe.to("cuda")
 
-if args.attn is not None:
-    if hasattr(pipe.transformer, "set_attention_backend"):
-        pipe.transformer.set_attention_backend(args.attn)
-        print(f"Set attention backend to {args.attn}")
-
 
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
 
+pipe.set_progress_bar_config(disable=rank != 0)
 
 prompt = 'A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, expressive handwritten brush style using thick, wet oil paint. The paint is a mix of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste or impasto art. You can see the ridges of the brush bristles and the glossy, wet texture of the paint. The background is a clean artist\'s canvas. Dynamic lighting creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile texture, 4k detail.'
 if args.prompt is not None:
@@ -94,14 +104,19 @@ else:
     image = run_pipe()
 end = time.time()
 
+
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
     memory_tracker.report()
 
-cache_dit.summary(pipe)
+if rank == 0:
 
-time_cost = end - start
-save_path = f"ovis_image.{strify(args, pipe)}.png"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving image to {save_path}")
-image.save(save_path)
+    cache_dit.summary(pipe)
+
+    time_cost = end - start
+    save_path = f"ovis_image.{strify(args, pipe)}.png"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving image to {save_path}")
+    image.save(save_path)
+
+maybe_destroy_distributed()

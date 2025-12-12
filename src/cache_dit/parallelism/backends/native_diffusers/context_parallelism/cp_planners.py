@@ -56,74 +56,45 @@
 # ContextParallelOutput:
 #     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
 
-from .cp_plan_registers import (
-    ContextParallelismPlanner,
-    ContextParallelismPlannerRegister,
-)
-from .cp_plan_flux import FluxContextParallelismPlanner
-from .cp_plan_qwen_image import QwenImageContextParallelismPlanner
-from .cp_plan_wan import WanContextParallelismPlanner
-from .cp_plan_wan import WanVACEContextParallelismPlanner
-from .cp_plan_ltxvideo import LTXVideoContextParallelismPlanner
-from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner
-from .cp_plan_hunyuan import HunyuanVideoContextParallelismPlanner
-from .cp_plan_cogvideox import CogVideoXContextParallelismPlanner
-from .cp_plan_cogview import CogView3PlusContextParallelismPlanner
-from .cp_plan_cogview import CogView4ContextParallelismPlanner
-from .cp_plan_cosisid import CosisIDContextParallelismPlanner
-from .cp_plan_chroma import ChromaContextParallelismPlanner
-from .cp_plan_pixart import PixArtContextParallelismPlanner
-from .cp_plan_dit import DiTContextParallelismPlanner
-from .cp_plan_kandinsky import Kandinsky5ContextParallelismPlanner
-from .cp_plan_skyreels import SkyReelsV2ContextParallelismPlanner
-from .cp_plan_flux2 import Flux2ContextParallelismPlanner
-from .cp_plan_zimage import ZImageContextParallelismPlanner
-from .cp_plan_chrono_edit import ChronoEditContextParallelismPlanner
 
-try:
-    import nunchaku  # noqa: F401
+# NOTE: must import all planner classes to register them
+def _activate_cp_planners():
+    """Function to register all built-in context parallelism planners."""
+    from .cp_plan_flux import FluxContextParallelismPlanner  # noqa: F401
+    from .cp_plan_qwen_image import QwenImageContextParallelismPlanner  # noqa: F401
+    from .cp_plan_wan import WanContextParallelismPlanner  # noqa: F401
+    from .cp_plan_wan import WanVACEContextParallelismPlanner  # noqa: F401
+    from .cp_plan_ltxvideo import LTXVideoContextParallelismPlanner  # noqa: F401
+    from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner  # noqa: F401
+    from .cp_plan_hunyuan import HunyuanVideoContextParallelismPlanner  # noqa: F401
+    from .cp_plan_cogvideox import CogVideoXContextParallelismPlanner  # noqa: F401
+    from .cp_plan_cogview import CogView3PlusContextParallelismPlanner  # noqa: F401
+    from .cp_plan_cogview import CogView4ContextParallelismPlanner  # noqa: F401
+    from .cp_plan_cosisid import CosisIDContextParallelismPlanner  # noqa: F401
+    from .cp_plan_chroma import ChromaContextParallelismPlanner  # noqa: F401
+    from .cp_plan_pixart import PixArtContextParallelismPlanner  # noqa: F401
+    from .cp_plan_dit import DiTContextParallelismPlanner  # noqa: F401
+    from .cp_plan_kandinsky import Kandinsky5ContextParallelismPlanner  # noqa: F401
+    from .cp_plan_skyreels import SkyReelsV2ContextParallelismPlanner  # noqa: F401
+    from .cp_plan_flux2 import Flux2ContextParallelismPlanner  # noqa: F401
+    from .cp_plan_zimage import ZImageContextParallelismPlanner  # noqa: F401
+    from .cp_plan_chrono_edit import ChronoEditContextParallelismPlanner  # noqa: F401
+    from .cp_plan_ovis_image import OvisImageContextParallelismPlanner  # noqa: F401
 
-    _nunchaku_available = True
-except ImportError:
-    _nunchaku_available = False
+    try:
+        import nunchaku  # noqa: F401
 
-if _nunchaku_available:
-    from .cp_plan_nunchaku import (  # noqa: F401
-        NunchakuFluxContextParallelismPlanner,
-    )
-    from .cp_plan_nunchaku import (  # noqa: F401
-        NunchakuQwenImageContextParallelismPlanner,
-    )
+        _nunchaku_available = True
+    except ImportError:
+        _nunchaku_available = False
+
+    if _nunchaku_available:
+        from .cp_plan_nunchaku import (  # noqa: F401
+            NunchakuFluxContextParallelismPlanner,
+        )
+        from .cp_plan_nunchaku import (  # noqa: F401
+            NunchakuQwenImageContextParallelismPlanner,
+        )
 
 
-__all__ = [
-    "ContextParallelismPlanner",
-    "ContextParallelismPlannerRegister",
-    "FluxContextParallelismPlanner",
-    "QwenImageContextParallelismPlanner",
-    "WanContextParallelismPlanner",
-    "WanVACEContextParallelismPlanner",
-    "LTXVideoContextParallelismPlanner",
-    "HunyuanImageContextParallelismPlanner",
-    "HunyuanVideoContextParallelismPlanner",
-    "CogVideoXContextParallelismPlanner",
-    "CogView3PlusContextParallelismPlanner",
-    "CogView4ContextParallelismPlanner",
-    "CosisIDContextParallelismPlanner",
-    "ChromaContextParallelismPlanner",
-    "PixArtContextParallelismPlanner",
-    "DiTContextParallelismPlanner",
-    "Kandinsky5ContextParallelismPlanner",
-    "SkyReelsV2ContextParallelismPlanner",
-    "Flux2ContextParallelismPlanner",
-    "ZImageContextParallelismPlanner",
-    "ChronoEditContextParallelismPlanner",
-]
-
-if _nunchaku_available:
-    __all__.extend(
-        [
-            "NunchakuFluxContextParallelismPlanner",
-            "NunchakuQwenImageContextParallelismPlanner",
-        ]
-    )
+__all__ = ["_activate_cp_planners"]
