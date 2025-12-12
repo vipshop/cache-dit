@@ -173,6 +173,36 @@ torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --cache --parallel-type tp
 ```
 
+### Quantization
+
+Enable model quantization to reduce memory usage:
+
+```bash
+cache-dit-serve \
+    --model-path black-forest-labs/FLUX.1-dev \
+    --cache \
+    --quantize \
+    --quantize-config-module /path/to/quantize_config_bitsandbytes.py
+```
+
+To create a custom quantization config, implement `get_quantization_config()` in the Python file specified by `--quantize-config-module`:
+
+```python
+import torch
+from diffusers.quantizers import PipelineQuantizationConfig
+
+def get_quantization_config():
+    return PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_4bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+        },
+        components_to_quantize=["text_encoder", "transformer"],
+    )
+```
+
 
 ## Attribution
 

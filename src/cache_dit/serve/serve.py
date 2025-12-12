@@ -40,19 +40,10 @@ def get_args(
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
     parser.add_argument(
-        "--quantize-type",
+        "--quantize-config-module",
         type=str,
-        default="float8_weight_only",
-        choices=[
-            "float8",
-            "float8_weight_only",
-            "int8",
-            "int8_weight_only",
-            "int4",
-            "int4_weight_only",
-            "bitsandbytes_4bit",
-            "bnb_4bit",
-        ],
+        default=None,
+        help="Path to custom Python module that provides get_quantization_config() function",
     )
     parser.add_argument(
         "--parallel-type",
@@ -133,11 +124,7 @@ def get_args(
     )
     parser.add_argument("--profile-with-stack", action="store_true", default=True)
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
-    args_or_parser = parser.parse_args() if parse else parser
-    if parse:
-        if args_or_parser.quantize_type == "bnb_4bit":
-            args_or_parser.quantize_type = "bitsandbytes_4bit"
-    return args_or_parser
+    return parser.parse_args() if parse else parser
 
 
 def parse_args():
@@ -189,10 +176,6 @@ def parse_args():
     )
 
     args = parser.parse_args()
-
-    # Handle quantize_type alias
-    if hasattr(args, "quantize_type") and args.quantize_type == "bnb_4bit":
-        args.quantize_type = "bitsandbytes_4bit"
 
     # Ensure model_path is required
     if not args.model_path:
@@ -270,6 +253,8 @@ def launch_server(args=None):
         parallel_type=args.parallel_type,
         parallel_args=parallel_args,
         attn_backend=args.attn,
+        quantize=args.quantize,
+        quantize_config_module=args.quantize_config_module,
     )
 
     logger.info("Loading model...")
