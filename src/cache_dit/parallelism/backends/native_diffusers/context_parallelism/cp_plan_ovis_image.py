@@ -222,8 +222,6 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
     encoder_hidden_states: torch.Tensor = None,
     attention_mask: Optional[torch.Tensor] = None,
     image_rotary_emb: Optional[torch.Tensor] = None,
-    pre_query: Optional[torch.Tensor] = None,
-    pre_key: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
         self._parallel_config is not None
@@ -238,8 +236,6 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
             image_rotary_emb=image_rotary_emb,
-            pre_query=pre_query,
-            pre_key=pre_key,
         )
 
     # Otherwise, use the original call for non-ulysses case
@@ -250,8 +246,6 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
         encoder_hidden_states=encoder_hidden_states,
         attention_mask=attention_mask,
         image_rotary_emb=image_rotary_emb,
-        pre_query=pre_query,
-        pre_key=pre_key,
     )
 
 
