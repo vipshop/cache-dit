@@ -947,18 +947,30 @@ cache_dit.enable_cache(
 
 <div id="parallel-text-encoder"></div>
 
-Users can set the `extra_parallel_modules` parameter (when using Tensor Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — e.g, `text_encoder_2` in `FluxPipeline` and `text_encoder` in `Flux2Pipeline`. Currently, this feature is only supported in the native PyTorch backend (i.e., Tensor Parallelism). It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. Now, cache-dit supports text encoder parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev) and 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) models. cache-dit will support more models in the future.
+Users can set the `extra_parallel_modules` parameter (when using Tensor Parallelism or Context Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — e.g, `text_encoder_2` in `FluxPipeline` and `text_encoder` in `Flux2Pipeline`. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. Now, cache-dit supports text encoder parallelism for 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev) and 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) models. cache-dit will support more models in the future.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
+# Transformer Tensor Parallelism + Text Encoder Tensor Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),
-    # Set tp_size > 1 to enable tensor parallelism.
     parallelism_config=ParallelismConfig(
         tp_size=2,
+        parallel_kwargs={
+            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
+        },
+    ),
+)
+
+# Transformer Cnotext Parallelism + Text Encoder Tensor Parallelism
+cache_dit.enable_cache(
+    pipe, 
+    cache_config=DBCacheConfig(...),
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2,
         parallel_kwargs={
             "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
         },
