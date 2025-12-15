@@ -21,17 +21,17 @@ class TextEncoderTensorParallelismPlanner:
 
 
 class TextEncoderTensorParallelismPlannerRegister:
-    _tp_planner_registry: Dict[str, TextEncoderTensorParallelismPlanner] = {}
+    _text_encoder_tp_planner_registry: Dict[str, TextEncoderTensorParallelismPlanner] = {}
 
     @classmethod
     def register(cls, name: str):
         def decorator(planner_cls: type[TextEncoderTensorParallelismPlanner]):
             assert (
-                name not in cls._tp_planner_registry
-            ), f"TensorParallelismPlanner with name {name} is already registered."
+                name not in cls._text_encoder_tp_planner_registry
+            ), f"TextEncoderTensorParallelismPlanner with name {name} is already registered."
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Registering TensorParallelismPlanner: {name}")
-            cls._tp_planner_registry[name] = planner_cls
+                logger.debug(f"Registering TextEncoderTensorParallelismPlanner: {name}")
+            cls._text_encoder_tp_planner_registry[name] = planner_cls
             return planner_cls
 
         return decorator
@@ -45,9 +45,9 @@ class TextEncoderTensorParallelismPlannerRegister:
         else:
             name = text_encoder
         planner_cls = None
-        for planner_name in cls._tp_planner_registry:
+        for planner_name in cls._text_encoder_tp_planner_registry:
             if name.startswith(planner_name):
-                planner_cls = cls._tp_planner_registry.get(planner_name)
+                planner_cls = cls._text_encoder_tp_planner_registry.get(planner_name)
                 break
         if planner_cls is None:
             raise ValueError(f"No planner registered under name: {name}")
@@ -57,5 +57,5 @@ class TextEncoderTensorParallelismPlannerRegister:
     def supported_planners(
         cls,
     ) -> tuple[int, list[str]]:
-        val_planners = cls._tp_planner_registry.keys()
+        val_planners = cls._text_encoder_tp_planner_registry.keys()
         return len(val_planners), [p for p in val_planners]
