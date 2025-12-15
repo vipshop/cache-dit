@@ -5,7 +5,6 @@ from diffusers.models.transformers.transformer_flux2 import (
     Flux2Transformer2DModel,
 )
 from einops import rearrange
-from transformers import Mistral3ForConditionalGeneration
 from torch.distributed import DeviceMesh, init_device_mesh
 
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
@@ -42,45 +41,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             tp_mesh=tp_mesh,
         )
 
-        extra_parallel_modules = kwargs.get("extra_parallel_modules", [])
-        if extra_parallel_modules:
-            for module in extra_parallel_modules:
-                if isinstance(module, Mistral3ForConditionalGeneration):
-                    logger.info(
-                        f"Also apply Tensor Parallelism to extra module "
-                        f"{module.__class__.__name__}, id:{id(module)}"
-                    )
-                    module = self.parallelize_text_encoder(
-                        module,
-                        tp_mesh=tp_mesh,
-                    )
-
         return transformer
-
-    def parallelize_text_encoder(
-        self,
-        text_encoder: Mistral3ForConditionalGeneration,
-        tp_mesh: DeviceMesh,
-    ):
-        for _, block in text_encoder.model.language_model.layers.named_children():
-            layer_plan = {
-                "self_attn.q_proj": ColwiseParallel(),
-                "self_attn.k_proj": ColwiseParallel(),
-                "self_attn.v_proj": ColwiseParallel(),
-                "self_attn.o_proj": RowwiseParallel(),
-                "mlp.gate_proj": ColwiseParallel(),
-                "mlp.up_proj": ColwiseParallel(),
-                "mlp.down_proj": RowwiseParallel(),
-            }
-
-            parallelize_module(
-                module=block,
-                device_mesh=tp_mesh,
-                parallelize_plan=layer_plan,
-            )
-        maybe_empty_cache()
-
-        return text_encoder
 
     @classmethod
     def rerangege_swiglu_weight(cls, weight: torch.Tensor, tp_size: int):

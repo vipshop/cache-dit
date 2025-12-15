@@ -129,6 +129,19 @@ def get_args(
         ],
     )
     parser.add_argument(
+        "--parallel-vae",
+        action="store_true",
+        default=False,
+        help="Enable VAE parallelism if applicable.",
+    )
+    parser.add_argument(
+        "--parallel-text-encoder",
+        "--parallel-text",
+        action="store_true",
+        default=False,
+        help="Enable text encoder parallelism if applicable.",
+    )
+    parser.add_argument(
         "--attn",  # attention backend for context parallelism
         type=str,
         default=None,
@@ -248,12 +261,12 @@ def cachify(
                 "experimental_ulysses_anything": args.ulysses_anything,
                 "experimental_ulysses_float8": args.ulysses_float8,
                 "experimental_ulysses_async": args.ulysses_async,
+                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
+                "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
             }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
             else {
-                # Specify extra modules to be parallelized in addition to the main transformer,
-                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
-                # only supported in native pytorch backend (namely, Tensor Parallelism).
+                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
                 "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
             }
         )
@@ -320,6 +333,10 @@ def strify(args, pipe_or_stats):
             base_str += "_ulysses_float8"
     if args.ulysses_async:
         base_str += "_ulysses_async"
+    if args.parallel_text_encoder:
+        base_str += "_tep"  # Text Encoder Parallelism
+    if args.parallel_vae:
+        base_str += "_vaep"  # VAE Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
     return base_str

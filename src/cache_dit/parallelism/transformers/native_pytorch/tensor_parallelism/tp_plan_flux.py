@@ -1,5 +1,4 @@
 import torch
-from transformers import T5EncoderModel
 from diffusers.models.transformers.transformer_flux import (
     FluxSingleTransformerBlock,
 )
@@ -50,48 +49,7 @@ class FluxTensorParallelismPlanner(TensorParallelismPlanner):
             tp_mesh=tp_mesh,
         )
 
-        # Parallelize t5 text encoder for FLUX.1 via `extra_parallel_modules`
-        extra_parallel_modules = kwargs.get("extra_parallel_modules", [])
-        if extra_parallel_modules:
-            for module in extra_parallel_modules:
-                if isinstance(module, T5EncoderModel):
-                    module = self.parallelize_t5(
-                        module,
-                        tp_mesh=tp_mesh,
-                    )
-                    logger.info(
-                        f"Also applied Tensor Parallelism to extra module "
-                        f"{module.__class__.__name__}, id:{id(module)}"
-                    )
-
         return transformer
-
-    def parallelize_t5(
-        self,
-        text_encoder: T5EncoderModel,
-        tp_mesh: DeviceMesh,
-    ):
-        for i, block in enumerate(text_encoder.encoder.block):
-            block.layer[0].SelfAttention.n_heads //= tp_mesh.size()
-            block.layer[0].SelfAttention.inner_dim //= tp_mesh.size()
-            layer_plan = {
-                "layer.0.SelfAttention.q": ColwiseParallel(),
-                "layer.0.SelfAttention.k": ColwiseParallel(),
-                "layer.0.SelfAttention.v": ColwiseParallel(),
-                "layer.0.SelfAttention.o": RowwiseParallel(),
-                "layer.1.DenseReluDense.wi_0": ColwiseParallel(),
-                "layer.1.DenseReluDense.wi_1": ColwiseParallel(),
-                "layer.1.DenseReluDense.wo": RowwiseParallel(),
-            }
-            if i == 0:
-                layer_plan["layer.0.SelfAttention.relative_attention_bias"] = ColwiseParallel()
-            parallelize_module(
-                module=block,
-                device_mesh=tp_mesh,
-                parallelize_plan=layer_plan,
-            )
-
-        return text_encoder
 
     def parallelize_transformer(
         self,

@@ -6,19 +6,18 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from .context_parallelism import maybe_enable_context_parallelism
 
 
-def maybe_enable_parallelism(
+def maybe_enable_parallelism_for_transformer(
     transformer: torch.nn.Module,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
-    assert isinstance(transformer, ModelMixin), (
-        "transformer must be an instance of diffusers' ModelMixin, " f"but got {type(transformer)}"
-    )
+    assert isinstance(
+        transformer, torch.nn.Module
+    ), f"transformer must be an instance of torch.nn.Module, but got {type(transformer)}"
     if parallelism_config is None:
         return transformer
 
@@ -37,6 +36,14 @@ def maybe_enable_parallelism(
             transformer,
             parallelism_config,
         )
+        transformer._is_parallelized = True  # type: ignore[attr-defined]
+        # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
+        transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
+        logger.info(
+            f"Parallelize Transformer: {transformer.__class__.__name__}, "
+            f"id:{id(transformer)}, {parallelism_config.strify(True)}"
+        )
+
     else:
         raise ValueError(
             "NATIVE_DIFFUSER backend only support context parallelism now. "

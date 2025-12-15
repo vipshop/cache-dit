@@ -2,8 +2,8 @@ import torch
 import torch.distributed as dist
 from typing import Union, Optional
 from transformers import PreTrainedTokenizerFast, PreTrainedTokenizer
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from .parallel_backend import ParallelismBackend
+from .parallel_config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
 
@@ -14,41 +14,56 @@ def enable_parallelism(
     transformer: torch.nn.Module,
     parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
-    assert isinstance(transformer, torch.nn.Module), (
-        "transformer must be an instance of torch.nn.Module, " f"but got {type(transformer)}"
-    )
+    assert isinstance(
+        transformer, torch.nn.Module
+    ), f"transformer must be an instance of torch.nn.Module, but got {type(transformer)}"
     if getattr(transformer, "_is_parallelized", False):
-        logger.warning("The transformer is already parallelized. " "Skipping parallelism enabling.")
+        logger.warning("The transformer is already parallelized. Skipping parallelism enabling.")
         return transformer
-
+    # Parallelize Transformer: The check of parallelism backend is only for transformer
+    # here. Text Encoder and VAE does not have different parallelism backends now.
     if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
-        from cache_dit.parallelism.backends.native_diffusers import (
-            maybe_enable_parallelism,
+        from .transformers.native_diffusers import (
+            maybe_enable_parallelism_for_transformer,
         )
 
-        transformer = maybe_enable_parallelism(
+        transformer = maybe_enable_parallelism_for_transformer(
             transformer,
             parallelism_config,
         )
     elif parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH:
-        from cache_dit.parallelism.backends.native_pytorch import (
-            maybe_enable_parallelism,
+        from .transformers.native_pytorch import (
+            maybe_enable_parallelism_for_transformer,
         )
 
-        transformer = maybe_enable_parallelism(
+        transformer = maybe_enable_parallelism_for_transformer(
             transformer,
             parallelism_config,
         )
     else:
         raise ValueError(f"Parallel backend {parallelism_config.backend} is not supported yet.")
 
-    transformer._is_parallelized = True  # type: ignore[attr-defined]
-    # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
-    transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-    logger.info(
-        f"Enabled parallelism: {parallelism_config.strify(True)}, "
-        f"transformer id:{id(transformer)}"
-    )
+    # Check text encoder and VAE for extra parallel modules
+    extra_parallel_modules: list[torch.nn.Module] = []
+    if parallelism_config.parallel_kwargs is not None:
+        extra_parallel_modules = parallelism_config.parallel_kwargs.get(
+            "extra_parallel_modules", []
+        )
+
+    if extra_parallel_modules:
+        from .text_encoders.native_pytorch import (
+            maybe_enable_parallelism_for_text_encoder,
+        )
+
+        for module in extra_parallel_modules:
+            # Enable parallelism for text encoder
+            maybe_enable_parallelism_for_text_encoder(
+                text_encoder=module,
+                parallelism_config=parallelism_config,
+            )
+            if getattr(module, "_is_parallelized", False):
+                continue
+            # TODO: Enable parallelism for VAE if needed.
 
     # NOTE: Workaround for potential memory peak issue after parallelism
     # enabling, specially for tensor parallelism in native pytorch backend.

@@ -67,14 +67,31 @@ class ParallelismConfig:
                     )
                     self.backend = ParallelismBackend.NATIVE_DIFFUSER
 
-    def strify(self, details: bool = False) -> str:
+    def strify(self, details: bool = False, text_encoder: bool = False, vae: bool = False) -> str:
         if details:
-            return (
-                f"ParallelismConfig(backend={self.backend}, "
-                f"ulysses_size={self.ulysses_size}, "
-                f"ring_size={self.ring_size}, "
-                f"tp_size={self.tp_size})"
-            )
+            if text_encoder or vae:
+                extra_module_world_size = self._get_extra_module_world_size()
+                # Currently, only support tensor parallelism or data parallelism
+                # for extra modules using pytorch native backend or pure pytorch
+                # implementation. So we just hardcode the backend here.
+                parallel_str = f"ParallelismConfig(backend={ParallelismBackend.NATIVE_PYTORCH}, "
+
+                if text_encoder:
+                    parallel_str += f"tp_size={extra_module_world_size}, "
+                else:
+                    parallel_str += f"dp_size={extra_module_world_size}, "
+                parallel_str = parallel_str.rstrip(", ") + ")"
+                return parallel_str
+
+            parallel_str = f"ParallelismConfig(backend={self.backend}, "
+            if self.ulysses_size is not None:
+                parallel_str += f"ulysses_size={self.ulysses_size}, "
+            if self.ring_size is not None:
+                parallel_str += f"ring_size={self.ring_size}, "
+            if self.tp_size is not None:
+                parallel_str += f"tp_size={self.tp_size}, "
+            parallel_str = parallel_str.rstrip(", ") + ")"
+            return parallel_str
         else:
             parallel_str = ""
             if self.ulysses_size is not None:
@@ -83,4 +100,40 @@ class ParallelismConfig:
                 parallel_str += f"Ring{self.ring_size}"
             if self.tp_size is not None:
                 parallel_str += f"TP{self.tp_size}"
+            if text_encoder:
+                parallel_str += "_TEP"  # Text Encoder Parallelism
+            if vae:
+                parallel_str += "_VAEP"  # VAE Parallelism
             return parallel_str
+
+    def _get_extra_module_world_size(self) -> Optional[int]:
+        """Get the world size for extra parallel modules, e.g., text encoder and VAE."""
+        # Maximize the parallel size for extra modules: max(tp_size, ulysses_size, ring_size)
+        sizes = []
+        if self.tp_size is not None and self.tp_size > 1:
+            sizes.append(self.tp_size)
+        if self.ulysses_size is not None and self.ulysses_size > 1:
+            sizes.append(self.ulysses_size)
+        if self.ring_size is not None and self.ring_size > 1:
+            sizes.append(self.ring_size)
+        if sizes:
+            return max(sizes)
+        return None
+
+    @property
+    def text_encoder_world_size(self) -> int:
+        """Get the world size for text encoder parallelism."""
+        world_size = self._get_extra_module_world_size()
+        assert (
+            world_size is None or world_size > 1
+        ), "Text encoder world size must be None or greater than 1 for parallelism."
+        return world_size
+
+    @property
+    def vae_world_size(self) -> int:
+        """Get the world size for VAE parallelism."""
+        world_size = self._get_extra_module_world_size()
+        assert (
+            world_size is None or world_size > 1
+        ), "VAE world size must be None or greater than 1 for parallelism."
+        return world_size
