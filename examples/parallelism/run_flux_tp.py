@@ -42,14 +42,10 @@ if args.cache or args.parallel_type is not None:
     cachify(
         args,
         pipe,
-        extra_parallel_modules=(
-            # Specify extra modules to be parallelized in addition to the main transformer,
-            # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
-            # only supported in native pytorch backend (namely, Tensor Parallelism).
-            [pipe.text_encoder_2]
-            if args.parallel_type == "tp"
-            else []
-        ),
+        # Specify extra modules to be parallelized in addition to the main transformer,
+        # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
+        # only supported in native pytorch backend (namely, Tensor Parallelism).
+        extra_parallel_modules=[pipe.text_encoder_2],
     )
 
 pipe.to(device)
