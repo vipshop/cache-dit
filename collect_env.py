@@ -214,9 +214,9 @@ def get_cudnn_version(run_lambda):
     rc, out, _ = run_lambda(cudnn_cmd)
     # find will return 1 if there are permission errors or if not found
     if len(out) == 0 or (rc != 1 and rc != 0):
-        l = os.environ.get("CUDNN_LIBRARY")
-        if l is not None and os.path.isfile(l):
-            return os.path.realpath(l)
+        lib = os.environ.get("CUDNN_LIBRARY")
+        if lib is not None and os.path.isfile(lib):
+            return os.path.realpath(lib)
         return None
     files_set = set()
     for fn in out.split("\n"):
