@@ -71,13 +71,20 @@ class ParallelismConfig:
         if details:
             if text_encoder or vae:
                 extra_module_world_size = self._get_extra_module_world_size()
-                return f"ParallelismConfig(extra_module_world_size={extra_module_world_size})"
-            return (
-                f"ParallelismConfig(backend={self.backend}, "
-                f"ulysses_size={self.ulysses_size}, "
-                f"ring_size={self.ring_size}, "
-                f"tp_size={self.tp_size})"
-            )
+                if text_encoder:
+                    return f"ParallelismConfig(tp_size={extra_module_world_size})"
+                else:
+                    return f"ParallelismConfig(dp_size={extra_module_world_size})"
+
+            parallel_str = f"ParallelismConfig(backend={self.backend}, "
+            if self.ulysses_size is not None:
+                parallel_str += f"ulysses_size={self.ulysses_size}, "
+            if self.ring_size is not None:
+                parallel_str += f"ring_size={self.ring_size}, "
+            if self.tp_size is not None:
+                parallel_str += f"tp_size={self.tp_size}, "
+            parallel_str = parallel_str.rstrip(", ") + ")"
+            return parallel_str
         else:
             parallel_str = ""
             if self.ulysses_size is not None:

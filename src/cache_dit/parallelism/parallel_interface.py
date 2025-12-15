@@ -43,14 +43,6 @@ def enable_parallelism(
     else:
         raise ValueError(f"Parallel backend {parallelism_config.backend} is not supported yet.")
 
-    transformer._is_parallelized = True  # type: ignore[attr-defined]
-    # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
-    transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-    logger.info(
-        f"Enabled parallelism for transformer: {transformer.__class__.__name__}, "
-        f"id:{id(transformer)}, {parallelism_config.strify(True)}"
-    )
-
     # Check text encoder and VAE for extra parallel modules
     extra_parallel_modules: list[torch.nn.Module] = []
     if parallelism_config.parallel_kwargs is not None:

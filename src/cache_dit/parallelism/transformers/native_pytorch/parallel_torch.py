@@ -19,9 +19,7 @@ def maybe_enable_parallelism_for_transformer(
     assert isinstance(transformer, torch.nn.Module), (
         "transformer must be an instance of torch.nn.Module, " f"but got {type(transformer)}"
     )
-    assert isinstance(transformer, ModelMixin), (
-        "transformer must be an instance of diffusers' ModelMixin, " f"but got {type(transformer)}"
-    )
+
     if parallelism_config is None:
         return transformer
 
@@ -46,6 +44,14 @@ def maybe_enable_parallelism_for_transformer(
             transformer=transformer,
             parallelism_config=parallelism_config,
         )
+        transformer._is_parallelized = True  # type: ignore[attr-defined]
+        # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
+        transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
+        logger.info(
+            f"Parallelize Transformer: {transformer.__class__.__name__}, "
+            f"id:{id(transformer)}, {parallelism_config.strify(True)}"
+        )
+
     else:
         raise ValueError(
             "NATIVE_PYTORCH only supported tensor parallelism now. "
