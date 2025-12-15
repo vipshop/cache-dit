@@ -22,6 +22,7 @@
 
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
 
+<!--
 <p align="center">
     U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
     FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
@@ -35,14 +36,21 @@
 |✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|
 
 <p align="center">
-<!--
-  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img width="820px" alt="image" src="https://github.com/user-attachments/assets/e30d29ba-de49-4cef-9375-2f626a4a097c" /> </a> <br>
- <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img src="https://img.shields.io/badge/🔥🔥🔥Latest_Important_News:-🎉SGLang_Diffusion_x_🤗Cache_DiT_is_ready_!🔥🔥🔥-blue.svg"> </a>
--->
  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md">
-  <img src="https://img.shields.io/badge/🔥Latest_News-🎉SGLang_Diffusion_x_🤗Cache_DiT_ready!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Cache-DiT News">
+  <img src="https://img.shields.io/badge/🔥Latest_News-🎉SGLang_Diffusion_x_🤗Cache_DiT_ready!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Diffusion x Cache-DiT News">
+ </a><br>
+ <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/cache_dit_acceleration/">
+  <img src="https://img.shields.io/badge/🔥Latest_News-🎉vLLM_Omni_x_🤗Cache_DiT_ready!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="vLLM Omni x Cache-DiT News">
  </a>
+</p>
 
+-->
+
+<p align="center">
+ <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md">
+  <img src="https://img.shields.io/badge/🔥News-🎉SGLang_Diffusion_x_🤗Cache_DiT🔥-skyblue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Diffusion x Cache-DiT News" ></a>
+ <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/cache_dit_acceleration/" >
+  <img src="https://img.shields.io/badge/🎉vLLM_Omni_x_🤗Cache_DiT🔥-skyblue?style=for-the-badge&labelColor=darkblue&logo=github" alt="vLLM Omni x Cache-DiT News"></a>
 </p>
 
 </div>
