@@ -92,6 +92,8 @@ def run_pipe(pipe: FluxPipeline):
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)
+    if args.compile_text_encoder:
+        pipe.text_encoder_2.encoder = torch.compile(pipe.text_encoder_2.encoder)
 
 # warmup
 _ = run_pipe(pipe)
