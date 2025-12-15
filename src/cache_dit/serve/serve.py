@@ -55,6 +55,12 @@ def get_args(
         ],
     )
     parser.add_argument(
+        "--pipeline-quant-config-path",
+        type=str,
+        default=None,
+        help="Path to custom Python module that provides get_pipeline_quant_config() function",
+    )
+    parser.add_argument(
         "--parallel-type",
         "--parallel",
         type=str,
@@ -270,6 +276,9 @@ def launch_server(args=None):
         parallel_type=args.parallel_type,
         parallel_args=parallel_args,
         attn_backend=args.attn,
+        quantize=args.quantize,
+        quantize_type=args.quantize_type,
+        pipeline_quant_config_path=args.pipeline_quant_config_path,
     )
 
     logger.info("Loading model...")

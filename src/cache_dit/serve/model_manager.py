@@ -23,6 +23,50 @@ from diffusers import WanImageToVideoPipeline
 logger = init_logger(__name__)
 
 
+def load_pipeline_quant_config(pipeline_quant_config_path: str):
+    """Load pipeline quantization config from a custom module."""
+
+    from diffusers.quantizers import PipelineQuantizationConfig
+
+    logger.info(f"Loading pipeline quantization config from: {pipeline_quant_config_path}")
+
+    try:
+        import importlib.util
+        import sys
+
+        # Load the custom module
+        spec = importlib.util.spec_from_file_location(
+            "pipeline_quant_config", pipeline_quant_config_path
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError(f"Cannot load module from {pipeline_quant_config_path}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+
+        # Get the pipeline quantization config from the module
+        if not hasattr(module, "get_pipeline_quant_config"):
+            raise ValueError(
+                f"Module {pipeline_quant_config_path} must have a 'get_pipeline_quant_config()' function"
+            )
+
+        quantization_config = module.get_pipeline_quant_config()
+
+        if not isinstance(quantization_config, PipelineQuantizationConfig):
+            raise ValueError(
+                f"get_pipeline_quant_config() must return a PipelineQuantizationConfig object, "
+                f"got {type(quantization_config)}"
+            )
+
+        logger.info("Successfully loaded quantization config from custom module")
+        return quantization_config
+
+    except Exception as e:
+        logger.error(f"Failed to load quantization config from {pipeline_quant_config_path}: {e}")
+        raise
+
+
 @dataclass
 class GenerateRequest:
     """Image/Video generation request."""
@@ -80,6 +124,9 @@ class ModelManager:
         parallel_type: Optional[str] = None,
         parallel_args: Optional[Dict[str, Any]] = None,
         attn_backend: Optional[str] = None,
+        quantize: bool = False,
+        quantize_type: Optional[str] = None,
+        pipeline_quant_config_path: Optional[str] = None,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -92,6 +139,9 @@ class ModelManager:
         self.parallel_type = parallel_type
         self.parallel_args = parallel_args or {}
         self.attn_backend = attn_backend
+        self.quantize = quantize
+        self.quantize_type = quantize_type
+        self.pipeline_quant_config_path = pipeline_quant_config_path
         self.pipe = None
         self.warmed_up_shapes = set()
 
@@ -104,18 +154,33 @@ class ModelManager:
         """Load the diffusion model."""
         logger.info(f"Loading model: {self.model_path}")
 
+        # Load pipeline quantization config
+        quantization_config = None
+        if self.quantize and self.pipeline_quant_config_path:
+            quantization_config = load_pipeline_quant_config(self.pipeline_quant_config_path)
+        elif self.quantize:
+            logger.warning("Quantization enabled but no pipeline_quant_config_path provided")
+
         if "Wan2.2-I2V-A14B-Diffusers" in self.model_path:
             logger.info("Detected Wan2.2-I2V model, using WanImageToVideoPipeline")
             self.pipe = WanImageToVideoPipeline.from_pretrained(
                 self.model_path,
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
+                quantization_config=quantization_config,
             )
         else:
             self.pipe = DiffusionPipeline.from_pretrained(
                 self.model_path,
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
+                quantization_config=quantization_config,
+            )
+
+        # TODO(wxy): support quantization by quantize_type
+        if self.quantize and self.quantize_type is not None:
+            logger.warning(
+                f"Quantization type {self.quantize_type} is not supported yet in Serving mode"
             )
 
         cache_config_obj = None
