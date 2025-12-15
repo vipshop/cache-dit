@@ -47,8 +47,8 @@ def enable_parallelism(
     # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
     transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
     logger.info(
-        f"Enabled parallelism: {parallelism_config.strify(True)}, "
-        f"transformer id:{id(transformer)}"
+        f"Enabled parallelism for transformer: {transformer.__class__.__name__}, "
+        f"id:{id(transformer)}, {parallelism_config.strify(True)}"
     )
 
     # Check text encoder and VAE for extra parallel modules

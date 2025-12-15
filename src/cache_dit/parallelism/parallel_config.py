@@ -67,8 +67,11 @@ class ParallelismConfig:
                     )
                     self.backend = ParallelismBackend.NATIVE_DIFFUSER
 
-    def strify(self, details: bool = False) -> str:
+    def strify(self, details: bool = False, text_encoder: bool = False, vae: bool = False) -> str:
         if details:
+            if text_encoder or vae:
+                extra_module_world_size = self._get_extra_module_world_size()
+                return f"ParallelismConfig(extra_module_world_size={extra_module_world_size})"
             return (
                 f"ParallelismConfig(backend={self.backend}, "
                 f"ulysses_size={self.ulysses_size}, "

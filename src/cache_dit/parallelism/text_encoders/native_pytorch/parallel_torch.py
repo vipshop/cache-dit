@@ -34,8 +34,8 @@ def maybe_enable_parallelism_for_text_encoder(
     text_encoder._parallelism_config = parallelism_config  # type: ignore[attr-defined]
 
     logger.info(
-        f"Enabled parallelism for text encoder: {parallelism_config.strify(True)}, "
-        f"text_encoder id:{id(text_encoder)}"
+        f"Enabled parallelism for text encoder: {text_encoder.__class__.__name__}, "
+        f"id:{id(text_encoder)}, {parallelism_config.strify(True, text_encoder=True)}"
     )
 
     return text_encoder
