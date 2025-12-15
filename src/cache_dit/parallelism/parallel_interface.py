@@ -14,11 +14,11 @@ def enable_parallelism(
     transformer: torch.nn.Module,
     parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
-    assert isinstance(transformer, torch.nn.Module), (
-        "transformer must be an instance of torch.nn.Module, " f"but got {type(transformer)}"
-    )
+    assert isinstance(
+        transformer, torch.nn.Module
+    ), f"transformer must be an instance of torch.nn.Module, but got {type(transformer)}"
     if getattr(transformer, "_is_parallelized", False):
-        logger.warning("The transformer is already parallelized. " "Skipping parallelism enabling.")
+        logger.warning("The transformer is already parallelized. Skipping parallelism enabling.")
         return transformer
     # The check of parallelism backend is only for transformer here.
     # Text Encoder and VAE does not have different parallelism backends now.
