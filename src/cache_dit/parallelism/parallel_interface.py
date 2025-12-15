@@ -2,8 +2,8 @@ import torch
 import torch.distributed as dist
 from typing import Union, Optional
 from transformers import PreTrainedTokenizerFast, PreTrainedTokenizer
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from .parallel_backend import ParallelismBackend
+from .parallel_config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
 
@@ -20,9 +20,10 @@ def enable_parallelism(
     if getattr(transformer, "_is_parallelized", False):
         logger.warning("The transformer is already parallelized. " "Skipping parallelism enabling.")
         return transformer
-
+    # The check of parallelism backend is only for transformer here.
+    # Text Encoder and VAE does not have different parallelism backends now.
     if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
-        from cache_dit.parallelism.backends.native_diffusers import (
+        from .transformers.native_diffusers import (
             maybe_enable_parallelism,
         )
 
@@ -31,7 +32,7 @@ def enable_parallelism(
             parallelism_config,
         )
     elif parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH:
-        from cache_dit.parallelism.backends.native_pytorch import (
+        from .transformers.native_pytorch import (
             maybe_enable_parallelism,
         )
 
