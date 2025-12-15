@@ -100,6 +100,10 @@ class ParallelismConfig:
                 parallel_str += f"Ring{self.ring_size}"
             if self.tp_size is not None:
                 parallel_str += f"TP{self.tp_size}"
+            if text_encoder:
+                parallel_str += "_TEP"  # Text Encoder Parallelism
+            if vae:
+                parallel_str += "_VAEP"  # VAE Parallelism
             return parallel_str
 
     def _get_extra_module_world_size(self) -> Optional[int]:
