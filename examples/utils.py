@@ -129,6 +129,18 @@ def get_args(
         ],
     )
     parser.add_argument(
+        "--parallel-vae",
+        action="store_true",
+        default=False,
+        help="Enable VAE parallelism if applicable.",
+    )
+    parser.add_argument(
+        "--parallel-text-encoder",
+        action="store_true",
+        default=False,
+        help="Enable text encoder parallelism if applicable.",
+    )
+    parser.add_argument(
         "--attn",  # attention backend for context parallelism
         type=str,
         default=None,
