@@ -24,3 +24,6 @@ class ParallelismBackend(Enum):
                 )
             return True
         return False
+
+    def __str__(self) -> str:
+        return self.value
