@@ -136,6 +136,7 @@ def get_args(
     )
     parser.add_argument(
         "--parallel-text-encoder",
+        "--parallel-text",
         action="store_true",
         default=False,
         help="Enable text encoder parallelism if applicable.",

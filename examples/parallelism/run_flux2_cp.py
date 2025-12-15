@@ -33,12 +33,6 @@ if GiB() < 128:
         "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
     )
 
-if args.quantize_type in ("bitsandbytes_4bit",):
-    assert not args.parallel_text_encoder, (
-        "Tensor parallelism for text encoder is not supported when using "
-        "bitsandbytes 4-bit quantization due to bnb limitation."
-    )
-
 pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     (
         args.model_path
@@ -59,7 +53,11 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
                     "bnb_4bit_compute_dtype": torch.bfloat16,
                 },
                 # 112/4 = 28GB total for text_encoder + transformer in 4-bit
-                components_to_quantize=["text_encoder", "transformer"],
+                components_to_quantize=(
+                    ["text_encoder", "transformer"]
+                    if not args.parallel_text_encoder
+                    else ["transformer"]
+                ),
             )
         )
         if args.quantize and args.quantize_type in ("bitsandbytes_4bit",)
