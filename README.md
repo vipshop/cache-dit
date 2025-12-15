@@ -10,6 +10,14 @@
         <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
     </h2>
   </p>
+<p align="center">
+ <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md">
+  <img src="https://img.shields.io/badge/🔥Latest_News-🎉SGLang_Diffusion_x_🤗Cache_DiT_ready!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Diffusion x Cache-DiT News">
+ </a><br>
+ <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/cache_dit_acceleration/">
+  <img src="https://img.shields.io/badge/🔥Latest_News-🎉vLLM_Omni_x_🤗Cache_DiT_ready!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="vLLM Omni x Cache-DiT News">
+ </a>
+</p>
 
 |Baseline|SCM S S*|SCM F D*|SCM U D*|+TS|+compile|+FP8*|   
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -33,17 +41,6 @@
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1312x1312.C0_Q0_NONE_Ulysses2.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|
 |1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
 |✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|
-
-<p align="center">
-<!--
-  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img width="820px" alt="image" src="https://github.com/user-attachments/assets/e30d29ba-de49-4cef-9375-2f626a4a097c" /> </a> <br>
- <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md"> <img src="https://img.shields.io/badge/🔥🔥🔥Latest_Important_News:-🎉SGLang_Diffusion_x_🤗Cache_DiT_is_ready_!🔥🔥🔥-blue.svg"> </a>
--->
- <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md">
-  <img src="https://img.shields.io/badge/🔥Latest_News-🎉SGLang_Diffusion_x_🤗Cache_DiT_ready!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Cache-DiT News">
- </a>
-
-</p>
 
 </div>
 
