@@ -71,10 +71,17 @@ class ParallelismConfig:
         if details:
             if text_encoder or vae:
                 extra_module_world_size = self._get_extra_module_world_size()
+                # Currently, only support tensor parallelism or data parallelism
+                # for extra modules using pytorch native backend or pure pytorch
+                # implementation. So we just hardcode the backend here.
+                parallel_str = f"ParallelismConfig(backend={ParallelismBackend.NATIVE_PYTORCH}, "
+
                 if text_encoder:
-                    return f"ParallelismConfig(tp_size={extra_module_world_size})"
+                    parallel_str += f"tp_size={extra_module_world_size}, "
                 else:
-                    return f"ParallelismConfig(dp_size={extra_module_world_size})"
+                    parallel_str += f"dp_size={extra_module_world_size}, "
+                parallel_str = parallel_str.rstrip(", ") + ")"
+                return parallel_str
 
             parallel_str = f"ParallelismConfig(backend={self.backend}, "
             if self.ulysses_size is not None:
