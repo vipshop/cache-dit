@@ -1,2 +1,2 @@
 from .tensor_parallelism import TensorParallelismPlannerRegister
-from .parallel_torch import maybe_enable_parallelism
+from .parallel_torch import maybe_enable_parallelism_for_transformer

@@ -1,2 +1,2 @@
 from .context_parallelism import ContextParallelismPlannerRegister
-from .parallel_difffusers import maybe_enable_parallelism
+from .parallel_difffusers import maybe_enable_parallelism_for_transformer

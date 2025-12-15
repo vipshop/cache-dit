@@ -12,7 +12,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-def maybe_enable_parallelism(
+def maybe_enable_parallelism_for_transformer(
     transformer: torch.nn.Module | ModelMixin,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:

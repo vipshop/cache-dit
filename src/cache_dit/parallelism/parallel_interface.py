@@ -20,28 +20,30 @@ def enable_parallelism(
     if getattr(transformer, "_is_parallelized", False):
         logger.warning("The transformer is already parallelized. Skipping parallelism enabling.")
         return transformer
-    # The check of parallelism backend is only for transformer here.
-    # Text Encoder and VAE does not have different parallelism backends now.
+    # Parallelize Transformer: The check of parallelism backend is only for transformer
+    # here. Text Encoder and VAE does not have different parallelism backends now.
     if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
         from .transformers.native_diffusers import (
-            maybe_enable_parallelism,
+            maybe_enable_parallelism_for_transformer,
         )
 
-        transformer = maybe_enable_parallelism(
+        transformer = maybe_enable_parallelism_for_transformer(
             transformer,
             parallelism_config,
         )
     elif parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH:
         from .transformers.native_pytorch import (
-            maybe_enable_parallelism,
+            maybe_enable_parallelism_for_transformer,
         )
 
-        transformer = maybe_enable_parallelism(
+        transformer = maybe_enable_parallelism_for_transformer(
             transformer,
             parallelism_config,
         )
     else:
         raise ValueError(f"Parallel backend {parallelism_config.backend} is not supported yet.")
+
+    # TODO: Check text encoder and VAE parallelism backends in the future.
 
     transformer._is_parallelized = True  # type: ignore[attr-defined]
     # Use `parallelism` not `parallel` to avoid name conflict with diffusers.

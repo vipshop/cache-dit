@@ -12,7 +12,7 @@ from cache_dit.parallelism.parallel_config import ParallelismConfig
 from .context_parallelism import maybe_enable_context_parallelism
 
 
-def maybe_enable_parallelism(
+def maybe_enable_parallelism_for_transformer(
     transformer: torch.nn.Module,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
