@@ -182,16 +182,16 @@ cache-dit-serve \
     --model-path black-forest-labs/FLUX.1-dev \
     --cache \
     --quantize \
-    --quantize-config-module /path/to/quantize_config_bitsandbytes.py
+    --pipeline-quant-config-path /path/to/quantize_config_bitsandbytes.py
 ```
 
-To create a custom quantization config, implement `get_quantization_config()` in the Python file specified by `--quantize-config-module`:
+To create a custom pipeline quantization config, implement `get_pipeline_quant_config()` in the Python file specified by `--pipeline-quant-config-path`:
 
 ```python
 import torch
 from diffusers.quantizers import PipelineQuantizationConfig
 
-def get_quantization_config():
+def get_pipeline_quant_config():
     return PipelineQuantizationConfig(
         quant_backend="bitsandbytes_4bit",
         quant_kwargs={
