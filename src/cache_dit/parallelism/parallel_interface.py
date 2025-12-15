@@ -43,8 +43,6 @@ def enable_parallelism(
     else:
         raise ValueError(f"Parallel backend {parallelism_config.backend} is not supported yet.")
 
-    # TODO: Check text encoder and VAE parallelism backends in the future.
-
     transformer._is_parallelized = True  # type: ignore[attr-defined]
     # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
     transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
@@ -52,6 +50,28 @@ def enable_parallelism(
         f"Enabled parallelism: {parallelism_config.strify(True)}, "
         f"transformer id:{id(transformer)}"
     )
+
+    # Check text encoder and VAE for extra parallel modules
+    extra_parallel_modules: list[torch.nn.Module] = []
+    if parallelism_config.parallel_kwargs is not None:
+        extra_parallel_modules = parallelism_config.parallel_kwargs.get(
+            "extra_parallel_modules", []
+        )
+
+    if extra_parallel_modules:
+        from .text_encoders.native_pytorch import (
+            maybe_enable_parallelism_for_text_encoder,
+        )
+
+        for module in extra_parallel_modules:
+            # Enable parallelism for text encoder
+            maybe_enable_parallelism_for_text_encoder(
+                text_encoder=module,
+                parallelism_config=parallelism_config,
+            )
+            if getattr(module, "_is_parallelized", False):
+                continue
+            # TODO: Enable parallelism for VAE if needed.
 
     # NOTE: Workaround for potential memory peak issue after parallelism
     # enabling, specially for tensor parallelism in native pytorch backend.

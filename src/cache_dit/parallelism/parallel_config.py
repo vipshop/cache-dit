@@ -84,3 +84,35 @@ class ParallelismConfig:
             if self.tp_size is not None:
                 parallel_str += f"TP{self.tp_size}"
             return parallel_str
+
+    def _get_extra_module_world_size(self) -> Optional[int]:
+        """Get the world size for extra parallel modules, e.g., text encoder and VAE."""
+        # Maximize the parallel size for extra modules: max(tp_size, ulysses_size, ring_size)
+        sizes = []
+        if self.tp_size is not None and self.tp_size > 1:
+            sizes.append(self.tp_size)
+        if self.ulysses_size is not None and self.ulysses_size > 1:
+            sizes.append(self.ulysses_size)
+        if self.ring_size is not None and self.ring_size > 1:
+            sizes.append(self.ring_size)
+        if sizes:
+            return max(sizes)
+        return None
+
+    @property
+    def text_encoder_world_size(self) -> int:
+        """Get the world size for text encoder parallelism."""
+        world_size = self._get_extra_module_world_size()
+        assert (
+            world_size is None or world_size > 1
+        ), "Text encoder world size must be None or greater than 1 for parallelism."
+        return world_size
+
+    @property
+    def vae_world_size(self) -> int:
+        """Get the world size for VAE parallelism."""
+        world_size = self._get_extra_module_world_size()
+        assert (
+            world_size is None or world_size > 1
+        ), "VAE world size must be None or greater than 1 for parallelism."
+        return world_size
