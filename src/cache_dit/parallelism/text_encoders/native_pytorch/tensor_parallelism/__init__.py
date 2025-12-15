@@ -8,7 +8,6 @@ except ImportError:
 
 import torch
 from typing import Optional
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
 
