@@ -48,10 +48,10 @@
 
 <p align="center">
  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md">
-  <img src="https://img.shields.io/badge/🔥Latest_News-🎉SGLang_Diffusion_x_🤗Cache_DiT🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Diffusion x Cache-DiT News">
+  <img src="https://img.shields.io/badge/🔥News-🎉SGLang_Diffusion_x_🤗Cache_DiT🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="SGLang Diffusion x Cache-DiT News">
  </a>
  <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/cache_dit_acceleration/">
-  <img src="https://img.shields.io/badge/🔥Latest_News-🎉vLLM_Omni_x_🤗Cache_DiT!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="vLLM Omni x Cache-DiT News">
+  <img src="https://img.shields.io/badge/🎉vLLM_Omni_x_🤗Cache_DiT!🔥-blue?style=for-the-badge&labelColor=darkblue&logo=github" alt="vLLM Omni x Cache-DiT News">
  </a>
 </p>
 
