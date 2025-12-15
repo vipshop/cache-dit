@@ -33,6 +33,12 @@ if GiB() < 128:
         "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
     )
 
+if args.quantize_type in ("bitsandbytes_4bit",):
+    assert not args.parallel_text_encoder, (
+        "Tensor parallelism for text encoder is not supported when using "
+        "bitsandbytes 4-bit quantization due to bnb limitation."
+    )
+
 pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     (
         args.model_path
@@ -61,19 +67,6 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     ),
 )
 
-if args.quantize and args.quantize_type == "float8_weight_only":
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-        ],
-    )
-    pipe.text_encoder = cache_dit.quantize(
-        pipe.text_encoder,
-        quant_type=args.quantize_type,
-    )
 
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig, ParamsModifier
@@ -81,14 +74,7 @@ if args.cache or args.parallel_type is not None:
     cachify(
         args,
         pipe,
-        extra_parallel_modules=(
-            # Specify extra modules to be parallelized in addition to the main transformer,
-            # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
-            # only supported in native pytorch backend (namely, Tensor Parallelism).
-            [pipe.text_encoder]
-            if args.parallel_type == "tp"
-            else []
-        ),
+        extra_parallel_modules=[pipe.text_encoder] if args.parallel_text_encoder else [],
         params_modifiers=[
             ParamsModifier(
                 # Modified config only for transformer_blocks
@@ -111,7 +97,21 @@ if args.cache or args.parallel_type is not None:
 
 torch.cuda.empty_cache()
 
-if args.quantize_type == "bitsandbytes_4bit":
+if args.quantize and args.quantize_type == "float8_weight_only":
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        exclude_layers=[
+            "img_in",
+            "txt_in",
+        ],
+    )
+    pipe.text_encoder = cache_dit.quantize(
+        pipe.text_encoder,
+        quant_type=args.quantize_type,
+    )
+
+if args.quantize_type == "bitsandbytes_4bit" or (args.parallel_text_encoder and args.quantize):
     pipe.to(device)
 else:
     pipe.enable_model_cpu_offload(device=device)
