@@ -248,12 +248,12 @@ def cachify(
                 "experimental_ulysses_anything": args.ulysses_anything,
                 "experimental_ulysses_float8": args.ulysses_float8,
                 "experimental_ulysses_async": args.ulysses_async,
+                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
+                "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
             }
             if backend == ParallelismBackend.NATIVE_DIFFUSER
             else {
-                # Specify extra modules to be parallelized in addition to the main transformer,
-                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
-                # only supported in native pytorch backend (namely, Tensor Parallelism).
+                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
                 "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
             }
         )

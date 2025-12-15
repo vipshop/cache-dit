@@ -57,8 +57,7 @@ if args.cache or args.parallel_type is not None:
         args,
         pipe,
         # Specify extra modules to be parallelized in addition to the main transformer,
-        # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline. Currently,
-        # only supported in native pytorch backend (namely, Tensor Parallelism).
+        # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline.
         extra_parallel_modules=[pipe.text_encoder_2],
     )
 
