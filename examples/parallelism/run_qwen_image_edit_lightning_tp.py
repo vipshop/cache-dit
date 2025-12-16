@@ -61,27 +61,34 @@ model_id = (
     else os.environ.get("QWEN_IMAGE_EDIT_2509_DIR", "Qwen/Qwen-Image-Edit-2509")
 )
 
-quantization_config = (
-    (
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            # Always use bnb 4bit quantization for text encoder when quantizing to
-            # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
-            components_to_quantize=(
-                ["text_encoder", "transformer"]
-                if args.quantize_type == "bitsandbytes_4bit"
-                else ["text_encoder"]
-            ),
-        )
-    )
-    if args.quantize
-    else None
+components_to_quantize = (
+    ["text_encoder", "transformer"]
+    if args.quantize_type == "bitsandbytes_4bit"
+    else ["text_encoder"]
 )
+if args.parallel_text_encoder:
+    components_to_quantize.remove("text_encoder")
+
+if components_to_quantize:
+    quantization_config = (
+        (
+            PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={
+                    "load_in_4bit": True,
+                    "bnb_4bit_quant_type": "nf4",
+                    "bnb_4bit_compute_dtype": torch.bfloat16,
+                },
+                # Always use bnb 4bit quantization for text encoder when quantizing to
+                # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
+                components_to_quantize=components_to_quantize,
+            )
+        )
+        if args.quantize
+        else None
+    )
+else:
+    quantization_config = None
 
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id,
