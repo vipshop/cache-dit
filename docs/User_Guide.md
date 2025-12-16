@@ -947,7 +947,9 @@ cache_dit.enable_cache(
 
 <div id="parallel-text-encoder"></div>
 
-Users can set the `extra_parallel_modules` parameter (when using Tensor Parallelism or Context Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — e.g, `text_encoder_2` in `FluxPipeline` and `text_encoder` in `Flux2Pipeline`. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. Now, cache-dit supports text encoder parallelism for 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev) and 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) models. cache-dit will support more models in the future, stay tuned for update!
+Users can set the `extra_parallel_modules` parameter in parallelism_config (when using Tensor Parallelism or Context Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — e.g, `text_encoder` in `Flux2Pipeline`. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. 
+
+Currently, cache-dit supported text encoder parallelism for **T5Encoder, UMT5Encoder, Llama, Gemma 1/2/3, Mistral, Mistral-3, Qwen-3, Qwen-2.5 VL, Glm and Glm-4** model series, namely, supported almost 🔥**ALL** pipelines in diffusers.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -965,7 +967,7 @@ cache_dit.enable_cache(
     ),
 )
 
-# Transformer Cnotext Parallelism + Text Encoder Tensor Parallelism
+# Transformer Context Parallelism + Text Encoder Tensor Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),

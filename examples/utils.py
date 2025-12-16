@@ -2,10 +2,18 @@ import argparse
 
 import torch
 import torch.distributed as dist
+from diffusers import DiffusionPipeline
+from typing import Optional, List
 
 import cache_dit
 from cache_dit import init_logger
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
+from cache_dit import (
+    BlockAdapter,
+    DBCacheConfig,
+    ParallelismBackend,
+    ParallelismConfig,
+    TaylorSeerCalibratorConfig,
+)
 
 logger = init_logger(__name__)
 
@@ -231,6 +239,102 @@ def get_args(
     return args_or_parser
 
 
+def get_text_encoder_from_pipe(
+    pipe: DiffusionPipeline,
+) -> Optional[torch.nn.Module]:
+    pipe_cls_name = pipe.__class__.__name__
+    if (
+        hasattr(pipe, "text_encoder_2")
+        and not pipe_cls_name.startswith("Hunyuan")
+        and not pipe_cls_name.startswith("Kandinsky")
+    ):
+        # Specific for FluxPipeline, FLUX.1-dev
+        return getattr(pipe, "text_encoder_2"), "text_encoder_2"
+    elif hasattr(pipe, "text_encoder_3"):  # HiDream pipeline
+        return getattr(pipe, "text_encoder_3"), "text_encoder_3"
+    elif hasattr(pipe, "text_encoder"):  # General case
+        return getattr(pipe, "text_encoder"), "text_encoder"
+    else:
+        return None
+
+
+def prepare_extra_parallel_modules(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+    custom_extra_modules: Optional[List[torch.nn.Module]] = None,
+) -> list:
+    if custom_extra_modules is not None:
+        return custom_extra_modules
+
+    if isinstance(pipe_or_adapter, BlockAdapter):
+        pipe = pipe_or_adapter.pipe
+        assert pipe is not None, "Please set extra_parallel_modules manually if pipe is None."
+    else:
+        pipe = pipe_or_adapter
+
+    extra_parallel_modules = []
+    if args.parallel_text_encoder:
+        text_encoder, _ = get_text_encoder_from_pipe(pipe)
+        if text_encoder is not None:
+            extra_parallel_modules.append(text_encoder)
+        else:
+            logger.warning(
+                "parallel-text-encoder is set but no text encoder found in the pipeline."
+            )
+    if args.parallel_vae:
+        if hasattr(pipe, "vae"):
+            extra_parallel_modules.append(getattr(pipe, "vae"))
+    return extra_parallel_modules
+
+
+def maybe_compile_text_encoder(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.compile_text_encoder:
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please compile text encoder manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        text_encoder, name = get_text_encoder_from_pipe(pipe)
+        if text_encoder is not None and not isinstance(
+            text_encoder,
+            torch._dynamo.OptimizedModule,
+        ):
+            # Find module to be compiled, [encoder, model, model.language_model, ...]
+            _module_to_compile = text_encoder
+            if hasattr(_module_to_compile, "model"):
+                if hasattr(_module_to_compile.model, "language_model"):
+                    _module_to_compile = _module_to_compile.model.language_model
+                else:
+                    _module_to_compile = _module_to_compile.model
+
+            if hasattr(_module_to_compile, "encoder"):
+                _module_to_compile = _module_to_compile.encoder
+
+            _module_to_compile_name = _module_to_compile.__class__.__name__
+            logger.info(f"Compiling text encoder module {name}:{_module_to_compile_name} ...")
+            _module_to_compile = torch.compile(
+                _module_to_compile,
+                mode="max-autotune" if args.max_autotune else "default",
+            )
+            # Set back the compiled text encoder
+            if hasattr(text_encoder, "model"):
+                if hasattr(text_encoder.model, "language_model"):
+                    text_encoder.model.language_model = _module_to_compile
+                else:
+                    text_encoder.model = _module_to_compile
+            if hasattr(text_encoder, "encoder"):
+                text_encoder.encoder = _module_to_compile
+
+            setattr(pipe, name, text_encoder)
+        else:
+            logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
+    return pipe_or_adapter
+
+
 def cachify(
     args,
     pipe_or_adapter,
@@ -242,9 +346,6 @@ def cachify(
         cache_dit.disable_compute_comm_overlap()
 
     if args.cache or args.parallel_type is not None:
-        import torch.distributed as dist
-
-        from cache_dit import DBCacheConfig, ParallelismConfig, TaylorSeerCalibratorConfig
 
         cache_config = kwargs.pop("cache_config", None)
         parallelism_config = kwargs.pop("parallelism_config", None)
@@ -255,11 +356,21 @@ def cachify(
             else ParallelismBackend.NATIVE_DIFFUSER
         )
 
+        extra_parallel_modules = prepare_extra_parallel_modules(
+            args,
+            pipe_or_adapter,
+            custom_extra_modules=kwargs.get("extra_parallel_modules", None),
+        )
+
         parallel_kwargs = {
             "attention_backend": ("native" if not args.attn else args.attn),
             # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
-            "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
+            "extra_parallel_modules": extra_parallel_modules,
         }
+        if backend == ParallelismBackend.NATIVE_PYTORCH:
+            if args.attn is None:
+                parallel_kwargs["attention_backend"] = None
+
         if backend == ParallelismBackend.NATIVE_DIFFUSER:
             parallel_kwargs.update(
                 {
@@ -308,6 +419,8 @@ def cachify(
                 else parallelism_config
             ),
         )
+
+    maybe_compile_text_encoder(args, pipe_or_adapter)
 
     return pipe_or_adapter
 

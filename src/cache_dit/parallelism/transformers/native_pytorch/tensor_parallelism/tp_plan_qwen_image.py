@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed._tensor import Replicate
 from torch.distributed.tensor.parallel import (
@@ -7,6 +6,7 @@ from torch.distributed.tensor.parallel import (
     RowwiseParallel,
     parallelize_module,
 )
+from diffusers import QwenImageTransformer2DModel
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 from .tp_plan_registers import (
     TensorParallelismPlanner,
@@ -18,7 +18,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-@TensorParallelismPlannerRegister.register("QwenImage")
+@TensorParallelismPlannerRegister.register("QwenImageTransformer2DModel")
 class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
     def apply(
         self,
@@ -26,9 +26,9 @@ class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
-            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
-        )
+        assert (
+            parallelism_config.tp_size is not None and parallelism_config.tp_size > 1
+        ), "parallel_config.tp_size must be set and greater than 1 for tensor parallelism"
 
         device_type = torch.accelerator.current_accelerator().type
         tp_mesh: DeviceMesh = init_device_mesh(
@@ -45,10 +45,13 @@ class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
 
     def parallelize_transformer(
         self,
-        transformer: nn.Module,
+        transformer: QwenImageTransformer2DModel,
         tp_mesh: DeviceMesh,
     ):
+        from diffusers.models.transformers.transformer_qwenimage import QwenImageTransformerBlock
+
         for _, block in transformer.transformer_blocks.named_children():
+            assert isinstance(block, QwenImageTransformerBlock)
             block.attn.heads //= tp_mesh.size()
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),

@@ -15,7 +15,6 @@ from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
-from transformers import Qwen2_5_VLForConditionalGeneration
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from utils import (
@@ -108,11 +107,10 @@ pipe.load_lora_weights(
     ),
 )
 
-if args.fuse_lora:
-    pipe.fuse_lora()
-    pipe.unload_lora_weights()
+pipe.fuse_lora()
+pipe.unload_lora_weights()
 
-# Apply cache and context parallelism here
+# Apply cache and parallelism here
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig
 
@@ -219,15 +217,6 @@ if args.compile:
     if args.compile_vae:
         pipe.vae.encoder = torch.compile(pipe.vae.encoder)
         pipe.vae.decoder = torch.compile(pipe.vae.decoder)
-    if args.compile_text_encoder:
-        assert isinstance(pipe.text_encoder, Qwen2_5_VLForConditionalGeneration)
-        # NOTE: .tolist() op in visual model will raise spamming warnings, so we temporarily
-        # disable compiling visual model here.
-        # pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
-        pipe.text_encoder.model.language_model = torch.compile(
-            pipe.text_encoder.model.language_model
-        )
-
 
 # warmup
 _ = run_pipe()

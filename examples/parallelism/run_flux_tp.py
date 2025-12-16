@@ -39,13 +39,7 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
 )
 
 if args.cache or args.parallel_type is not None:
-    cachify(
-        args,
-        pipe,
-        # Specify extra modules to be parallelized in addition to the main transformer,
-        # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline.
-        extra_parallel_modules=[pipe.text_encoder_2] if args.parallel_text_encoder else [],
-    )
+    cachify(args, pipe)
 
 pipe.to(device)
 
