@@ -8,6 +8,10 @@ def _maybe_register_custom_attn_backends():
         ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH
         and not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH
     ):
-        from ._attention_dispatch import _native_attention, _sdpa_cudnn_attention, _sage_attention
+        from ._attention_dispatch import (
+            _native_attention,
+            _sdpa_cudnn_attention,
+            _sage_attention,
+        )
 
         ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH = True
