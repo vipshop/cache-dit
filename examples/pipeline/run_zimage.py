@@ -8,13 +8,11 @@ import time
 import torch
 from diffusers import ZImagePipeline, ZImageTransformer2DModel
 from utils import (
-    MemoryTracker,
     maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    strify,
 )
 
 import cache_dit
@@ -105,27 +103,12 @@ if args.warmup is not None:
 else:
     _ = run_pipe(warmup=True)
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-if memory_tracker:
-    memory_tracker.__enter__()
 
 start = time.time()
 repeat = args.repeat if args.repeat is not None else 1
 for _ in range(repeat):
     image = run_pipe()
 end = time.time()
+time_cost = (end - start) / repeat
 
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
-
-if rank == 0:
-    cache_dit.summary(pipe)
-
-    time_cost = (end - start) / repeat
-    save_path = f"zimage.{strify(args, pipe)}.png"
-    print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
-    image.save(save_path)
-
-maybe_destroy_distributed()
+maybe_destroy_distributed(args, pipe, "zimage", time_cost=time_cost, image=image)
