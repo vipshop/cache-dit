@@ -299,13 +299,37 @@ def maybe_compile_text_encoder(
             pipe = pipe_or_adapter
 
         text_encoder, name = get_text_encoder_from_pipe(pipe)
-        if text_encoder is not None and not isinstance(text_encoder, torch._dynamo.OptimizedModule):
-            logger.info("Compiling text encoder...")
-            text_encoder = torch.compile(
-                text_encoder,
+        if text_encoder is not None and not isinstance(
+            text_encoder,
+            torch._dynamo.OptimizedModule,
+        ):
+            # Find module to be compiled, [encoder, model, model.language_model, ...]
+            _module_to_compile = text_encoder
+            if hasattr(_module_to_compile, "model"):
+                if hasattr(_module_to_compile.model, "language_model"):
+                    _module_to_compile = _module_to_compile.model.language_model
+                else:
+                    _module_to_compile = _module_to_compile.model
+
+            if hasattr(_module_to_compile, "encoder"):
+                _module_to_compile = _module_to_compile.encoder
+
+            logger.info(
+                f"Compiling text encoder module {_module_to_compile.__class__.__name__} ..."
+            )
+            _module_to_compile = torch.compile(
+                _module_to_compile,
                 mode="max-autotune" if args.max_autotune else "default",
             )
             # Set back the compiled text encoder
+            if hasattr(text_encoder, "model"):
+                if hasattr(text_encoder.model, "language_model"):
+                    text_encoder.model.language_model = _module_to_compile
+                else:
+                    text_encoder.model = _module_to_compile
+            if hasattr(text_encoder, "encoder"):
+                text_encoder.encoder = _module_to_compile
+
             setattr(pipe, name, text_encoder)
         else:
             logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
