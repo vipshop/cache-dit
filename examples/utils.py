@@ -292,6 +292,8 @@ def maybe_compile_text_encoder(
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
     if args.compile_text_encoder:
+        torch.set_float32_matmul_precision("high")
+
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
             assert pipe is not None, "Please compile text encoder manually if pipe is None."
@@ -342,6 +344,121 @@ def maybe_compile_text_encoder(
                 )
         else:
             logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
+    return pipe_or_adapter
+
+
+def maybe_compile_vae(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.compile_vae:
+        torch.set_float32_matmul_precision("high")
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please compile VAE manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "vae"):
+            vae = getattr(pipe, "vae", None)
+            if vae is not None and not isinstance(
+                vae,
+                torch._dynamo.OptimizedModule,  # already compiled
+            ):
+                vae_cls_name = vae.__class__.__name__
+                if hasattr(vae, "encoder"):
+                    _encoder_to_compile = vae.encoder
+                    if isinstance(_encoder_to_compile, torch.nn.Module):
+                        logger.info(f"Compiling VAE encoder module: {vae_cls_name}.encoder ...")
+                        vae.encoder = torch.compile(
+                            _encoder_to_compile,
+                            mode="max-autotune" if args.max_autotune else "default",
+                        )
+                    else:
+                        logger.warning(
+                            f"Cannot compile VAE encoder module: {vae_cls_name}.encoder Not a"
+                            " torch.nn.Module."
+                        )
+                if hasattr(vae, "decoder"):
+                    _decoder_to_compile = vae.decoder
+                    if isinstance(_decoder_to_compile, torch.nn.Module):
+                        logger.info(f"Compiling VAE decoder module: {vae_cls_name}.decoder ...")
+                        vae.decoder = torch.compile(
+                            _decoder_to_compile,
+                            mode="max-autotune" if args.max_autotune else "default",
+                        )
+                    else:
+                        logger.warning(
+                            f"Cannot compile VAE decoder module: {vae_cls_name}.decoder Not a"
+                            " torch.nn.Module."
+                        )
+                setattr(pipe, "vae", vae)
+            else:
+                logger.warning(f"Cannot compile VAE module: {vae_cls_name} Not a torch.nn.Module.")
+        else:
+            logger.warning("compile-vae is set but no VAE found in the pipeline.")
+    return pipe_or_adapter
+
+
+def maybe_compile_transformer(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.compile:
+        cache_dit.set_compile_configs()
+        torch.set_float32_matmul_precision("high")
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please compile transformer manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "transformer"):
+            transformer = getattr(pipe, "transformer", None)
+            if transformer is not None and not isinstance(
+                transformer,
+                torch._dynamo.OptimizedModule,  # already compiled
+            ):
+                transformer_cls_name = transformer.__class__.__name__
+                if isinstance(transformer, torch.nn.Module):
+                    logger.info(f"Compiling transformer module: {transformer_cls_name} ...")
+                    transformer = torch.compile(
+                        transformer,
+                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                    )
+                    setattr(pipe, "transformer", transformer)
+                else:
+                    logger.warning(
+                        f"Cannot compile transformer module: {transformer_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "transformer", transformer)
+        else:
+            logger.warning("compile is set but no transformer found in the pipeline.")
+
+        if hasattr(pipe, "transformer_2"):
+            transformer_2 = getattr(pipe, "transformer_2", None)
+            if transformer_2 is not None and not isinstance(
+                transformer_2,
+                torch._dynamo.OptimizedModule,  # already compiled
+            ):
+                transformer_2_cls_name = transformer_2.__class__.__name__
+                if isinstance(transformer_2, torch.nn.Module):
+                    logger.info(f"Compiling transformer_2 module: {transformer_2_cls_name} ...")
+                    transformer_2 = torch.compile(
+                        transformer_2,
+                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                    )
+                    setattr(pipe, "transformer_2", transformer_2)
+                else:
+                    logger.warning(
+                        f"Cannot compile transformer_2 module: {transformer_2_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "transformer_2", transformer_2)
+
     return pipe_or_adapter
 
 
@@ -430,7 +547,9 @@ def cachify(
             ),
         )
 
+    maybe_compile_transformer(args, pipe_or_adapter)
     maybe_compile_text_encoder(args, pipe_or_adapter)
+    maybe_compile_vae(args, pipe_or_adapter)
 
     return pipe_or_adapter
 
