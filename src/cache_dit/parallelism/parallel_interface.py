@@ -111,7 +111,7 @@ def remove_parallelism_stats(
     transformer: torch.nn.Module,
 ) -> torch.nn.Module:
     if not getattr(transformer, "_is_parallelized", False):
-        logger.warning("The transformer is not parallelized. " "Skipping removing parallelism.")
+        logger.warning("The transformer is not parallelized. Skipping removing parallelism.")
         return transformer
 
     if hasattr(transformer, "_is_parallelized"):
