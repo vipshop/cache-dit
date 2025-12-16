@@ -15,7 +15,6 @@ from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
-from transformers import Qwen2_5_VLForConditionalGeneration
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from utils import (
@@ -61,27 +60,32 @@ model_id = (
     else os.environ.get("QWEN_IMAGE_EDIT_2509_DIR", "Qwen/Qwen-Image-Edit-2509")
 )
 
-quantization_config = (
-    (
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            # Always use bnb 4bit quantization for text encoder when quantizing to
-            # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
-            components_to_quantize=(
-                ["text_encoder", "transformer"]
-                if args.quantize_type == "bitsandbytes_4bit"
-                else ["text_encoder"]
-            ),
-        )
-    )
-    if args.quantize
-    else None
+components_to_quantize = (
+    ["text_encoder", "transformer"]
+    if args.quantize_type == "bitsandbytes_4bit"
+    else ["text_encoder"]
 )
+if args.parallel_text_encoder:
+    components_to_quantize.remove("text_encoder")
+
+if components_to_quantize:
+    quantization_config = (
+        (
+            PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={
+                    "load_in_4bit": True,
+                    "bnb_4bit_quant_type": "nf4",
+                    "bnb_4bit_compute_dtype": torch.bfloat16,
+                },
+                components_to_quantize=components_to_quantize,
+            )
+        )
+        if args.quantize
+        else None
+    )
+else:
+    quantization_config = None
 
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id,
@@ -107,12 +111,11 @@ pipe.load_lora_weights(
     ),
 )
 
-if args.fuse_lora:
-    pipe.fuse_lora()
-    pipe.unload_lora_weights()
+# Fuse lora must be enabled for tensor parallelism.
+pipe.fuse_lora()
+pipe.unload_lora_weights()
 
-
-# Apply cache and context parallelism here
+# Apply cache and parallelism here.
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig
 
@@ -150,8 +153,8 @@ if args.quantize and args.quantize_type != "bitsandbytes_4bit":
         ],
     )
 
-if GiB() < 48 and not args.quantize:
-    # NOTE: Enable cpu offload before enabling context parallelism will
+if GiB() < 48 and not (args.quantize or args.parallel_text_encoder):
+    # NOTE: Enable cpu offload before enabling tensor parallelism will
     # raise shape error after first pipe call, so we enable it after.
     # It seems a bug of diffusers that cpu offload is not fully
     # compatible with context parallelism, visa versa.
@@ -159,6 +162,7 @@ if GiB() < 48 and not args.quantize:
         not args.compile
     ), "Cannot enable compile with cpu offload due to the compatibility issue."
     pipe.enable_model_cpu_offload(device=device)
+    print("Enabled model CPU offload.")
 else:
     pipe.to(device)
 
@@ -167,9 +171,10 @@ width = 1024 if args.width is None else args.width
 height = 1024 if args.height is None else args.height
 
 
-if GiB() <= 48 and not args.quantize:
+if GiB() <= 48 and not (args.quantize or args.parallel_text_encoder):
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
+    print("Enabled VAE tiling for low memory device.")
 
 image1 = Image.open(
     BytesIO(
@@ -218,15 +223,6 @@ if args.compile:
     if args.compile_vae:
         pipe.vae.encoder = torch.compile(pipe.vae.encoder)
         pipe.vae.decoder = torch.compile(pipe.vae.decoder)
-    if args.compile_text_encoder:
-        assert isinstance(pipe.text_encoder, Qwen2_5_VLForConditionalGeneration)
-        # NOTE: .tolist() op in visual model will raise spamming warnings, so we temporarily
-        # disable compiling visual model here.
-        # pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
-        pipe.text_encoder.model.visual = torch.compile(pipe.text_encoder.model.visual)
-        pipe.text_encoder.model.language_model = torch.compile(
-            pipe.text_encoder.model.language_model
-        )
 
 # warmup
 _ = run_pipe()

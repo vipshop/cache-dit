@@ -42,7 +42,6 @@ if args.cache or args.parallel_type is not None:
     cachify(
         args,
         pipe,
-        extra_parallel_modules=[pipe.text_encoder] if args.parallel_text_encoder else [],
         params_modifiers=[
             ParamsModifier(
                 # Modified config only for transformer_blocks

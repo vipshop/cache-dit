@@ -18,6 +18,8 @@ from .tp_plan_registers import (
 logger = init_logger(__name__)
 
 
+# Text Encoder for FLUX.1, Chroma1-HD, CogVideoX1.5, CogView3-Plus, VisualCloze,
+# HiDream, HunyuanImage 2.1, LTXVideo, mochi-preview, PixArt series models.
 @TextEncoderTensorParallelismPlannerRegister.register("T5EncoderModel")
 class T5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     def apply(
