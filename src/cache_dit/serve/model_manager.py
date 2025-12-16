@@ -212,6 +212,28 @@ class ModelManager:
                 else ParallelismBackend.NATIVE_DIFFUSER
             )
 
+            # Build extra_parallel_modules list based on flags
+            extra_parallel_modules = []
+            parallel_text_encoder = self.parallel_args.get("_parallel_text_encoder", False)
+            parallel_vae = self.parallel_args.get("_parallel_vae", False)
+
+            if parallel_text_encoder:
+                if hasattr(self.pipe, "text_encoder_2") and self.pipe.text_encoder_2 is not None:
+                    extra_parallel_modules.append(self.pipe.text_encoder_2)
+                    logger.info("Added text_encoder_2 to extra_parallel_modules")
+                elif hasattr(self.pipe, "text_encoder") and self.pipe.text_encoder is not None:
+                    extra_parallel_modules.append(self.pipe.text_encoder)
+                    logger.info("Added text_encoder to extra_parallel_modules")
+
+            if parallel_vae:
+                if hasattr(self.pipe, "vae") and self.pipe.vae is not None:
+                    extra_parallel_modules.append(self.pipe.vae)
+                    logger.info("Added vae to extra_parallel_modules")
+
+            self.parallel_args["extra_parallel_modules"] = extra_parallel_modules
+            self.parallel_args.pop("_parallel_text_encoder", None)
+            self.parallel_args.pop("_parallel_vae", None)
+
             parallelism_config = ParallelismConfig(
                 backend=backend,
                 ulysses_size=world_size if self.parallel_type == "ulysses" else None,
