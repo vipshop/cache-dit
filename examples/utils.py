@@ -4,6 +4,7 @@ import torch
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
 from typing import Optional, List, Tuple
+from diffusers.quantizers import PipelineQuantizationConfig
 
 import cache_dit
 from cache_dit import init_logger
@@ -103,6 +104,7 @@ def get_args(
     parser.add_argument("--height", "--h", type=int, default=None)
     parser.add_argument("--width", "--w", type=int, default=None)
     parser.add_argument("--quantize", "--q", action="store_true", default=False)
+    parser.add_argument("--quantize-text-encoder", "--q-text", action="store_true", default=False)
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -462,6 +464,147 @@ def maybe_compile_transformer(
     return pipe_or_adapter
 
 
+def maybe_quantize_transformer(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    # Quantize transformer by default if quantization is enabled
+    if args.quantize:
+        assert args.quantize_type not in ("bitsandbytes_4bit", "bnb_4bit"), (
+            "bitsandbytes_4bit quantization should be handled by"
+            " PipelineQuantizationConfig in from_pretrained."
+        )
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please quantize transformer manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "transformer"):
+            transformer = getattr(pipe, "transformer", None)
+            if transformer is not None:
+                transformer_cls_name = transformer.__class__.__name__
+                if isinstance(transformer, torch.nn.Module):
+                    logger.info(
+                        f"Quantizing transformer module: {transformer_cls_name} to"
+                        f" {args.quantize_type} ..."
+                    )
+                    transformer = cache_dit.quantize(
+                        transformer,
+                        quant_type=args.quantize_type,
+                    )
+                    setattr(pipe, "transformer", transformer)
+                else:
+                    logger.warning(
+                        f"Cannot quantize transformer module: {transformer_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "transformer", transformer)
+        else:
+            logger.warning("quantize is set but no transformer found in the pipeline.")
+
+        if hasattr(pipe, "transformer_2"):
+            transformer_2 = getattr(pipe, "transformer_2", None)
+            if transformer_2 is not None:
+                transformer_2_cls_name = transformer_2.__class__.__name__
+                if isinstance(transformer_2, torch.nn.Module):
+                    logger.info(
+                        f"Quantizing transformer_2 module: {transformer_2_cls_name} to"
+                        f" {args.quantize_type} ..."
+                    )
+                    transformer_2 = cache_dit.quantize(
+                        transformer_2,
+                        quant_type=args.quantize_type,
+                    )
+                    setattr(pipe, "transformer_2", transformer_2)
+                else:
+                    logger.warning(
+                        f"Cannot quantize transformer_2 module: {transformer_2_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "transformer_2", transformer_2)
+
+    return pipe_or_adapter
+
+
+def maybe_quantize_text_encoder(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    # Quantize text encoder by default if quantize_text_encoder is enabled
+    if args.quantize_text_encoder:
+        assert args.quantize_type not in ("bitsandbytes_4bit", "bnb_4bit"), (
+            "bitsandbytes_4bit quantization should be handled by"
+            " PipelineQuantizationConfig in from_pretrained."
+        )
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please quantize text encoder manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        text_encoder, name = get_text_encoder_from_pipe(pipe)
+        if text_encoder is not None:
+            text_encoder_cls_name = text_encoder.__class__.__name__
+            if isinstance(text_encoder, torch.nn.Module):
+                logger.info(
+                    f"Quantizing text encoder module: {name}:{text_encoder_cls_name} to"
+                    f" {args.quantize_type} ..."
+                )
+                text_encoder = cache_dit.quantize(
+                    text_encoder,
+                    quant_type=args.quantize_type,
+                )
+                setattr(pipe, name, text_encoder)
+            else:
+                logger.warning(
+                    f"Cannot quantize text encoder module: {name}:{text_encoder_cls_name} Not a"
+                    " torch.nn.Module."
+                )
+        else:
+            logger.warning("quantize is set but no text encoder found in the pipeline.")
+    return pipe_or_adapter
+
+
+def pipe_quant_bnb_4bit_config(
+    args,
+    pipe: DiffusionPipeline,
+    quant_transformer: bool = False,
+) -> Optional[PipelineQuantizationConfig]:
+    _, text_encoder_name = get_text_encoder_from_pipe(pipe)
+    components_to_quantize = []
+    if args.quantize_type == "bitsandbytes_4bit":
+        # Transformer quantization will quantize by cache_dit.quantize in general.
+        if args.quantize and quant_transformer:
+            components_to_quantize.append("transformer")
+        if args.quantize_text_encoder:
+            components_to_quantize.append(text_encoder_name)
+
+    if components_to_quantize:
+        if args.parallel_text_encoder:
+            components_to_quantize.remove(text_encoder_name)
+
+    if components_to_quantize:
+        quantization_config = (
+            (
+                PipelineQuantizationConfig(
+                    quant_backend="bitsandbytes_4bit",
+                    quant_kwargs={
+                        "load_in_4bit": True,
+                        "bnb_4bit_quant_type": "nf4",
+                        "bnb_4bit_compute_dtype": torch.bfloat16,
+                    },
+                    components_to_quantize=components_to_quantize,
+                )
+            )
+            if args.quantize
+            else None
+        )
+    else:
+        quantization_config = None
+    return quantization_config
+
+
 def cachify(
     args,
     pipe_or_adapter,
@@ -507,6 +650,7 @@ def cachify(
                 }
             )
 
+        # Caching and Parallelism
         cache_dit.enable_cache(
             pipe_or_adapter,
             cache_config=(
@@ -547,6 +691,10 @@ def cachify(
             ),
         )
 
+    # Quantization
+    maybe_quantize_transformer(args, pipe_or_adapter)
+    maybe_quantize_text_encoder(args, pipe_or_adapter)
+    # Compilation
     maybe_compile_transformer(args, pipe_or_adapter)
     maybe_compile_text_encoder(args, pipe_or_adapter)
     maybe_compile_vae(args, pipe_or_adapter)
