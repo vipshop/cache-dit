@@ -2,10 +2,18 @@ import argparse
 
 import torch
 import torch.distributed as dist
+from diffusers import DiffusionPipeline
+from typing import Optional, List
 
 import cache_dit
 from cache_dit import init_logger
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
+from cache_dit import (
+    BlockAdapter,
+    DBCacheConfig,
+    ParallelismBackend,
+    ParallelismConfig,
+    TaylorSeerCalibratorConfig,
+)
 
 logger = init_logger(__name__)
 
@@ -231,6 +239,37 @@ def get_args(
     return args_or_parser
 
 
+def prepare_extra_parallel_modules(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+    custom_extra_modules: Optional[List[torch.nn.Module]] = None,
+) -> list:
+    if custom_extra_modules is not None:
+        return custom_extra_modules
+
+    if isinstance(pipe_or_adapter, BlockAdapter):
+        pipe = pipe_or_adapter.pipe
+        assert pipe is not None, "Please set extra_parallel_modules manually if pipe is None."
+    else:
+        pipe = pipe_or_adapter
+
+    extra_parallel_modules = []
+    if args.parallel_text_encoder:
+        if hasattr(pipe, "text_encoder_2"):
+            # Specific for FluxPipeline, FLUX.1-dev
+            extra_parallel_modules.append(getattr(pipe, "text_encoder_2"))
+        elif hasattr(pipe, "text_encoder"):
+            extra_parallel_modules.append(getattr(pipe, "text_encoder"))
+        else:
+            logger.warning(
+                "parallel-text-encoder is set but no text encoder found in the pipeline."
+            )
+    if args.parallel_vae:
+        if hasattr(pipe, "vae"):
+            extra_parallel_modules.append(getattr(pipe, "vae"))
+    return extra_parallel_modules
+
+
 def cachify(
     args,
     pipe_or_adapter,
@@ -242,9 +281,6 @@ def cachify(
         cache_dit.disable_compute_comm_overlap()
 
     if args.cache or args.parallel_type is not None:
-        import torch.distributed as dist
-
-        from cache_dit import DBCacheConfig, ParallelismConfig, TaylorSeerCalibratorConfig
 
         cache_config = kwargs.pop("cache_config", None)
         parallelism_config = kwargs.pop("parallelism_config", None)
@@ -255,10 +291,16 @@ def cachify(
             else ParallelismBackend.NATIVE_DIFFUSER
         )
 
+        extra_parallel_modules = prepare_extra_parallel_modules(
+            args,
+            pipe_or_adapter,
+            custom_extra_modules=kwargs.get("extra_parallel_modules", None),
+        )
+
         parallel_kwargs = {
             "attention_backend": ("native" if not args.attn else args.attn),
             # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
-            "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
+            "extra_parallel_modules": extra_parallel_modules,
         }
         if backend == ParallelismBackend.NATIVE_DIFFUSER:
             parallel_kwargs.update(

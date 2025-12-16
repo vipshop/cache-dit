@@ -107,6 +107,8 @@ pipe.load_lora_weights(
     ),
 )
 
+assert args.fuse_lora, "Fuse lora must be enabled for tensor parallelism."
+
 if args.fuse_lora:
     pipe.fuse_lora()
     pipe.unload_lora_weights()
@@ -150,8 +152,8 @@ if args.quantize and args.quantize_type != "bitsandbytes_4bit":
         ],
     )
 
-if GiB() < 48 and not args.quantize:
-    # NOTE: Enable cpu offload before enabling context parallelism will
+if GiB() < 48 and not (args.quantize or args.parallel_text_encoder):
+    # NOTE: Enable cpu offload before enabling tensor parallelism will
     # raise shape error after first pipe call, so we enable it after.
     # It seems a bug of diffusers that cpu offload is not fully
     # compatible with context parallelism, visa versa.
@@ -159,6 +161,7 @@ if GiB() < 48 and not args.quantize:
         not args.compile
     ), "Cannot enable compile with cpu offload due to the compatibility issue."
     pipe.enable_model_cpu_offload(device=device)
+    print("Enabled model CPU offload.")
 else:
     pipe.to(device)
 
