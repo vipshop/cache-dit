@@ -14,7 +14,6 @@ from utils import (
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    MemoryTracker,
 )
 import cache_dit
 
@@ -74,17 +73,10 @@ def run_pipe(pipe: SkyReelsV2Pipeline):
 # warmup
 _ = run_pipe(pipe)
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-if memory_tracker:
-    memory_tracker.__enter__()
 
 start = time.time()
 video = run_pipe(pipe)
 end = time.time()
-
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe, details=True)

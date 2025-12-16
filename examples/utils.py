@@ -839,6 +839,9 @@ def get_rank_device():
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+memory_tracker = None
+
+
 def maybe_init_distributed(args=None):
     if args is not None:
         if args.parallel_type is not None:
@@ -848,6 +851,12 @@ def maybe_init_distributed(args=None):
             rank, device = get_rank_device()
             torch.cuda.set_device(device)
             return rank, device
+        global memory_tracker
+        memory_tracker = MemoryTracker() if args.track_memory else None
+        if memory_tracker:
+            memory_tracker.__enter__()
+
+        return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         # always init distributed for other examples
         if not dist.is_initialized():
@@ -857,10 +866,14 @@ def maybe_init_distributed(args=None):
         rank, device = get_rank_device()
         torch.cuda.set_device(device)
         return rank, device
-    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def maybe_destroy_distributed():
+    global memory_tracker
+    if memory_tracker:
+        memory_tracker.__exit__(None, None, None)
+        memory_tracker.report()
+
     if dist.is_initialized():
         dist.destroy_process_group()
 

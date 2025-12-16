@@ -15,7 +15,6 @@ from utils import (
     maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
-    MemoryTracker,
     create_profiler_from_args,
     pipe_quant_bnb_4bit_config,
 )
@@ -76,10 +75,6 @@ def run_pipe(pipe: FluxPipeline):
 # warmup
 _ = run_pipe(pipe)
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-if memory_tracker:
-    memory_tracker.__enter__()
-
 start = time.time()
 if args.profile:
     profiler = create_profiler_from_args(args, profile_name="flux_cp_inference")
@@ -91,9 +86,6 @@ else:
     image = run_pipe(pipe)
 end = time.time()
 
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

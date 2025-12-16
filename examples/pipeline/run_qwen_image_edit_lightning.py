@@ -22,7 +22,6 @@ from utils import (
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    MemoryTracker,
 )
 import cache_dit
 
@@ -154,18 +153,9 @@ def run_pipe():
 # warmup
 _ = run_pipe()
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-if memory_tracker:
-    memory_tracker.__enter__()
-
 start = time.time()
 image = run_pipe()
 end = time.time()
-
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
-
 
 if rank == 0:
     stats = cache_dit.summary(pipe)

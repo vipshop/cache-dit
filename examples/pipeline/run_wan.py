@@ -14,7 +14,6 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     strify,
-    MemoryTracker,
     create_profiler_from_args,
 )
 
@@ -126,10 +125,6 @@ def run_pipe(warmup: bool = False):
 # warmup
 _ = run_pipe(warmup=True)
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-if memory_tracker:
-    memory_tracker.__enter__()
-
 start = time.time()
 if args.profile:
     profiler = create_profiler_from_args(args, profile_name="wan_cp_inference")
@@ -140,10 +135,6 @@ if args.profile:
 else:
     video = run_pipe()
 end = time.time()
-
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

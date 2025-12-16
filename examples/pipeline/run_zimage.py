@@ -8,7 +8,6 @@ import time
 import torch
 from diffusers import ZImagePipeline, ZImageTransformer2DModel
 from utils import (
-    MemoryTracker,
     maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
@@ -105,9 +104,6 @@ if args.warmup is not None:
 else:
     _ = run_pipe(warmup=True)
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-if memory_tracker:
-    memory_tracker.__enter__()
 
 start = time.time()
 repeat = args.repeat if args.repeat is not None else 1
@@ -115,9 +111,6 @@ for _ in range(repeat):
     image = run_pipe()
 end = time.time()
 
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
 
 if rank == 0:
     cache_dit.summary(pipe)

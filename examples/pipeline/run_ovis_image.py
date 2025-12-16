@@ -12,7 +12,6 @@ from utils import (
     maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
-    MemoryTracker,
     create_profiler_from_args,
     pipe_quant_bnb_4bit_config,
 )
@@ -72,10 +71,6 @@ def run_pipe():
 # warmup
 _ = run_pipe()
 
-memory_tracker = MemoryTracker() if args.track_memory else None
-
-if memory_tracker:
-    memory_tracker.__enter__()
 
 start = time.time()
 if args.profile:
@@ -87,10 +82,6 @@ else:
     image = run_pipe()
 end = time.time()
 
-
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
 
 if rank == 0:
 
