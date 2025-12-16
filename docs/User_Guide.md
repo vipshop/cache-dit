@@ -967,7 +967,7 @@ cache_dit.enable_cache(
     ),
 )
 
-# Transformer Cnotext Parallelism + Text Encoder Tensor Parallelism
+# Transformer Context Parallelism + Text Encoder Tensor Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),
