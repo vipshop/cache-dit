@@ -3,7 +3,7 @@ import argparse
 import torch
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import cache_dit
 from cache_dit import init_logger
@@ -241,7 +241,7 @@ def get_args(
 
 def get_text_encoder_from_pipe(
     pipe: DiffusionPipeline,
-) -> Optional[torch.nn.Module]:
+) -> Tuple[Optional[torch.nn.Module], Optional[str]]:
     pipe_cls_name = pipe.__class__.__name__
     if (
         hasattr(pipe, "text_encoder_2")
@@ -255,7 +255,7 @@ def get_text_encoder_from_pipe(
     elif hasattr(pipe, "text_encoder"):  # General case
         return getattr(pipe, "text_encoder"), "text_encoder"
     else:
-        return None
+        return None, None
 
 
 def prepare_extra_parallel_modules(
@@ -314,8 +314,12 @@ def maybe_compile_text_encoder(
             if hasattr(_module_to_compile, "encoder"):
                 _module_to_compile = _module_to_compile.encoder
 
-            _module_to_compile_name = _module_to_compile.__class__.__name__
-            logger.info(f"Compiling text encoder module {name}:{_module_to_compile_name} ...")
+            _module_to_compile_cls_name = _module_to_compile.__class__.__name__
+            text_encoder_cls_name = text_encoder.__class__.__name__
+            logger.info(
+                f"Compiling text encoder module {name}:{text_encoder_cls_name}:"
+                f"{_module_to_compile_cls_name} ..."
+            )
             _module_to_compile = torch.compile(
                 _module_to_compile,
                 mode="max-autotune" if args.max_autotune else "default",
