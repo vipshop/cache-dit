@@ -78,8 +78,6 @@ if components_to_quantize:
                     "bnb_4bit_quant_type": "nf4",
                     "bnb_4bit_compute_dtype": torch.bfloat16,
                 },
-                # Always use bnb 4bit quantization for text encoder when quantizing to
-                # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
                 components_to_quantize=components_to_quantize,
             )
         )
@@ -173,9 +171,10 @@ width = 1024 if args.width is None else args.width
 height = 1024 if args.height is None else args.height
 
 
-if GiB() <= 48 and not args.quantize:
+if GiB() <= 48 and not (args.quantize or args.parallel_text_encoder):
     assert isinstance(pipe.vae, AutoencoderKLQwenImage)
     pipe.vae.enable_tiling()
+    print("Enabled VAE tiling for low memory device.")
 
 image1 = Image.open(
     BytesIO(
