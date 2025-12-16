@@ -1,5 +1,6 @@
 import torch
-from transformers import Mistral3ForConditionalGeneration
+from typing import Union
+from transformers import LlamaModel, LlamaForCausalLM
 from torch.distributed import DeviceMesh, init_device_mesh
 
 from torch.distributed.tensor.parallel import (
@@ -20,9 +21,10 @@ from .tp_plan_registers import (
 logger = init_logger(__name__)
 
 
-# Text Encoder for FLUX.2 series models.
-@TextEncoderTensorParallelismPlannerRegister.register("Mistral3ForConditionalGeneration")
-class Mistral3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
+# Text Encoder HunyunVideo series models.
+@TextEncoderTensorParallelismPlannerRegister.register("LlamaModel")
+@TextEncoderTensorParallelismPlannerRegister.register("LlamaForCausalLM")
+class LlamaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     def apply(
         self,
         text_encoder: torch.nn.Module,
@@ -30,8 +32,8 @@ class Mistral3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         **kwargs,
     ) -> torch.nn.Module:
         assert isinstance(
-            text_encoder, Mistral3ForConditionalGeneration
-        ), "Mistral3TensorParallelismPlanner can only be applied to Mistral3ForConditionalGeneration"
+            text_encoder, (LlamaModel, LlamaForCausalLM)
+        ), "Qwen3TensorParallelismPlanner can only be applied to Llama Language Models."
         text_encoder_world_size = parallelism_config.text_encoder_world_size
         device_type = torch.accelerator.current_accelerator().type
         tp_mesh: DeviceMesh = init_device_mesh(
@@ -48,13 +50,19 @@ class Mistral3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
     def parallelize_text_encoder(
         self,
-        text_encoder: Mistral3ForConditionalGeneration,
+        text_encoder: Union[LlamaModel, LlamaForCausalLM],
         tp_mesh: DeviceMesh,
     ):
-        from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
+        from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
-        for _, block in text_encoder.model.language_model.layers.named_children():
-            assert isinstance(block, MistralDecoderLayer)
+        if isinstance(text_encoder, LlamaForCausalLM):
+            model = text_encoder.model
+        else:
+            model = text_encoder
+
+        assert isinstance(model, LlamaModel), "model must be an instance of LlamaModel."
+        for _, block in model.layers.named_children():
+            assert isinstance(block, LlamaDecoderLayer)
             layer_plan = {
                 "self_attn.q_proj": ColwiseParallel(),
                 "self_attn.k_proj": ColwiseParallel(),
@@ -70,6 +78,12 @@ class Mistral3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+
+        if isinstance(text_encoder, LlamaForCausalLM):
+            text_encoder.model = model
+        else:
+            text_encoder = model
+
         maybe_empty_cache()
 
         return text_encoder

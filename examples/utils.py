@@ -255,10 +255,17 @@ def prepare_extra_parallel_modules(
 
     extra_parallel_modules = []
     if args.parallel_text_encoder:
-        if hasattr(pipe, "text_encoder_2"):
+        pipe_cls_name = pipe.__class__.__name__
+        if (
+            hasattr(pipe, "text_encoder_2")
+            and not pipe_cls_name.startswith("Hunyuan")
+            and not pipe_cls_name.startswith("Kandinsky")
+        ):
             # Specific for FluxPipeline, FLUX.1-dev
             extra_parallel_modules.append(getattr(pipe, "text_encoder_2"))
-        elif hasattr(pipe, "text_encoder"):
+        elif hasattr(pipe, "text_encoder_3"):  # HiDream pipeline
+            extra_parallel_modules.append(getattr(pipe, "text_encoder_3"))
+        elif hasattr(pipe, "text_encoder"):  # General case
             extra_parallel_modules.append(getattr(pipe, "text_encoder"))
         else:
             logger.warning(
