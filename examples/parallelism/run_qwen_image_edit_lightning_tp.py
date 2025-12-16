@@ -15,8 +15,6 @@ from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.quantizers import PipelineQuantizationConfig
-
 from utils import (
     GiB,
     get_args,
@@ -24,6 +22,8 @@ from utils import (
     cachify,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    pipe_quant_bnb_4bit_config,
+    is_optimzation_flags_enabled,
     MemoryTracker,
 )
 import cache_dit
@@ -60,38 +60,11 @@ model_id = (
     else os.environ.get("QWEN_IMAGE_EDIT_2509_DIR", "Qwen/Qwen-Image-Edit-2509")
 )
 
-components_to_quantize = (
-    ["text_encoder", "transformer"]
-    if args.quantize_type == "bitsandbytes_4bit"
-    else ["text_encoder"]
-)
-if args.parallel_text_encoder:
-    components_to_quantize.remove("text_encoder")
-
-if components_to_quantize:
-    quantization_config = (
-        (
-            PipelineQuantizationConfig(
-                quant_backend="bitsandbytes_4bit",
-                quant_kwargs={
-                    "load_in_4bit": True,
-                    "bnb_4bit_quant_type": "nf4",
-                    "bnb_4bit_compute_dtype": torch.bfloat16,
-                },
-                components_to_quantize=components_to_quantize,
-            )
-        )
-        if args.quantize
-        else None
-    )
-else:
-    quantization_config = None
-
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id,
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
-    quantization_config=quantization_config,
+    quantization_config=pipe_quant_bnb_4bit_config(),
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
@@ -116,7 +89,7 @@ pipe.fuse_lora()
 pipe.unload_lora_weights()
 
 # Apply cache and parallelism here.
-if args.cache or args.parallel_type is not None:
+if is_optimzation_flags_enabled(args):
     from cache_dit import DBCacheConfig
 
     cachify(
@@ -135,23 +108,6 @@ if args.cache or args.parallel_type is not None:
             if args.cache
             else None
         ),
-    )
-
-
-# WARN: Must apply quantization after tensor parallelism is applied.
-# torchao is compatible with tensor parallelism but requires to be
-# applied after TP.
-if args.quantize and args.quantize_type != "bitsandbytes_4bit":
-    # Quantize the transformer according to custom quantize
-    # type passed from args.
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        per_row=False,  # Avoid precision issue for Qwen-Image
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-        ],
     )
 
 if GiB() < 48 and not (args.quantize or args.parallel_text_encoder):

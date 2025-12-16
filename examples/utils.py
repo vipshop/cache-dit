@@ -698,14 +698,22 @@ def cachify(
         )
 
     # Quantization
+    # WARN: Must apply quantization after tensor parallelism is applied.
+    # torchao is compatible with tensor parallelism but requires to be
+    # applied after TP.
     maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
+
     # Compilation
     maybe_compile_transformer(args, pipe_or_adapter)
     maybe_compile_text_encoder(args, pipe_or_adapter)
     maybe_compile_vae(args, pipe_or_adapter)
 
     return pipe_or_adapter
+
+
+def is_optimzation_flags_enabled(args) -> bool:
+    return args.cache or args.parallel_type is not None or args.quantize or args.compile
 
 
 def strify(args, pipe_or_stats):
