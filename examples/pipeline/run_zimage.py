@@ -13,7 +13,6 @@ from utils import (
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    strify,
 )
 
 import cache_dit
@@ -110,15 +109,6 @@ repeat = args.repeat if args.repeat is not None else 1
 for _ in range(repeat):
     image = run_pipe()
 end = time.time()
+time_cost = (end - start) / repeat
 
-
-if rank == 0:
-    cache_dit.summary(pipe)
-
-    time_cost = (end - start) / repeat
-    save_path = f"zimage.{strify(args, pipe)}.png"
-    print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
-    image.save(save_path)
-
-maybe_destroy_distributed()
+maybe_destroy_distributed(args, pipe, "zimage", time_cost=time_cost, image=image)

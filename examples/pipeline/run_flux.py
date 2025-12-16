@@ -11,14 +11,12 @@ from diffusers import (
 )
 from utils import (
     get_args,
-    strify,
     maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     create_profiler_from_args,
     pipe_quant_bnb_4bit_config,
 )
-import cache_dit
 
 
 args = get_args()
@@ -87,13 +85,6 @@ else:
 end = time.time()
 
 
-if rank == 0:
-    cache_dit.summary(pipe)
+time_cost = end - start
 
-    time_cost = end - start
-    save_path = f"flux.{height}x{width}.{strify(args, pipe)}.png"
-    print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
-    image.save(save_path)
-
-maybe_destroy_distributed()
+maybe_destroy_distributed(args, pipe, "flux", time_cost=time_cost, image=image)

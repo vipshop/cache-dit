@@ -844,19 +844,22 @@ memory_tracker = None
 
 def maybe_init_distributed(args=None):
     if args is not None:
+        global memory_tracker
+
         if args.parallel_type is not None:
             dist.init_process_group(
                 backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
             )
             rank, device = get_rank_device()
             torch.cuda.set_device(device)
-            return rank, device
+
         global memory_tracker
         memory_tracker = MemoryTracker() if args.track_memory else None
         if memory_tracker:
             memory_tracker.__enter__()
 
-        return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        rank, device = get_rank_device()
+        return rank, device
     else:
         # always init distributed for other examples
         if not dist.is_initialized():
@@ -868,11 +871,28 @@ def maybe_init_distributed(args=None):
         return rank, device
 
 
-def maybe_destroy_distributed():
+def maybe_destroy_distributed(args, pipe, tag: str, time_cost: float, image=None, video=None):
     global memory_tracker
     if memory_tracker:
         memory_tracker.__exit__(None, None, None)
         memory_tracker.report()
+
+    rank, _ = get_rank_device()
+    if rank == 0:
+        cache_dit.summary(pipe)
+
+        if image is not None:
+            save_path = f"{tag}.{strify(args, pipe)}.png"
+            print(f"Time cost: {time_cost:.2f}s")
+            print(f"Saving image to {save_path}")
+            image.save(save_path)
+        if video is not None:
+            from diffusers.utils import export_to_video
+
+            save_path = f"{tag}.{strify(args, pipe)}.mp4"
+            print(f"Time cost: {time_cost:.2f}s")
+            print(f"Saving video to {save_path}")
+            export_to_video(video, save_path, fps=8)
 
     if dist.is_initialized():
         dist.destroy_process_group()
