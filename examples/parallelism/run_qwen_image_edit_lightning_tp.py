@@ -147,6 +147,7 @@ if args.quantize and args.quantize_type != "bitsandbytes_4bit":
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
+        per_row=False,  # Avoid precision issue for Qwen-Image
         exclude_layers=[
             "img_in",
             "txt_in",
