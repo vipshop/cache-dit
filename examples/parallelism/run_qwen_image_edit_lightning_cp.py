@@ -115,6 +115,19 @@ pipe.load_lora_weights(
 pipe.fuse_lora()
 pipe.unload_lora_weights()
 
+if args.quantize and args.quantize_type != "bitsandbytes_4bit":
+    # Quantize the transformer according to custom quantize
+    # type passed from args.
+    pipe.transformer = cache_dit.quantize(
+        pipe.transformer,
+        quant_type=args.quantize_type,
+        per_row=False,  # Avoid precision issue for Qwen-Image
+        exclude_layers=[
+            "img_in",
+            "txt_in",
+        ],
+    )
+
 # Apply cache and parallelism here
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig
@@ -136,24 +149,6 @@ if args.cache or args.parallel_type is not None:
             else None
         ),
     )
-
-
-# WARN: Must apply quantization after tensor parallelism is applied.
-# torchao is compatible with tensor parallelism but requires to be
-# applied after TP.
-if args.quantize and args.quantize_type != "bitsandbytes_4bit":
-    # Quantize the transformer according to custom quantize
-    # type passed from args.
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        per_row=False,  # Avoid precision issue for Qwen-Image
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-        ],
-    )
-
 
 if GiB() < 48 and not (args.quantize or args.parallel_text_encoder):
     # NOTE: Enable cpu offload before enabling context parallelism will
@@ -216,14 +211,6 @@ def run_pipe():
     image = output.images[0] if not args.perf else None
     return image
 
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    torch.set_float32_matmul_precision("high")
-    pipe.transformer = torch.compile(pipe.transformer)
-    if args.compile_vae:
-        pipe.vae.encoder = torch.compile(pipe.vae.encoder)
-        pipe.vae.decoder = torch.compile(pipe.vae.decoder)
 
 # warmup
 _ = run_pipe()

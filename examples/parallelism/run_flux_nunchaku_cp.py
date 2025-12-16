@@ -129,11 +129,6 @@ def run_pipe(pipe: FluxPipeline):
     return image
 
 
-if args.compile:
-    assert isinstance(pipe.transformer, FluxTransformer2DModel)
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
-
 # warmup
 _ = run_pipe(pipe)
 
