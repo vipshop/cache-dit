@@ -18,6 +18,12 @@ class ENV(object):
         int(os.getenv("CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH", "1"))
     )
 
+    # Avoid re-registering custom attention backend dispatch in cache-dit.
+    # Inner use only. Users should not set this variable directly.
+    CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH: bool = bool(
+        int(os.getenv("CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH", "0"))
+    )
+
     # Environment variable flags for Ulysses Attention variants in cache-dit.
     # Enable Ulysses Anything Attention by setting the environment variable to 1.
     # Otherwise, users can set it by 'exprimental_ulysses_anything' argument in

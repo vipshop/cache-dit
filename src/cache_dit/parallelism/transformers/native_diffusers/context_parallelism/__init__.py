@@ -69,26 +69,7 @@ def maybe_enable_context_parallelism(
             if experimental_ulysses_float8:
                 enable_ulysses_float8()
 
-            attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
             if hasattr(transformer, "enable_parallelism"):
-                if hasattr(transformer, "set_attention_backend"):
-                    # native, _native_cudnn, flash, etc.
-                    if attention_backend is None:
-                        # Default to native for context parallelism due to:
-                        # - attn mask support (re-registered in cache-dit)
-                        # - general compatibility with various models
-                        transformer.set_attention_backend("native")
-                        logger.warning(
-                            "attention_backend is None, set default attention backend "
-                            "to _native_cudnn for parallelism because of the issue: "
-                            "https://github.com/huggingface/diffusers/pull/12443"
-                        )
-                    else:
-                        transformer.set_attention_backend(attention_backend)
-                        logger.info(
-                            "Found attention_backend from config, set attention "
-                            f"backend to: {attention_backend}"
-                        )
                 # Prefer custom cp_plan if provided
                 cp_plan = parallelism_config.parallel_kwargs.get("cp_plan", None)
                 if cp_plan is not None:
