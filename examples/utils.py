@@ -301,7 +301,7 @@ def maybe_compile_text_encoder(
         text_encoder, name = get_text_encoder_from_pipe(pipe)
         if text_encoder is not None and not isinstance(
             text_encoder,
-            torch._dynamo.OptimizedModule,
+            torch._dynamo.OptimizedModule,  # already compiled
         ):
             # Find module to be compiled, [encoder, model, model.language_model, ...]
             _module_to_compile = text_encoder
@@ -314,26 +314,33 @@ def maybe_compile_text_encoder(
             if hasattr(_module_to_compile, "encoder"):
                 _module_to_compile = _module_to_compile.encoder
 
-            _module_to_compile_cls_name = _module_to_compile.__class__.__name__
-            text_encoder_cls_name = text_encoder.__class__.__name__
-            logger.info(
-                f"Compiling text encoder module {name}:{text_encoder_cls_name}:"
-                f"{_module_to_compile_cls_name} ..."
-            )
-            _module_to_compile = torch.compile(
-                _module_to_compile,
-                mode="max-autotune" if args.max_autotune else "default",
-            )
-            # Set back the compiled text encoder
-            if hasattr(text_encoder, "model"):
-                if hasattr(text_encoder.model, "language_model"):
-                    text_encoder.model.language_model = _module_to_compile
-                else:
-                    text_encoder.model = _module_to_compile
-            if hasattr(text_encoder, "encoder"):
-                text_encoder.encoder = _module_to_compile
+            if isinstance(_module_to_compile, torch.nn.Module):
 
-            setattr(pipe, name, text_encoder)
+                _module_to_compile_cls_name = _module_to_compile.__class__.__name__
+                _text_encoder_cls_name = text_encoder.__class__.__name__
+                logger.info(
+                    f"Compiling text encoder module {name}:{_text_encoder_cls_name}:"
+                    f"{_module_to_compile_cls_name} ..."
+                )
+                _module_to_compile = torch.compile(
+                    _module_to_compile,
+                    mode="max-autotune" if args.max_autotune else "default",
+                )
+                # Set back the compiled text encoder
+                if hasattr(text_encoder, "model"):
+                    if hasattr(text_encoder.model, "language_model"):
+                        text_encoder.model.language_model = _module_to_compile
+                    else:
+                        text_encoder.model = _module_to_compile
+                if hasattr(text_encoder, "encoder"):
+                    text_encoder.encoder = _module_to_compile
+
+                setattr(pipe, name, text_encoder)
+            else:
+                logger.warning(
+                    f"Cannot compile text encoder module {name}:{_text_encoder_cls_name}:"
+                    "Not a torch.nn.Module."
+                )
         else:
             logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
     return pipe_or_adapter
