@@ -7,13 +7,15 @@ import time
 
 import torch
 from diffusers import Flux2Pipeline, Flux2Transformer2DModel
+
 from utils import (
     MemoryTracker,
     GiB,
-    cachify,
+    maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
+    pipe_quant_bnb_4bit_config,
     strify,
 )
 
@@ -23,6 +25,13 @@ args = get_args()
 print(args)
 
 rank, device = maybe_init_distributed(args)
+
+if GiB() < 128:
+    assert args.quantize, "Quantization is required to fit FLUX.2 in <128GB memory."
+    assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
+        f"Unsupported quantization type: {args.quantize_type}, only supported"
+        "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
+    )
 
 pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
     (
@@ -34,48 +43,39 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
         )
     ),
     torch_dtype=torch.bfloat16,
+    quantization_config=pipe_quant_bnb_4bit_config(
+        args,
+        components_to_quantize=["text_encoder", "transformer"],
+    ),
 )
 
-if args.cache or args.parallel_type is not None:
-    from cache_dit import DBCacheConfig, ParamsModifier
 
-    cachify(
-        args,
-        pipe,
-        params_modifiers=[
-            ParamsModifier(
-                # Modified config only for transformer_blocks
-                # Must call the `reset` method of DBCacheConfig.
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt,
-                ),
+from cache_dit import DBCacheConfig, ParamsModifier
+
+maybe_apply_optimization(
+    args,
+    pipe,
+    params_modifiers=[
+        ParamsModifier(
+            # Modified config only for transformer_blocks
+            # Must call the `reset` method of DBCacheConfig.
+            cache_config=DBCacheConfig().reset(
+                residual_diff_threshold=args.rdt,
             ),
-            ParamsModifier(
-                # Modified config only for single_transformer_blocks
-                # NOTE: FLUX.2, single_transformer_blocks should have `higher`
-                # residual_diff_threshold because of the precision error
-                # accumulation from previous transformer_blocks
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt * 3,
-                ),
+        ),
+        ParamsModifier(
+            # Modified config only for single_transformer_blocks
+            # NOTE: FLUX.2, single_transformer_blocks should have `higher`
+            # residual_diff_threshold because of the precision error
+            # accumulation from previous transformer_blocks
+            cache_config=DBCacheConfig().reset(
+                residual_diff_threshold=args.rdt * 3,
             ),
-        ],
-    )
+        ),
+    ],
+)
 
 torch.cuda.empty_cache()
-
-world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
-
-if world_size < 4 and GiB() <= 48:
-    assert not args.compile, "Compilation requires more GPU memory. Please disable it."
-    if world_size < 2:
-        pipe.enable_sequential_cpu_offload(device=device)
-        print("Enabled sequential CPU offload.")
-    else:
-        pipe.enable_model_cpu_offload(device=device)
-        print("Enabled model CPU offload.")
-else:
-    pipe.to(device)
 
 assert isinstance(pipe.transformer, Flux2Transformer2DModel)
 
@@ -94,22 +94,18 @@ if args.prompt is not None:
 
 
 def run_pipe(warmup: bool = False):
-    generator = torch.Generator("cpu").manual_seed(42)
+    generator = torch.Generator("cpu").manual_seed(0)
     image = pipe(
         prompt=prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
         # 28 steps can be a good trade-off
-        num_inference_steps=5 if warmup else (50 if args.steps is None else args.steps),
+        num_inference_steps=5 if warmup else (28 if args.steps is None else args.steps),
         guidance_scale=4,
         generator=generator,
     ).images[0]
     return image
 
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe(warmup=True)

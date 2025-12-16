@@ -4,97 +4,154 @@ import sys
 sys.path.append("..")
 
 import time
-import torch
-import diffusers
-from diffusers import WanPipeline, AutoencoderKLWan
-from diffusers.utils import export_to_video
-from diffusers.schedulers.scheduling_unipc_multistep import (
-    UniPCMultistepScheduler,
-)
-from utils import get_args, strify, cachify, MemoryTracker
-import cache_dit
 
+import torch
+from diffusers import WanPipeline, WanTransformer3DModel
+from diffusers.utils import export_to_video
+from utils import (
+    maybe_apply_optimization,
+    get_args,
+    maybe_destroy_distributed,
+    maybe_init_distributed,
+    strify,
+    MemoryTracker,
+    create_profiler_from_args,
+)
+
+import cache_dit
 
 args = get_args()
 print(args)
 
+rank, device = maybe_init_distributed(args)
 
-height, width = 480, 832
+model_id = (
+    args.model_path
+    if args.model_path is not None
+    else os.environ.get(
+        "WAN_2_2_DIR",
+        "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    )
+)
 pipe = WanPipeline.from_pretrained(
-    (
-        args.model_path
-        if args.model_path is not None
-        else os.environ.get(
-            "WAN_DIR",
-            "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",  # "num_layers": 30,
-        )
-    ),
+    model_id,
     torch_dtype=torch.bfloat16,
 )
 
-# flow shift should be 3.0 for 480p images, 5.0 for 720p images
-if hasattr(pipe, "scheduler") and pipe.scheduler is not None:
-    # Use the UniPCMultistepScheduler with the specified flow shift
-    flow_shift = 3.0 if height == 480 else 5.0
-    pipe.scheduler = UniPCMultistepScheduler.from_config(
-        pipe.scheduler.config,
-        flow_shift=flow_shift,
-    )
-
-
-if args.cache:
-    cachify(args, pipe)
-
-# Enable memory savings
-pipe.enable_model_cpu_offload()
-
-# Wan currently requires installing diffusers from source
-assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
-if diffusers.__version__ >= "0.34.0":
-    pipe.vae.enable_tiling()
-    pipe.vae.enable_slicing()
-else:
-    print(
-        "Wan pipeline requires diffusers version >= 0.34.0 "
-        "for vae tiling and slicing, please install diffusers "
-        "from source."
-    )
-
-prompt = (
-    "An astronaut dancing vigorously on the moon with earth "
-    "flying past in the background, hyperrealistic"
+from cache_dit import (
+    ForwardPattern,
+    BlockAdapter,
+    ParamsModifier,
+    DBCacheConfig,
 )
+
+if "Wan2.1" in model_id:
+    maybe_apply_optimization(args, pipe)
+else:
+    # Wan 2.2 only
+    maybe_apply_optimization(
+        args,
+        BlockAdapter(
+            pipe=pipe,
+            transformer=[
+                pipe.transformer,
+                pipe.transformer_2,
+            ],
+            blocks=[
+                pipe.transformer.blocks,
+                pipe.transformer_2.blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_2,
+                ForwardPattern.Pattern_2,
+            ],
+            params_modifiers=[
+                # high-noise transformer only have 30% steps
+                ParamsModifier(
+                    cache_config=DBCacheConfig().reset(
+                        max_warmup_steps=4,
+                        max_cached_steps=8,
+                    ),
+                ),
+                ParamsModifier(
+                    cache_config=DBCacheConfig().reset(
+                        max_warmup_steps=2,
+                        max_cached_steps=20,
+                    ),
+                ),
+            ],
+            has_separate_cfg=True,
+        ),
+    )
+
+assert isinstance(pipe.transformer, WanTransformer3DModel)
+
+pipe.set_progress_bar_config(disable=rank != 0)
+
+# Set default prompt
+prompt = "A cat walks on the grass, realistic"
 if args.prompt is not None:
     prompt = args.prompt
 
-negative_prompt = ""
+negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
 if args.negative_prompt is not None:
     negative_prompt = args.negative_prompt
+
+height = 480 if args.height is None else args.height
+width = 832 if args.width is None else args.width
+
+
+def run_pipe(warmup: bool = False):
+    seed = 1234
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+
+    num_inference_steps = 30 if not warmup else 4
+    if args.steps is not None and not warmup:
+        num_inference_steps = args.steps
+    if args.profile and args.steps is None and not warmup:
+        num_inference_steps = 3
+    output = pipe(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        height=height,
+        width=width,
+        num_frames=49,
+        guidance_scale=5.0,
+        generator=generator,
+        num_inference_steps=num_inference_steps,
+    ).frames[0]
+    return output
+
+
+# warmup
+_ = run_pipe(warmup=True)
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-video = pipe(
-    prompt=prompt,
-    negative_prompt=negative_prompt,
-    height=height,
-    width=width,
-    num_frames=49,
-    num_inference_steps=35,
-    generator=torch.Generator("cpu").manual_seed(0),
-).frames[0]
+if args.profile:
+    profiler = create_profiler_from_args(args, profile_name="wan_cp_inference")
+    with profiler:
+        video = run_pipe()
+    if rank == 0:
+        print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
+else:
+    video = run_pipe()
 end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
     memory_tracker.report()
 
-stats = cache_dit.summary(pipe)
+if rank == 0:
+    cache_dit.summary(pipe)
 
-time_cost = end - start
-save_path = f"wan.{strify(args, stats)}.mp4"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving video to {save_path}")
-export_to_video(video, save_path, fps=16)
+    time_cost = end - start
+    save_path = f"wan.{height}x{width}.{strify(args, pipe)}.mp4"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving video to {save_path}")
+    export_to_video(video, save_path, fps=16)
+
+maybe_destroy_distributed()

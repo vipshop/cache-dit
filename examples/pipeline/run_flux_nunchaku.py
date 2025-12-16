@@ -2,58 +2,69 @@ import os
 import sys
 
 sys.path.append("..")
-
 import time
+
 import torch
 from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
-    PipelineQuantizationConfig,
+)
+from nunchaku.models.transformers.transformer_flux_v2 import (
+    NunchakuFluxTransformer2DModelV2,
 )
 from utils import (
     get_args,
     strify,
-    cachify,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    pipe_quant_bnb_4bit_config,
     MemoryTracker,
-    create_profiler_from_args,
 )
 import cache_dit
-
 
 args = get_args()
 print(args)
 
 rank, device = maybe_init_distributed(args)
 
+nunchaku_flux_dir = os.environ.get(
+    "NUNCHAKA_FLUX_DIR",
+    "nunchaku-tech/nunchaku-flux.1-dev",
+)
+transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
+    f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
+)
 pipe: FluxPipeline = FluxPipeline.from_pretrained(
     (
         args.model_path
         if args.model_path is not None
-        else os.environ.get(
-            "FLUX_DIR",
-            "black-forest-labs/FLUX.1-dev",
-        )
+        else os.environ.get("FLUX_DIR", "black-forest-labs/FLUX.1-dev")
     ),
+    transformer=transformer,
     torch_dtype=torch.bfloat16,
-    quantization_config=(
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            components_to_quantize=["text_encoder_2"],
-        )
-        if args.quantize
-        else None
+    quantization_config=pipe_quant_bnb_4bit_config(
+        args,
+        components_to_quantize=["text_encoder_2"],
     ),
 ).to("cuda")
 
-if args.cache or args.parallel_type is not None:
-    cachify(args, pipe)
+
+from cache_dit import ParamsModifier, DBCacheConfig
+
+maybe_apply_optimization(
+    pipe,
+    params_modifiers=[
+        ParamsModifier(
+            # transformer_blocks
+            cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt),
+        ),
+        ParamsModifier(
+            # single_transformer_blocks
+            cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3),
+        ),
+    ],
+)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
@@ -65,19 +76,12 @@ if args.prompt is not None:
     prompt = args.prompt
 
 
-height = 1024 if args.height is None else args.height
-width = 1024 if args.width is None else args.width
-
-
 def run_pipe(pipe: FluxPipeline):
-    steps = 28 if args.steps is None else args.steps
-    if args.profile and args.steps is None:
-        steps = 3
     image = pipe(
         prompt,
-        height=height,
-        width=width,
-        num_inference_steps=steps,
+        height=1024 if args.height is None else args.height,
+        width=1024 if args.width is None else args.width,
+        num_inference_steps=28 if args.steps is None else args.steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
     return image
@@ -91,27 +95,23 @@ if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-if args.profile:
-    profiler = create_profiler_from_args(args, profile_name="flux_cp_inference")
-    with profiler:
-        image = run_pipe(pipe)
-    if rank == 0:
-        print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
-else:
-    image = run_pipe(pipe)
+image = run_pipe(pipe)
 end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
     memory_tracker.report()
 
+cache_dit.summary(pipe)
+
 if rank == 0:
     cache_dit.summary(pipe)
 
     time_cost = end - start
-    save_path = f"flux.{height}x{width}.{strify(args, pipe)}.png"
+    save_path = f"flux.nunchaku.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")
     image.save(save_path)
+
 
 maybe_destroy_distributed()

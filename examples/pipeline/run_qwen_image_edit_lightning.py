@@ -12,18 +12,16 @@ import requests
 from diffusers import (
     QwenImageEditPlusPipeline,
     QwenImageTransformer2DModel,
-    AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.quantizers import PipelineQuantizationConfig
 
 from utils import (
-    GiB,
     get_args,
     strify,
-    cachify,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
+    pipe_quant_bnb_4bit_config,
     MemoryTracker,
 )
 import cache_dit
@@ -60,41 +58,15 @@ model_id = (
     else os.environ.get("QWEN_IMAGE_EDIT_2509_DIR", "Qwen/Qwen-Image-Edit-2509")
 )
 
-components_to_quantize = (
-    ["text_encoder", "transformer"]
-    if args.quantize_type == "bitsandbytes_4bit"
-    else ["text_encoder"]
-)
-if args.parallel_text_encoder:
-    components_to_quantize.remove("text_encoder")
-
-if components_to_quantize:
-    quantization_config = (
-        (
-            PipelineQuantizationConfig(
-                quant_backend="bitsandbytes_4bit",
-                quant_kwargs={
-                    "load_in_4bit": True,
-                    "bnb_4bit_quant_type": "nf4",
-                    "bnb_4bit_compute_dtype": torch.bfloat16,
-                },
-                components_to_quantize=components_to_quantize,
-            )
-        )
-        if args.quantize
-        else None
-    )
-else:
-    quantization_config = None
-
 pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id,
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
-    quantization_config=quantization_config,
+    quantization_config=pipe_quant_bnb_4bit_config(args),
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
+
 
 steps = 8 if args.steps is None else args.steps
 assert steps in [8, 4]
@@ -111,71 +83,33 @@ pipe.load_lora_weights(
     ),
 )
 
-# Fuse lora must be enabled for tensor parallelism.
 pipe.fuse_lora()
 pipe.unload_lora_weights()
 
-# Apply cache and parallelism here.
-if args.cache or args.parallel_type is not None:
-    from cache_dit import DBCacheConfig
+# Apply cache and parallelism here
+from cache_dit import DBCacheConfig
 
-    cachify(
-        args,
-        pipe,
-        cache_config=(
-            DBCacheConfig(
-                Fn_compute_blocks=16,
-                Bn_compute_blocks=16,
-                max_warmup_steps=4 if steps > 4 else 2,
-                max_cached_steps=2 if steps > 4 else 1,
-                max_continuous_cached_steps=1,
-                enable_separate_cfg=False,  # true_cfg_scale=1.0
-                residual_diff_threshold=0.50 if steps > 4 else 0.8,
-            )
-            if args.cache
-            else None
-        ),
-    )
-
-
-# WARN: Must apply quantization after tensor parallelism is applied.
-# torchao is compatible with tensor parallelism but requires to be
-# applied after TP.
-if args.quantize and args.quantize_type != "bitsandbytes_4bit":
-    # Quantize the transformer according to custom quantize
-    # type passed from args.
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        per_row=False,  # Avoid precision issue for Qwen-Image
-        exclude_layers=[
-            "img_in",
-            "txt_in",
-        ],
-    )
-
-if GiB() < 48 and not (args.quantize or args.parallel_text_encoder):
-    # NOTE: Enable cpu offload before enabling tensor parallelism will
-    # raise shape error after first pipe call, so we enable it after.
-    # It seems a bug of diffusers that cpu offload is not fully
-    # compatible with context parallelism, visa versa.
-    assert (
-        not args.compile
-    ), "Cannot enable compile with cpu offload due to the compatibility issue."
-    pipe.enable_model_cpu_offload(device=device)
-    print("Enabled model CPU offload.")
-else:
-    pipe.to(device)
+maybe_apply_optimization(
+    args,
+    pipe,
+    cache_config=(
+        DBCacheConfig(
+            Fn_compute_blocks=16,
+            Bn_compute_blocks=16,
+            max_warmup_steps=4 if steps > 4 else 2,
+            max_cached_steps=2 if steps > 4 else 1,
+            max_continuous_cached_steps=1,
+            enable_separate_cfg=False,  # true_cfg_scale=1.0
+            residual_diff_threshold=0.50 if steps > 4 else 0.8,
+        )
+        if args.cache
+        else None
+    ),
+)
 
 
 width = 1024 if args.width is None else args.width
 height = 1024 if args.height is None else args.height
-
-
-if GiB() <= 48 and not (args.quantize or args.parallel_text_encoder):
-    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-    pipe.vae.enable_tiling()
-    print("Enabled VAE tiling for low memory device.")
 
 image1 = Image.open(
     BytesIO(
