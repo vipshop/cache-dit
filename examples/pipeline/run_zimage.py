@@ -13,10 +13,16 @@ from utils import (
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
+    pipe_quant_bnb_4bit_config,
+    is_optimzation_flags_enabled,
     strify,
 )
 
 import cache_dit
+
+# NOTE: Only support context parallelism with 'native/_sdpa_cudnn' attn backend
+# for Z-Image due to the attention mask in Z-Image is not None. Please use:
+# `--parallel ulysses --attn native` or `--attn _sdpa_cudnn`.
 
 args = get_args()
 print(args)
@@ -33,14 +39,37 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
         )
     ),
     torch_dtype=torch.bfloat16,
+    quantization_config=pipe_quant_bnb_4bit_config(args),
 )
 
-if args.cache or args.parallel_type is not None:
+
+if is_optimzation_flags_enabled(args):
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
 
-    cachify(args, pipe)
+    cachify(
+        args,
+        pipe,
+        # Total 9 steps for distilled Z-Image-Turbo
+        # e.g, 111110101, 1: compute, 0: dynamic cache
+        steps_computation_mask=(
+            cache_dit.steps_mask(
+                # slow, medium, fast, ultra.
+                mask_policy=args.mask_policy,
+                total_steps=9,
+            )
+            if args.mask_policy is not None
+            else (
+                cache_dit.steps_mask(
+                    compute_bins=[5, 1, 1],  # = 7 (compute steps)
+                    cache_bins=[1, 1],  # = 2 (dynamic cache steps)
+                )
+                if args.steps_mask
+                else None
+            )
+        ),
+    )
 
 pipe.to(device)
 
@@ -73,19 +102,21 @@ def run_pipe(warmup: bool = False):
     return image
 
 
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
-
 # warmup
-_ = run_pipe(warmup=True)
+if args.warmup is not None:
+    for _ in range(args.warmup):
+        _ = run_pipe(warmup=True)
+else:
+    _ = run_pipe(warmup=True)
 
 memory_tracker = MemoryTracker() if args.track_memory else None
 if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
-image = run_pipe()
+repeat = args.repeat if args.repeat is not None else 1
+for _ in range(repeat):
+    image = run_pipe()
 end = time.time()
 
 if memory_tracker:
@@ -95,7 +126,7 @@ if memory_tracker:
 if rank == 0:
     cache_dit.summary(pipe)
 
-    time_cost = end - start
+    time_cost = (end - start) / repeat
     save_path = f"zimage.{strify(args, pipe)}.png"
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")

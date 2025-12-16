@@ -12,15 +12,25 @@ from diffusers import (
     ChronoEditTransformer3DModel,
     ChronoEditPipeline,
 )
-from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import load_image
 from transformers import CLIPVisionModel
-from utils import get_args, strify, cachify, MemoryTracker
-import cache_dit
+from utils import (
+    cachify,
+    get_args,
+    maybe_destroy_distributed,
+    maybe_init_distributed,
+    pipe_quant_bnb_4bit_config,
+    is_optimzation_flags_enabled,
+    strify,
+    MemoryTracker,
+)
 
+import cache_dit
 
 args = get_args()
 print(args)
+
+rank, device = maybe_init_distributed(args)
 
 model_id = args.model_path if args.model_path is not None else "nvidia/ChronoEdit-14B-Diffusers"
 model_id = (
@@ -35,38 +45,21 @@ transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
 )
 
-enable_quantization = args.quantize and args.quantize_type == "bitsandbytes_4bit"
-
 pipe = ChronoEditPipeline.from_pretrained(
     model_id,
     vae=vae,
     image_encoder=image_encoder,
     transformer=transformer,
     torch_dtype=torch.bfloat16,
-    quantization_config=(
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            # text_encoder: ~ 6GiB, transformer: ~ 8GiB, total: ~14GiB
-            components_to_quantize=["text_encoder", "transformer"],
-        )
-        if enable_quantization
-        else None
+    quantization_config=pipe_quant_bnb_4bit_config(
+        args,
+        components_to_quantize=["text_encoder", "transformer"],
     ),
 )
 
-if args.cache:
+if is_optimzation_flags_enabled(args):
     cachify(args, pipe)
 
-# Enable memory savings
-pipe.enable_model_cpu_offload()
-assert isinstance(pipe.vae, AutoencoderKLWan)
-pipe.vae.enable_tiling()
-pipe.vae.enable_slicing()
 
 image = load_image("../data/chrono_edit_example.png")
 
@@ -86,6 +79,7 @@ prompt = (
 if args.prompt is not None:
 
     prompt = args.prompt
+pipe.set_progress_bar_config(disable=rank != 0)
 
 
 def run_pipe(warmup: bool = False):
@@ -98,11 +92,15 @@ def run_pipe(warmup: bool = False):
         guidance_scale=5.0,
         enable_temporal_reasoning=False,
         num_temporal_reasoning_steps=0,
-        num_inference_steps=((50 if not warmup else 1) if args.steps is None else args.steps),
-        generator=torch.Generator("cpu").manual_seed(0),
+        num_inference_steps=((50 if not warmup else 5) if args.steps is None else args.steps),
+        generator=torch.Generator("cuda").manual_seed(0),
     ).frames[0]
     output = Image.fromarray((output[-1] * 255).clip(0, 255).astype("uint8"))
     return output
+
+
+# warmup
+_ = run_pipe(warmup=True)
 
 
 memory_tracker = MemoryTracker() if args.track_memory else None
@@ -117,10 +115,13 @@ if memory_tracker:
     memory_tracker.__exit__(None, None, None)
     memory_tracker.report()
 
-stats = cache_dit.summary(pipe)
+if rank == 0:
+    stats = cache_dit.summary(pipe)
 
-time_cost = end - start
-save_path = f"chrono-edit.{strify(args, stats)}.png"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving image to {save_path}")
-output.save(save_path)
+    time_cost = end - start
+    save_path = f"chrono-edit.{strify(args, stats)}.png"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving image to {save_path}")
+    output.save(save_path)
+
+maybe_destroy_distributed()

@@ -12,11 +12,10 @@ import requests
 from diffusers import (
     QwenImageEditPlusPipeline,
     QwenImageTransformer2DModel,
-    AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
 )
+
 from utils import (
-    GiB,
     get_args,
     strify,
     cachify,
@@ -69,6 +68,7 @@ pipe = QwenImageEditPlusPipeline.from_pretrained(
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
+
 steps = 8 if args.steps is None else args.steps
 assert steps in [8, 4]
 
@@ -84,11 +84,10 @@ pipe.load_lora_weights(
     ),
 )
 
-# Fuse lora must be enabled for tensor parallelism.
 pipe.fuse_lora()
 pipe.unload_lora_weights()
 
-# Apply cache and parallelism here.
+# Apply cache and parallelism here
 if is_optimzation_flags_enabled(args):
     from cache_dit import DBCacheConfig
 
@@ -110,28 +109,9 @@ if is_optimzation_flags_enabled(args):
         ),
     )
 
-if GiB() < 48 and not (args.quantize or args.parallel_text_encoder):
-    # NOTE: Enable cpu offload before enabling tensor parallelism will
-    # raise shape error after first pipe call, so we enable it after.
-    # It seems a bug of diffusers that cpu offload is not fully
-    # compatible with context parallelism, visa versa.
-    assert (
-        not args.compile
-    ), "Cannot enable compile with cpu offload due to the compatibility issue."
-    pipe.enable_model_cpu_offload(device=device)
-    print("Enabled model CPU offload.")
-else:
-    pipe.to(device)
-
 
 width = 1024 if args.width is None else args.width
 height = 1024 if args.height is None else args.height
-
-
-if GiB() <= 48 and not (args.quantize or args.parallel_text_encoder):
-    assert isinstance(pipe.vae, AutoencoderKLQwenImage)
-    pipe.vae.enable_tiling()
-    print("Enabled VAE tiling for low memory device.")
 
 image1 = Image.open(
     BytesIO(

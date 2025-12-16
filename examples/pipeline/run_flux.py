@@ -5,16 +5,30 @@ sys.path.append("..")
 
 import time
 import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, cachify, MemoryTracker, create_profiler_from_args
+from diffusers import (
+    FluxPipeline,
+    FluxTransformer2DModel,
+)
+from utils import (
+    get_args,
+    strify,
+    cachify,
+    maybe_init_distributed,
+    maybe_destroy_distributed,
+    MemoryTracker,
+    create_profiler_from_args,
+    is_optimzation_flags_enabled,
+    pipe_quant_bnb_4bit_config,
+)
 import cache_dit
 
 
 args = get_args()
 print(args)
 
+rank, device = maybe_init_distributed(args)
 
-pipe = FluxPipeline.from_pretrained(
+pipe: FluxPipeline = FluxPipeline.from_pretrained(
     (
         args.model_path
         if args.model_path is not None
@@ -24,40 +38,18 @@ pipe = FluxPipeline.from_pretrained(
         )
     ),
     torch_dtype=torch.bfloat16,
-)
+    quantization_config=pipe_quant_bnb_4bit_config(
+        args,
+        components_to_quantize=["text_encoder_2"],
+    ),
+).to("cuda")
 
-if args.cache:
+if is_optimzation_flags_enabled(args):
     cachify(args, pipe)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
-if args.quantize:
-    pipe.transformer = cache_dit.quantize(
-        pipe.transformer,
-        quant_type=args.quantize_type,
-        exclude_layers=[
-            "embedder",
-            "embed",
-        ],
-    )
-    pipe.text_encoder_2 = cache_dit.quantize(
-        pipe.text_encoder_2,
-        quant_type=args.quantize_type,
-    )
-    print(f"Applied quantization: {args.quantize_type} to Transformer and Text Encoder 2.")
 
-pipe.to("cuda")
-
-if args.attn is not None:
-    if hasattr(pipe.transformer, "set_attention_backend"):
-        pipe.transformer.set_attention_backend(args.attn)
-        print(f"Set attention backend to {args.attn}")
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
-    pipe.text_encoder = torch.compile(pipe.text_encoder)
-    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
-    pipe.vae = torch.compile(pipe.vae)
+pipe.set_progress_bar_config(disable=rank != 0)
 
 # Set default prompt
 prompt = "A cat holding a sign that says hello world"
@@ -65,14 +57,18 @@ if args.prompt is not None:
     prompt = args.prompt
 
 
-def run_pipe():
-    steps = args.steps if args.steps is not None else 28
+height = 1024 if args.height is None else args.height
+width = 1024 if args.width is None else args.width
+
+
+def run_pipe(pipe: FluxPipeline):
+    steps = 28 if args.steps is None else args.steps
     if args.profile and args.steps is None:
         steps = 3
     image = pipe(
         prompt,
-        height=1024 if args.height is None else args.height,
-        width=1024 if args.width is None else args.width,
+        height=height,
+        width=width,
         num_inference_steps=steps,
         generator=torch.Generator("cpu").manual_seed(0),
     ).images[0]
@@ -80,31 +76,34 @@ def run_pipe():
 
 
 # warmup
-_ = run_pipe()
+_ = run_pipe(pipe)
 
 memory_tracker = MemoryTracker() if args.track_memory else None
-
 if memory_tracker:
     memory_tracker.__enter__()
 
 start = time.time()
 if args.profile:
-    profiler = create_profiler_from_args(args, profile_name="flux_inference")
+    profiler = create_profiler_from_args(args, profile_name="flux_cp_inference")
     with profiler:
-        image = run_pipe()
-    print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
+        image = run_pipe(pipe)
+    if rank == 0:
+        print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
 else:
-    image = run_pipe()
+    image = run_pipe(pipe)
 end = time.time()
 
 if memory_tracker:
     memory_tracker.__exit__(None, None, None)
     memory_tracker.report()
 
-cache_dit.summary(pipe)
+if rank == 0:
+    cache_dit.summary(pipe)
 
-time_cost = end - start
-save_path = f"flux.{strify(args, pipe)}.png"
-print(f"Time cost: {time_cost:.2f}s")
-print(f"Saving image to {save_path}")
-image.save(save_path)
+    time_cost = end - start
+    save_path = f"flux.{height}x{width}.{strify(args, pipe)}.png"
+    print(f"Time cost: {time_cost:.2f}s")
+    print(f"Saving image to {save_path}")
+    image.save(save_path)
+
+maybe_destroy_distributed()

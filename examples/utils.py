@@ -222,6 +222,28 @@ def get_args(
     )
     parser.add_argument("--profile-with-stack", action="store_true", default=True)
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
+    # CPU offload
+    parser.add_argument(
+        "--cpu-offload",
+        "--cpu-offload-model",
+        action="store_true",
+        default=False,
+        help="Enable CPU offload for model if applicable.",
+    )
+    # sequential CPU offload
+    parser.add_argument(
+        "--sequential-cpu-offload",
+        action="store_true",
+        default=False,
+        help="Enable sequential GPU offload for model if applicable.",
+    )
+    # vae tiling
+    parser.add_argument(
+        "--enable-vae-tiling",
+        action="store_true",
+        default=False,
+        help="Enable VAE tiling for low memory device.",
+    )
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
         if args_or_parser.quantize_type is not None:
@@ -602,6 +624,59 @@ def pipe_quant_bnb_4bit_config(
     return quantization_config
 
 
+def maybe_vae_tiling(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.enable_vae_tiling:
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please enable VAE tiling manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "vae"):
+            vae = getattr(pipe, "vae", None)
+            if vae is not None:
+                vae_cls_name = vae.__class__.__name__
+                if hasattr(vae, "enable_tiling"):
+                    logger.info(f"Enabling VAE tiling for module: {vae_cls_name} ...")
+                    vae.enable_tiling()
+                    setattr(pipe, "vae", vae)
+                else:
+                    logger.warning(
+                        f"Cannot enable VAE tiling for module: {vae_cls_name} No enable_tiling"
+                        " method."
+                    )
+            else:
+                logger.warning("enable-vae-tiling is set but no VAE found in the pipeline.")
+    return pipe_or_adapter
+
+
+def maybe_cpu_offload(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> bool:
+    rank, device = get_rank_device()
+    if args.cpu_offload or args.sequential_cpu_offload:
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please enable cpu offload manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if args.sequential_cpu_offload:
+            logger.info("Enabling sequential CPU offload for the model ...")
+            pipe.enable_sequential_cpu_offload(device=device)
+        else:
+            logger.info("Enabling CPU offload for the model ...")
+            pipe.enable_model_cpu_offload(device=device)
+
+        return True
+
+    return False
+
+
 def cachify(
     args,
     pipe_or_adapter,
@@ -695,10 +770,24 @@ def cachify(
     maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
 
+    # VAE Tiling
+    maybe_vae_tiling(args, pipe_or_adapter)
+
     # Compilation
     maybe_compile_transformer(args, pipe_or_adapter)
     maybe_compile_text_encoder(args, pipe_or_adapter)
     maybe_compile_vae(args, pipe_or_adapter)
+
+    # CPU Offload
+    _, device = get_rank_device()
+    if not maybe_cpu_offload(args, pipe_or_adapter):
+        # Set device if no cpu offload
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+        else:
+            pipe = pipe_or_adapter
+        if pipe is not None:
+            pipe.to(device)
 
     return pipe_or_adapter
 
@@ -736,14 +825,21 @@ def strify(args, pipe_or_stats):
     return base_str
 
 
+def get_rank_device():
+    if dist.is_initialized():
+        rank = dist.get_rank()
+        device = torch.device("cuda", rank % torch.cuda.device_count())
+        return rank, device
+    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 def maybe_init_distributed(args=None):
     if args is not None:
         if args.parallel_type is not None:
             dist.init_process_group(
                 backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
             )
-            rank = dist.get_rank()
-            device = torch.device("cuda", rank % torch.cuda.device_count())
+            rank, device = get_rank_device()
             torch.cuda.set_device(device)
             return rank, device
     else:
@@ -752,8 +848,7 @@ def maybe_init_distributed(args=None):
             dist.init_process_group(
                 backend="nccl",
             )
-        rank = dist.get_rank()
-        device = torch.device("cuda", rank % torch.cuda.device_count())
+        rank, device = get_rank_device()
         torch.cuda.set_device(device)
         return rank, device
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
