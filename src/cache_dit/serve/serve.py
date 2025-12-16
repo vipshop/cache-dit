@@ -277,8 +277,8 @@ def launch_server(args=None):
     elif args.parallel_type == "tp":
         pass
 
-    parallel_args["_parallel_text_encoder"] = args.parallel_text_encoder
-    parallel_args["_parallel_vae"] = args.parallel_vae
+    parallel_args["parallel_text_encoder"] = args.parallel_text_encoder
+    parallel_args["parallel_vae"] = args.parallel_vae
 
     logger.info("Initializing model manager...")
     model_manager = ModelManager(
