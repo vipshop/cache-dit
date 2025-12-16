@@ -134,11 +134,10 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         else:
             raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
 
-    # NOTE:Remove NATIVE attention backend constraints and re-register it.
+    # NOTE: Remove NATIVE attention backend constraints and re-register it.
     # Here is a temporary workaround to enable context parallelism with
-    # native attention backend. We should remove this workaround after
-    # the native attention backend supports context parallelism natively.
-    # Adapted from: https://github.com/huggingface/diffusers/pull/12563
+    # native attention backend for attn mask support until diffusers
+    # officially support it.
 
     def _native_attention_forward_op(
         ctx: torch.autograd.function.FunctionCtx,
