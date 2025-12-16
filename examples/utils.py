@@ -302,6 +302,10 @@ def cachify(
             # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
             "extra_parallel_modules": extra_parallel_modules,
         }
+        if backend == ParallelismBackend.NATIVE_PYTORCH:
+            if args.attn is None:
+                parallel_kwargs["attention_backend"] = None
+
         if backend == ParallelismBackend.NATIVE_DIFFUSER:
             parallel_kwargs.update(
                 {
