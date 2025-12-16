@@ -19,6 +19,7 @@ from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
 from diffusers import WanImageToVideoPipeline
+from .utils import prepare_extra_parallel_modules
 
 logger = init_logger(__name__)
 
@@ -211,6 +212,16 @@ class ModelManager:
                 if self.parallel_type == "tp"
                 else ParallelismBackend.NATIVE_DIFFUSER
             )
+
+            # Build extra_parallel_modules for text encoder and vae
+            parallel_text_encoder = self.parallel_args.pop("parallel_text_encoder", False)
+            parallel_vae = self.parallel_args.pop("parallel_vae", False)
+            extra_parallel_modules = prepare_extra_parallel_modules(
+                self.pipe,
+                parallel_text_encoder=parallel_text_encoder,
+                parallel_vae=parallel_vae,
+            )
+            self.parallel_args["extra_parallel_modules"] = extra_parallel_modules
 
             parallelism_config = ParallelismConfig(
                 backend=backend,

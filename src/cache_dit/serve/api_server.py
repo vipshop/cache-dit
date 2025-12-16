@@ -24,8 +24,8 @@ class GenerateRequestAPI(BaseModel):
 
     prompt: str = Field(..., description="Text prompt")
     negative_prompt: Optional[str] = Field("", description="Negative prompt")
-    width: int = Field(1024, description="Image/Video width", ge=64, le=2048)
-    height: int = Field(1024, description="Image/Video height", ge=64, le=2048)
+    width: int = Field(1024, description="Image/Video width", ge=64, le=4096)
+    height: int = Field(1024, description="Image/Video height", ge=64, le=4096)
     num_inference_steps: int = Field(50, description="Number of inference steps", ge=1, le=200)
     guidance_scale: float = Field(7.5, description="Guidance scale", ge=0.0, le=20.0)
     seed: Optional[int] = Field(None, description="Random seed")

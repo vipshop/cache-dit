@@ -72,6 +72,20 @@ def get_args(
             "ring",
         ],
     )
+    # TODO: vae TP will be supported in the future
+    parser.add_argument(
+        "--parallel-vae",
+        action="store_true",
+        default=False,
+        help="Enable VAE parallelism if applicable.",
+    )
+    parser.add_argument(
+        "--parallel-text-encoder",
+        "--parallel-text",
+        action="store_true",
+        default=False,
+        help="Enable text encoder parallelism if applicable.",
+    )
     parser.add_argument(
         "--attn",
         type=str,
@@ -262,6 +276,9 @@ def launch_server(args=None):
             parallel_args["experimental_ulysses_async"] = True
     elif args.parallel_type == "tp":
         pass
+
+    parallel_args["parallel_text_encoder"] = args.parallel_text_encoder
+    parallel_args["parallel_vae"] = args.parallel_vae
 
     logger.info("Initializing model manager...")
     model_manager = ModelManager(

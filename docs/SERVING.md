@@ -142,6 +142,8 @@ with open("output.mp4", "wb") as f:
   - **Tensor Parallelism (tp)**: Supported via broadcast-based synchronization
   - **Context Parallelism (ulysses/ring)**: Supported
 - `--compile` - Enable torch.compile (enables auto warmup per shape)
+- `--parallel-text-encoder` - Enable text encoder parallelism if applicable
+- `--parallel-vae` - Enable VAE parallelism if applicable
 
 ### Memory
 - `--enable-cpu-offload` - Enable CPU offload
@@ -172,6 +174,15 @@ torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --model-path black-forest-labs/FLUX.1-dev \
     --cache --parallel-type tp
 ```
+
+### Context & Tensor Parallelism
+```bash
+torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
+    --model-path black-forest-labs/FLUX.1-dev \
+    --cache --parallel-type ulysses --parallel-text-encoder
+```
+
+This enables hybrid parallelism where the Transformer uses Context Parallelism (CP) while the TextEncoder uses Tensor Parallelism (TP). Both CP and TP groups operate on the same set of GPUs, allowing efficient resource utilization across different model components.
 
 ### Quantization
 
