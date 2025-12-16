@@ -1,6 +1,8 @@
 import torch
 from typing import Union
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLTextModel
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLDecoderLayer
+
 from torch.distributed import DeviceMesh, init_device_mesh
 
 from torch.distributed.tensor.parallel import (
@@ -56,7 +58,6 @@ class Qwen2_5_VLTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         text_encoder: Union[Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLTextModel],
         tp_mesh: DeviceMesh,
     ):
-        from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLDecoderLayer
 
         if isinstance(text_encoder, Qwen2_5_VLForConditionalGeneration):
             model = text_encoder.model.language_model
