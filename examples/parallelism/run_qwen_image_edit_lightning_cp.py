@@ -108,11 +108,10 @@ pipe.load_lora_weights(
     ),
 )
 
-if args.fuse_lora:
-    pipe.fuse_lora()
-    pipe.unload_lora_weights()
+pipe.fuse_lora()
+pipe.unload_lora_weights()
 
-# Apply cache and context parallelism here
+# Apply cache and parallelism here
 if args.cache or args.parallel_type is not None:
     from cache_dit import DBCacheConfig
 
