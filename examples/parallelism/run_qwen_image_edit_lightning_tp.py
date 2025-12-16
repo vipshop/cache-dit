@@ -147,6 +147,7 @@ if args.quantize and args.quantize_type != "bitsandbytes_4bit":
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
+        per_row=False,  # Avoid precision issue for Qwen-Image
         exclude_layers=[
             "img_in",
             "txt_in",
@@ -215,14 +216,6 @@ def run_pipe():
     image = output.images[0] if not args.perf else None
     return image
 
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    torch.set_float32_matmul_precision("high")
-    pipe.transformer = torch.compile(pipe.transformer)
-    if args.compile_vae:
-        pipe.vae.encoder = torch.compile(pipe.vae.encoder)
-        pipe.vae.decoder = torch.compile(pipe.vae.decoder)
 
 # warmup
 _ = run_pipe()

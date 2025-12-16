@@ -66,8 +66,6 @@ quantization_config = (
                 "bnb_4bit_quant_type": "nf4",
                 "bnb_4bit_compute_dtype": torch.bfloat16,
             },
-            # Always use bnb 4bit quantization for text encoder when quantizing to
-            # better compatibility for devices like NVIDIA L20 that VRAM <= 48GB.
             components_to_quantize=(
                 ["text_encoder", "transformer"]
                 if args.quantize_type == "bitsandbytes_4bit"
@@ -114,6 +112,7 @@ if args.quantize and args.quantize_type != "bitsandbytes_4bit":
     pipe.transformer = cache_dit.quantize(
         pipe.transformer,
         quant_type=args.quantize_type,
+        per_row=False,  # Avoid precision issue for Qwen-Image
         exclude_layers=[
             "img_in",
             "txt_in",
