@@ -680,11 +680,14 @@ def maybe_cpu_offload(
     return False
 
 
-def build_cache_dit_optimization(
+def maybe_apply_optimization(
     args,
     pipe_or_adapter,
     **kwargs,
 ):
+    if not is_optimization_flags_enabled(args):
+        return pipe_or_adapter
+
     if args.disable_compute_comm_overlap:
         # Enable compute comm overlap default for torch.compile if used
         # cache_dit.set_compile_flags(), users need to disable it explicitly.

@@ -18,11 +18,10 @@ from diffusers import (
 from utils import (
     get_args,
     strify,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
     MemoryTracker,
 )
 import cache_dit
@@ -88,26 +87,25 @@ pipe.fuse_lora()
 pipe.unload_lora_weights()
 
 # Apply cache and parallelism here
-if is_optimization_flags_enabled(args):
-    from cache_dit import DBCacheConfig
+from cache_dit import DBCacheConfig
 
-    build_cache_dit_optimization(
-        args,
-        pipe,
-        cache_config=(
-            DBCacheConfig(
-                Fn_compute_blocks=16,
-                Bn_compute_blocks=16,
-                max_warmup_steps=4 if steps > 4 else 2,
-                max_cached_steps=2 if steps > 4 else 1,
-                max_continuous_cached_steps=1,
-                enable_separate_cfg=False,  # true_cfg_scale=1.0
-                residual_diff_threshold=0.50 if steps > 4 else 0.8,
-            )
-            if args.cache
-            else None
-        ),
-    )
+maybe_apply_optimization(
+    args,
+    pipe,
+    cache_config=(
+        DBCacheConfig(
+            Fn_compute_blocks=16,
+            Bn_compute_blocks=16,
+            max_warmup_steps=4 if steps > 4 else 2,
+            max_cached_steps=2 if steps > 4 else 1,
+            max_continuous_cached_steps=1,
+            enable_separate_cfg=False,  # true_cfg_scale=1.0
+            residual_diff_threshold=0.50 if steps > 4 else 0.8,
+        )
+        if args.cache
+        else None
+    ),
+)
 
 
 width = 1024 if args.width is None else args.width

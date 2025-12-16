@@ -15,12 +15,11 @@ from diffusers import (
 from diffusers.utils import load_image
 from transformers import CLIPVisionModel
 from utils import (
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
     strify,
     MemoryTracker,
 )
@@ -57,9 +56,7 @@ pipe = ChronoEditPipeline.from_pretrained(
     ),
 )
 
-if is_optimization_flags_enabled(args):
-    build_cache_dit_optimization(args, pipe)
-
+maybe_apply_optimization(args, pipe)
 
 image = load_image("../data/chrono_edit_example.png")
 

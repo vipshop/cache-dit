@@ -10,11 +10,10 @@ from diffusers.utils import export_to_video
 from utils import (
     get_args,
     strify,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
     MemoryTracker,
 )
 import cache_dit
@@ -50,8 +49,7 @@ pipe = SkyReelsV2Pipeline.from_pretrained(
 flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
 
-if is_optimization_flags_enabled(args):
-    build_cache_dit_optimization(args, pipe)
+maybe_apply_optimization(args, pipe)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 

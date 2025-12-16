@@ -9,13 +9,12 @@ from diffusers import OvisImagePipeline
 from utils import (
     get_args,
     strify,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     MemoryTracker,
     create_profiler_from_args,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
 )
 import cache_dit
 
@@ -44,8 +43,7 @@ pipe = OvisImagePipeline.from_pretrained(
     ),
 )
 
-if is_optimization_flags_enabled(args):
-    build_cache_dit_optimization(args, pipe)
+maybe_apply_optimization(args, pipe)
 
 
 pipe.set_progress_bar_config(disable=rank != 0)

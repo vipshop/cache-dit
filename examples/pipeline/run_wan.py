@@ -9,7 +9,7 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
@@ -38,59 +38,53 @@ pipe = WanPipeline.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-if args.cache or args.parallel_type is not None:
-    from cache_dit import (
-        ForwardPattern,
-        BlockAdapter,
-        ParamsModifier,
-        DBCacheConfig,
+from cache_dit import (
+    ForwardPattern,
+    BlockAdapter,
+    ParamsModifier,
+    DBCacheConfig,
+)
+
+if "Wan2.1" in model_id:
+    maybe_apply_optimization(args, pipe)
+else:
+    # Wan 2.2 only
+    maybe_apply_optimization(
+        args,
+        BlockAdapter(
+            pipe=pipe,
+            transformer=[
+                pipe.transformer,
+                pipe.transformer_2,
+            ],
+            blocks=[
+                pipe.transformer.blocks,
+                pipe.transformer_2.blocks,
+            ],
+            forward_pattern=[
+                ForwardPattern.Pattern_2,
+                ForwardPattern.Pattern_2,
+            ],
+            params_modifiers=[
+                # high-noise transformer only have 30% steps
+                ParamsModifier(
+                    cache_config=DBCacheConfig().reset(
+                        max_warmup_steps=4,
+                        max_cached_steps=8,
+                    ),
+                ),
+                ParamsModifier(
+                    cache_config=DBCacheConfig().reset(
+                        max_warmup_steps=2,
+                        max_cached_steps=20,
+                    ),
+                ),
+            ],
+            has_separate_cfg=True,
+        ),
     )
 
-    if "Wan2.1" in model_id:
-        build_cache_dit_optimization(args, pipe)
-    else:
-        # Wan 2.2 only
-        build_cache_dit_optimization(
-            args,
-            BlockAdapter(
-                pipe=pipe,
-                transformer=[
-                    pipe.transformer,
-                    pipe.transformer_2,
-                ],
-                blocks=[
-                    pipe.transformer.blocks,
-                    pipe.transformer_2.blocks,
-                ],
-                forward_pattern=[
-                    ForwardPattern.Pattern_2,
-                    ForwardPattern.Pattern_2,
-                ],
-                params_modifiers=[
-                    # high-noise transformer only have 30% steps
-                    ParamsModifier(
-                        cache_config=DBCacheConfig().reset(
-                            max_warmup_steps=4,
-                            max_cached_steps=8,
-                        ),
-                    ),
-                    ParamsModifier(
-                        cache_config=DBCacheConfig().reset(
-                            max_warmup_steps=2,
-                            max_cached_steps=20,
-                        ),
-                    ),
-                ],
-                has_separate_cfg=True,
-            ),
-        )
-
 assert isinstance(pipe.transformer, WanTransformer3DModel)
-
-# The model weights for Wan-AI/Wan2.2-T2V-A14B-Diffusers will occupy over 50 GB of memory.
-# If enable_model_cpu_offload is not enabled, even running on an H100 with CP (possibly "CheckPoint" or a similar memory-saving technique) will result in an OOM (Out Of Memory) error.
-# This is essential to avoid OOM errors when running the model.
-pipe.enable_model_cpu_offload(device=device)
 
 pipe.set_progress_bar_config(disable=rank != 0)
 
@@ -128,15 +122,6 @@ def run_pipe(warmup: bool = False):
     ).frames[0]
     return output
 
-
-if args.attn is not None:
-    if hasattr(pipe.transformer, "set_attention_backend"):
-        pipe.transformer.set_attention_backend(args.attn)
-        print(f"Set attention backend to {args.attn}")
-
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
 
 # warmup
 _ = run_pipe(warmup=True)

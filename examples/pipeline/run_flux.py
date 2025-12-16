@@ -12,12 +12,11 @@ from diffusers import (
 from utils import (
     get_args,
     strify,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     MemoryTracker,
     create_profiler_from_args,
-    is_optimization_flags_enabled,
     pipe_quant_bnb_4bit_config,
 )
 import cache_dit
@@ -44,8 +43,7 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
     ),
 ).to("cuda")
 
-if is_optimization_flags_enabled(args):
-    build_cache_dit_optimization(args, pipe)
+maybe_apply_optimization(args, pipe)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 

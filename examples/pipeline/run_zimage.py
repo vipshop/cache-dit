@@ -9,12 +9,11 @@ import torch
 from diffusers import ZImagePipeline, ZImageTransformer2DModel
 from utils import (
     MemoryTracker,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
     strify,
 )
 
@@ -43,33 +42,32 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
 )
 
 
-if is_optimization_flags_enabled(args):
-    if args.cache:
-        # Only warmup 4 steps (total 9 steps) for distilled models
-        args.max_warmup_steps = min(4, args.max_warmup_steps)
+if args.cache:
+    # Only warmup 4 steps (total 9 steps) for distilled models
+    args.max_warmup_steps = min(4, args.max_warmup_steps)
 
-    build_cache_dit_optimization(
-        args,
-        pipe,
-        # Total 9 steps for distilled Z-Image-Turbo
-        # e.g, 111110101, 1: compute, 0: dynamic cache
-        steps_computation_mask=(
+maybe_apply_optimization(
+    args,
+    pipe,
+    # Total 9 steps for distilled Z-Image-Turbo
+    # e.g, 111110101, 1: compute, 0: dynamic cache
+    steps_computation_mask=(
+        cache_dit.steps_mask(
+            # slow, medium, fast, ultra.
+            mask_policy=args.mask_policy,
+            total_steps=9,
+        )
+        if args.mask_policy is not None
+        else (
             cache_dit.steps_mask(
-                # slow, medium, fast, ultra.
-                mask_policy=args.mask_policy,
-                total_steps=9,
+                compute_bins=[5, 1, 1],  # = 7 (compute steps)
+                cache_bins=[1, 1],  # = 2 (dynamic cache steps)
             )
-            if args.mask_policy is not None
-            else (
-                cache_dit.steps_mask(
-                    compute_bins=[5, 1, 1],  # = 7 (compute steps)
-                    cache_bins=[1, 1],  # = 2 (dynamic cache steps)
-                )
-                if args.steps_mask
-                else None
-            )
-        ),
-    )
+            if args.steps_mask
+            else None
+        )
+    ),
+)
 
 assert isinstance(pipe.transformer, ZImageTransformer2DModel)
 

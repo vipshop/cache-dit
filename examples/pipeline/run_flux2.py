@@ -11,12 +11,11 @@ from diffusers import Flux2Pipeline, Flux2Transformer2DModel
 from utils import (
     MemoryTracker,
     GiB,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
     strify,
 )
 
@@ -51,31 +50,30 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
 )
 
 
-if is_optimization_flags_enabled(args):
-    from cache_dit import DBCacheConfig, ParamsModifier
+from cache_dit import DBCacheConfig, ParamsModifier
 
-    build_cache_dit_optimization(
-        args,
-        pipe,
-        params_modifiers=[
-            ParamsModifier(
-                # Modified config only for transformer_blocks
-                # Must call the `reset` method of DBCacheConfig.
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt,
-                ),
+maybe_apply_optimization(
+    args,
+    pipe,
+    params_modifiers=[
+        ParamsModifier(
+            # Modified config only for transformer_blocks
+            # Must call the `reset` method of DBCacheConfig.
+            cache_config=DBCacheConfig().reset(
+                residual_diff_threshold=args.rdt,
             ),
-            ParamsModifier(
-                # Modified config only for single_transformer_blocks
-                # NOTE: FLUX.2, single_transformer_blocks should have `higher`
-                # residual_diff_threshold because of the precision error
-                # accumulation from previous transformer_blocks
-                cache_config=DBCacheConfig().reset(
-                    residual_diff_threshold=args.rdt * 3,
-                ),
+        ),
+        ParamsModifier(
+            # Modified config only for single_transformer_blocks
+            # NOTE: FLUX.2, single_transformer_blocks should have `higher`
+            # residual_diff_threshold because of the precision error
+            # accumulation from previous transformer_blocks
+            cache_config=DBCacheConfig().reset(
+                residual_diff_threshold=args.rdt * 3,
             ),
-        ],
-    )
+        ),
+    ],
+)
 
 torch.cuda.empty_cache()
 

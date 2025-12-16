@@ -15,11 +15,10 @@ from nunchaku.models.transformers.transformer_flux_v2 import (
 from utils import (
     get_args,
     strify,
-    build_cache_dit_optimization,
+    maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimization_flags_enabled,
     MemoryTracker,
 )
 import cache_dit
@@ -51,25 +50,21 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
 ).to("cuda")
 
 
-if is_optimization_flags_enabled(args):
-    from cache_dit import (
-        ParamsModifier,
-        DBCacheConfig,
-    )
+from cache_dit import ParamsModifier, DBCacheConfig
 
-    build_cache_dit_optimization(
-        pipe,
-        params_modifiers=[
-            ParamsModifier(
-                # transformer_blocks
-                cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt),
-            ),
-            ParamsModifier(
-                # single_transformer_blocks
-                cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3),
-            ),
-        ],
-    )
+maybe_apply_optimization(
+    pipe,
+    params_modifiers=[
+        ParamsModifier(
+            # transformer_blocks
+            cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt),
+        ),
+        ParamsModifier(
+            # single_transformer_blocks
+            cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3),
+        ),
+    ],
+)
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
