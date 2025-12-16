@@ -314,10 +314,9 @@ def maybe_compile_text_encoder(
             if hasattr(_module_to_compile, "encoder"):
                 _module_to_compile = _module_to_compile.encoder
 
+            _module_to_compile_cls_name = _module_to_compile.__class__.__name__
+            _text_encoder_cls_name = text_encoder.__class__.__name__
             if isinstance(_module_to_compile, torch.nn.Module):
-
-                _module_to_compile_cls_name = _module_to_compile.__class__.__name__
-                _text_encoder_cls_name = text_encoder.__class__.__name__
                 logger.info(
                     f"Compiling text encoder module {name}:{_text_encoder_cls_name}:"
                     f"{_module_to_compile_cls_name} ..."
@@ -339,7 +338,7 @@ def maybe_compile_text_encoder(
             else:
                 logger.warning(
                     f"Cannot compile text encoder module {name}:{_text_encoder_cls_name}:"
-                    "Not a torch.nn.Module."
+                    f"{_module_to_compile_cls_name} Not a torch.nn.Module."
                 )
         else:
             logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
