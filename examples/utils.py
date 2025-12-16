@@ -492,10 +492,13 @@ def maybe_quantize_transformer(
 ) -> DiffusionPipeline | BlockAdapter:
     # Quantize transformer by default if quantization is enabled
     if args.quantize:
-        assert args.quantize_type not in ("bitsandbytes_4bit", "bnb_4bit"), (
-            "bitsandbytes_4bit quantization should be handled by"
-            " PipelineQuantizationConfig in from_pretrained."
-        )
+        if args.quantize_type in ("bitsandbytes_4bit", "bnb_4bit"):
+            logger.warning(
+                "bitsandbytes_4bit quantization should be handled by"
+                " PipelineQuantizationConfig in from_pretrained."
+            )
+            return pipe_or_adapter
+
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
             assert pipe is not None, "Please quantize transformer manually if pipe is None."
