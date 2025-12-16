@@ -314,9 +314,8 @@ def maybe_compile_text_encoder(
             if hasattr(_module_to_compile, "encoder"):
                 _module_to_compile = _module_to_compile.encoder
 
-            logger.info(
-                f"Compiling text encoder module {_module_to_compile.__class__.__name__} ..."
-            )
+            _module_to_compile_name = _module_to_compile.__class__.__name__
+            logger.info(f"Compiling text encoder module {name}:{_module_to_compile_name} ...")
             _module_to_compile = torch.compile(
                 _module_to_compile,
                 mode="max-autotune" if args.max_autotune else "default",
