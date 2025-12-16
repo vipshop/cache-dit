@@ -255,21 +255,20 @@ def cachify(
             else ParallelismBackend.NATIVE_DIFFUSER
         )
 
-        parallel_kwargs = (
-            {
-                "attention_backend": ("native" if not args.attn else args.attn),
-                "experimental_ulysses_anything": args.ulysses_anything,
-                "experimental_ulysses_float8": args.ulysses_float8,
-                "experimental_ulysses_async": args.ulysses_async,
-                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
-                "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
-            }
-            if backend == ParallelismBackend.NATIVE_DIFFUSER
-            else {
-                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
-                "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
-            }
-        )
+        parallel_kwargs = {
+            "attention_backend": ("native" if not args.attn else args.attn),
+            # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
+            "extra_parallel_modules": kwargs.get("extra_parallel_modules", []),
+        }
+        if backend == ParallelismBackend.NATIVE_DIFFUSER:
+            parallel_kwargs.update(
+                {
+                    "experimental_ulysses_anything": args.ulysses_anything,
+                    "experimental_ulysses_float8": args.ulysses_float8,
+                    "experimental_ulysses_async": args.ulysses_async,
+                }
+            )
+
         cache_dit.enable_cache(
             pipe_or_adapter,
             cache_config=(

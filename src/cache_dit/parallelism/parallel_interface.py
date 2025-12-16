@@ -67,10 +67,11 @@ def enable_parallelism(
             # Ensure custom attention backends are registered in cache-dit.
             if not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH:
                 from .transformers.native_diffusers import (
-                    _maybe_resigter_attn_backends,
+                    _maybe_register_custom_attn_backends,
                 )
 
-                _maybe_resigter_attn_backends()
+                _maybe_register_custom_attn_backends()
+
             transformer.set_attention_backend(attention_backend)
             logger.info(
                 "Found attention_backend from config, set attention "

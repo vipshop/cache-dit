@@ -73,17 +73,6 @@ def run_pipe(warmup: bool = False):
     return image
 
 
-if args.attn is not None:
-    if hasattr(pipe.transformer, "set_attention_backend"):
-        pipe.transformer.set_attention_backend(args.attn)
-        print(f"Set attention backend to {args.attn}")
-    else:
-        print(
-            f"Warning: transformer does not support setting attention backend, "
-            f"skipping setting attention to {args.attn}"
-        )
-
-
 if args.compile:
     cache_dit.set_compile_configs()
     pipe.transformer = torch.compile(pipe.transformer)

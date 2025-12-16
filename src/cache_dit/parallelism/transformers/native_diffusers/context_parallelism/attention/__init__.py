@@ -1,7 +1,7 @@
 from cache_dit.envs import ENV
 
 
-def _maybe_resigter_attn_backends():
+def _maybe_register_custom_attn_backends():
     """Maybe re-register native attention backend to enable context parallelism."""
     # Import custom attention backend ensuring registration
     if (
