@@ -17,13 +17,11 @@ from diffusers import (
 
 from utils import (
     get_args,
-    strify,
     maybe_apply_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
 )
-import cache_dit
 
 
 args = get_args()
@@ -156,14 +154,6 @@ _ = run_pipe()
 start = time.time()
 image = run_pipe()
 end = time.time()
+time_cost = end - start
 
-if rank == 0:
-    stats = cache_dit.summary(pipe)
-
-    time_cost = end - start
-    save_path = f"qwen-image-edit-lightning.{steps}steps.{strify(args, stats)}.png"
-    print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving image to {save_path}")
-    image.save(save_path)
-
-maybe_destroy_distributed()
+maybe_destroy_distributed(args, pipe, "qwen_image_edit_lightning", time_cost=time_cost, image=image)

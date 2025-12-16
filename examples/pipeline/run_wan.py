@@ -7,17 +7,14 @@ import time
 
 import torch
 from diffusers import WanPipeline, WanTransformer3DModel
-from diffusers.utils import export_to_video
 from utils import (
     maybe_apply_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
-    strify,
     create_profiler_from_args,
 )
 
-import cache_dit
 
 args = get_args()
 print(args)
@@ -136,13 +133,6 @@ else:
     video = run_pipe()
 end = time.time()
 
-if rank == 0:
-    cache_dit.summary(pipe)
+time_cost = end - start
 
-    time_cost = end - start
-    save_path = f"wan.{height}x{width}.{strify(args, pipe)}.mp4"
-    print(f"Time cost: {time_cost:.2f}s")
-    print(f"Saving video to {save_path}")
-    export_to_video(video, save_path, fps=16)
-
-maybe_destroy_distributed()
+maybe_destroy_distributed(args, pipe, "wan", time_cost=time_cost, image=video)

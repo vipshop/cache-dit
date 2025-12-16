@@ -83,8 +83,6 @@ if args.profile:
 else:
     image = run_pipe(pipe)
 end = time.time()
-
-
 time_cost = end - start
 
 maybe_destroy_distributed(args, pipe, "flux", time_cost=time_cost, image=image)
