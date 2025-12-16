@@ -493,7 +493,7 @@ def maybe_quantize_transformer(
     # Quantize transformer by default if quantization is enabled
     if args.quantize:
         if args.quantize_type in ("bitsandbytes_4bit", "bnb_4bit"):
-            logger.warning(
+            logger.debug(
                 "bitsandbytes_4bit quantization should be handled by"
                 " PipelineQuantizationConfig in from_pretrained."
             )
