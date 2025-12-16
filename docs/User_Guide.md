@@ -1046,7 +1046,7 @@ cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 
 <div id="fp8-attention"></div>
 
-For FP8 Attention, users must install `sage-attention`. Then, pass the `sage` attention backend to the context parallelism configuration as an extra parameter. Please note that `attention mask` is not currently supported for FP8 sage attention.
+For FP8 Attention, users must install `sage-attention`. Then, pass the `sage` attention backend to the parallelism configuration as an extra parameter. Please note that `attention mask` is not currently supported for FP8 sage attention.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
@@ -1057,9 +1057,9 @@ cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
-        ulysses_size=2,
+        ulysses_size=2, # or, tp_size=2
         parallel_kwargs={
-            # flash, native(sdpa), _native_cudnn, sage
+            # flash, native(sdpa), _native_cudnn, _sdpa_cudnn, sage
             "attention_backend": "sage",
         },
     ),

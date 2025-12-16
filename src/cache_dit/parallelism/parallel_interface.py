@@ -1,17 +1,20 @@
 import torch
 import torch.distributed as dist
 from typing import Union, Optional
+from diffusers.models.modeling_utils import ModelMixin
 from transformers import PreTrainedTokenizerFast, PreTrainedTokenizer
 from .parallel_backend import ParallelismBackend
 from .parallel_config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
+from cache_dit.envs import ENV
+
 
 logger = init_logger(__name__)
 
 
 def enable_parallelism(
-    transformer: torch.nn.Module,
+    transformer: torch.nn.Module | ModelMixin,
     parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
     assert isinstance(
@@ -42,6 +45,39 @@ def enable_parallelism(
         )
     else:
         raise ValueError(f"Parallel backend {parallelism_config.backend} is not supported yet.")
+
+    # Set attention backend for both context parallelism and tensor parallelism if the
+    # transformer is from diffusers and supports setting attention backend.
+    if hasattr(transformer, "set_attention_backend") and isinstance(transformer, ModelMixin):
+        attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
+        # native, _native_cudnn, flash, etc.
+        if attention_backend is None:
+            # Default to native for context parallelism due to:
+            # - attn mask support (re-registered in cache-dit)
+            # - general compatibility with various models
+            # NOTE: We only set default attention backend for NATIVE_DIFFUSER backend here
+            # while using context parallelism. For other backends, we do not change the
+            # attention backend if it is None.
+            if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
+                transformer.set_attention_backend("native")
+                logger.warning(
+                    "attention_backend is None, set default attention backend "
+                    "to native for context parallelism in NATIVE_DIFFUSER backend."
+                )
+        else:
+            # Ensure custom attention backends are registered in cache-dit.
+            if not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH:
+                from .transformers.native_diffusers import (
+                    _maybe_register_custom_attn_backends,
+                )
+
+                _maybe_register_custom_attn_backends()
+
+            transformer.set_attention_backend(attention_backend)
+            logger.info(
+                "Found attention_backend from config, set attention "
+                f"backend to: {attention_backend}"
+            )
 
     # Check text encoder and VAE for extra parallel modules
     extra_parallel_modules: list[torch.nn.Module] = []
@@ -76,7 +112,7 @@ def remove_parallelism_stats(
     transformer: torch.nn.Module,
 ) -> torch.nn.Module:
     if not getattr(transformer, "_is_parallelized", False):
-        logger.warning("The transformer is not parallelized. " "Skipping removing parallelism.")
+        logger.warning("The transformer is not parallelized. Skipping removing parallelism.")
         return transformer
 
     if hasattr(transformer, "_is_parallelized"):

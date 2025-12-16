@@ -1,2 +1,3 @@
 from .context_parallelism import ContextParallelismPlannerRegister
+from .context_parallelism.attention import _maybe_register_custom_attn_backends
 from .parallel_difffusers import maybe_enable_parallelism_for_transformer
