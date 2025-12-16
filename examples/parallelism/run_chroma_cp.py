@@ -11,6 +11,7 @@ from utils import (
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
+    is_optimzation_flags_enabled,
     strify,
     MemoryTracker,
 )
@@ -34,7 +35,7 @@ pipe = ChromaPipeline.from_pretrained(
 
 pipe.to("cuda")
 
-if args.cache or args.parallel_type is not None:
+if is_optimzation_flags_enabled(args):
     cachify(args, pipe)
 
 prompt = [

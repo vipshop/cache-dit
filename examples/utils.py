@@ -568,27 +568,17 @@ def maybe_quantize_text_encoder(
 
 def pipe_quant_bnb_4bit_config(
     args,
-    pipe: DiffusionPipeline,
-    transformer_use_4bit: bool = False,
+    components_to_quantize: Optional[List[str]] = [],
 ) -> Optional[PipelineQuantizationConfig]:
-    _, text_encoder_name = get_text_encoder_from_pipe(pipe)
-    components_to_quantize = []
     if not args.quantize_text_encoder and not args.quantize:
         return None
 
-    if args.quantize_type == "bitsandbytes_4bit":
-        if args.quantize_text_encoder and text_encoder_name is not None:
-            components_to_quantize.append(text_encoder_name)
-
-        # Transformer quantization will quantize by cache_dit.quantize in general.
-        if args.quantize and transformer_use_4bit:
-            components_to_quantize.append("transformer")
-            if hasattr(pipe, "transformer_2"):
-                components_to_quantize.append("transformer_2")
-
     if components_to_quantize:
-        if args.parallel_text_encoder and text_encoder_name in components_to_quantize:
-            components_to_quantize.remove(text_encoder_name)
+        if args.parallel_text_encoder:
+            if "text_encoder" in components_to_quantize:
+                components_to_quantize.remove("text_encoder")
+            if "text_encoder_2" in components_to_quantize:
+                components_to_quantize.remove("text_encoder_2")
 
     if components_to_quantize:
         quantization_config = (
@@ -603,11 +593,12 @@ def pipe_quant_bnb_4bit_config(
                     components_to_quantize=components_to_quantize,
                 )
             )
-            if args.quantize
+            if args.quantize or args.quantize_text_encoder
             else None
         )
     else:
         quantization_config = None
+
     return quantization_config
 
 
