@@ -71,8 +71,6 @@ if is_optimization_flags_enabled(args):
         ),
     )
 
-pipe.to(device)
-
 assert isinstance(pipe.transformer, ZImageTransformer2DModel)
 
 pipe.set_progress_bar_config(disable=rank != 0)
