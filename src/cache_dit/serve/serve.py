@@ -72,6 +72,7 @@ def get_args(
             "ring",
         ],
     )
+    # TODO: vae TP will be supported in the future
     parser.add_argument(
         "--parallel-vae",
         action="store_true",
