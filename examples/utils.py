@@ -844,7 +844,6 @@ memory_tracker = None
 
 def maybe_init_distributed(args=None):
     if args is not None:
-        global memory_tracker
 
         if args.parallel_type is not None:
             dist.init_process_group(
