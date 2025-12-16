@@ -65,10 +65,7 @@ pipe = QwenImageEditPlusPipeline.from_pretrained(
     model_id,
     scheduler=scheduler,
     torch_dtype=torch.bfloat16,
-    quantization_config=pipe_quant_bnb_4bit_config(
-        args,
-        components_to_quantize=["text_encoder"],
-    ),
+    quantization_config=pipe_quant_bnb_4bit_config(args),
 )
 
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)

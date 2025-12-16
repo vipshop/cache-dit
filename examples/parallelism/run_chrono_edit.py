@@ -12,7 +12,6 @@ from diffusers import (
     ChronoEditTransformer3DModel,
     ChronoEditPipeline,
 )
-from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import load_image
 from transformers import CLIPVisionModel
 from utils import (
@@ -20,6 +19,8 @@ from utils import (
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
+    pipe_quant_bnb_4bit_config,
+    is_optimzation_flags_enabled,
     strify,
     MemoryTracker,
 )
@@ -44,35 +45,23 @@ transformer = ChronoEditTransformer3DModel.from_pretrained(
     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
 )
 
-enable_quantization = args.quantize and args.quantize_type == "bitsandbytes_4bit"
-
 pipe = ChronoEditPipeline.from_pretrained(
     model_id,
     vae=vae,
     image_encoder=image_encoder,
     transformer=transformer,
     torch_dtype=torch.bfloat16,
-    quantization_config=(
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            # text_encoder: ~ 6GiB, transformer: ~ 8GiB, total: ~14GiB
-            components_to_quantize=["text_encoder", "transformer"],
-        )
-        if enable_quantization
-        else None
+    quantization_config=pipe_quant_bnb_4bit_config(
+        args,
+        components_to_quantize=["text_encoder", "transformer"],
     ),
 )
 
-if args.cache or args.parallel_type is not None:
+if is_optimzation_flags_enabled(args):
     cachify(args, pipe)
 
 # Enable memory savings
-if not enable_quantization:
+if not args.quantize and not args.quantize_text_encoder:
     pipe.enable_model_cpu_offload(device=device)
 else:
     pipe.to(device)
@@ -118,12 +107,8 @@ def run_pipe(warmup: bool = False):
     return output
 
 
-if args.compile:
-    cache_dit.set_compile_configs()
-    pipe.transformer = torch.compile(pipe.transformer)
-
-    # warmup
-    _ = run_pipe(warmup=True)
+# warmup
+_ = run_pipe(warmup=True)
 
 
 memory_tracker = MemoryTracker() if args.track_memory else None

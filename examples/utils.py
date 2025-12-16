@@ -568,7 +568,7 @@ def maybe_quantize_text_encoder(
 
 def pipe_quant_bnb_4bit_config(
     args,
-    components_to_quantize: Optional[List[str]] = [],
+    components_to_quantize: Optional[List[str]] = ["text_encoder"],
 ) -> Optional[PipelineQuantizationConfig]:
     if not args.quantize_text_encoder and not args.quantize:
         return None

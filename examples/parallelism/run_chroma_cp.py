@@ -11,6 +11,7 @@ from utils import (
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
+    pipe_quant_bnb_4bit_config,
     is_optimzation_flags_enabled,
     strify,
     MemoryTracker,
@@ -31,6 +32,7 @@ pipe = ChromaPipeline.from_pretrained(
         else os.environ.get("CHROMA1_DIR", "lodestones/Chroma1-HD")
     ),
     torch_dtype=torch.bfloat16,
+    quantization_config=pipe_quant_bnb_4bit_config(args),
 )
 
 pipe.to("cuda")
