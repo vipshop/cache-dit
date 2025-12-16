@@ -677,7 +677,7 @@ def maybe_cpu_offload(
     return False
 
 
-def cachify(
+def build_cache_dit_optimization(
     args,
     pipe_or_adapter,
     **kwargs,
@@ -792,7 +792,7 @@ def cachify(
     return pipe_or_adapter
 
 
-def is_optimzation_flags_enabled(args) -> bool:
+def is_optimization_flags_enabled(args) -> bool:
     return args.cache or args.parallel_type is not None or args.quantize or args.compile
 
 

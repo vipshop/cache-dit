@@ -13,11 +13,11 @@ from diffusers import (
 from utils import (
     get_args,
     strify,
-    cachify,
+    build_cache_dit_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimzation_flags_enabled,
+    is_optimization_flags_enabled,
     MemoryTracker,
 )
 import cache_dit
@@ -44,8 +44,8 @@ pipe = QwenImagePipeline.from_pretrained(
 assert isinstance(pipe.transformer, QwenImageTransformer2DModel)
 
 # Apply cache and context parallelism here
-if is_optimzation_flags_enabled(args):
-    cachify(args, pipe)
+if is_optimization_flags_enabled(args):
+    build_cache_dit_optimization(args, pipe)
 
 
 positive_magic = {

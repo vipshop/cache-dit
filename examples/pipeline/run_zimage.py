@@ -9,12 +9,12 @@ import torch
 from diffusers import ZImagePipeline, ZImageTransformer2DModel
 from utils import (
     MemoryTracker,
-    cachify,
+    build_cache_dit_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimzation_flags_enabled,
+    is_optimization_flags_enabled,
     strify,
 )
 
@@ -43,12 +43,12 @@ pipe: ZImagePipeline = ZImagePipeline.from_pretrained(
 )
 
 
-if is_optimzation_flags_enabled(args):
+if is_optimization_flags_enabled(args):
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
 
-    cachify(
+    build_cache_dit_optimization(
         args,
         pipe,
         # Total 9 steps for distilled Z-Image-Turbo

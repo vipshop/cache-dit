@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, cachify, MemoryTracker
+from utils import get_args, strify, build_cache_dit_optimization, MemoryTracker
 import cache_dit
 
 
@@ -28,7 +28,7 @@ pipe: FluxPipeline = FluxPipeline.from_pretrained(
 
 
 if args.cache:
-    cachify(args, pipe)
+    build_cache_dit_optimization(args, pipe)
 
 
 if args.quantize:

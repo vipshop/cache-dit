@@ -11,12 +11,12 @@ from diffusers import Flux2Pipeline, Flux2Transformer2DModel
 from utils import (
     MemoryTracker,
     GiB,
-    cachify,
+    build_cache_dit_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimzation_flags_enabled,
+    is_optimization_flags_enabled,
     strify,
 )
 
@@ -51,10 +51,10 @@ pipe: Flux2Pipeline = Flux2Pipeline.from_pretrained(
 )
 
 
-if is_optimzation_flags_enabled(args):
+if is_optimization_flags_enabled(args):
     from cache_dit import DBCacheConfig, ParamsModifier
 
-    cachify(
+    build_cache_dit_optimization(
         args,
         pipe,
         params_modifiers=[

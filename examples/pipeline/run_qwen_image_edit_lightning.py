@@ -18,11 +18,11 @@ from diffusers import (
 from utils import (
     get_args,
     strify,
-    cachify,
+    build_cache_dit_optimization,
     maybe_init_distributed,
     maybe_destroy_distributed,
     pipe_quant_bnb_4bit_config,
-    is_optimzation_flags_enabled,
+    is_optimization_flags_enabled,
     MemoryTracker,
 )
 import cache_dit
@@ -88,10 +88,10 @@ pipe.fuse_lora()
 pipe.unload_lora_weights()
 
 # Apply cache and parallelism here
-if is_optimzation_flags_enabled(args):
+if is_optimization_flags_enabled(args):
     from cache_dit import DBCacheConfig
 
-    cachify(
+    build_cache_dit_optimization(
         args,
         pipe,
         cache_config=(

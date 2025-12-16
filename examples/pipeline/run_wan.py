@@ -9,7 +9,7 @@ import torch
 from diffusers import WanPipeline, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from utils import (
-    cachify,
+    build_cache_dit_optimization,
     get_args,
     maybe_destroy_distributed,
     maybe_init_distributed,
@@ -47,10 +47,10 @@ if args.cache or args.parallel_type is not None:
     )
 
     if "Wan2.1" in model_id:
-        cachify(args, pipe)
+        build_cache_dit_optimization(args, pipe)
     else:
         # Wan 2.2 only
-        cachify(
+        build_cache_dit_optimization(
             args,
             BlockAdapter(
                 pipe=pipe,
