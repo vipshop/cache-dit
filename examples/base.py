@@ -141,8 +141,19 @@ class ExampleInputData:
                     summary_str += f"- {k}: Single Image ({H}x{W})\n"
                 elif isinstance(v, list):
                     if len(v) > 0:
-                        W, H = v[0].size
-                        summary_str += f"- {k}: List of {len(v)} Images ({H}x{W})\n"
+                        summary_str += f"- {k}: List Images ({len(v)} images)\n"
+                        for i in range(min(len(v), 3)):  # show up to 3 images
+                            if isinstance(v[i], Image.Image):
+                                W, H = v[i].size
+                                summary_str += f"    - Image {i}: ({H}x{W})\n"
+                            else:
+                                summary_str += f"    - Image {i}: Not a valid PIL Image\n"
+                    elif len(v) == 1:
+                        if isinstance(v[0], Image.Image):
+                            W, H = v[0].size
+                            summary_str += f"- {k}: Single Image ({H}x{W})\n"
+                        else:
+                            summary_str += f"- {k}: Not a valid PIL Image\n"
                     else:
                         summary_str += f"- {k}: Empty List\n"
             elif k == "generator":
