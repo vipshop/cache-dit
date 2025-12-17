@@ -165,9 +165,9 @@ def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             num_inference_steps=28,
         ),
     )
+
+# NOTE: DON'T forget to add `flux_example` into helpers.py
 ```
-
-
 
 ## 📚 More Usage for Examples
 
