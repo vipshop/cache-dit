@@ -145,6 +145,12 @@ class ExampleInputData:
                         summary_str += f"- {k}: List of {len(v)} Images ({H}x{W})\n"
                     else:
                         summary_str += f"- {k}: Empty List\n"
+            elif k == "generator":
+                # Show seed and device info
+                gen_device = v.device if hasattr(v, "device") else "cpu"
+                summary_str += f"- {k}: Generator on {gen_device}\n"
+                gen_seed = v.initial_seed() if hasattr(v, "initial_seed") else "N/A"
+                summary_str += f"  - seed: {gen_seed}\n"
             else:
                 summary_str += f"- {k}: {v}\n"
         summary_str = summary_str.rstrip("\n")
