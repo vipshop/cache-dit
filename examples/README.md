@@ -62,7 +62,7 @@ torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --par
 # text encoder parallelism, enable it by add: `--parallel-text-encoder`
 torchrun --nproc_per_node=4 generate.py generate flux --parallel tp --parallel-text-encoder
 torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
-# Hint: aad `--local-ranks-filter=0` to torchrun -> only show logs on rank 0
+# Hint: set `--local-ranks-filter=0` to torchrun -> only show logs on rank 0
 torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --parallel ulysses 
 ```
 
