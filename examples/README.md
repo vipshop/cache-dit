@@ -32,6 +32,8 @@ python3 generate.py generate zimage --cache --rdt 0.6 --steps-mask --mask-policy
 # enable cpu offload or vae tiling if your encounter an OOM error
 python3 generate.py generate qwen_image --cache --cpu-offload
 python3 generate.py generate qwen_image --cache --cpu-offload --vae-tiling
+# use `--summary` option to show the cache acceleration stats
+python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
 ```
 
 ## 📚 Multi-GPU Inference 
