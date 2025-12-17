@@ -28,7 +28,7 @@ def get_example_args():
         nargs="?",
         default=None,
         choices=[None] + CacheDiTExampleRegister.list_examples(),
-        help="Names of the examples to run. If not specified, run all examples.",
+        help="Names of the examples to run. If not specified, skip running example.",
     )
     args = parser.parse_args()
     return maybe_postprocess_args(args)
