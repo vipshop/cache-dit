@@ -242,21 +242,25 @@ def get_args(
     )
     parser.add_argument(
         "--steps-mask",
-        "--scm",
         action="store_true",
         default=False,
         help="Enable steps mask for CacheDiT",
     )
     parser.add_argument(
         "--mask-policy",
+        "--scm",
         type=str,
         default=None,
         choices=[
             None,
             "slow",
+            "s",
             "medium",
+            "m",
             "fast",
+            "f",
             "ultra",
+            "u",
         ],
         help="Pre-defined steps computation mask policy",
     )
@@ -444,10 +448,10 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
 
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
-    # Handle alias for quantize_type
     if args.quantize_type is not None:
         # Force enable quantization if quantize_type is specified
         args.quantize = True
+    # Handle alias for quantize_type
     if args.quantize and args.quantize_type is None:
         args.quantize_type = "float8_weight_only"
     if args.quantize_type == "float8_wo":  # alias
@@ -458,6 +462,19 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.quantize_type = "int4_weight_only"
     if args.quantize_type == "bnb_4bit":  # alias
         args.quantize_type = "bitsandbytes_4bit"
+
+    if args.mask_policy is not None and not args.steps_mask:
+        # Enable steps mask if mask_policy is specified
+        args.steps_mask = True
+    # Handle alias for mask_policy
+    if args.mask_policy == "s":  # alias
+        args.mask_policy = "slow"
+    if args.mask_policy == "m":  # alias
+        args.mask_policy = "medium"
+    if args.mask_policy == "f":  # alias
+        args.mask_policy = "fast"
+    if args.mask_policy == "u":  # alias
+        args.mask_policy = "ultra"
     return args
 
 

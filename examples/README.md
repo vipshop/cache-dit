@@ -61,12 +61,12 @@ python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile
 
 ```bash
 # DBCache + SCM + Taylorseer
-python3 generate.py generate flux --cache --scm --mask-policy fast --taylorsees --taylorseer-order 1
-# DBCache + SCM + Taylorseer + context parallelism + compile + quantization + FP8 All2All comm + CUDNN Attention
-torchrun --nproc_per_node=4 generate.py generate flux \
-         --parallel ulysses --ulysses-float8 --attn _sdpa_cudnn \
-         --cache --scm --mask-policy fast --taylorsees --taylorseer-order 1 \
-         --compile --quantize-type float8 --warmup 2 --repeat 5
+python3 generate.py generate flux --cache --scm fast --taylorsees --taylorseer-order 1
+# DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
+# + FP8 quantization + FP8 All2All comm + CUDNN Attention (or SageAttention, --attn sage)
+torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulysses-float8 \
+         --attn _sdpa_cudnn --parallel-text-encoder --cache --scm fast --taylorseer \
+         --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 ```
 
 ## 📚 More Usage for Examples
@@ -124,8 +124,8 @@ options:
   --taylorseer          Enable TaylorSeer for CacheDiT
   --taylorseer-order TAYLORSEER_ORDER, -order TAYLORSEER_ORDER
                         TaylorSeer order
-  --steps-mask, --scm   Enable steps mask for CacheDiT
-  --mask-policy {None,slow,medium,fast,ultra}
+  --steps-mask  Enable steps mask for CacheDiT
+  --mask-policy --scm {None,slow,medium,fast,ultra}
                         Pre-defined steps computation mask policy
   --quantize, --q       Enable quantization for transformer
   --quantize-text-encoder, --q-text
