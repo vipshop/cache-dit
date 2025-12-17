@@ -48,7 +48,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             bnb_4bit_components=["text_encoder_2"],
         ),
         input_data=ExampleInputData(
-            prompt="A scenic view of mountains during sunrise",
+            prompt="A cat holding a sign that says hello world",
             height=1024,
             width=1024,
             num_inference_steps=28,
@@ -98,6 +98,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             f"Unsupported quantization type: {args.quantize_type}, only supported"
             "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
         )
+
     return CacheDiTExample(
         args=args,
         init_config=ExampleInitConfig(
@@ -128,7 +129,13 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             },
         ),
         input_data=ExampleInputData(
-            prompt="A futuristic cityscape at dusk with flying cars",
+            prompt=(
+                "Realistic macro photograph of a hermit crab using a soda can as its shell, "
+                "partially emerging from the can, captured with sharp detail and natural colors, "
+                "on a sunlit beach with soft shadows and a shallow depth of field, with blurred ocean "
+                "waves in the background. The can has the text `BFL Diffusers` on it and it has a color "
+                "gradient that start with #FF5733 at the top and transitions to #33FF57 at the bottom."
+            ),
             height=1024,
             width=1024,
             num_inference_steps=28,
