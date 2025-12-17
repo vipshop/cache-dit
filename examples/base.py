@@ -157,7 +157,7 @@ class ExampleOutputData:
             except Exception:
                 HxW_str = None
             if HxW_str is not None:
-                return f"{self.model_tag}.{self.strify_tag}.{HxW_str}.png"
+                return f"{self.model_tag}.{HxW_str}.{self.strify_tag}.png"
             else:
                 return f"{self.model_tag}.{self.strify_tag}.png"
         elif self.video is not None:
@@ -168,23 +168,24 @@ class ExampleOutputData:
             except Exception:
                 HxW_str = None
             if HxW_str is not None:
-                return f"{self.model_tag}.{self.strify_tag}.{HxW_str}.mp4"
+                return f"{self.model_tag}.{HxW_str}.{self.strify_tag}.mp4"
             else:
                 return f"{self.model_tag}.{self.strify_tag}.mp4"
         else:
             return None
 
     def summary(self) -> str:
-        summary_str = f"Model: {self.model_tag}, Strify: {self.strify_tag}, "
+        logger.info("Example Output Summary:")
+        summary_str = f"Model: {self.model_tag}\nOptimization: {self.strify_tag}\n"
         if self.load_time is not None:
-            summary_str += f"Load Time: {self.load_time:.2f}s, "
+            summary_str += f"Load Time: {self.load_time:.2f}s\n"
         if self.warmup_time is not None:
-            summary_str += f"Warmup Mean Time: {self.warmup_time:.2f}s, "
+            summary_str += f"Warmup Mean Time: {self.warmup_time:.2f}s\n"
         if self.inference_time is not None:
-            summary_str += f"Inference Mean Time: {self.inference_time:.2f}s, "
+            summary_str += f"Inference Mean Time: {self.inference_time:.2f}s\n"
         if self.memory_usage is not None:
-            summary_str += f"Memory Usage: {self.memory_usage:.2f}GiB, "
-        summary_str = summary_str.rstrip(", ")
+            summary_str += f"Memory Usage: {self.memory_usage:.2f}GiB\n"
+        summary_str = summary_str.rstrip("\n")
         logger.info(summary_str)
         return summary_str
 
