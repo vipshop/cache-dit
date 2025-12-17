@@ -68,6 +68,7 @@ def get_args(
     parse: bool = True,
 ) -> argparse.ArgumentParser | argparse.Namespace:
     parser = argparse.ArgumentParser()
+    # Model and data paths
     parser.add_argument(
         "--model-path",
         type=str,
@@ -86,6 +87,7 @@ def get_args(
         default=None,
         help="Override mask image path if provided",
     )
+    # Sampling settings
     parser.add_argument(
         "--prompt",
         type=str,
@@ -97,49 +99,6 @@ def get_args(
         type=str,
         default=None,
         help="Override default negative prompt if provided",
-    )
-    parser.add_argument(
-        "--cache",
-        action="store_true",
-        default=False,
-        help="Enable Cache Acceleration",
-    )
-    parser.add_argument(
-        "--cache-summary",
-        "--summary",
-        action="store_true",
-        default=False,
-        help="Enable Cache Summary logging",
-    )
-    parser.add_argument(
-        "--compile",
-        action="store_true",
-        default=False,
-        help="Enable compile for transformer",
-    )
-    parser.add_argument(
-        "--compile-repeated-blocks",
-        action="store_true",
-        default=False,
-        help="Enable compile for repeated blocks in transformer",
-    )
-    parser.add_argument(
-        "--compile-vae",
-        action="store_true",
-        default=False,
-        help="Enable compile for VAE",
-    )
-    parser.add_argument(
-        "--compile-text-encoder",
-        action="store_true",
-        default=False,
-        help="Enable compile for text encoder",
-    )
-    parser.add_argument(
-        "--max-autotune",
-        action="store_true",
-        default=False,
-        help="Enable max-autotune mode for torch.compile",
     )
     parser.add_argument(
         "--num_inference_steps",
@@ -184,6 +143,20 @@ def get_args(
         type=int,
         default=None,
         help="Number of frames to generate for video",
+    )
+    # Cache specific settings
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        default=False,
+        help="Enable Cache Acceleration",
+    )
+    parser.add_argument(
+        "--cache-summary",
+        "--summary",
+        action="store_true",
+        default=False,
+        help="Enable Cache Summary logging",
     )
     parser.add_argument(
         "--Fn-compute-blocks",
@@ -271,6 +244,7 @@ def get_args(
         ],
         help="Pre-defined steps computation mask policy",
     )
+    # Quantization settings
     parser.add_argument(
         "--quantize",
         "--q",
@@ -306,6 +280,7 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    # Parallelism settings
     parser.add_argument(
         "--parallel-type",
         "--parallel",
@@ -348,14 +323,6 @@ def get_args(
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
-    # New arguments for customization
-
-    parser.add_argument(
-        "--track-memory",
-        action="store_true",
-        default=False,
-        help="Track and report peak GPU memory usage",
-    )
     parser.add_argument(
         "--ulysses-anything",
         "--uaa",
@@ -383,6 +350,65 @@ def get_args(
         action="store_true",
         default=False,
         help="Disable compute-communication overlap during compilation",
+    )
+    # Offload settings
+    parser.add_argument(
+        "--cpu-offload",
+        "--cpu-offload-model",
+        action="store_true",
+        default=False,
+        help="Enable CPU offload for model if applicable.",
+    )
+    parser.add_argument(
+        "--sequential-cpu-offload",
+        action="store_true",
+        default=False,
+        help="Enable sequential GPU offload for model if applicable.",
+    )
+    # Vae tiling settings
+    parser.add_argument(
+        "--vae-tiling",
+        action="store_true",
+        default=False,
+        help="Enable VAE tiling for low memory device.",
+    )
+    # Compiling settings
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default=False,
+        help="Enable compile for transformer",
+    )
+    parser.add_argument(
+        "--compile-repeated-blocks",
+        action="store_true",
+        default=False,
+        help="Enable compile for repeated blocks in transformer",
+    )
+    parser.add_argument(
+        "--compile-vae",
+        action="store_true",
+        default=False,
+        help="Enable compile for VAE",
+    )
+    parser.add_argument(
+        "--compile-text-encoder",
+        action="store_true",
+        default=False,
+        help="Enable compile for text encoder",
+    )
+    parser.add_argument(
+        "--max-autotune",
+        action="store_true",
+        default=False,
+        help="Enable max-autotune mode for torch.compile",
+    )
+    # Profiling and memory tracking settings
+    parser.add_argument(
+        "--track-memory",
+        action="store_true",
+        default=False,
+        help="Track and report peak GPU memory usage",
     )
     parser.add_argument(
         "--profile",
@@ -422,28 +448,7 @@ def get_args(
         default=True,
         help="profile record shapes for better analysis",
     )
-    # CPU offload
-    parser.add_argument(
-        "--cpu-offload",
-        "--cpu-offload-model",
-        action="store_true",
-        default=False,
-        help="Enable CPU offload for model if applicable.",
-    )
-    # sequential CPU offload
-    parser.add_argument(
-        "--sequential-cpu-offload",
-        action="store_true",
-        default=False,
-        help="Enable sequential GPU offload for model if applicable.",
-    )
-    # vae tiling
-    parser.add_argument(
-        "--vae-tiling",
-        action="store_true",
-        default=False,
-        help="Enable VAE tiling for low memory device.",
-    )
+
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
         return maybe_postprocess_args(args_or_parser)
