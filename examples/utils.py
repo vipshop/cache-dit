@@ -190,7 +190,7 @@ def get_args(
         "--max-warmup-steps",
         "--ws",
         type=int,
-        default=4,
+        default=8,
         help="Maximum warmup steps for CacheDiT",
     )
     parser.add_argument(
