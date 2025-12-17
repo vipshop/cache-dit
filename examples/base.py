@@ -449,7 +449,6 @@ class CacheDiTExample:
         self.output_data = output_data
 
         if self.rank == 0:
-            self.init_config.summary(self.args)
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
