@@ -11,7 +11,7 @@ from diffusers.utils import export_to_video
 from diffusers.schedulers import SchedulerMixin
 from diffusers import DiffusionPipeline, ModelMixin
 from transformers import GenerationMixin
-from diffusers.loaders import LoraBaseMixin
+from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.quantizers import PipelineQuantizationConfig
 from cache_dit.logger import init_logger
 import cache_dit
@@ -436,6 +436,7 @@ class CacheDiTExample:
         self.output_data = output_data
 
         if self.rank == 0:
+            self.init_config.summary(self.args)
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
