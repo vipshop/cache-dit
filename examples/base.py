@@ -106,6 +106,16 @@ class ExampleInputData:
             input_data["generator"] = torch.Generator("cpu").manual_seed(args.seed)
         return input_data
 
+    def new_generator(self, seed: int = None) -> torch.Generator:
+        # NOTE: We should always create a new generator before each inference to
+        # ensure reproducibility when using the same seed.
+        if seed is not None:
+            return torch.Generator("cpu").manual_seed(seed)
+        elif self.seed is not None:
+            return torch.Generator("cpu").manual_seed(self.seed)
+        else:
+            return torch.Generator("cpu").manual_seed(0)
+
     def _preprocess(self):
         if self.image is not None:
             if isinstance(self.image, list) and len(self.image) == 1:
@@ -340,6 +350,7 @@ class CacheDiTExample:
         # warm up
         start_time
         for _ in range(self.args.warmup):
+            input_kwargs = self.new_generator(input_kwargs, self.args)
             _ = pipe(**input_kwargs)
         warmup_time = (time.time() - start_time) / self.args.warmup
 
@@ -350,6 +361,7 @@ class CacheDiTExample:
             profiler = create_profiler_from_args(self.args, profile_name=f"{model_tag}_profile")
             with profiler:
                 for _ in range(self.args.repeat):
+                    input_kwargs = self.new_generator(input_kwargs, self.args)
                     output = pipe(**input_kwargs)
             if self.rank == 0:
                 logger.info(
@@ -357,6 +369,7 @@ class CacheDiTExample:
                 )
         else:
             for _ in range(self.args.repeat):
+                input_kwargs = self.new_generator(input_kwargs, self.args)
                 output = pipe(**input_kwargs)
         inference_time = (time.time() - start_time) / self.args.repeat
 
@@ -395,6 +408,14 @@ class CacheDiTExample:
             self.output_data.save(self.args)
 
         maybe_destroy_distributed()
+
+    def new_generator(
+        self, input_kwargs: Dict[str, Any], args: argparse.Namespace
+    ) -> torch.Generator:
+        # NOTE: We should always create a new generator before each inference to
+        # ensure reproducibility when using the same seed.
+        input_kwargs["generator"] = self.input_data.new_generator(seed=args.seed)
+        return input_kwargs
 
 
 class CacheDiTExampleRegister:
