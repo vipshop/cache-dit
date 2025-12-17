@@ -7,6 +7,7 @@ from PIL import Image
 from io import BytesIO
 import cache_dit
 from cache_dit import DBCacheConfig, ParamsModifier
+from cache_dit.logger import init_logger
 
 from base import (
     CacheDiTExampleRegister,
@@ -16,6 +17,8 @@ from base import (
     ExampleType,
 )
 from utils import GiB
+
+logger = init_logger(__name__)
 
 
 def default_path(ENV: str, default: str) -> str:
@@ -326,6 +329,10 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
         pipe.scheduler = UniPCMultistepScheduler.from_config(
             pipe.scheduler.config, flow_shift=flow_shift
+        )
+        logger.info(
+            f"Set UniPCMultistepScheduler with flow_shift={flow_shift} "
+            f"for {pipe.__class__.__name__}."
         )
 
     return CacheDiTExample(
