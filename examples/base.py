@@ -1,6 +1,6 @@
 import os
 import time
-
+import types
 import torch
 import argparse
 import dataclasses
@@ -325,15 +325,22 @@ class ExampleInitConfig:
 
     def _custom_components_kwargs(self) -> Dict[str, Any]:
         custom_components_kwargs = {}
+
+        # check if components are functions or instances
+        def _is_function(component):
+            func_types = (types.FunctionType, types.BuiltinFunctionType)
+            module_types = (SchedulerMixin, ModelMixin, GenerationMixin, torch.nn.Module)
+            return isinstance(component, func_types) and not isinstance(component, module_types)
+
         custom_components_kwargs["scheduler"] = (
-            self.scheduler if not callable(self.scheduler) else self.scheduler()
+            self.scheduler if not _is_function(self.scheduler) else self.scheduler()
         )
         custom_components_kwargs["transformer"] = (
-            self.transformer if not callable(self.transformer) else self.transformer()
+            self.transformer if not _is_function(self.transformer) else self.transformer()
         )
-        custom_components_kwargs["vae"] = self.vae if not callable(self.vae) else self.vae()
+        custom_components_kwargs["vae"] = self.vae if not _is_function(self.vae) else self.vae()
         custom_components_kwargs["text_encoder"] = (
-            self.text_encoder if not callable(self.text_encoder) else self.text_encoder()
+            self.text_encoder if not _is_function(self.text_encoder) else self.text_encoder()
         )
         # Remove None components
         custom_components_kwargs = {
