@@ -739,6 +739,14 @@ def maybe_quantize_transformer(
         else:
             pipe = pipe_or_adapter
 
+        _class_not_supported_per_row = [
+            "QwenImageTransformer2DModel",
+        ]
+
+        def is_per_row_supported(transformer):
+            transformer_cls_name = transformer.__class__.__name__
+            return transformer_cls_name not in _class_not_supported_per_row
+
         if hasattr(pipe, "transformer"):
             transformer = getattr(pipe, "transformer", None)
             if transformer is not None:
@@ -751,6 +759,7 @@ def maybe_quantize_transformer(
                     transformer = cache_dit.quantize(
                         transformer,
                         quant_type=args.quantize_type,
+                        per_row=is_per_row_supported(transformer),
                     )
                     setattr(pipe, "transformer", transformer)
                 else:
@@ -774,6 +783,7 @@ def maybe_quantize_transformer(
                     transformer_2 = cache_dit.quantize(
                         transformer_2,
                         quant_type=args.quantize_type,
+                        per_row=is_per_row_supported(transformer_2),
                     )
                     setattr(pipe, "transformer_2", transformer_2)
                 else:
@@ -833,6 +843,11 @@ def pipe_quant_bnb_4bit_config(
         return None
 
     if components_to_quantize:
+        # Remove all components if quantize type is not bitsandbytes_4bit
+        if args.quantize_type != "bitsandbytes_4bit":
+            components_to_quantize = []
+
+        # Remove text encoder if parallel_text_encoder is enabled
         if args.parallel_text_encoder:
             if "text_encoder" in components_to_quantize:
                 components_to_quantize.remove("text_encoder")

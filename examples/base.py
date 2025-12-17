@@ -255,6 +255,8 @@ class ExampleInitConfig:
     text_encoder: Optional[Union[GenerationMixin, Callable]] = None
     lora_weights_path: Optional[str] = None
     lora_weights_name: Optional[str] = None
+    # For parallelism compatibility, tensor parallelism requires fused LoRA
+    force_fuse_lora: bool = True
     pre_init_hook: Optional[Callable[[Any], None]] = None  # For future use
     post_init_hook: Optional[Callable[[DiffusionPipeline], None]] = None
     # For DBCache, Parallelism optimization.
@@ -276,6 +278,8 @@ class ExampleInitConfig:
         )
         if self.post_init_hook is not None:
             self.post_init_hook(pipe, **kwargs)
+
+        # Load lora and fuse if needed
         if self.has_lora:
             assert issubclass(
                 type(pipe), LoraBaseMixin
@@ -291,9 +295,11 @@ class ExampleInitConfig:
             if (
                 pipeline_quantization_config is None
                 or "transformer" not in pipeline_quantization_config.components_to_quantize
+                or self.force_fuse_lora
             ):
                 pipe.fuse_lora()
                 pipe.unload_lora_weights()
+                logger.info("Fused and unloaded LoRA weights into the transformer.")
             else:
                 logger.warning("Keep LoRA weights in memory since transformer is quantized.")
 

@@ -231,6 +231,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             bnb_4bit_components=["text_encoder", "transformer"],
             lora_weights_path=lora_weights_path,
             lora_weights_name=lora_weight_name,
+            force_fuse_lora=True,  # For parallelism compatibility
             extra_optimize_kwargs={
                 "cache_config": (
                     DBCacheConfig(
