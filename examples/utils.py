@@ -46,7 +46,7 @@ class MemoryTracker:
         """Print memory usage report."""
         if self.enabled:
             peak_gb = self.get_peak_memory_gb()
-            logger.info(f"Peak GPU memory usage: {peak_gb:.2f} GB")
+            logger.debug(f"Peak GPU memory usage: {peak_gb:.2f} GB")
             return peak_gb
         return 0
 
