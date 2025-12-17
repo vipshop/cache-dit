@@ -232,9 +232,9 @@ class ExampleOutputData:
         if self.load_time is not None:
             summary_str += f"- Load Time: {self.load_time:.2f}s\n"
         if self.warmup_time is not None:
-            summary_str += f"- Warmup Mean Time: {self.warmup_time:.2f}s\n"
+            summary_str += f"- Warmup Time: {self.warmup_time:.2f}s\n"
         if self.inference_time is not None:
-            summary_str += f"- Inference Mean Time: {self.inference_time:.2f}s\n"
+            summary_str += f"- Inference Time: {self.inference_time:.2f}s\n"
         if self.memory_usage is not None:
             summary_str += f"- Memory Usage: {self.memory_usage:.2f}GiB\n"
         summary_str = summary_str.rstrip("\n")
