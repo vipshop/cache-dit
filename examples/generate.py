@@ -1,7 +1,7 @@
 from cache_dit.logger import init_logger
 
 # Make all example are registered
-from utils import get_args, maybe_postprocess_args
+from utils import get_base_args, maybe_postprocess_args
 from registers import CacheDiTExampleRegister  # noqa: F403, F401
 from helpers import activate_all_examples
 
@@ -9,7 +9,7 @@ activate_all_examples()
 
 
 def get_example_args():
-    parser = get_args(parse=False)
+    parser = get_base_args(parse=False)
     parser.add_argument(
         "example",
         type=str,

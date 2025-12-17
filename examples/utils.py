@@ -252,6 +252,10 @@ def get_args(
     return args_or_parser
 
 
+def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentParser:
+    return get_args(parse=parse)  # For future extension if needed
+
+
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     # Handle alias for quantize_type
     if args.quantize_type is not None:
