@@ -81,7 +81,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 ```
 
 > [!Tip] 
-> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✔️: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **TE**: Text Encoder Parallelism. **[C*](./)**: Hybrid Cache Acceleration.
+> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✔️: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **[TE](./)**: Text Encoder Parallelism; **💡[C*](./)**: **Hybrid Cache** Acceleration.
 
 <div align="center">
 
