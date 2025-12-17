@@ -59,6 +59,7 @@ class ExampleInputData:
     extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def data(self, args: argparse.Namespace) -> Dict[str, Any]:
+        self._preprocess()
         data = dataclasses.asdict(self)
         # Flatten extra_args and merge into main dict
         extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
@@ -115,6 +116,30 @@ class ExampleInputData:
                 # unwrap single mask image from list for general use cases
                 self.mask_image = self.mask_image[0]
 
+    def summary(self, args: argparse.Namespace) -> str:
+        summary_str = "Example Input Summary:\n"
+        data = self.data(args)
+        for k, v in data.items():
+            if k in ["prompt", "negative_prompt"]:
+                summary_str += f"- {k}: {v}\n"
+            elif k in ["height", "width", "num_inference_steps", "num_frames"]:
+                summary_str += f"- {k}: {v}\n"
+            elif k in ["image", "mask_image"]:
+                if isinstance(v, Image.Image):
+                    W, H = v.size
+                    summary_str += f"- {k}: Single Image ({H}x{W})\n"
+                elif isinstance(v, list):
+                    if len(v) > 0:
+                        W, H = v[0].size
+                        summary_str += f"- {k}: List of {len(v)} Images ({H}x{W})\n"
+                    else:
+                        summary_str += f"- {k}: Empty List\n"
+            else:
+                summary_str += f"- {k}: {v}\n"
+        summary_str = summary_str.rstrip("\n")
+        logger.info(summary_str)
+        return summary_str
+
 
 @dataclasses.dataclass
 class ExampleOutputData:
@@ -132,10 +157,9 @@ class ExampleOutputData:
     # Other outputs
     extra_output_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
-    def save(self, save_path: Optional[str] = None):
+    def save(self, args: argparse.Namespace) -> None:
         # TODO: Handle other extra outputs as needed
-        self.summary()
-
+        save_path = args.save_path
         if save_path is None:
             save_path = self._default_save_path()
             if save_path is None:
@@ -175,9 +199,9 @@ class ExampleOutputData:
         else:
             return None
 
-    def summary(self) -> str:
+    def summary(self, args: argparse.Namespace) -> str:
         logger.info("Example Output Summary:")
-        summary_str = f"Model: {self.model_tag}\nOptimization: {self.strify_tag}\n"
+        summary_str = f"Model: {args.example}\nOptimization: {self.strify_tag}\n"
         if self.load_time is not None:
             summary_str += f"Load Time: {self.load_time:.2f}s\n"
         if self.warmup_time is not None:
@@ -366,7 +390,9 @@ class CacheDiTExample:
         self.output_data = output_data
 
         if self.rank == 0:
-            self.output_data.save()
+            self.input_data.summary(self.args)
+            self.output_data.summary(self.args)
+            self.output_data.save(self.args)
 
         maybe_destroy_distributed()
 

@@ -144,6 +144,13 @@ def get_args(
         default=None,
         help="Number of frames to generate for video",
     )
+    # Output settings
+    parser.add_argument(
+        "--save-path",
+        type=str,
+        default=None,
+        help="Path to save the generated output, e.g., output.png or output.mp4",
+    )
     # Cache specific settings
     parser.add_argument(
         "--cache",
