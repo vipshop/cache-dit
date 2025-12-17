@@ -87,10 +87,10 @@ torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulyss
 torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulysses-float8 \
          --attn sage --parallel-text-encoder --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
-# Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning
+# Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate qwen_image_edit_lightning \
          --parallel ulysses --ulysses-anything --parallel-text-encoder \
-         --quantize-type float8_weight_only --steps 4
+         --quantize-type float8_weight_only --steps 4 --track-memory
 ```
 
 ## 📚 End2End Example
