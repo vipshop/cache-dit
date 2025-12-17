@@ -364,6 +364,22 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
 def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     from diffusers import WanPipeline
 
+    params_modifiers = [
+        ParamsModifier(
+            # high-noise transformer only have 30% steps
+            cache_config=DBCacheConfig().reset(
+                max_warmup_steps=4,
+                max_cached_steps=8,
+            ),
+        ),
+        ParamsModifier(
+            cache_config=DBCacheConfig().reset(
+                max_warmup_steps=2,
+                max_cached_steps=20,
+            ),
+        ),
+    ]
+
     return CacheDiTExample(
         args=args,
         init_config=ExampleInitConfig(
@@ -372,21 +388,7 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             pipeline_class=WanPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             extra_optimize_kwargs={
-                "params_modifiers": [
-                    ParamsModifier(
-                        # high-noise transformer only have 30% steps
-                        cache_config=DBCacheConfig().reset(
-                            max_warmup_steps=4,
-                            max_cached_steps=8,
-                        ),
-                    ),
-                    ParamsModifier(
-                        cache_config=DBCacheConfig().reset(
-                            max_warmup_steps=2,
-                            max_cached_steps=20,
-                        ),
-                    ),
-                ]
+                "params_modifiers": params_modifiers,
             },
         ),
         input_data=ExampleInputData(
