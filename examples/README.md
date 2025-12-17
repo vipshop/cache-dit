@@ -242,4 +242,6 @@ options:
   --profile-with-stack  profile with stack for better traceability
   --profile-record-shapes
                         profile record shapes for better analysis
+  --disable-fuse-lora DISABLE_FUSE_LORA
+                        Disable fuse_lora even if lora weights are provided.
 ```
