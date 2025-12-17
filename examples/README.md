@@ -20,10 +20,13 @@ INFO 12-17 06:37:11 [generate.py:43] - zimage
 
 ```bash
 # baseline
+# use default model path, e.g, "black-forest-labs/FLUX.1-dev"
 python3 generate.py generate flux 
 python3 generate.py generate flux_nunchaku 
 python3 generate.py generate flux2
 python3 generate.py generate zimage 
+# load model from load path via `--model-path` option
+python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
 # w/ cache acceleration
 python3 generate.py generate flux --cache
 python3 generate.py generate flux --cache --taylorseer
@@ -52,6 +55,8 @@ torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --par
 # text encoder parallelism, enable it by add: `--parallel-text-encoder`
 torchrun --nproc_per_node=4 generate.py generate flux --parallel tp --parallel-text-encoder
 torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
+# Hint: aad `--local-ranks-filters=0` to torchrun -> only show logs on rank 0
+torchrun --nproc_per_node=4 --local-ranks-filters=0 generate.py generate flux --parallel ulysses 
 ```
 
 ## 📚 Low-bits Quantization 
