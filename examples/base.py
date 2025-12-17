@@ -163,7 +163,7 @@ class ExampleInitConfig:
     model_name_or_path: str
     pipeline_class: Optional[type[DiffusionPipeline]] = DiffusionPipeline
     torch_dtype: Optional[torch.dtype] = torch.bfloat16
-    bnb_4bit_components: Optional[List[str]] = ["text_encoder"]
+    bnb_4bit_components: Optional[List[str]] = dataclasses.field(default_factory=list)
     scheduler: Optional[Union[SchedulerMixin, Callable]] = None  # lora case
     transformer: Optional[Union[ModelMixin, Callable]] = None  # lora or nunchaku case
     vae: Optional[Union[ModelMixin, Callable]] = None
@@ -173,7 +173,11 @@ class ExampleInitConfig:
     pre_init_hook: Optional[Callable[[Any], None]] = None  # For future use
     post_init_hook: Optional[Callable[[DiffusionPipeline], None]] = None
     # For DBCache, Parallelism optimization.
-    extra_opt_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    extra_optimize_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self):
+        if not self.bnb_4bit_components:
+            self.bnb_4bit_components = ["text_encoder"]
 
     def get_pipe(self, args: argparse.Namespace, **kwargs) -> DiffusionPipeline:
         if self.pipeline_class is None:
@@ -212,6 +216,7 @@ class ExampleInitConfig:
             self.lora_weights_path is not None
             and os.path.exists(self.lora_weights_path)
             and self.lora_weights_name is not None
+            and os.path.exists(os.path.join(self.lora_weights_path, self.lora_weights_name))
         )
 
     def _pipeline_quantization_config(
@@ -251,7 +256,7 @@ class CacheDiTExample:
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
 
-        maybe_apply_optimization(self.args, pipe, **self.init_config.extra_opt_kwargs)
+        maybe_apply_optimization(self.args, pipe, **self.init_config.extra_optimize_kwargs)
 
         input_kwargs = self.input_data.data(self.args)
         pipe.set_progress_bar_config(disable=self.rank != 0)

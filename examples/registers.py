@@ -22,6 +22,11 @@ def default_path(ENV: str, default: str) -> str:
     return os.environ.get(ENV, default)
 
 
+def load_image(url: str) -> Image.Image:
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content))
+
+
 __all__ = [
     "flux_example",
     "flux_nunchaku_example",
@@ -98,7 +103,24 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             f"Unsupported quantization type: {args.quantize_type}, only supported"
             "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
         )
-
+    params_modifiers = [
+        ParamsModifier(
+            # Modified config only for transformer_blocks
+            # Must call the `reset` method of DBCacheConfig.
+            cache_config=DBCacheConfig().reset(
+                residual_diff_threshold=args.rdt,
+            ),
+        ),
+        ParamsModifier(
+            # Modified config only for single_transformer_blocks
+            # NOTE: FLUX.2, single_transformer_blocks should have `higher`
+            # residual_diff_threshold because of the precision error
+            # accumulation from previous transformer_blocks
+            cache_config=DBCacheConfig().reset(
+                residual_diff_threshold=args.rdt * 3,
+            ),
+        ),
+    ]
     return CacheDiTExample(
         args=args,
         init_config=ExampleInitConfig(
@@ -107,25 +129,8 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             pipeline_class=Flux2Pipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             # Extra init args for DBCacheConfig, ParamsModifier, etc.
-            extra_opt_kwargs={
-                "params_modifiers": [
-                    ParamsModifier(
-                        # Modified config only for transformer_blocks
-                        # Must call the `reset` method of DBCacheConfig.
-                        cache_config=DBCacheConfig().reset(
-                            residual_diff_threshold=args.rdt,
-                        ),
-                    ),
-                    ParamsModifier(
-                        # Modified config only for single_transformer_blocks
-                        # NOTE: FLUX.2, single_transformer_blocks should have `higher`
-                        # residual_diff_threshold because of the precision error
-                        # accumulation from previous transformer_blocks
-                        cache_config=DBCacheConfig().reset(
-                            residual_diff_threshold=args.rdt * 3,
-                        ),
-                    ),
-                ]
+            extra_optimize_kwargs={
+                "params_modifiers": params_modifiers,
             },
         ),
         input_data=ExampleInputData(
@@ -160,7 +165,15 @@ def ovis_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             bnb_4bit_components=["text_encoder", "transformer"],
         ),
         input_data=ExampleInputData(
-            prompt='A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, expressive handwritten brush style using thick, wet oil paint. The paint is a mix of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste or impasto art. You can see the ridges of the brush bristles and the glossy, wet texture of the paint. The background is a clean artist\'s canvas. Dynamic lighting creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile texture, 4k detail.',
+            prompt=(
+                'A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, '
+                "expressive handwritten brush style using thick, wet oil paint. The paint is a mix "
+                "of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste "
+                "or impasto art. You can see the ridges of the brush bristles and the glossy, wet "
+                "texture of the paint. The background is a clean artist's canvas. Dynamic lighting "
+                "creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile "
+                "texture, 4k detail."
+            ),
             height=1024,
             width=1024,
             num_inference_steps=25,
@@ -203,6 +216,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
         if steps > 4
         else "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors"
     )
+    base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
 
     return CacheDiTExample(
         args=args,
@@ -217,7 +231,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             bnb_4bit_components=["text_encoder", "transformer"],
             lora_weights_path=lora_weights_path,
             lora_weights_name=lora_weight_name,
-            extra_opt_kwargs={
+            extra_optimize_kwargs={
                 "cache_config": (
                     DBCacheConfig(
                         Fn_compute_blocks=16,
@@ -234,7 +248,10 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             },
         ),
         input_data=ExampleInputData(
-            prompt="The magician bear is on the left, the alchemist bear is on the right, facing each other in the central park square.",
+            prompt=(
+                "The magician bear is on the left, the alchemist bear is on the right, "
+                "facing each other in the central park square."
+            ),
             negative_prompt=" ",
             height=1024,
             width=1024,
@@ -242,22 +259,9 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             true_cfg_scale=1.0,  # means no separate cfg for lightning models
             extra_input_kwargs={
                 "image": [
-                    # image1
-                    Image.open(
-                        BytesIO(
-                            requests.get(
-                                "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/edit2509/edit2509_1.jpg"
-                            ).content
-                        )
-                    ),
-                    # image2
-                    Image.open(
-                        BytesIO(
-                            requests.get(
-                                "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/edit2509/edit2509_2.jpg"
-                            ).content
-                        )
-                    ),
+                    # image1, image2
+                    load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
+                    load_image(f"{base_image_url}/edit2509/edit2509_2.jpg"),
                 ],
             },
         ),
@@ -272,7 +276,14 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
         "zh": ", 超清，4K，电影级构图.",  # for chinese prompt
     }
-    prompt = """A coffee shop entrance features a chalkboard sign reading "Qwen Coffee 😊 $2 per cup," with a neon light beside it displaying "通义千问". Next to it hangs a poster showing a beautiful Chinese woman, and beneath the poster is written "π≈3.1415926-53589793-23846264-33832795-02384197". Ultra HD, 4K, cinematic composition"""
+    prompt = (
+        "A coffee shop entrance features a chalkboard sign reading "
+        '"Qwen Coffee 😊 $2 per cup," with a neon light beside it '
+        'displaying "通义千问". Next to it hangs a poster showing a '
+        "beautiful Chinese woman, and beneath the poster is written "
+        '"π≈3.1415926-53589793-23846264-33832795-02384197". '
+        "Ultra HD, 4K, cinematic composition"
+    )
     return CacheDiTExample(
         args=args,
         init_config=ExampleInitConfig(
@@ -326,7 +337,12 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             bnb_4bit_components=["text_encoder", "transformer"],
         ),
         input_data=ExampleInputData(
-            prompt="A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window.",
+            prompt=(
+                "A cat and a dog baking a cake together in a kitchen. The cat is "
+                "carefully measuring flour, while the dog is stirring the batter "
+                "with a wooden spoon. The kitchen is cozy, with sunlight streaming "
+                "through the window."
+            ),
             height=720,
             width=1280,
             num_frames=21,
@@ -346,7 +362,7 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             model_name_or_path=default_path("WAN_2_2_DIR", "Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
             pipeline_class=WanPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
-            extra_opt_kwargs={
+            extra_optimize_kwargs={
                 "params_modifiers": [
                     ParamsModifier(
                         # high-noise transformer only have 30% steps
@@ -366,7 +382,14 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         ),
         input_data=ExampleInputData(
             prompt="A cat walks on the grass, realistic",
-            negative_prompt="Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards",
+            negative_prompt=(
+                "Bright tones, overexposed, static, blurred details, subtitles, "
+                "style, works, paintings, images, static, overall gray, worst quality, "
+                "low quality, JPEG compression residue, ugly, incomplete, extra fingers, "
+                "poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen "
+                "limbs, fused fingers, still picture, messy background, three legs, many "
+                "people in the background, walking backwards"
+            ),
             height=480,
             width=832,
             num_frames=49,
@@ -407,12 +430,19 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             model_name_or_path=default_path("ZIMAGE_DIR", "Tongyi-MAI/Z-Image-Turbo"),
             pipeline_class=ZImagePipeline,
             bnb_4bit_components=["text_encoder"],
-            extra_opt_kwargs={
+            extra_optimize_kwargs={
                 "steps_computation_mask": steps_computation_mask,
             },
         ),
         input_data=ExampleInputData(
-            prompt="A futuristic cityscape at dusk with flying cars",
+            prompt=(
+                "Young Chinese woman in red Hanfu, intricate embroidery. Impeccable makeup, "
+                "red floral forehead pattern. Elaborate high bun, golden phoenix headdress, "
+                "red flowers, beads. Holds round folding fan with lady, trees, bird. Neon "
+                "lightning-bolt lamp (⚡️), bright yellow glow, above extended left palm. "
+                "Soft-lit outdoor night background, silhouetted tiered pagoda (西安大雁塔), "
+                "blurred colorful distant lights."
+            ),
             height=1024,
             width=1024,
             guidance_scale=0.0,  # Guidance should be 0 for the Turbo models
