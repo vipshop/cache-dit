@@ -45,6 +45,10 @@ class ExampleInputData:
     guidance_scale: Optional[float] = None
     true_cfg_scale: Optional[float] = None
     num_inference_steps: Optional[int] = None
+    num_images_per_prompt: Optional[int] = None
+    # Specific inputs for image editing
+    image: Optional[Union[List[Image.Image], Image.Image]] = None
+    mask_image: Optional[Union[List[Image.Image], Image.Image]] = None
     # Specific inputs for video generation
     num_frames: Optional[int] = None
     # Other inputs
@@ -71,16 +75,44 @@ class ExampleInputData:
             input_data["height"] = args.height
         if args.width is not None:
             input_data["width"] = args.width
-        if args.steps is not None:
-            input_data["num_inference_steps"] = args.steps
+        if args.num_inference_steps is not None:
+            input_data["num_inference_steps"] = args.num_inference_steps
         if args.num_frames is not None:
             input_data["num_frames"] = args.num_frames
+        if args.image_path is not None:
+            if "image" in input_data:
+                if isinstance(input_data["image"], list):
+                    if len(input_data["image"]) > 1:
+                        logger.warning(
+                            "Overriding multiple input images with a single image "
+                            "from args.image_path."
+                        )
+            input_data["image"] = Image.open(args.image_path).convert("RGB")
+        if args.mask_image_path is not None:
+            if "mask_image" in input_data:
+                if isinstance(input_data["mask_image"], list):
+                    if len(input_data["mask_image"]) > 1:
+                        logger.warning(
+                            "Overriding multiple input mask images with a single mask "
+                            "image from args.mask_image_path."
+                        )
+            input_data["mask_image"] = Image.open(args.mask_image_path).convert("RGB")
         if self.seed is not None:
             input_data["generator"] = torch.Generator("cpu").manual_seed(self.seed)
         # Maybe override generator with args.seed
         if args.seed is not None:
             input_data["generator"] = torch.Generator("cpu").manual_seed(args.seed)
         return input_data
+
+    def _preprocess(self):
+        if self.image is not None:
+            if isinstance(self.image, list) and len(self.image) == 1:
+                # unwrap single image from list for general use cases
+                self.image = self.image[0]
+        if self.mask_image is not None:
+            if isinstance(self.mask_image, list) and len(self.mask_image) == 1:
+                # unwrap single mask image from list for general use cases
+                self.mask_image = self.mask_image[0]
 
 
 @dataclasses.dataclass
@@ -147,9 +179,9 @@ class ExampleOutputData:
         if self.load_time is not None:
             summary_str += f"Load Time: {self.load_time:.2f}s, "
         if self.warmup_time is not None:
-            summary_str += f"Warmup Time: {self.warmup_time:.2f}s, "
+            summary_str += f"Warmup Mean Time: {self.warmup_time:.2f}s, "
         if self.inference_time is not None:
-            summary_str += f"Inference Time: {self.inference_time:.2f}s, "
+            summary_str += f"Inference Mean Time: {self.inference_time:.2f}s, "
         if self.memory_usage is not None:
             summary_str += f"Memory Usage: {self.memory_usage:.2f}GiB, "
         summary_str = summary_str.rstrip(", ")

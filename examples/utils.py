@@ -81,6 +81,24 @@ def get_args(
         help="Override image path if provided",
     )
     parser.add_argument(
+        "--mask-image-path",
+        type=str,
+        default=None,
+        help="Override mask image path if provided",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Override default prompt if provided",
+    )
+    parser.add_argument(
+        "--negative-prompt",
+        type=str,
+        default=None,
+        help="Override default negative prompt if provided",
+    )
+    parser.add_argument(
         "--cache",
         action="store_true",
         default=False,
@@ -117,6 +135,7 @@ def get_args(
         help="Enable max-autotune mode for torch.compile",
     )
     parser.add_argument(
+        "--num_inference_steps",
         "--steps",
         type=int,
         default=None,
@@ -136,14 +155,12 @@ def get_args(
     )
     parser.add_argument(
         "--height",
-        "--h",
         type=int,
         default=None,
         help="Height of the generated image",
     )
     parser.add_argument(
         "--width",
-        "--w",
         type=int,
         default=None,
         help="Width of the generated image",
@@ -156,23 +173,27 @@ def get_args(
     )
     parser.add_argument(
         "--num-frames",
+        "--frames",
         type=int,
         default=None,
         help="Number of frames to generate for video",
     )
     parser.add_argument(
+        "--Fn-compute-blocks",
         "--Fn",
         type=int,
         default=1,
         help="CacheDiT Fn_compute_blocks parameter",
     )
     parser.add_argument(
+        "--Bn-compute-blocks",
         "--Bn",
         type=int,
         default=0,
         help="CacheDiT Bn_compute_blocks parameter",
     )
     parser.add_argument(
+        "--residual-diff-threshold",
         "--rdt",
         type=float,
         default=0.24,
@@ -180,7 +201,7 @@ def get_args(
     )
     parser.add_argument(
         "--max-warmup-steps",
-        "--wa",
+        "--ws",
         type=int,
         default=4,
         help="Maximum warmup steps for CacheDiT",
@@ -316,17 +337,8 @@ def get_args(
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
-    parser.add_argument(
-        "--perf",
-        action="store_true",
-        default=False,
-        help="Measure and report performance.",
-    )
     # New arguments for customization
-    parser.add_argument("--prompt", type=str, default=None, help="Override default prompt")
-    parser.add_argument(
-        "--negative-prompt", type=str, default=None, help="Override default negative prompt"
-    )
+
     parser.add_argument(
         "--track-memory",
         action="store_true",
@@ -391,13 +403,13 @@ def get_args(
         "--profile-with-stack",
         action="store_true",
         default=True,
-        help="profile with stack",
+        help="profile with stack for better traceability",
     )
     parser.add_argument(
         "--profile-record-shapes",
         action="store_true",
         default=True,
-        help="profile record shapes",
+        help="profile record shapes for better analysis",
     )
     # CPU offload
     parser.add_argument(
@@ -916,13 +928,13 @@ def maybe_apply_optimization(
             pipe_or_adapter,
             cache_config=(
                 DBCacheConfig(
-                    Fn_compute_blocks=args.Fn,
-                    Bn_compute_blocks=args.Bn,
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
                     max_warmup_steps=args.max_warmup_steps,
                     warmup_interval=args.warmup_interval,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
+                    residual_diff_threshold=args.residual_diff_threshold,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                     steps_computation_mask=kwargs.get("steps_computation_mask", None),
                 )

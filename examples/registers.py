@@ -108,7 +108,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             # Modified config only for transformer_blocks
             # Must call the `reset` method of DBCacheConfig.
             cache_config=DBCacheConfig().reset(
-                residual_diff_threshold=args.rdt,
+                residual_diff_threshold=args.residual_diff_threshold,
             ),
         ),
         ParamsModifier(
@@ -117,7 +117,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             # residual_diff_threshold because of the precision error
             # accumulation from previous transformer_blocks
             cache_config=DBCacheConfig().reset(
-                residual_diff_threshold=args.rdt * 3,
+                residual_diff_threshold=args.residual_diff_threshold * 3,
             ),
         ),
     ]
@@ -205,7 +205,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
     }
     scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
-    steps = 8 if args.steps is None else args.steps
+    steps = 8 if args.num_inference_steps is None else args.num_inference_steps
     assert steps in [8, 4]
     lora_weights_path = os.path.join(
         os.environ.get("QWEN_IMAGE_LIGHT_DIR", "lightx2v/Qwen-Image-Lightning"),
@@ -257,13 +257,11 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             width=1024,
             num_inference_steps=steps,
             true_cfg_scale=1.0,  # means no separate cfg for lightning models
-            extra_input_kwargs={
-                "image": [
-                    # image1, image2
-                    load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
-                    load_image(f"{base_image_url}/edit2509/edit2509_2.jpg"),
-                ],
-            },
+            # image1, image2
+            image=[
+                load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
+                load_image(f"{base_image_url}/edit2509/edit2509_2.jpg"),
+            ],
         ),
     )
 
@@ -411,7 +409,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         cache_dit.steps_mask(
             # slow, medium, fast, ultra.
             mask_policy=args.mask_policy,
-            total_steps=9 if args.steps is None else args.steps,
+            total_steps=9 if args.num_inference_steps is None else args.num_inference_steps,
         )
         if args.mask_policy is not None
         else (
