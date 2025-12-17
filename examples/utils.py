@@ -105,6 +105,13 @@ def get_args(
         help="Enable Cache Acceleration",
     )
     parser.add_argument(
+        "--cache-summary",
+        "--summary",
+        action="store_true",
+        default=False,
+        help="Enable Cache Summary logging",
+    )
+    parser.add_argument(
         "--compile",
         action="store_true",
         default=False,

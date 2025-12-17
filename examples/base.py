@@ -14,6 +14,7 @@ from transformers import GenerationMixin
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.quantizers import PipelineQuantizationConfig
 from cache_dit.logger import init_logger
+import cache_dit
 
 from utils import (
     strify,
@@ -335,6 +336,10 @@ class CacheDiTExample:
                 output = pipe(**input_kwargs)
         inference_time = (time.time() - start_time) / self.args.repeat
 
+        if self.args.cache_summary:
+            if self.rank == 0:
+                cache_dit.summary(pipe)
+
         if memory_tracker:
             memory_tracker.__exit__(None, None, None)
             peak_gb = memory_tracker.report()
@@ -359,7 +364,9 @@ class CacheDiTExample:
             output_data.video = output.frames[0] if hasattr(output, "frames") else output
 
         self.output_data = output_data
-        self.output_data.save()
+
+        if self.rank == 0:
+            self.output_data.save()
 
         maybe_destroy_distributed()
 
