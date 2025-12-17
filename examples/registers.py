@@ -128,7 +128,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path("FLUX2_DIR", "black-forest-labs/FLUX.2-dev"),
+            model_name_or_path=default_path("FLUX_2_DIR", "black-forest-labs/FLUX.2-dev"),
             pipeline_class=Flux2Pipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             # Extra init args for DBCacheConfig, ParamsModifier, etc.
