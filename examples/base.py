@@ -36,6 +36,13 @@ class ExampleType(Enum):
     IE2I = "image_editing_to_image"
 
 
+# check if components are functions or instances
+def _is_function(component):
+    func_types = (types.FunctionType, types.BuiltinFunctionType)
+    module_types = (SchedulerMixin, ModelMixin, GenerationMixin, torch.nn.Module)
+    return isinstance(component, func_types) and not isinstance(component, module_types)
+
+
 @dataclasses.dataclass
 class ExampleInputData:
     # General inputs for both image and video generation
@@ -325,12 +332,6 @@ class ExampleInitConfig:
 
     def _custom_components_kwargs(self) -> Dict[str, Any]:
         custom_components_kwargs = {}
-
-        # check if components are functions or instances
-        def _is_function(component):
-            func_types = (types.FunctionType, types.BuiltinFunctionType)
-            module_types = (SchedulerMixin, ModelMixin, GenerationMixin, torch.nn.Module)
-            return isinstance(component, func_types) and not isinstance(component, module_types)
 
         custom_components_kwargs["scheduler"] = (
             self.scheduler if not _is_function(self.scheduler) else self.scheduler()
