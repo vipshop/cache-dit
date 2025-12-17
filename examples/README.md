@@ -143,6 +143,33 @@ INFO 12-17 09:10:09 [base.py:182] Image saved to flux.1024x1024.C0_Q0_DBCache_F1
 |:---:|:---:|
 |![](./assets/flux.1024x1024.C0_Q0_NONE_Ulysses4.png)|![](./assets/flux.1024x1024.C0_Q0_DBCache_F1B0_W8I1M0MC3_R0.24_CFG0_T0O0_Ulysses4_S15.png)|
 
+## 📚 How to Add New Example
+
+It is very easy to add a new example. Please refer to the specific implementation in [registers.py](./registers.py). For example:
+
+```python
+@CacheDiTExampleRegister.register("flux")
+def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+    from diffusers import FluxPipeline
+
+    return CacheDiTExample(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=default_path("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+            pipeline_class=FluxPipeline,
+            bnb_4bit_components=["text_encoder_2"],
+        ),
+        input_data=ExampleInputData(
+            prompt="A cat holding a sign that says hello world",
+            height=1024,
+            width=1024,
+            num_inference_steps=28,
+        ),
+    )
+```
+
+
 
 ## 📚 More Usage for Examples
 
