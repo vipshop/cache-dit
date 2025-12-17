@@ -68,6 +68,8 @@ def get_args(
     parse: bool = True,
 ) -> argparse.ArgumentParser | argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", type=str, default=None, help="Override model path")
+    parser.add_argument("--image-path", type=str, default=None, help="Override image path")
     parser.add_argument("--cache", action="store_true", default=False)
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
@@ -76,8 +78,12 @@ def get_args(
     parser.add_argument("--max-autotune", action="store_true", default=False)
     parser.add_argument("--fuse-lora", action="store_true", default=False)
     parser.add_argument("--steps", type=int, default=None)
-    parser.add_argument("--warmup", type=int, default=None)
-    parser.add_argument("--repeat", type=int, default=None)
+    parser.add_argument("--warmup", type=int, default=1)
+    parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--height", "--h", type=int, default=None)
+    parser.add_argument("--width", "--w", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--num-frames", type=int, default=None)
     parser.add_argument("--Fn", type=int, default=8)
     parser.add_argument("--Bn", type=int, default=0)
     parser.add_argument("--rdt", type=float, default=0.08)
@@ -101,8 +107,6 @@ def get_args(
         ],
         help="Pre-defined steps computation mask policy",
     )
-    parser.add_argument("--height", "--h", type=int, default=None)
-    parser.add_argument("--width", "--w", type=int, default=None)
     parser.add_argument("--quantize", "--q", action="store_true", default=False)
     parser.add_argument("--quantize-text-encoder", "--q-text", action="store_true", default=False)
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
@@ -174,8 +178,6 @@ def get_args(
     parser.add_argument(
         "--negative-prompt", type=str, default=None, help="Override default negative prompt"
     )
-    parser.add_argument("--model-path", type=str, default=None, help="Override model path")
-    parser.add_argument("--image-path", type=str, default=None, help="Override image path")
     parser.add_argument(
         "--track-memory",
         action="store_true",
@@ -246,21 +248,26 @@ def get_args(
     )
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
-        if args_or_parser.quantize_type is not None:
-            # Force enable quantization if quantize_type is specified
-            args_or_parser.quantize = True
-        if args_or_parser.quantize and args_or_parser.quantize_type is None:
-            args_or_parser.quantize_type = "float8_weight_only"
-        # Handle alias for quantize_type
-        if args_or_parser.quantize_type == "float8_wo":  # alias
-            args_or_parser.quantize_type = "float8_weight_only"
-        if args_or_parser.quantize_type == "int8_wo":  # alias
-            args_or_parser.quantize_type = "int8_weight_only"
-        if args_or_parser.quantize_type == "int4_wo":  # alias
-            args_or_parser.quantize_type = "int4_weight_only"
-        if args_or_parser.quantize_type == "bnb_4bit":  # alias
-            args_or_parser.quantize_type = "bitsandbytes_4bit"
+        return maybe_postprocess_args(args_or_parser)
     return args_or_parser
+
+
+def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+    # Handle alias for quantize_type
+    if args.quantize_type is not None:
+        # Force enable quantization if quantize_type is specified
+        args.quantize = True
+    if args.quantize and args.quantize_type is None:
+        args.quantize_type = "float8_weight_only"
+    if args.quantize_type == "float8_wo":  # alias
+        args.quantize_type = "float8_weight_only"
+    if args.quantize_type == "int8_wo":  # alias
+        args.quantize_type = "int8_weight_only"
+    if args.quantize_type == "int4_wo":  # alias
+        args.quantize_type = "int4_weight_only"
+    if args.quantize_type == "bnb_4bit":  # alias
+        args.quantize_type = "bitsandbytes_4bit"
+    return args
 
 
 def get_text_encoder_from_pipe(
@@ -839,26 +846,19 @@ def get_rank_device():
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-memory_tracker = None
-
-
 def maybe_init_distributed(args=None):
     if args is not None:
-
         if args.parallel_type is not None:
             dist.init_process_group(
                 backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
             )
             rank, device = get_rank_device()
             torch.cuda.set_device(device)
-
-        global memory_tracker
-        memory_tracker = MemoryTracker() if args.track_memory else None
-        if memory_tracker:
-            memory_tracker.__enter__()
-
-        rank, device = get_rank_device()
-        return rank, device
+            return rank, device
+        else:
+            # no distributed needed
+            rank, device = get_rank_device()
+            return rank, device
     else:
         # always init distributed for other examples
         if not dist.is_initialized():
@@ -870,29 +870,7 @@ def maybe_init_distributed(args=None):
         return rank, device
 
 
-def maybe_destroy_distributed(args, pipe, tag: str, time_cost: float, image=None, video=None):
-    global memory_tracker
-    if memory_tracker:
-        memory_tracker.__exit__(None, None, None)
-        memory_tracker.report()
-
-    rank, _ = get_rank_device()
-    if rank == 0:
-        cache_dit.summary(pipe)
-
-        if image is not None:
-            save_path = f"{tag}.{strify(args, pipe)}.png"
-            print(f"Time cost: {time_cost:.2f}s")
-            print(f"Saving image to {save_path}")
-            image.save(save_path)
-        if video is not None:
-            from diffusers.utils import export_to_video
-
-            save_path = f"{tag}.{strify(args, pipe)}.mp4"
-            print(f"Time cost: {time_cost:.2f}s")
-            print(f"Saving video to {save_path}")
-            export_to_video(video, save_path, fps=8)
-
+def maybe_destroy_distributed():
     if dist.is_initialized():
         dist.destroy_process_group()
 
