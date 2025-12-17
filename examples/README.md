@@ -36,6 +36,7 @@ python3 generate.py generate zimage --cache --rdt 0.6 --scm fast
 # enable cpu offload or vae tiling if your encounter an OOM error
 python3 generate.py generate qwen_image --cache --cpu-offload
 python3 generate.py generate qwen_image --cache --cpu-offload --vae-tiling
+python3 generate.py generate qwen_image_edit_lightning --cpu-offload
 # or, enable sequential cpu offload for extremly low VRAM device
 python3 generate.py generate flux2 --sequential-cpu-offload # FLUX2 56B total
 # use `--summary` option to show the cache acceleration stats
