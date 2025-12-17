@@ -108,7 +108,8 @@ class ExampleInputData:
 
     def new_generator(self, seed: int = None) -> torch.Generator:
         # NOTE: We should always create a new generator before each inference to
-        # ensure reproducibility when using the same seed.
+        # ensure reproducibility when using the same seed. Alawys use cpu generator
+        # for better cross-device consistency.
         if seed is not None:
             return torch.Generator("cpu").manual_seed(seed)
         elif self.seed is not None:
