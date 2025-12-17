@@ -68,43 +68,204 @@ def get_args(
     parse: bool = True,
 ) -> argparse.ArgumentParser | argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cache", action="store_true", default=False)
-    parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
-    parser.add_argument("--compile-vae", action="store_true", default=False)
-    parser.add_argument("--compile-text-encoder", action="store_true", default=False)
-    parser.add_argument("--max-autotune", action="store_true", default=False)
-    parser.add_argument("--fuse-lora", action="store_true", default=False)
-    parser.add_argument("--steps", type=int, default=None)
-    parser.add_argument("--warmup", type=int, default=None)
-    parser.add_argument("--repeat", type=int, default=None)
-    parser.add_argument("--Fn", type=int, default=8)
-    parser.add_argument("--Bn", type=int, default=0)
-    parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "--wa", type=int, default=8)
-    parser.add_argument("--warmup-interval", "--wi", type=int, default=1)
-    parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
-    parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
-    parser.add_argument("--taylorseer", action="store_true", default=False)
-    parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
-    parser.add_argument("--steps-mask", "--scm", action="store_true", default=False)
+    # Model and data paths
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="Override model path if provided",
+    )
+    parser.add_argument(
+        "--image-path",
+        type=str,
+        default=None,
+        help="Override image path if provided",
+    )
+    parser.add_argument(
+        "--mask-image-path",
+        type=str,
+        default=None,
+        help="Override mask image path if provided",
+    )
+    # Sampling settings
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Override default prompt if provided",
+    )
+    parser.add_argument(
+        "--negative-prompt",
+        type=str,
+        default=None,
+        help="Override default negative prompt if provided",
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        "--steps",
+        type=int,
+        default=None,
+        help="Number of inference steps",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help="Number of warmup steps before measuring performance",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="Number of times to repeat the inference for performance measurement",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=None,
+        help="Height of the generated image",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        help="Width of the generated image",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for reproducibility",
+    )
+    parser.add_argument(
+        "--num-frames",
+        "--frames",
+        type=int,
+        default=None,
+        help="Number of frames to generate for video",
+    )
+    # Output settings
+    parser.add_argument(
+        "--save-path",
+        type=str,
+        default=None,
+        help="Path to save the generated output, e.g., output.png or output.mp4",
+    )
+    # Cache specific settings
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        default=False,
+        help="Enable Cache Acceleration",
+    )
+    parser.add_argument(
+        "--cache-summary",
+        "--summary",
+        action="store_true",
+        default=False,
+        help="Enable Cache Summary logging",
+    )
+    parser.add_argument(
+        "--Fn-compute-blocks",
+        "--Fn",
+        type=int,
+        default=1,
+        help="CacheDiT Fn_compute_blocks parameter",
+    )
+    parser.add_argument(
+        "--Bn-compute-blocks",
+        "--Bn",
+        type=int,
+        default=0,
+        help="CacheDiT Bn_compute_blocks parameter",
+    )
+    parser.add_argument(
+        "--residual-diff-threshold",
+        "--rdt",
+        type=float,
+        default=0.24,
+        help="CacheDiT residual diff threshold",
+    )
+    parser.add_argument(
+        "--max-warmup-steps",
+        "--ws",
+        type=int,
+        default=8,
+        help="Maximum warmup steps for CacheDiT",
+    )
+    parser.add_argument(
+        "--warmup-interval",
+        "--wi",
+        type=int,
+        default=1,
+        help="Warmup interval for CacheDiT",
+    )
+    parser.add_argument(
+        "--max-cached-steps",
+        "--mc",
+        type=int,
+        default=-1,
+        help="Maximum cached steps for CacheDiT",
+    )
+    parser.add_argument(
+        "--max-continuous-cached-steps",
+        "--mcc",
+        type=int,
+        default=3,
+        help="Maximum continuous cached steps for CacheDiT",
+    )
+    parser.add_argument(
+        "--taylorseer",
+        action="store_true",
+        default=False,
+        help="Enable TaylorSeer for CacheDiT",
+    )
+    parser.add_argument(
+        "--taylorseer-order",
+        "-order",
+        type=int,
+        default=1,
+        help="TaylorSeer order",
+    )
+    parser.add_argument(
+        "--steps-mask",
+        action="store_true",
+        default=False,
+        help="Enable steps mask for CacheDiT",
+    )
     parser.add_argument(
         "--mask-policy",
+        "--scm",
         type=str,
         default=None,
         choices=[
             None,
             "slow",
+            "s",
             "medium",
+            "m",
             "fast",
+            "f",
             "ultra",
+            "u",
         ],
         help="Pre-defined steps computation mask policy",
     )
-    parser.add_argument("--height", "--h", type=int, default=None)
-    parser.add_argument("--width", "--w", type=int, default=None)
-    parser.add_argument("--quantize", "--q", action="store_true", default=False)
-    parser.add_argument("--quantize-text-encoder", "--q-text", action="store_true", default=False)
+    # Quantization settings
+    parser.add_argument(
+        "--quantize",
+        "--q",
+        action="store_true",
+        default=False,
+        help="Enable quantization for transformer",
+    )
+    parser.add_argument(
+        "--quantize-text-encoder",
+        "--q-text",
+        action="store_true",
+        default=False,
+        help="Enable quantization for text encoder",
+    )
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -126,6 +287,7 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    # Parallelism settings
     parser.add_argument(
         "--parallel-type",
         "--parallel",
@@ -168,20 +330,6 @@ def get_args(
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
-    parser.add_argument("--perf", action="store_true", default=False)
-    # New arguments for customization
-    parser.add_argument("--prompt", type=str, default=None, help="Override default prompt")
-    parser.add_argument(
-        "--negative-prompt", type=str, default=None, help="Override default negative prompt"
-    )
-    parser.add_argument("--model-path", type=str, default=None, help="Override model path")
-    parser.add_argument("--image-path", type=str, default=None, help="Override image path")
-    parser.add_argument(
-        "--track-memory",
-        action="store_true",
-        default=False,
-        help="Track and report peak GPU memory usage",
-    )
     parser.add_argument(
         "--ulysses-anything",
         "--uaa",
@@ -210,19 +358,7 @@ def get_args(
         default=False,
         help="Disable compute-communication overlap during compilation",
     )
-    parser.add_argument("--profile", action="store_true", default=False)
-    parser.add_argument("--profile-name", type=str, default=None)
-    parser.add_argument("--profile-dir", type=str, default=None)
-    parser.add_argument(
-        "--profile-activities",
-        type=str,
-        nargs="+",
-        default=["CPU", "GPU"],
-        choices=["CPU", "GPU", "MEM"],
-    )
-    parser.add_argument("--profile-with-stack", action="store_true", default=True)
-    parser.add_argument("--profile-record-shapes", action="store_true", default=True)
-    # CPU offload
+    # Offload settings
     parser.add_argument(
         "--cpu-offload",
         "--cpu-offload-model",
@@ -230,37 +366,142 @@ def get_args(
         default=False,
         help="Enable CPU offload for model if applicable.",
     )
-    # sequential CPU offload
     parser.add_argument(
         "--sequential-cpu-offload",
         action="store_true",
         default=False,
         help="Enable sequential GPU offload for model if applicable.",
     )
-    # vae tiling
+    # Vae tiling settings
     parser.add_argument(
-        "--enable-vae-tiling",
+        "--vae-tiling",
         action="store_true",
         default=False,
         help="Enable VAE tiling for low memory device.",
     )
+    # Compiling settings
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default=False,
+        help="Enable compile for transformer",
+    )
+    parser.add_argument(
+        "--compile-repeated-blocks",
+        action="store_true",
+        default=False,
+        help="Enable compile for repeated blocks in transformer",
+    )
+    parser.add_argument(
+        "--compile-vae",
+        action="store_true",
+        default=False,
+        help="Enable compile for VAE",
+    )
+    parser.add_argument(
+        "--compile-text-encoder",
+        action="store_true",
+        default=False,
+        help="Enable compile for text encoder",
+    )
+    parser.add_argument(
+        "--max-autotune",
+        action="store_true",
+        default=False,
+        help="Enable max-autotune mode for torch.compile",
+    )
+    # Profiling and memory tracking settings
+    parser.add_argument(
+        "--track-memory",
+        action="store_true",
+        default=False,
+        help="Track and report peak GPU memory usage",
+    )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        default=False,
+        help="Enable profiling with torch.profiler",
+    )
+    parser.add_argument(
+        "--profile-name",
+        type=str,
+        default=None,
+        help="Name for the profiling session",
+    )
+    parser.add_argument(
+        "--profile-dir",
+        type=str,
+        default=None,
+        help="Directory to save profiling results",
+    )
+    parser.add_argument(
+        "--profile-activities",
+        type=str,
+        nargs="+",
+        default=["CPU", "GPU"],
+        choices=["CPU", "GPU", "MEM"],
+        help="Activities to profile (CPU, GPU, MEM)",
+    )
+    parser.add_argument(
+        "--profile-with-stack",
+        action="store_true",
+        default=True,
+        help="profile with stack for better traceability",
+    )
+    parser.add_argument(
+        "--profile-record-shapes",
+        action="store_true",
+        default=True,
+        help="profile record shapes for better analysis",
+    )
+    # Lora settings
+    parser.add_argument(
+        "--disable-fuse-lora",
+        type=str,
+        default=None,
+        help="Disable fuse_lora even if lora weights are provided.",
+    )
+
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
-        if args_or_parser.quantize_type is not None:
-            # Force enable quantization if quantize_type is specified
-            args_or_parser.quantize = True
-        if args_or_parser.quantize and args_or_parser.quantize_type is None:
-            args_or_parser.quantize_type = "float8_weight_only"
-        # Handle alias for quantize_type
-        if args_or_parser.quantize_type == "float8_wo":  # alias
-            args_or_parser.quantize_type = "float8_weight_only"
-        if args_or_parser.quantize_type == "int8_wo":  # alias
-            args_or_parser.quantize_type = "int8_weight_only"
-        if args_or_parser.quantize_type == "int4_wo":  # alias
-            args_or_parser.quantize_type = "int4_weight_only"
-        if args_or_parser.quantize_type == "bnb_4bit":  # alias
-            args_or_parser.quantize_type = "bitsandbytes_4bit"
+        return maybe_postprocess_args(args_or_parser)
     return args_or_parser
+
+
+def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentParser:
+    return get_args(parse=parse)  # For future extension if needed
+
+
+def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+    if args.quantize_type is not None:
+        # Force enable quantization if quantize_type is specified
+        args.quantize = True
+    # Handle alias for quantize_type
+    if args.quantize and args.quantize_type is None:
+        args.quantize_type = "float8_weight_only"
+    if args.quantize_type == "float8_wo":  # alias
+        args.quantize_type = "float8_weight_only"
+    if args.quantize_type == "int8_wo":  # alias
+        args.quantize_type = "int8_weight_only"
+    if args.quantize_type == "int4_wo":  # alias
+        args.quantize_type = "int4_weight_only"
+    if args.quantize_type == "bnb_4bit":  # alias
+        args.quantize_type = "bitsandbytes_4bit"
+
+    if args.mask_policy is not None and not args.steps_mask:
+        # Enable steps mask if mask_policy is specified
+        args.steps_mask = True
+    # Handle alias for mask_policy
+    if args.mask_policy == "s":  # alias
+        args.mask_policy = "slow"
+    if args.mask_policy == "m":  # alias
+        args.mask_policy = "medium"
+    if args.mask_policy == "f":  # alias
+        args.mask_policy = "fast"
+    if args.mask_policy == "u":  # alias
+        args.mask_policy = "ultra"
+    return args
 
 
 def get_text_encoder_from_pipe(
@@ -505,6 +746,14 @@ def maybe_quantize_transformer(
         else:
             pipe = pipe_or_adapter
 
+        _class_not_supported_per_row = [
+            "QwenImageTransformer2DModel",
+        ]
+
+        def is_per_row_supported(transformer):
+            transformer_cls_name = transformer.__class__.__name__
+            return transformer_cls_name not in _class_not_supported_per_row
+
         if hasattr(pipe, "transformer"):
             transformer = getattr(pipe, "transformer", None)
             if transformer is not None:
@@ -517,6 +766,7 @@ def maybe_quantize_transformer(
                     transformer = cache_dit.quantize(
                         transformer,
                         quant_type=args.quantize_type,
+                        per_row=is_per_row_supported(transformer),
                     )
                     setattr(pipe, "transformer", transformer)
                 else:
@@ -540,6 +790,7 @@ def maybe_quantize_transformer(
                     transformer_2 = cache_dit.quantize(
                         transformer_2,
                         quant_type=args.quantize_type,
+                        per_row=is_per_row_supported(transformer_2),
                     )
                     setattr(pipe, "transformer_2", transformer_2)
                 else:
@@ -599,6 +850,11 @@ def pipe_quant_bnb_4bit_config(
         return None
 
     if components_to_quantize:
+        # Remove all components if quantize type is not bitsandbytes_4bit
+        if args.quantize_type != "bitsandbytes_4bit":
+            components_to_quantize = []
+
+        # Remove text encoder if parallel_text_encoder is enabled
         if args.parallel_text_encoder:
             if "text_encoder" in components_to_quantize:
                 components_to_quantize.remove("text_encoder")
@@ -631,7 +887,7 @@ def maybe_vae_tiling(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
-    if args.enable_vae_tiling:
+    if args.vae_tiling:
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
             assert pipe is not None, "Please enable VAE tiling manually if pipe is None."
@@ -652,7 +908,7 @@ def maybe_vae_tiling(
                         " method."
                     )
             else:
-                logger.warning("enable-vae-tiling is set but no VAE found in the pipeline.")
+                logger.warning("vae-tiling is set but no VAE found in the pipeline.")
     return pipe_or_adapter
 
 
@@ -660,7 +916,7 @@ def maybe_cpu_offload(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> bool:
-    rank, device = get_rank_device()
+    _, device = get_rank_device()
     if args.cpu_offload or args.sequential_cpu_offload:
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
@@ -685,9 +941,6 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
-    if not is_optimization_flags_enabled(args):
-        return pipe_or_adapter
-
     if args.disable_compute_comm_overlap:
         # Enable compute comm overlap default for torch.compile if used
         # cache_dit.set_compile_flags(), users need to disable it explicitly.
@@ -733,13 +986,13 @@ def maybe_apply_optimization(
             pipe_or_adapter,
             cache_config=(
                 DBCacheConfig(
-                    Fn_compute_blocks=args.Fn,
-                    Bn_compute_blocks=args.Bn,
+                    Fn_compute_blocks=args.Fn_compute_blocks,
+                    Bn_compute_blocks=args.Bn_compute_blocks,
                     max_warmup_steps=args.max_warmup_steps,
                     warmup_interval=args.warmup_interval,
                     max_cached_steps=args.max_cached_steps,
                     max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.rdt,
+                    residual_diff_threshold=args.residual_diff_threshold,
                     enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                     steps_computation_mask=kwargs.get("steps_computation_mask", None),
                 )
@@ -798,10 +1051,6 @@ def maybe_apply_optimization(
     return pipe_or_adapter
 
 
-def is_optimization_flags_enabled(args) -> bool:
-    return args.cache or args.parallel_type is not None or args.quantize or args.compile
-
-
 def strify(args, pipe_or_stats):
     base_str = ""
     if args.height is not None and args.width is not None:
@@ -839,26 +1088,19 @@ def get_rank_device():
     return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-memory_tracker = None
-
-
 def maybe_init_distributed(args=None):
     if args is not None:
-
         if args.parallel_type is not None:
             dist.init_process_group(
                 backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
             )
             rank, device = get_rank_device()
             torch.cuda.set_device(device)
-
-        global memory_tracker
-        memory_tracker = MemoryTracker() if args.track_memory else None
-        if memory_tracker:
-            memory_tracker.__enter__()
-
-        rank, device = get_rank_device()
-        return rank, device
+            return rank, device
+        else:
+            # no distributed needed
+            rank, device = get_rank_device()
+            return rank, device
     else:
         # always init distributed for other examples
         if not dist.is_initialized():
@@ -870,29 +1112,7 @@ def maybe_init_distributed(args=None):
         return rank, device
 
 
-def maybe_destroy_distributed(args, pipe, tag: str, time_cost: float, image=None, video=None):
-    global memory_tracker
-    if memory_tracker:
-        memory_tracker.__exit__(None, None, None)
-        memory_tracker.report()
-
-    rank, _ = get_rank_device()
-    if rank == 0:
-        cache_dit.summary(pipe)
-
-        if image is not None:
-            save_path = f"{tag}.{strify(args, pipe)}.png"
-            print(f"Time cost: {time_cost:.2f}s")
-            print(f"Saving image to {save_path}")
-            image.save(save_path)
-        if video is not None:
-            from diffusers.utils import export_to_video
-
-            save_path = f"{tag}.{strify(args, pipe)}.mp4"
-            print(f"Time cost: {time_cost:.2f}s")
-            print(f"Saving video to {save_path}")
-            export_to_video(video, save_path, fps=8)
-
+def maybe_destroy_distributed():
     if dist.is_initialized():
         dist.destroy_process_group()
 
