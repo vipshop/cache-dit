@@ -223,7 +223,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
         init_config=ExampleInitConfig(
             task_type=ExampleType.IE2I,  # Image Editing to Image
             model_name_or_path=default_path(
-                "QWEN_IMAGE_EDIT_PLUS_DIR",
+                "QWEN_IMAGE_EDIT_2509_DIR",
                 "Qwen/Qwen-Image-Edit-2509",
             ),
             pipeline_class=QwenImageEditPlusPipeline,

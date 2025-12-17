@@ -11,7 +11,7 @@ from diffusers.utils import export_to_video
 from diffusers.schedulers import SchedulerMixin
 from diffusers import DiffusionPipeline, ModelMixin
 from transformers import GenerationMixin
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import LoraBaseMixin
 from diffusers.quantizers import PipelineQuantizationConfig
 from cache_dit.logger import init_logger
 import cache_dit
@@ -266,8 +266,17 @@ class ExampleInitConfig:
         if self.post_init_hook is not None:
             self.post_init_hook(pipe, **kwargs)
         if self.has_lora:
-            assert isinstance(pipe, LoraLoaderMixin)
-            pipe.load_lora_weights(self.lora_weights_path, self.lora_weights_name)
+            assert issubclass(
+                type(pipe), LoraBaseMixin
+            ), "Pipeline class must inherit from LoraBaseMixin to load LoRA weights."
+            assert hasattr(
+                pipe, "load_lora_weights"
+            ), "Pipeline instance must have load_lora_weights method to load LoRA weights."
+            if self.lora_weights_name is None:
+                # TODO: Support adapter name in the future
+                pipe.load_lora_weights(self.lora_weights_path)
+            else:
+                pipe.load_lora_weights(self.lora_weights_path, weight_name=self.lora_weights_name)
             if (
                 pipeline_quantization_config is None
                 or "transformer" not in pipeline_quantization_config.components_to_quantize
@@ -278,6 +287,22 @@ class ExampleInitConfig:
                 logger.warning("Keep LoRA weights in memory since transformer is quantized.")
 
         return pipe
+
+    def summary(self, args: argparse.Namespace) -> str:
+        logger.info("Example Init Config Summary:")
+        model_name_or_path = self.model_name_or_path if args.model_path is None else args.model_path
+        summary_str = f"- Model: {model_name_or_path}\n"
+        summary_str += f"- Task Type: {self.task_type.value}\n"
+        summary_str += f"- Torch Dtype: {self.torch_dtype}\n"
+        if self.lora_weights_path is not None and self.lora_weights_name is not None:
+            summary_str += (
+                f"- LoRA Weights: {os.path.join(self.lora_weights_path, self.lora_weights_name)}\n"
+            )
+        else:
+            summary_str += "- LoRA Weights: None\n"
+        summary_str = summary_str.rstrip("\n")
+        logger.info(summary_str)
+        return summary_str
 
     def _custom_components_kwargs(self) -> Dict[str, Any]:
         custom_components_kwargs = {}
@@ -339,6 +364,8 @@ class CacheDiTExample:
 
     def run(self) -> None:
         self.check_valid()
+        if self.rank == 0:
+            self.init_config.summary(self.args)
         start_time = time.time()
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
