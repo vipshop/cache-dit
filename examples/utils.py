@@ -68,32 +68,164 @@ def get_args(
     parse: bool = True,
 ) -> argparse.ArgumentParser | argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default=None, help="Override model path")
-    parser.add_argument("--image-path", type=str, default=None, help="Override image path")
-    parser.add_argument("--cache", action="store_true", default=False)
-    parser.add_argument("--compile", action="store_true", default=False)
-    parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
-    parser.add_argument("--compile-vae", action="store_true", default=False)
-    parser.add_argument("--compile-text-encoder", action="store_true", default=False)
-    parser.add_argument("--max-autotune", action="store_true", default=False)
-    parser.add_argument("--fuse-lora", action="store_true", default=False)
-    parser.add_argument("--steps", type=int, default=None)
-    parser.add_argument("--warmup", type=int, default=1)
-    parser.add_argument("--repeat", type=int, default=1)
-    parser.add_argument("--height", "--h", type=int, default=None)
-    parser.add_argument("--width", "--w", type=int, default=None)
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--num-frames", type=int, default=None)
-    parser.add_argument("--Fn", type=int, default=8)
-    parser.add_argument("--Bn", type=int, default=0)
-    parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "--wa", type=int, default=8)
-    parser.add_argument("--warmup-interval", "--wi", type=int, default=1)
-    parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
-    parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
-    parser.add_argument("--taylorseer", action="store_true", default=False)
-    parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
-    parser.add_argument("--steps-mask", "--scm", action="store_true", default=False)
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="Override model path if provided",
+    )
+    parser.add_argument(
+        "--image-path",
+        type=str,
+        default=None,
+        help="Override image path if provided",
+    )
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        default=False,
+        help="Enable Cache Acceleration",
+    )
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default=False,
+        help="Enable compile for transformer",
+    )
+    parser.add_argument(
+        "--compile-repeated-blocks",
+        action="store_true",
+        default=False,
+        help="Enable compile for repeated blocks in transformer",
+    )
+    parser.add_argument(
+        "--compile-vae",
+        action="store_true",
+        default=False,
+        help="Enable compile for VAE",
+    )
+    parser.add_argument(
+        "--compile-text-encoder",
+        action="store_true",
+        default=False,
+        help="Enable compile for text encoder",
+    )
+    parser.add_argument(
+        "--max-autotune",
+        action="store_true",
+        default=False,
+        help="Enable max-autotune mode for torch.compile",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="Number of inference steps",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help="Number of warmup steps before measuring performance",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="Number of times to repeat the inference for performance measurement",
+    )
+    parser.add_argument(
+        "--height",
+        "--h",
+        type=int,
+        default=None,
+        help="Height of the generated image",
+    )
+    parser.add_argument(
+        "--width",
+        "--w",
+        type=int,
+        default=None,
+        help="Width of the generated image",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Random seed for reproducibility",
+    )
+    parser.add_argument(
+        "--num-frames",
+        type=int,
+        default=None,
+        help="Number of frames to generate for video",
+    )
+    parser.add_argument(
+        "--Fn",
+        type=int,
+        default=1,
+        help="CacheDiT Fn_compute_blocks parameter",
+    )
+    parser.add_argument(
+        "--Bn",
+        type=int,
+        default=0,
+        help="CacheDiT Bn_compute_blocks parameter",
+    )
+    parser.add_argument(
+        "--rdt",
+        type=float,
+        default=0.24,
+        help="CacheDiT residual diff threshold",
+    )
+    parser.add_argument(
+        "--max-warmup-steps",
+        "--wa",
+        type=int,
+        default=4,
+        help="Maximum warmup steps for CacheDiT",
+    )
+    parser.add_argument(
+        "--warmup-interval",
+        "--wi",
+        type=int,
+        default=1,
+        help="Warmup interval for CacheDiT",
+    )
+    parser.add_argument(
+        "--max-cached-steps",
+        "--mc",
+        type=int,
+        default=-1,
+        help="Maximum cached steps for CacheDiT",
+    )
+    parser.add_argument(
+        "--max-continuous-cached-steps",
+        "--mcc",
+        type=int,
+        default=3,
+        help="Maximum continuous cached steps for CacheDiT",
+    )
+    parser.add_argument(
+        "--taylorseer",
+        action="store_true",
+        default=False,
+        help="Enable TaylorSeer for CacheDiT",
+    )
+    parser.add_argument(
+        "--taylorseer-order",
+        "-order",
+        type=int,
+        default=1,
+        help="TaylorSeer order",
+    )
+    parser.add_argument(
+        "--steps-mask",
+        "--scm",
+        action="store_true",
+        default=False,
+        help="Enable steps mask for CacheDiT",
+    )
     parser.add_argument(
         "--mask-policy",
         type=str,
@@ -107,8 +239,20 @@ def get_args(
         ],
         help="Pre-defined steps computation mask policy",
     )
-    parser.add_argument("--quantize", "--q", action="store_true", default=False)
-    parser.add_argument("--quantize-text-encoder", "--q-text", action="store_true", default=False)
+    parser.add_argument(
+        "--quantize",
+        "--q",
+        action="store_true",
+        default=False,
+        help="Enable quantization for transformer",
+    )
+    parser.add_argument(
+        "--quantize-text-encoder",
+        "--q-text",
+        action="store_true",
+        default=False,
+        help="Enable quantization for text encoder",
+    )
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -172,7 +316,12 @@ def get_args(
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
         ],
     )
-    parser.add_argument("--perf", action="store_true", default=False)
+    parser.add_argument(
+        "--perf",
+        action="store_true",
+        default=False,
+        help="Measure and report performance.",
+    )
     # New arguments for customization
     parser.add_argument("--prompt", type=str, default=None, help="Override default prompt")
     parser.add_argument(
@@ -212,15 +361,31 @@ def get_args(
         default=False,
         help="Disable compute-communication overlap during compilation",
     )
-    parser.add_argument("--profile", action="store_true", default=False)
-    parser.add_argument("--profile-name", type=str, default=None)
-    parser.add_argument("--profile-dir", type=str, default=None)
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        default=False,
+        help="Enable profiling with torch.profiler",
+    )
+    parser.add_argument(
+        "--profile-name",
+        type=str,
+        default=None,
+        help="Name for the profiling session",
+    )
+    parser.add_argument(
+        "--profile-dir",
+        type=str,
+        default=None,
+        help="Directory to save profiling results",
+    )
     parser.add_argument(
         "--profile-activities",
         type=str,
         nargs="+",
         default=["CPU", "GPU"],
         choices=["CPU", "GPU", "MEM"],
+        help="Activities to profile (CPU, GPU, MEM)",
     )
     parser.add_argument("--profile-with-stack", action="store_true", default=True)
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
@@ -241,7 +406,7 @@ def get_args(
     )
     # vae tiling
     parser.add_argument(
-        "--enable-vae-tiling",
+        "--vae-tiling",
         action="store_true",
         default=False,
         help="Enable VAE tiling for low memory device.",
@@ -642,7 +807,7 @@ def maybe_vae_tiling(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
-    if args.enable_vae_tiling:
+    if args.vae_tiling:
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
             assert pipe is not None, "Please enable VAE tiling manually if pipe is None."
@@ -663,7 +828,7 @@ def maybe_vae_tiling(
                         " method."
                     )
             else:
-                logger.warning("enable-vae-tiling is set but no VAE found in the pipeline.")
+                logger.warning("vae-tiling is set but no VAE found in the pipeline.")
     return pipe_or_adapter
 
 
@@ -671,7 +836,7 @@ def maybe_cpu_offload(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> bool:
-    rank, device = get_rank_device()
+    _, device = get_rank_device()
     if args.cpu_offload or args.sequential_cpu_offload:
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
