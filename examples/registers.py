@@ -381,7 +381,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         cache_dit.steps_mask(
             # slow, medium, fast, ultra.
             mask_policy=args.mask_policy,
-            total_steps=9,
+            total_steps=9 if args.steps is None else args.steps,
         )
         if args.mask_policy is not None
         else (
