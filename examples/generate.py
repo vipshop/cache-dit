@@ -1,10 +1,9 @@
 from cache_dit.logger import init_logger
-
-# Make all example are registered
 from utils import get_base_args, maybe_postprocess_args
 from registers import CacheDiTExampleRegister  # noqa: F403, F401
 from helpers import activate_all_examples
 
+# Make sure all example are registered
 activate_all_examples()
 
 logger = init_logger(__name__)
