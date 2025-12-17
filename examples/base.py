@@ -309,6 +309,8 @@ class ExampleInitConfig:
             summary_str += (
                 f"- LoRA Weights: {os.path.join(self.lora_weights_path, self.lora_weights_name)}\n"
             )
+        elif self.lora_weights_path is not None:
+            summary_str += f"- LoRA Path: {self.lora_weights_path}\n"
         else:
             summary_str += "- LoRA Weights: None\n"
         summary_str = summary_str.rstrip("\n")
