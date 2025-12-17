@@ -24,6 +24,11 @@ INFO 12-17 06:37:11 [generate.py:43] - zimage
 python3 generate.py generate flux 
 python3 generate.py generate flux_nunchaku 
 python3 generate.py generate flux2
+python3 generate.py generate ovis_image
+python3 generate.py generate qwen_image_edit_lightning
+python3 generate.py generate qwen_image
+python3 generate.py generate skyreels_v2
+python3 generate.py generate wan2.2
 python3 generate.py generate zimage 
 # load model from load path via `--model-path` option
 python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
