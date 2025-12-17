@@ -87,6 +87,49 @@ torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulyss
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile      
 ```
 
+## 📚 End2End Example
+
+```bash
+# NO Cache Acceleration: 8.27s
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --parallel ulysses
+
+INFO 12-17 09:02:31 [base.py:151] Example Input Summary:
+INFO 12-17 09:02:31 [base.py:151] - prompt: A cat holding a sign that says hello world
+INFO 12-17 09:02:31 [base.py:151] - height: 1024
+INFO 12-17 09:02:31 [base.py:151] - width: 1024
+INFO 12-17 09:02:31 [base.py:151] - num_inference_steps: 28
+INFO 12-17 09:02:31 [base.py:151] - generator: <torch._C.Generator object at 0x7f6e090be410>
+INFO 12-17 09:02:31 [base.py:214] Example Output Summary:
+INFO 12-17 09:02:31 [base.py:225] - Model: flux
+INFO 12-17 09:02:31 [base.py:225] - Optimization: C0_Q0_NONE_Ulysses4
+INFO 12-17 09:02:31 [base.py:225] - Load Time: 0.79s
+INFO 12-17 09:02:31 [base.py:225] - Warmup Mean Time: 21.09s
+INFO 12-17 09:02:31 [base.py:225] - Inference Mean Time: 8.27s
+INFO 12-17 09:02:32 [base.py:182] Image saved to flux.1024x1024.C0_Q0_NONE_Ulysses4.png
+
+# Enabled Cache Acceleration: 4.23s
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --parallel ulysses --cache --scm fast --max-warmup-steps 8
+
+INFO 12-17 09:10:09 [base.py:151] Example Input Summary:
+INFO 12-17 09:10:09 [base.py:151] - prompt: A cat holding a sign that says hello world
+INFO 12-17 09:10:09 [base.py:151] - height: 1024
+INFO 12-17 09:10:09 [base.py:151] - width: 1024
+INFO 12-17 09:10:09 [base.py:151] - num_inference_steps: 28
+INFO 12-17 09:10:09 [base.py:151] - generator: <torch._C.Generator object at 0x7f6fdc8c5ad0>
+INFO 12-17 09:10:09 [base.py:214] Example Output Summary:
+INFO 12-17 09:10:09 [base.py:225] - Model: flux
+INFO 12-17 09:10:09 [base.py:225] - Optimization: C0_Q0_DBCache_F1B0_W8I1M0MC3_R0.24_CFG0_T0O0_Ulysses4_S15
+INFO 12-17 09:10:09 [base.py:225] - Load Time: 0.78s
+INFO 12-17 09:10:09 [base.py:225] - Warmup Mean Time: 18.49s
+INFO 12-17 09:10:09 [base.py:225] - Inference Mean Time: 4.23s
+INFO 12-17 09:10:09 [base.py:182] Image saved to flux.1024x1024.C0_Q0_DBCache_F1B0_W8I1M0MC3_R0.24_CFG0_T0O0_Ulysses4_S15.png
+```
+
+|NO Cache Acceleration: 8.27s| w/ Cache Acceleration: 4.23s|
+|:---:|:---:|
+|![](./assets/flux.1024x1024.C0_Q0_NONE_Ulysses4.png)|![](./assets/flux.1024x1024.C0_Q0_DBCache_F1B0_W8I1M0MC3_R0.24_CFG0_T0O0_Ulysses4_S15.png)|
+
+
 ## 📚 More Usage for Examples
 
 ```bash
