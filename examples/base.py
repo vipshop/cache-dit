@@ -148,9 +148,8 @@ class ExampleInputData:
             elif k == "generator":
                 # Show seed and device info
                 gen_device = v.device if hasattr(v, "device") else "cpu"
-                summary_str += f"- {k}: Generator on {gen_device}\n"
                 gen_seed = v.initial_seed() if hasattr(v, "initial_seed") else "N/A"
-                summary_str += f"  - seed: {gen_seed}\n"
+                summary_str += f"- {k}: device {gen_device}, seed {gen_seed}\n"
             else:
                 summary_str += f"- {k}: {v}\n"
         summary_str = summary_str.rstrip("\n")
