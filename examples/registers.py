@@ -106,7 +106,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             pipeline_class=Flux2Pipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             # Extra init args for DBCacheConfig, ParamsModifier, etc.
-            extra_init_args={
+            extra_opt_kwargs={
                 "params_modifiers": [
                     ParamsModifier(
                         # Modified config only for transformer_blocks
@@ -210,7 +210,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             bnb_4bit_components=["text_encoder", "transformer"],
             lora_weights_path=lora_weights_path,
             lora_weights_name=lora_weight_name,
-            extra_init_args={
+            extra_opt_kwargs={
                 "cache_config": (
                     DBCacheConfig(
                         Fn_compute_blocks=16,
@@ -233,7 +233,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
             width=1024,
             num_inference_steps=steps,
             true_cfg_scale=1.0,  # means no separate cfg for lightning models
-            extra_kwargs={
+            extra_input_kwargs={
                 "image": [
                     # image1
                     Image.open(
@@ -339,7 +339,7 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             model_name_or_path=default_path("WAN_2_2_DIR", "Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
             pipeline_class=WanPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
-            extra_init_args={
+            extra_opt_kwargs={
                 "params_modifiers": [
                     ParamsModifier(
                         # high-noise transformer only have 30% steps
@@ -400,7 +400,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             model_name_or_path=default_path("ZIMAGE_DIR", "Tongyi-MAI/Z-Image-Turbo"),
             pipeline_class=ZImagePipeline,
             bnb_4bit_components=["text_encoder"],
-            extra_init_args={
+            extra_opt_kwargs={
                 "steps_computation_mask": steps_computation_mask,
             },
         ),

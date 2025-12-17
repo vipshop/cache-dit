@@ -51,12 +51,12 @@ class ExampleInputData:
     seed: Optional[int] = None
     generator: torch.Generator = torch.Generator("cpu").manual_seed(0)
     # Some extra args, e.g, editing model specific inputs
-    extra_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def data(self, args: argparse.Namespace) -> Dict[str, Any]:
         data = dataclasses.asdict(self)
         # Flatten extra_args and merge into main dict
-        extra_args = data.pop("extra_kwargs")  # {key: value, ...}
+        extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
         extra_args = extra_args if extra_args is not None else {}
         # Remove None values from extra_args
         extra_data = {k: v for k, v in extra_args.items() if v is not None}
@@ -97,7 +97,7 @@ class ExampleOutputData:
     inference_time: Optional[float] = None
     memory_usage: Optional[float] = None
     # Other outputs
-    extra_outputs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    extra_output_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def save(self, save_path: Optional[str] = None):
         # TODO: Handle other extra outputs as needed
@@ -172,9 +172,8 @@ class ExampleInitConfig:
     lora_weights_name: Optional[str] = None
     pre_init_hook: Optional[Callable[[Any], None]] = None  # For future use
     post_init_hook: Optional[Callable[[DiffusionPipeline], None]] = None
-    extra_init_args: Dict[str, Any] = dataclasses.field(
-        default_factory=dict
-    )  # for DBCache, Parallelism, etc.
+    # For DBCache, Parallelism optimization.
+    extra_opt_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def get_pipe(self, args: argparse.Namespace, **kwargs) -> DiffusionPipeline:
         if self.pipeline_class is None:
@@ -190,7 +189,6 @@ class ExampleInitConfig:
                 self.text_encoder if not callable(self.text_encoder) else self.text_encoder()
             ),
             quantization_config=pipeline_quantization_config,
-            **self.extra_init_args,
         )
         if self.post_init_hook is not None:
             self.post_init_hook(pipe, **kwargs)
@@ -253,7 +251,7 @@ class CacheDiTExample:
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
 
-        maybe_apply_optimization(self.args, pipe, **self.init_config.extra_init_args)
+        maybe_apply_optimization(self.args, pipe, **self.init_config.extra_opt_kwargs)
 
         input_kwargs = self.input_data.data(self.args)
         pipe.set_progress_bar_config(disable=self.rank != 0)
