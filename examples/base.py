@@ -36,13 +36,6 @@ class ExampleType(Enum):
     IE2I = "image_editing_to_image"
 
 
-# check if components are functions or instances
-def _is_function(component):
-    func_types = (types.FunctionType, types.BuiltinFunctionType)
-    module_types = (SchedulerMixin, ModelMixin, GenerationMixin, torch.nn.Module)
-    return isinstance(component, func_types) and not isinstance(component, module_types)
-
-
 @dataclasses.dataclass
 class ExampleInputData:
     # General inputs for both image and video generation
@@ -367,6 +360,31 @@ class ExampleInitConfig:
             args=args,
             components_to_quantize=self.bnb_4bit_components,
         )
+
+
+def _is_function(component: Any) -> bool:
+    func_types = (
+        types.FunctionType,
+        types.BuiltinFunctionType,
+        types.LambdaType,
+    )
+    excluded_module_classes = (
+        SchedulerMixin,
+        ModelMixin,
+        GenerationMixin,
+        torch.nn.Module,
+    )
+
+    is_basic_func = isinstance(component, func_types)
+    is_excluded_instance = isinstance(component, excluded_module_classes)
+    is_method = isinstance(
+        component,
+        (
+            types.MethodType,
+            types.ClassMethodDescriptorType,
+        ),
+    )
+    return is_basic_func and not is_excluded_instance and not is_method
 
 
 class CacheDiTExample:
