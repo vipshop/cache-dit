@@ -455,6 +455,13 @@ def get_args(
         default=True,
         help="profile record shapes for better analysis",
     )
+    # Lora settings
+    parser.add_argument(
+        "--disable-fuse-lora",
+        type=str,
+        default=None,
+        help="Disable fuse_lora even if lora weights are provided.",
+    )
 
     args_or_parser = parser.parse_args() if parse else parser
     if parse:

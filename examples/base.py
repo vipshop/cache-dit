@@ -292,7 +292,7 @@ class ExampleInitConfig:
                 pipe.load_lora_weights(self.lora_weights_path)
             else:
                 pipe.load_lora_weights(self.lora_weights_path, weight_name=self.lora_weights_name)
-            if (
+            if not args.disable_fuse_lora and (
                 pipeline_quantization_config is None
                 or "transformer" not in pipeline_quantization_config.components_to_quantize
                 or self.force_fuse_lora
