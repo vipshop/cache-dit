@@ -316,7 +316,7 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         model_name_or_path,
         subfolder="vae",
         torch_dtype=torch.float32,
-    ).to("cuda")
+    )  # Use float32 VAE to reduce video generation artifacts
 
     def post_init_hook(pipe: SkyReelsV2Pipeline, **kwargs):
         flow_shift = 8.0  # 8.0 for T2V, 5.0 for I2V
