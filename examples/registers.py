@@ -98,11 +98,14 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     from diffusers import Flux2Pipeline
 
     if GiB() < 128:
-        assert args.quantize, "Quantization is required to fit FLUX.2 in <128GB memory."
-        assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
-            f"Unsupported quantization type: {args.quantize_type}, only supported"
-            "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
-        )
+        if not args.sequential_cpu_offload:
+            assert (
+                args.quantize
+            ), "Quantization is required to fit FLUX.2 in <128GB memory without sequential CPU offload."
+            assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
+                f"Unsupported quantization type: {args.quantize_type}, only supported"
+                "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
+            )
     params_modifiers = [
         ParamsModifier(
             # Modified config only for transformer_blocks
