@@ -1029,10 +1029,6 @@ def maybe_apply_optimization(
     return pipe_or_adapter
 
 
-def is_optimization_flags_enabled(args) -> bool:
-    return args.cache or args.parallel_type is not None or args.quantize or args.compile
-
-
 def strify(args, pipe_or_stats):
     base_str = ""
     if args.height is not None and args.width is not None:
