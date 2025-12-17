@@ -1,6 +1,6 @@
 # Examples for Cache-DiT
 
-## Avaliable Examples
+## 📚 Avaliable Examples
 
 ```bash
 python3 generate.py list
@@ -16,7 +16,7 @@ INFO 12-17 06:37:11 [generate.py:43] - wan2.2
 INFO 12-17 06:37:11 [generate.py:43] - zimage
 ```
 
-## Single GPU Inference
+## 📚 Single GPU Inference
 
 ```bash
 # baseline
@@ -34,7 +34,7 @@ python3 generate.py generate qwen_image --cache --cpu-offload
 python3 generate.py generate qwen_image --cache --cpu-offload --vae-tiling
 ```
 
-## Multi-GPU Inference 
+## 📚 Multi-GPU Inference 
 
 ```bash
 # context parallelism or tensor parallelism
@@ -48,7 +48,7 @@ torchrun --nproc_per_node=4 generate.py generate flux --parallel tp --parallel-t
 torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
 ```
 
-## Quantization 
+## 📚 Low-bits Quantization 
 
 ```bash
 # please also enable torch.compile if the quantation is using.
@@ -57,7 +57,19 @@ python3 generate.py generate flux --cache --quantize-type float8_weight_only --c
 python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile
 ```
 
-## More Usage
+## 📚 Hybrid Acceleration 
+
+```bash
+# DBCache + SCM + Taylorseer
+python3 generate.py generate flux --cache --scm --mask-policy fast --taylorsees --taylorseer-order 1
+# DBCache + SCM + Taylorseer + context parallelism + compile + quantization + FP8 All2All comm + CUDNN Attention
+torchrun --nproc_per_node=4 generate.py generate flux \
+         --parallel ulysses --ulysses-float8 --attn _sdpa_cudnn \
+         --cache --scm --mask-policy fast --taylorsees --taylorseer-order 1 \
+         --compile --quantize-type float8 --warmup 2 --repeat 5
+```
+
+## 📚 More Usage for Examples
 
 ```bash
 python3 generate.py --help
