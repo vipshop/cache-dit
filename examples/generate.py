@@ -60,4 +60,5 @@ if __name__ == "__main__":
 
     # Usage:
     # python3 generate.py list
+    # python3 generate.py zimage
     # torchrun --nproc_per_node=4 generate.py generate zimage --parallel ulysses --ulysses-anything
