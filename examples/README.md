@@ -1,6 +1,6 @@
 # Examples for Cache-DiT
 
-## 📚 Avaliable Examples
+## 📚 Available Examples
 
 ```bash
 python3 generate.py list
@@ -33,6 +33,8 @@ python3 generate.py generate zimage --cache --rdt 0.6 --scm fast
 # enable cpu offload or vae tiling if your encounter an OOM error
 python3 generate.py generate qwen_image --cache --cpu-offload
 python3 generate.py generate qwen_image --cache --cpu-offload --vae-tiling
+# or, enable sequential cpu offload for extremly low VRAM device
+python3 generate.py generate flux2 --sequential-cpu-offload # FLUX2 56B total
 # use `--summary` option to show the cache acceleration stats
 python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
 ```
@@ -42,6 +44,7 @@ python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
 ```bash
 # context parallelism or tensor parallelism
 torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses 
+torchrun --nproc_per_node=4 generate.py generate flux --parallel ring 
 torchrun --nproc_per_node=4 generate.py generate flux --parallel tp
 # ulysses anything attention
 torchrun --nproc_per_node=4 generate.py generate zimage --parallel ulysses --ulysses-anything
@@ -56,8 +59,10 @@ torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --par
 ```bash
 # please also enable torch.compile if the quantation is using.
 python3 generate.py generate flux --cache --quantize-type float8 --compile
+python3 generate.py generate flux --cache --quantize-type int8 --compile
 python3 generate.py generate flux --cache --quantize-type float8_weight_only --compile
-python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile
+python3 generate.py generate flux --cache --quantize-type int8_weight_only --compile
+python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile # w4a16
 ```
 
 ## 📚 Hybrid Acceleration 
@@ -66,10 +71,15 @@ python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile
 # DBCache + SCM + Taylorseer
 python3 generate.py generate flux --cache --scm fast --taylorsees --taylorseer-order 1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
-# + FP8 quantization + FP8 All2All comm + CUDNN Attention (or SageAttention, --attn sage)
+# + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulysses-float8 \
          --attn _sdpa_cudnn --parallel-text-encoder --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
+# DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
+# + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
+torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulysses-float8 \
+         --attn sage --parallel-text-encoder --cache --scm fast --taylorseer \
+         --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile      
 ```
 
 ## 📚 More Usage for Examples
