@@ -159,7 +159,7 @@ def ovis_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             task_type=ExampleType.T2I,  # Text to Image
             model_name_or_path=default_path(
                 "OVIS_IMAGE_DIR",
-                "ovis-models/ovis-image-v1-5b",
+                "AIDC-AI/Ovis-Image-7B",
             ),
             pipeline_class=OvisImagePipeline,
             bnb_4bit_components=["text_encoder", "transformer"],

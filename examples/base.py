@@ -186,13 +186,8 @@ class ExampleInitConfig:
         pipe: DiffusionPipeline = self.pipeline_class.from_pretrained(
             self.model_name_or_path if args.model_path is None else args.model_path,
             torch_dtype=self.torch_dtype,
-            scheduler=self.scheduler if not callable(self.scheduler) else self.scheduler(),
-            transformer=self.transformer if not callable(self.transformer) else self.transformer(),
-            vae=self.vae if not callable(self.vae) else self.vae(),
-            text_encoder=(
-                self.text_encoder if not callable(self.text_encoder) else self.text_encoder()
-            ),
             quantization_config=pipeline_quantization_config,
+            **self._custom_components_kwargs(),
         )
         if self.post_init_hook is not None:
             self.post_init_hook(pipe, **kwargs)
@@ -209,6 +204,24 @@ class ExampleInitConfig:
                 logger.warning("Keep LoRA weights in memory since transformer is quantized.")
 
         return pipe
+
+    def _custom_components_kwargs(self) -> Dict[str, Any]:
+        custom_components_kwargs = {}
+        custom_components_kwargs["scheduler"] = (
+            self.scheduler if not callable(self.scheduler) else self.scheduler()
+        )
+        custom_components_kwargs["transformer"] = (
+            self.transformer if not callable(self.transformer) else self.transformer()
+        )
+        custom_components_kwargs["vae"] = self.vae if not callable(self.vae) else self.vae()
+        custom_components_kwargs["text_encoder"] = (
+            self.text_encoder if not callable(self.text_encoder) else self.text_encoder()
+        )
+        # Remove None components
+        custom_components_kwargs = {
+            k: v for k, v in custom_components_kwargs.items() if v is not None
+        }
+        return custom_components_kwargs
 
     @property
     def has_lora(self) -> bool:

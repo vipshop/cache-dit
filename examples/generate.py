@@ -60,5 +60,7 @@ if __name__ == "__main__":
 
     # Usage:
     # python3 generate.py list
-    # python3 generate.py zimage
+    # python3 generate.py generate zimage
+    # python3 generate.py generate qwen_image_edit_lightning --cpu-offload
     # torchrun --nproc_per_node=4 generate.py generate zimage --parallel ulysses --ulysses-anything
+    # torchrun --nproc_per_node=4 generate.py generate zimage --parallel tp --parallel-text
