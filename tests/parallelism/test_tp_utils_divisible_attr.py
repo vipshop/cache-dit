@@ -5,11 +5,9 @@ Run:
   python3 tests/parallelism/test_tp_utils_divisible_attr.py
 """
 
-
 from cache_dit.parallelism.transformers.native_pytorch.tensor_parallelism.tp_utils import (
     shard_divisible_attr,
 )
-
 
 
 class Dummy:
@@ -73,5 +71,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

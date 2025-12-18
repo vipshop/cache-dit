@@ -65,5 +65,3 @@ def shard_divisible_attr(
     new_value = value // tp_size
     setattr(obj, attr, new_value)
     return new_value
-
-
