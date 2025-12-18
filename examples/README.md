@@ -1,4 +1,6 @@
-# 🚀 Examples for Cache-DiT
+<div align="center">
+    <h1> 🚀 Examples for Cache-DiT</h1>
+</div>
 
 ## 📚 Table of Contents
 
@@ -29,6 +31,8 @@ INFO 12-17 06:37:11 [generate.py:43] - zimage
 ```
 
 ## 📚 Single GPU Inference
+
+The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is to start with single GPU inference. For examples:  
 
 ```bash
 # baseline
@@ -71,6 +75,8 @@ python3 generate.py generate qwem_image --model-path /PATH/TO/Qwen-Image
 
 ## 📚 Multi-GPU Inference 
 
+cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
+
 ```bash
 # context parallelism or tensor parallelism
 torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses 
@@ -88,6 +94,8 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --p
 
 ## 📚 Low-bits Quantization 
 
+cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥torchao, 🔥nunchaku), For examples:
+
 ```bash
 # please also enable torch.compile if the quantation is using.
 python3 generate.py generate flux --cache --quantize-type float8 --compile
@@ -95,9 +103,12 @@ python3 generate.py generate flux --cache --quantize-type int8 --compile
 python3 generate.py generate flux --cache --quantize-type float8_weight_only --compile
 python3 generate.py generate flux --cache --quantize-type int8_weight_only --compile
 python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile # w4a16
+python3 generate.py generate flux_nunchaku --cache --compile # w4a16 SVDQ
 ```
 
 ## 📚 Hybrid Acceleration 
+
+Here are some examples for `hybrid cache acceleration + parallelism` for popular DiTs with cache-dit.
 
 ```bash
 # DBCache + SCM + Taylorseer
