@@ -65,7 +65,7 @@ python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
 
 ## 📚 Custom Model Path
 
-The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`, for example: 
+The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`. For examples: 
 
 ```bash
 python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
