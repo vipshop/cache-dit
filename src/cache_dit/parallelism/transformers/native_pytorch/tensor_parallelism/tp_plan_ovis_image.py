@@ -116,7 +116,7 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
 # rearrange the proj_out weight because it contains both out and down
 # projection weights in a single matrix.
 def rearrange_proj_out_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
-    # rowwise
+    # Rowwise: rearrange the proj_out weight for RowwiseParallel
     hidden_dim = single_block.attn.to_q.weight.shape[0]
     requires_grad = single_block.proj_out.weight.requires_grad
     linear2_weight_data = single_block.proj_out.weight.data.T.detach().clone()
@@ -131,10 +131,19 @@ def rearrange_proj_out_weight(single_block: OvisImageSingleTransformerBlock, tp_
 
 
 def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
-    # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
-    # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
-    # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
-    # -> finally reshape to [...,(Hd+Gd)]
+    # Colwise: rearrange the proj_mlp weight for ColwiseParallel
+    # Original tensor shape: [*, Hd + Gd], where Hd = Gd (Hd and Gd have the same dimension size)
+    # Linear transformation definition: y = x * A^T, where
+    #   A: [out_dim, in_dim]  (transformation matrix)
+    #   x: [*, in_dim]        (input tensor, * denotes arbitrary leading dimensions)
+    #
+    # Tensor Parallel (TP) dimension permutation logic:
+    # 1. Split Hd and Gd evenly according to the TP group size (tp_group_size)
+    #    - When tp_group_size=2: Split [..., Hd+Gd] into [..., (Hd/2+Gd/2) + (Hd/2+Gd/2)]
+    #    - When tp_group_size=4: Split [..., Hd+Gd] into [..., (Hd/4+Gd/4)*4]
+    #      Expanded form: [..., Hd/4+Gd/4 + Hd/4+Gd/4 + Hd/4+Gd/4 + Hd/4+Gd/4]
+    # 2. Perform dimension permutation and rearrangement on the split tensor
+    # 3. Reshape the tensor back to the original shape [..., (Hd + Gd)] finally
     mlp_hidden_dim = single_block.proj_mlp.weight.shape[0] // 2
     requires_grad = single_block.proj_mlp.weight.requires_grad
     linear1_weight_data = single_block.proj_mlp.weight.data.T.detach().clone()  # [in_dim, out_dim]
@@ -160,10 +169,19 @@ def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_
 # hidden_states = self.proj(hidden_states); hidden_states, gate = hidden_states.chunk(2, dim=-1)
 # reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L140
 def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
-    # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
-    # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
-    # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
-    # -> finally reshape to [...,(Hd+Gd)]
+    # Colwise: rearrange the proj_mlp weight for ColwiseParallel
+    # Original tensor shape: [*, Hd + Gd], where Hd = Gd (Hd and Gd have the same dimension size)
+    # Linear transformation definition: y = x * A^T, where
+    #   A: [out_dim, in_dim]  (transformation matrix)
+    #   x: [*, in_dim]        (input tensor, * denotes arbitrary leading dimensions)
+    #
+    # Tensor Parallel (TP) dimension permutation logic:
+    # 1. Split Hd and Gd evenly according to the TP group size (tp_group_size)
+    #    - When tp_group_size=2: Split [..., Hd+Gd] into [..., (Hd/2+Gd/2) + (Hd/2+Gd/2)]
+    #    - When tp_group_size=4: Split [..., Hd+Gd] into [..., (Hd/4+Gd/4)*4]
+    #      Expanded form: [..., Hd/4+Gd/4 + Hd/4+Gd/4 + Hd/4+Gd/4 + Hd/4+Gd/4]
+    # 2. Perform dimension permutation and rearrangement on the split tensor
+    # 3. Reshape the tensor back to the original shape [..., (Hd + Gd)] finally
     dim_out = proj.weight.shape[0] // 2
     requires_grad = proj.weight.requires_grad
     linear1_weight_data = proj.weight.data.T.detach().clone()  # [in_dim, out_dim]
