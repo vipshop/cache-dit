@@ -591,7 +591,7 @@ def maybe_compile_text_encoder(
                 )
                 _module_to_compile = torch.compile(
                     _module_to_compile,
-                    mode="max-autotune" if args.max_autotune else "default",
+                    mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                 )
                 # Set back the compiled text encoder
                 if hasattr(text_encoder, "model"):
@@ -639,7 +639,7 @@ def maybe_compile_vae(
                         logger.info(f"Compiling VAE encoder module: {vae_cls_name}.encoder ...")
                         vae.encoder = torch.compile(
                             _encoder_to_compile,
-                            mode="max-autotune" if args.max_autotune else "default",
+                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                         )
                     else:
                         logger.warning(
@@ -652,7 +652,7 @@ def maybe_compile_vae(
                         logger.info(f"Compiling VAE decoder module: {vae_cls_name}.decoder ...")
                         vae.decoder = torch.compile(
                             _decoder_to_compile,
-                            mode="max-autotune" if args.max_autotune else "default",
+                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                         )
                     else:
                         logger.warning(
