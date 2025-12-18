@@ -6,6 +6,7 @@ from cache_dit.logger import init_logger
 from cache_dit.parallelism.parallel_config import ParallelismConfig
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -46,7 +47,14 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
         def tp_shard_block(block, tp_size):
             attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
             ff_linear_name = "w" if class_name.startswith("ZImage") else "linear_"
-            getattr(block, attn_mod_name).heads //= tp_size
+            attn = getattr(block, attn_mod_name)
+            shard_divisible_attr(
+                attn,
+                "heads",
+                tp_size,
+                what=attn_mod_name,
+                context="ZImageTensorParallelismPlanner",
+            )
             layer_plan = {
                 f"{attn_mod_name}.to_q": ColwiseParallel(),
                 f"{attn_mod_name}.to_k": ColwiseParallel(),
