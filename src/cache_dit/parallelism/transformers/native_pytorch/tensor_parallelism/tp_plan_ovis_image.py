@@ -112,11 +112,10 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
         return transformer
 
 
-# NOTE: special handling for OvisImageSingleTransformerBlock, we have to
-# rearrange the proj_out weight because it contains both out and down
-# projection weights in a single matrix.
+# NOTE: Special handling for OvisImageSingleTransformerBlock, we have to rearrange the
+# proj_out weight because it contains both out and down projection weights in a single matrix.
 def rearrange_proj_out_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
-    # Rowwise: rearrange the proj_out weight for RowwiseParallel
+    # Rowwise: rearrange the proj_out weight for RowwiseParallel, (M,K)x(K,N), permute at K (in_dim)
     hidden_dim = single_block.attn.to_q.weight.shape[0]
     requires_grad = single_block.proj_out.weight.requires_grad
     linear2_weight_data = single_block.proj_out.weight.data.T.detach().clone()
@@ -131,7 +130,7 @@ def rearrange_proj_out_weight(single_block: OvisImageSingleTransformerBlock, tp_
 
 
 def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
-    # Colwise: rearrange the proj_mlp weight for ColwiseParallel
+    # Colwise: rearrange the proj_mlp weight for ColwiseParallel, (M,K)x(K,N), permute at N (out_dim)
     # Original tensor shape: [*, Hd + Gd], where Hd = Gd (Hd and Gd have the same dimension size)
     # Linear transformation definition: y = x * A^T, where
     #   A: [out_dim, in_dim]  (transformation matrix)
@@ -169,7 +168,7 @@ def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_
 # hidden_states = self.proj(hidden_states); hidden_states, gate = hidden_states.chunk(2, dim=-1)
 # reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L140
 def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
-    # Colwise: rearrange the proj_mlp weight for ColwiseParallel
+    # Colwise: rearrange the proj_mlp weight for ColwiseParallel, (M,K)x(K,N), permute at N (out_dim)
     # Original tensor shape: [*, Hd + Gd], where Hd = Gd (Hd and Gd have the same dimension size)
     # Linear transformation definition: y = x * A^T, where
     #   A: [out_dim, in_dim]  (transformation matrix)
