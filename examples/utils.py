@@ -924,11 +924,12 @@ def maybe_cpu_offload(
         else:
             pipe = pipe_or_adapter
 
+        pipe_cls_name = pipe.__class__.__name__
         if args.sequential_cpu_offload:
-            logger.info("Enabling sequential CPU offload for the model ...")
+            logger.info(f"Enabling Sequential CPU offload for the model {pipe_cls_name} ...")
             pipe.enable_sequential_cpu_offload(device=device)
         else:
-            logger.info("Enabling CPU offload for the model ...")
+            logger.info(f"Enabling CPU offload for the model {pipe_cls_name} ...")
             pipe.enable_model_cpu_offload(device=device)
 
         return True

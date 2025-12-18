@@ -1,4 +1,16 @@
-# Examples for Cache-DiT
+# 🚀 Examples for Cache-DiT
+
+## 📚 Table of Contents
+
+- [📚 Available Examples](#-available-examples)
+- [📚 Single GPU Inference](#-single-gpu-inference)  
+- [📚 Custom Model Path](#-custom-model-path)  
+- [📚 Multi-GPU Inference](#-multi-gpu-inference)  
+- [📚 Low-bits Quantization](#-low-bits-quantization)  
+- [📚 Hybrid Acceleration](#-hybrid-acceleration) 
+- [📚 End2End Examples](#-end2end-examples) 
+- [📚 How to Add New Example](#-how-to-add-new-example) 
+- [📚 More Usages about Examples](#-more-usages-about-examples) 
 
 ## 📚 Available Examples
 
@@ -30,8 +42,6 @@ python3 generate.py generate qwen_image
 python3 generate.py generate skyreels_v2
 python3 generate.py generate wan2.2
 python3 generate.py generate zimage 
-# load model from load path via `--model-path` option
-python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
 # w/ cache acceleration
 python3 generate.py generate flux --cache
 python3 generate.py generate flux --cache --taylorseer
@@ -47,6 +57,16 @@ python3 generate.py generate qwen_image_edit_lightning --cpu-offload --steps 8
 python3 generate.py generate flux2 --sequential-cpu-offload # FLUX2 56B total
 # use `--summary` option to show the cache acceleration stats
 python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
+```
+
+## 📚 Custom Model Path
+
+The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`, for example: 
+
+```bash
+python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
+python3 generate.py generate zimage --model-path /PATH/TO/Z-Image-Turbo
+python3 generate.py generate qwem_image --model-path /PATH/TO/Qwen-Image
 ```
 
 ## 📚 Multi-GPU Inference 
@@ -101,7 +121,7 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate qwen_ima
          --steps 4 --track-memory --compile
 ```
 
-## 📚 End2End Example
+## 📚 End2End Examples
 
 ```bash
 # NO Cache Acceleration: 8.27s
@@ -169,7 +189,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
 # NOTE: DON'T forget to add `flux_example` into helpers.py
 ```
 
-## 📚 More Usage for Examples
+## 📚 More Usages about Examples
 
 ```bash
 python3 generate.py --help
