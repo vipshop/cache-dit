@@ -75,6 +75,8 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
             task_type=ExampleType.T2I,  # Text to Image
             model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
             pipeline_class=FluxPipeline,
+            # `text_encoder_2` will be quantized when `--quantize-type`
+            # is set to `bnb_4bit`.
             bnb_4bit_components=["text_encoder_2"],
         ),
         input_data=ExampleInputData(
