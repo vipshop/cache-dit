@@ -21,15 +21,6 @@ from utils import GiB
 logger = init_logger(__name__)
 
 
-def default_path(ENV: str, default: str) -> str:
-    return os.environ.get(ENV, default)
-
-
-def load_image(url: str) -> Image.Image:
-    response = requests.get(url)
-    return Image.open(BytesIO(response.content))
-
-
 __all__ = [
     "flux_example",
     "flux_nunchaku_example",
@@ -43,6 +34,38 @@ __all__ = [
 ]
 
 
+# Please note that the following environment variables is only for debugging
+# and development purpose. In practice, users should directly provide the model
+# names or paths. The default values are the official model names on
+# HuggingFace Hub.
+_env_path_mapping = {
+    "FLUX_DIR": "black-forest-labs/FLUX.1-dev",
+    "NUNCHAKA_ FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
+    "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
+    "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
+    "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
+    "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
+    "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
+    "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
+    "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
+}
+_path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
+
+
+def _path(default: str, ENV: str = None) -> str:
+    if ENV is None:
+        ENV = _path_env_mapping.get(default, None)
+        if ENV is None:
+            return default
+    return os.environ.get(ENV, default)
+
+
+def load_image(url: str) -> Image.Image:
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content))
+
+
 @CacheDiTExampleRegister.register("flux")
 def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     from diffusers import FluxPipeline
@@ -51,7 +74,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+            model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
             pipeline_class=FluxPipeline,
             bnb_4bit_components=["text_encoder_2"],
         ),
@@ -71,10 +94,7 @@ def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample
         NunchakuFluxTransformer2DModelV2,
     )
 
-    nunchaku_flux_dir = default_path(
-        "NUNCHAKA_FLUX_DIR",
-        "nunchaku-tech/nunchaku-flux.1-dev",
-    )
+    nunchaku_flux_dir = _path("nunchaku-tech/nunchaku-flux.1-dev")
     transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
         f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
     )
@@ -82,7 +102,7 @@ def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+            model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
             pipeline_class=FluxPipeline,
             transformer=transformer,
             bnb_4bit_components=["text_encoder_2"],
@@ -131,7 +151,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path("FLUX_2_DIR", "black-forest-labs/FLUX.2-dev"),
+            model_name_or_path=_path("black-forest-labs/FLUX.2-dev"),
             pipeline_class=Flux2Pipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             # Extra init args for DBCacheConfig, ParamsModifier, etc.
@@ -163,10 +183,7 @@ def ovis_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path(
-                "OVIS_IMAGE_DIR",
-                "AIDC-AI/Ovis-Image-7B",
-            ),
+            model_name_or_path=_path("AIDC-AI/Ovis-Image-7B"),
             pipeline_class=OvisImagePipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
         ),
@@ -214,24 +231,17 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
     steps = 8 if args.num_inference_steps is None else args.num_inference_steps
     assert steps in [8, 4]
     lora_weights_path = os.path.join(
-        os.environ.get("QWEN_IMAGE_LIGHT_DIR", "lightx2v/Qwen-Image-Lightning"),
+        _path("lightx2v/Qwen-Image-Lightning"),
         "Qwen-Image-Edit-2509",
     )
-    lora_weight_name = (
-        "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors"
-        if steps > 4
-        else "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors"
-    )
+    lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
     base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
 
     return CacheDiTExample(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.IE2I,  # Image Editing to Image
-            model_name_or_path=default_path(
-                "QWEN_IMAGE_EDIT_2509_DIR",
-                "Qwen/Qwen-Image-Edit-2509",
-            ),
+            model_name_or_path=_path("Qwen/Qwen-Image-Edit-2509"),
             pipeline_class=QwenImageEditPlusPipeline,
             scheduler=scheduler,
             bnb_4bit_components=["text_encoder", "transformer"],
@@ -293,10 +303,7 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path(
-                "QWEN_IMAGE_DIR",
-                "Qwen/Qwen-Image",
-            ),
+            model_name_or_path=_path("Qwen/Qwen-Image"),
             pipeline_class=QwenImagePipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
         ),
@@ -315,12 +322,9 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
 def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
 
-    model_name_or_path = default_path(
-        "SKYREELS_V2_DIR",
-        "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
-    )
+    model_name_or_path = _path("Skywork/SkyReels-V2-T2V-14B-720P-Diffusers")
     vae = AutoModel.from_pretrained(
-        model_name_or_path,
+        model_name_or_path if args.model_path is None else args.model_path,
         subfolder="vae",
         torch_dtype=torch.float32,
     )  # Use float32 VAE to reduce video generation artifacts
@@ -384,7 +388,7 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2V,  # Text to Video
-            model_name_or_path=default_path("WAN_2_2_DIR", "Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
+            model_name_or_path=_path("Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
             pipeline_class=WanPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             extra_optimize_kwargs={
@@ -438,7 +442,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path("ZIMAGE_DIR", "Tongyi-MAI/Z-Image-Turbo"),
+            model_name_or_path=_path("Tongyi-MAI/Z-Image-Turbo"),
             pipeline_class=ZImagePipeline,
             bnb_4bit_components=["text_encoder"],
             extra_optimize_kwargs={
