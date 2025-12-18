@@ -27,7 +27,7 @@ class PatchFunctor:
         *args,
         **kwargs,
     ) -> torch.nn.Module:
-        raise NotImplementedError("apply method is not implemented.")
+        raise NotImplementedError("_apply method is not implemented.")
 
     @classmethod
     def is_from_diffusers(cls, transformer: torch.nn.Module) -> bool:
