@@ -270,12 +270,12 @@ class ExampleInitConfig:
         if self.pipeline_class is None:
             raise ValueError("pipeline_class must be provided to get the pipeline instance.")
         pipeline_quantization_config = self._pipeline_quantization_config(args)
-        pipe: DiffusionPipeline = self.pipeline_class.from_pretrained(
+        pipe = self.pipeline_class.from_pretrained(
             self.model_name_or_path if args.model_path is None else args.model_path,
             torch_dtype=self.torch_dtype,
             quantization_config=pipeline_quantization_config,
             **self._custom_components_kwargs(),
-        )
+        )  # type: LoraBaseMixin
         if self.post_init_hook is not None:
             self.post_init_hook(pipe, **kwargs)
 
