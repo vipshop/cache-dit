@@ -13,6 +13,7 @@ def _activate_tp_planners():
     from .tp_plan_wan import WanTensorParallelismPlanner  # noqa: F401
     from .tp_plan_skyreels import SkyReelsV2TensorParallelismPlanner  # noqa: F401
     from .tp_plan_zimage import ZImageTensorParallelismPlanner  # noqa: F401
+    from .tp_plan_ovis_image import OvisImageTensorParallelismPlanner  # noqa: F401
 
 
 __all__ = ["_activate_tp_planners"]
