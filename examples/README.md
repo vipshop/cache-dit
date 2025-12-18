@@ -4,6 +4,7 @@
 
 ## 📚 Table of Contents
 
+- [📚 Installation](#-installation)
 - [📚 Available Examples](#-available-examples)
 - [📚 Single GPU Inference](#-single-gpu-inference)  
 - [📚 Custom Model Path](#-custom-model-path)  
@@ -13,6 +14,15 @@
 - [📚 End2End Examples](#-end2end-examples) 
 - [📚 How to Add New Example](#-how-to-add-new-example) 
 - [📚 More Usages about Examples](#-more-usages-about-examples) 
+
+## 📚 Installation
+
+```bash
+pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
+pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
+pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
+pip3 install git+https://github.com/vipshop/cache-dit.git # latest
+```
 
 ## 📚 Available Examples
 
@@ -38,7 +48,7 @@ The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is t
 # baseline
 # use default model path, e.g, "black-forest-labs/FLUX.1-dev"
 python3 generate.py generate flux 
-python3 generate.py generate flux_nunchaku 
+python3 generate.py generate flux_nunchaku # need nunchaku library
 python3 generate.py generate flux2
 python3 generate.py generate ovis_image
 python3 generate.py generate qwen_image_edit_lightning
