@@ -2,6 +2,7 @@ import torch
 from diffusers.models.transformers.transformer_ovis_image import (
     OvisImageSingleTransformerBlock,
     OvisImageTransformerBlock,
+    OvisImageTransformer2DModel,
 )
 from einops import rearrange
 from torch import nn
@@ -54,8 +55,11 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
     ):
+        assert isinstance(transformer, OvisImageTransformer2DModel)
+
         # Ovis-Image use SwiGLU: self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
         # hidden_states = self.proj(hidden_states); hidden_states, gate = hidden_states.chunk(2, dim=-1)
+        # reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L140
         def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
             # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
             # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
