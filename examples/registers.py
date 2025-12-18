@@ -10,13 +10,12 @@ from cache_dit import DBCacheConfig, ParamsModifier
 from cache_dit.logger import init_logger
 
 from base import (
-    CacheDiTExampleRegister,
-    CacheDiTExample,
+    ExampleType,
     ExampleInputData,
     ExampleInitConfig,
-    ExampleType,
+    Example,
+    ExampleRegister,
 )
-from utils import GiB
 
 logger = init_logger(__name__)
 
@@ -66,11 +65,11 @@ def load_image(url: str) -> Image.Image:
     return Image.open(BytesIO(response.content))
 
 
-@CacheDiTExampleRegister.register("flux")
-def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("flux")
+def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
 
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
@@ -87,8 +86,8 @@ def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     )
 
 
-@CacheDiTExampleRegister.register("flux_nunchaku")
-def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("flux_nunchaku")
+def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
     from nunchaku.models.transformers.transformer_flux_v2 import (
         NunchakuFluxTransformer2DModelV2,
@@ -98,7 +97,7 @@ def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample
     transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
         f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
     )
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
@@ -116,19 +115,10 @@ def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample
     )
 
 
-@CacheDiTExampleRegister.register("flux2")
-def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("flux2")
+def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import Flux2Pipeline
 
-    if GiB() < 128:
-        if not args.sequential_cpu_offload:
-            assert (
-                args.quantize
-            ), "Quantization is required to fit FLUX.2 in <128GB memory without sequential CPU offload."
-            assert args.quantize_type in ["bitsandbytes_4bit", "float8_weight_only"], (
-                f"Unsupported quantization type: {args.quantize_type}, only supported"
-                "'bitsandbytes_4bit (bnb_4bit)' and 'float8_weight_only'."
-            )
     params_modifiers = [
         ParamsModifier(
             # Modified config only for transformer_blocks
@@ -147,7 +137,7 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             ),
         ),
     ]
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
@@ -175,11 +165,11 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     )
 
 
-@CacheDiTExampleRegister.register("ovis_image")
-def ovis_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("ovis_image")
+def ovis_image_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import OvisImagePipeline
 
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
@@ -205,8 +195,8 @@ def ovis_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     )
 
 
-@CacheDiTExampleRegister.register("qwen_image_edit_lightning")
-def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("qwen_image_edit_lightning")
+def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImageEditPlusPipeline, FlowMatchEulerDiscreteScheduler
 
     # From https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
@@ -237,7 +227,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
     lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
     base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
 
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.IE2I,  # Image Editing to Image
@@ -283,8 +273,8 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Cac
     )
 
 
-@CacheDiTExampleRegister.register("qwen_image")
-def qwen_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("qwen_image")
+def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImagePipeline
 
     positive_magic = {
@@ -299,7 +289,7 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         '"π≈3.1415926-53589793-23846264-33832795-02384197". '
         "Ultra HD, 4K, cinematic composition"
     )
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
@@ -318,8 +308,8 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     )
 
 
-@CacheDiTExampleRegister.register("skyreels_v2")
-def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("skyreels_v2")
+def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
 
     model_name_or_path = _path("Skywork/SkyReels-V2-T2V-14B-720P-Diffusers")
@@ -339,7 +329,7 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             f"for {pipe.__class__.__name__}."
         )
 
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2V,  # Text to Video
@@ -364,8 +354,8 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     )
 
 
-@CacheDiTExampleRegister.register("wan2.2")
-def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("wan2.2")
+def wan2_2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanPipeline
 
     params_modifiers = [
@@ -384,7 +374,7 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
         ),
     ]
 
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2V,  # Text to Video
@@ -414,8 +404,8 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
     )
 
 
-@CacheDiTExampleRegister.register("zimage")
-def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("zimage")
+def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImagePipeline
 
     if args.cache:
@@ -438,7 +428,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
             else None
         )
     )
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image

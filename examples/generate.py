@@ -1,6 +1,6 @@
 from cache_dit.logger import init_logger
 from utils import get_base_args, maybe_postprocess_args
-from registers import CacheDiTExampleRegister  # noqa: F403, F401
+from registers import ExampleRegister  # noqa: F403, F401
 from helpers import activate_all_examples
 
 # Make sure all example are registered
@@ -26,7 +26,7 @@ def get_example_args():
         type=str,
         nargs="?",
         default=None,
-        choices=[None] + CacheDiTExampleRegister.list_examples(),
+        choices=[None] + ExampleRegister.list_examples(),
         help="Names of the examples to run. If not specified, skip running example.",
     )
     args = parser.parse_args()
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     args = get_example_args()
     if args.task == "list":
         logger.info("Available examples:")
-        for name in CacheDiTExampleRegister.list_examples():
+        for name in ExampleRegister.list_examples():
             logger.info(f"- {name}")
         exit(0)
     else:
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         for arg, value in vars(args).items():
             logger.info(f"- {arg}: {value}")
 
-        example = CacheDiTExampleRegister.get_example(args, args.example)
+        example = ExampleRegister.get_example(args, args.example)
         example.run()
 
     # Usage:

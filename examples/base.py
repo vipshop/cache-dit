@@ -38,6 +38,9 @@ class ExampleType(Enum):
 
 @dataclasses.dataclass
 class ExampleInputData:
+    # This class provides default input data for examples.
+    # The default values may be overridden by command line
+    # args or other means.
     # General inputs for both image and video generation
     prompt: Optional[str] = None
     negative_prompt: Optional[str] = None
@@ -244,6 +247,8 @@ class ExampleOutputData:
 
 @dataclasses.dataclass
 class ExampleInitConfig:
+    # This class provides default initialization config for examples.
+    # The default values may be overridden by command line args or other means.
     task_type: ExampleType
     model_name_or_path: str
     pipeline_class: Optional[type[DiffusionPipeline]] = DiffusionPipeline
@@ -405,7 +410,7 @@ def _is_function_or_method(component: Any) -> bool:
     return is_basic_func and not is_excluded_instance and not is_method
 
 
-class CacheDiTExample:
+class Example:
     def __init__(
         self,
         args: argparse.Namespace,
@@ -514,12 +519,12 @@ class CacheDiTExample:
         return input_kwargs
 
 
-class CacheDiTExampleRegister:
-    _example_registry: Dict[str, Callable[..., CacheDiTExample]] = {}
+class ExampleRegister:
+    _example_registry: Dict[str, Callable[..., Example]] = {}
 
     @classmethod
     def register(cls, name: str):
-        def decorator(example_func: Callable[..., CacheDiTExample]):
+        def decorator(example_func: Callable[..., Example]):
             if name in cls._example_registry:
                 raise ValueError(f"Example '{name}' is already registered.")
             cls._example_registry[name] = example_func
@@ -528,7 +533,7 @@ class CacheDiTExampleRegister:
         return decorator
 
     @classmethod
-    def get_example(cls, args: argparse.Namespace, name: str, **kwargs) -> CacheDiTExample:
+    def get_example(cls, args: argparse.Namespace, name: str, **kwargs) -> Example:
         if name not in cls._example_registry:
             raise ValueError(f"Example '{name}' is not registered.")
         example_func = cls._example_registry[name]
