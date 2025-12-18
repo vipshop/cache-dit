@@ -129,14 +129,14 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 ## 🔥Supported DiTs
 
 > [!Tip] 
-> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ☑️: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **TE**: Text Encoder Parallelism; **💡[C*](./)**: **Hybrid Cache** Acceleration.
+> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ☑️/✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **TE**: Text Encoder Parallelism; **💡[C*](./)**: **Hybrid Cache** Acceleration.
 
 <div align="center">
 
 | 📚Model | [C*](./)  | CP | TP | TE | 📚Model | [C*](./)  | CP | TP | TE |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
-| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ |
-| **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ |
+| **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ |
 | **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
 | **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
 | **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
