@@ -15,6 +15,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -58,7 +59,13 @@ class SkyReelsV2TensorParallelismPlanner(TensorParallelismPlanner):
             # Reduce the number of attention heads per device
             if hasattr(block, "attn"):
                 if hasattr(block.attn, "heads"):
-                    block.attn.heads //= tp_size
+                    shard_divisible_attr(
+                        block.attn,
+                        "heads",
+                        tp_size,
+                        what="attn",
+                        context="SkyReelsV2TensorParallelismPlanner",
+                    )
 
             # Define parallelization plan for each block
             # This follows a standard pattern:

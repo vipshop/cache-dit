@@ -15,6 +15,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -54,7 +55,13 @@ class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
     ):
         for _, block in transformer.transformer_blocks.named_children():
             # Reduce attention heads for tensor parallelism
-            block.attn1.heads //= tp_mesh.size()
+            shard_divisible_attr(
+                block.attn1,
+                "heads",
+                tp_mesh.size(),
+                what="attn1",
+                context="CogViewTensorParallelismPlanner",
+            )
 
             layer_plan = {
                 # Self-attention projections

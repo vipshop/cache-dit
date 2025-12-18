@@ -17,6 +17,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -66,8 +67,21 @@ class HunyuanDiTTensorParallelismPlanner(TensorParallelismPlanner):
             assert isinstance(block, HunyuanDiTBlock)
 
             # Split attention heads across TP devices
-            block.attn1.heads //= tp_mesh.size()
-            block.attn2.heads //= tp_mesh.size()
+            tp_size = tp_mesh.size()
+            shard_divisible_attr(
+                block.attn1,
+                "heads",
+                tp_size,
+                what="attn1",
+                context="HunyuanDiTTensorParallelismPlanner",
+            )
+            shard_divisible_attr(
+                block.attn2,
+                "heads",
+                tp_size,
+                what="attn2",
+                context="HunyuanDiTTensorParallelismPlanner",
+            )
 
             # Create layer plan for tensor parallelism
             layer_plan = {

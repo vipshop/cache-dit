@@ -14,6 +14,7 @@ from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -106,7 +107,13 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             block.to("cuda")
             self.rearrange_feedforward_weight(block, tp_size)
             block.to(old_device)
-            block.attn.heads //= tp_size
+            shard_divisible_attr(
+                block.attn,
+                "heads",
+                tp_size,
+                what="attn",
+                context="Flux2TensorParallelismPlanner",
+            )
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),
@@ -135,9 +142,27 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             block.to("cuda")
             self.rearrange_singleblock_weight(block, tp_size)
             block.to(old_device)
-            block.attn.heads //= tp_size
-            block.attn.inner_dim //= tp_size
-            block.attn.mlp_hidden_dim //= tp_size
+            shard_divisible_attr(
+                block.attn,
+                "heads",
+                tp_size,
+                what="attn",
+                context="Flux2TensorParallelismPlanner(single_block)",
+            )
+            shard_divisible_attr(
+                block.attn,
+                "inner_dim",
+                tp_size,
+                what="attn",
+                context="Flux2TensorParallelismPlanner(single_block)",
+            )
+            shard_divisible_attr(
+                block.attn,
+                "mlp_hidden_dim",
+                tp_size,
+                what="attn",
+                context="Flux2TensorParallelismPlanner(single_block)",
+            )
             layer_plan = {
                 "attn.to_qkv_mlp_proj": ColwiseParallel(),
                 "attn.to_out": RowwiseParallel(),

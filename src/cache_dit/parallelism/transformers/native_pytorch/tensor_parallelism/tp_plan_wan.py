@@ -16,6 +16,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -107,8 +108,21 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
         tp_mesh: DeviceMesh,
     ):
         def prepare_block(block: nn.Module):
-            block.attn1.heads //= tp_mesh.size()
-            block.attn2.heads //= tp_mesh.size()
+            tp_size = tp_mesh.size()
+            shard_divisible_attr(
+                block.attn1,
+                "heads",
+                tp_size,
+                what="attn1",
+                context="WanTensorParallelismPlanner",
+            )
+            shard_divisible_attr(
+                block.attn2,
+                "heads",
+                tp_size,
+                what="attn2",
+                context="WanTensorParallelismPlanner",
+            )
             layer_plan = {
                 "attn1.to_q": ColwiseParallel(),
                 "attn1.to_k": ColwiseParallel(),

@@ -15,6 +15,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
+from .tp_utils import shard_divisible_attr
 
 logger = init_logger(__name__)
 
@@ -50,8 +51,21 @@ class Kandinsky5TensorParallelismPlanner(TensorParallelismPlanner):
         tp_mesh: DeviceMesh,
     ):
         for _, block in transformer.visual_transformer_blocks.named_children():
-            block.self_attention.num_heads //= tp_mesh.size()
-            block.cross_attention.num_heads //= tp_mesh.size()
+            tp_size = tp_mesh.size()
+            shard_divisible_attr(
+                block.self_attention,
+                "num_heads",
+                tp_size,
+                what="self_attention",
+                context="Kandinsky5TensorParallelismPlanner",
+            )
+            shard_divisible_attr(
+                block.cross_attention,
+                "num_heads",
+                tp_size,
+                what="cross_attention",
+                context="Kandinsky5TensorParallelismPlanner",
+            )
             layer_plan = {
                 "self_attention.to_query": ColwiseParallel(),
                 "self_attention.to_key": ColwiseParallel(),
