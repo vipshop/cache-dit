@@ -57,34 +57,6 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
     ):
         assert isinstance(transformer, OvisImageTransformer2DModel)
 
-        # Ovis-Image use SwiGLU: self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
-        # hidden_states = self.proj(hidden_states); hidden_states, gate = hidden_states.chunk(2, dim=-1)
-        # reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L140
-        def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
-            # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
-            # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
-            # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
-            # -> finally reshape to [...,(Hd+Gd)]
-            dim_out = proj.weight.shape[0] // 2
-            requires_grad = proj.weight.requires_grad
-            linear1_weight_data = proj.weight.data.detach().clone()  # [out_dim, in_dim]
-            new_linear1_weight = torch.zeros_like(linear1_weight_data)
-            part1_linear1_weight_data = linear1_weight_data[:dim_out, ...]
-            part2_linear1_weight_data = linear1_weight_data[dim_out:, ...]
-            split_size = dim_out // tp_group_size
-            for i in range(tp_group_size):
-                start_idx = i * split_size
-                end_idx = (i + 1) * split_size
-                new_linear1_weight[i * 2 * split_size : (i * 2 + 1) * split_size, ...] = (
-                    part1_linear1_weight_data[start_idx:end_idx, ...]
-                )
-                new_linear1_weight[(i * 2 + 1) * split_size : (i * 2 + 2) * split_size, ...] = (
-                    part2_linear1_weight_data[start_idx:end_idx, ...]
-                )
-
-            proj.weight.data.copy_(new_linear1_weight)
-            proj.weight.requires_grad_(requires_grad)
-
         for _, block in transformer.transformer_blocks.named_children():
             assert isinstance(block, OvisImageTransformerBlock)
             rearrange_ffn_0_swiglu_proj_weight(block.ff.net[0].proj, tp_mesh.size())
@@ -115,50 +87,6 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
-        # NOTE: special handling for OvisImageSingleTransformerBlock, we have to
-        # rearrange the proj_out weight because it contains both out and down
-        # projection weights in a single matrix.
-        def rearrange_proj_out_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
-            # rowwise
-            hidden_dim = single_block.attn.to_q.weight.shape[0]
-            requires_grad = single_block.proj_out.weight.requires_grad
-            linear2_weight_data = single_block.proj_out.weight.data.T.detach().clone()
-            out_weight = linear2_weight_data[:hidden_dim, ...]
-            out_weight = rearrange(out_weight, "(G D) C -> G D C", G=tp_group_size)
-            down_weight = linear2_weight_data.data[hidden_dim:, ...]
-            down_weight = rearrange(down_weight, "(G D) C -> G D C", G=tp_group_size)
-            new_linear2_weight = torch.cat([out_weight, down_weight], dim=1)
-            new_linear2_weight = rearrange(new_linear2_weight, "G D C -> (G D) C")
-            single_block.proj_out.weight.data.copy_(new_linear2_weight.T)
-            single_block.proj_out.weight.requires_grad_(requires_grad)
-
-        def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
-            # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
-            # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
-            # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
-            # -> finally reshape to [...,(Hd+Gd)]
-            mlp_hidden_dim = single_block.proj_mlp.weight.shape[0] // 2
-            requires_grad = single_block.proj_mlp.weight.requires_grad
-            linear1_weight_data = (
-                single_block.proj_mlp.weight.data.detach().clone()
-            )  # [out_dim, in_dim]
-            new_linear1_weight = torch.zeros_like(linear1_weight_data)
-            part1_linear1_weight_data = linear1_weight_data[:mlp_hidden_dim, ...]
-            part2_linear1_weight_data = linear1_weight_data[mlp_hidden_dim:, ...]
-            split_size = mlp_hidden_dim // tp_group_size
-            for i in range(tp_group_size):
-                start_idx = i * split_size
-                end_idx = (i + 1) * split_size
-                new_linear1_weight[i * 2 * split_size : (i * 2 + 1) * split_size, ...] = (
-                    part1_linear1_weight_data[start_idx:end_idx, ...]
-                )
-                new_linear1_weight[(i * 2 + 1) * split_size : (i * 2 + 2) * split_size, ...] = (
-                    part2_linear1_weight_data[start_idx:end_idx, ...]
-                )
-
-            single_block.proj_mlp.weight.data.copy_(new_linear1_weight)
-            single_block.proj_mlp.weight.requires_grad_(requires_grad)
-
         for _, block in transformer.single_transformer_blocks.named_children():
             assert isinstance(block, OvisImageSingleTransformerBlock)
             rearrange_proj_out_weight(block, tp_mesh.size())
@@ -182,3 +110,76 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
         return transformer
+
+
+# NOTE: special handling for OvisImageSingleTransformerBlock, we have to
+# rearrange the proj_out weight because it contains both out and down
+# projection weights in a single matrix.
+def rearrange_proj_out_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
+    # rowwise
+    hidden_dim = single_block.attn.to_q.weight.shape[0]
+    requires_grad = single_block.proj_out.weight.requires_grad
+    linear2_weight_data = single_block.proj_out.weight.data.T.detach().clone()
+    out_weight = linear2_weight_data[:hidden_dim, ...]
+    out_weight = rearrange(out_weight, "(G D) C -> G D C", G=tp_group_size)
+    down_weight = linear2_weight_data.data[hidden_dim:, ...]
+    down_weight = rearrange(down_weight, "(G D) C -> G D C", G=tp_group_size)
+    new_linear2_weight = torch.cat([out_weight, down_weight], dim=1)
+    new_linear2_weight = rearrange(new_linear2_weight, "G D C -> (G D) C")
+    single_block.proj_out.weight.data.copy_(new_linear2_weight.T)
+    single_block.proj_out.weight.requires_grad_(requires_grad)
+
+
+def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_group_size):
+    # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
+    # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
+    # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
+    # -> finally reshape to [...,(Hd+Gd)]
+    mlp_hidden_dim = single_block.proj_mlp.weight.shape[0] // 2
+    requires_grad = single_block.proj_mlp.weight.requires_grad
+    linear1_weight_data = single_block.proj_mlp.weight.data.detach().clone()  # [out_dim, in_dim]
+    new_linear1_weight = torch.zeros_like(linear1_weight_data)
+    part1_linear1_weight_data = linear1_weight_data[:mlp_hidden_dim, ...]
+    part2_linear1_weight_data = linear1_weight_data[mlp_hidden_dim:, ...]
+    split_size = mlp_hidden_dim // tp_group_size
+    for i in range(tp_group_size):
+        start_idx = i * split_size
+        end_idx = (i + 1) * split_size
+        new_linear1_weight[i * 2 * split_size : (i * 2 + 1) * split_size, ...] = (
+            part1_linear1_weight_data[start_idx:end_idx, ...]
+        )
+        new_linear1_weight[(i * 2 + 1) * split_size : (i * 2 + 2) * split_size, ...] = (
+            part2_linear1_weight_data[start_idx:end_idx, ...]
+        )
+
+    single_block.proj_mlp.weight.data.copy_(new_linear1_weight)
+    single_block.proj_mlp.weight.requires_grad_(requires_grad)
+
+
+# Ovis-Image use SwiGLU: self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
+# hidden_states = self.proj(hidden_states); hidden_states, gate = hidden_states.chunk(2, dim=-1)
+# reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L140
+def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
+    # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
+    # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
+    # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
+    # -> finally reshape to [...,(Hd+Gd)]
+    dim_out = proj.weight.shape[0] // 2
+    requires_grad = proj.weight.requires_grad
+    linear1_weight_data = proj.weight.data.detach().clone()  # [out_dim, in_dim]
+    new_linear1_weight = torch.zeros_like(linear1_weight_data)
+    part1_linear1_weight_data = linear1_weight_data[:dim_out, ...]
+    part2_linear1_weight_data = linear1_weight_data[dim_out:, ...]
+    split_size = dim_out // tp_group_size
+    for i in range(tp_group_size):
+        start_idx = i * split_size
+        end_idx = (i + 1) * split_size
+        new_linear1_weight[i * 2 * split_size : (i * 2 + 1) * split_size, ...] = (
+            part1_linear1_weight_data[start_idx:end_idx, ...]
+        )
+        new_linear1_weight[(i * 2 + 1) * split_size : (i * 2 + 2) * split_size, ...] = (
+            part2_linear1_weight_data[start_idx:end_idx, ...]
+        )
+
+    proj.weight.data.copy_(new_linear1_weight)
+    proj.weight.requires_grad_(requires_grad)
