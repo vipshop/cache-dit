@@ -23,15 +23,13 @@ logger = init_logger(__name__)
 
 class ChromaPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: ChromaTransformer2DModel,
         **kwargs,
     ) -> ChromaTransformer2DModel:
         if hasattr(transformer, "_is_patched"):
             return transformer
-
-        PatchFunctor.assert_from_diffusers(transformer)
 
         is_patched = False
         for index_block, block in enumerate(transformer.transformer_blocks):

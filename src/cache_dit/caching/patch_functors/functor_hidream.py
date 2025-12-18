@@ -23,15 +23,13 @@ logger = init_logger(__name__)
 
 class HiDreamPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: HiDreamImageTransformer2DModel,
         **kwargs,
     ) -> HiDreamImageTransformer2DModel:
         if hasattr(transformer, "_is_patched"):
             return transformer
-
-        PatchFunctor.assert_from_diffusers(transformer)
 
         is_patched = False
 

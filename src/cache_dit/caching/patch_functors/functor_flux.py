@@ -24,7 +24,7 @@ logger = init_logger(__name__)
 
 class FluxPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: FluxTransformer2DModel,
         blocks: torch.nn.ModuleList = None,
@@ -33,8 +33,6 @@ class FluxPatchFunctor(PatchFunctor):
 
         if hasattr(transformer, "_is_patched"):
             return transformer
-
-        PatchFunctor.assert_from_diffusers(transformer)
 
         if blocks is None:
             blocks = transformer.single_transformer_blocks

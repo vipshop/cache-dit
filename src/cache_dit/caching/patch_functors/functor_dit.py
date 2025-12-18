@@ -16,15 +16,13 @@ logger = init_logger(__name__)
 
 class DiTPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: DiTTransformer2DModel,
         **kwargs,
     ) -> DiTTransformer2DModel:
         if hasattr(transformer, "_is_patched"):
             return transformer
-
-        PatchFunctor.assert_from_diffusers(transformer)
 
         is_patched = False
 

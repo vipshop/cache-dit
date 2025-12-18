@@ -80,3 +80,11 @@ class ENV(object):
     CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG: bool = bool(
         int(os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0"))
     )
+
+    # Patch Functors ENVs
+
+    # Force disable the checking of whether the model is from diffusers in patch functors.
+    # Users can set the environment variable to 1 to disable this behavior.
+    CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK: bool = bool(
+        int(os.environ.get("CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK", "0"))
+    )
