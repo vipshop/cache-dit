@@ -156,6 +156,7 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
             single_block.proj_mlp.weight.requires_grad_(requires_grad)
 
         for _, block in transformer.single_transformer_blocks.named_children():
+            assert isinstance(block, OvisImageSingleTransformerBlock)
             rearrange_proj_out_weight(block, tp_mesh.size())
             block.attn.heads //= tp_mesh.size()
             rearrange_proj_mlp_weight(block, tp_mesh.size())
