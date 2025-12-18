@@ -33,7 +33,7 @@
 |FLUX, 13.87s|**🎉13.88s**|23.25s| **🎉13.75s**|Qwen, 132s|181s|**🎉133s**|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1312x1312.C0_Q0_NONE_Ulysses2.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=90px>|
 |1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
-|✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|
+|☑️U* ☑️UAA|☑️U* ☑️UAA| NO CP|❌U* ☑️UAA|☑️U* ☑️UAA| NO CP|❌U* ☑️UAA|
 
 <p align="center">
  <a href="https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md">
@@ -75,15 +75,13 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ### 📚Core Features
 
-- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, include **[30+](./examples/)** series, nearly **[100+](./examples/)** pipelines, such as FLUX.1, Qwen-Image, Qwen-Image-Lightning, Wan 2.1/2.2, HunyuanImage-2.1, HunyuanVideo, HiDream, AuraFlow, CogView3Plus, CogView4, CogVideoX, LTXVideo, ConsisID, SkyReelsV2, VisualCloze, PixArt, Chroma, Mochi, SD 3.5, DiT-XL, etc.  
+- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, include **[30+](./examples/)** series, nearly **[100+](./examples/)** pipelines: 🔥FLUX, 🔥Qwen-Image, 🔥Z-image, 🔥Wan, etc.  
 - **[🎉Extremely Easy to Use](./docs/User_Guide.md#unified-cache-apis)**: In most cases, you only need **one line** of code: `cache_dit.enable_cache(...)`. After calling this API, just use the pipeline as normal.   
-- **[🎉Easy New Model Integration](./docs/User_Guide.md#automatic-block-adapter)**: Features like **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, and **Patch Functor** make it highly functional and flexible. For example, we achieved 🎉 Day 1 support for [HunyuanImage-2.1](https://github.com/Tencent-Hunyuan/HunyuanImage-2.1) with 1.7x speedup w/o precision loss—even before it was available in the Diffusers library.  
-- **[🎉State-of-the-Art Performance](./bench/)**: Compared with algorithms including Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa, cache-dit achieved the **SOTA** performance w/ **7.4x↑🎉** speedup on ClipScore!
-- **[🎉Support for 4/8-Steps Distilled Models](./bench/)**: Surprisingly, cache-dit's **DBCache** works for extremely few-step distilled models—something many other methods fail to do.  
-- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Quantization ([torchao](./examples/quantize/), [🔥nunchaku](./examples/quantize/)), CPU or Sequential Offloading, **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)**, **[🔥Tensor Parallelism](./docs/User_Guide.md#️hybrid-tensor-parallelism)**, etc.  
-- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes (e.g., DBCache or DBPrune + TaylorSeerCalibrator). DBCache or DBPrune acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. More mainstream cache acceleration algorithms (e.g., FoCa) will be supported in the future, along with additional benchmarks—stay tuned for updates!  
-- **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework! Check out the documentation here: <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"><img src=https://img.shields.io/badge/🤗Diffusers-ecosystem-yellow.svg ></a>
-- **[🎉HTTP Serving Support](./docs/SERVING.md)**: Built-in HTTP serving capabilities for production deployment. Supports **text-to-image**, **image editing**, **multi-image editing**, **text-to-video**, and **image-to-video** generation with simple REST API. Easy integration with existing applications and services.
+- **[🎉State-of-the-Art Performance](./bench/)**: Compared with other algorithms, cache-dit achieved the **SOTA** w/ **7.4x↑🎉** speedup on ClipScore! Surprisingly, it's **DBCache** also works for extremely few-step distilled models.  
+- **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Quantization, CPU or Sequential Offloading, **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)**, **[🔥Tensor Parallelism](./docs/User_Guide.md#️hybrid-tensor-parallelism)**, etc.  
+- **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes. DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. 
+- **[🎉HTTP Serving Support](./docs/SERVING.md)**: Built-in HTTP serving capabilities for production deployment with simple REST API. Supports **text-to-image**, **image editing**, **text-to-video**, and **image-to-video** generation. 
+- **[🤗Diffusers Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: 🔥**cache-dit** has joined the Diffusers community ecosystem as the **first** DiT-specific cache acceleration framework for **[🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**, **[🔥SGLang Diffusion](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md)**, and **[🔥vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/acceleration/cache_dit_acceleration/)**.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench-v2.png)
 
@@ -131,37 +129,37 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 ## 🔥Supported DiTs
 
 > [!Tip] 
-> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✔️: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **TE**: Text Encoder Parallelism; **💡[C*](./)**: **Hybrid Cache** Acceleration.
+> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ☑️/✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **TE**: Text Encoder Parallelism; **💡[C*](./)**: **Hybrid Cache** Acceleration.
 
 <div align="center">
 
 | 📚Model | [C*](./)  | CP | TP | TE | 📚Model | [C*](./)  | CP | TP | TE |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
-| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[Qwen...Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Qwen.E.Plus `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[Qwen..Light](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Qwen...Light `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[Qwen..Control](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Qwen.E.Light `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[Wan 2.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Mochi](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✔️ | ✔️ |
-| **🎉[Wan 2.1 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[HiDream](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[Wan 2.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✔️ | ✔️ |
-| **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[ChronoEdit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️  | ✔️  | ✔️ |
-| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✔️ | ✔️ |
-| **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✖️ | ✔️ |
-| **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[PixArt Sigma](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[PixArt Alpha](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[Chroma-HD](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ️✔️ | ✔️ | **🎉[EasyAnimate](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[StableDiffusion3](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[PRX T2I](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[Kandinsky5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️️ | ✔️️ | ✔️ | **🎉[Amused](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[LTXVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[AuraFlow](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
-| **🎉[ConsisID](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✔️ | ✔️ | ✔️ | **🎉[LongCatVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✔️ | ✖️ | ✖️ | ✔️ |
+| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ |
+| **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ |
+| **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen...Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[Qwen...Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen.E.Plus `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[Qwen..Light](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen...Light `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[Qwen..Control](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Qwen.E.Light `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[Wan 2.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Mochi](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ☑️ | ☑️ |
+| **🎉[Wan 2.1 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[HiDream](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[Wan 2.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ☑️ | ☑️ |
+| **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[ChronoEdit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️  | ☑️  | ☑️ |
+| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ☑️ | ☑️ |
+| **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ |
+| **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[PixArt Sigma](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[PixArt Alpha](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[Chroma-HD](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ️☑️ | ☑️ | **🎉[EasyAnimate](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[StableDiffusion3](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[PRX T2I](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[Kandinsky5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️️ | ☑️️ | ☑️ | **🎉[Amused](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[LTXVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[AuraFlow](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
+| **🎉[ConsisID](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | **🎉[LongCatVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ |
 
 </div>
 
@@ -279,7 +277,7 @@ For more advanced features such as **Unified Cache APIs**, **Forward Pattern Mat
 
 - [📊Examples](./examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
 - [🌐HTTP Serving](./docs/SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text-to-video** generation.
-- [❓FAQ](./FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
+- [❓FAQ](./docs/FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
 
 ### 📚Documentation
 - [⚙️Installation](./docs/User_Guide.md#️installation)

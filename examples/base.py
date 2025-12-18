@@ -453,7 +453,10 @@ class Example:
         for _ in range(self.args.warmup):
             input_kwargs = self.new_generator(input_kwargs, self.args)
             _ = pipe(**input_kwargs)
-        warmup_time = (time.time() - start_time) / self.args.warmup
+        if self.args.warmup > 0:
+            warmup_time = (time.time() - start_time) / self.args.warmup
+        else:
+            warmup_time = None
 
         start_time = time.time()
         # actual inference
@@ -472,7 +475,10 @@ class Example:
             for _ in range(self.args.repeat):
                 input_kwargs = self.new_generator(input_kwargs, self.args)
                 output = pipe(**input_kwargs)
-        inference_time = (time.time() - start_time) / self.args.repeat
+        if self.args.repeat > 0:
+            inference_time = (time.time() - start_time) / self.args.repeat
+        else:
+            inference_time = None
 
         if self.args.cache_summary:
             if self.rank == 0:
