@@ -327,14 +327,32 @@ class ExampleInitConfig:
         custom_components_kwargs = {}
 
         custom_components_kwargs["scheduler"] = (
-            self.scheduler if not _is_function(self.scheduler) else self.scheduler()
+            self.scheduler
+            if not _is_function_or_method(
+                self.scheduler,
+            )
+            else self.scheduler()  # get scheduler instance
         )
         custom_components_kwargs["transformer"] = (
-            self.transformer if not _is_function(self.transformer) else self.transformer()
+            self.transformer
+            if not _is_function_or_method(
+                self.transformer,
+            )
+            else self.transformer()  # get transformer instance
         )
-        custom_components_kwargs["vae"] = self.vae if not _is_function(self.vae) else self.vae()
+        custom_components_kwargs["vae"] = (
+            self.vae
+            if not _is_function_or_method(
+                self.vae,
+            )
+            else self.vae()  # get vae instance
+        )
         custom_components_kwargs["text_encoder"] = (
-            self.text_encoder if not _is_function(self.text_encoder) else self.text_encoder()
+            self.text_encoder
+            if not _is_function_or_method(
+                self.text_encoder,
+            )
+            else self.text_encoder()  # get text_encoder instance
         )
         # Remove None components
         custom_components_kwargs = {
@@ -362,7 +380,7 @@ class ExampleInitConfig:
         )
 
 
-def _is_function(component: Any) -> bool:
+def _is_function_or_method(component: Any) -> bool:
     func_types = (
         types.FunctionType,
         types.BuiltinFunctionType,
