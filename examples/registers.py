@@ -10,10 +10,10 @@ from cache_dit import DBCacheConfig, ParamsModifier
 from cache_dit.logger import init_logger
 
 from base import (
+    Example,
     ExampleType,
     ExampleInputData,
     ExampleInitConfig,
-    Example,
     ExampleRegister,
 )
 
