@@ -400,6 +400,7 @@ def get_args(
     )
     parser.add_argument(
         "--compile-text-encoder",
+        "--compile-text",
         action="store_true",
         default=False,
         help="Enable compile for text encoder",
@@ -590,7 +591,7 @@ def maybe_compile_text_encoder(
                 )
                 _module_to_compile = torch.compile(
                     _module_to_compile,
-                    mode="max-autotune" if args.max_autotune else "default",
+                    mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                 )
                 # Set back the compiled text encoder
                 if hasattr(text_encoder, "model"):
@@ -638,7 +639,7 @@ def maybe_compile_vae(
                         logger.info(f"Compiling VAE encoder module: {vae_cls_name}.encoder ...")
                         vae.encoder = torch.compile(
                             _encoder_to_compile,
-                            mode="max-autotune" if args.max_autotune else "default",
+                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                         )
                     else:
                         logger.warning(
@@ -651,7 +652,7 @@ def maybe_compile_vae(
                         logger.info(f"Compiling VAE decoder module: {vae_cls_name}.decoder ...")
                         vae.decoder = torch.compile(
                             _decoder_to_compile,
-                            mode="max-autotune" if args.max_autotune else "default",
+                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                         )
                     else:
                         logger.warning(
@@ -924,11 +925,12 @@ def maybe_cpu_offload(
         else:
             pipe = pipe_or_adapter
 
+        pipe_cls_name = pipe.__class__.__name__
         if args.sequential_cpu_offload:
-            logger.info("Enabling sequential CPU offload for the model ...")
+            logger.info(f"Enabling Sequential CPU offload for the model {pipe_cls_name} ...")
             pipe.enable_sequential_cpu_offload(device=device)
         else:
-            logger.info("Enabling CPU offload for the model ...")
+            logger.info(f"Enabling CPU offload for the model {pipe_cls_name} ...")
             pipe.enable_model_cpu_offload(device=device)
 
         return True

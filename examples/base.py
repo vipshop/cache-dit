@@ -38,6 +38,9 @@ class ExampleType(Enum):
 
 @dataclasses.dataclass
 class ExampleInputData:
+    # This class provides default input data for examples.
+    # The default values may be overridden by command line
+    # args or other means.
     # General inputs for both image and video generation
     prompt: Optional[str] = None
     negative_prompt: Optional[str] = None
@@ -244,6 +247,8 @@ class ExampleOutputData:
 
 @dataclasses.dataclass
 class ExampleInitConfig:
+    # This class provides default initialization config for examples.
+    # The default values may be overridden by command line args or other means.
     task_type: ExampleType
     model_name_or_path: str
     pipeline_class: Optional[type[DiffusionPipeline]] = DiffusionPipeline
@@ -270,12 +275,12 @@ class ExampleInitConfig:
         if self.pipeline_class is None:
             raise ValueError("pipeline_class must be provided to get the pipeline instance.")
         pipeline_quantization_config = self._pipeline_quantization_config(args)
-        pipe: DiffusionPipeline = self.pipeline_class.from_pretrained(
+        pipe = self.pipeline_class.from_pretrained(
             self.model_name_or_path if args.model_path is None else args.model_path,
             torch_dtype=self.torch_dtype,
             quantization_config=pipeline_quantization_config,
             **self._custom_components_kwargs(),
-        )
+        )  # type: LoraBaseMixin
         if self.post_init_hook is not None:
             self.post_init_hook(pipe, **kwargs)
 
@@ -327,14 +332,32 @@ class ExampleInitConfig:
         custom_components_kwargs = {}
 
         custom_components_kwargs["scheduler"] = (
-            self.scheduler if not _is_function(self.scheduler) else self.scheduler()
+            self.scheduler
+            if not _is_function_or_method(
+                self.scheduler,
+            )
+            else self.scheduler()  # get scheduler instance
         )
         custom_components_kwargs["transformer"] = (
-            self.transformer if not _is_function(self.transformer) else self.transformer()
+            self.transformer
+            if not _is_function_or_method(
+                self.transformer,
+            )
+            else self.transformer()  # get transformer instance
         )
-        custom_components_kwargs["vae"] = self.vae if not _is_function(self.vae) else self.vae()
+        custom_components_kwargs["vae"] = (
+            self.vae
+            if not _is_function_or_method(
+                self.vae,
+            )
+            else self.vae()  # get vae instance
+        )
         custom_components_kwargs["text_encoder"] = (
-            self.text_encoder if not _is_function(self.text_encoder) else self.text_encoder()
+            self.text_encoder
+            if not _is_function_or_method(
+                self.text_encoder,
+            )
+            else self.text_encoder()  # get text_encoder instance
         )
         # Remove None components
         custom_components_kwargs = {
@@ -362,7 +385,7 @@ class ExampleInitConfig:
         )
 
 
-def _is_function(component: Any) -> bool:
+def _is_function_or_method(component: Any) -> bool:
     func_types = (
         types.FunctionType,
         types.BuiltinFunctionType,
@@ -387,7 +410,7 @@ def _is_function(component: Any) -> bool:
     return is_basic_func and not is_excluded_instance and not is_method
 
 
-class CacheDiTExample:
+class Example:
     def __init__(
         self,
         args: argparse.Namespace,
@@ -496,12 +519,12 @@ class CacheDiTExample:
         return input_kwargs
 
 
-class CacheDiTExampleRegister:
-    _example_registry: Dict[str, Callable[..., CacheDiTExample]] = {}
+class ExampleRegister:
+    _example_registry: Dict[str, Callable[..., Example]] = {}
 
     @classmethod
     def register(cls, name: str):
-        def decorator(example_func: Callable[..., CacheDiTExample]):
+        def decorator(example_func: Callable[..., Example]):
             if name in cls._example_registry:
                 raise ValueError(f"Example '{name}' is already registered.")
             cls._example_registry[name] = example_func
@@ -510,7 +533,7 @@ class CacheDiTExampleRegister:
         return decorator
 
     @classmethod
-    def get_example(cls, args: argparse.Namespace, name: str, **kwargs) -> CacheDiTExample:
+    def get_example(cls, args: argparse.Namespace, name: str, **kwargs) -> Example:
         if name not in cls._example_registry:
             raise ValueError(f"Example '{name}' is not registered.")
         example_func = cls._example_registry[name]

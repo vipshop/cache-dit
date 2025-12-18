@@ -1,4 +1,28 @@
-# Examples for Cache-DiT
+<div align="center">
+    <h1> 🚀 Examples for Cache-DiT</h1>
+</div>
+
+## 📚 Table of Contents
+
+- [📚 Installation](#-installation)
+- [📚 Available Examples](#-available-examples)
+- [📚 Single GPU Inference](#-single-gpu-inference)  
+- [📚 Custom Model Path](#-custom-model-path)  
+- [📚 Multi-GPU Inference](#-multi-gpu-inference)  
+- [📚 Low-bits Quantization](#-low-bits-quantization)  
+- [📚 Hybrid Acceleration](#-hybrid-acceleration) 
+- [📚 End2End Examples](#-end2end-examples) 
+- [📚 How to Add New Example](#-how-to-add-new-example) 
+- [📚 More Usages about Examples](#-more-usages-about-examples) 
+
+## 📚 Installation
+
+```bash
+pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
+pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
+pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
+pip3 install git+https://github.com/vipshop/cache-dit.git # latest
+```
 
 ## 📚 Available Examples
 
@@ -18,11 +42,13 @@ INFO 12-17 06:37:11 [generate.py:43] - zimage
 
 ## 📚 Single GPU Inference
 
+The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is to start with single GPU inference. For examples:  
+
 ```bash
 # baseline
 # use default model path, e.g, "black-forest-labs/FLUX.1-dev"
 python3 generate.py generate flux 
-python3 generate.py generate flux_nunchaku 
+python3 generate.py generate flux_nunchaku # need nunchaku library
 python3 generate.py generate flux2
 python3 generate.py generate ovis_image
 python3 generate.py generate qwen_image_edit_lightning
@@ -30,8 +56,6 @@ python3 generate.py generate qwen_image
 python3 generate.py generate skyreels_v2
 python3 generate.py generate wan2.2
 python3 generate.py generate zimage 
-# load model from load path via `--model-path` option
-python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
 # w/ cache acceleration
 python3 generate.py generate flux --cache
 python3 generate.py generate flux --cache --taylorseer
@@ -49,7 +73,19 @@ python3 generate.py generate flux2 --sequential-cpu-offload # FLUX2 56B total
 python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
 ```
 
+## 📚 Custom Model Path
+
+The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`. For examples: 
+
+```bash
+python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
+python3 generate.py generate zimage --model-path /PATH/TO/Z-Image-Turbo
+python3 generate.py generate qwem_image --model-path /PATH/TO/Qwen-Image
+```
+
 ## 📚 Multi-GPU Inference 
+
+cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
 ```bash
 # context parallelism or tensor parallelism
@@ -68,6 +104,8 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --p
 
 ## 📚 Low-bits Quantization 
 
+cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥torchao, 🔥nunchaku), For examples:
+
 ```bash
 # please also enable torch.compile if the quantation is using.
 python3 generate.py generate flux --cache --quantize-type float8 --compile
@@ -75,9 +113,12 @@ python3 generate.py generate flux --cache --quantize-type int8 --compile
 python3 generate.py generate flux --cache --quantize-type float8_weight_only --compile
 python3 generate.py generate flux --cache --quantize-type int8_weight_only --compile
 python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile # w4a16
+python3 generate.py generate flux_nunchaku --cache --compile # w4a16 SVDQ
 ```
 
 ## 📚 Hybrid Acceleration 
+
+Here are some examples for `hybrid cache acceleration + parallelism` for popular DiTs with cache-dit.
 
 ```bash
 # DBCache + SCM + Taylorseer
@@ -101,7 +142,7 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate qwen_ima
          --steps 4 --track-memory --compile
 ```
 
-## 📚 End2End Example
+## 📚 End2End Examples
 
 ```bash
 # NO Cache Acceleration: 8.27s
@@ -146,16 +187,18 @@ INFO 12-17 09:10:09 [base.py:182] Image saved to flux.1024x1024.C0_Q0_DBCache_F1
 It is very easy to add a new example. Please refer to the specific implementation in [registers.py](./registers.py). For example:
 
 ```python
-@CacheDiTExampleRegister.register("flux")
-def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
+@ExampleRegister.register("flux")
+def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
 
-    return CacheDiTExample(
+    return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=default_path("FLUX_DIR", "black-forest-labs/FLUX.1-dev"),
+            model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
             pipeline_class=FluxPipeline,
+            # `text_encoder_2` will be quantized when `--quantize-type` 
+            # is set to `bnb_4bit`.
             bnb_4bit_components=["text_encoder_2"],
         ),
         input_data=ExampleInputData(
@@ -169,7 +212,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> CacheDiTExample:
 # NOTE: DON'T forget to add `flux_example` into helpers.py
 ```
 
-## 📚 More Usage for Examples
+## 📚 More Usages about Examples
 
 ```bash
 python3 generate.py --help
