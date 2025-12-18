@@ -400,6 +400,7 @@ def get_args(
     )
     parser.add_argument(
         "--compile-text-encoder",
+        "--compile-text",
         action="store_true",
         default=False,
         help="Enable compile for text encoder",
