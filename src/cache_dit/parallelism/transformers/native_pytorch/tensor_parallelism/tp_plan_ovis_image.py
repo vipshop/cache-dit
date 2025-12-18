@@ -56,7 +56,7 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
     ):
         # Ovis-Image use SwiGLU: self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
         # hidden_states = self.proj(hidden_states); hidden_states, gate = hidden_states.chunk(2, dim=-1)
-        def rearrange_ff_net_0_proj_weight(proj: torch.nn.Linear, tp_group_size):
+        def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
             # colwise [..,Hd+Gd],Hd=Gd, linear: y=x*A^T, A:[out_dim, in_dim], x:[...,in_dim]
             # -> if tp_group_size=2, permute [...,Hd/2+Gd/2+Hd/2+Gd/2]
             # -> if tp_group_size=4, permute [...,Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4+Hd/4+Gd/4]
@@ -83,8 +83,8 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
 
         for _, block in transformer.transformer_blocks.named_children():
             assert isinstance(block, OvisImageTransformerBlock)
-            rearrange_ff_net_0_proj_weight(block.ff.net[0].proj, tp_mesh.size())
-            rearrange_ff_net_0_proj_weight(block.ff_context.net[0].proj, tp_mesh.size())
+            rearrange_ffn_0_swiglu_proj_weight(block.ff.net[0].proj, tp_mesh.size())
+            rearrange_ffn_0_swiglu_proj_weight(block.ff_context.net[0].proj, tp_mesh.size())
             block.attn.heads //= tp_mesh.size()
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
