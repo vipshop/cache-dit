@@ -137,22 +137,22 @@ def rearrange_proj_mlp_weight(single_block: OvisImageSingleTransformerBlock, tp_
     # -> finally reshape to [...,(Hd+Gd)]
     mlp_hidden_dim = single_block.proj_mlp.weight.shape[0] // 2
     requires_grad = single_block.proj_mlp.weight.requires_grad
-    linear1_weight_data = single_block.proj_mlp.weight.data.detach().clone()  # [out_dim, in_dim]
+    linear1_weight_data = single_block.proj_mlp.weight.data.T.detach().clone()  # [in_dim, out_dim]
     new_linear1_weight = torch.zeros_like(linear1_weight_data)
-    part1_linear1_weight_data = linear1_weight_data[:mlp_hidden_dim, ...]
-    part2_linear1_weight_data = linear1_weight_data[mlp_hidden_dim:, ...]
+    part1_linear1_weight_data = linear1_weight_data[..., :mlp_hidden_dim]
+    part2_linear1_weight_data = linear1_weight_data[..., mlp_hidden_dim:]
     split_size = mlp_hidden_dim // tp_group_size
     for i in range(tp_group_size):
         start_idx = i * split_size
         end_idx = (i + 1) * split_size
-        new_linear1_weight[i * 2 * split_size : (i * 2 + 1) * split_size, ...] = (
-            part1_linear1_weight_data[start_idx:end_idx, ...]
+        new_linear1_weight[..., i * 2 * split_size : (i * 2 + 1) * split_size] = (
+            part1_linear1_weight_data[..., start_idx:end_idx]
         )
-        new_linear1_weight[(i * 2 + 1) * split_size : (i * 2 + 2) * split_size, ...] = (
-            part2_linear1_weight_data[start_idx:end_idx, ...]
+        new_linear1_weight[..., (i * 2 + 1) * split_size : (i * 2 + 2) * split_size] = (
+            part2_linear1_weight_data[..., start_idx:end_idx]
         )
 
-    single_block.proj_mlp.weight.data.copy_(new_linear1_weight)
+    single_block.proj_mlp.weight.data.copy_(new_linear1_weight.T)  # [out_dim, in_dim]
     single_block.proj_mlp.weight.requires_grad_(requires_grad)
 
 
@@ -166,20 +166,20 @@ def rearrange_ffn_0_swiglu_proj_weight(proj: torch.nn.Linear, tp_group_size):
     # -> finally reshape to [...,(Hd+Gd)]
     dim_out = proj.weight.shape[0] // 2
     requires_grad = proj.weight.requires_grad
-    linear1_weight_data = proj.weight.data.detach().clone()  # [out_dim, in_dim]
+    linear1_weight_data = proj.weight.data.T.detach().clone()  # [in_dim, out_dim]
     new_linear1_weight = torch.zeros_like(linear1_weight_data)
-    part1_linear1_weight_data = linear1_weight_data[:dim_out, ...]
-    part2_linear1_weight_data = linear1_weight_data[dim_out:, ...]
+    part1_linear1_weight_data = linear1_weight_data[..., :dim_out]
+    part2_linear1_weight_data = linear1_weight_data[..., dim_out:]
     split_size = dim_out // tp_group_size
     for i in range(tp_group_size):
         start_idx = i * split_size
         end_idx = (i + 1) * split_size
-        new_linear1_weight[i * 2 * split_size : (i * 2 + 1) * split_size, ...] = (
-            part1_linear1_weight_data[start_idx:end_idx, ...]
+        new_linear1_weight[..., i * 2 * split_size : (i * 2 + 1) * split_size] = (
+            part1_linear1_weight_data[..., start_idx:end_idx]
         )
-        new_linear1_weight[(i * 2 + 1) * split_size : (i * 2 + 2) * split_size, ...] = (
-            part2_linear1_weight_data[start_idx:end_idx, ...]
+        new_linear1_weight[..., (i * 2 + 1) * split_size : (i * 2 + 2) * split_size] = (
+            part2_linear1_weight_data[..., start_idx:end_idx]
         )
 
-    proj.weight.data.copy_(new_linear1_weight)
+    proj.weight.data.copy_(new_linear1_weight.T)  # [out_dim, in_dim]
     proj.weight.requires_grad_(requires_grad)
