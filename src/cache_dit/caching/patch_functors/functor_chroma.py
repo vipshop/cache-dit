@@ -31,6 +31,8 @@ class ChromaPatchFunctor(PatchFunctor):
         if hasattr(transformer, "_is_patched"):
             return transformer
 
+        PatchFunctor.assert_from_diffusers(transformer)
+
         is_patched = False
         for index_block, block in enumerate(transformer.transformer_blocks):
             assert isinstance(block, ChromaTransformerBlock)

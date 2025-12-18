@@ -34,6 +34,8 @@ class FluxPatchFunctor(PatchFunctor):
         if hasattr(transformer, "_is_patched"):
             return transformer
 
+        PatchFunctor.assert_from_diffusers(transformer)
+
         if blocks is None:
             blocks = transformer.single_transformer_blocks
 

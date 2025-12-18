@@ -23,6 +23,8 @@ class HunyuanDiTPatchFunctor(PatchFunctor):
         if hasattr(transformer, "_is_patched"):
             return transformer
 
+        PatchFunctor.assert_from_diffusers(transformer)
+
         is_patched = False
 
         num_layers = transformer.config.num_layers

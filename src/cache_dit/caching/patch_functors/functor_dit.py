@@ -24,6 +24,8 @@ class DiTPatchFunctor(PatchFunctor):
         if hasattr(transformer, "_is_patched"):
             return transformer
 
+        PatchFunctor.assert_from_diffusers(transformer)
+
         is_patched = False
 
         transformer._norm1_emb = transformer.transformer_blocks[0].norm1.emb

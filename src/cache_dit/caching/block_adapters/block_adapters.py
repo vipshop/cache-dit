@@ -223,21 +223,13 @@ class BlockAdapter:
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
-        def _is_from_diffusers(transformer: torch.nn.Module) -> bool:
-            return transformer.__module__.startswith("diffusers")
 
         if self.patch_functor is not None:
             if self.transformer is not None:
                 if self.nested_depth(self.transformer) == 0:
-                    assert _is_from_diffusers(
-                        self.transformer
-                    ), "Only support patch_functor for diffusers transformers now."
                     self.patch_functor.apply(self.transformer, *args, **kwargs)
                 elif self.nested_depth(self.transformer) == 1:
                     for transformer in self.transformer:
-                        assert _is_from_diffusers(
-                            self.transformer
-                        ), "Only support patch_functor for diffusers transformers now."
                         self.patch_functor.apply(transformer, *args, **kwargs)
                 else:
                     raise ValueError(
@@ -249,9 +241,6 @@ class BlockAdapter:
                     "pipe.transformer can not be None when patch_functor "
                     "is provided and transformer is None."
                 )
-                assert _is_from_diffusers(
-                    self.transformer
-                ), "Only support patch_functor for diffusers transformers now."
                 self.patch_functor.apply(self.pipe.transformer, *args, **kwargs)
 
     @staticmethod

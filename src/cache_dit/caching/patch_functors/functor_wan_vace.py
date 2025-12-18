@@ -28,6 +28,8 @@ class WanVACEPatchFunctor(PatchFunctor):
         if hasattr(transformer, "_is_patched"):
             return transformer
 
+        PatchFunctor.assert_from_diffusers(transformer)
+
         is_patched = False
 
         _i = 0
