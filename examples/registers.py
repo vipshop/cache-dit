@@ -322,7 +322,10 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
 def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
 
-    model_name_or_path = _path("Skywork/SkyReels-V2-T2V-14B-720P-Diffusers", args=args)
+    model_name_or_path = _path(
+        "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
+        args=args,
+    )
     vae = AutoModel.from_pretrained(
         model_name_or_path if args.model_path is None else args.model_path,
         subfolder="vae",
@@ -424,7 +427,17 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
 def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanVACEPipeline, AutoencoderKLWan, UniPCMultistepScheduler
 
-    model_name_or_path = _path("Wan-AI/Wan2.1-VACE-1.3B-diffusers", args=args)
+    if "wan2.2" in args.example.lower():
+        model_name_or_path = _path(
+            "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
+            args=args,
+        )
+    else:
+        model_name_or_path = _path(
+            "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+            args=args,
+        )
+
     vae = AutoencoderKLWan.from_pretrained(
         model_name_or_path,
         subfolder="vae",
