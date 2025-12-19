@@ -74,8 +74,10 @@ def _path(
     return os.environ.get(ENV, default)
 
 
-@ExampleRegister.register("flux")
-@ExampleRegister.register("flux_nunchaku")
+@ExampleRegister.register("flux", default="black-forest-labs/FLUX.1-dev")
+@ExampleRegister.register(
+    "flux_nunchaku", default="nunchaku-flux.1-dev + black-forest-labs/FLUX.1-dev"
+)
 def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
 

@@ -554,13 +554,15 @@ class Example:
 
 class ExampleRegister:
     _example_registry: Dict[str, Callable[..., Example]] = {}
+    _example_registry_defaults: Dict[str, str] = {}
 
     @classmethod
-    def register(cls, name: str):
+    def register(cls, name: str, default: str = ""):
         def decorator(example_func: Callable[..., Example]):
             if name in cls._example_registry:
                 raise ValueError(f"Example '{name}' is already registered.")
             cls._example_registry[name] = example_func
+            cls._example_registry_defaults[name] = default
             return example_func
 
         return decorator
@@ -575,3 +577,7 @@ class ExampleRegister:
     @classmethod
     def list_examples(cls) -> List[str]:
         return list(cls._example_registry.keys())
+
+    @classmethod
+    def get_default(cls, name: str) -> str:
+        return cls._example_registry_defaults.get(name, "")
