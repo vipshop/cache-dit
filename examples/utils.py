@@ -287,6 +287,26 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    parser.add_argument(
+        "--quantize-text-type",
+        "--q-text-type",
+        type=str,
+        default=None,
+        choices=[
+            None,
+            "float8",
+            "float8_weight_only",
+            "float8_wo",  # alias for float8_weight_only
+            "int8",
+            "int8_weight_only",
+            "int8_wo",  # alias for int8_weight_only
+            "int4",
+            "int4_weight_only",
+            "int4_wo",  # alias for int4_weight_only
+            "bitsandbytes_4bit",
+            "bnb_4bit",  # alias for bitsandbytes_4bit
+        ],
+    )
     # Parallelism settings
     parser.add_argument(
         "--parallel-type",
@@ -491,9 +511,15 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.quantize_type is not None:
         # Force enable quantization if quantize_type is specified
         args.quantize = True
+
+    if args.quantize_text_type is not None:
+        # Force enable quantization for text encoder if quantize_text_type is specified
+        args.quantize_text_encoder = True
+
     # Handle alias for quantize_type
     if args.quantize and args.quantize_type is None:
-        args.quantize_type = "float8_weight_only"
+        args.quantize_type = "float8_weight_only"  # default type
+
     if args.quantize_type == "float8_wo":  # alias
         args.quantize_type = "float8_weight_only"
     if args.quantize_type == "int8_wo":  # alias
@@ -502,6 +528,20 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.quantize_type = "int4_weight_only"
     if args.quantize_type == "bnb_4bit":  # alias
         args.quantize_type = "bitsandbytes_4bit"
+
+    # Handle alias for quantize_text_type
+    if args.quantize_text_encoder and args.quantize_text_type is None:
+        # default to same as quantize_type
+        args.quantize_text_type = args.quantize_type
+
+    if args.quantize_text_type == "float8_wo":  # alias
+        args.quantize_text_type = "float8_weight_only"
+    if args.quantize_text_type == "int8_wo":  # alias
+        args.quantize_text_type = "int8_weight_only"
+    if args.quantize_text_type == "int4_wo":  # alias
+        args.quantize_text_type = "int4_weight_only"
+    if args.quantize_text_type == "bnb_4bit":  # alias
+        args.quantize_text_type = "bitsandbytes_4bit"
 
     if args.mask_policy is not None and not args.steps_mask:
         # Enable steps mask if mask_policy is specified
@@ -823,10 +863,13 @@ def maybe_quantize_text_encoder(
 ) -> DiffusionPipeline | BlockAdapter:
     # Quantize text encoder by default if quantize_text_encoder is enabled
     if args.quantize_text_encoder:
-        assert args.quantize_type not in ("bitsandbytes_4bit", "bnb_4bit"), (
-            "bitsandbytes_4bit quantization should be handled by"
-            " PipelineQuantizationConfig in from_pretrained."
-        )
+        if args.quantize_text_type in ("bitsandbytes_4bit", "bnb_4bit"):
+            logger.debug(
+                "bitsandbytes_4bit quantization should be handled by"
+                " PipelineQuantizationConfig in from_pretrained."
+            )
+            return pipe_or_adapter
+
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
             assert pipe is not None, "Please quantize text encoder manually if pipe is None."
@@ -839,11 +882,11 @@ def maybe_quantize_text_encoder(
             if isinstance(text_encoder, torch.nn.Module):
                 logger.info(
                     f"Quantizing text encoder module: {name}:{text_encoder_cls_name} to"
-                    f" {args.quantize_type} ..."
+                    f" {args.quantize_text_type} ..."
                 )
                 text_encoder = cache_dit.quantize(
                     text_encoder,
-                    quant_type=args.quantize_type,
+                    quant_type=args.quantize_text_type,
                 )
                 setattr(pipe, name, text_encoder)
             else:
@@ -866,7 +909,15 @@ def pipe_quant_bnb_4bit_config(
     if components_to_quantize:
         # Remove all components if quantize type is not bitsandbytes_4bit
         if args.quantize_type != "bitsandbytes_4bit":
-            components_to_quantize = []
+            if "transformer" in components_to_quantize:
+                components_to_quantize.remove("transformer")
+            if "transformer_2" in components_to_quantize:
+                components_to_quantize.remove("transformer_2")
+        if args.quantize_text_type != "bitsandbytes_4bit":
+            if "text_encoder" in components_to_quantize:
+                components_to_quantize.remove("text_encoder")
+            if "text_encoder_2" in components_to_quantize:
+                components_to_quantize.remove("text_encoder_2")
 
         # Remove text encoder if parallel_text_encoder is enabled
         if args.parallel_text_encoder:
