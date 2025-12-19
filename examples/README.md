@@ -27,17 +27,23 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ## 📚 Available Examples
 
 ```bash
-python3 generate.py list
-INFO 12-17 06:37:11 [generate.py:41] Available examples:
-INFO 12-17 06:37:11 [generate.py:43] - flux
-INFO 12-17 06:37:11 [generate.py:43] - flux_nunchaku
-INFO 12-17 06:37:11 [generate.py:43] - flux2
-INFO 12-17 06:37:11 [generate.py:43] - ovis_image
-INFO 12-17 06:37:11 [generate.py:43] - qwen_image_edit_lightning
-INFO 12-17 06:37:11 [generate.py:43] - qwen_image
-INFO 12-17 06:37:11 [generate.py:43] - skyreels_v2
-INFO 12-17 06:37:11 [generate.py:43] - wan2.2
-INFO 12-17 06:37:11 [generate.py:43] - zimage
+python3 generate.py list  # list all available examples
+
+INFO 12-19 03:42:42 [generate.py:40] Available examples:
+INFO 12-19 03:42:42 [generate.py:46] - ✅ flux_nunchaku             - Defalut: nunchaku-tech/nunchaku-flux.1-dev
+INFO 12-19 03:42:42 [generate.py:46] - ✅ flux                      - Defalut: black-forest-labs/FLUX.1-dev
+INFO 12-19 03:42:42 [generate.py:46] - ✅ flux2                     - Defalut: black-forest-labs/FLUX.2-dev
+INFO 12-19 03:42:42 [generate.py:46] - ✅ qwen_image_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
+INFO 12-19 03:42:42 [generate.py:46] - ✅ qwen_image                - Defalut: Qwen/Qwen-Image
+INFO 12-19 03:42:42 [generate.py:46] - ✅ qwen_image_edit_lightning - Defalut: lightx2v/Qwen-Image-Lightning
+INFO 12-19 03:42:42 [generate.py:46] - ✅ qwen_image_edit           - Defalut: Qwen/Qwen-Image-Edit-2509
+INFO 12-19 03:42:42 [generate.py:46] - ✅ skyreels_v2               - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
+INFO 12-19 03:42:42 [generate.py:46] - ✅ wan2.2_t2v                - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+INFO 12-19 03:42:42 [generate.py:46] - ✅ wan2.1_t2v                - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+INFO 12-19 03:42:42 [generate.py:46] - ✅ wan2.2_vace               - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
+INFO 12-19 03:42:42 [generate.py:46] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
+INFO 12-19 03:42:42 [generate.py:46] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
+INFO 12-19 03:42:42 [generate.py:46] - ✅ zimage                    - Defalut: Tongyi-MAI/Z-Image-Turbo
 ```
 
 ## 📚 Single GPU Inference
