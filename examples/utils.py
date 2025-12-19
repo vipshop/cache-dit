@@ -372,6 +372,13 @@ def get_args(
         default=False,
         help="Enable sequential GPU offload for model if applicable.",
     )
+    parser.add_argument(
+        "--device-map-balance",
+        "--device-map",
+        action="store_true",
+        default=False,
+        help="Enable automatic device map balancing model if multiple GPUs are available.",
+    )
     # Vae tiling/slicing settings
     parser.add_argument(
         "--vae-tiling",

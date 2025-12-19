@@ -306,6 +306,7 @@ class ExampleInitConfig:
             self.model_name_or_path if args.model_path is None else args.model_path,
             torch_dtype=self.torch_dtype,
             quantization_config=pipeline_quantization_config,
+            device_map="balanced" if args.device_map_balance else None,
             **self._custom_components_kwargs(),
         )  # type: LoraBaseMixin
         if self.post_init_hook is not None:
