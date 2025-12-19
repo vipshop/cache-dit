@@ -1,11 +1,11 @@
 import os
 import math
 import torch
-import requests
 import argparse
-from PIL import Image
-from io import BytesIO
+import PIL.Image
 import cache_dit
+from typing import Tuple, List, Optional
+from diffusers.utils import load_image
 from cache_dit import DBCacheConfig, ParamsModifier
 from cache_dit.logger import init_logger
 
@@ -28,7 +28,8 @@ __all__ = [
     "qwen_image_edit_lightning_example",
     "qwen_image_example",
     "skyreels_v2_example",
-    "wan2_2_example",
+    "wan_example",
+    "wan_vace_example",
     "zimage_example",
 ]
 
@@ -47,22 +48,29 @@ _env_path_mapping = {
     "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
     "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+    "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
 
-def _path(default: str, ENV: str = None) -> str:
+def _path(
+    default: str,
+    args: Optional[argparse.Namespace] = None,
+    ENV: Optional[str] = None,
+) -> str:
+    # Prefer command line argument if provided
+    if args is not None:
+        model_path_arg = args.model_path
+        if model_path_arg is not None:
+            return model_path_arg
+    # Next, check environment variable
     if ENV is None:
         ENV = _path_env_mapping.get(default, None)
         if ENV is None:
             return default
     return os.environ.get(ENV, default)
-
-
-def load_image(url: str) -> Image.Image:
-    response = requests.get(url)
-    return Image.open(BytesIO(response.content))
 
 
 @ExampleRegister.register("flux")
@@ -314,7 +322,7 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
 def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
 
-    model_name_or_path = _path("Skywork/SkyReels-V2-T2V-14B-720P-Diffusers")
+    model_name_or_path = _path("Skywork/SkyReels-V2-T2V-14B-720P-Diffusers", args=args)
     vae = AutoModel.from_pretrained(
         model_name_or_path if args.model_path is None else args.model_path,
         subfolder="vae",
@@ -356,8 +364,8 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("wan2.2")
-def wan2_2_example(args: argparse.Namespace, **kwargs) -> Example:
+@ExampleRegister.register("wan")
+def wan_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanPipeline
 
     params_modifiers = [
@@ -400,6 +408,98 @@ def wan2_2_example(args: argparse.Namespace, **kwargs) -> Example:
             height=480,
             width=832,
             num_frames=49,
+            guidance_scale=5.0,
+            num_inference_steps=30,
+        ),
+    )
+
+
+@ExampleRegister.register("wan_vace")
+def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import WanVACEPipeline, AutoencoderKLWan, UniPCMultistepScheduler
+
+    model_name_or_path = _path("Wan-AI/Wan2.1-VACE-1.3B-diffusers", args=args)
+    vae = AutoencoderKLWan.from_pretrained(
+        model_name_or_path,
+        subfolder="vae",
+        torch_dtype=torch.float32,
+    )
+
+    def post_init_hook(pipe: WanVACEPipeline, **kwargs):
+        flow_shift = 5.0  # 5.0 for 720P, 3.0 for 480P
+        pipe.scheduler = UniPCMultistepScheduler.from_config(
+            pipe.scheduler.config,
+            flow_shift=flow_shift,
+        )
+        logger.info(
+            f"Set UniPCMultistepScheduler with flow_shift={flow_shift} "
+            f"for {pipe.__class__.__name__}."
+        )
+
+    def _video_and_mask(
+        first_img: PIL.Image.Image,
+        last_img: PIL.Image.Image,
+        height: int,
+        width: int,
+        num_frames: int,
+    ) -> Tuple[List[PIL.Image.Image], List[PIL.Image.Image]]:
+        first_img = first_img.resize((width, height))
+        last_img = last_img.resize((width, height))
+        frames = []
+        frames.append(first_img)
+        # Ideally, this should be 127.5 to match original code, but they perform computation on numpy arrays
+        # whereas we are passing PIL images. If you choose to pass numpy arrays, you can set it to 127.5 to
+        # match the original code.
+        frames.extend([PIL.Image.new("RGB", (width, height), (128, 128, 128))] * (num_frames - 2))
+        frames.append(last_img)
+        mask_black = PIL.Image.new("L", (width, height), 0)
+        mask_white = PIL.Image.new("L", (width, height), 255)
+        mask = [mask_black, *[mask_white] * (num_frames - 2), mask_black]
+        return frames, mask
+
+    first_frame = load_image("./data/flf2v_input_first_frame.png")
+    last_frame = load_image("./data/flf2v_input_last_frame.png")
+
+    height = 512 if args.height is None else args.height
+    width = 512 if args.width is None else args.width
+    num_frames = 81 if args.num_frames is None else args.num_frames
+    video, mask = _video_and_mask(first_frame, last_frame, height, width, num_frames)
+
+    has_transformer_2 = "wan2.2" in model_name_or_path.lower()
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.FLF2V,  # Few-Labeled-Frames to Video
+            model_name_or_path=model_name_or_path,
+            pipeline_class=WanVACEPipeline,
+            vae=vae,
+            post_init_hook=post_init_hook,
+            bnb_4bit_components=["text_encoder", "transformer"] if not has_transformer_2 else ["text_encoder", "transformer", "transformer_2"],  # type: ignore
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "CG animation style, a small blue bird takes off from the ground, "
+                "flapping its wings. The bird's feathers are delicate, with a unique "
+                "pattern on its chest. The background shows a blue sky with white "
+                "clouds under bright sunshine. The camera follows the bird upward, "
+                "capturing its flight and the vastness of the sky from a close-up, "
+                "low-angle perspective."
+            ),
+            negative_prompt=(
+                "Bright tones, overexposed, static, blurred details, subtitles, "
+                "style, works, paintings, images, static, overall gray, worst "
+                "quality, low quality, JPEG compression residue, ugly, incomplete, "
+                "extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
+                "disfigured, misshapen limbs, fused fingers, still picture, messy "
+                "background, three legs, many people in the background, walking "
+                "backwards"
+            ),
+            video=video,
+            mask=mask,
+            height=height,
+            width=width,
+            num_frames=num_frames,
             guidance_scale=5.0,
             num_inference_steps=30,
         ),

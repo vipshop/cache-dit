@@ -34,6 +34,7 @@ class ExampleType(Enum):
     I2V = "image_to_video"
     T2I = "text_to_image"
     IE2I = "image_editing_to_image"
+    FLF2V = "first_last_frames_to_video"
 
 
 @dataclasses.dataclass
@@ -55,6 +56,8 @@ class ExampleInputData:
     mask_image: Optional[Union[List[Image.Image], Image.Image]] = None
     # Specific inputs for video generation
     num_frames: Optional[int] = None
+    video: Optional[List[Image.Image]] = None  # e.g, Wan VACE
+    mask: Optional[List[Image.Image]] = None
     # Other inputs
     seed: Optional[int] = None
     generator: torch.Generator = torch.Generator("cpu").manual_seed(0)
@@ -504,7 +507,7 @@ class Example:
             output_data.image = (
                 output.images[0] if isinstance(output.images, list) else output.images
             )
-        elif self.init_config.task_type in [ExampleType.T2V, ExampleType.I2V]:
+        elif self.init_config.task_type in [ExampleType.T2V, ExampleType.I2V, ExampleType.FLF2V]:
             output_data.video = output.frames[0] if hasattr(output, "frames") else output
 
         self.output_data = output_data
