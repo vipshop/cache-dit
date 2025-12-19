@@ -372,6 +372,13 @@ def get_args(
         default=False,
         help="Enable sequential GPU offload for model if applicable.",
     )
+    parser.add_argument(
+        "--device-map-balance",
+        "--device-map",
+        action="store_true",
+        default=False,
+        help="Enable automatic device map balancing model if multiple GPUs are available.",
+    )
     # Vae tiling/slicing settings
     parser.add_argument(
         "--vae-tiling",
@@ -905,22 +912,24 @@ def maybe_vae_tiling_or_slicing(
             vae = getattr(pipe, "vae", None)
             if vae is not None:
                 vae_cls_name = vae.__class__.__name__
-                if args.vae_tiling and hasattr(vae, "enable_tiling"):
-                    logger.info(f"Enabling VAE tiling for module: {vae_cls_name} ...")
-                    vae.enable_tiling()
-                else:
-                    logger.warning(
-                        f"Cannot enable VAE tiling for module: {vae_cls_name} No enable_tiling"
-                        " method."
-                    )
-                if args.vae_slicing and hasattr(vae, "enable_slicing"):
-                    logger.info(f"Enabling VAE slicing for module: {vae_cls_name} ...")
-                    vae.enable_slicing()
-                else:
-                    logger.warning(
-                        f"Cannot enable VAE slicing for module: {vae_cls_name} No enable_slicing"
-                        " method."
-                    )
+                if args.vae_tiling:
+                    if hasattr(vae, "enable_tiling"):
+                        logger.info(f"Enabling VAE tiling for module: {vae_cls_name} ...")
+                        vae.enable_tiling()
+                    else:
+                        logger.warning(
+                            f"Cannot enable VAE tiling for module: {vae_cls_name} No enable_tiling"
+                            " method."
+                        )
+                if args.vae_slicing:
+                    if hasattr(vae, "enable_slicing"):
+                        logger.info(f"Enabling VAE slicing for module: {vae_cls_name} ...")
+                        vae.enable_slicing()
+                    else:
+                        logger.warning(
+                            f"Cannot enable VAE slicing for module: {vae_cls_name} No enable_slicing"
+                            " method."
+                        )
                 setattr(pipe, "vae", vae)
             else:
                 logger.warning("vae-tiling is set but no VAE found in the pipeline.")
@@ -1061,7 +1070,7 @@ def maybe_apply_optimization(
             pipe = pipe_or_adapter.pipe
         else:
             pipe = pipe_or_adapter
-        if pipe is not None:
+        if pipe is not None and not args.device_map_balance:
             pipe.to(device)
 
     return pipe_or_adapter

@@ -29,7 +29,6 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ```bash
 python3 generate.py list  # list all available examples
 
-[generate.py:40] Available examples:
 [generate.py:46] - ✅ flux_nunchaku             - Defalut: nunchaku-tech/nunchaku-flux.1-dev
 [generate.py:46] - ✅ flux                      - Defalut: black-forest-labs/FLUX.1-dev
 [generate.py:46] - ✅ flux2                     - Defalut: black-forest-labs/FLUX.2-dev
@@ -37,9 +36,12 @@ python3 generate.py list  # list all available examples
 [generate.py:46] - ✅ qwen_image                - Defalut: Qwen/Qwen-Image
 [generate.py:46] - ✅ qwen_image_edit_lightning - Defalut: lightx2v/Qwen-Image-Lightning
 [generate.py:46] - ✅ qwen_image_edit           - Defalut: Qwen/Qwen-Image-Edit-2509
+[generate.py:46] - ✅ qwen_image_controlnet     - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
 [generate.py:46] - ✅ skyreels_v2               - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
 [generate.py:46] - ✅ wan2.2_t2v                - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
 [generate.py:46] - ✅ wan2.1_t2v                - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+[generate.py:46] - ✅ wan2.2_i2v                - Defalut: Wan-AI/Wan2.2-I2V-A14B-Diffusers
+[generate.py:46] - ✅ wan2.1_i2v                - Defalut: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
 [generate.py:46] - ✅ wan2.2_vace               - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
 [generate.py:46] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
 [generate.py:46] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
