@@ -340,7 +340,7 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
     controlnet = QwenImageControlNetModel.from_pretrained(
         _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
         torch_dtype=torch.bfloat16,
-    ).to("cuda")
+    )
 
     base_image_url = (
         "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets"
@@ -356,7 +356,6 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
             pipeline_class=QwenImageControlNetInpaintPipeline,
             controlnet=controlnet,
             bnb_4bit_components=["text_encoder", "transformer"],
-            force_fuse_lora=True,  # For parallelism compatibility
         ),
         input_data=ExampleInputData(
             prompt="一辆绿色的出租车行驶在路上",
