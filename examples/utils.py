@@ -1068,7 +1068,7 @@ def maybe_apply_optimization(
             pipe = pipe_or_adapter.pipe
         else:
             pipe = pipe_or_adapter
-        if pipe is not None:
+        if pipe is not None and not args.device_map_balance:
             pipe.to(device)
 
     return pipe_or_adapter
