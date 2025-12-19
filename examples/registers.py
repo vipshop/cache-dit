@@ -344,7 +344,7 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
         "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets"
     )
     control_image = load_image(f"{base_image_url}/images/image1.png").convert("RGB")
-    mask_image = load_image(f"{base_image_url}/masks/mask1.png")
+    control_mask = load_image(f"{base_image_url}/masks/mask1.png")
 
     return Example(
         args=args,
@@ -360,10 +360,10 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
             prompt="一辆绿色的出租车行驶在路上",
             negative_prompt="worst quality, low quality, blurry, text, watermark, logo",
             control_image=control_image,
-            mask_image=mask_image,
+            control_mask=control_mask,
             controlnet_conditioning_scale=1.0,
-            height=mask_image.size[1] if args.height is None else args.height,
-            width=mask_image.size[0] if args.width is None else args.width,
+            height=control_mask.size[1] if args.height is None else args.height,
+            width=control_mask.size[0] if args.width is None else args.width,
             num_inference_steps=50,
             true_cfg_scale=4.0,
         ),

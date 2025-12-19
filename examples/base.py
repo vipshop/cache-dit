@@ -147,7 +147,7 @@ class ExampleInputData:
                 summary_str += f"- {k}: {v}\n"
             elif k in ["height", "width", "num_inference_steps", "num_frames"]:
                 summary_str += f"- {k}: {v}\n"
-            elif k in ["image", "mask_image"]:
+            elif k in ["image", "mask_image", "control_image", "control_mask"]:
                 if isinstance(v, Image.Image):
                     W, H = v.size
                     summary_str += f"- {k}: Single Image ({H}x{W})\n"
