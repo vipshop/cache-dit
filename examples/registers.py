@@ -336,10 +336,12 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImageControlNetModel, QwenImageControlNetInpaintPipeline
 
+    # make sure controlnet is on cuda to avoid device mismatch while using cpu offload
     controlnet = QwenImageControlNetModel.from_pretrained(
         _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
         torch_dtype=torch.bfloat16,
-    )
+    ).to("cuda")
+
     base_image_url = (
         "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets"
     )
