@@ -30,11 +30,12 @@ logger = init_logger(__name__)
 
 
 class ExampleType(Enum):
-    T2V = "text_to_video"
-    I2V = "image_to_video"
-    T2I = "text_to_image"
-    IE2I = "image_editing_to_image"
-    FLF2V = "vace or first_last_frames_to_video"
+    T2V = "T2V: Text to Video"
+    I2V = "I2V: Image to Video"
+    T2I = "T2I: Text to Image"
+    IE2I = "IE2I: Image Editing to Image"
+    FLF2V = "FLF2V: First Last Frames to Video"
+    VACE = "VACE: Video All-in-one Creation and Editing"
 
 
 @dataclasses.dataclass
@@ -525,7 +526,12 @@ class Example:
             output_data.image = (
                 output.images[0] if isinstance(output.images, list) else output.images
             )
-        elif self.init_config.task_type in [ExampleType.T2V, ExampleType.I2V, ExampleType.FLF2V]:
+        elif self.init_config.task_type in [
+            ExampleType.T2V,
+            ExampleType.I2V,
+            ExampleType.FLF2V,
+            ExampleType.VACE,
+        ]:
             output_data.video = output.frames[0] if hasattr(output, "frames") else output
 
         self.output_data = output_data

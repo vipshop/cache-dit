@@ -489,7 +489,7 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     return Example(
         args=args,
         init_config=ExampleInitConfig(
-            task_type=ExampleType.FLF2V,  # First and Last Frames to Video
+            task_type=ExampleType.VACE,  # Video All-in-one Creation and Editing
             model_name_or_path=model_name_or_path,
             pipeline_class=WanVACEPipeline,
             vae=vae,
