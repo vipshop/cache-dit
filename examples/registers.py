@@ -47,6 +47,7 @@ _env_path_mapping = {
     "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
     "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
+    "WAN_DIR": "Wan2.1-T2V-1.3B-Diffusers",
     "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
@@ -372,6 +373,17 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
 def wan_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanPipeline
 
+    if "wan2.2" in args.example.lower():
+        model_name_or_path = _path(
+            "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+            args=args,
+        )
+    else:
+        model_name_or_path = _path(
+            "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+            args=args,
+        )
+
     params_modifiers = [
         ParamsModifier(
             # high-noise transformer only have 30% steps
@@ -392,7 +404,7 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2V,  # Text to Video
-            model_name_or_path=_path("Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
+            model_name_or_path=model_name_or_path,
             pipeline_class=WanPipeline,
             bnb_4bit_components=(
                 ["text_encoder", "transformer", "transformer_2"]
