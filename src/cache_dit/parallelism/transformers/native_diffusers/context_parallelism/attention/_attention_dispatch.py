@@ -52,11 +52,11 @@ __all__ = [
 
 
 def _registry_pop_attn_backend(attn_backend: AttentionBackendName):
-    _AttentionBackendRegistry._backends.pop(attn_backend)
-    _AttentionBackendRegistry._constraints.pop(attn_backend)
-    _AttentionBackendRegistry._supported_arg_names.pop(attn_backend)
+    _AttentionBackendRegistry._backends.pop(attn_backend, None)
+    _AttentionBackendRegistry._constraints.pop(attn_backend, None)
+    _AttentionBackendRegistry._supported_arg_names.pop(attn_backend, None)
     if isinstance(_AttentionBackendRegistry._supports_context_parallel, dict):
-        _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend)
+        _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend, None)
     elif attn_backend in _AttentionBackendRegistry._supports_context_parallel:
         _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
 
