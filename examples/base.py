@@ -34,7 +34,7 @@ class ExampleType(Enum):
     I2V = "image_to_video"
     T2I = "text_to_image"
     IE2I = "image_editing_to_image"
-    FLF2V = "first_last_frames_to_video"
+    FLF2V = "vace or first_last_frames_to_video"
 
 
 @dataclasses.dataclass
@@ -163,11 +163,28 @@ class ExampleInputData:
                             summary_str += f"- {k}: Not a valid PIL Image\n"
                     else:
                         summary_str += f"- {k}: Empty List\n"
+            elif k in ["video", "mask"]:
+                if isinstance(v, list):
+                    if len(v) > 0:
+                        summary_str += f"- {k}: List of Frames ({len(v)} frames)\n"
+                        for i in range(min(len(v), 1)):  # show up to 1 frames
+                            if isinstance(v[i], Image.Image):
+                                W, H = v[i].size
+                                summary_str += f"    - Frame {i}: ({H}x{W})\n"
+                            else:
+                                summary_str += f"    - Frame {i}: Not a valid PIL Image\n"
+                    else:
+                        summary_str += f"- {k}: Empty List\n"
+                else:
+                    summary_str += f"- {k}: Not a valid list of frames\n"
             elif k == "generator":
                 # Show seed and device info
-                gen_device = v.device if hasattr(v, "device") else "cpu"
-                gen_seed = v.initial_seed() if hasattr(v, "initial_seed") else "N/A"
-                summary_str += f"- {k}: device {gen_device}, seed {gen_seed}\n"
+                if isinstance(v, torch.Generator):
+                    gen_device = v.device if hasattr(v, "device") else "cpu"
+                    gen_seed = v.initial_seed() if hasattr(v, "initial_seed") else "N/A"
+                    summary_str += f"- {k}: device {gen_device}, seed {gen_seed}\n"
+                else:
+                    summary_str += f"- {k}: Not a valid torch.Generator\n"
             else:
                 summary_str += f"- {k}: {v}\n"
         summary_str = summary_str.rstrip("\n")
