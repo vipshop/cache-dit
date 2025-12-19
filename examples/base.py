@@ -48,6 +48,7 @@ class ExampleInputData:
     height: Optional[int] = None
     width: Optional[int] = None
     guidance_scale: Optional[float] = None
+    guidance_scale_2: Optional[float] = None  # for dual guidance scale
     true_cfg_scale: Optional[float] = None
     num_inference_steps: Optional[int] = None
     num_images_per_prompt: Optional[int] = None
