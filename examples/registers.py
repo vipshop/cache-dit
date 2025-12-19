@@ -22,14 +22,13 @@ logger = init_logger(__name__)
 
 __all__ = [
     "flux_example",
-    "flux_nunchaku_example",
     "flux2_example",
-    "ovis_image_example",
-    "qwen_image_edit_lightning_example",
     "qwen_image_example",
+    "qwen_image_edit_example",
     "skyreels_v2_example",
     "wan_example",
     "wan_vace_example",
+    "ovis_image_example",
     "zimage_example",
 ]
 
@@ -75,46 +74,31 @@ def _path(
 
 
 @ExampleRegister.register("flux")
+@ExampleRegister.register("flux_nunchaku")
 def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
 
+    if "nunchaku" not in args.example.lower():
+        from nunchaku.models.transformers.transformer_flux_v2 import (
+            NunchakuFluxTransformer2DModelV2,
+        )
+
+        nunchaku_flux_dir = _path("nunchaku-tech/nunchaku-flux.1-dev")
+        transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
+            f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
+        )
+    else:
+        transformer = None
+
     return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
             model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
             pipeline_class=FluxPipeline,
+            transformer=transformer,  # maybe use Nunchaku Flux transformer
             # `text_encoder_2` will be quantized when `--quantize-type`
-            # is set to `bnb_4bit`.
-            bnb_4bit_components=["text_encoder_2"],
-        ),
-        input_data=ExampleInputData(
-            prompt="A cat holding a sign that says hello world",
-            height=1024,
-            width=1024,
-            num_inference_steps=28,
-        ),
-    )
-
-
-@ExampleRegister.register("flux_nunchaku")
-def flux_nunchaku_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import FluxPipeline
-    from nunchaku.models.transformers.transformer_flux_v2 import (
-        NunchakuFluxTransformer2DModelV2,
-    )
-
-    nunchaku_flux_dir = _path("nunchaku-tech/nunchaku-flux.1-dev")
-    transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
-        f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
-    )
-    return Example(
-        args=args,
-        init_config=ExampleInitConfig(
-            task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
-            pipeline_class=FluxPipeline,
-            transformer=transformer,
+            # is set to `bnb_4bit`. Only hints for quantization.
             bnb_4bit_components=["text_encoder_2"],
         ),
         input_data=ExampleInputData(
@@ -176,66 +160,62 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("ovis_image")
-def ovis_image_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import OvisImagePipeline
-
-    return Example(
-        args=args,
-        init_config=ExampleInitConfig(
-            task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=_path("AIDC-AI/Ovis-Image-7B"),
-            pipeline_class=OvisImagePipeline,
-            bnb_4bit_components=["text_encoder", "transformer"],
-        ),
-        input_data=ExampleInputData(
-            prompt=(
-                'A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, '
-                "expressive handwritten brush style using thick, wet oil paint. The paint is a mix "
-                "of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste "
-                "or impasto art. You can see the ridges of the brush bristles and the glossy, wet "
-                "texture of the paint. The background is a clean artist's canvas. Dynamic lighting "
-                "creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile "
-                "texture, 4k detail."
-            ),
-            height=1024,
-            width=1024,
-            num_inference_steps=25,
-            guidance_scale=5.0,  # has separate cfg for ovis image
-        ),
-    )
-
-
+@ExampleRegister.register("qwen_image_edit")
 @ExampleRegister.register("qwen_image_edit_lightning")
-def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Example:
+def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImageEditPlusPipeline, FlowMatchEulerDiscreteScheduler
 
-    # From https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
-    scheduler_config = {
-        "base_image_seq_len": 256,
-        "base_shift": math.log(3),  # We use shift=3 in distillation
-        "invert_sigmas": False,
-        "max_image_seq_len": 8192,
-        "max_shift": math.log(3),  # We use shift=3 in distillation
-        "num_train_timesteps": 1000,
-        "shift": 1.0,
-        "shift_terminal": None,  # set shift_terminal to None
-        "stochastic_sampling": False,
-        "time_shift_type": "exponential",
-        "use_beta_sigmas": False,
-        "use_dynamic_shifting": True,
-        "use_exponential_sigmas": False,
-        "use_karras_sigmas": False,
-    }
-    scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+    if "lightning" in args.example.lower():
+        # From https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
+        scheduler_config = {
+            "base_image_seq_len": 256,
+            "base_shift": math.log(3),  # We use shift=3 in distillation
+            "invert_sigmas": False,
+            "max_image_seq_len": 8192,
+            "max_shift": math.log(3),  # We use shift=3 in distillation
+            "num_train_timesteps": 1000,
+            "shift": 1.0,
+            "shift_terminal": None,  # set shift_terminal to None
+            "stochastic_sampling": False,
+            "time_shift_type": "exponential",
+            "use_beta_sigmas": False,
+            "use_dynamic_shifting": True,
+            "use_exponential_sigmas": False,
+            "use_karras_sigmas": False,
+        }
+        scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+    else:
+        scheduler = None
 
-    steps = 8 if args.num_inference_steps is None else args.num_inference_steps
-    assert steps in [8, 4]
-    lora_weights_path = os.path.join(
-        _path("lightx2v/Qwen-Image-Lightning"),
-        "Qwen-Image-Edit-2509",
-    )
-    lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
+    if "lightning" in args.example.lower():
+        # For lightning model, only 8 or 4 inference steps are supported
+        steps = 8 if args.num_inference_steps is None else args.num_inference_steps
+        assert steps in [8, 4]
+        lora_weights_path = os.path.join(
+            _path("lightx2v/Qwen-Image-Lightning"),
+            "Qwen-Image-Edit-2509",
+        )
+        lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
+        cache_config = (
+            DBCacheConfig(
+                Fn_compute_blocks=16,
+                Bn_compute_blocks=16,
+                max_warmup_steps=4 if steps > 4 else 2,
+                max_cached_steps=2 if steps > 4 else 1,
+                max_continuous_cached_steps=1,
+                enable_separate_cfg=False,  # true_cfg_scale=1.0
+                residual_diff_threshold=0.50 if steps > 4 else 0.8,
+            )
+            if args.cache
+            else None
+        )
+
+    else:
+        steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+        lora_weights_path = None
+        lora_weight_name = None
+        cache_config = None
+
     base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
 
     return Example(
@@ -250,19 +230,7 @@ def qwen_image_edit_lightning_example(args: argparse.Namespace, **kwargs) -> Exa
             lora_weights_name=lora_weight_name,
             force_fuse_lora=True,  # For parallelism compatibility
             extra_optimize_kwargs={
-                "cache_config": (
-                    DBCacheConfig(
-                        Fn_compute_blocks=16,
-                        Bn_compute_blocks=16,
-                        max_warmup_steps=4 if steps > 4 else 2,
-                        max_cached_steps=2 if steps > 4 else 1,
-                        max_continuous_cached_steps=1,
-                        enable_separate_cfg=False,  # true_cfg_scale=1.0
-                        residual_diff_threshold=0.50 if steps > 4 else 0.8,
-                    )
-                    if args.cache
-                    else None
-                ),
+                "cache_config": cache_config,
             },
         ),
         input_data=ExampleInputData(
@@ -535,6 +503,36 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
             num_frames=num_frames,
             guidance_scale=5.0,
             num_inference_steps=30,
+        ),
+    )
+
+
+@ExampleRegister.register("ovis_image")
+def ovis_image_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import OvisImagePipeline
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("AIDC-AI/Ovis-Image-7B"),
+            pipeline_class=OvisImagePipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                'A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, '
+                "expressive handwritten brush style using thick, wet oil paint. The paint is a mix "
+                "of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste "
+                "or impasto art. You can see the ridges of the brush bristles and the glossy, wet "
+                "texture of the paint. The background is a clean artist's canvas. Dynamic lighting "
+                "creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile "
+                "texture, 4k detail."
+            ),
+            height=1024,
+            width=1024,
+            num_inference_steps=25,
+            guidance_scale=5.0,  # has separate cfg for ovis image
         ),
     )
 
