@@ -214,7 +214,7 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
         lora_weights_path = _path("lightx2v/Qwen-Image-Lightning")
-        lora_weight_name = f"Qwen-Image-Lightning-{steps}steps-V2.0-bf16.safetensors"
+        lora_weight_name = f"Qwen-Image-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = _qwen_light_cache_config(args)
         true_cfg_scale = 1.0  # means no separate cfg for lightning models
     else:
