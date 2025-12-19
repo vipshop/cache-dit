@@ -182,6 +182,23 @@ def _qwen_light_scheduler() -> FlowMatchEulerDiscreteScheduler:
     return FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
 
+def _qwen_light_cache_config(
+    args: argparse.Namespace,
+) -> Optional[DBCacheConfig]:
+    if not args.cache:
+        return None
+    steps = 8 if args.num_inference_steps is None else args.num_inference_steps
+    return DBCacheConfig(
+        Fn_compute_blocks=16,
+        Bn_compute_blocks=16,
+        max_warmup_steps=4 if steps > 4 else 2,
+        max_cached_steps=2 if steps > 4 else 1,
+        max_continuous_cached_steps=1,
+        enable_separate_cfg=False,  # true_cfg_scale=1.0
+        residual_diff_threshold=0.50 if steps > 4 else 0.8,
+    )
+
+
 @ExampleRegister.register("qwen_image", default="Qwen/Qwen-Image")
 @ExampleRegister.register("qwen_image_lightning", default="lightx2v/Qwen-Image-Lightning")
 def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
@@ -198,19 +215,14 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
         assert steps in [8, 4]
         lora_weights_path = _path("lightx2v/Qwen-Image-Lightning")
         lora_weight_name = f"Qwen-Image-Lightning-{steps}steps-V2.0-bf16.safetensors"
-        cache_config = (
-            DBCacheConfig(
-                Fn_compute_blocks=16,
-                Bn_compute_blocks=16,
-                max_warmup_steps=4 if steps > 4 else 2,
-                max_cached_steps=2 if steps > 4 else 1,
-                max_continuous_cached_steps=1,
-                enable_separate_cfg=False,  # true_cfg_scale=1.0
-                residual_diff_threshold=0.50 if steps > 4 else 0.8,
-            )
-            if args.cache
-            else None
-        )
+        cache_config = _qwen_light_cache_config(args)
+        true_cfg_scale = 1.0  # means no separate cfg for lightning models
+    else:
+        steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+        lora_weights_path = None
+        lora_weight_name = None
+        cache_config = None
+        true_cfg_scale = 4.0
 
     positive_magic = {
         "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
@@ -244,8 +256,8 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
             negative_prompt=" ",
             height=1024,
             width=1024,
-            num_inference_steps=50,
-            true_cfg_scale=4.0,
+            num_inference_steps=steps,
+            true_cfg_scale=true_cfg_scale,
         ),
     )
 
@@ -268,25 +280,15 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             _path("lightx2v/Qwen-Image-Lightning"), "Qwen-Image-Edit-2509"
         )
         lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
-        cache_config = (
-            DBCacheConfig(
-                Fn_compute_blocks=16,
-                Bn_compute_blocks=16,
-                max_warmup_steps=4 if steps > 4 else 2,
-                max_cached_steps=2 if steps > 4 else 1,
-                max_continuous_cached_steps=1,
-                enable_separate_cfg=False,  # true_cfg_scale=1.0
-                residual_diff_threshold=0.50 if steps > 4 else 0.8,
-            )
-            if args.cache
-            else None
-        )
+        cache_config = _qwen_light_cache_config(args)
+        true_cfg_scale = 1.0  # means no separate cfg for lightning models
 
     else:
         steps = 50 if args.num_inference_steps is None else args.num_inference_steps
         lora_weights_path = None
         lora_weight_name = None
         cache_config = None
+        true_cfg_scale = 4.0
 
     base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
 
@@ -314,7 +316,7 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             height=1024,
             width=1024,
             num_inference_steps=steps,
-            true_cfg_scale=1.0,  # means no separate cfg for lightning models
+            true_cfg_scale=true_cfg_scale,  # 1.0 means no separate cfg for lightning models
             # image1, image2
             image=[
                 load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
