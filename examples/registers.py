@@ -6,6 +6,7 @@ import PIL.Image
 import cache_dit
 from typing import Tuple, List, Optional
 from diffusers.utils import load_image
+from diffusers import FlowMatchEulerDiscreteScheduler
 from cache_dit import DBCacheConfig, ParamsModifier
 from cache_dit.logger import init_logger
 
@@ -160,30 +161,102 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
+def _qwen_light_scheduler() -> FlowMatchEulerDiscreteScheduler:
+    # From https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
+    scheduler_config = {
+        "base_image_seq_len": 256,
+        "base_shift": math.log(3),  # We use shift=3 in distillation
+        "invert_sigmas": False,
+        "max_image_seq_len": 8192,
+        "max_shift": math.log(3),  # We use shift=3 in distillation
+        "num_train_timesteps": 1000,
+        "shift": 1.0,
+        "shift_terminal": None,  # set shift_terminal to None
+        "stochastic_sampling": False,
+        "time_shift_type": "exponential",
+        "use_beta_sigmas": False,
+        "use_dynamic_shifting": True,
+        "use_exponential_sigmas": False,
+        "use_karras_sigmas": False,
+    }
+    return FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+
+
+@ExampleRegister.register("qwen_image")
+@ExampleRegister.register("qwen_image_lightning")
+def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import QwenImagePipeline
+
+    if "lightning" in args.example.lower():
+        scheduler = _qwen_light_scheduler()
+    else:
+        scheduler = None
+
+    if "lightning" in args.example.lower():
+        # For lightning model, only 8 or 4 inference steps are supported
+        steps = 8 if args.num_inference_steps is None else args.num_inference_steps
+        assert steps in [8, 4]
+        lora_weights_path = _path("lightx2v/Qwen-Image-Lightning")
+        lora_weight_name = f"Qwen-Image-Lightning-{steps}steps-V2.0-bf16.safetensors"
+        cache_config = (
+            DBCacheConfig(
+                Fn_compute_blocks=16,
+                Bn_compute_blocks=16,
+                max_warmup_steps=4 if steps > 4 else 2,
+                max_cached_steps=2 if steps > 4 else 1,
+                max_continuous_cached_steps=1,
+                enable_separate_cfg=False,  # true_cfg_scale=1.0
+                residual_diff_threshold=0.50 if steps > 4 else 0.8,
+            )
+            if args.cache
+            else None
+        )
+
+    positive_magic = {
+        "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
+        "zh": ", 超清，4K，电影级构图.",  # for chinese prompt
+    }
+    prompt = (
+        "A coffee shop entrance features a chalkboard sign reading "
+        '"Qwen Coffee 😊 $2 per cup," with a neon light beside it '
+        'displaying "通义千问". Next to it hangs a poster showing a '
+        "beautiful Chinese woman, and beneath the poster is written "
+        '"π≈3.1415926-53589793-23846264-33832795-02384197". '
+        "Ultra HD, 4K, cinematic composition"
+    )
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("Qwen/Qwen-Image"),
+            pipeline_class=QwenImagePipeline,
+            scheduler=scheduler,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            lora_weights_path=lora_weights_path,
+            lora_weights_name=lora_weight_name,
+            force_fuse_lora=True,  # For parallelism compatibility
+            extra_optimize_kwargs={
+                "cache_config": cache_config,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt=prompt + positive_magic["en"],
+            negative_prompt=" ",
+            height=1024,
+            width=1024,
+            num_inference_steps=50,
+            true_cfg_scale=4.0,
+        ),
+    )
+
+
 @ExampleRegister.register("qwen_image_edit")
 @ExampleRegister.register("qwen_image_edit_lightning")
 def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import QwenImageEditPlusPipeline, FlowMatchEulerDiscreteScheduler
+    from diffusers import QwenImageEditPlusPipeline
 
     if "lightning" in args.example.lower():
-        # From https://github.com/ModelTC/Qwen-Image-Lightning/blob/342260e8f5468d2f24d084ce04f55e101007118b/generate_with_diffusers.py#L82C9-L97C10
-        scheduler_config = {
-            "base_image_seq_len": 256,
-            "base_shift": math.log(3),  # We use shift=3 in distillation
-            "invert_sigmas": False,
-            "max_image_seq_len": 8192,
-            "max_shift": math.log(3),  # We use shift=3 in distillation
-            "num_train_timesteps": 1000,
-            "shift": 1.0,
-            "shift_terminal": None,  # set shift_terminal to None
-            "stochastic_sampling": False,
-            "time_shift_type": "exponential",
-            "use_beta_sigmas": False,
-            "use_dynamic_shifting": True,
-            "use_exponential_sigmas": False,
-            "use_karras_sigmas": False,
-        }
-        scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
+        scheduler = _qwen_light_scheduler()
     else:
         scheduler = None
 
@@ -192,8 +265,7 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
         lora_weights_path = os.path.join(
-            _path("lightx2v/Qwen-Image-Lightning"),
-            "Qwen-Image-Edit-2509",
+            _path("lightx2v/Qwen-Image-Lightning"), "Qwen-Image-Edit-2509"
         )
         lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = (
@@ -248,41 +320,6 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
                 load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
                 load_image(f"{base_image_url}/edit2509/edit2509_2.jpg"),
             ],
-        ),
-    )
-
-
-@ExampleRegister.register("qwen_image")
-def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import QwenImagePipeline
-
-    positive_magic = {
-        "en": ", Ultra HD, 4K, cinematic composition.",  # for english prompt
-        "zh": ", 超清，4K，电影级构图.",  # for chinese prompt
-    }
-    prompt = (
-        "A coffee shop entrance features a chalkboard sign reading "
-        '"Qwen Coffee 😊 $2 per cup," with a neon light beside it '
-        'displaying "通义千问". Next to it hangs a poster showing a '
-        "beautiful Chinese woman, and beneath the poster is written "
-        '"π≈3.1415926-53589793-23846264-33832795-02384197". '
-        "Ultra HD, 4K, cinematic composition"
-    )
-    return Example(
-        args=args,
-        init_config=ExampleInitConfig(
-            task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=_path("Qwen/Qwen-Image"),
-            pipeline_class=QwenImagePipeline,
-            bnb_4bit_components=["text_encoder", "transformer"],
-        ),
-        input_data=ExampleInputData(
-            prompt=prompt + positive_magic["en"],
-            negative_prompt=" ",
-            height=1024,
-            width=1024,
-            num_inference_steps=50,
-            true_cfg_scale=4.0,
         ),
     )
 
