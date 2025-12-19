@@ -224,18 +224,18 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 python3 generate.py --help
 
 usage: generate.py [-h] [--model-path MODEL_PATH] [--image-path IMAGE_PATH] [--mask-image-path MASK_IMAGE_PATH] [--prompt PROMPT] [--negative-prompt NEGATIVE_PROMPT] [--num_inference_steps NUM_INFERENCE_STEPS] [--warmup WARMUP] [--repeat REPEAT]
-                   [--height HEIGHT] [--width WIDTH] [--seed SEED] [--num-frames NUM_FRAMES] [--cache] [--cache-summary] [--Fn-compute-blocks FN_COMPUTE_BLOCKS] [--Bn-compute-blocks BN_COMPUTE_BLOCKS]
+                   [--height HEIGHT] [--width WIDTH] [--seed SEED] [--num-frames NUM_FRAMES] [--save-path SAVE_PATH] [--cache] [--cache-summary] [--Fn-compute-blocks FN_COMPUTE_BLOCKS] [--Bn-compute-blocks BN_COMPUTE_BLOCKS]
                    [--residual-diff-threshold RESIDUAL_DIFF_THRESHOLD] [--max-warmup-steps MAX_WARMUP_STEPS] [--warmup-interval WARMUP_INTERVAL] [--max-cached-steps MAX_CACHED_STEPS] [--max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS]
                    [--taylorseer] [--taylorseer-order TAYLORSEER_ORDER] [--steps-mask] [--mask-policy {None,slow,s,medium,m,fast,f,ultra,u}] [--quantize] [--quantize-text-encoder]
                    [--quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--parallel-type {None,tp,ulysses,ring}] [--parallel-vae]
                    [--parallel-text-encoder] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--disable-compute-comm-overlap] [--cpu-offload] [--sequential-cpu-offload]
-                   [--vae-tiling] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--max-autotune] [--track-memory] [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR]
-                   [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes]
-                   {generate,list} [{None,flux,flux_nunchaku,flux2,ovis_image,qwen_image_edit_lightning,qwen_image,skyreels_v2,wan2.2,zimage}]
+                   [--vae-tiling] [--vae-slicing] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--max-autotune] [--track-memory] [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR]
+                   [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes] [--disable-fuse-lora DISABLE_FUSE_LORA]
+                   {generate,list} [{None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage}]
 
 positional arguments:
   {generate,list}       The task to perform. If not specified, run the specified example. Or, Use 'list' to list all available examples.
-  {None,flux,flux_nunchaku,flux2,ovis_image,qwen_image_edit_lightning,qwen_image,skyreels_v2,wan2.2,zimage}
+  {None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage}
                         Names of the examples to run. If not specified, skip running example.
 
 options:
@@ -258,6 +258,8 @@ options:
   --seed SEED           Random seed for reproducibility
   --num-frames NUM_FRAMES, --frames NUM_FRAMES
                         Number of frames to generate for video
+  --save-path SAVE_PATH
+                        Path to save the generated output, e.g., output.png or output.mp4
   --cache               Enable Cache Acceleration
   --cache-summary, --summary
                         Enable Cache Summary logging
@@ -303,11 +305,12 @@ options:
   --sequential-cpu-offload
                         Enable sequential GPU offload for model if applicable.
   --vae-tiling          Enable VAE tiling for low memory device.
+  --vae-slicing         Enable VAE slicing for low memory device.
   --compile             Enable compile for transformer
   --compile-repeated-blocks
                         Enable compile for repeated blocks in transformer
   --compile-vae         Enable compile for VAE
-  --compile-text-encoder
+  --compile-text-encoder, --compile-text
                         Enable compile for text encoder
   --max-autotune        Enable max-autotune mode for torch.compile
   --track-memory        Track and report peak GPU memory usage
