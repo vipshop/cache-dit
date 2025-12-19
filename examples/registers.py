@@ -352,21 +352,24 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
             args=args,
         )
 
-    params_modifiers = [
-        ParamsModifier(
-            # high-noise transformer only have 30% steps
-            cache_config=DBCacheConfig().reset(
-                max_warmup_steps=4,
-                max_cached_steps=8,
+    if "wan2.2" in args.example.lower():
+        params_modifiers = [
+            ParamsModifier(
+                # high-noise transformer only have 30% steps
+                cache_config=DBCacheConfig().reset(
+                    max_warmup_steps=4,
+                    max_cached_steps=8,
+                ),
             ),
-        ),
-        ParamsModifier(
-            cache_config=DBCacheConfig().reset(
-                max_warmup_steps=2,
-                max_cached_steps=20,
+            ParamsModifier(
+                cache_config=DBCacheConfig().reset(
+                    max_warmup_steps=2,
+                    max_cached_steps=20,
+                ),
             ),
-        ),
-    ]
+        ]
+    else:
+        params_modifiers = None
 
     return Example(
         args=args,
@@ -435,6 +438,25 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
             f"for {pipe.__class__.__name__}."
         )
 
+    if "wan2.2" in args.example.lower():
+        params_modifiers = [
+            ParamsModifier(
+                # high-noise transformer only have 30% steps
+                cache_config=DBCacheConfig().reset(
+                    max_warmup_steps=4,
+                    max_cached_steps=8,
+                ),
+            ),
+            ParamsModifier(
+                cache_config=DBCacheConfig().reset(
+                    max_warmup_steps=2,
+                    max_cached_steps=20,
+                ),
+            ),
+        ]
+    else:
+        params_modifiers = None
+
     def _video_and_mask(
         first_img: PIL.Image.Image,
         last_img: PIL.Image.Image,
@@ -477,6 +499,9 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
                 if "wan2.2" in args.example.lower()
                 else ["text_encoder", "transformer"]
             ),
+            extra_optimize_kwargs={
+                "params_modifiers": params_modifiers,
+            },
         ),
         input_data=ExampleInputData(
             prompt=(
