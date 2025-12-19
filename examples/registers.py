@@ -75,9 +75,7 @@ def _path(
 
 
 @ExampleRegister.register("flux", default="black-forest-labs/FLUX.1-dev")
-@ExampleRegister.register(
-    "flux_nunchaku", default="nunchaku-flux.1-dev + black-forest-labs/FLUX.1-dev"
-)
+@ExampleRegister.register("flux_nunchaku", default="nunchaku-tech/nunchaku-flux.1-dev")
 def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
 
@@ -113,7 +111,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("flux2")
+@ExampleRegister.register("flux2", default="black-forest-labs/FLUX.2-dev")
 def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import Flux2Pipeline
 
@@ -184,8 +182,8 @@ def _qwen_light_scheduler() -> FlowMatchEulerDiscreteScheduler:
     return FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
 
-@ExampleRegister.register("qwen_image")
-@ExampleRegister.register("qwen_image_lightning")
+@ExampleRegister.register("qwen_image", default="Qwen/Qwen-Image")
+@ExampleRegister.register("qwen_image_lightning", default="lightx2v/Qwen-Image-Lightning")
 def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImagePipeline
 
@@ -252,8 +250,8 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("qwen_image_edit")
-@ExampleRegister.register("qwen_image_edit_lightning")
+@ExampleRegister.register("qwen_image_edit", default="Qwen/Qwen-Image-Edit-2509")
+@ExampleRegister.register("qwen_image_edit_lightning", default="lightx2v/Qwen-Image-Lightning")
 def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImageEditPlusPipeline
 
@@ -326,7 +324,7 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("skyreels_v2")
+@ExampleRegister.register("skyreels_v2", default="Skywork/SkyReels-V2-T2V-14B-720P-Diffusers")
 def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
 
@@ -375,8 +373,8 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("wan2.1_t2v")
-@ExampleRegister.register("wan2.2_t2v")
+@ExampleRegister.register("wan2.1_t2v", default="Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
+@ExampleRegister.register("wan2.2_t2v", default="Wan-AI/Wan2.2-T2V-A14B-Diffusers")
 def wan_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanPipeline
 
@@ -444,8 +442,8 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("wan2.1_vace")
-@ExampleRegister.register("wan2.2_vace")
+@ExampleRegister.register("wan2.1_vace", default="Wan-AI/Wan2.1-VACE-1.3B-diffusers")
+@ExampleRegister.register("wan2.2_vace", default="linoyts/Wan2.2-VACE-Fun-14B-diffusers")
 def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanVACEPipeline, AutoencoderKLWan, UniPCMultistepScheduler
 
@@ -571,7 +569,7 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("ovis_image")
+@ExampleRegister.register("ovis_image", default="AIDC-AI/Ovis-Image-7B")
 def ovis_image_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import OvisImagePipeline
 
@@ -601,7 +599,7 @@ def ovis_image_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("zimage")
+@ExampleRegister.register("zimage", default="Tongyi-MAI/Z-Image-Turbo")
 def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImagePipeline
 
