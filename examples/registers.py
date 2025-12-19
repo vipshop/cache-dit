@@ -4,6 +4,7 @@ import torch
 import argparse
 import PIL.Image
 import cache_dit
+import numpy as np
 from typing import Tuple, List, Optional
 from diffusers.utils import load_image
 from diffusers import FlowMatchEulerDiscreteScheduler
@@ -25,9 +26,11 @@ __all__ = [
     "flux_example",
     "flux2_example",
     "qwen_image_example",
+    "qwen_image_controlnet_example",
     "qwen_image_edit_example",
     "skyreels_v2_example",
     "wan_example",
+    "wan_i2v_example",
     "wan_vace_example",
     "ovis_image_example",
     "zimage_example",
@@ -50,6 +53,8 @@ _env_path_mapping = {
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
     "WAN_DIR": "Wan2.1-T2V-1.3B-Diffusers",
     "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
+    "WAN_I2V_DIR": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers",
+    "WAN_2_2_I2V_DIR": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
@@ -183,9 +188,7 @@ def _qwen_light_scheduler() -> FlowMatchEulerDiscreteScheduler:
     return FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 
 
-def _qwen_light_cache_config(
-    args: argparse.Namespace,
-) -> Optional[DBCacheConfig]:
+def _qwen_light_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig]:
     if not args.cache:
         return None
     steps = 8 if args.num_inference_steps is None else args.num_inference_steps
@@ -327,6 +330,46 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
+@ExampleRegister.register(
+    "qwen_image_controlnet", default="InstantX/Qwen-Image-ControlNet-Inpainting"
+)
+def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import QwenImageControlNetModel, QwenImageControlNetInpaintPipeline
+
+    controlnet = QwenImageControlNetModel.from_pretrained(
+        _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
+        torch_dtype=torch.bfloat16,
+    )
+    base_image_url = (
+        "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets"
+    )
+    control_image = load_image(f"{base_image_url}/images/image1.png").convert("RGB")
+    mask_image = load_image(f"{base_image_url}/masks/mask1.png")
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("Qwen/Qwen-Image"),
+            pipeline_class=QwenImageControlNetInpaintPipeline,
+            controlnet=controlnet,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            force_fuse_lora=True,  # For parallelism compatibility
+        ),
+        input_data=ExampleInputData(
+            prompt="一辆绿色的出租车行驶在路上",
+            negative_prompt="worst quality, low quality, blurry, text, watermark, logo",
+            control_image=control_image,
+            mask_image=mask_image,
+            controlnet_conditioning_scale=1.0,
+            height=mask_image.size[1] if args.height is None else args.height,
+            width=mask_image.size[0] if args.width is None else args.width,
+            num_inference_steps=50,
+            true_cfg_scale=4.0,
+        ),
+    )
+
+
 @ExampleRegister.register("skyreels_v2", default="Skywork/SkyReels-V2-T2V-14B-720P-Diffusers")
 def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import AutoModel, SkyReelsV2Pipeline, UniPCMultistepScheduler
@@ -376,44 +419,24 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register(
-    "qwen_image_controlnet", default="InstantX/Qwen-Image-ControlNet-Inpainting"
-)
-def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import QwenImageControlNetModel, QwenImageControlNetInpaintPipeline
-
-    controlnet = QwenImageControlNetModel.from_pretrained(
-        _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
-        torch_dtype=torch.bfloat16,
-    )
-    base_image_url = (
-        "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets"
-    )
-    control_image = load_image(f"{base_image_url}/images/image1.png").convert("RGB")
-    mask_image = load_image(f"{base_image_url}/masks/mask1.png")
-
-    return Example(
-        args=args,
-        init_config=ExampleInitConfig(
-            task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=_path("Qwen/Qwen-Image"),
-            pipeline_class=QwenImageControlNetInpaintPipeline,
-            controlnet=controlnet,
-            bnb_4bit_components=["text_encoder", "transformer"],
-            force_fuse_lora=True,  # For parallelism compatibility
+def _wan_2_2_params_modifiers(args: argparse.Namespace) -> List[ParamsModifier]:
+    if not args.cache:
+        return None
+    return [
+        ParamsModifier(
+            # high-noise transformer only have 30% steps
+            cache_config=DBCacheConfig().reset(
+                max_warmup_steps=4,
+                max_cached_steps=8,
+            ),
         ),
-        input_data=ExampleInputData(
-            prompt="一辆绿色的出租车行驶在路上",
-            negative_prompt="worst quality, low quality, blurry, text, watermark, logo",
-            control_image=control_image,
-            mask_image=mask_image,
-            controlnet_conditioning_scale=1.0,
-            height=mask_image.size[1] if args.height is None else args.height,
-            width=mask_image.size[0] if args.width is None else args.width,
-            num_inference_steps=50,
-            true_cfg_scale=4.0,
+        ParamsModifier(
+            cache_config=DBCacheConfig().reset(
+                max_warmup_steps=2,
+                max_cached_steps=20,
+            ),
         ),
-    )
+    ]
 
 
 @ExampleRegister.register("wan2.1_t2v", default="Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
@@ -433,21 +456,7 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
         )
 
     if "wan2.2" in args.example.lower():
-        params_modifiers = [
-            ParamsModifier(
-                # high-noise transformer only have 30% steps
-                cache_config=DBCacheConfig().reset(
-                    max_warmup_steps=4,
-                    max_cached_steps=8,
-                ),
-            ),
-            ParamsModifier(
-                cache_config=DBCacheConfig().reset(
-                    max_warmup_steps=2,
-                    max_cached_steps=20,
-                ),
-            ),
-        ]
+        params_modifiers = _wan_2_2_params_modifiers(args)
     else:
         params_modifiers = None
 
@@ -481,6 +490,80 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
             num_frames=49,
             guidance_scale=5.0,
             num_inference_steps=30,
+        ),
+    )
+
+
+@ExampleRegister.register("wan2.1_i2v", default="Wan-AI/Wan2.1-I2V-14B-480P-Diffusers")
+@ExampleRegister.register("wan2.2_i2v", default="Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+def wan_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import WanImageToVideoPipeline
+
+    if "wan2.2" in args.example.lower():
+        model_name_or_path = _path(
+            "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+            args=args,
+        )
+    else:
+        model_name_or_path = _path(
+            "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers",
+            args=args,
+        )
+
+    if "wan2.2" in args.example.lower():
+        params_modifiers = _wan_2_2_params_modifiers(args)
+    else:
+        params_modifiers = None
+
+    image = load_image(
+        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
+    )
+
+    max_area = 480 * 832
+    aspect_ratio = image.height / image.width
+    vae_scale_factor_spatial = 8  # for Wan VAE
+    patch_size = 2  # for Wan transformer, [1, 2, 2]
+    mod_value = vae_scale_factor_spatial * patch_size
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.I2V,  # Image to Video
+            model_name_or_path=model_name_or_path,
+            pipeline_class=WanImageToVideoPipeline,
+            bnb_4bit_components=(
+                ["text_encoder", "transformer", "transformer_2"]
+                if "wan2.2" in args.example.lower()
+                else ["text_encoder", "transformer"]
+            ),
+            extra_optimize_kwargs={
+                "params_modifiers": params_modifiers,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "Summer beach vacation style, a white cat wearing sunglasses sits on a "
+                "surfboard. The fluffy-furred feline gazes directly at the camera with "
+                "a relaxed expression. Blurred beach scenery forms the background featuring "
+                "crystal-clear waters, distant green hills, and a blue sky dotted with white "
+                "clouds. The cat assumes a naturally relaxed posture, as if savoring the sea "
+                "breeze and warm sunlight. A close-up shot highlights the feline's intricate "
+                "details and the refreshing atmosphere of the seaside."
+            ),
+            negative_prompt=(
+                "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，"
+                "低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，"
+                "毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+            ),
+            image=image,
+            height=height,
+            width=width,
+            num_frames=49,
+            guidance_scale=3.5,
+            num_inference_steps=50,
         ),
     )
 
@@ -519,21 +602,7 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
         )
 
     if "wan2.2" in args.example.lower():
-        params_modifiers = [
-            ParamsModifier(
-                # high-noise transformer only have 30% steps
-                cache_config=DBCacheConfig().reset(
-                    max_warmup_steps=4,
-                    max_cached_steps=8,
-                ),
-            ),
-            ParamsModifier(
-                cache_config=DBCacheConfig().reset(
-                    max_warmup_steps=2,
-                    max_cached_steps=20,
-                ),
-            ),
-        ]
+        params_modifiers = _wan_2_2_params_modifiers(args)
     else:
         params_modifiers = None
 
