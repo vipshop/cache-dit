@@ -364,7 +364,8 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("wan")
+@ExampleRegister.register("wan2.1_t2v")
+@ExampleRegister.register("wan2.2_t2v")
 def wan_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanPipeline
 
@@ -390,7 +391,7 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
             task_type=ExampleType.T2V,  # Text to Video
             model_name_or_path=_path("Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
             pipeline_class=WanPipeline,
-            bnb_4bit_components=["text_encoder", "transformer"],
+            bnb_4bit_components=["text_encoder", "transformer", "transformer_2"] if "wan2.2" in args.example.lower() else ["text_encoder", "transformer"],  # type: ignore
             extra_optimize_kwargs={
                 "params_modifiers": params_modifiers,
             },
@@ -414,7 +415,8 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("wan_vace")
+@ExampleRegister.register("wan2.1_vace")
+@ExampleRegister.register("wan2.2_vace")
 def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import WanVACEPipeline, AutoencoderKLWan, UniPCMultistepScheduler
 
@@ -465,8 +467,6 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     num_frames = 81 if args.num_frames is None else args.num_frames
     video, mask = _video_and_mask(first_frame, last_frame, height, width, num_frames)
 
-    has_transformer_2 = "wan2.2" in model_name_or_path.lower()
-
     return Example(
         args=args,
         init_config=ExampleInitConfig(
@@ -475,7 +475,7 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
             pipeline_class=WanVACEPipeline,
             vae=vae,
             post_init_hook=post_init_hook,
-            bnb_4bit_components=["text_encoder", "transformer"] if not has_transformer_2 else ["text_encoder", "transformer", "transformer_2"],  # type: ignore
+            bnb_4bit_components=["text_encoder", "transformer", "transformer_2"] if "wan2.2" in args.example.lower() else ["text_encoder", "transformer"],  # type: ignore
         ),
         input_data=ExampleInputData(
             prompt=(
