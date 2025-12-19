@@ -17,6 +17,16 @@ try:
         _sage_attention_forward_op,
         _sage_attention_backward_op,
     )
+
+    # For flash attention 3 backend re-registration
+    try:
+        from flash_attn_interface import flash_attn_func as flash_attn_3_func
+
+        _flash_attn_3_available = True
+    except ImportError:
+        flash_attn_3_func = None
+        _flash_attn_3_available = False
+
     from diffusers.models._modeling_parallel import ParallelConfig
 except ImportError:
     raise ImportError(
@@ -37,16 +47,17 @@ __all__ = [
     "_native_attention",
     "_sdpa_cudnn_attention",
     "_sage_attention",
+    "_flash_attention_3",
 ]
 
 
 def _registry_pop_attn_backend(attn_backend: AttentionBackendName):
-    _AttentionBackendRegistry._backends.pop(attn_backend)
-    _AttentionBackendRegistry._constraints.pop(attn_backend)
-    _AttentionBackendRegistry._supported_arg_names.pop(attn_backend)
+    _AttentionBackendRegistry._backends.pop(attn_backend, None)
+    _AttentionBackendRegistry._constraints.pop(attn_backend, None)
+    _AttentionBackendRegistry._supported_arg_names.pop(attn_backend, None)
     if isinstance(_AttentionBackendRegistry._supports_context_parallel, dict):
-        _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend)
-    else:
+        _AttentionBackendRegistry._supports_context_parallel.pop(attn_backend, None)
+    elif attn_backend in _AttentionBackendRegistry._supports_context_parallel:
         _AttentionBackendRegistry._supports_context_parallel.remove(attn_backend.value)
 
 
@@ -446,11 +457,170 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
 
+    # Flash Attention 3 forward op implementation (inference only)
+    def _flash_attention_3_forward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
+        return_lse: bool = False,
+        _save_ctx: bool = True,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        """Flash Attention 3 forward operation for cache-dit (inference only)."""
+        if attn_mask is not None:
+            raise ValueError("`attn_mask` is not yet supported for flash-attn 3.")
+        if enable_gqa:
+            raise ValueError("`enable_gqa` is not yet supported for flash-attn 3.")
+        if dropout_p > 0.0:
+            raise ValueError("`dropout_p` > 0 is not yet supported for flash-attn 3.")
+
+        if scale is None:
+            scale = query.shape[-1] ** (-0.5)
+
+        if _save_ctx:
+            logger.warning(
+                "Flash Attention 3 is configured for inference only, but _save_ctx=True was passed. "
+                "Context will not be saved."
+            )
+
+        # Hardcoded parameters for FA3
+        window_size = (-1, -1)
+        softcap = 0.0
+        deterministic = False
+
+        out = flash_attn_3_func(
+            q=query,
+            k=key,
+            v=value,
+            softmax_scale=scale,
+            causal=is_causal,
+            qv=None,
+            q_descale=None,
+            k_descale=None,
+            v_descale=None,
+            window_size=window_size,
+            attention_chunk=0,
+            softcap=softcap,
+            num_splits=1,
+            pack_gqa=None,
+            deterministic=deterministic,
+            sm_margin=0,
+            return_attn_probs=return_lse,
+        )
+        if return_lse:
+            out, lse = out
+            lse = lse.permute(0, 2, 1)
+            return out, lse
+        else:
+            return out
+
+    def _flash_attention_3_backward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+        **kwargs,
+    ):
+        """Flash Attention 3 backward operation for cache-dit."""
+        raise NotImplementedError(
+            "Backward pass for Flash Attention 3 with context parallelism is not implemented yet in cache-dit."
+        )
+
+    # Re-register Flash Attention 3 backend
+    if _flash_attn_3_available:
+        if hasattr(AttentionBackendName, "_FLASH_3"):
+            _registry_pop_attn_backend(AttentionBackendName._FLASH_3)
+        else:
+            logger.info("AttentionBackendName._FLASH_3 not found, creating new backend.")
+            _set_new_attn_backend("_FLASH_3", "_flash_3")
+            assert hasattr(AttentionBackendName, "_FLASH_3")
+
+        @_AttentionBackendRegistry.register(
+            AttentionBackendName._FLASH_3,
+            constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+            supports_context_parallel=True,
+        )
+        def _flash_attention_3(
+            query: torch.Tensor,
+            key: torch.Tensor,
+            value: torch.Tensor,
+            scale: Optional[float] = None,
+            is_causal: bool = False,
+            return_lse: bool = False,
+            _parallel_config: Optional["ParallelConfig"] = None,
+        ) -> torch.Tensor:
+            lse = None
+            if _parallel_config is None:
+                # Non-parallel: use native flash-attn-3
+                window_size = (-1, -1)
+                softcap = 0.0
+                deterministic = False
+                out = flash_attn_3_func(
+                    q=query,
+                    k=key,
+                    v=value,
+                    softmax_scale=scale,
+                    causal=is_causal,
+                    qv=None,
+                    q_descale=None,
+                    k_descale=None,
+                    v_descale=None,
+                    window_size=window_size,
+                    attention_chunk=0,
+                    softcap=softcap,
+                    num_splits=1,
+                    pack_gqa=None,
+                    deterministic=deterministic,
+                    sm_margin=0,
+                    return_attn_probs=return_lse,
+                )
+                if return_lse:
+                    out, lse = out
+                    lse = lse.permute(0, 2, 1)
+            else:
+                # Parallel: use cache-dit's optimized implementation
+                out = _unified_templated_context_parallel_attention(
+                    query,
+                    key,
+                    value,
+                    None,  # attn_mask not supported by FA3
+                    0.0,  # dropout_p
+                    is_causal,
+                    scale,
+                    False,  # enable_gqa
+                    return_lse,
+                    forward_op=_flash_attention_3_forward_op,
+                    backward_op=_flash_attention_3_backward_op,
+                    _parallel_config=_parallel_config,
+                )
+                if return_lse:
+                    out, lse = out
+
+            return (out, lse) if return_lse else out
+
+        logger.warning(
+            "Re-registered FLASH_3 attention backend to enable context parallelism "
+            "with Ulysses Anything/Float8 in cache-dit. You can disable this behavior by: "
+            "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
+        )
+    else:
+        logger.info("Flash Attention 3 not available, skipping _FLASH_3 backend registration.")
+
 else:
     from diffusers.models.attention_dispatch import (
         _native_attention,
         _sage_attention,
     )  # noqa: F401
+
+    try:
+        from diffusers.models.attention_dispatch import _flash_attention_3  # noqa: F401
+    except ImportError:
+        _flash_attention_3 = None  # type: ignore[assignment]
 
     _sdpa_cudnn_attention = None  # type: ignore[assignment]
 
