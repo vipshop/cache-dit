@@ -912,22 +912,24 @@ def maybe_vae_tiling_or_slicing(
             vae = getattr(pipe, "vae", None)
             if vae is not None:
                 vae_cls_name = vae.__class__.__name__
-                if args.vae_tiling and hasattr(vae, "enable_tiling"):
-                    logger.info(f"Enabling VAE tiling for module: {vae_cls_name} ...")
-                    vae.enable_tiling()
-                else:
-                    logger.warning(
-                        f"Cannot enable VAE tiling for module: {vae_cls_name} No enable_tiling"
-                        " method."
-                    )
-                if args.vae_slicing and hasattr(vae, "enable_slicing"):
-                    logger.info(f"Enabling VAE slicing for module: {vae_cls_name} ...")
-                    vae.enable_slicing()
-                else:
-                    logger.warning(
-                        f"Cannot enable VAE slicing for module: {vae_cls_name} No enable_slicing"
-                        " method."
-                    )
+                if args.vae_tiling:
+                    if hasattr(vae, "enable_tiling"):
+                        logger.info(f"Enabling VAE tiling for module: {vae_cls_name} ...")
+                        vae.enable_tiling()
+                    else:
+                        logger.warning(
+                            f"Cannot enable VAE tiling for module: {vae_cls_name} No enable_tiling"
+                            " method."
+                        )
+                if args.vae_slicing:
+                    if hasattr(vae, "enable_slicing"):
+                        logger.info(f"Enabling VAE slicing for module: {vae_cls_name} ...")
+                        vae.enable_slicing()
+                    else:
+                        logger.warning(
+                            f"Cannot enable VAE slicing for module: {vae_cls_name} No enable_slicing"
+                            " method."
+                        )
                 setattr(pipe, "vae", vae)
             else:
                 logger.warning("vae-tiling is set but no VAE found in the pipeline.")
