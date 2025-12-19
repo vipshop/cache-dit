@@ -391,7 +391,11 @@ def wan_example(args: argparse.Namespace, **kwargs) -> Example:
             task_type=ExampleType.T2V,  # Text to Video
             model_name_or_path=_path("Wan-AI/Wan2.2-T2V-A14B-Diffusers"),
             pipeline_class=WanPipeline,
-            bnb_4bit_components=["text_encoder", "transformer", "transformer_2"] if "wan2.2" in args.example.lower() else ["text_encoder", "transformer"],  # type: ignore
+            bnb_4bit_components=(
+                ["text_encoder", "transformer", "transformer_2"]
+                if "wan2.2" in args.example.lower()
+                else ["text_encoder", "transformer"]
+            ),
             extra_optimize_kwargs={
                 "params_modifiers": params_modifiers,
             },
@@ -449,9 +453,9 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
         last_img = last_img.resize((width, height))
         frames = []
         frames.append(first_img)
-        # Ideally, this should be 127.5 to match original code, but they perform computation on numpy arrays
-        # whereas we are passing PIL images. If you choose to pass numpy arrays, you can set it to 127.5 to
-        # match the original code.
+        # Ideally, this should be 127.5 to match original code, but they perform
+        # computation on numpy arrays whereas we are passing PIL images. If you
+        # choose to pass numpy arrays, you can set it to 127.5 to match the original code.
         frames.extend([PIL.Image.new("RGB", (width, height), (128, 128, 128))] * (num_frames - 2))
         frames.append(last_img)
         mask_black = PIL.Image.new("L", (width, height), 0)
@@ -470,12 +474,16 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     return Example(
         args=args,
         init_config=ExampleInitConfig(
-            task_type=ExampleType.FLF2V,  # Few-Labeled-Frames to Video
+            task_type=ExampleType.FLF2V,  # First and Last Frames to Video
             model_name_or_path=model_name_or_path,
             pipeline_class=WanVACEPipeline,
             vae=vae,
             post_init_hook=post_init_hook,
-            bnb_4bit_components=["text_encoder", "transformer", "transformer_2"] if "wan2.2" in args.example.lower() else ["text_encoder", "transformer"],  # type: ignore
+            bnb_4bit_components=(
+                ["text_encoder", "transformer", "transformer_2"]
+                if "wan2.2" in args.example.lower()
+                else ["text_encoder", "transformer"]
+            ),
         ),
         input_data=ExampleInputData(
             prompt=(
