@@ -16,7 +16,7 @@ logger = init_logger(__name__)
 
 class DiTPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: DiTTransformer2DModel,
         **kwargs,

@@ -23,7 +23,7 @@ logger = init_logger(__name__)
 
 class ChromaPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: ChromaTransformer2DModel,
         **kwargs,

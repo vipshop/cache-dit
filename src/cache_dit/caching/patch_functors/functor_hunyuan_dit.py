@@ -15,7 +15,7 @@ logger = init_logger(__name__)
 
 class HunyuanDiTPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: HunyuanDiT2DModel,
         **kwargs,

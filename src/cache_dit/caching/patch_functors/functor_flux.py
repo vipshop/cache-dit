@@ -24,7 +24,7 @@ logger = init_logger(__name__)
 
 class FluxPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: FluxTransformer2DModel,
         blocks: torch.nn.ModuleList = None,

@@ -20,7 +20,7 @@ logger = init_logger(__name__)
 
 class WanVACEPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: WanVACETransformer3DModel,
         **kwargs,

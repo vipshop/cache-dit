@@ -30,10 +30,12 @@ logger = init_logger(__name__)
 
 
 class ExampleType(Enum):
-    T2V = "text_to_video"
-    I2V = "image_to_video"
-    T2I = "text_to_image"
-    IE2I = "image_editing_to_image"
+    T2V = "T2V: Text to Video"
+    I2V = "I2V: Image to Video"
+    T2I = "T2I: Text to Image"
+    IE2I = "IE2I: Image Editing to Image"
+    FLF2V = "FLF2V: First Last Frames to Video"
+    VACE = "VACE: Video All-in-one Creation and Editing"
 
 
 @dataclasses.dataclass
@@ -47,6 +49,7 @@ class ExampleInputData:
     height: Optional[int] = None
     width: Optional[int] = None
     guidance_scale: Optional[float] = None
+    guidance_scale_2: Optional[float] = None  # for dual guidance scale
     true_cfg_scale: Optional[float] = None
     num_inference_steps: Optional[int] = None
     num_images_per_prompt: Optional[int] = None
@@ -55,6 +58,8 @@ class ExampleInputData:
     mask_image: Optional[Union[List[Image.Image], Image.Image]] = None
     # Specific inputs for video generation
     num_frames: Optional[int] = None
+    video: Optional[List[Image.Image]] = None  # e.g, Wan VACE
+    mask: Optional[List[Image.Image]] = None
     # Other inputs
     seed: Optional[int] = None
     generator: torch.Generator = torch.Generator("cpu").manual_seed(0)
@@ -159,11 +164,28 @@ class ExampleInputData:
                             summary_str += f"- {k}: Not a valid PIL Image\n"
                     else:
                         summary_str += f"- {k}: Empty List\n"
+            elif k in ["video", "mask"]:
+                if isinstance(v, list):
+                    if len(v) > 0:
+                        summary_str += f"- {k}: List of Frames ({len(v)} frames)\n"
+                        for i in range(min(len(v), 1)):  # show up to 1 frames
+                            if isinstance(v[i], Image.Image):
+                                W, H = v[i].size
+                                summary_str += f"    - Frame {i}: ({H}x{W})\n"
+                            else:
+                                summary_str += f"    - Frame {i}: Not a valid PIL Image\n"
+                    else:
+                        summary_str += f"- {k}: Empty List\n"
+                else:
+                    summary_str += f"- {k}: Not a valid list of frames\n"
             elif k == "generator":
                 # Show seed and device info
-                gen_device = v.device if hasattr(v, "device") else "cpu"
-                gen_seed = v.initial_seed() if hasattr(v, "initial_seed") else "N/A"
-                summary_str += f"- {k}: device {gen_device}, seed {gen_seed}\n"
+                if isinstance(v, torch.Generator):
+                    gen_device = v.device if hasattr(v, "device") else "cpu"
+                    gen_seed = v.initial_seed() if hasattr(v, "initial_seed") else "N/A"
+                    summary_str += f"- {k}: device {gen_device}, seed {gen_seed}\n"
+                else:
+                    summary_str += f"- {k}: Not a valid torch.Generator\n"
             else:
                 summary_str += f"- {k}: {v}\n"
         summary_str = summary_str.rstrip("\n")
@@ -504,7 +526,12 @@ class Example:
             output_data.image = (
                 output.images[0] if isinstance(output.images, list) else output.images
             )
-        elif self.init_config.task_type in [ExampleType.T2V, ExampleType.I2V]:
+        elif self.init_config.task_type in [
+            ExampleType.T2V,
+            ExampleType.I2V,
+            ExampleType.FLF2V,
+            ExampleType.VACE,
+        ]:
             output_data.video = output.frames[0] if hasattr(output, "frames") else output
 
         self.output_data = output_data
@@ -527,13 +554,15 @@ class Example:
 
 class ExampleRegister:
     _example_registry: Dict[str, Callable[..., Example]] = {}
+    _example_registry_defaults: Dict[str, str] = {}
 
     @classmethod
-    def register(cls, name: str):
+    def register(cls, name: str, default: str = ""):
         def decorator(example_func: Callable[..., Example]):
             if name in cls._example_registry:
                 raise ValueError(f"Example '{name}' is already registered.")
             cls._example_registry[name] = example_func
+            cls._example_registry_defaults[name] = default
             return example_func
 
         return decorator
@@ -548,3 +577,7 @@ class ExampleRegister:
     @classmethod
     def list_examples(cls) -> List[str]:
         return list(cls._example_registry.keys())
+
+    @classmethod
+    def get_default(cls, name: str) -> str:
+        return cls._example_registry_defaults.get(name, "")

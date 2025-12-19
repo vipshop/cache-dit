@@ -23,7 +23,7 @@ logger = init_logger(__name__)
 
 class HiDreamPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: HiDreamImageTransformer2DModel,
         **kwargs,

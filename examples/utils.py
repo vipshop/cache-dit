@@ -372,12 +372,18 @@ def get_args(
         default=False,
         help="Enable sequential GPU offload for model if applicable.",
     )
-    # Vae tiling settings
+    # Vae tiling/slicing settings
     parser.add_argument(
         "--vae-tiling",
         action="store_true",
         default=False,
         help="Enable VAE tiling for low memory device.",
+    )
+    parser.add_argument(
+        "--vae-slicing",
+        action="store_true",
+        default=False,
+        help="Enable VAE slicing for low memory device.",
     )
     # Compiling settings
     parser.add_argument(
@@ -884,14 +890,14 @@ def pipe_quant_bnb_4bit_config(
     return quantization_config
 
 
-def maybe_vae_tiling(
+def maybe_vae_tiling_or_slicing(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
-    if args.vae_tiling:
+    if args.vae_tiling or args.vae_slicing:
         if isinstance(pipe_or_adapter, BlockAdapter):
             pipe = pipe_or_adapter.pipe
-            assert pipe is not None, "Please enable VAE tiling manually if pipe is None."
+            assert pipe is not None, "Please enable VAE tiling/slicing manually if pipe is None."
         else:
             pipe = pipe_or_adapter
 
@@ -899,15 +905,23 @@ def maybe_vae_tiling(
             vae = getattr(pipe, "vae", None)
             if vae is not None:
                 vae_cls_name = vae.__class__.__name__
-                if hasattr(vae, "enable_tiling"):
+                if args.vae_tiling and hasattr(vae, "enable_tiling"):
                     logger.info(f"Enabling VAE tiling for module: {vae_cls_name} ...")
                     vae.enable_tiling()
-                    setattr(pipe, "vae", vae)
                 else:
                     logger.warning(
                         f"Cannot enable VAE tiling for module: {vae_cls_name} No enable_tiling"
                         " method."
                     )
+                if args.vae_slicing and hasattr(vae, "enable_slicing"):
+                    logger.info(f"Enabling VAE slicing for module: {vae_cls_name} ...")
+                    vae.enable_slicing()
+                else:
+                    logger.warning(
+                        f"Cannot enable VAE slicing for module: {vae_cls_name} No enable_slicing"
+                        " method."
+                    )
+                setattr(pipe, "vae", vae)
             else:
                 logger.warning("vae-tiling is set but no VAE found in the pipeline.")
     return pipe_or_adapter
@@ -1031,8 +1045,8 @@ def maybe_apply_optimization(
     maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
 
-    # VAE Tiling
-    maybe_vae_tiling(args, pipe_or_adapter)
+    # VAE Tiling or Slicing
+    maybe_vae_tiling_or_slicing(args, pipe_or_adapter)
 
     # Compilation
     maybe_compile_transformer(args, pipe_or_adapter)

@@ -38,8 +38,12 @@ if __name__ == "__main__":
     args = get_example_args()
     if args.task == "list":
         logger.info("Available examples:")
+        max_name_len = max(len(name) for name in ExampleRegister.list_examples())
         for name in ExampleRegister.list_examples():
-            logger.info(f"- {name}")
+            default = ExampleRegister.get_default(name)
+            # format by max_name_len
+            info = f"- ✅ {name:<{max_name_len}} - Defalut: {default}"
+            logger.info(info)
         exit(0)
     else:
         if args.example is None:
