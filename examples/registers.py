@@ -46,6 +46,7 @@ _env_path_mapping = {
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
     "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
     "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
+    "QWEN_IMAGE_CONTROLNET_DIR": "InstantX/Qwen-Image-ControlNet-Inpainting",
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
     "WAN_DIR": "Wan2.1-T2V-1.3B-Diffusers",
     "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
@@ -371,6 +372,46 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
             width=1280,
             num_frames=21,
             num_inference_steps=50,
+        ),
+    )
+
+
+@ExampleRegister.register(
+    "qwen_image_controlnet", default="InstantX/Qwen-Image-ControlNet-Inpainting"
+)
+def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import QwenImageControlNetModel, QwenImageControlNetInpaintPipeline
+
+    controlnet = QwenImageControlNetModel.from_pretrained(
+        _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
+        torch_dtype=torch.bfloat16,
+    )
+    base_image_url = (
+        "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets"
+    )
+    control_image = load_image(f"{base_image_url}/images/image1.png").convert("RGB")
+    mask_image = load_image(f"{base_image_url}/masks/mask1.png")
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("Qwen/Qwen-Image"),
+            pipeline_class=QwenImageControlNetInpaintPipeline,
+            controlnet=controlnet,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            force_fuse_lora=True,  # For parallelism compatibility
+        ),
+        input_data=ExampleInputData(
+            prompt="一辆绿色的出租车行驶在路上",
+            negative_prompt="worst quality, low quality, blurry, text, watermark, logo",
+            control_image=control_image,
+            mask_image=mask_image,
+            controlnet_conditioning_scale=1.0,
+            height=mask_image.size[1] if args.height is None else args.height,
+            width=mask_image.size[0] if args.width is None else args.width,
+            num_inference_steps=50,
+            true_cfg_scale=4.0,
         ),
     )
 

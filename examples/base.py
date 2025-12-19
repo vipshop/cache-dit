@@ -53,13 +53,17 @@ class ExampleInputData:
     true_cfg_scale: Optional[float] = None
     num_inference_steps: Optional[int] = None
     num_images_per_prompt: Optional[int] = None
+    num_frames: Optional[int] = None
     # Specific inputs for image editing
     image: Optional[Union[List[Image.Image], Image.Image]] = None
     mask_image: Optional[Union[List[Image.Image], Image.Image]] = None
-    # Specific inputs for video generation
-    num_frames: Optional[int] = None
-    video: Optional[List[Image.Image]] = None  # e.g, Wan VACE
+    # Specific inputs for video generation, e.g, Wan VACE
+    video: Optional[List[Image.Image]] = None
     mask: Optional[List[Image.Image]] = None
+    # Specific inputs for controlnet, e.g, Qwen-Image-ControlNet-Inpainting
+    control_image: Optional[Union[List[Image.Image], Image.Image]] = None
+    control_mask: Optional[Union[List[Image.Image], Image.Image]] = None
+    controlnet_conditioning_scale: Optional[float] = None
     # Other inputs
     seed: Optional[int] = None
     generator: torch.Generator = torch.Generator("cpu").manual_seed(0)
@@ -280,6 +284,7 @@ class ExampleInitConfig:
     transformer: Optional[Union[ModelMixin, Callable]] = None  # lora or nunchaku case
     vae: Optional[Union[ModelMixin, Callable]] = None
     text_encoder: Optional[Union[GenerationMixin, Callable]] = None
+    controlnet: Optional[Union[ModelMixin, Callable]] = None
     lora_weights_path: Optional[str] = None
     lora_weights_name: Optional[str] = None
     # For parallelism compatibility, tensor parallelism requires fused LoRA
@@ -380,6 +385,13 @@ class ExampleInitConfig:
                 self.text_encoder,
             )
             else self.text_encoder()  # get text_encoder instance
+        )
+        custom_components_kwargs["controlnet"] = (
+            self.controlnet
+            if not _is_function_or_method(
+                self.controlnet,
+            )
+            else self.controlnet()  # get controlnet instance
         )
         # Remove None components
         custom_components_kwargs = {
