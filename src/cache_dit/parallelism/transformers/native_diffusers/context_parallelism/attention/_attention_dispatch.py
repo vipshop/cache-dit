@@ -609,6 +609,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
         )
     else:
+        _flash_attention_3 = None  # type: ignore[assignment]
         logger.info("Flash Attention 3 not available, skipping _FLASH_3 backend registration.")
 
 else:
