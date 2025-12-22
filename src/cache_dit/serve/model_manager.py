@@ -196,7 +196,6 @@ class ModelManager:
                     self.pipe.load_lora_weights(self.lora_path, weight_name=self.lora_name)
                     logger.info("LoRA weights loaded successfully")
 
-                    # Fuse LoRA if enabled and not quantizing transformer
                     should_fuse = self.fuse_lora and (
                         quantization_config is None
                         or "transformer"
