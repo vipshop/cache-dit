@@ -128,6 +128,9 @@ class ModelManager:
         quantize: bool = False,
         quantize_type: Optional[str] = None,
         pipeline_quant_config_path: Optional[str] = None,
+        lora_path: Optional[str] = None,
+        lora_name: Optional[str] = None,
+        fuse_lora: bool = True,
     ):
         self.model_path = model_path
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -143,6 +146,9 @@ class ModelManager:
         self.quantize = quantize
         self.quantize_type = quantize_type
         self.pipeline_quant_config_path = pipeline_quant_config_path
+        self.lora_path = lora_path
+        self.lora_name = lora_name
+        self.fuse_lora = fuse_lora
         self.pipe = None
         self.warmed_up_shapes = set()
 
@@ -177,6 +183,44 @@ class ModelManager:
                 device_map=self.device_map,
                 quantization_config=quantization_config,
             )
+
+        # Load and fuse LoRA weights if provided
+        if self.lora_path is not None and self.lora_name is not None:
+            lora_full_path = os.path.join(self.lora_path, self.lora_name)
+            if os.path.exists(lora_full_path):
+                logger.info(f"Loading LoRA weights from: {lora_full_path}")
+                from diffusers.loaders.lora_base import LoraBaseMixin
+
+                if not isinstance(self.pipe, LoraBaseMixin):
+                    logger.error("Pipeline does not support LoRA. Skipping LoRA loading.")
+                else:
+                    try:
+                        self.pipe.load_lora_weights(self.lora_path, weight_name=self.lora_name)
+                        logger.info("LoRA weights loaded successfully")
+
+                        # Fuse LoRA if enabled and not quantizing transformer
+                        should_fuse = self.fuse_lora and (
+                            quantization_config is None
+                            or "transformer"
+                            not in getattr(quantization_config, "components_to_quantize", [])
+                        )
+
+                        if should_fuse:
+                            logger.info("Fusing LoRA weights into transformer...")
+                            self.pipe.fuse_lora()
+                            self.pipe.unload_lora_weights()
+                            logger.info("LoRA weights fused and unloaded successfully")
+                        else:
+                            logger.info(
+                                "Keeping LoRA weights separate (fusion disabled or transformer quantized)"
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to load LoRA weights: {e}")
+                        raise
+            else:
+                logger.warning(f"LoRA path does not exist: {lora_full_path}")
+        elif self.lora_path is not None or self.lora_name is not None:
+            logger.warning("Both --lora-path and --lora-name must be provided to load LoRA weights")
 
         # TODO(wxy): support quantization by quantize_type
         if self.quantize and self.quantize_type is not None:

@@ -22,7 +22,24 @@ def get_args(
     parser.add_argument("--compile", action="store_true", default=False)
     parser.add_argument("--compile-repeated-blocks", action="store_true", default=False)
     parser.add_argument("--max-autotune", action="store_true", default=False)
-    parser.add_argument("--fuse-lora", action="store_true", default=False)
+    parser.add_argument(
+        "--lora-path", type=str, default=None, help="Path to LoRA weights directory"
+    )
+    parser.add_argument(
+        "--lora-name", type=str, default=None, help="LoRA weight filename (e.g., model.safetensors)"
+    )
+    parser.add_argument(
+        "--fuse-lora",
+        action="store_true",
+        default=True,
+        help="Fuse LoRA weights into model (recommended for better performance)",
+    )
+    parser.add_argument(
+        "--disable-fuse-lora",
+        action="store_true",
+        default=False,
+        help="Disable LoRA fusion (keep LoRA weights separate)",
+    )
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--repeat", type=int, default=None)
@@ -296,6 +313,9 @@ def launch_server(args=None):
         quantize=args.quantize,
         quantize_type=args.quantize_type,
         pipeline_quant_config_path=args.pipeline_quant_config_path,
+        lora_path=args.lora_path,
+        lora_name=args.lora_name,
+        fuse_lora=args.fuse_lora and not args.disable_fuse_lora,
     )
 
     logger.info("Loading model...")
