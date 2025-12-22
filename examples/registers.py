@@ -34,6 +34,8 @@ __all__ = [
     "wan_vace_example",
     "ovis_image_example",
     "zimage_example",
+    "longcat_image_example",
+    "longcat_image_edit_example",
 ]
 
 
@@ -790,6 +792,34 @@ def longcat_image_example(args: argparse.Namespace, **kwargs) -> Example:
             height=1024,
             width=1024,
             num_inference_steps=50,
-            guidance_scale=4.5,  # has separate cfg for ovis image
+            guidance_scale=4.5,
+        ),
+    )
+
+
+@ExampleRegister.register("longcat_image_edit", default="meituan-longcat/LongCat-Image-Edit")
+def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import LongCatImageEditPipeline
+
+    image_url = (
+        "https://huggingface.co/meituan-longcat/LongCat-Image-Edit/resolve/main/assets/test.png"
+    )
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=_path("meituan-longcat/LongCat-Image-Edit"),
+            pipeline_class=LongCatImageEditPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=("Turn the cat into a dog"),
+            negative_prompt="",
+            height=1024,
+            width=1024,
+            num_inference_steps=50,
+            guidance_scale=4.5,
+            image=load_image(image_url),
         ),
     )
