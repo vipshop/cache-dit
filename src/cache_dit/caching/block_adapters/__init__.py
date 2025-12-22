@@ -856,7 +856,7 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
-@BlockAdapterRegister.register("LongcatImage")
+@BlockAdapterRegister.register("LongCatImage")
 def longcat_image_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import LongCatImageTransformer2DModel
