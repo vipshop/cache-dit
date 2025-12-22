@@ -14,11 +14,13 @@ def get_example_args():
     parser.add_argument(
         "task",
         type=str,
+        nargs="?",
         default="generate",
-        choices=["generate", "list"],
+        choices=["generate", "list"] + ExampleRegister.list_examples(),
         help=(
-            "The task to perform. If not specified, run the specified example. "
-            "Or, Use 'list' to list all available examples."
+            "The task to perform or example name to run. "
+            "Use 'list' to list all available examples, "
+            "or specify an example name directly (defaults to 'generate' task)."
         ),
     )
     parser.add_argument(
@@ -30,6 +32,11 @@ def get_example_args():
         help="Names of the examples to run. If not specified, skip running example.",
     )
     args = parser.parse_args()
+
+    if args.task in ExampleRegister.list_examples():
+        args.example = args.task
+        args.task = "generate"
+
     return maybe_postprocess_args(args)
 
 
@@ -63,7 +70,8 @@ if __name__ == "__main__":
 
     # Usage:
     # python3 generate.py list
-    # python3 generate.py generate zimage
-    # python3 generate.py generate qwen_image_edit_lightning --cpu-offload
-    # torchrun --nproc_per_node=4 generate.py generate zimage --parallel ulysses --ulysses-anything
-    # torchrun --nproc_per_node=4 generate.py generate zimage --parallel tp --parallel-text
+    # python3 generate.py zimage  # simplified, task defaults to 'generate'
+    # python3 generate.py qwen_image_edit_lightning --cpu-offload
+    # python3 generate.py generate zimage  # full syntax, still supported
+    # torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --ulysses-anything
+    # torchrun --nproc_per_node=4 generate.py zimage --parallel tp --parallel-text
