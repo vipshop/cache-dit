@@ -135,7 +135,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 
 | 📚Model | [C*](./)  | CP | TP | TE | 📚Model | [C*](./)  | CP | TP | TE |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
-| **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✖️ | ✖️ | ✖️ | ✅ | **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** |✖️ | ✖️ | ✖️ | ✅ |
+| **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✖️ | ✖️ | ✅ |
 | **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Z-Image-Control](https://github.com/vipshop/cache-dit/blob/main/examples)** |✖️ | ✖️ | ✅ | ✅ |
 | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ |
 | **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ |
