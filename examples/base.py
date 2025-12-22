@@ -30,12 +30,12 @@ logger = init_logger(__name__)
 
 
 class ExampleType(Enum):
-    T2V = "T2V: Text to Video"
-    I2V = "I2V: Image to Video"
-    T2I = "T2I: Text to Image"
-    IE2I = "IE2I: Image Editing to Image"
-    FLF2V = "FLF2V: First Last Frames to Video"
-    VACE = "VACE: Video All-in-one Creation and Editing"
+    T2V = "T2V - Text to Video"
+    I2V = "I2V - Image to Video"
+    T2I = "T2I - Text to Image"
+    IE2I = "IE2I - Image Editing to Image"
+    FLF2V = "FLF2V - First Last Frames to Video"
+    VACE = "VACE - Video All-in-one Creation and Editing"
 
 
 @dataclasses.dataclass

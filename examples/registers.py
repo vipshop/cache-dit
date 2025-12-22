@@ -43,7 +43,7 @@ __all__ = [
 # HuggingFace Hub.
 _env_path_mapping = {
     "FLUX_DIR": "black-forest-labs/FLUX.1-dev",
-    "NUNCHAKA_ FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
+    "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
@@ -85,7 +85,7 @@ def _path(
 def flux_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import FluxPipeline
 
-    if "nunchaku" not in args.example.lower():
+    if "nunchaku" in args.example.lower():
         from nunchaku.models.transformers.transformer_flux_v2 import (
             NunchakuFluxTransformer2DModelV2,
         )
