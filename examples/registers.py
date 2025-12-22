@@ -766,14 +766,14 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
 
 @ExampleRegister.register("longcat_image", default="meituan-longcat/LongCat-Image")
 def longcat_image_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import LongcatImagePipeline
+    from diffusers import LongCatImagePipeline
 
     return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
             model_name_or_path=_path("meituan-longcat/LongCat-Image"),
-            pipeline_class=LongcatImagePipeline,
+            pipeline_class=LongCatImagePipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
         ),
         input_data=ExampleInputData(
