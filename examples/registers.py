@@ -816,8 +816,6 @@ def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         input_data=ExampleInputData(
             prompt=("Turn the cat into a dog"),
             negative_prompt="",
-            height=1024,
-            width=1024,
             num_inference_steps=50,
             guidance_scale=4.5,
             image=load_image(image_url),
