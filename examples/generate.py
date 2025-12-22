@@ -32,11 +32,11 @@ def get_example_args():
         help="Names of the examples to run. If not specified, skip running example.",
     )
     args = parser.parse_args()
-    
+
     if args.task in ExampleRegister.list_examples():
         args.example = args.task
         args.task = "generate"
-    
+
     return maybe_postprocess_args(args)
 
 
