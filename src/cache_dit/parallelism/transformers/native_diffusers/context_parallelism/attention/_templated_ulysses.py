@@ -198,7 +198,7 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
             scale,
             enable_gqa,
             return_lse,
-            _save_ctx=True,
+            _save_ctx=False,
             _parallel_config=_parallel_config,
         )
         if return_lse:
@@ -276,7 +276,7 @@ class _TemplatedUlyssesAttentionUnEvenHeads(torch.autograd.Function):
             scale,
             enable_gqa,
             return_lse,
-            _save_ctx=True,
+            _save_ctx=False,
             _parallel_config=_parallel_config,
         )
         if return_lse:
@@ -362,7 +362,7 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
             scale,
             enable_gqa,
             return_lse,
-            _save_ctx=True,
+            _save_ctx=False,
             _parallel_config=_parallel_config,
         )
         if return_lse:
@@ -443,7 +443,7 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
             scale,
             enable_gqa,
             return_lse,
-            _save_ctx=True,
+            _save_ctx=False,
             _parallel_config=_parallel_config,
         )
         if return_lse:
@@ -532,7 +532,7 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
             scale,
             enable_gqa,
             return_lse,
-            _save_ctx=True,
+            _save_ctx=False,
             _parallel_config=_parallel_config,
         )
         if return_lse:
