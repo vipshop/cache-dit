@@ -140,7 +140,7 @@ class ExampleInputData:
                 self.mask_image = self.mask_image[0]
 
     def summary(self, args: argparse.Namespace) -> str:
-        summary_str = "Example Input Summary:\n"
+        summary_str = "🤖 Example Input Summary:\n"
         data = self.data(args)
         for k, v in data.items():
             if k in ["prompt", "negative_prompt"]:
@@ -256,7 +256,7 @@ class ExampleOutputData:
             return None
 
     def summary(self, args: argparse.Namespace) -> str:
-        logger.info("Example Output Summary:")
+        logger.info("🤖 Example Output Summary:")
         summary_str = f"- Model: {args.example}\n- Optimization: {self.strify_tag}\n"
         if self.load_time is not None:
             summary_str += f"- Load Time: {self.load_time:.2f}s\n"
@@ -339,7 +339,7 @@ class ExampleInitConfig:
         return pipe
 
     def summary(self, args: argparse.Namespace, **kwargs) -> str:
-        logger.info("Example Init Config Summary:")
+        logger.info("🤖 Example Init Config Summary:")
         extra_model_path = kwargs.get("extra_model_path", "")
         model_name_or_path = self.model_name_or_path if args.model_path is None else args.model_path
         summary_str = f"- Model: {model_name_or_path}"
@@ -554,6 +554,7 @@ class Example:
         self.output_data = output_data
 
         if self.rank == 0:
+            logger.info("-" * 100)
             self.init_config.summary(
                 self.args,
                 # path for extra model, e.g., lora weights, svdq int4 weights, etc.
@@ -564,6 +565,7 @@ class Example:
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
+            logger.info("-" * 100)
 
         maybe_destroy_distributed()
 
