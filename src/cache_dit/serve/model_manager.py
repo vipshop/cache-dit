@@ -184,7 +184,6 @@ class ModelManager:
                 quantization_config=quantization_config,
             )
 
-        # Load and fuse LoRA weights if provided
         if self.lora_path is not None and self.lora_name is not None:
             from diffusers.loaders.lora_base import LoraBaseMixin
 
