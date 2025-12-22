@@ -57,32 +57,32 @@ The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is t
 ```bash
 # baseline
 # use default model path, e.g, "black-forest-labs/FLUX.1-dev"
-python3 generate.py generate flux 
-python3 generate.py generate flux_nunchaku # need nunchaku library
-python3 generate.py generate flux2
-python3 generate.py generate ovis_image
-python3 generate.py generate qwen_image_edit_lightning
-python3 generate.py generate qwen_image
-python3 generate.py generate skyreels_v2
-python3 generate.py generate wan2.2
-python3 generate.py generate zimage 
+python3 generate.py flux 
+python3 generate.py flux_nunchaku # need nunchaku library
+python3 generate.py flux2
+python3 generate.py ovis_image
+python3 generate.py qwen_image_edit_lightning
+python3 generate.py qwen_image
+python3 generate.py skyreels_v2
+python3 generate.py wan2.2
+python3 generate.py zimage 
 python3 generate.py generate longcat_image
 python3 generate.py generate longcat_image_edit
 # w/ cache acceleration
-python3 generate.py generate flux --cache
-python3 generate.py generate flux --cache --taylorseer
-python3 generate.py generate flux_nunchaku --cache
-python3 generate.py generate qwen_image --cache
-python3 generate.py generate zimage --cache --rdt 0.6 --scm fast
+python3 generate.py flux --cache
+python3 generate.py flux --cache --taylorseer
+python3 generate.py flux_nunchaku --cache
+python3 generate.py qwen_image --cache
+python3 generate.py zimage --cache --rdt 0.6 --scm fast
 # enable cpu offload or vae tiling if your encounter an OOM error
-python3 generate.py generate qwen_image --cache --cpu-offload
-python3 generate.py generate qwen_image --cache --cpu-offload --vae-tiling
-python3 generate.py generate qwen_image_edit_lightning --cpu-offload --steps 4
-python3 generate.py generate qwen_image_edit_lightning --cpu-offload --steps 8
+python3 generate.py qwen_image --cache --cpu-offload
+python3 generate.py qwen_image --cache --cpu-offload --vae-tiling
+python3 generate.py qwen_image_edit_lightning --cpu-offload --steps 4
+python3 generate.py qwen_image_edit_lightning --cpu-offload --steps 8
 # or, enable sequential cpu offload for extremly low VRAM device
-python3 generate.py generate flux2 --sequential-cpu-offload # FLUX2 56B total
+python3 generate.py flux2 --sequential-cpu-offload # FLUX2 56B total
 # use `--summary` option to show the cache acceleration stats
-python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
+python3 generate.py zimage --cache --rdt 0.6 --scm fast --summary
 ```
 
 ## 📚 Custom Model Path
@@ -90,9 +90,9 @@ python3 generate.py generate zimage --cache --rdt 0.6 --scm fast --summary
 The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`. For examples: 
 
 ```bash
-python3 generate.py generate flux --model-path /PATH/TO/FLUX.1-dev
-python3 generate.py generate zimage --model-path /PATH/TO/Z-Image-Turbo
-python3 generate.py generate qwem_image --model-path /PATH/TO/Qwen-Image
+python3 generate.py flux --model-path /PATH/TO/FLUX.1-dev
+python3 generate.py zimage --model-path /PATH/TO/Z-Image-Turbo
+python3 generate.py qwem_image --model-path /PATH/TO/Qwen-Image
 ```
 
 ## 📚 Multi-GPU Inference 
@@ -101,17 +101,17 @@ cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥
 
 ```bash
 # context parallelism or tensor parallelism
-torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses 
-torchrun --nproc_per_node=4 generate.py generate flux --parallel ring 
-torchrun --nproc_per_node=4 generate.py generate flux --parallel tp
+torchrun --nproc_per_node=4 generate.py flux --parallel ulysses 
+torchrun --nproc_per_node=4 generate.py flux --parallel ring 
+torchrun --nproc_per_node=4 generate.py flux --parallel tp
 # ulysses anything attention
-torchrun --nproc_per_node=4 generate.py generate zimage --parallel ulysses --ulysses-anything
-torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything
+torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --ulysses-anything
+torchrun --nproc_per_node=4 generate.py qwen_image_edit_lightning --parallel ulysses --ulysses-anything
 # text encoder parallelism, enable it by add: `--parallel-text-encoder`
-torchrun --nproc_per_node=4 generate.py generate flux --parallel tp --parallel-text-encoder
-torchrun --nproc_per_node=4 generate.py generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
+torchrun --nproc_per_node=4 generate.py flux --parallel tp --parallel-text-encoder
+torchrun --nproc_per_node=4 generate.py qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
 # Hint: set `--local-ranks-filter=0` to torchrun -> only show logs on rank 0
-torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --parallel ulysses 
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py flux --parallel ulysses 
 ```
 
 ## 📚 Low-bits Quantization 
@@ -120,12 +120,12 @@ cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥t
 
 ```bash
 # please also enable torch.compile if the quantation is using.
-python3 generate.py generate flux --cache --quantize-type float8 --compile
-python3 generate.py generate flux --cache --quantize-type int8 --compile
-python3 generate.py generate flux --cache --quantize-type float8_weight_only --compile
-python3 generate.py generate flux --cache --quantize-type int8_weight_only --compile
-python3 generate.py generate flux --cache --quantize-type bnb_4bit --compile # w4a16
-python3 generate.py generate flux_nunchaku --cache --compile # w4a16 SVDQ
+python3 generate.py flux --cache --quantize-type float8 --compile
+python3 generate.py flux --cache --quantize-type int8 --compile
+python3 generate.py flux --cache --quantize-type float8_weight_only --compile
+python3 generate.py flux --cache --quantize-type int8_weight_only --compile
+python3 generate.py flux --cache --quantize-type bnb_4bit --compile # w4a16
+python3 generate.py flux_nunchaku --cache --compile # w4a16 SVDQ
 ```
 
 ## 📚 Hybrid Acceleration 
@@ -134,22 +134,22 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 
 ```bash
 # DBCache + SCM + Taylorseer
-python3 generate.py generate flux --cache --scm fast --taylorsees --taylorseer-order 1
+python3 generate.py flux --cache --scm fast --taylorsees --taylorseer-order 1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
-torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulysses-float8 \
+torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --ulysses-float8 \
          --attn _sdpa_cudnn --parallel-text-encoder --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
-torchrun --nproc_per_node=4 generate.py generate flux --parallel ulysses --ulysses-float8 \
+torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --ulysses-float8 \
          --attn sage --parallel-text-encoder --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
-torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate qwen_image_edit_lightning \
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_lightning \
          --parallel ulysses --ulysses-anything --parallel-text-encoder \
          --quantize-type float8_weight_only --steps 4 --track-memory --compile
-torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate qwen_image_edit_lightning \
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_lightning \
          --parallel tp --parallel-text-encoder --quantize-type float8_weight_only \
          --steps 4 --track-memory --compile
 ```
@@ -158,7 +158,7 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate qwen_ima
 
 ```bash
 # NO Cache Acceleration: 8.27s
-torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --parallel ulysses
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py flux --parallel ulysses
 
 INFO 12-17 09:02:31 [base.py:151] Example Input Summary:
 INFO 12-17 09:02:31 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -174,7 +174,7 @@ INFO 12-17 09:02:31 [base.py:225] - Inference Time: 8.27s
 INFO 12-17 09:02:32 [base.py:182] Image saved to flux.1024x1024.C0_Q0_NONE_Ulysses4.png
 
 # Enabled Cache Acceleration: 4.23s
-torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py generate flux --parallel ulysses --cache --scm fast
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py flux --parallel ulysses --cache --scm fast
 
 INFO 12-17 09:10:09 [base.py:151] Example Input Summary:
 INFO 12-17 09:10:09 [base.py:151] - prompt: A cat holding a sign that says hello world
