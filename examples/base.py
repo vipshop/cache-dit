@@ -30,12 +30,12 @@ logger = init_logger(__name__)
 
 
 class ExampleType(Enum):
-    T2V = "T2V: Text to Video"
-    I2V = "I2V: Image to Video"
-    T2I = "T2I: Text to Image"
-    IE2I = "IE2I: Image Editing to Image"
-    FLF2V = "FLF2V: First Last Frames to Video"
-    VACE = "VACE: Video All-in-one Creation and Editing"
+    T2V = "T2V - Text to Video"
+    I2V = "I2V - Image to Video"
+    T2I = "T2I - Text to Image"
+    IE2I = "IE2I - Image Editing to Image"
+    FLF2V = "FLF2V - First Last Frames to Video"
+    VACE = "VACE - Video All-in-one Creation and Editing"
 
 
 @dataclasses.dataclass
@@ -140,7 +140,7 @@ class ExampleInputData:
                 self.mask_image = self.mask_image[0]
 
     def summary(self, args: argparse.Namespace) -> str:
-        summary_str = "Example Input Summary:\n"
+        summary_str = "🤖 Example Input Summary:\n"
         data = self.data(args)
         for k, v in data.items():
             if k in ["prompt", "negative_prompt"]:
@@ -256,7 +256,7 @@ class ExampleOutputData:
             return None
 
     def summary(self, args: argparse.Namespace) -> str:
-        logger.info("Example Output Summary:")
+        logger.info("🤖 Example Output Summary:")
         summary_str = f"- Model: {args.example}\n- Optimization: {self.strify_tag}\n"
         if self.load_time is not None:
             summary_str += f"- Load Time: {self.load_time:.2f}s\n"
@@ -338,10 +338,14 @@ class ExampleInitConfig:
 
         return pipe
 
-    def summary(self, args: argparse.Namespace) -> str:
-        logger.info("Example Init Config Summary:")
+    def summary(self, args: argparse.Namespace, **kwargs) -> str:
+        logger.info("🤖 Example Init Config Summary:")
+        extra_model_path = kwargs.get("extra_model_path", "")
         model_name_or_path = self.model_name_or_path if args.model_path is None else args.model_path
-        summary_str = f"- Model: {model_name_or_path}\n"
+        summary_str = f"- Model: {model_name_or_path}"
+        if extra_model_path.lower() != model_name_or_path.lower():
+            summary_str += f" + {extra_model_path}"
+        summary_str += "\n"
         summary_str += f"- Task Type: {self.task_type.value}\n"
         summary_str += f"- Torch Dtype: {self.torch_dtype}\n"
         if self.lora_weights_path is not None and self.lora_weights_name is not None:
@@ -459,6 +463,8 @@ class Example:
         self.rank, self.device = maybe_init_distributed(self.args)
 
     def check_valid(self) -> bool:
+        if self.args is None:
+            raise ValueError("args must be provided.")
         if self.input_data is None:
             raise ValueError("input_data must be provided.")
         if self.init_config is None:
@@ -467,8 +473,6 @@ class Example:
 
     def run(self) -> None:
         self.check_valid()
-        if self.rank == 0:
-            self.init_config.summary(self.args)
         start_time = time.time()
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
@@ -550,9 +554,18 @@ class Example:
         self.output_data = output_data
 
         if self.rank == 0:
+            logger.info("-" * 100)
+            self.init_config.summary(
+                self.args,
+                # path for extra model, e.g., lora weights, svdq int4 weights, etc.
+                extra_model_path=ExampleRegister.get_default(
+                    self.args.example,
+                ),
+            )
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
+            logger.info("-" * 100)
 
         maybe_destroy_distributed()
 
