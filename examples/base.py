@@ -459,6 +459,8 @@ class Example:
         self.rank, self.device = maybe_init_distributed(self.args)
 
     def check_valid(self) -> bool:
+        if self.args is None:
+            raise ValueError("args must be provided.")
         if self.input_data is None:
             raise ValueError("input_data must be provided.")
         if self.init_config is None:
@@ -467,8 +469,6 @@ class Example:
 
     def run(self) -> None:
         self.check_valid()
-        if self.rank == 0:
-            self.init_config.summary(self.args)
         start_time = time.time()
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
@@ -550,6 +550,7 @@ class Example:
         self.output_data = output_data
 
         if self.rank == 0:
+            self.init_config.summary(self.args)
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
