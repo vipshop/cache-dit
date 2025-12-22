@@ -274,14 +274,14 @@ Image.open(BytesIO(img_data)).save("output.png")
 cache-dit-serve \
     --model-path Qwen/Qwen-Image \
     --lora-path lightx2v/Qwen-Image-Lightning \
-    --lora-name Qwen-Image-Lightning-8steps-V1.0-bf16.safetensors \
+    --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
     --cache --compile
 
 # LoRA + Context Parallelism
 torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
     --model-path Qwen/Qwen-Image \
     --lora-path lightx2v/Qwen-Image-Lightning \
-    --lora-name Qwen-Image-Lightning-4steps-V1.0-bf16.safetensors \
+    --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
     --cache --parallel-type ulysses
 ```
 
@@ -289,7 +289,6 @@ torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
 - Both `--lora-path` and `--lora-name` must be provided together
 - LoRA fusion is automatically disabled when transformer is quantized
 - Supports `.safetensors` and `.bin` format LoRA weights
-- For Tensor Parallelism, LoRA fusion is recommended (default behavior)
 
 
 ## Attribution
