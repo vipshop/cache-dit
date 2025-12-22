@@ -762,3 +762,34 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
             num_inference_steps=9,
         ),
     )
+
+
+@ExampleRegister.register("longcat_image", default="meituan-longcat/LongCat-Image")
+def longcat_image_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import LongcatImagePipeline
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("meituan-longcat/LongCat-Image"),
+            pipeline_class=LongcatImagePipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "A young Asian woman wearing a yellow knit sweater paired with a white necklace. "
+                "Her hands rest on her knees, with a serene expression. The background features a "
+                "rough brick wall, with warm afternoon sunlight casting upon her, creating a tranquil "
+                "and cozy atmosphere. The shot uses a medium-distance perspective, highlighting her "
+                "demeanor and the details of her attire. Soft lighting illuminates her face, emphasizing "
+                "her facial features and the texture of her accessories, adding depth and warmth to the image. "
+                "The overall composition is simple and elegant, with the brick wall's texture complementing "
+                "the interplay of sunlight and shadows, showcasing the character's grace and composure."
+            ),
+            height=1024,
+            width=1024,
+            num_inference_steps=50,
+            guidance_scale=4.5,  # has separate cfg for ovis image
+        ),
+    )
