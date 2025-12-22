@@ -7,15 +7,15 @@ Server setup:
     cache-dit-serve \
         --model-path Qwen/Qwen-Image \
         --lora-path lightx2v/Qwen-Image-Lightning \
-        --lora-name Qwen-Image-Lightning-8steps-V1.0-bf16.safetensors \
-        --cache --rdt 0.2
+        --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
+        --cache
 
 For 4-step model:
     cache-dit-serve \
         --model-path Qwen/Qwen-Image \
         --lora-path lightx2v/Qwen-Image-Lightning \
-        --lora-name Qwen-Image-Lightning-4steps-V1.0-bf16.safetensors \
-        --cache --rdt 0.2
+        --lora-name Qwen-Image-Lightning-4steps-V1.1-bf16.safetensors \
+        --cache
 
 Reference: https://huggingface.co/lightx2v/Qwen-Image-Lightning
 """
@@ -46,41 +46,35 @@ def call_api(prompt, name="test", **kwargs):
     if "negative_prompt" in kwargs:
         payload["negative_prompt"] = kwargs["negative_prompt"]
 
-    try:
-        response = requests.post(url, json=payload, timeout=300)
-        response.raise_for_status()
-        result = response.json()
+    response = requests.post(url, json=payload, timeout=300)
+    response.raise_for_status()
+    result = response.json()
 
-        if "images" not in result or not result["images"]:
-            print("No images in response")
-            return None
-
-        # Save all generated images
-        filenames = []
-        for idx, img_base64 in enumerate(result["images"]):
-            img_data = base64.b64decode(img_base64)
-            image = Image.open(BytesIO(img_data))
-            
-            if kwargs.get("num_images", 1) > 1:
-                filename = f"{name}_{idx}.png"
-            else:
-                filename = f"{name}.png"
-            
-            image.save(filename)
-            print(f"Saved: {filename} ({image.size})")
-            filenames.append(filename)
-
-        # Print stats if available
-        if "stats" in result and result["stats"]:
-            print(f"Stats: {result['stats']}")
-        if "time_cost" in result:
-            print(f"Time cost: {result['time_cost']:.2f}s")
-
-        return filenames
-
-    except Exception as e:
-        print(f"Error: {e}")
+    if "images" not in result or not result["images"]:
+        print("No images in response")
         return None
+
+    # Save all generated images
+    filenames = []
+    for idx, img_base64 in enumerate(result["images"]):
+        img_data = base64.b64decode(img_base64)
+        image = Image.open(BytesIO(img_data))
+
+        if kwargs.get("num_images", 1) > 1:
+            filename = f"{name}_{idx}.png"
+        else:
+            filename = f"{name}.png"
+
+        image.save(filename)
+        print(f"Saved: {filename} ({image.size})")
+        filenames.append(filename)
+
+    if "stats" in result and result["stats"]:
+        print(f"Stats: {result['stats']}")
+    if "time_cost" in result:
+        print(f"Time cost: {result['time_cost']:.2f}s")
+
+    return filenames
 
 
 def test_basic_8steps():
@@ -134,20 +128,20 @@ if __name__ == "__main__":
     print("=" * 80)
     print("Testing Qwen-Image-Lightning LoRA Model Serving")
     print("=" * 80)
-    
+
     # Run tests
     print("\n[1/4] Testing basic 8-step generation...")
     test_basic_8steps()
-    
+
     print("\n[2/4] Testing basic 4-step generation...")
     test_basic_4steps()
-    
+
     print("\n[3/4] Testing different resolution (1536x1024)...")
     test_different_resolution()
-    
+
     print("\n[4/4] Testing batch generation (4 images)...")
     test_batch_generation()
-    
+
     print("\n" + "=" * 80)
     print("All tests completed!")
     print("=" * 80)
