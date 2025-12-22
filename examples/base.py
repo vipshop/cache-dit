@@ -338,10 +338,14 @@ class ExampleInitConfig:
 
         return pipe
 
-    def summary(self, args: argparse.Namespace) -> str:
+    def summary(self, args: argparse.Namespace, **kwargs) -> str:
         logger.info("Example Init Config Summary:")
+        extra_model_path = kwargs.get("extra_model_path", "")
         model_name_or_path = self.model_name_or_path if args.model_path is None else args.model_path
-        summary_str = f"- Model: {model_name_or_path}\n"
+        summary_str = f"- Model: {model_name_or_path}"
+        if extra_model_path.lower() != model_name_or_path.lower():
+            summary_str += f" + {extra_model_path}"
+        summary_str += "\n"
         summary_str += f"- Task Type: {self.task_type.value}\n"
         summary_str += f"- Torch Dtype: {self.torch_dtype}\n"
         if self.lora_weights_path is not None and self.lora_weights_name is not None:
@@ -550,7 +554,13 @@ class Example:
         self.output_data = output_data
 
         if self.rank == 0:
-            self.init_config.summary(self.args)
+            self.init_config.summary(
+                self.args,
+                # path for extra model, e.g., lora weights, svdq int4 weights, etc.
+                extra_model_path=ExampleRegister.get_default(
+                    self.args.example,
+                ),
+            )
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
