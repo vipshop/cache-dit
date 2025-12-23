@@ -59,7 +59,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
                     return transformer._cp_plan
 
         cls_name = transformer.__class__.__name__
-        # The cp plan for ZImage ControlNet is very complicated, I hate it.
+        # The cp plan for ZImage ControlNet is very complicated, I [HATE] it.
         if cls_name.startswith("ZImageControlNetModel"):
             n_control_layers = len(transformer.control_layers)  # 15
             n_control_noise_refiner_layers = len(transformer.control_noise_refiner)  # 2
