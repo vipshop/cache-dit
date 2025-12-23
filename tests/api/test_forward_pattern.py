@@ -332,7 +332,25 @@ class RandPipeline(DiffusionPipeline):
 
 def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pattern", type=int, choices=[0, 1, 2, 3, 4, 5], default=0)
+    parser.add_argument(
+        "--pattern",
+        type=int,
+        choices=[0, 1, 2, 3, 4, 5],
+        default=0,
+        help="Forward pattern to use in the RandPipeline.",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="Device to run the pipeline on.",
+    )
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=50,
+        help="Number of inference steps.",
+    )
     return parser.parse_args()
 
 
@@ -352,7 +370,8 @@ if __name__ == "__main__":
     else:
         pipe = RandPipeline(pattern=ForwardPattern.Pattern_5)
 
-    pipe.to("cuda")
+    if args.device == "cuda":
+        pipe.to("cuda")
 
     cache_dit.enable_cache(
         BlockAdapter(
@@ -368,32 +387,39 @@ if __name__ == "__main__":
             residual_diff_threshold=0.05,
         ),
     )
-    bs, seq_len, headdim = 1, 1024, 1024
+    bs, seq_len, headdim = 1, 1024, 128
 
     hidden_states = torch.normal(
         mean=100.0,
         std=20.0,
         size=(bs, seq_len, headdim),
-        dtype=torch.bfloat16,
-    ).to("cuda")
+        dtype=torch.bfloat16 if args.device == "cuda" else torch.float32,
+    )
 
     encoder_hidden_states = torch.normal(
         mean=100.0,
         std=20.0,
         size=(bs, seq_len, headdim),
-        dtype=torch.bfloat16,
-    ).to("cuda")
+        dtype=torch.bfloat16 if args.device == "cuda" else torch.float32,
+    )
+
+    if torch.cuda.is_available() and args.device == "cuda":
+        hidden_states = hidden_states.cuda()
+        encoder_hidden_states = encoder_hidden_states.cuda()
 
     if args.pattern in [0, 1, 2]:
         output = pipe(
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
-            num_inference_steps=50,
+            num_inference_steps=args.steps,
         )
     else:
         output = pipe(
             hidden_states,
-            num_inference_steps=50,
+            num_inference_steps=args.steps,
         )
 
     cache_dit.summary(pipe, details=True)
+
+    # python3 test_forward_pattern.py --pattern 0 --device cpu
+    # python3 test_forward_pattern.py --pattern 0 --device cuda

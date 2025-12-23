@@ -6,7 +6,6 @@ on:
       - main
     paths-ignore:
       - 'docs/**'
-      - 'examples/**'
       - '.github/**'
       - '.assets/**'
       - '**.md'
@@ -19,7 +18,6 @@ on:
       - main
     paths-ignore:
       - 'docs/**'
-      - 'examples/**'
       - '.github/**'
       - '.assets/**'
       - '*.yml'
