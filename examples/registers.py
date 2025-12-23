@@ -39,8 +39,8 @@ __all__ = [
 ]
 
 
-# Please note that the following environment variables is only for debugging and 
-# development purpose. In practice, users should directly provide the model names 
+# Please note that the following environment variables is only for debugging and
+# development purpose. In practice, users should directly provide the model names
 # or paths. The default values are the official model names on HuggingFace Hub.
 _env_path_mapping = {
     "FLUX_DIR": "black-forest-labs/FLUX.1-dev",
