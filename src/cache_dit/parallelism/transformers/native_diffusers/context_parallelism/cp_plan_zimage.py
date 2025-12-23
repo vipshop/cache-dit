@@ -75,8 +75,16 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         # TODO: Patch rotary embedding function to avoid complex number ops
         n_noise_refiner_layers = len(transformer.noise_refiner)  # 2
         n_context_refiner_layers = len(transformer.context_refiner)  # 2
-        # num_layers = len(transformer.layers)  # 30
+        # controlnet layer idx: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
+        num_controlnet_samples = len(transformer.layers) // 2  # 15
         _cp_plan = {
+            # Z-Image ContralNet layers
+            "": {
+                "controlnet_block_samples": (
+                    ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                )
+                * num_controlnet_samples,
+            },
             # 0. Hooks for noise_refiner layers, 2
             "noise_refiner.0": {
                 "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
