@@ -1,4 +1,4 @@
-name: Run CPU Tests (After Build)
+name: Run CPU Tests
 
 on:
   workflow_run:
@@ -42,16 +42,19 @@ jobs:
           pip install dist/*.whl
           pip install pytest
 
-      - name: Run Forward Pattern CPU Tests
+      - name: Run Forward Pattern CPU Tests (pytest)
         run: |
           cd tests
           pytest api/test_forward_pattern_cpu.py -v -s -x
+      - name: Verify cache_dit installation
+        run: |
           python -c "import cache_dit; print(f'✅ cache_dit imported successfully, version: {cache_dit.__version__}')"
-
+        continue-on-error: false
+      
       - name: Upload test logs (optional)
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-py${{ matrix.python-version }}
-          path: tests/pytest-results.txt
+          path: tests/cpu-tests-results.txt
           retention-days: 7
         if: always()
