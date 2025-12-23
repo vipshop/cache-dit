@@ -18,6 +18,14 @@ from cache_dit.caching.cache_contexts import CalibratorConfig
 from cache_dit.caching.cache_blocks import UnifiedBlocks
 from cache_dit.logger import init_logger
 
+try:
+    from accelerate import hooks
+
+    _accelerate_is_availble = True
+except ImportError:
+    _accelerate_is_availble = False
+
+
 logger = init_logger(__name__)
 
 
@@ -173,7 +181,8 @@ class CachedAdapter:
         BlockAdapter.assert_normalized(block_adapter)
 
         if BlockAdapter.is_cached(block_adapter.pipe):
-            return block_adapter.pipe
+            logger.warning("Pipeline has been already cached, skip creating cache context again.")
+            return None, block_adapter.pipe
 
         # Check context_kwargs
         context_kwargs = cls.check_context_kwargs(block_adapter, **context_kwargs)
@@ -388,19 +397,19 @@ class CachedAdapter:
 
         assert isinstance(dummy_blocks_names, list)
 
-        from accelerate import hooks
-
-        _hf_hook: Optional[hooks.ModelHook] = None
-
-        if getattr(transformer, "_hf_hook", None) is not None:
-            _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
-            if hasattr(transformer, "_old_forward"):
-                logger.warning(
-                    "_hf_hook is not None, so, we have to re-direct transformer's "
-                    f"original_forward({id(original_forward)}) to transformer's "
-                    f"_old_forward({id(transformer._old_forward)})"
-                )
-                original_forward = transformer._old_forward
+        if _accelerate_is_availble:
+            _hf_hook: Optional[hooks.ModelHook] = None
+            if getattr(transformer, "_hf_hook", None) is not None:
+                _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
+                if hasattr(transformer, "_old_forward"):
+                    logger.warning(
+                        "_hf_hook is not None, so, we have to re-direct transformer's "
+                        f"original_forward({id(original_forward)}) to transformer's "
+                        f"_old_forward({id(transformer._old_forward)})"
+                    )
+                    original_forward = transformer._old_forward
+        else:
+            _hf_hook = None
 
         # TODO: remove group offload hooks the re-apply after cache applied.
         # hooks = _diffusers_hook.hooks.copy(); _diffusers_hook.hooks.clear()

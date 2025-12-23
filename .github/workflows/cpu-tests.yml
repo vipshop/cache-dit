@@ -1,0 +1,151 @@
+name: Run CPU Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.assets/**'
+      - '**.md'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.assets/**'
+      - '**.md'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  workflow_run:
+    workflows: ["Build Wheel"] 
+    branches: [main]          
+    types: [completed] 
+  workflow_dispatch:           
+
+jobs:
+  Forward_Pattern_CPU_Tests:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout code (for test files)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Download built wheel artifact (only for workflow_run)
+        if: github.event_name == 'workflow_run'
+        uses: dawidd6/action-download-artifact@v6 
+        with:
+          workflow: build_wheel.yml              
+          run_id: ${{ github.event.workflow_run.id }} 
+          name: cache-dist-wheel-py${{ matrix.python-version }}
+          path: dist/                           
+
+      - name: Install dependencies
+        run: |
+          pip install -U pip
+          if [ -f "dist/*.whl" ]; then
+            pip install dist/*.whl
+          else
+            pip install -e .
+          fi
+          pip install pytest
+
+      - name: Run Forward Pattern CPU Tests (pytest)
+        run: |
+          cd tests
+          pytest api/test_forward_pattern.py -v -s -x
+    
+      - name: Verify cache_dit installation
+        run: |
+          python -c "import cache_dit; print(f'✅ cache_dit imported successfully, version: {cache_dit.__version__}')"
+        continue-on-error: false
+    
+      - name: Upload test logs (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-py${{ matrix.python-version }}
+          path: tests/forward-pattern-cpu-tests-results.txt
+          retention-days: 7
+        if: always()
+  
+  TaylorSeers_CPU_Tests:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout code (for test files)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Download built wheel artifact (only for workflow_run)
+        if: github.event_name == 'workflow_run'
+        uses: dawidd6/action-download-artifact@v6 
+        with:
+          workflow: build_wheel.yml              
+          run_id: ${{ github.event.workflow_run.id }} 
+          name: cache-dist-wheel-py${{ matrix.python-version }}
+          path: dist/                           
+
+      - name: Install dependencies
+        run: |
+          pip install -U pip
+          if [ -f "dist/*.whl" ]; then
+            pip install dist/*.whl
+          else
+            pip install -e .
+          fi
+          pip install pytest
+
+      - name: Run TaylorSeers CPU Tests (pytest)
+        run: |
+          cd tests
+          pytest api/test_taylorseers.py -v -s -x
+      
+      - name: Verify cache_dit installation
+        run: |
+          python -c "import cache_dit; print(f'✅ cache_dit imported successfully, version: {cache_dit.__version__}')"
+        continue-on-error: false
+    
+      - name: Upload test logs (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-py${{ matrix.python-version }}
+          path: tests/taylorseers-cpu-tests-results.txt
+          retention-days: 7
+        if: always()

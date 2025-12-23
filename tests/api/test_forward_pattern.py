@@ -1,14 +1,15 @@
+import gc
+import pytest
 import dataclasses
-import argparse
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn
 from typing import Tuple, Union
 from diffusers import DiffusionPipeline
+
 import cache_dit
 from cache_dit import ForwardPattern, BlockAdapter, DBCacheConfig
-
 
 RATIO = 0.7
 RAND_RATIO = 0.5
@@ -330,48 +331,27 @@ class RandPipeline(DiffusionPipeline):
         self.transformer.to(*args, **kwargs)
 
 
-def get_args() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--pattern",
-        type=int,
-        choices=[0, 1, 2, 3, 4, 5],
-        default=0,
-        help="Forward pattern to use in the RandPipeline.",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cpu",
-        help="Device to run the pipeline on.",
-    )
-    parser.add_argument(
-        "--steps",
-        type=int,
-        default=50,
-        help="Number of inference steps.",
-    )
-    return parser.parse_args()
+DEVICES = ["cpu"] if not torch.cuda.is_available() else ["cpu", "cuda"]
+PATTERNS = [
+    ForwardPattern.Pattern_0,
+    ForwardPattern.Pattern_1,
+    ForwardPattern.Pattern_2,
+    ForwardPattern.Pattern_3,
+    ForwardPattern.Pattern_4,
+    ForwardPattern.Pattern_5,
+]
+
+DTYPES = [torch.float32] if not torch.cuda.is_available() else [torch.float32, torch.bfloat16]
+STEPS = [50]
 
 
-if __name__ == "__main__":
-    args = get_args()
-    print(args)
-    if args.pattern == 0:
-        pipe = RandPipeline(pattern=ForwardPattern.Pattern_0)
-    elif args.pattern == 1:
-        pipe = RandPipeline(pattern=ForwardPattern.Pattern_1)
-    elif args.pattern == 2:
-        pipe = RandPipeline(pattern=ForwardPattern.Pattern_2)
-    elif args.pattern == 3:
-        pipe = RandPipeline(pattern=ForwardPattern.Pattern_3)
-    elif args.pattern == 4:
-        pipe = RandPipeline(pattern=ForwardPattern.Pattern_4)
-    else:
-        pipe = RandPipeline(pattern=ForwardPattern.Pattern_5)
-
-    if args.device == "cuda":
-        pipe.to("cuda")
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("pattern", PATTERNS)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("steps", STEPS)
+def test_forward_pattern_cpu(device, pattern, dtype, steps):
+    gc.collect()
+    pipe = RandPipeline(pattern=pattern)
 
     cache_dit.enable_cache(
         BlockAdapter(
@@ -387,39 +367,55 @@ if __name__ == "__main__":
             residual_diff_threshold=0.05,
         ),
     )
-    bs, seq_len, headdim = 1, 1024, 128
+    bs, seq_len, headdim = 1, 1024, 64
 
     hidden_states = torch.normal(
         mean=100.0,
         std=20.0,
         size=(bs, seq_len, headdim),
-        dtype=torch.bfloat16 if args.device == "cuda" else torch.float32,
+        dtype=dtype,
     )
 
-    encoder_hidden_states = torch.normal(
-        mean=100.0,
-        std=20.0,
-        size=(bs, seq_len, headdim),
-        dtype=torch.bfloat16 if args.device == "cuda" else torch.float32,
-    )
+    encoder_hidden_states = None
+    if pattern in [
+        ForwardPattern.Pattern_0,
+        ForwardPattern.Pattern_1,
+        ForwardPattern.Pattern_2,
+    ]:
+        encoder_hidden_states = torch.normal(
+            mean=100.0,
+            std=20.0,
+            size=(bs, seq_len, headdim),
+            dtype=dtype,
+        )
 
-    if torch.cuda.is_available() and args.device == "cuda":
-        hidden_states = hidden_states.cuda()
-        encoder_hidden_states = encoder_hidden_states.cuda()
+    if device == "cuda":
+        pipe.to(device)
+        hidden_states = hidden_states.to(device)
+        if encoder_hidden_states is not None:
+            encoder_hidden_states = encoder_hidden_states.to(device)
 
-    if args.pattern in [0, 1, 2]:
-        output = pipe(
+    if pattern in [
+        ForwardPattern.Pattern_0,
+        ForwardPattern.Pattern_1,
+        ForwardPattern.Pattern_2,
+    ]:
+        _ = pipe(
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
-            num_inference_steps=args.steps,
+            num_inference_steps=steps,
         )
     else:
-        output = pipe(
+        _ = pipe(
             hidden_states,
-            num_inference_steps=args.steps,
+            num_inference_steps=steps,
         )
 
     cache_dit.summary(pipe, details=True)
+    cache_dit.disable_cache(pipe)
 
-    # python3 test_forward_pattern.py --pattern 0 --device cpu
-    # python3 test_forward_pattern.py --pattern 0 --device cuda
+    del pipe
+    del hidden_states
+    if encoder_hidden_states is not None:
+        del encoder_hidden_states
+    gc.collect()
