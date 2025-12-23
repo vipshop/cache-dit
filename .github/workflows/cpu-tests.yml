@@ -1,10 +1,34 @@
 name: Run CPU Tests
 
 on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.github/**'
+      - '.assets/**'
+      - '**.md'
+      - '*.yml'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.github/**'
+      - '.assets/**'
+      - '*.yml'
+      - '**.md'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
   workflow_run:
     workflows: ["Build Wheel"] 
     branches: [main]          
-    types: [completed]        
+    types: [completed] 
   workflow_dispatch:           
 
 jobs:
