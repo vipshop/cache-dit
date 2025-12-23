@@ -347,8 +347,8 @@ class ExampleInitConfig:
             os.path.basename(extra_model_path).lower()
             != os.path.basename(model_name_or_path).lower()
         ):
-            summary_str += f"\n - {model_name_or_path}\n"
-            summary_str += f" - {extra_model_path}\n"
+            summary_str += f"\n    - {model_name_or_path}\n"
+            summary_str += f"    - {extra_model_path}\n"
         else:
             summary_str += f"{model_name_or_path}\n"
         summary_str += f"- Task Type: {self.task_type.value}\n"
