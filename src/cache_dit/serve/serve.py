@@ -29,12 +29,6 @@ def get_args(
         "--lora-name", type=str, default=None, help="LoRA weight filename (e.g., model.safetensors)"
     )
     parser.add_argument(
-        "--fuse-lora",
-        action="store_true",
-        default=True,
-        help="Fuse LoRA weights into model (recommended for better performance)",
-    )
-    parser.add_argument(
         "--disable-fuse-lora",
         action="store_true",
         default=False,
@@ -315,7 +309,7 @@ def launch_server(args=None):
         pipeline_quant_config_path=args.pipeline_quant_config_path,
         lora_path=args.lora_path,
         lora_name=args.lora_name,
-        fuse_lora=args.fuse_lora and not args.disable_fuse_lora,
+        fuse_lora=not args.disable_fuse_lora,
     )
 
     logger.info("Loading model...")

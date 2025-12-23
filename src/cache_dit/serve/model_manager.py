@@ -8,13 +8,15 @@ import os
 import time
 import base64
 import tempfile
+import math
 import torch
 import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, FlowMatchEulerDiscreteScheduler
 from diffusers.utils import export_to_video
+from diffusers.loaders.lora_base import LoraBaseMixin
 from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
@@ -185,34 +187,51 @@ class ModelManager:
             )
 
         if self.lora_path is not None and self.lora_name is not None:
-            from diffusers.loaders.lora_base import LoraBaseMixin
-
             if not isinstance(self.pipe, LoraBaseMixin):
                 logger.error("Pipeline does not support LoRA. Skipping LoRA loading.")
             else:
-                try:
-                    logger.info(f"Loading LoRA weights from: {self.lora_path}/{self.lora_name}")
-                    self.pipe.load_lora_weights(self.lora_path, weight_name=self.lora_name)
-                    logger.info("LoRA weights loaded successfully")
+                logger.info(f"Loading LoRA weights from: {self.lora_path}/{self.lora_name}")
+                self.pipe.load_lora_weights(self.lora_path, weight_name=self.lora_name)
+                logger.info("LoRA weights loaded successfully")
 
-                    should_fuse = self.fuse_lora and (
-                        quantization_config is None
-                        or "transformer"
-                        not in getattr(quantization_config, "components_to_quantize", [])
+                if "qwen" in self.lora_name.lower() and "light" in self.lora_name.lower():
+                    logger.info("Detected Qwen-Image-Lightning LoRA, updating scheduler...")
+                    scheduler_config = {
+                        "base_image_seq_len": 256,
+                        "base_shift": math.log(3),
+                        "invert_sigmas": False,
+                        "max_image_seq_len": 8192,
+                        "max_shift": math.log(3),
+                        "num_train_timesteps": 1000,
+                        "shift": 1.0,
+                        "shift_terminal": None,
+                        "stochastic_sampling": False,
+                        "time_shift_type": "exponential",
+                        "use_beta_sigmas": False,
+                        "use_dynamic_shifting": True,
+                        "use_exponential_sigmas": False,
+                        "use_karras_sigmas": False,
+                    }
+                    self.pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(
+                        scheduler_config
                     )
+                    logger.info("Scheduler updated for Lightning model")
 
-                    if should_fuse:
-                        logger.info("Fusing LoRA weights into transformer...")
-                        self.pipe.fuse_lora()
-                        self.pipe.unload_lora_weights()
-                        logger.info("LoRA weights fused and unloaded successfully")
-                    else:
-                        logger.info(
-                            "Keeping LoRA weights separate (fusion disabled or transformer quantized)"
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to load LoRA weights: {e}")
-                    raise
+                should_fuse = self.fuse_lora and (
+                    quantization_config is None
+                    or "transformer"
+                    not in getattr(quantization_config, "components_to_quantize", [])
+                )
+
+                if should_fuse:
+                    logger.info("Fusing LoRA weights into transformer...")
+                    self.pipe.fuse_lora()
+                    self.pipe.unload_lora_weights()
+                    logger.info("LoRA weights fused and unloaded successfully")
+                else:
+                    logger.info(
+                        "Keeping LoRA weights separate (fusion disabled or transformer quantized)"
+                    )
         elif self.lora_path is not None or self.lora_name is not None:
             logger.warning("Both --lora-path and --lora-name must be provided to load LoRA weights")
 

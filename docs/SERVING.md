@@ -227,10 +227,9 @@ cache-dit-serve \
 ```
 
 **Key Arguments:**
-- `--lora-path`: Directory containing LoRA weights
+- `--lora-path`: Directory containing LoRA weights (supports both local paths and HuggingFace model IDs)
 - `--lora-name`: LoRA weight filename (e.g., `model.safetensors`)
-- `--fuse-lora`: Fuse LoRA into model (default: enabled, recommended for better performance)
-- `--disable-fuse-lora`: Keep LoRA weights separate (useful when transformer is quantized)
+- `--disable-fuse-lora`: Disable LoRA fusion and keep weights separate (default: fusion enabled for better performance)
 
 **Example: Qwen-Image-Lightning (8-step distilled model)**
 
