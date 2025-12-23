@@ -6,10 +6,8 @@ on:
       - main
     paths-ignore:
       - 'docs/**'
-      - '.github/**'
       - '.assets/**'
       - '**.md'
-      - '*.yml'
       - '.gitignore'
       - '.gitattributes'
       - 'LICENSE'
@@ -18,9 +16,7 @@ on:
       - main
     paths-ignore:
       - 'docs/**'
-      - '.github/**'
       - '.assets/**'
-      - '*.yml'
       - '**.md'
       - '.gitignore'
       - '.gitattributes'
@@ -33,7 +29,11 @@ on:
 
 jobs:
   pytest-with-wheel:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -52,7 +52,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      - name: Download built wheel artifact
+      - name: Download built wheel artifact (only for workflow_run)
+        if: github.event_name == 'workflow_run'
         uses: dawidd6/action-download-artifact@v6 
         with:
           workflow: build_wheel.yml              
@@ -60,16 +61,21 @@ jobs:
           name: cache-dist-wheel-py${{ matrix.python-version }}
           path: dist/                           
 
-      - name: Install wheel package and test dependencies
+      - name: Install dependencies
         run: |
           pip install -U pip
-          pip install dist/*.whl
+          if [ -f "dist/*.whl" ]; then
+            pip install dist/*.whl
+          else
+            pip install -e .
+          fi
           pip install pytest
 
       - name: Run Forward Pattern CPU Tests (pytest)
         run: |
           cd tests
           pytest api/test_forward_pattern_cpu.py -v -s -x
+      
       - name: Verify cache_dit installation
         run: |
           python -c "import cache_dit; print(f'✅ cache_dit imported successfully, version: {cache_dit.__version__}')"
