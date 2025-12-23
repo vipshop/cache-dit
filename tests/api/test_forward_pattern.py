@@ -6,7 +6,7 @@ from cache_dit import ForwardPattern, BlockAdapter, DBCacheConfig
 from rand_pipe import RandPipeline
 
 
-DEVICES = ["cuda"]
+DEVICES = ["cpu"] if not torch.cuda.is_available() else ["cpu", "cuda"]
 PATTERNS = [
     ForwardPattern.Pattern_0,
     ForwardPattern.Pattern_1,
@@ -16,7 +16,7 @@ PATTERNS = [
     ForwardPattern.Pattern_5,
 ]
 
-DTYPES = [torch.bfloat16]
+DTYPES = [torch.float32] if not torch.cuda.is_available() else [torch.float32, torch.bfloat16]
 STEPS = [50]
 
 
@@ -24,8 +24,7 @@ STEPS = [50]
 @pytest.mark.parametrize("pattern", PATTERNS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("steps", STEPS)
-def test_forward_pattern_gpu(device, pattern, dtype, steps):
-    assert device == "cuda"
+def test_forward_pattern_cpu(device, pattern, dtype, steps):
     gc.collect()
     pipe = RandPipeline(pattern=pattern)
 
@@ -65,10 +64,11 @@ def test_forward_pattern_gpu(device, pattern, dtype, steps):
             dtype=dtype,
         )
 
-    pipe.to(device)
-    hidden_states = hidden_states.to(device)
-    if encoder_hidden_states is not None:
-        encoder_hidden_states = encoder_hidden_states.to(device)
+    if device == "cuda":
+        pipe.to(device)
+        hidden_states = hidden_states.to(device)
+        if encoder_hidden_states is not None:
+            encoder_hidden_states = encoder_hidden_states.to(device)
 
     if pattern in [
         ForwardPattern.Pattern_0,
