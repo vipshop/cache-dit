@@ -1,0 +1,57 @@
+name: Run CPU Tests (After Build)
+
+on:
+  workflow_run:
+    workflows: ["Build Wheel"] 
+    branches: [main]          
+    types: [completed]        
+  workflow_dispatch:           
+
+jobs:
+  pytest-with-wheel:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout code (for test files)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Download built wheel artifact
+        uses: dawidd6/action-download-artifact@v6 
+        with:
+          workflow: build_wheel.yml              
+          run_id: ${{ github.event.workflow_run.id }} 
+          name: cache-dist-wheel-py${{ matrix.python-version }}
+          path: dist/                           
+
+      - name: Install wheel package and test dependencies
+        run: |
+          pip install -U pip
+          pip install dist/*.whl
+          pip install pytest
+
+      - name: Run Forward Pattern CPU Tests
+        run: |
+          cd tests
+          pytest api/test_forward_pattern_cpu.py -v -s -x
+          python -c "import cache_dit; print(f'✅ cache_dit imported successfully, version: {cache_dit.__version__}')"
+
+      - name: Upload test logs (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-py${{ matrix.python-version }}
+          path: tests/pytest-results.txt
+          retention-days: 7
+        if: always()

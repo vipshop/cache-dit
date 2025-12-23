@@ -1,3 +1,4 @@
+import sys
 import torch
 import dataclasses
 
@@ -272,13 +273,16 @@ def _summary(
             print(f"\n🤗Context Options: {cls_name}\n\n{cache_options}")
     else:
         if logging:
-            logger.warning(f"Can't find Context Options for: {cls_name}")
+            logger.warning(f"Can't find Context Options for: {cls_name}", flush=True)
 
     if hasattr(module, "_parallelism_config"):
         parallelism_config: ParallelismConfig = module._parallelism_config
         cache_stats.parallelism_config = parallelism_config
         if logging:
-            print(f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}")
+            print(
+                f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}",
+                flush=True,
+            )
     else:
         if logging:
             logger.warning(f"Can't find Parallelism Config for: {cls_name}")
@@ -319,63 +323,75 @@ def _summary(
             qmax = np.max(diffs_values)
 
             if pruned_ratio is not None:
-                print(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n")
+                print(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n", flush=True)
 
                 print(
-                    "| Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                    "| Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
+                    flush=True,
                 )
                 print(
-                    "|---------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                    "|---------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
+                    flush=True,
                 )
                 print(
                     f"| {sum(pruned_blocks):<13} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
+                    flush=True,
                 )
-                print("")
+                print("", flush=True)
             else:
-                print(f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n")
+                print(f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n", flush=True)
 
                 print(
-                    "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                    "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
+                    flush=True,
                 )
                 print(
-                    "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                    "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
+                    flush=True,
                 )
                 print(
                     f"| {len(cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
+                    flush=True,
                 )
-                print("")
+                print("", flush=True)
 
             if pruned_ratio is not None:
                 print(
-                    f"Dynamic Block Prune Ratio: {round(pruned_ratio * 100, 2)}% ({sum(pruned_blocks)}/{sum(actual_blocks)})\n"
+                    f"Dynamic Block Prune Ratio: {round(pruned_ratio * 100, 2)}% ({sum(pruned_blocks)}/{sum(actual_blocks)})\n",
+                    flush=True,
                 )
 
             if details:
                 if pruned_ratio is not None:
-                    print(f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n")
+                    print(f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n", flush=True)
                     pprint(
                         f"Pruned Blocks: {len(pruned_blocks)}, {pruned_blocks}",
                     )
+                    sys.stdout.flush()
                     pprint(
                         f"Actual Blocks: {len(actual_blocks)}, {actual_blocks}",
                     )
+                    sys.stdout.flush()
                     pprint(
                         f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
                         compact=True,
                     )
+                    sys.stdout.flush()
                 else:
                     print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
                     pprint(
                         f"Cache Steps: {len(cached_steps)}, {cached_steps}",
                     )
+                    sys.stdout.flush()
                     pprint(
                         f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
                         compact=True,
                     )
+                    sys.stdout.flush()
 
     if hasattr(module, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = module._cfg_cached_steps
@@ -412,63 +428,81 @@ def _summary(
             qmax = np.max(cfg_diffs_values)
 
             if cfg_pruned_ratio is not None:
-                print(f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n")
+                print(
+                    f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n", flush=True
+                )
 
                 print(
-                    "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                    "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
+                    flush=True,
                 )
                 print(
-                    "|-------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                    "|-------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
+                    flush=True,
                 )
                 print(
                     f"| {sum(cfg_pruned_blocks):<18} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
+                    flush=True,
                 )
-                print("")
+                print("", flush=True)
             else:
-                print(f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n")
+                print(
+                    f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n", flush=True
+                )
 
                 print(
-                    "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+                    "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
+                    flush=True,
                 )
                 print(
-                    "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+                    "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
+                    flush=True,
                 )
                 print(
                     f"| {len(cfg_cached_steps):<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
+                    flush=True,
                 )
-                print("")
+                print("", flush=True)
 
             if cfg_pruned_ratio is not None:
                 print(
-                    f"CFG Dynamic Block Prune Ratio: {round(cfg_pruned_ratio * 100, 2)}% ({sum(cfg_pruned_blocks)}/{sum(cfg_actual_blocks)})\n"
+                    f"CFG Dynamic Block Prune Ratio: {round(cfg_pruned_ratio * 100, 2)}% ({sum(cfg_pruned_blocks)}/{sum(cfg_actual_blocks)})\n",
+                    flush=True,
                 )
 
             if details:
                 if cfg_pruned_ratio is not None:
-                    print(f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n")
+                    print(
+                        f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n", flush=True
+                    )
                     pprint(
                         f"CFG Pruned Blocks: {len(cfg_pruned_blocks)}, {cfg_pruned_blocks}",
                     )
+                    sys.stdout.flush()
                     pprint(
                         f"CFG Actual Blocks: {len(cfg_actual_blocks)}, {cfg_actual_blocks}",
                     )
+                    sys.stdout.flush()
                     pprint(
                         f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
                         compact=True,
                     )
+                    sys.stdout.flush()
                 else:
                     print(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
                     pprint(
                         f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
                     )
+                    sys.stdout.flush()
                     pprint(
                         f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
                         compact=True,
                     )
+                    sys.stdout.flush()
 
     return cache_stats
 
@@ -483,14 +517,14 @@ def supported_matrix() -> str | None:
         _pipelines_supported_cache += [
             "LongCatVideo",  # not in diffusers, but supported
         ]
-        from cache_dit.parallelism.backends.native_diffusers import (
+        from cache_dit.parallelism.transformers.native_diffusers import (
             ContextParallelismPlannerRegister,
         )
 
         _pipelines_supported_context_parallelism = (
             ContextParallelismPlannerRegister.supported_planners()[1]
         )
-        from cache_dit.parallelism.backends.native_pytorch import (
+        from cache_dit.parallelism.transformers.native_pytorch import (
             TensorParallelismPlannerRegister,
         )
 
@@ -544,8 +578,8 @@ def supported_matrix() -> str | None:
 
         matrix_str = "\n".join(matrix_lines)
 
-        print("\nSupported Cache and Parallelism Matrix:\n")
-        print(matrix_str)
+        print("\nSupported Cache and Parallelism Matrix:\n", flush=True)
+        print(matrix_str, flush=True)
         return matrix_str
     except Exception:
         return None
