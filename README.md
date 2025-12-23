@@ -95,7 +95,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | 📚Model | [C*](./)  | CP | TP | TE | 📚Model | [C*](./)  | CP | TP | TE |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
 | **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✖️ | ✖️ | ✅ |
-| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Z-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** |✖️ | ✖️ | ✅ | ✅ |
+| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Z-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** |✖️ | ✅ | ✅ | ✅ |
 | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ |
 | **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ |
 | **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ |
