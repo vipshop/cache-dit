@@ -37,22 +37,20 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-      - uses: actions/checkout@v4  # Check out the repository code to the runner environment
+      - uses: actions/checkout@v4 
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}  # Install the specified Python version (3.12)
-          # Cache pip dependencies to speed up subsequent builds
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
       - name: Install build
         run: |
-          pip install -U pip && pip install build  # Upgrade pip and install the build package for wheel creation
+          pip install -U pip && pip install build
 
       - name: Check build configuration
         run: |
-          # Check if the core build configuration file exists, exit with error if not found
           if [ ! -f "pyproject.toml" ]; then
             echo "Error: pyproject.toml not found! Cannot build wheel."
             exit 1
@@ -61,14 +59,12 @@ jobs:
 
       - name: Build Wheel
         run: |
-          python -m build --wheel --outdir dist  # Build wheel file with build module, output to dist directory
-          # List files in dist directory for troubleshooting
+          python -m build --wheel --outdir dist
           ls -la dist/
 
       - name: Upload Wheel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cache-dist-wheel-py${{ matrix.python-version }}  # Artifact name including Python version
-          path: dist/*.whl  # Upload all .whl files in dist directory
-          # Retain artifact for 90 days (default is 90 days, explicit configuration for clarity)
+          name: cache-dist-wheel-py${{ matrix.python-version }}
+          path: dist/*.whl
           retention-days: 90
