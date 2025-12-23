@@ -84,7 +84,25 @@ def maybe_enable_context_parallelism(
                     )
 
                 transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-                _maybe_patch_native_parallel_config(transformer)
+                _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
+
+                # ControlNet may need also need apply context parallelism, e.g., ZImage ControlNet
+                controlnet = extra_parallel_kwargs.get("controlnet", None)
+                if controlnet is not None:
+                    assert isinstance(controlnet, ModelMixin)
+                    try:
+                        cp_plan_cn = ContextParallelismPlannerRegister.get_planner(
+                            controlnet
+                        )().apply(transformer=controlnet, **extra_parallel_kwargs)
+                    except Exception:
+                        cp_plan_cn = None  # ControlNet may not support CP plan
+
+                    if cp_plan_cn is not None:
+                        controlnet.enable_parallelism(config=cp_config, cp_plan=cp_plan_cn)
+                        logger.info(
+                            f"Parallelize ControlNet: {controlnet.__class__.__name__}, "
+                            f"id:{id(controlnet)}, {parallelism_config.strify(True)}"
+                        )
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."
@@ -95,6 +113,7 @@ def maybe_enable_context_parallelism(
 
 def _maybe_patch_native_parallel_config(
     transformer: torch.nn.Module,
+    **kwargs,
 ) -> torch.nn.Module:
 
     cls_name = transformer.__class__.__name__

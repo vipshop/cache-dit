@@ -4,6 +4,7 @@ from typing import Optional
 from torch.distributed import DeviceMesh
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers import ZImageTransformer2DModel
+from diffusers import ZImageControlNetModel
 from diffusers.models.transformers.transformer_z_image import (
     ZSingleStreamAttnProcessor,
     dispatch_attention_fn,
@@ -36,6 +37,7 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+@ContextParallelismPlannerRegister.register("ZImageControlNetModel")
 @ContextParallelismPlannerRegister.register("ZImageTransformer2DModel")
 class ZImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
@@ -49,11 +51,45 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
-                transformer, ZImageTransformer2DModel
-            ), "Transformer must be an instance of ZImageTransformer2DModel"
+                transformer,
+                (ZImageTransformer2DModel, ZImageControlNetModel),
+            ), "Transformer must be an instance of ZImageTransformer2DModel or ZImageControlNetModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
+
+        cls_name = transformer.__class__.__name__
+        # The cp plan for ZImage ControlNet is very complicated, I hate it.
+        if cls_name.startswith("ZImageControlNetModel"):
+            n_control_layers = len(transformer.control_layers)  # 15
+            n_control_noise_refiner_layers = len(transformer.control_noise_refiner)  # 2
+            _cp_plan = {
+                "control_noise_refiner.0": {
+                    "c": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                },
+                "control_noise_refiner.*": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"control_noise_refiner.{n_control_noise_refiner_layers - 1}": ContextParallelOutput(
+                    gather_dim=2, expected_dims=4
+                ),
+                "control_layers.0": {
+                    "c": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                },
+                "control_layers.*": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"control_layers.{n_control_layers - 1}": ContextParallelOutput(
+                    gather_dim=2, expected_dims=4
+                ),
+            }
+            return _cp_plan
 
         experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
         if experimental_ulysses_async:
@@ -72,53 +108,101 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         # hooks in each block/layer in the initialization of DBCache.
         # Issue: https://github.com/vipshop/cache-dit/issues/498
         _maybe_patch_find_submodule()
-        # TODO: Patch rotary embedding function to avoid complex number ops
         n_noise_refiner_layers = len(transformer.noise_refiner)  # 2
         n_context_refiner_layers = len(transformer.context_refiner)  # 2
+        n_layers = len(transformer.layers)  # 30
         # controlnet layer idx: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
-        num_controlnet_samples = len(transformer.layers) // 2  # 15
-        _cp_plan = {
-            # Z-Image ContralNet layers
-            "": {
-                "controlnet_block_samples": (
-                    ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                )
-                * num_controlnet_samples,
-            },
-            # 0. Hooks for noise_refiner layers, 2
-            "noise_refiner.0": {
-                "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            "noise_refiner.*": {
-                "freqs_cis": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            f"noise_refiner.{n_noise_refiner_layers - 1}": ContextParallelOutput(
-                gather_dim=1, expected_dims=3
-            ),
-            # 1. Hooks for context_refiner layers, 2
-            "context_refiner.0": {
-                "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            "context_refiner.*": {
-                "freqs_cis": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            f"context_refiner.{n_context_refiner_layers - 1}": ContextParallelOutput(
-                gather_dim=1, expected_dims=3
-            ),
-            # 2. Hooks for main transformer layers, num_layers=30
-            "layers.0": {
-                "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            "layers.*": {
-                "freqs_cis": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            # NEED: call _maybe_patch_find_submodule to support ModuleDict like 'all_final_layer'
-            "all_final_layer": ContextParallelOutput(gather_dim=1, expected_dims=3),
-            # NOTE: The 'all_final_layer' is a ModuleDict of several final layers,
-            # each for a specific patch size combination, so we do not add hooks for it here.
-            # So, we have to gather the output of the last transformer layer.
-            # f"layers.{num_layers - 1}": ContextParallelOutput(gather_dim=1, expected_dims=3),
-        }
+        # num_controlnet_samples = len(transformer.layers) // 2  # 15
+        controlnet = kwargs.get("controlnet", None)
+        if controlnet is None:
+            # cp plan for ZImageTransformer2DModel if no controlnet
+            _cp_plan = {
+                # 0. Hooks for noise_refiner layers, 2
+                "noise_refiner.0": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                },
+                "noise_refiner.*": {
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"noise_refiner.{n_noise_refiner_layers - 1}": ContextParallelOutput(
+                    gather_dim=1, expected_dims=3
+                ),
+                # 1. Hooks for context_refiner layers, 2
+                "context_refiner.0": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                },
+                "context_refiner.*": {
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"context_refiner.{n_context_refiner_layers - 1}": ContextParallelOutput(
+                    gather_dim=1, expected_dims=3
+                ),
+                # 2. Hooks for main transformer layers, num_layers=30
+                "layers.0": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                },
+                "layers.*": {
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                # NEED: call _maybe_patch_find_submodule to support ModuleDict like 'all_final_layer'
+                "all_final_layer": ContextParallelOutput(gather_dim=1, expected_dims=3),
+                # NOTE: The 'all_final_layer' is a ModuleDict of several final layers,
+                # each for a specific patch size combination, so we do not add hooks for it here.
+                # So, we have to gather the output of the last transformer layer.
+                # f"layers.{num_layers - 1}": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            }
+        else:
+            # Special cp plan for ZImageTransformer2DModel with ZImageControlNetModel
+            _cp_plan = {
+                # zimage controlnet shared the same refiner as zimage, so, we need to
+                # add gather hooks for all layers in noise_refiner and context_refiner.
+                # 0. Hooks for noise_refiner layers, 2
+                # Insert gather hook after each layers due to the ops: (controlnet)
+                # - x = x + noise_refiner_block_samples[layer_idx]
+                "noise_refiner.*": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                **{
+                    f"noise_refiner.{i}": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                    for i in range(n_noise_refiner_layers)
+                },
+                # 1. Hooks for context_refiner layers, 2
+                "context_refiner.0": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                },
+                "context_refiner.*": {
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"context_refiner.{n_context_refiner_layers - 1}": ContextParallelOutput(
+                    gather_dim=1, expected_dims=3
+                ),
+                # 2. Hooks for main transformer layers, num_layers=30
+                # Insert gather hook after each layers due to the ops: (main transformer)
+                # - unified + controlnet_block_samples[layer_idx]
+                "layers.*": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                    "freqs_cis": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                **{
+                    f"layers.{i}": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                    for i in range(n_layers)
+                },
+                # NEED: call _maybe_patch_find_submodule to support ModuleDict like 'all_final_layer'
+                "all_final_layer": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            }
         return _cp_plan
 
 
