@@ -39,10 +39,9 @@ __all__ = [
 ]
 
 
-# Please note that the following environment variables is only for debugging
-# and development purpose. In practice, users should directly provide the model
-# names or paths. The default values are the official model names on
-# HuggingFace Hub.
+# Please note that the following environment variables is only for debugging and 
+# development purpose. In practice, users should directly provide the model names 
+# or paths. The default values are the official model names on HuggingFace Hub.
 _env_path_mapping = {
     "FLUX_DIR": "black-forest-labs/FLUX.1-dev",
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
@@ -60,6 +59,8 @@ _env_path_mapping = {
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
+    "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
+    "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
