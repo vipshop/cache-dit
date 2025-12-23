@@ -75,56 +75,15 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ### 📚Core Features
 
-- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, include **[30+](./examples/)** series, nearly **[100+](./examples/)** pipelines: 🔥FLUX, 🔥Qwen-Image, 🔥Z-image, 🔥Wan, etc.  
+- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, include **[30+](./examples/)** series, **~[100+](./examples/)** pipelines: 🔥FLUX, 🔥Qwen-Image, 🔥Z-image, 🔥LongCat-Image, 🔥Wan, etc.  
 - **[🎉Extremely Easy to Use](./docs/User_Guide.md#unified-cache-apis)**: In most cases, you only need **one line** of code: `cache_dit.enable_cache(...)`. After calling this API, just use the pipeline as normal.   
 - **[🎉State-of-the-Art Performance](./bench/)**: Compared with other algorithms, cache-dit achieved the **SOTA** w/ **7.4x↑🎉** speedup on ClipScore! Surprisingly, it's **DBCache** also works for extremely few-step distilled models.  
 - **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Quantization, CPU or Sequential Offloading, **[🔥Context Parallelism](./docs/User_Guide.md/#️hybrid-context-parallelism)**, **[🔥Tensor Parallelism](./docs/User_Guide.md#️hybrid-tensor-parallelism)**, etc.  
 - **[🎉Hybrid Cache Acceleration](./docs/User_Guide.md#taylorseer-calibrator)**: Now supports hybrid **Block-wise Cache + Calibrator** schemes. DBCache acts as the **Indicator** to decide *when* to cache, while the Calibrator decides *how* to cache. 
-- **[🎉HTTP Serving Support](./docs/SERVING.md)**: Built-in HTTP serving capabilities for production deployment with simple REST API. Supports **text-to-image**, **image editing**, **text-to-video**, **image-to-video** generation, and **LoRA models** (e.g., Qwen-Image-Lightning). 
-- **[🎉Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: **cache-dit** has joined the Diffusers community as the DiTs' cache acceleration framework for **[🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**, **[🔥SGLang Diffusion](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md)**, **[🔥vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/acceleration/cache_dit_acceleration/)** and **[🔥stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)**.
+- **[🎉HTTP Serving Support](./docs/SERVING.md)**: Built-in HTTP serving capabilities for production deployment with simple REST API. Supports **text-to-image**, **image editing**, **text/image-to-video**, and **LoRA**.
+- **[🎉Ecosystem Integration](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**: Joined the Diffusers community as the **first** DiTs' cache acceleration framework for **[🤗diffusers](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)**, **[🔥SGLang Diffusion](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md)**, **[🔥vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/acceleration/cache_dit_acceleration/)** and **[🔥stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)**.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench-v2.png)
-
-<!--
-
-The comparison between **cache-dit** and other algorithms shows that within a speedup ratio (TFLOPs) less than 🎉**4x**, cache-dit achieved the **SOTA** performance. Please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/tree/main/bench/) for more details.
-
-<div align="center">
-
-| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
-| --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
-| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(S)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
-| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
-| TeaCache(l=0.8) | 892.35 | 4.17× | 0.8683 | 31.704 |
-| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache(S)+TS](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
-| **[DBCache(M)+TS](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
-| FoCa(N=5) | 893.54 | **4.16×** | 1.0029 | **32.948** |
-| [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
-| TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
-| FoCa(N=8) | 596.07 | 6.24× | 0.9502 | **32.706** |
-| **[DBCache(F)+TS](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
-| **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
-
-</div>
-
-🎉Surprisingly, **cache-dit** still works in the **extremely few-step** distill model, such as **Qwen-Image-Lightning**, with the F16B16 config, the PSNR is 34.8 and the ImageReward is 1.26. It maintained a relatively high precision.
-<div align="center">
-
-| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
-|----------------------------|-----------|------------|--------------|----------|------------|
-| **[Full 4 steps]**   | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
-| F24B24          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
-| F16B16         | 34.8163   | 35.6109    | 1.2614       | 244.25   | 1.12x       |
-| F12B12         | 33.8953   | 35.6535    | 1.2549       | 234.63   | 1.17x       |
-| F8B8         | 33.1374   | 35.7284    | 1.2517       | 224.29   | 1.22x       |
-| F1B0            | 31.8317   | 35.6651    | 1.2397       | 206.90   | 1.33x       |
-
-</div>
--->
 
 ## 🔥Supported DiTs
 
@@ -136,7 +95,7 @@ The comparison between **cache-dit** and other algorithms shows that within a sp
 | 📚Model | [C*](./)  | CP | TP | TE | 📚Model | [C*](./)  | CP | TP | TE |
 |:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
 | **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✖️ | ✖️ | ✅ |
-| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Z-Image-Control](https://github.com/vipshop/cache-dit/blob/main/examples)** |✖️ | ✖️ | ✅ | ✅ |
+| **🔥[Z-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🔥[Z-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** |✖️ | ✖️ | ✅ | ✅ |
 | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ | **🔥[HuyuanVideo 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ |
 | **🔥[FLUX.2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ |
 | **🎉[FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ |
