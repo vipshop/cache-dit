@@ -214,6 +214,81 @@ def get_pipeline_quant_config():
     )
 ```
 
+### LoRA Models
+
+Load and serve models with LoRA weights for fine-tuned generation:
+
+```bash
+cache-dit-serve \
+    --model-path Qwen/Qwen-Image \
+    --lora-path /path/to/lora/weights \
+    --lora-name model.safetensors \
+    --cache
+```
+
+**Key Arguments:**
+- `--lora-path`: Directory containing LoRA weights (supports both local paths and HuggingFace model IDs)
+- `--lora-name`: LoRA weight filename (e.g., `model.safetensors`)
+- `--disable-fuse-lora`: Disable LoRA fusion and keep weights separate (default: fusion enabled for better performance)
+
+**Example: Qwen-Image-Lightning (8-step distilled model)**
+
+```bash
+# Download LoRA weights from https://huggingface.co/lightx2v/Qwen-Image-Lightning
+cache-dit-serve \
+    --model-path Qwen/Qwen-Image \
+    --lora-path lightx2v/Qwen-Image-Lightning \
+    --lora-name Qwen-Image-Lightning-8steps-V1.0-bf16.safetensors \
+    --cache --rdt 0.2
+```
+
+Then generate images with 8 inference steps:
+
+```python
+import requests
+import base64
+from PIL import Image
+from io import BytesIO
+
+response = requests.post(
+    "http://localhost:8000/generate",
+    json={
+        "prompt": "A beautiful landscape with mountains and a lake",
+        "width": 1024,
+        "height": 1024,
+        "num_inference_steps": 8,  # Lightning model uses 8 steps
+        "guidance_scale": 1.0,
+        "seed": 42
+    }
+)
+
+img_data = base64.b64decode(response.json()["images"][0])
+Image.open(BytesIO(img_data)).save("output.png")
+```
+
+**LoRA with Other Optimizations:**
+
+```bash
+# LoRA + Cache + Compile
+cache-dit-serve \
+    --model-path Qwen/Qwen-Image \
+    --lora-path lightx2v/Qwen-Image-Lightning \
+    --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
+    --cache --compile
+
+# LoRA + Context Parallelism
+torchrun --nproc_per_node=2 -m cache_dit.serve.serve \
+    --model-path Qwen/Qwen-Image \
+    --lora-path lightx2v/Qwen-Image-Lightning \
+    --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
+    --cache --parallel-type ulysses
+```
+
+**Notes:**
+- Both `--lora-path` and `--lora-name` must be provided together
+- LoRA fusion is automatically disabled when transformer is quantized
+- Supports `.safetensors` and `.bin` format LoRA weights
+
 
 ## Attribution
 
