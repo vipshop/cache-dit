@@ -13,6 +13,7 @@ dependencies = [
     "torch>=2.7.1",
     "diffusers>=0.35.1",
     "transformers>=4.55.2",
+    "accelerate>=1.10.0",
 ]
 
 [project.optional-dependencies]
