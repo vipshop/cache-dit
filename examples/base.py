@@ -342,10 +342,15 @@ class ExampleInitConfig:
         logger.info("🤖 Example Init Config Summary:")
         extra_model_path = kwargs.get("extra_model_path", "")
         model_name_or_path = self.model_name_or_path if args.model_path is None else args.model_path
-        summary_str = f"- Model: {model_name_or_path}"
-        if extra_model_path.lower() != model_name_or_path.lower():
-            summary_str += f" + {extra_model_path}"
-        summary_str += "\n"
+        summary_str = "- Model: "
+        if (
+            os.path.basename(extra_model_path).lower()
+            != os.path.basename(model_name_or_path).lower()
+        ):
+            summary_str += f"\n - {model_name_or_path}\n"
+            summary_str += f" - {extra_model_path}\n"
+        else:
+            summary_str += f"{model_name_or_path}\n"
         summary_str += f"- Task Type: {self.task_type.value}\n"
         summary_str += f"- Torch Dtype: {self.torch_dtype}\n"
         if self.lora_weights_path is not None and self.lora_weights_name is not None:
