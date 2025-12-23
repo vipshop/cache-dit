@@ -173,7 +173,8 @@ class CachedAdapter:
         BlockAdapter.assert_normalized(block_adapter)
 
         if BlockAdapter.is_cached(block_adapter.pipe):
-            return block_adapter.pipe
+            logger.warning("Pipeline has been already cached, skip creating cache context again.")
+            return None, block_adapter.pipe
 
         # Check context_kwargs
         context_kwargs = cls.check_context_kwargs(block_adapter, **context_kwargs)
