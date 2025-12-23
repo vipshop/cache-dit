@@ -46,6 +46,8 @@ python3 generate.py list  # list all available examples
 [generate.py:46] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
 [generate.py:46] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
 [generate.py:46] - ✅ zimage                    - Defalut: Tongyi-MAI/Z-Image-Turbo
+[generate.py:46] - ✅ longcat_image             - Defalut: meituan-longcat/LongCat-Image
+[generate.py:46] - ✅ longcat_image_edit        - Defalut: meituan-longcat/LongCat-Image-Edit
 ```
 
 ## 📚 Single GPU Inference
@@ -64,6 +66,8 @@ python3 generate.py qwen_image
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
+python3 generate.py generate longcat_image
+python3 generate.py generate longcat_image_edit
 # w/ cache acceleration
 python3 generate.py flux --cache
 python3 generate.py flux --cache --taylorseer

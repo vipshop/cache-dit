@@ -854,3 +854,28 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
         has_separate_cfg=True,
         **kwargs,
     )
+
+
+@BlockAdapterRegister.register("LongCatImage")
+def longcat_image_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import LongCatImageTransformer2DModel
+    except ImportError:
+        LongCatImageTransformer2DModel = None  # requires diffusers>=0.36.dev
+
+    _relaxed_assert(pipe.transformer, LongCatImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_1,
+        ],
+        check_forward_pattern=True,
+        has_separate_cfg=True,
+        **kwargs,
+    )

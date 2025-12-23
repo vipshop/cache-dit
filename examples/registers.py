@@ -34,13 +34,14 @@ __all__ = [
     "wan_vace_example",
     "ovis_image_example",
     "zimage_example",
+    "longcat_image_example",
+    "longcat_image_edit_example",
 ]
 
 
-# Please note that the following environment variables is only for debugging
-# and development purpose. In practice, users should directly provide the model
-# names or paths. The default values are the official model names on
-# HuggingFace Hub.
+# Please note that the following environment variables is only for debugging and
+# development purpose. In practice, users should directly provide the model names
+# or paths. The default values are the official model names on HuggingFace Hub.
 _env_path_mapping = {
     "FLUX_DIR": "black-forest-labs/FLUX.1-dev",
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
@@ -58,6 +59,8 @@ _env_path_mapping = {
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
+    "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
+    "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
@@ -760,5 +763,62 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
             width=1024,
             guidance_scale=0.0,  # Guidance should be 0 for the Turbo models
             num_inference_steps=9,
+        ),
+    )
+
+
+@ExampleRegister.register("longcat_image", default="meituan-longcat/LongCat-Image")
+def longcat_image_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import LongCatImagePipeline
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("meituan-longcat/LongCat-Image"),
+            pipeline_class=LongCatImagePipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "A young Asian woman wearing a yellow knit sweater paired with a white necklace. "
+                "Her hands rest on her knees, with a serene expression. The background features a "
+                "rough brick wall, with warm afternoon sunlight casting upon her, creating a tranquil "
+                "and cozy atmosphere. The shot uses a medium-distance perspective, highlighting her "
+                "demeanor and the details of her attire. Soft lighting illuminates her face, emphasizing "
+                "her facial features and the texture of her accessories, adding depth and warmth to the image. "
+                "The overall composition is simple and elegant, with the brick wall's texture complementing "
+                "the interplay of sunlight and shadows, showcasing the character's grace and composure."
+            ),
+            height=1024,
+            width=1024,
+            num_inference_steps=50,
+            guidance_scale=4.5,
+        ),
+    )
+
+
+@ExampleRegister.register("longcat_image_edit", default="meituan-longcat/LongCat-Image-Edit")
+def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import LongCatImageEditPipeline
+
+    image_url = (
+        "https://huggingface.co/meituan-longcat/LongCat-Image-Edit/resolve/main/assets/test.png"
+    )
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=_path("meituan-longcat/LongCat-Image-Edit"),
+            pipeline_class=LongCatImageEditPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=("Turn the cat into a dog"),
+            negative_prompt="",
+            num_inference_steps=50,
+            guidance_scale=4.5,
+            image=load_image(image_url),
         ),
     )
