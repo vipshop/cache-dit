@@ -12,3 +12,4 @@ def activate_all_examples():
     from registers import zimage_example  # noqa: F403, F401
     from registers import longcat_image_example  # noqa: F403, F401
     from registers import longcat_image_edit_example  # noqa: F403, F401
+    from registers import zimage_controlnet_example  # noqa: F403, F401
