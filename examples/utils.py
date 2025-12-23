@@ -76,6 +76,24 @@ def get_args(
         help="Override model path if provided",
     )
     parser.add_argument(
+        "--controlnet-path",
+        type=str,
+        default=None,
+        help="Override controlnet model path if provided",
+    )
+    parser.add_argument(
+        "--lora-path",
+        type=str,
+        default=None,
+        help="Override lora model path if provided",
+    )
+    parser.add_argument(
+        "--transformer-path",
+        type=str,
+        default=None,
+        help="Override transformer model path if provided",
+    )
+    parser.add_argument(
         "--image-path",
         type=str,
         default=None,

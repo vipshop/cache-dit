@@ -70,10 +70,19 @@ def _path(
     default: str,
     args: Optional[argparse.Namespace] = None,
     ENV: Optional[str] = None,
+    lora: bool = False,
+    controlnet: bool = False,
+    transformer: bool = False,
 ) -> str:
     # Prefer command line argument if provided
     if args is not None:
         model_path_arg = args.model_path
+        if lora:
+            model_path_arg = args.lora_weights_path
+        if controlnet:
+            model_path_arg = args.controlnet_path
+        if transformer:
+            model_path_arg = args.transformer_path
         if model_path_arg is not None:
             return model_path_arg
     # Next, check environment variable
@@ -94,7 +103,11 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
             NunchakuFluxTransformer2DModelV2,
         )
 
-        nunchaku_flux_dir = _path("nunchaku-tech/nunchaku-flux.1-dev")
+        nunchaku_flux_dir = _path(
+            "nunchaku-tech/nunchaku-flux.1-dev",
+            args=args,
+            transformer=True,
+        )
         transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
             f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
         )
@@ -221,7 +234,7 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
         # For lightning model, only 8 or 4 inference steps are supported
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
-        lora_weights_path = _path("lightx2v/Qwen-Image-Lightning")
+        lora_weights_path = _path("lightx2v/Qwen-Image-Lightning", args=args, lora=True)
         lora_weight_name = f"Qwen-Image-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = _qwen_light_cache_config(args)
         true_cfg_scale = 1.0  # means no separate cfg for lightning models
@@ -285,7 +298,8 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
         lora_weights_path = os.path.join(
-            _path("lightx2v/Qwen-Image-Lightning"), "Qwen-Image-Edit-2509"
+            _path("lightx2v/Qwen-Image-Lightning", args, lora=True),
+            "Qwen-Image-Edit-2509",
         )
         lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = _qwen_light_cache_config(args)
@@ -342,7 +356,11 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
 
     # make sure controlnet is on cuda to avoid device mismatch while using cpu offload
     controlnet = QwenImageControlNetModel.from_pretrained(
-        _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
+        _path(
+            "InstantX/Qwen-Image-ControlNet-Inpainting",
+            args=args,
+            controlnet=True,
+        ),
         torch_dtype=torch.bfloat16,
     )
 
@@ -785,6 +803,7 @@ def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
     controlnet_dir = _path(
         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
         args=args,
+        controlnet=True,
     )
     controlnet = ZImageControlNetModel.from_single_file(
         os.path.join(controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"),
