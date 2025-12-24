@@ -58,23 +58,23 @@ def enable_parallelism(
         )
 
     if extra_parallel_modules:
-
-        from .text_encoders.native_pytorch import (
-            maybe_enable_parallelism_for_text_encoder,
-        )
-        from .controlnets.native_diffusers import (
-            maybe_enable_parallelism_for_controlnet,
-        )
-
         for module in extra_parallel_modules:
             # Enable parallelism for text encoder
             if _is_text_encoder(module) and not _is_parallelized(module):
+                from .text_encoders.native_pytorch import (
+                    maybe_enable_parallelism_for_text_encoder,
+                )
+
                 maybe_enable_parallelism_for_text_encoder(
                     text_encoder=module,
                     parallelism_config=parallelism_config,
                 )
             # Enable parallelism for ControlNet
             elif _is_controlnet(module) and not _is_parallelized(module):
+                from .controlnets.native_diffusers import (
+                    maybe_enable_parallelism_for_controlnet,
+                )
+
                 maybe_enable_parallelism_for_controlnet(
                     controlnet=module,
                     parallelism_config=parallelism_config,
@@ -82,9 +82,7 @@ def enable_parallelism(
                 _maybe_set_module_attention_backend(module, parallelism_config)
             # Enable parallelism for VAE
             elif _is_vae(module) and not _is_parallelized(module):
-                logger.warning(
-                    "Parallelism for VAE is not supported yet. Skipping parallelism for VAE."
-                )
+                logger.warning("Parallelism for VAE is not supported yet. Skipped!")
 
     # NOTE: Workaround for potential memory peak issue after parallelism
     # enabling, specially for tensor parallelism in native pytorch backend.
