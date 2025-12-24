@@ -102,18 +102,20 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | **🔥[HuyuanVideo-1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
 | **🔥[FLUX.2-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
-| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[Qwen-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[Qwen-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[Qwen-Image-Edit-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
-| **🎉[Wan 2.2 T2V/ITV ](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
-| **🎉[Wan 2.2 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
-| **🎉[Wan 2.1 T2V/ITV](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Wan 2.1 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
+| **🎉[Wan-2.2 T2V/ITV ](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Wan-2.2 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Wan-2.1 T2V/ITV](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
+| **🎉[Wan-2.1 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
+| **🎉[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[FLUX.1 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ | ✖️ | ✖️ |
+| **🎉[FLUX.1-dev `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ | ✖️ | ✖️ |
+| **🎉[FLUX.1-Fill-dev `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[Qwen-Image-Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[Qwen-Image-Lightning `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ✖️ | ☑️ | ✖️ | ✖️ |
@@ -121,12 +123,11 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | **🎉[SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️  | ☑️  | ☑️ | ✖️ | ✖️ |
 | **🎉[LongCatVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[ChronoEdit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Kandinsky5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️️ | ☑️️ | ☑️ | ✖️ | ✖️ |
-| **🎉[PRX T2I](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
+| **🎉[Kandinsky-5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️️ | ☑️️ | ☑️ | ✖️ | ✖️ |
+| **🎉[PRX-T2I](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[LTXVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[CogVideoX 1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
+| **🎉[CogVideoX-1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[PixArt Sigma](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
@@ -145,7 +146,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[EasyAnimate](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
-| **🎉[StableDiffusion3](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
+| **🎉[StableDiffusion-3](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[Amused](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 | **🎉[AuraFlow](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ✖️ | ✖️ | ☑️ | ✖️ | ✖️ |
 
