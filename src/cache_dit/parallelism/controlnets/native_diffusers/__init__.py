@@ -1,0 +1,1 @@
+from .parallel_difffusers import maybe_enable_parallelism_for_controlnet

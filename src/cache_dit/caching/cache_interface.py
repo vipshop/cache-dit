@@ -299,6 +299,15 @@ def enable_cache(
             parallelism_config, ParallelismConfig
         ), "parallelism_config should be of type ParallelismConfig."
 
+        # Prefer custom has_controlnet flag from users if provided, otherwise,
+        # we will automatically check whether the pipeline has controlnet.
+        if "has_controlnet" not in parallelism_config.parallel_kwargs:
+            # This flag is used to decide whether to use the special parallelism
+            # plan due to the addition of ControlNet, e.g., Z-Image-ControlNet.
+            parallelism_config.parallel_kwargs["has_controlnet"] = _has_controlnet(
+                pipe_or_adapter,
+            )
+
         transformers = []
         if isinstance(pipe_or_adapter, DiffusionPipeline):
             adapter = BlockAdapterRegister.get_adapter(
@@ -335,6 +344,17 @@ def enable_cache(
             # Enable parallelism for the transformer inplace
             transformers[i] = enable_parallelism(transformer, parallelism_config)
     return pipe_or_adapter
+
+
+def _has_controlnet(pipe_or_adapter: DiffusionPipeline | BlockAdapter) -> bool:
+    """Check if the given pipeline has ControlNet."""
+    if isinstance(pipe_or_adapter, BlockAdapter):
+        pipe = pipe_or_adapter.pipe
+    else:
+        pipe = pipe_or_adapter
+    if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
+        return True
+    return False
 
 
 def refresh_context(

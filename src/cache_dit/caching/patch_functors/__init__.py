@@ -16,3 +16,6 @@ from cache_dit.caching.patch_functors.functor_qwen_image_controlnet import (
 from cache_dit.caching.patch_functors.functor_wan_vace import (
     WanVACEPatchFunctor,
 )
+from cache_dit.caching.patch_functors.functor_zimage_controlnet import (
+    ZImageControlNetPatchFunctor,
+)

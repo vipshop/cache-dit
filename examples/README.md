@@ -1,5 +1,14 @@
 <div align="center">
     <h1> 🚀 Examples for Cache-DiT</h1>
+
+|Z-Image-ControlNet| Context Parallel: Ulysses 2 |  Context Parallel: Ulysses 4 | + ControlNet Parallel |
+|:---:|:---:|:---:|:---:|
+|Base L20x1: 22s|15.7s|12.7s|**🚀7.71s**|
+| <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses2.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4_CNP.png" width=200px> |
+| **+ Hybrid Cache** | **+ Torch Compile** | **+ Async Ulyess CP** | **+ FP8 All2All + CUDNN ATTN** | 
+|**🚀6.85s**|6.45s|6.38s|**🚀6.19s, 5.47s**|
+| <img src="./assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> |<img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP_sdpa_cudnn.png" width=200px> 
+
 </div>
 
 ## 📚 Table of Contents
@@ -29,25 +38,27 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ```bash
 python3 generate.py list  # list all available examples
 
-[generate.py:46] - ✅ flux_nunchaku             - Defalut: nunchaku-tech/nunchaku-flux.1-dev
-[generate.py:46] - ✅ flux                      - Defalut: black-forest-labs/FLUX.1-dev
-[generate.py:46] - ✅ flux2                     - Defalut: black-forest-labs/FLUX.2-dev
-[generate.py:46] - ✅ qwen_image_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
-[generate.py:46] - ✅ qwen_image                - Defalut: Qwen/Qwen-Image
-[generate.py:46] - ✅ qwen_image_edit_lightning - Defalut: lightx2v/Qwen-Image-Lightning
-[generate.py:46] - ✅ qwen_image_edit           - Defalut: Qwen/Qwen-Image-Edit-2509
-[generate.py:46] - ✅ qwen_image_controlnet     - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
-[generate.py:46] - ✅ skyreels_v2               - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
-[generate.py:46] - ✅ wan2.2_t2v                - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
-[generate.py:46] - ✅ wan2.1_t2v                - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-[generate.py:46] - ✅ wan2.2_i2v                - Defalut: Wan-AI/Wan2.2-I2V-A14B-Diffusers
-[generate.py:46] - ✅ wan2.1_i2v                - Defalut: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
-[generate.py:46] - ✅ wan2.2_vace               - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
-[generate.py:46] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
-[generate.py:46] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
-[generate.py:46] - ✅ zimage                    - Defalut: Tongyi-MAI/Z-Image-Turbo
-[generate.py:46] - ✅ longcat_image             - Defalut: meituan-longcat/LongCat-Image
-[generate.py:46] - ✅ longcat_image_edit        - Defalut: meituan-longcat/LongCat-Image-Edit
+[generate.py:47] Available examples:
+[generate.py:53] - ✅ flux_nunchaku             - Defalut: nunchaku-tech/nunchaku-flux.1-dev
+[generate.py:53] - ✅ flux                      - Defalut: black-forest-labs/FLUX.1-dev
+[generate.py:53] - ✅ flux2                     - Defalut: black-forest-labs/FLUX.2-dev
+[generate.py:53] - ✅ qwen_image_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
+[generate.py:53] - ✅ qwen_image                - Defalut: Qwen/Qwen-Image
+[generate.py:53] - ✅ qwen_image_edit_lightning - Defalut: lightx2v/Qwen-Image-Lightning
+[generate.py:53] - ✅ qwen_image_edit           - Defalut: Qwen/Qwen-Image-Edit-2509
+[generate.py:53] - ✅ qwen_image_controlnet     - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
+[generate.py:53] - ✅ skyreels_v2               - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
+[generate.py:53] - ✅ wan2.2_t2v                - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+[generate.py:53] - ✅ wan2.1_t2v                - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+[generate.py:53] - ✅ wan2.2_i2v                - Defalut: Wan-AI/Wan2.2-I2V-A14B-Diffusers
+[generate.py:53] - ✅ wan2.1_i2v                - Defalut: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
+[generate.py:53] - ✅ wan2.2_vace               - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
+[generate.py:53] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
+[generate.py:53] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
+[generate.py:53] - ✅ zimage                    - Defalut: Tongyi-MAI/Z-Image-Turbo
+[generate.py:53] - ✅ zimage_controlnet         - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
+[generate.py:53] - ✅ longcat_image             - Defalut: meituan-longcat/LongCat-Image
+[generate.py:53] - ✅ longcat_image_edit        - Defalut: meituan-longcat/LongCat-Image-Edit
 ```
 
 ## 📚 Single GPU Inference
@@ -66,6 +77,7 @@ python3 generate.py qwen_image
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
+python3 generate.py zimage_controlnet 
 python3 generate.py generate longcat_image
 python3 generate.py generate longcat_image_edit
 # w/ cache acceleration
@@ -74,6 +86,7 @@ python3 generate.py flux --cache --taylorseer
 python3 generate.py flux_nunchaku --cache
 python3 generate.py qwen_image --cache
 python3 generate.py zimage --cache --rdt 0.6 --scm fast
+python3 generate.py zimage_controlnet --cache --rdt 0.6 --scm fast
 # enable cpu offload or vae tiling if your encounter an OOM error
 python3 generate.py qwen_image --cache --cpu-offload
 python3 generate.py qwen_image --cache --cpu-offload --vae-tiling
@@ -104,6 +117,8 @@ cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥
 torchrun --nproc_per_node=4 generate.py flux --parallel ulysses 
 torchrun --nproc_per_node=4 generate.py flux --parallel ring 
 torchrun --nproc_per_node=4 generate.py flux --parallel tp
+torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses 
+torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses 
 # ulysses anything attention
 torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --ulysses-anything
 torchrun --nproc_per_node=4 generate.py qwen_image_edit_lightning --parallel ulysses --ulysses-anything
@@ -152,6 +167,13 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_l
 torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_lightning \
          --parallel tp --parallel-text-encoder --quantize-type float8_weight_only \
          --steps 4 --track-memory --compile
+# Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
+torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
+         --parallel-controlnet --cache --rdt 0.6 --scm fast
+torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
+         --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
+         --compile-controlnet --ulysses-float8 --attn _sdpa_cudnn \
+         --warmup 2 --repeat 4     
 ```
 
 ## 📚 End2End Examples
@@ -229,25 +251,35 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 ```bash
 python3 generate.py --help
 
-usage: generate.py [-h] [--model-path MODEL_PATH] [--image-path IMAGE_PATH] [--mask-image-path MASK_IMAGE_PATH] [--prompt PROMPT] [--negative-prompt NEGATIVE_PROMPT] [--num_inference_steps NUM_INFERENCE_STEPS] [--warmup WARMUP] [--repeat REPEAT]
-                   [--height HEIGHT] [--width WIDTH] [--seed SEED] [--num-frames NUM_FRAMES] [--save-path SAVE_PATH] [--cache] [--cache-summary] [--Fn-compute-blocks FN_COMPUTE_BLOCKS] [--Bn-compute-blocks BN_COMPUTE_BLOCKS]
-                   [--residual-diff-threshold RESIDUAL_DIFF_THRESHOLD] [--max-warmup-steps MAX_WARMUP_STEPS] [--warmup-interval WARMUP_INTERVAL] [--max-cached-steps MAX_CACHED_STEPS] [--max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS]
-                   [--taylorseer] [--taylorseer-order TAYLORSEER_ORDER] [--steps-mask] [--mask-policy {None,slow,s,medium,m,fast,f,ultra,u}] [--quantize] [--quantize-text-encoder]
-                   [--quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--parallel-type {None,tp,ulysses,ring}] [--parallel-vae]
-                   [--parallel-text-encoder] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--disable-compute-comm-overlap] [--cpu-offload] [--sequential-cpu-offload]
-                   [--vae-tiling] [--vae-slicing] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--max-autotune] [--track-memory] [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR]
-                   [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes] [--disable-fuse-lora DISABLE_FUSE_LORA]
-                   {generate,list} [{None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage}]
+usage: generate.py [-h] [--model-path MODEL_PATH] [--controlnet-path CONTROLNET_PATH] [--lora-path LORA_PATH] [--transformer-path TRANSFORMER_PATH] [--image-path IMAGE_PATH] [--mask-image-path MASK_IMAGE_PATH] [--prompt PROMPT]
+                   [--negative-prompt NEGATIVE_PROMPT] [--num_inference_steps NUM_INFERENCE_STEPS] [--warmup WARMUP] [--repeat REPEAT] [--height HEIGHT] [--width WIDTH] [--seed SEED] [--num-frames NUM_FRAMES] [--save-path SAVE_PATH] [--cache]
+                   [--cache-summary] [--Fn-compute-blocks FN_COMPUTE_BLOCKS] [--Bn-compute-blocks BN_COMPUTE_BLOCKS] [--residual-diff-threshold RESIDUAL_DIFF_THRESHOLD] [--max-warmup-steps MAX_WARMUP_STEPS] [--warmup-interval WARMUP_INTERVAL]
+                   [--max-cached-steps MAX_CACHED_STEPS] [--max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS] [--taylorseer] [--taylorseer-order TAYLORSEER_ORDER] [--steps-mask] [--mask-policy {None,slow,s,medium,m,fast,f,ultra,u}]
+                   [--quantize] [--quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--quantize-text-encoder]
+                   [--quantize-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--quantize-controlnet]
+                   [--quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--parallel-type {None,tp,ulysses,ring}] [--parallel-vae]
+                   [--parallel-text-encoder] [--parallel-controlnet] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--disable-compute-comm-overlap] [--cpu-offload]
+                   [--sequential-cpu-offload] [--device-map-balance] [--vae-tiling] [--vae-slicing] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--compile-controlnet] [--max-autotune] [--track-memory]
+                   [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR] [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes] [--disable-fuse-lora DISABLE_FUSE_LORA]
+                   [{generate,list,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}]
+                   [{None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}]
 
 positional arguments:
-  {generate,list}       The task to perform. If not specified, run the specified example. Or, Use 'list' to list all available examples.
-  {None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage}
+  {generate,list,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}
+                        The task to perform or example name to run. Use 'list' to list all available examples, or specify an example name directly (defaults to 'generate' task).
+  {None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}
                         Names of the examples to run. If not specified, skip running example.
 
 options:
   -h, --help            show this help message and exit
   --model-path MODEL_PATH
                         Override model path if provided
+  --controlnet-path CONTROLNET_PATH
+                        Override controlnet model path if provided
+  --lora-path LORA_PATH
+                        Override lora model path if provided
+  --transformer-path TRANSFORMER_PATH
+                        Override transformer model path if provided
   --image-path IMAGE_PATH
                         Override image path if provided
   --mask-image-path MASK_IMAGE_PATH
@@ -290,13 +322,19 @@ options:
   --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
                         Pre-defined steps computation mask policy
   --quantize, --q       Enable quantization for transformer
+  --quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
   --quantize-text-encoder, --q-text
                         Enable quantization for text encoder
-  --quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
+  --quantize-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
+  --quantize-controlnet, --q-controlnet
+                        Enable quantization for text encoder
+  --quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
   --parallel-type {None,tp,ulysses,ring}, --parallel {None,tp,ulysses,ring}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
+  --parallel-controlnet
+                        Enable ControlNet parallelism if applicable.
   --attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context parallelism
@@ -310,6 +348,8 @@ options:
                         Enable CPU offload for model if applicable.
   --sequential-cpu-offload
                         Enable sequential GPU offload for model if applicable.
+  --device-map-balance, --device-map
+                        Enable automatic device map balancing model if multiple GPUs are available.
   --vae-tiling          Enable VAE tiling for low memory device.
   --vae-slicing         Enable VAE slicing for low memory device.
   --compile             Enable compile for transformer
@@ -318,6 +358,7 @@ options:
   --compile-vae         Enable compile for VAE
   --compile-text-encoder, --compile-text
                         Enable compile for text encoder
+  --compile-controlnet  Enable compile for ControlNet
   --max-autotune        Enable max-autotune mode for torch.compile
   --track-memory        Track and report peak GPU memory usage
   --profile             Enable profiling with torch.profiler

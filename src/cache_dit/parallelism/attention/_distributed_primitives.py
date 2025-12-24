@@ -6,8 +6,8 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
-from cache_dit.logger import init_logger
 from cache_dit.kernels import per_token_quant_fp8, per_token_dequant_fp8
+from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 

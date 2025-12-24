@@ -67,7 +67,13 @@ class ParallelismConfig:
                     )
                     self.backend = ParallelismBackend.NATIVE_DIFFUSER
 
-    def strify(self, details: bool = False, text_encoder: bool = False, vae: bool = False) -> str:
+    def strify(
+        self,
+        details: bool = False,
+        text_encoder: bool = False,
+        vae: bool = False,
+        controlnet: bool = False,
+    ) -> str:
         if details:
             if text_encoder or vae:
                 extra_module_world_size = self._get_extra_module_world_size()
@@ -78,6 +84,8 @@ class ParallelismConfig:
 
                 if text_encoder:
                     parallel_str += f"tp_size={extra_module_world_size}, "
+                elif controlnet:
+                    parallel_str += f"ulysses_size={extra_module_world_size}, "
                 else:
                     parallel_str += f"dp_size={extra_module_world_size}, "
                 parallel_str = parallel_str.rstrip(", ") + ")"
@@ -104,6 +112,8 @@ class ParallelismConfig:
                 parallel_str += "_TEP"  # Text Encoder Parallelism
             if vae:
                 parallel_str += "_VAEP"  # VAE Parallelism
+            if controlnet:
+                parallel_str += "_CNP"  # ControlNet Parallelism
             return parallel_str
 
     def _get_extra_module_world_size(self) -> Optional[int]:

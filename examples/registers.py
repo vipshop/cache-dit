@@ -34,6 +34,7 @@ __all__ = [
     "wan_vace_example",
     "ovis_image_example",
     "zimage_example",
+    "zimage_controlnet_example",
     "longcat_image_example",
     "longcat_image_edit_example",
 ]
@@ -59,6 +60,7 @@ _env_path_mapping = {
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
+    "Z_IMAGE_CONTROLNET_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
 }
@@ -69,10 +71,19 @@ def _path(
     default: str,
     args: Optional[argparse.Namespace] = None,
     ENV: Optional[str] = None,
+    lora: bool = False,
+    controlnet: bool = False,
+    transformer: bool = False,
 ) -> str:
     # Prefer command line argument if provided
     if args is not None:
         model_path_arg = args.model_path
+        if lora:
+            model_path_arg = args.lora_weights_path
+        if controlnet:
+            model_path_arg = args.controlnet_path
+        if transformer:
+            model_path_arg = args.transformer_path
         if model_path_arg is not None:
             return model_path_arg
     # Next, check environment variable
@@ -93,7 +104,11 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
             NunchakuFluxTransformer2DModelV2,
         )
 
-        nunchaku_flux_dir = _path("nunchaku-tech/nunchaku-flux.1-dev")
+        nunchaku_flux_dir = _path(
+            "nunchaku-tech/nunchaku-flux.1-dev",
+            args=args,
+            transformer=True,
+        )
         transformer = NunchakuFluxTransformer2DModelV2.from_pretrained(
             f"{nunchaku_flux_dir}/svdq-int4_r32-flux.1-dev.safetensors",
         )
@@ -220,7 +235,7 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
         # For lightning model, only 8 or 4 inference steps are supported
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
-        lora_weights_path = _path("lightx2v/Qwen-Image-Lightning")
+        lora_weights_path = _path("lightx2v/Qwen-Image-Lightning", args=args, lora=True)
         lora_weight_name = f"Qwen-Image-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = _qwen_light_cache_config(args)
         true_cfg_scale = 1.0  # means no separate cfg for lightning models
@@ -284,7 +299,8 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
         lora_weights_path = os.path.join(
-            _path("lightx2v/Qwen-Image-Lightning"), "Qwen-Image-Edit-2509"
+            _path("lightx2v/Qwen-Image-Lightning", args, lora=True),
+            "Qwen-Image-Edit-2509",
         )
         lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = _qwen_light_cache_config(args)
@@ -341,7 +357,11 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
 
     # make sure controlnet is on cuda to avoid device mismatch while using cpu offload
     controlnet = QwenImageControlNetModel.from_pretrained(
-        _path("InstantX/Qwen-Image-ControlNet-Inpainting"),
+        _path(
+            "InstantX/Qwen-Image-ControlNet-Inpainting",
+            args=args,
+            controlnet=True,
+        ),
         torch_dtype=torch.bfloat16,
     )
 
@@ -715,15 +735,12 @@ def ovis_image_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("zimage", default="Tongyi-MAI/Z-Image-Turbo")
-def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import ZImagePipeline
-
-    if args.cache:
-        # Only warmup 4 steps (total 9 steps) for distilled models
-        args.max_warmup_steps = min(4, args.max_warmup_steps)
-
-    steps_computation_mask = (
+def _zimage_turbo_steps_mask(
+    args: argparse.Namespace,
+) -> Optional[List[int]]:
+    if not args.cache:
+        return None
+    return (
         cache_dit.steps_mask(
             # slow, medium, fast, ultra.
             mask_policy=args.mask_policy,
@@ -739,6 +756,17 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
             else None
         )
     )
+
+
+@ExampleRegister.register("zimage", default="Tongyi-MAI/Z-Image-Turbo")
+def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import ZImagePipeline
+
+    if args.cache:
+        # Only warmup 4 steps (total 9 steps) for distilled models
+        args.max_warmup_steps = min(4, args.max_warmup_steps)
+
+    steps_computation_mask = _zimage_turbo_steps_mask(args)
     return Example(
         args=args,
         init_config=ExampleInitConfig(
@@ -763,6 +791,60 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
             width=1024,
             guidance_scale=0.0,  # Guidance should be 0 for the Turbo models
             num_inference_steps=9,
+        ),
+    )
+
+
+@ExampleRegister.register(
+    "zimage_controlnet", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+)
+def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import ZImageControlNetPipeline, ZImageControlNetModel
+
+    if args.cache:
+        # Only warmup 4 steps (total 9 steps) for distilled models
+        args.max_warmup_steps = min(4, args.max_warmup_steps)
+
+    controlnet_dir = _path(
+        "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+        args=args,
+        controlnet=True,
+    )
+    controlnet = ZImageControlNetModel.from_single_file(
+        os.path.join(controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"),
+        torch_dtype=torch.bfloat16,
+    )
+    control_image = load_image(
+        "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/asset/pose.jpg?download=true"
+    )
+
+    steps_computation_mask = _zimage_turbo_steps_mask(args)
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("Tongyi-MAI/Z-Image-Turbo"),
+            pipeline_class=ZImageControlNetPipeline,
+            controlnet=controlnet,
+            bnb_4bit_components=["text_encoder"],
+            extra_optimize_kwargs={
+                "steps_computation_mask": steps_computation_mask,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "一位年轻女子站在阳光明媚的海岸线上，白裙在轻拂的海风中微微飘动。她拥有一头鲜艳的紫色长发，在风中轻盈舞动，"
+                "发间系着一个精致的黑色蝴蝶结，与身后柔和的蔚蓝天空形成鲜明对比。她面容清秀，眉目精致，透着一股甜美的青春气息；"
+                "神情柔和，略带羞涩，目光静静地凝望着远方的地平线，双手自然交叠于身前，仿佛沉浸在思绪之中。在她身后，"
+                "是辽阔无垠、波光粼粼的大海，阳光洒在海面上，映出温暖的金色光晕。"
+            ),
+            control_image=control_image,
+            controlnet_conditioning_scale=0.75,
+            height=1728,
+            width=992,
+            num_inference_steps=9,
+            guidance_scale=0.0,
         ),
     )
 

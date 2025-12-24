@@ -31,9 +31,9 @@ from .cp_plan_registers import (
 
 from cache_dit.logger import init_logger
 
-from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
-from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._distributed_primitives import _prepare_ulysses_comm_metadata
+from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
+from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
+from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
 
 logger = init_logger(__name__)
 

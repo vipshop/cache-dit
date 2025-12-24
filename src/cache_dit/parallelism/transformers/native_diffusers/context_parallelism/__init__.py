@@ -7,12 +7,10 @@ from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
 
 try:
-    from ..utils import (
+    from diffusers import ContextParallelConfig  # noqa: F401
+    from cache_dit.parallelism.attention import (
+        _maybe_register_custom_attn_backends,
         _is_diffusers_parallelism_available,
-        ContextParallelConfig,
-    )
-    from .attention import _maybe_register_custom_attn_backends
-    from .attention._templated_ulysses import (
         enable_ulysses_anything,
         enable_ulysses_float8,
     )
@@ -84,7 +82,7 @@ def maybe_enable_context_parallelism(
                     )
 
                 transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-                _maybe_patch_native_parallel_config(transformer)
+                _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."
@@ -95,6 +93,7 @@ def maybe_enable_context_parallelism(
 
 def _maybe_patch_native_parallel_config(
     transformer: torch.nn.Module,
+    **kwargs,
 ) -> torch.nn.Module:
 
     cls_name = transformer.__class__.__name__

@@ -796,7 +796,7 @@ def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
     try:
         from diffusers import ChronoEditTransformer3DModel
     except ImportError:
-        ChronoEditTransformer3DModel = None  # requires diffusers>=0.36.dev
+        ChronoEditTransformer3DModel = None  # requires diffusers>=0.36.dev0
 
     _relaxed_assert(pipe.transformer, ChronoEditTransformer3DModel)
     # Same as Wan 2.1 adapter
@@ -813,17 +813,21 @@ def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("ZImage")
 def zimage_adapter(pipe, **kwargs) -> BlockAdapter:
+    from cache_dit.caching.patch_functors import ZImageControlNetPatchFunctor
+
     try:
         from diffusers import ZImageTransformer2DModel
     except ImportError:
         ZImageTransformer2DModel = None  # requires diffusers>=0.36.dev0
 
+    has_controlnet = hasattr(pipe, "controlnet") and pipe.controlnet is not None
     _relaxed_assert(pipe.transformer, ZImageTransformer2DModel)
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.layers,
         forward_pattern=ForwardPattern.Pattern_3,
+        patch_functor=ZImageControlNetPatchFunctor() if has_controlnet else None,
         # ZImage DON'T have 'hidden_states' (use 'x') in its block
         # forward signature. So we disable the forward pattern check here.
         check_forward_pattern=False,

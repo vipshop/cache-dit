@@ -48,7 +48,58 @@ def enable_parallelism(
 
     # Set attention backend for both context parallelism and tensor parallelism if the
     # transformer is from diffusers and supports setting attention backend.
-    if hasattr(transformer, "set_attention_backend") and isinstance(transformer, ModelMixin):
+    _maybe_set_module_attention_backend(transformer, parallelism_config)
+
+    # Check text encoder and VAE for extra parallel modules
+    extra_parallel_modules: list[torch.nn.Module] = []
+    if parallelism_config.parallel_kwargs is not None:
+        extra_parallel_modules = parallelism_config.parallel_kwargs.get(
+            "extra_parallel_modules", []
+        )
+
+    if extra_parallel_modules:
+        for module in extra_parallel_modules:
+            # Enable parallelism for text encoder
+            if _is_text_encoder(module) and not _is_parallelized(module):
+                from .text_encoders.native_pytorch import (
+                    maybe_enable_parallelism_for_text_encoder,
+                )
+
+                maybe_enable_parallelism_for_text_encoder(
+                    text_encoder=module,
+                    parallelism_config=parallelism_config,
+                )
+            # Enable parallelism for ControlNet
+            elif _is_controlnet(module) and not _is_parallelized(module):
+                from .controlnets.native_diffusers import (
+                    maybe_enable_parallelism_for_controlnet,
+                )
+
+                maybe_enable_parallelism_for_controlnet(
+                    controlnet=module,
+                    parallelism_config=parallelism_config,
+                )
+                _maybe_set_module_attention_backend(module, parallelism_config)
+            # Enable parallelism for VAE
+            elif _is_vae(module) and not _is_parallelized(module):
+                logger.warning("Parallelism for VAE is not supported yet. Skipped!")
+
+    # NOTE: Workaround for potential memory peak issue after parallelism
+    # enabling, specially for tensor parallelism in native pytorch backend.
+    maybe_empty_cache()
+
+    return transformer
+
+
+# Some helper functions for parallelism enabling
+def _maybe_set_module_attention_backend(
+    module: torch.nn.Module | ModelMixin,
+    parallelism_config: ParallelismConfig,
+) -> None:
+    # Set attention backend for both context parallelism and tensor parallelism if the
+    # transformer is from diffusers and supports setting attention backend.
+    module_cls_name = module.__class__.__name__
+    if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
         attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
         # native, _native_cudnn, flash, etc.
         if attention_backend is None:
@@ -59,67 +110,58 @@ def enable_parallelism(
             # while using context parallelism. For other backends, we do not change the
             # attention backend if it is None.
             if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
-                transformer.set_attention_backend("native")
+                module.set_attention_backend("native")
                 logger.warning(
-                    "attention_backend is None, set default attention backend "
-                    "to native for context parallelism in NATIVE_DIFFUSER backend."
+                    "attention_backend is None, set default attention backend of "
+                    f"{module_cls_name} to native for context parallelism."
                 )
         else:
             # Ensure custom attention backends are registered in cache-dit.
             if not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH:
-                from .transformers.native_diffusers import (
+                from .attention import (
                     _maybe_register_custom_attn_backends,
                 )
 
                 _maybe_register_custom_attn_backends()
 
-            transformer.set_attention_backend(attention_backend)
+            module.set_attention_backend(attention_backend)
             logger.info(
-                "Found attention_backend from config, set attention "
-                f"backend to: {attention_backend}"
+                "Found attention_backend from config, set attention backend of "
+                f"{module_cls_name} to: {attention_backend}."
             )
 
-    # Check text encoder and VAE for extra parallel modules
-    extra_parallel_modules: list[torch.nn.Module] = []
-    if parallelism_config.parallel_kwargs is not None:
-        extra_parallel_modules = parallelism_config.parallel_kwargs.get(
-            "extra_parallel_modules", []
-        )
 
-    if extra_parallel_modules:
-        from .text_encoders.native_pytorch import (
-            maybe_enable_parallelism_for_text_encoder,
-        )
+def _is_text_encoder(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("transformers")
 
-        for module in extra_parallel_modules:
-            # Enable parallelism for text encoder
-            maybe_enable_parallelism_for_text_encoder(
-                text_encoder=module,
-                parallelism_config=parallelism_config,
-            )
-            if getattr(module, "_is_parallelized", False):
-                continue
-            # TODO: Enable parallelism for VAE if needed.
 
-    # NOTE: Workaround for potential memory peak issue after parallelism
-    # enabling, specially for tensor parallelism in native pytorch backend.
-    maybe_empty_cache()
+def _is_controlnet(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("diffusers.models.controlnet")
 
-    return transformer
+
+def _is_vae(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("diffusers.models.autoencoder")
+
+
+def _is_parallelized(module: torch.nn.Module) -> bool:
+    return getattr(module, "_is_parallelized", False)
 
 
 def remove_parallelism_stats(
-    transformer: torch.nn.Module,
+    module: torch.nn.Module,
 ) -> torch.nn.Module:
-    if not getattr(transformer, "_is_parallelized", False):
+    if not getattr(module, "_is_parallelized", False):
         logger.warning("The transformer is not parallelized. Skipping removing parallelism.")
-        return transformer
+        return module
 
-    if hasattr(transformer, "_is_parallelized"):
-        del transformer._is_parallelized  # type: ignore[attr-defined]
-    if hasattr(transformer, "_parallelism_config"):
-        del transformer._parallelism_config  # type: ignore[attr-defined]
-    return transformer
+    if hasattr(module, "_is_parallelized"):
+        del module._is_parallelized  # type: ignore[attr-defined]
+    if hasattr(module, "_parallelism_config"):
+        del module._parallelism_config  # type: ignore[attr-defined]
+    return module
 
 
 def maybe_pad_prompt(
