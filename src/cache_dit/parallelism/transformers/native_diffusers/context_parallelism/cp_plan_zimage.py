@@ -127,7 +127,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             # Special cp plan for ZImageTransformer2DModel with ZImageControlNetModel
             logger.info(
                 "Using special context parallelism plan for ZImageTransformer2DModel "
-                "with ZImageControlNetModel."
+                "due to the 'has_controlnet' flag is set to True."
             )
             _cp_plan = {
                 # zimage controlnet shared the same refiner as zimage, so, we need to
