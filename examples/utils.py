@@ -1228,6 +1228,8 @@ def strify(args, pipe_or_stats):
         base_str += "_TEP"  # Text Encoder Parallelism
     if args.parallel_vae:
         base_str += "_VAEP"  # VAE Parallelism
+    if args.parallel_controlnet:
+        base_str += "_CNP"  # ControlNet Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
     return base_str
