@@ -79,7 +79,7 @@ def _path(
     if args is not None:
         model_path_arg = args.model_path
         if lora:
-            model_path_arg = args.lora_weights_path
+            model_path_arg = args.lora_path
         if controlnet:
             model_path_arg = args.controlnet_path
         if transformer:
