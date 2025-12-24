@@ -1,5 +1,11 @@
 <div align="center">
     <h1> 🚀 Examples for Cache-DiT</h1>
+
+|Z-Image-ControlNet| Ulysses 2 | Ulysses 4 | + ControlNet Parallelism | + Cache | + Compile | + Async Ulyess | + FP8 All2All | 
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|Base L20x1: 22s|15.7s|12.7s|7.71s|6.85s|6.45s|6.41s|6.19s|
+| <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE.png" width=120px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses2.png" width=120px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4.png" width=120px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4_CNP.png" width=120px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=120px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=120px> |<img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=120px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP.png" width=120px> 
+
 </div>
 
 ## 📚 Table of Contents
@@ -29,25 +35,27 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ```bash
 python3 generate.py list  # list all available examples
 
-[generate.py:46] - ✅ flux_nunchaku             - Defalut: nunchaku-tech/nunchaku-flux.1-dev
-[generate.py:46] - ✅ flux                      - Defalut: black-forest-labs/FLUX.1-dev
-[generate.py:46] - ✅ flux2                     - Defalut: black-forest-labs/FLUX.2-dev
-[generate.py:46] - ✅ qwen_image_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
-[generate.py:46] - ✅ qwen_image                - Defalut: Qwen/Qwen-Image
-[generate.py:46] - ✅ qwen_image_edit_lightning - Defalut: lightx2v/Qwen-Image-Lightning
-[generate.py:46] - ✅ qwen_image_edit           - Defalut: Qwen/Qwen-Image-Edit-2509
-[generate.py:46] - ✅ qwen_image_controlnet     - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
-[generate.py:46] - ✅ skyreels_v2               - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
-[generate.py:46] - ✅ wan2.2_t2v                - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
-[generate.py:46] - ✅ wan2.1_t2v                - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-[generate.py:46] - ✅ wan2.2_i2v                - Defalut: Wan-AI/Wan2.2-I2V-A14B-Diffusers
-[generate.py:46] - ✅ wan2.1_i2v                - Defalut: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
-[generate.py:46] - ✅ wan2.2_vace               - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
-[generate.py:46] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
-[generate.py:46] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
-[generate.py:46] - ✅ zimage                    - Defalut: Tongyi-MAI/Z-Image-Turbo
-[generate.py:46] - ✅ longcat_image             - Defalut: meituan-longcat/LongCat-Image
-[generate.py:46] - ✅ longcat_image_edit        - Defalut: meituan-longcat/LongCat-Image-Edit
+[generate.py:47] Available examples:
+[generate.py:53] - ✅ flux_nunchaku             - Defalut: nunchaku-tech/nunchaku-flux.1-dev
+[generate.py:53] - ✅ flux                      - Defalut: black-forest-labs/FLUX.1-dev
+[generate.py:53] - ✅ flux2                     - Defalut: black-forest-labs/FLUX.2-dev
+[generate.py:53] - ✅ qwen_image_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
+[generate.py:53] - ✅ qwen_image                - Defalut: Qwen/Qwen-Image
+[generate.py:53] - ✅ qwen_image_edit_lightning - Defalut: lightx2v/Qwen-Image-Lightning
+[generate.py:53] - ✅ qwen_image_edit           - Defalut: Qwen/Qwen-Image-Edit-2509
+[generate.py:53] - ✅ qwen_image_controlnet     - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
+[generate.py:53] - ✅ skyreels_v2               - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
+[generate.py:53] - ✅ wan2.2_t2v                - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+[generate.py:53] - ✅ wan2.1_t2v                - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+[generate.py:53] - ✅ wan2.2_i2v                - Defalut: Wan-AI/Wan2.2-I2V-A14B-Diffusers
+[generate.py:53] - ✅ wan2.1_i2v                - Defalut: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
+[generate.py:53] - ✅ wan2.2_vace               - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
+[generate.py:53] - ✅ wan2.1_vace               - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
+[generate.py:53] - ✅ ovis_image                - Defalut: AIDC-AI/Ovis-Image-7B
+[generate.py:53] - ✅ zimage                    - Defalut: Tongyi-MAI/Z-Image-Turbo
+[generate.py:53] - ✅ zimage_controlnet         - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
+[generate.py:53] - ✅ longcat_image             - Defalut: meituan-longcat/LongCat-Image
+[generate.py:53] - ✅ longcat_image_edit        - Defalut: meituan-longcat/LongCat-Image-Edit
 ```
 
 ## 📚 Single GPU Inference
@@ -66,6 +74,7 @@ python3 generate.py qwen_image
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
+python3 generate.py zimage_controlnet 
 python3 generate.py generate longcat_image
 python3 generate.py generate longcat_image_edit
 # w/ cache acceleration
@@ -74,6 +83,7 @@ python3 generate.py flux --cache --taylorseer
 python3 generate.py flux_nunchaku --cache
 python3 generate.py qwen_image --cache
 python3 generate.py zimage --cache --rdt 0.6 --scm fast
+python3 generate.py zimage_controlnet --cache --rdt 0.6 --scm fast
 # enable cpu offload or vae tiling if your encounter an OOM error
 python3 generate.py qwen_image --cache --cpu-offload
 python3 generate.py qwen_image --cache --cpu-offload --vae-tiling
@@ -104,6 +114,8 @@ cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥
 torchrun --nproc_per_node=4 generate.py flux --parallel ulysses 
 torchrun --nproc_per_node=4 generate.py flux --parallel ring 
 torchrun --nproc_per_node=4 generate.py flux --parallel tp
+torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses 
+torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses 
 # ulysses anything attention
 torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --ulysses-anything
 torchrun --nproc_per_node=4 generate.py qwen_image_edit_lightning --parallel ulysses --ulysses-anything
@@ -152,6 +164,9 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_l
 torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_lightning \
          --parallel tp --parallel-text-encoder --quantize-type float8_weight_only \
          --steps 4 --track-memory --compile
+# Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
+torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
+         --parallel-controlnet --cache --rdt 0.6 --scm fast
 ```
 
 ## 📚 End2End Examples
