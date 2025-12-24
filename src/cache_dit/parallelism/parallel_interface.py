@@ -93,6 +93,7 @@ def enable_parallelism(
     return transformer
 
 
+# Some helper functions for parallelism enabling
 def _maybe_set_module_attention_backend(
     module: torch.nn.Module | ModelMixin,
     parallelism_config: ParallelismConfig,
