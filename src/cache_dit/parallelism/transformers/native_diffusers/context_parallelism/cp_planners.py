@@ -80,6 +80,7 @@ def _activate_cp_planners():
     from .cp_plan_zimage import ZImageContextParallelismPlanner  # noqa: F401
     from .cp_plan_chrono_edit import ChronoEditContextParallelismPlanner  # noqa: F401
     from .cp_plan_ovis_image import OvisImageContextParallelismPlanner  # noqa: F401
+    from .cp_plan_longcat_image import LongCatImageContextParallelismPlanner  # noqa: F401
 
     try:
         import nunchaku  # noqa: F401

@@ -70,8 +70,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 | 📚Model | [Cache](./)  | [C-P](./) | [T-P](./) | [TE-P](./) | [CN-P](./) | [VE-P](./) | 
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|  
-| **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
-| **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
+| **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🔥[Z-Image-Turbo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🔥[Z-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
