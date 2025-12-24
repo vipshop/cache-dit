@@ -260,7 +260,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div id="user-guide"></div>
 
-For more advanced features such as **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **Patch Functor**, **DBCache**, **DBPrune**, **TaylorSeer Calibrator**, **SCM**, **Hybrid Cache CFG**, **Context Parallelism (w/ UAA)** and **Tensor Parallelism**, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
+For more advanced features, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
 
 ### 🚀Quick Links
 
