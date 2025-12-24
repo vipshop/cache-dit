@@ -88,7 +88,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 ## 🔥Supported DiTs
 
 > [!Tip] 
-> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; so, any pipelines that include the supported transformer are already supported by cache-dit. ✅/☑️: known work and official supported now, ✅ denotes the latest 🔥HOT models; ✖️: not supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku); **[Cache](./)**: Hybrid Cache; **[C-P](./)**: Context Parallelism; **[T-P](./)**: Tensor Parallelism; **[TE-P](./)**: Text Encoder Parallelism; **[CN-P](./)**: ControlNet Parallelism;  **[VE-P](./)**: VAE Parallelism.
+> ✅/☑️: known work and official supported now, ✅ denotes the latest 🔥HOT models; ✖️: not supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku); **[Cache](./)**: Hybrid Cache; **[C-P](./)**: Context Parallelism; **[T-P](./)**: Tensor Parallelism; **[TE-P](./)**: Text Encoder Parallelism; **[CN-P](./)**: ControlNet Parallelism;  **[VE-P](./)**: VAE Parallelism.
 
 <div align="center">
 
