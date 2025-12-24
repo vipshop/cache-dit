@@ -7,12 +7,10 @@ from cache_dit.parallelism.parallel_config import ParallelismConfig
 from cache_dit.logger import init_logger
 
 try:
-    from ..utils import (
+    from diffusers import ContextParallelConfig  # noqa: F401
+    from cache_dit.parallelism.attention import (
+        _maybe_register_custom_attn_backends,
         _is_diffusers_parallelism_available,
-        ContextParallelConfig,
-    )
-    from .attention import _maybe_register_custom_attn_backends
-    from .attention._templated_ulysses import (
         enable_ulysses_anything,
         enable_ulysses_float8,
     )
@@ -85,24 +83,6 @@ def maybe_enable_context_parallelism(
 
                 transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
                 _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
-
-                # ControlNet may need also need apply context parallelism, e.g., ZImage ControlNet
-                controlnet = extra_parallel_kwargs.get("controlnet", None)
-                if controlnet is not None:
-                    assert isinstance(controlnet, ModelMixin)
-                    try:
-                        cp_plan_cn = ContextParallelismPlannerRegister.get_planner(
-                            controlnet
-                        )().apply(transformer=controlnet, **extra_parallel_kwargs)
-                    except Exception:
-                        cp_plan_cn = None  # ControlNet may not support CP plan
-
-                    if cp_plan_cn is not None:
-                        controlnet.enable_parallelism(config=cp_config, cp_plan=cp_plan_cn)
-                        logger.info(
-                            f"Parallelize ControlNet: {controlnet.__class__.__name__}, "
-                            f"id:{id(controlnet)}, {parallelism_config.strify(True)}"
-                        )
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."

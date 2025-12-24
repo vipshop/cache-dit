@@ -24,6 +24,11 @@ from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
+__all__ = [
+    "_is_diffusers_parallelism_available",
+    "_maybe_patch_find_submodule",
+]
+
 # NOTE: Add this utility function to diffusers to support ModuleDict, such as 'all_final_layer', like ZImage
 # Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/hooks/context_parallel.py#L283
 # This function is only used when diffusers native context parallelism is enabled and can compatible with the

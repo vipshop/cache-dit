@@ -27,17 +27,16 @@ from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
 )
-from .attention._distributed_primitives import _unified_all_to_all_o_async_fn
-from .attention._distributed_primitives import _unified_all_to_all_qkv_async_fn
-from .attention._distributed_primitives import _prepare_ulysses_comm_metadata
-from ..utils import _maybe_patch_find_submodule
+from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
+from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
+from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
+from cache_dit.parallelism.attention import _maybe_patch_find_submodule
 
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
 
-@ContextParallelismPlannerRegister.register("ZImageControlNetModel")
 @ContextParallelismPlannerRegister.register("ZImageTransformer2DModel")
 class ZImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
@@ -57,39 +56,6 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
-
-        cls_name = transformer.__class__.__name__
-        # The cp plan for ZImage ControlNet is very complicated, I [HATE] it.
-        if cls_name.startswith("ZImageControlNetModel"):
-            n_control_layers = len(transformer.control_layers)  # 15
-            n_control_noise_refiner_layers = len(transformer.control_noise_refiner)  # 2
-            _cp_plan = {
-                "control_noise_refiner.0": {
-                    "c": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                },
-                "control_noise_refiner.*": {
-                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                    "freqs_cis": ContextParallelInput(
-                        split_dim=1, expected_dims=3, split_output=False
-                    ),
-                },
-                f"control_noise_refiner.{n_control_noise_refiner_layers - 1}": ContextParallelOutput(
-                    gather_dim=2, expected_dims=4
-                ),
-                "control_layers.0": {
-                    "c": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                },
-                "control_layers.*": {
-                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                    "freqs_cis": ContextParallelInput(
-                        split_dim=1, expected_dims=3, split_output=False
-                    ),
-                },
-                f"control_layers.{n_control_layers - 1}": ContextParallelOutput(
-                    gather_dim=2, expected_dims=4
-                ),
-            }
-            return _cp_plan
 
         experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
         if experimental_ulysses_async:
@@ -113,8 +79,8 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         n_layers = len(transformer.layers)  # 30
         # controlnet layer idx: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
         # num_controlnet_samples = len(transformer.layers) // 2  # 15
-        controlnet = kwargs.get("controlnet", None)
-        if controlnet is None:
+        has_controlnet = kwargs.get("has_controlnet", None)
+        if not has_controlnet:
             # cp plan for ZImageTransformer2DModel if no controlnet
             _cp_plan = {
                 # 0. Hooks for noise_refiner layers, 2
@@ -204,12 +170,6 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
                 "all_final_layer": ContextParallelOutput(gather_dim=1, expected_dims=3),
             }
         return _cp_plan
-
-
-# TODO: Original implementation using complex numbers, which is not be supported in torch.compile yet.
-# May be Reference:
-# - https://github.com/triple-Mu/Z-Image-TensorRT/blob/4efc5749e9a0d22344e6c4b8a09d2223dd0a7e17/step_by_step/2-remove-complex-op.py#L26C1-L36C25
-# - https://github.com/huggingface/diffusers/pull/12725
 
 
 # NOTE: Support Async Ulysses QKV projection for Z-Image
