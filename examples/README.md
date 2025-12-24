@@ -172,7 +172,7 @@ torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
          --parallel-controlnet --cache --rdt 0.6 --scm fast
 torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
          --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
-         --compile-controlnet --ulysses-float8         
+         --compile-controlnet --ulysses-float8 --attn _sdpa_cudnn     
 ```
 
 ## 📚 End2End Examples
