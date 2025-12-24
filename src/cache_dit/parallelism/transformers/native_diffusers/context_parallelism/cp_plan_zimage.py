@@ -125,6 +125,10 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             }
         else:
             # Special cp plan for ZImageTransformer2DModel with ZImageControlNetModel
+            logger.info(
+                "Using special context parallelism plan for ZImageTransformer2DModel "
+                "with ZImageControlNetModel."
+            )
             _cp_plan = {
                 # zimage controlnet shared the same refiner as zimage, so, we need to
                 # add gather hooks for all layers in noise_refiner and context_refiner.
