@@ -277,13 +277,6 @@ def get_args(
         default=False,
         help="Enable quantization for transformer",
     )
-    parser.add_argument(
-        "--quantize-text-encoder",
-        "--q-text",
-        action="store_true",
-        default=False,
-        help="Enable quantization for text encoder",
-    )
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -306,8 +299,42 @@ def get_args(
         ],
     )
     parser.add_argument(
+        "--quantize-text-encoder",
+        "--q-text",
+        action="store_true",
+        default=False,
+        help="Enable quantization for text encoder",
+    )
+    parser.add_argument(
         "--quantize-text-type",
         "--q-text-type",
+        type=str,
+        default=None,
+        choices=[
+            None,
+            "float8",
+            "float8_weight_only",
+            "float8_wo",  # alias for float8_weight_only
+            "int8",
+            "int8_weight_only",
+            "int8_wo",  # alias for int8_weight_only
+            "int4",
+            "int4_weight_only",
+            "int4_wo",  # alias for int4_weight_only
+            "bitsandbytes_4bit",
+            "bnb_4bit",  # alias for bitsandbytes_4bit
+        ],
+    )
+    parser.add_argument(
+        "--quantize-controlnet",
+        "--q-controlnet",
+        action="store_true",
+        default=False,
+        help="Enable quantization for text encoder",
+    )
+    parser.add_argument(
+        "--quantize-controlnet-type",
+        "--q-controlnet-type",
         type=str,
         default=None,
         choices=[
@@ -572,6 +599,20 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.quantize_text_type = "int4_weight_only"
     if args.quantize_text_type == "bnb_4bit":  # alias
         args.quantize_text_type = "bitsandbytes_4bit"
+
+    # Handle alias for quantize_controlnet_type
+    if args.quantize_controlnet and args.quantize_controlnet_type is None:
+        # default to same as quantize_type
+        args.quantize_controlnet_type = args.quantize_type
+
+    if args.quantize_controlnet_type == "float8_wo":  # alias
+        args.quantize_controlnet_type = "float8_weight_only"
+    if args.quantize_controlnet_type == "int8_wo":  # alias
+        args.quantize_controlnet_type = "int8_weight_only"
+    if args.quantize_controlnet_type == "int4_wo":  # alias
+        args.quantize_controlnet_type = "int4_weight_only"
+    if args.quantize_controlnet_type == "bnb_4bit":  # alias
+        args.quantize_controlnet_type = "bitsandbytes_4bit"
 
     if args.mask_policy is not None and not args.steps_mask:
         # Enable steps mask if mask_policy is specified
@@ -972,6 +1013,50 @@ def maybe_quantize_text_encoder(
     return pipe_or_adapter
 
 
+def maybe_quantize_controlnet(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    # Quantize controlnet by default if quantize_controlnet is enabled
+    if args.quantize_controlnet:
+        if args.quantize_controlnet_type in ("bitsandbytes_4bit", "bnb_4bit"):
+            logger.debug(
+                "bitsandbytes_4bit quantization should be handled by"
+                " PipelineQuantizationConfig in from_pretrained."
+            )
+            return pipe_or_adapter
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please quantize controlnet manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "controlnet"):
+            controlnet = getattr(pipe, "controlnet", None)
+            if controlnet is not None:
+                controlnet_cls_name = controlnet.__class__.__name__
+                if isinstance(controlnet, torch.nn.Module):
+                    logger.info(
+                        f"Quantizing controlnet module: {controlnet_cls_name} to"
+                        f" {args.quantize_controlnet_type} ..."
+                    )
+                    controlnet = cache_dit.quantize(
+                        controlnet,
+                        quant_type=args.quantize_controlnet_type,
+                    )
+                    setattr(pipe, "controlnet", controlnet)
+                else:
+                    logger.warning(
+                        f"Cannot quantize controlnet module: {controlnet_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "controlnet", controlnet)
+        else:
+            logger.warning("quantize_controlnet is set but no controlnet found in the pipeline.")
+    return pipe_or_adapter
+
+
 def pipe_quant_bnb_4bit_config(
     args,
     components_to_quantize: Optional[List[str]] = ["text_encoder"],
@@ -1177,6 +1262,7 @@ def maybe_apply_optimization(
     # applied after TP.
     maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
+    maybe_quantize_controlnet(args, pipe_or_adapter)
 
     # VAE Tiling or Slicing
     maybe_vae_tiling_or_slicing(args, pipe_or_adapter)
