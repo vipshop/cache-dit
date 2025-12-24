@@ -299,7 +299,7 @@ def enable_cache(
             parallelism_config, ParallelismConfig
         ), "parallelism_config should be of type ParallelismConfig."
 
-        # Prefer custom has_controlnet flag if not provided, otherwise,
+        # Prefer custom has_controlnet flag from users if provided, otherwise,
         # we will automatically check whether the pipeline has controlnet.
         if "has_controlnet" not in parallelism_config.parallel_kwargs:
             # This flag is used to decide whether to use the special parallelism
