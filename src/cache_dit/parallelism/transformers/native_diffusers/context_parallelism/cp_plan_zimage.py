@@ -125,7 +125,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             }
         else:
             # Special cp plan for ZImageTransformer2DModel with ZImageControlNetModel
-            logger.info(
+            logger.warning(
                 "Using special context parallelism plan for ZImageTransformer2DModel "
                 "due to the 'has_controlnet' flag is set to True."
             )
