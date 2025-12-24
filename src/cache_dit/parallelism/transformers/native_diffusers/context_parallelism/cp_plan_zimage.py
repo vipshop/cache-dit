@@ -4,7 +4,6 @@ from typing import Optional
 from torch.distributed import DeviceMesh
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers import ZImageTransformer2DModel
-from diffusers import ZImageControlNetModel
 from diffusers.models.transformers.transformer_z_image import (
     ZSingleStreamAttnProcessor,
     dispatch_attention_fn,
@@ -50,9 +49,8 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
-                transformer,
-                (ZImageTransformer2DModel, ZImageControlNetModel),
-            ), "Transformer must be an instance of ZImageTransformer2DModel or ZImageControlNetModel"
+                transformer, ZImageTransformer2DModel
+            ), "Transformer must be an instance of ZImageTransformer2DModel"
             if hasattr(transformer, "_cp_plan"):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
