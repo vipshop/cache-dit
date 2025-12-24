@@ -48,36 +48,7 @@ def enable_parallelism(
 
     # Set attention backend for both context parallelism and tensor parallelism if the
     # transformer is from diffusers and supports setting attention backend.
-    if hasattr(transformer, "set_attention_backend") and isinstance(transformer, ModelMixin):
-        attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
-        # native, _native_cudnn, flash, etc.
-        if attention_backend is None:
-            # Default to native for context parallelism due to:
-            # - attn mask support (re-registered in cache-dit)
-            # - general compatibility with various models
-            # NOTE: We only set default attention backend for NATIVE_DIFFUSER backend here
-            # while using context parallelism. For other backends, we do not change the
-            # attention backend if it is None.
-            if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
-                transformer.set_attention_backend("native")
-                logger.warning(
-                    "attention_backend is None, set default attention backend "
-                    "to native for context parallelism in NATIVE_DIFFUSER backend."
-                )
-        else:
-            # Ensure custom attention backends are registered in cache-dit.
-            if not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH:
-                from .attention import (
-                    _maybe_register_custom_attn_backends,
-                )
-
-                _maybe_register_custom_attn_backends()
-
-            transformer.set_attention_backend(attention_backend)
-            logger.info(
-                "Found attention_backend from config, set attention "
-                f"backend to: {attention_backend}"
-            )
+    _maybe_set_module_attention_backend(transformer, parallelism_config)
 
     # Check text encoder and VAE for extra parallel modules
     extra_parallel_modules: list[torch.nn.Module] = []
@@ -108,6 +79,7 @@ def enable_parallelism(
                     controlnet=module,
                     parallelism_config=parallelism_config,
                 )
+                _maybe_set_module_attention_backend(module, parallelism_config)
             # Enable parallelism for VAE
             elif _is_vae(module) and not _is_parallelized(module):
                 logger.warning(
@@ -119,6 +91,45 @@ def enable_parallelism(
     maybe_empty_cache()
 
     return transformer
+
+
+def _maybe_set_module_attention_backend(
+    module: torch.nn.Module | ModelMixin,
+    parallelism_config: ParallelismConfig,
+) -> None:
+    # Set attention backend for both context parallelism and tensor parallelism if the
+    # transformer is from diffusers and supports setting attention backend.
+    module_cls_name = module.__class__.__name__
+    if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
+        attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
+        # native, _native_cudnn, flash, etc.
+        if attention_backend is None:
+            # Default to native for context parallelism due to:
+            # - attn mask support (re-registered in cache-dit)
+            # - general compatibility with various models
+            # NOTE: We only set default attention backend for NATIVE_DIFFUSER backend here
+            # while using context parallelism. For other backends, we do not change the
+            # attention backend if it is None.
+            if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
+                module.set_attention_backend("native")
+                logger.warning(
+                    "attention_backend is None, set default attention backend of "
+                    f"{module_cls_name} to native for context parallelism."
+                )
+        else:
+            # Ensure custom attention backends are registered in cache-dit.
+            if not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH:
+                from .attention import (
+                    _maybe_register_custom_attn_backends,
+                )
+
+                _maybe_register_custom_attn_backends()
+
+            module.set_attention_backend(attention_backend)
+            logger.info(
+                "Found attention_backend from config, set attention backend of "
+                f"{module_cls_name} to: {attention_backend}."
+            )
 
 
 def _is_text_encoder(module: torch.nn.Module) -> bool:
