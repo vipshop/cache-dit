@@ -3,10 +3,10 @@
 
 |Z-Image-ControlNet| Context Parallel: Ulysses 2 |  Context Parallel: Ulysses 4 | + ControlNet Parallel |
 |:---:|:---:|:---:|:---:|
-|Base L20x1: 22s|15.7s|12.7s|🚀7.71s|
+|Base L20x1: 22s|15.7s|12.7s|**🚀7.71s**|
 | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses2.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4_CNP.png" width=200px> |
 | **+ Hybrid Cache** | **+ Torch Compile** | **+ Async Ulyess CP** | **+ FP8 All2All** | 
-|🚀6.85s|6.45s|6.38s|🚀6.19s|
+|**🚀6.85s**|6.45s|6.38s|**🚀6.19s**|
 | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> |<img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP.png" width=200px> 
 
 </div>
@@ -250,25 +250,34 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 ```bash
 python3 generate.py --help
 
-usage: generate.py [-h] [--model-path MODEL_PATH] [--image-path IMAGE_PATH] [--mask-image-path MASK_IMAGE_PATH] [--prompt PROMPT] [--negative-prompt NEGATIVE_PROMPT] [--num_inference_steps NUM_INFERENCE_STEPS] [--warmup WARMUP] [--repeat REPEAT]
-                   [--height HEIGHT] [--width WIDTH] [--seed SEED] [--num-frames NUM_FRAMES] [--save-path SAVE_PATH] [--cache] [--cache-summary] [--Fn-compute-blocks FN_COMPUTE_BLOCKS] [--Bn-compute-blocks BN_COMPUTE_BLOCKS]
-                   [--residual-diff-threshold RESIDUAL_DIFF_THRESHOLD] [--max-warmup-steps MAX_WARMUP_STEPS] [--warmup-interval WARMUP_INTERVAL] [--max-cached-steps MAX_CACHED_STEPS] [--max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS]
-                   [--taylorseer] [--taylorseer-order TAYLORSEER_ORDER] [--steps-mask] [--mask-policy {None,slow,s,medium,m,fast,f,ultra,u}] [--quantize] [--quantize-text-encoder]
-                   [--quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--parallel-type {None,tp,ulysses,ring}] [--parallel-vae]
-                   [--parallel-text-encoder] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--disable-compute-comm-overlap] [--cpu-offload] [--sequential-cpu-offload]
-                   [--vae-tiling] [--vae-slicing] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--max-autotune] [--track-memory] [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR]
-                   [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes] [--disable-fuse-lora DISABLE_FUSE_LORA]
-                   {generate,list} [{None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage}]
+usage: generate.py [-h] [--model-path MODEL_PATH] [--controlnet-path CONTROLNET_PATH] [--lora-path LORA_PATH] [--transformer-path TRANSFORMER_PATH] [--image-path IMAGE_PATH] [--mask-image-path MASK_IMAGE_PATH] [--prompt PROMPT]
+                   [--negative-prompt NEGATIVE_PROMPT] [--num_inference_steps NUM_INFERENCE_STEPS] [--warmup WARMUP] [--repeat REPEAT] [--height HEIGHT] [--width WIDTH] [--seed SEED] [--num-frames NUM_FRAMES] [--save-path SAVE_PATH] [--cache]
+                   [--cache-summary] [--Fn-compute-blocks FN_COMPUTE_BLOCKS] [--Bn-compute-blocks BN_COMPUTE_BLOCKS] [--residual-diff-threshold RESIDUAL_DIFF_THRESHOLD] [--max-warmup-steps MAX_WARMUP_STEPS] [--warmup-interval WARMUP_INTERVAL]
+                   [--max-cached-steps MAX_CACHED_STEPS] [--max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS] [--taylorseer] [--taylorseer-order TAYLORSEER_ORDER] [--steps-mask] [--mask-policy {None,slow,s,medium,m,fast,f,ultra,u}]
+                   [--quantize] [--quantize-text-encoder] [--quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}]
+                   [--quantize-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--parallel-type {None,tp,ulysses,ring}] [--parallel-vae]
+                   [--parallel-text-encoder] [--parallel-controlnet] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--disable-compute-comm-overlap] [--cpu-offload]
+                   [--sequential-cpu-offload] [--device-map-balance] [--vae-tiling] [--vae-slicing] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--compile-controlnet] [--max-autotune] [--track-memory]
+                   [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR] [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes] [--disable-fuse-lora DISABLE_FUSE_LORA]
+                   [{generate,list,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}]
+                   [{None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}]
 
 positional arguments:
-  {generate,list}       The task to perform. If not specified, run the specified example. Or, Use 'list' to list all available examples.
-  {None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage}
+  {generate,list,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}
+                        The task to perform or example name to run. Use 'list' to list all available examples, or specify an example name directly (defaults to 'generate' task).
+  {None,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}
                         Names of the examples to run. If not specified, skip running example.
 
 options:
   -h, --help            show this help message and exit
   --model-path MODEL_PATH
                         Override model path if provided
+  --controlnet-path CONTROLNET_PATH
+                        Override controlnet model path if provided
+  --lora-path LORA_PATH
+                        Override lora model path if provided
+  --transformer-path TRANSFORMER_PATH
+                        Override transformer model path if provided
   --image-path IMAGE_PATH
                         Override image path if provided
   --mask-image-path MASK_IMAGE_PATH
@@ -314,10 +323,13 @@ options:
   --quantize-text-encoder, --q-text
                         Enable quantization for text encoder
   --quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
+  --quantize-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
   --parallel-type {None,tp,ulysses,ring}, --parallel {None,tp,ulysses,ring}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
+  --parallel-controlnet
+                        Enable ControlNet parallelism if applicable.
   --attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context parallelism
@@ -331,6 +343,8 @@ options:
                         Enable CPU offload for model if applicable.
   --sequential-cpu-offload
                         Enable sequential GPU offload for model if applicable.
+  --device-map-balance, --device-map
+                        Enable automatic device map balancing model if multiple GPUs are available.
   --vae-tiling          Enable VAE tiling for low memory device.
   --vae-slicing         Enable VAE slicing for low memory device.
   --compile             Enable compile for transformer
@@ -339,6 +353,7 @@ options:
   --compile-vae         Enable compile for VAE
   --compile-text-encoder, --compile-text
                         Enable compile for text encoder
+  --compile-controlnet  Enable compile for ControlNet
   --max-autotune        Enable max-autotune mode for torch.compile
   --track-memory        Track and report peak GPU memory usage
   --profile             Enable profiling with torch.profiler
