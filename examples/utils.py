@@ -565,13 +565,9 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
 
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+    # Force enable quantization if quantize_type is specified
     if args.quantize_type is not None:
-        # Force enable quantization if quantize_type is specified
         args.quantize = True
-
-    if args.quantize_text_type is not None:
-        # Force enable quantization for text encoder if quantize_text_type is specified
-        args.quantize_text_encoder = True
 
     # Handle alias for quantize_type
     if args.quantize and args.quantize_type is None:
@@ -586,6 +582,9 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.quantize_type == "bnb_4bit":  # alias
         args.quantize_type = "bitsandbytes_4bit"
 
+    # Force enable quantization for text encoder if quantize_text_type is specified
+    if args.quantize_text_type is not None:
+        args.quantize_text_encoder = True
     # Handle alias for quantize_text_type
     if args.quantize_text_encoder and args.quantize_text_type is None:
         # default to same as quantize_type
@@ -600,6 +599,9 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.quantize_text_type == "bnb_4bit":  # alias
         args.quantize_text_type = "bitsandbytes_4bit"
 
+    # Force enable quantization for controlnet if quantize_controlnet_type is specified
+    if args.quantize_controlnet_type is not None:
+        args.quantize_controlnet = True
     # Handle alias for quantize_controlnet_type
     if args.quantize_controlnet and args.quantize_controlnet_type is None:
         # default to same as quantize_type
