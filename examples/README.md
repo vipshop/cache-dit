@@ -1,10 +1,13 @@
 <div align="center">
     <h1> 🚀 Examples for Cache-DiT</h1>
 
-|Z-Image-ControlNet| Context Parallelism: Ulysses 2 |  Context Parallelism: Ulysses 4 | + ControlNet Parallelism | + Hybrid Cache | + Compile | + Async Ulyess | + FP8 All2All | 
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|Base L20x1: 22s|15.7s|12.7s|7.71s|6.85s|6.45s|6.41s|6.19s|
-| <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE.png" width=100px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses2.png" width=100px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4.png" width=100px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4_CNP.png" width=100px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=100px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=100px> |<img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=100px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP.png" width=100px> 
+|Z-Image-ControlNet| Context Parallelism: Ulysses 2 |  Context Parallelism: Ulysses 4 | + ControlNet Parallelism |
+|:---:|:---:|:---:|:---:|
+|Base L20x1: 22s|15.7s|12.7s|🚀7.71s|
+| <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE.png" width=150px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses2.png" width=150px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4.png" width=150px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4_CNP.png" width=150px> |
+| **+ Hybrid Cache** | **+ Torch Compile** | **+ Async Ulyess CP** | **+ FP8 All2All** | 
+|🚀6.85s|6.45s|6.38s|🚀6.19s|
+| <img src="./assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=150px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=150px> |<img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=150px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP.png" width=150px> 
 
 </div>
 
@@ -167,6 +170,9 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_l
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
 torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
          --parallel-controlnet --cache --rdt 0.6 --scm fast
+torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
+         --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
+         --compile-controlnet --ulysses-float8         
 ```
 
 ## 📚 End2End Examples
