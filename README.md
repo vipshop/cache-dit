@@ -88,7 +88,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 ## 🔥Supported DiTs
 
 > [!Tip] 
-> ✅/☑️: official supported now; ✖️: not supported now; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: [nunchaku](https://github.com/nunchaku-tech/nunchaku) 4-bits; **[C-P](./)**: Context Parallelism; **[T-P](./)**: Tensor Parallelism; **[TE-P](./)**: Text Encoder Parallelism; **[CN-P](./)**: ControlNet Parallelism;  **[VE-P](./)**: VAE Parallelism.
+> ✅/☑️: supported; ✖️: not supported now; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: [nunchaku](https://github.com/nunchaku-tech/nunchaku) 4-bits; **[C-P](./)**: Context Parallelism; **[T-P](./)**: Tensor Parallelism; **[TE-P](./)**: Text Encoder Parallelism; **[CN-P](./)**: ControlNet Parallelism;  **[VE-P](./)**: VAE Parallelism.
 
 <div align="center">
 
