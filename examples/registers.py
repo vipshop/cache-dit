@@ -34,6 +34,7 @@ __all__ = [
     "wan_vace_example",
     "ovis_image_example",
     "zimage_example",
+    "zimage_controlnet_example",
     "longcat_image_example",
     "longcat_image_edit_example",
 ]
