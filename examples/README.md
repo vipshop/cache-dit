@@ -6,7 +6,7 @@
 |Base L20x1: 22s|15.7s|12.7s|**🚀7.71s**|
 | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses2.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_NONE_Ulysses4_CNP.png" width=200px> |
 | **+ Hybrid Cache** | **+ Torch Compile** | **+ Async Ulyess CP** | **+ FP8 All2All + CUDNN ATTN** | 
-|**🚀6.85s**|6.45s|6.38s|**🚀6.19s, 5.52s**|
+|**🚀6.85s**|6.45s|6.38s|**🚀6.19s, 5.47s**|
 | <img src="./assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> |<img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=200px> | <img src="./assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP_sdpa_cudnn.png" width=200px> 
 
 </div>
@@ -172,7 +172,8 @@ torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
          --parallel-controlnet --cache --rdt 0.6 --scm fast
 torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
          --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
-         --compile-controlnet --ulysses-float8 --attn _sdpa_cudnn     
+         --compile-controlnet --ulysses-float8 --attn _sdpa_cudnn \
+         --warmup 2 --repeat 4     
 ```
 
 ## 📚 End2End Examples
