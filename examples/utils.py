@@ -1116,9 +1116,6 @@ def maybe_apply_optimization(
             "attention_backend": ("native" if not args.attn else args.attn),
             # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
             "extra_parallel_modules": extra_parallel_modules,
-            # Specific modules for controlnet, they may running into different
-            # implementation of cp plan or tp plan. e.g., z-image-controlnet
-            "controlnet": kwargs.get("controlnet", None),
         }
         if backend == ParallelismBackend.NATIVE_PYTORCH:
             if args.attn is None:
