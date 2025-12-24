@@ -260,15 +260,18 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div id="user-guide"></div>
 
-For more advanced features, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
 
 ### 🚀Quick Links
 
 - [📊Examples](./examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
 - [🌐HTTP Serving](./docs/SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
+- [🎉User Guide](./docs/User_Guide.md) - For more advanced features, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
 - [❓FAQ](./docs/FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
 
+
 ### 📚Documentation
+
+
 - [⚙️Installation](./docs/User_Guide.md#️installation)
 - [🔥Supported DiTs](./docs/User_Guide.md#supported)
 - [🔥Benchmarks](./docs/User_Guide.md#benchmarks)
