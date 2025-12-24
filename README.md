@@ -101,15 +101,15 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🔥[HuyuanVideo-1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
 | **🔥[FLUX.2-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
-| **🎉[FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Qwen-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Qwen-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Qwen-Image-Edit-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Wan 2.2 T2V/ITV ](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
-| **🎉[Wan 2.2 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
+| **🎉[FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[FLUX.1-Fill](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Qwen-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Qwen-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Qwen-Image-Edit-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Wan 2.2 T2V/ITV ](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| **🎉[Wan 2.2 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | **🎉[Wan 2.1 T2V/ITV](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[Wan 2.1 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
 | **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ☑️ | ☑️ | ☑️ | ☑️ | ✖️ | ✖️ |
