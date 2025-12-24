@@ -352,6 +352,12 @@ def get_args(
         help="Enable text encoder parallelism if applicable.",
     )
     parser.add_argument(
+        "--parallel-controlnet",
+        action="store_true",
+        default=False,
+        help="Enable ControlNet parallelism if applicable.",
+    )
+    parser.add_argument(
         "--attn",  # attention backend for context parallelism
         type=str,
         default=None,
@@ -455,6 +461,12 @@ def get_args(
         action="store_true",
         default=False,
         help="Enable compile for text encoder",
+    )
+    parser.add_argument(
+        "--compile-controlnet",
+        action="store_true",
+        default=False,
+        help="Enable compile for ControlNet",
     )
     parser.add_argument(
         "--max-autotune",
@@ -621,6 +633,11 @@ def prepare_extra_parallel_modules(
     if args.parallel_vae:
         if hasattr(pipe, "vae"):
             extra_parallel_modules.append(getattr(pipe, "vae"))
+    if args.parallel_controlnet:
+        if hasattr(pipe, "controlnet"):
+            extra_parallel_modules.append(getattr(pipe, "controlnet"))
+        else:
+            logger.warning("parallel-controlnet is set but no ControlNet found in the pipeline.")
     return extra_parallel_modules
 
 
@@ -682,6 +699,44 @@ def maybe_compile_text_encoder(
         else:
             logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
     return pipe_or_adapter
+
+
+def maybe_compile_controlnet(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.compile_controlnet:
+        cache_dit.set_compile_configs()
+        torch.set_float32_matmul_precision("high")
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please compile transformer manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "controlnet"):
+            controlnet = getattr(pipe, "controlnet", None)
+            if controlnet is not None and not isinstance(
+                controlnet,
+                torch._dynamo.OptimizedModule,  # already compiled
+            ):
+                controlnet_cls_name = controlnet.__class__.__name__
+                if isinstance(controlnet, torch.nn.Module):
+                    logger.info(f"Compiling controlnet module: {controlnet_cls_name} ...")
+                    controlnet = torch.compile(
+                        controlnet,
+                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                    )
+                    setattr(pipe, "controlnet", controlnet)
+                else:
+                    logger.warning(
+                        f"Cannot compile controlnet module: {controlnet_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "controlnet", controlnet)
+        else:
+            logger.warning("compile is set but no controlnet found in the pipeline.")
 
 
 def maybe_compile_vae(
@@ -1132,6 +1187,7 @@ def maybe_apply_optimization(
     # Compilation
     maybe_compile_transformer(args, pipe_or_adapter)
     maybe_compile_text_encoder(args, pipe_or_adapter)
+    maybe_compile_controlnet(args, pipe_or_adapter)
     maybe_compile_vae(args, pipe_or_adapter)
 
     # CPU Offload

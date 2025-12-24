@@ -88,21 +88,6 @@ def enable_parallelism(
 
     if extra_parallel_modules:
 
-        def _is_text_encoder(module: torch.nn.Module) -> bool:
-            _import_module = module.__class__.__module__
-            return _import_module.startswith("transformers")
-
-        def _is_controlnet(module: torch.nn.Module) -> bool:
-            _import_module = module.__class__.__module__
-            return _import_module.startswith("diffusers.models.controlnet")
-
-        def _is_vae(module: torch.nn.Module) -> bool:
-            _import_module = module.__class__.__module__
-            return _import_module.startswith("diffusers.models.autoencoder")
-
-        def _is_parallelized(module: torch.nn.Module) -> bool:
-            return getattr(module, "_is_parallelized", False)
-
         from .text_encoders.native_pytorch import (
             maybe_enable_parallelism_for_text_encoder,
         )
@@ -134,6 +119,25 @@ def enable_parallelism(
     maybe_empty_cache()
 
     return transformer
+
+
+def _is_text_encoder(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("transformers")
+
+
+def _is_controlnet(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("diffusers.models.controlnet")
+
+
+def _is_vae(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("diffusers.models.autoencoder")
+
+
+def _is_parallelized(module: torch.nn.Module) -> bool:
+    return getattr(module, "_is_parallelized", False)
 
 
 def remove_parallelism_stats(
