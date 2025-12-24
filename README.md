@@ -88,11 +88,11 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 ## 🔥Supported DiTs
 
 > [!Tip] 
-> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; so, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **TE-P**: Text Encoder Parallelism; **CN-P**: ControlNet Parallelism;  **VAE-P**: VAE Parallelism.
+> One **Model Series** may contain **many** pipelines. cache-dit applies optimizations at the **Transformer** level; so, any pipelines that include the supported transformer are already supported by cache-dit. ✅: known work and official supported now; ✖️: unofficial supported now, but maybe support in the future; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: **4-bits** models w/ [nunchaku](https://github.com/nunchaku-tech/nunchaku) **W4A4**; **Context-P**: Context Parallelism; **Tensor-P**: Tensor Parallelism; **TE-P**: Text Encoder Parallelism; **CN-P**: ControlNet Parallelism;  **VAE-P**: VAE Parallelism.
 
 <div align="center">
 
-| 📚Model | [Hybrid Cache](./)  | Context Parallel | Tensor Parallel | TE-P | CN-P | VAE-P | 
+| 📚Model | [Cache](./)  | Context-P | Tensor-P | TE-P | CN-P | VAE-P | 
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|  
 | **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
 | **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
