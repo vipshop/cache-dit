@@ -800,6 +800,10 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
 def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImageControlNetPipeline, ZImageControlNetModel
 
+    if args.cache:
+        # Only warmup 4 steps (total 9 steps) for distilled models
+        args.max_warmup_steps = min(4, args.max_warmup_steps)
+
     controlnet_dir = _path(
         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
         args=args,
