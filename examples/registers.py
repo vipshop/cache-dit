@@ -328,8 +328,6 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     else:
         model_path_or_name = _path("Qwen/Qwen-Image-Edit-2509", args)
 
-    base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
-
     return Example(
         args=args,
         init_config=ExampleInitConfig(
@@ -357,8 +355,8 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             true_cfg_scale=true_cfg_scale,  # 1.0 means no separate cfg for lightning models
             # image1, image2
             image=[
-                load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
-                load_image(f"{base_image_url}/edit2509/edit2509_2.jpg"),
+                load_image("./data/edit2509_1.jpg"),
+                load_image("./data/edit2509_2.jpg"),
             ],
         ),
     )
