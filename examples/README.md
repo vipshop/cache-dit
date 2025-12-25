@@ -49,6 +49,7 @@ python3 generate.py list  # list all available examples
 [generate.py:53] - ✅ qwen_image_edit_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
 [generate.py:53] - ✅ qwen_image_edit                - Defalut: Qwen/Qwen-Image-Edit-2509
 [generate.py:53] - ✅ qwen_image_controlnet          - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
+[generate.py:53] - ✅ qwen_image_layered             - Defalut: Qwen/Qwen-Image-Layered
 [generate.py:53] - ✅ skyreels_v2                    - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
 [generate.py:53] - ✅ wan2.2_t2v                     - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
 [generate.py:53] - ✅ wan2.1_t2v                     - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers

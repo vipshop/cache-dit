@@ -28,6 +28,7 @@ __all__ = [
     "qwen_image_example",
     "qwen_image_controlnet_example",
     "qwen_image_edit_example",
+    "qwen_image_layered_example",
     "skyreels_v2_example",
     "wan_example",
     "wan_i2v_example",
@@ -54,6 +55,7 @@ _env_path_mapping = {
     "QWEN_IMAGE_EDIT_2511_DIR": "Qwen/Qwen-Image-Edit-2511",
     "QWEN_IMAGE_EDIT_2511_LIGHT_DIR": "lightx2v/Qwen-Image-Edit-2511-Lightning",
     "QWEN_IMAGE_CONTROLNET_DIR": "InstantX/Qwen-Image-ControlNet-Inpainting",
+    "QWEN_IMAGE_LAYERED_DIR": "Qwen/Qwen-Image-Layered",
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
     "WAN_DIR": "Wan2.1-T2V-1.3B-Diffusers",
     "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
@@ -404,6 +406,35 @@ def qwen_image_controlnet_example(args: argparse.Namespace, **kwargs) -> Example
             width=control_mask.size[0] if args.width is None else args.width,
             num_inference_steps=50,
             true_cfg_scale=4.0,
+        ),
+    )
+
+
+@ExampleRegister.register("qwen_image_layered", default="Qwen/Qwen-Image-Layered")
+def qwen_image_layered_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import QwenImageLayeredPipeline
+
+    model_name_or_path = _path("Qwen/Qwen-Image-Layered", args=args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=model_name_or_path,
+            pipeline_class=QwenImageLayeredPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "enable_separate_cfg": False,  # negative prompt is not used in example
+            },
+        ),
+        input_data=ExampleInputData(
+            image=load_image("./data/yarn-art-pikachu.png").convert("RGBA"),
+            prompt="",
+            num_inference_steps=50,
+            true_cfg_scale=4.0,
+            layers=4,
+            resolution=640,
+            cfg_normalize=False,
+            use_en_prompt=True,
         ),
     )
 
