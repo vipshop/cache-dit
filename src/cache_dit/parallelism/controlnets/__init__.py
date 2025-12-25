@@ -33,8 +33,8 @@ def maybe_enable_parallelism_for_controlnet(
 
     if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
         controlnet = maybe_enable_context_parallelism(
-            controlnet,
-            parallelism_config,
+            controlnet=controlnet,
+            parallelism_config=parallelism_config,
         )
         controlnet._is_parallelized = True  # type: ignore[attr-defined]
         # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
