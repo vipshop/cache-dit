@@ -1,36 +1,9 @@
 import torch
 import torch.distributed as dist
 from cache_dit.envs import ENV
-from cache_dit.logger import init_logger, logging_rank_0
+from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
-
-
-def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
-    mode = kwargs.get("epilogue_prologue_fusion", False)
-
-    if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION:
-        logging_rank_0(
-            logger,
-            "CACHE_DIT_EPILOGUE_PROLOGUE_FUSION is set to 1. \n"
-            "Force enable epilogue and prologue fusion.",
-        )
-
-    return ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or mode
-
-
-def enable_compile_compute_comm_overlap():
-    ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = True
-    logger.info("Enabled compile compute-communication overlap manually.")
-
-
-def disable_compile_compute_comm_overlap():
-    ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = False
-    logger.info("Disabled compile compute-communication overlap manually.")
-
-
-def is_compile_compute_comm_overlap_enabled() -> bool:
-    return ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
 
 
 def set_compile_configs(
@@ -56,7 +29,7 @@ def set_compile_configs(
     if dist.is_initialized():
         # Enable compute comm overlap
         torch._inductor.config.reorder_for_compute_comm_overlap = (
-            compute_comm_overlap and is_compile_compute_comm_overlap_enabled()
+            compute_comm_overlap and ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
         )
         # L20 64 GB/s, PCIe; A100/A800 NVLink 300 GB/s.
         if torch._inductor.config.reorder_for_compute_comm_overlap:
@@ -73,8 +46,7 @@ def set_compile_configs(
         return
 
     if ENV.CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG:
-        logging_rank_0(
-            logger,
+        logger.info(
             "CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG is set to 1. \n"
             "Force disable custom compile config.",
         )
@@ -95,7 +67,7 @@ def set_compile_configs(
     torch._inductor.config.epilogue_fusion = False
 
     # Enable epilogue and prologue fusion
-    if epilogue_prologue_fusion_enabled(**kwargs):
+    if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or kwargs.get("epilogue_prologue_fusion", False):
         torch._inductor.config.epilogue_fusion = True
         torch._inductor.config.prologue_fusion = True
         torch._inductor.config.epilogue_fusion_first = True
