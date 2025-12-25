@@ -145,13 +145,6 @@ def get_args(
         default=False,
         help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
     )
-    parser.add_argument(
-        "--disable-compute-comm-overlap",
-        "--dcco",
-        action="store_true",
-        default=False,
-        help="Disable compute-communication overlap during compilation",
-    )
     parser.add_argument("--profile", action="store_true", default=False)
     parser.add_argument("--profile-name", type=str, default=None)
     parser.add_argument("--profile-dir", type=str, default=None)
