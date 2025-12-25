@@ -1,4 +1,1 @@
 from cache_dit.compile.utils import set_compile_configs
-from cache_dit.compile.utils import enable_compile_compute_comm_overlap
-from cache_dit.compile.utils import disable_compile_compute_comm_overlap
-from cache_dit.compile.utils import is_compile_compute_comm_overlap_enabled
