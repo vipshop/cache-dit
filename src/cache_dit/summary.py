@@ -517,14 +517,14 @@ def supported_matrix() -> str | None:
         _pipelines_supported_cache += [
             "LongCatVideo",  # not in diffusers, but supported
         ]
-        from cache_dit.parallelism.transformers.native_diffusers import (
+        from cache_dit.parallelism.transformers.context_parallelism import (
             ContextParallelismPlannerRegister,
         )
 
         _pipelines_supported_context_parallelism = (
             ContextParallelismPlannerRegister.supported_planners()[1]
         )
-        from cache_dit.parallelism.transformers.native_pytorch import (
+        from cache_dit.parallelism.transformers.tensor_parallelism import (
             TensorParallelismPlannerRegister,
         )
 
