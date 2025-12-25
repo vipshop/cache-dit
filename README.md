@@ -68,8 +68,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div align="center">
 
-| 📚Model | [Cache](./)  | [C-P](./) | [T-P](./) | [TE-P](./) | [CN-P](./) |
-|:---|:---:|:---:|:---:|:---:|:---:|
+| [📚Model](./) | [Cache](./)  | [C-P](./) | [T-P](./) | [TE-P](./) | [CN-P](./) |
+|:---:|:---:|:---:|:---:|:---:|:---:|
 | **🔥[Qwen-Image-Edit-2511-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | **🔥[Qwen-Image-Edit-2511](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
