@@ -262,7 +262,7 @@ usage: generate.py [-h] [--model-path MODEL_PATH] [--controlnet-path CONTROLNET_
                    [--quantize] [--quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--quantize-text-encoder]
                    [--quantize-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--quantize-controlnet]
                    [--quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}] [--parallel-type {None,tp,ulysses,ring}] [--parallel-vae]
-                   [--parallel-text-encoder] [--parallel-controlnet] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--disable-compute-comm-overlap] [--cpu-offload]
+                   [--parallel-text-encoder] [--parallel-controlnet] [--attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage}] [--ulysses-anything] [--ulysses-float8] [--ulysses-async] [--cpu-offload]
                    [--sequential-cpu-offload] [--device-map-balance] [--vae-tiling] [--vae-slicing] [--compile] [--compile-repeated-blocks] [--compile-vae] [--compile-text-encoder] [--compile-controlnet] [--max-autotune] [--track-memory]
                    [--profile] [--profile-name PROFILE_NAME] [--profile-dir PROFILE_DIR] [--profile-activities {CPU,GPU,MEM} [{CPU,GPU,MEM} ...]] [--profile-with-stack] [--profile-record-shapes] [--disable-fuse-lora DISABLE_FUSE_LORA]
                    [{generate,list,flux_nunchaku,flux,flux2,qwen_image_lightning,qwen_image,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,skyreels_v2,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage,zimage_controlnet,longcat_image,longcat_image_edit}]
@@ -346,8 +346,6 @@ options:
                         Enable Ulysses Attention/UAA Float8 for context parallelism
   --ulysses-async, --uaqkv
                         Enabled experimental Async QKV Projection with Ulysses for context parallelism
-  --disable-compute-comm-overlap, --dcco
-                        Disable compute-communication overlap during compilation
   --cpu-offload, --cpu-offload-model
                         Enable CPU offload for model if applicable.
   --sequential-cpu-offload
