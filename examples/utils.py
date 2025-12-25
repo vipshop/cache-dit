@@ -422,13 +422,6 @@ def get_args(
         default=False,
         help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
     )
-    parser.add_argument(
-        "--disable-compute-comm-overlap",
-        "--dcco",
-        action="store_true",
-        default=False,
-        help="Disable compute-communication overlap during compilation",
-    )
     # Offload settings
     parser.add_argument(
         "--cpu-offload",
@@ -1177,11 +1170,6 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
-    if args.disable_compute_comm_overlap:
-        # Enable compute comm overlap default for torch.compile if used
-        # cache_dit.set_compile_flags(), users need to disable it explicitly.
-        cache_dit.disable_compute_comm_overlap()
-
     if args.cache or args.parallel_type is not None:
 
         cache_config = kwargs.pop("cache_config", None)

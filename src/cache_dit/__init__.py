@@ -55,24 +55,6 @@ except ImportError as e:  # noqa: F841
         _raise_import_error("quantize")
 
 
-def enable_compute_comm_overlap():
-    try:
-        from cache_dit.compile import enable_compile_compute_comm_overlap
-
-        enable_compile_compute_comm_overlap()
-    except:  # noqa: E722
-        pass
-
-
-def disable_compute_comm_overlap():
-    try:
-        from cache_dit.compile import disable_compile_compute_comm_overlap
-
-        disable_compile_compute_comm_overlap()
-    except:  # noqa: E722
-        pass
-
-
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
 DBPrune = CacheType.DBPrune
