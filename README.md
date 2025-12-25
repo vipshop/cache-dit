@@ -68,7 +68,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div align="center">
 
-| [📚Supported DiTs: 🤗60+](./) | Cache  | C-P | T-P | TE-P | CN-P |
+| 📚Supported DiTs: `🤗60+` | Cache  | C-P | T-P | TE-P | CN-P |
 |:---:|:---:|:---:|:---:|:---:|:---:|
 | Qwen-Image-Edit-2511-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-2511 | ✅ | ✅ | ✅ | ✅ | ✖️ |
@@ -85,6 +85,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | Qwen-Image-Edit | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-2509 | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-ControlNet | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| Qwen-Image-ControlNet-Inpainting | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-2509-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
@@ -122,7 +123,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | PixArt-XL-2-1024-MS | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | VisualCloze-512 | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | ConsisID-preview | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| Mochi-1-preview | ✅ | ✖️ | ✅ | ✅ | ✖️ |
+| mochi-1-preview | ✅ | ✖️ | ✅ | ✅ | ✖️ |
 | Lumina-Image-2.0 | ✅ | ✖️ | ✅ | ✅ | ✖️ |
 | HiDream-I1-Full | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
 | HunyuanDiT | ✅ | ✖️ | ✅ | ✅ | ✖️ |

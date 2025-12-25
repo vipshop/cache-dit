@@ -62,7 +62,8 @@ _env_path_mapping = {
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
-    "Z_IMAGE_CONTROLNET_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+    "Z_IMAGE_CONTROLNET_2_1_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+    "Z_IMAGE_CONTROLNET_2_0_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
 }
@@ -809,7 +810,10 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
 
 
 @ExampleRegister.register(
-    "zimage_controlnet", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+    "zimage_controlnet_2.1", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+)
+@ExampleRegister.register(
+    "zimage_controlnet_2.0", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0"
 )
 def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImageControlNetPipeline, ZImageControlNetModel
@@ -818,19 +822,35 @@ def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
 
-    controlnet_dir = _path(
-        "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
-        args=args,
-        controlnet=True,
-    )
-    controlnet = ZImageControlNetModel.from_single_file(
-        os.path.join(controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"),
-        torch_dtype=torch.bfloat16,
-    )
-    control_image = load_image(
-        "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/asset/pose.jpg?download=true"
-    )
+    if "2.0" in args.example.lower():
+        controlnet_dir = _path(
+            "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+            args=args,
+            controlnet=True,
+        )
+        controlnet_path = os.path.join(
+            controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors"
+        )
+        controlnet = ZImageControlNetModel.from_single_file(
+            controlnet_path,
+            torch_dtype=torch.bfloat16,
+            config="hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+        )
+    else:
+        controlnet_dir = _path(
+            "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+            args=args,
+            controlnet=True,
+        )
+        controlnet_path = os.path.join(
+            controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+        )
+        controlnet = ZImageControlNetModel.from_single_file(
+            controlnet_path,
+            torch_dtype=torch.bfloat16,
+        )
 
+    control_image = load_image("./data/pose.jpg")
     steps_computation_mask = _zimage_turbo_steps_mask(args)
 
     return Example(
