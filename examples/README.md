@@ -80,7 +80,7 @@ python3 generate.py qwen_image
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
-python3 generate.py zimage_controlnet 
+python3 generate.py zimage_controlnet_2.1 
 python3 generate.py generate longcat_image
 python3 generate.py generate longcat_image_edit
 # w/ cache acceleration
@@ -89,7 +89,7 @@ python3 generate.py flux --cache --taylorseer
 python3 generate.py flux_nunchaku --cache
 python3 generate.py qwen_image --cache
 python3 generate.py zimage --cache --rdt 0.6 --scm fast
-python3 generate.py zimage_controlnet --cache --rdt 0.6 --scm fast
+python3 generate.py zimage_controlnet_2.1 --cache --rdt 0.6 --scm fast
 # enable cpu offload or vae tiling if your encounter an OOM error
 python3 generate.py qwen_image --cache --cpu-offload
 python3 generate.py qwen_image --cache --cpu-offload --vae-tiling
@@ -121,7 +121,7 @@ torchrun --nproc_per_node=4 generate.py flux --parallel ulysses
 torchrun --nproc_per_node=4 generate.py flux --parallel ring 
 torchrun --nproc_per_node=4 generate.py flux --parallel tp
 torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses 
-torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses 
+torchrun --nproc_per_node=4 generate.py zimage_controlnet_2.1 --parallel ulysses 
 # ulysses anything attention
 torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --ulysses-anything
 torchrun --nproc_per_node=4 generate.py qwen_image_edit_lightning --parallel ulysses --ulysses-anything
@@ -171,9 +171,9 @@ torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py qwen_image_edit_l
          --parallel tp --parallel-text-encoder --quantize-type float8_weight_only \
          --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
-torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
+torchrun --nproc_per_node=4 generate.py zimage_controlnet_2.1 --parallel ulysses \
          --parallel-controlnet --cache --rdt 0.6 --scm fast
-torchrun --nproc_per_node=4 generate.py zimage_controlnet --parallel ulysses \
+torchrun --nproc_per_node=4 generate.py zimage_controlnet_2.1 --parallel ulysses \
          --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
          --compile-controlnet --ulysses-float8 --attn _sdpa_cudnn \
          --warmup 2 --repeat 4     
