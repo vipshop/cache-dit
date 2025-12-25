@@ -83,7 +83,7 @@ def maybe_enable_context_parallelism(
                     )
 
                 transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-                _maybe_patch_native_config(transformer, **extra_parallel_kwargs)
+                _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."
@@ -92,7 +92,7 @@ def maybe_enable_context_parallelism(
     return transformer
 
 
-def _maybe_patch_native_config(
+def _maybe_patch_native_parallel_config(
     transformer: torch.nn.Module,
     **kwargs,
 ) -> torch.nn.Module:
