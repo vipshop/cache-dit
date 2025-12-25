@@ -208,7 +208,9 @@ class ExampleOutputData:
     model_tag: Optional[str] = None
     strify_tag: Optional[str] = None
     # Generated image or video
-    image: Optional[Image.Image | List[Image.Image]] = None  # Single PIL Images
+    image: Optional[Image.Image | List[Image.Image]] = (
+        None  # Single PIL Images or list of PIL Images
+    )
     video: Optional[List[Image.Image]] = None  # List of PIL Images or video frames
     # Performance metrics
     load_time: Optional[float] = None
