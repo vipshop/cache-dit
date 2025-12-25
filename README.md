@@ -76,11 +76,11 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 ## 🔥Supported DiTs
 
 > [!Tip]   
-> One Model Series may contain many pipelines. cache-dit applies optimizations at the Transformer level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: supported now; ✖️: not supported now; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: [nunchaku](https://github.com/nunchaku-tech/nunchaku); **[C-P](./)**: Context Parallelism; **[T-P](./)**: Tensor Parallelism; **[TE-P](./)**: Text Encoder Parallelism; **[CN-P](./)**: ControlNet Parallelism;  **[VE-P](./)**: VAE Parallelism (TODO).
+> One Model Series may contain many pipelines. cache-dit applies optimizations at the Transformer level; thus, any pipelines that include the supported transformer are already supported by cache-dit. ✅: supported now; ✖️: not supported now; **[`Q`](https://github.com/nunchaku-tech/nunchaku)**: [nunchaku](https://github.com/nunchaku-tech/nunchaku); **[C-P](./)**: Context Parallelism; **[T-P](./)**: Tensor Parallelism; **[TE-P](./)**: Text Encoder Parallelism; **[CN-P](./)**: ControlNet Parallelism;  **[VAE-P](./)**: VAE Parallelism (TODO).
 
 <div align="center">
 
-| 📚Supported DiTs: `🤗60+` | Cache  | Context-P | Tensor-P | Text-P | CN-P |
+| 📚Supported DiTs: `🤗60+` | Cache  | C-P | T-P | TE-P | CN-P |
 |:---:|:---:|:---:|:---:|:---:|:---:|
 | Qwen-Image-Edit-2511-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-2511 | ✅ | ✅ | ✅ | ✅ | ✖️ |
