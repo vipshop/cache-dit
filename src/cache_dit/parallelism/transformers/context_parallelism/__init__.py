@@ -136,7 +136,7 @@ def _maybe_patch_native_config(
         "transformer must be an instance of NunchakuFluxTransformer2DModelV2 "
         f"or NunchakuQwenImageTransformer2DModel, but got {type(transformer)}"
     )
-    config = transformer._config
+    config = transformer._parallel_config
 
     attention_classes = (
         NunchakuFluxAttention,
@@ -148,8 +148,8 @@ def _maybe_patch_native_config(
         if not isinstance(module, attention_classes):
             continue
         processor = getattr(module, "processor", None)
-        if processor is None or not hasattr(processor, "_config"):
+        if processor is None or not hasattr(processor, "_parallel_config"):
             continue
-        processor._config = config
+        processor._parallel_config = config
 
     return transformer
