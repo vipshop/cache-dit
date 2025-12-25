@@ -58,8 +58,8 @@ class DiTContextParallelismPlanner(ContextParallelismPlanner):
         # Apply monkey patch to fix attention mask preparation at class level
         Attention.prepare_attention_mask = __patch_Attention_prepare_attention_mask__
         AttnProcessor2_0.__call__ = __patch_AttnProcessor2_0__call__
-        if not hasattr(AttnProcessor2_0, "_config"):
-            AttnProcessor2_0._config = None
+        if not hasattr(AttnProcessor2_0, "_parallel_config"):
+            AttnProcessor2_0._parallel_config = None
         if not hasattr(AttnProcessor2_0, "_attention_backend"):
             AttnProcessor2_0._attention_backend = None
 

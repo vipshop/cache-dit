@@ -239,7 +239,7 @@ def __patch__LTXVideoAttnProcessor__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=self._attention_backend,
-        config=self._parallel_config,
+        parallel_config=self._parallel_config,
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)

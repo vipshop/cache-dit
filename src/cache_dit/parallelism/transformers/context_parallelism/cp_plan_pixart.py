@@ -57,8 +57,8 @@ class PixArtContextParallelismPlanner(ContextParallelismPlanner):
         # Apply monkey patch to fix attention mask preparation at class level
         Attention.prepare_attention_mask = __patch_Attention_prepare_attention_mask__
         AttnProcessor2_0.__call__ = __patch_AttnProcessor2_0__call__
-        if not hasattr(AttnProcessor2_0, "_config"):
-            AttnProcessor2_0._config = None
+        if not hasattr(AttnProcessor2_0, "_parallel_config"):
+            AttnProcessor2_0._parallel_config = None
         if not hasattr(AttnProcessor2_0, "_attention_backend"):
             AttnProcessor2_0._attention_backend = None
 
@@ -245,7 +245,7 @@ def __patch_AttnProcessor2_0__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=getattr(self, "_attention_backend", None),
-        config=getattr(self, "_config", None),
+        parallel_config=getattr(self, "_parallel_config", None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)

@@ -332,8 +332,8 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
         HunyuanVideoTransformer3DModel.forward = __patch__HunyuanVideoTransformer3DModel_forward__
         HunyuanVideoAttnProcessor2_0.__call__ = __patch_HunyuanVideoAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
-        if not hasattr(HunyuanVideoAttnProcessor2_0, "_config"):
-            HunyuanVideoAttnProcessor2_0._config = None
+        if not hasattr(HunyuanVideoAttnProcessor2_0, "_parallel_config"):
+            HunyuanVideoAttnProcessor2_0._parallel_config = None
         if not hasattr(HunyuanVideoAttnProcessor2_0, "_attention_backend"):
             HunyuanVideoAttnProcessor2_0._attention_backend = None
 
@@ -631,7 +631,7 @@ def __patch_HunyuanVideoAttnProcessor2_0__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=getattr(self, "_attention_backend", None),
-        config=getattr(self, "_config", None),
+        parallel_config=getattr(self, "_parallel_config", None),
     )
     # NOTE(DefTruth): no transpose
     hidden_states = hidden_states.flatten(2, 3)
