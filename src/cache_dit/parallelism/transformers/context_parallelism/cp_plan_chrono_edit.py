@@ -170,7 +170,7 @@ def __patch_ChronoEditWanAttnProcessor__call__(
             # solely on encoder_hidden_states_img (img), the (q_chunk * k) * v
             # computation can be parallelized independently. Thus, there is
             # no need to pass the config here.
-            config=None,
+            parallel_config=None,
         )
         hidden_states_img = hidden_states_img.flatten(2, 3)
         hidden_states_img = hidden_states_img.type_as(query)
@@ -187,7 +187,7 @@ def __patch_ChronoEditWanAttnProcessor__call__(
         # solely on encoder_hidden_states (text), the (q_chunk * k) * v
         # computation can be parallelized independently. Thus, there is
         # no need to pass the config here.
-        config=(self._config if encoder_hidden_states is None else None),
+        config=(self._parallel_config if encoder_hidden_states is None else None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.type_as(query)

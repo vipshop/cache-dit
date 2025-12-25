@@ -190,7 +190,7 @@ def __patch__LTXVideoAttnProcessor__call__(
     )
 
     if attention_mask is not None:
-        if self._config is None:
+        if self._parallel_config is None:
             attention_mask = attn.prepare_attention_mask(
                 attention_mask, sequence_length, batch_size
             )
@@ -199,7 +199,7 @@ def __patch__LTXVideoAttnProcessor__call__(
             )
         else:
             # NOTE(DefTruth): Fix attention mask preparation for context parallelism
-            cp_config = getattr(self._config, "context_config", None)
+            cp_config = getattr(self._parallel_config, "context_parallel_config", None)
             if cp_config is not None and cp_config._world_size > 1:
                 head_size = attn.heads // cp_config._world_size
                 attention_mask = attn.prepare_attention_mask(
@@ -239,7 +239,7 @@ def __patch__LTXVideoAttnProcessor__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=self._attention_backend,
-        config=self._config,
+        config=self._parallel_config,
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)

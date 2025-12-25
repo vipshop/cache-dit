@@ -252,7 +252,7 @@ def __patch_CogView4AttnProcessor__call__(
         attention_mask = (
             (attn_mask_matrix > 0).unsqueeze(1).to(query.dtype)
         )  # [B, 1, seq_len, seq_len]
-        if hasattr(self, "_config") and self._config is not None:
+        if hasattr(self, "_config") and self._parallel_config is not None:
             raise NotImplementedError(
                 "Attention mask with context parallelism for CogView4 " "is not implemented yet."
             )
