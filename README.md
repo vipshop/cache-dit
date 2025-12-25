@@ -68,71 +68,71 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div align="center">
 
-| [📚Supported DiTs: 🤗60+](./) | [Cache](./)  | [C-P](./) | [T-P](./) | [TE-P](./) | [CN-P](./) |
+| [📚Supported DiTs: 🤗60+](./examples) | [Cache](./)  | [C-P](./) | [T-P](./) | [TE-P](./) | [CN-P](./) |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **🔥[Qwen-Image-Edit-2511-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-Edit-2511](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[LongCat-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[LongCat-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Z-Image-Turbo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Z-Image-Turbo-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **🔥[Ovis-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** |✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[FLUX.2-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-Edit-2509](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-ControlNet](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-Edit-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Qwen-Image-Edit-2509-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.2 T2V ](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.2 ITV ](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.2 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.1 T2V](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.1 ITV](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.1 FLF2V](https://github.com/vipshop/cache-dit/blob/main/examples)** |  ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[Wan-2.1 VACE](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[HunyuanImage](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🔥[HuyuanVideo-1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[FLUX.1-dev `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[FLUX.1-Fill-dev `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Qwen-Image `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Qwen-Image-Edit `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Qwen-Image-Edit-2509 `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Qwen-Image-Lightning `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Qwen-Image-Edit-Lightning `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Qwen-Image-Edit-2509-Lightning `Q`](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[SkyReels-V2-T2V](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅  | ✅  | ✅ | ✖️ |
-| **🎉[LongCatVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[ChronoEdit](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[Kandinsky-5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅️ | ✅️ | ✅ | ✖️ |
-| **🎉[PRX-T2I](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[LTXVideo](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[CogVideoX-1.5](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[CogView4](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[CogView3Plus](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[PixArt Sigma](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[PixArt Alpha](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[ConsisID](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✅ | ✅ | ✖️ |
-| **🎉[Mochi](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✅ | ✅ | ✖️ |
-| **🎉[Lumina 1/2](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✅ | ✅ | ✖️ |
-| **🎉[HiDream](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✅ | ✅ | ✖️ |
-| **🎉[Sana](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[Bria](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| **🎉[Allegro](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[Cosmos](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[EasyAnimate](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[StableDiffusion-3](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[Amused](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| **🎉[AuraFlow](https://github.com/vipshop/cache-dit/blob/main/examples)** | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-2511-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-2511 | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥LongCat-Image | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥LongCat-Image-Edit | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Z-Image-Turbo | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Z-Image-Turbo-ControlNet | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 🔥Ovis-Image |✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥FLUX.2-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥FLUX.1-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥FLUX.1-Fill-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-2509 | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-ControlNet | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-2509-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.2 T2V  | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.2 ITV  | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.2 VACE | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.1 T2V |  ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.1 ITV |  ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.1 FLF2V |  ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Wan-2.1 VACE | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥HunyuanImage | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥HuyuanVideo-1.5 | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| 🔥HunyuanVideo | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥FLUX.1-dev `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥FLUX.1-Fill-dev `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-2509 `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image-Lightning `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-Lightning `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥Qwen-Image-Edit-2509-Lightning `Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| 🔥SkyReels-V2-T2V | ✅ | ✅  | ✅  | ✅ | ✖️ |
+| 🔥LongCatVideo | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| 🔥ChronoEdit | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| 🔥Kandinsky-5 | ✅ | ✅️ | ✅️ | ✅ | ✖️ |
+| PRX-T2I | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| LTXVideo | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| CogVideoX | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| CogVideoX-1.5 | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| CogView4 | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| CogView3Plus | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| PixArt Sigma | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| PixArt Alpha | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| VisualCloze | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| ConsisID | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| Mochi | ✅ | ✖️ | ✅ | ✅ | ✖️ |
+| Lumina 1/2 | ✅ | ✖️ | ✅ | ✅ | ✖️ |
+| HiDream | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| HunyuanDiT | ✅ | ✖️ | ✅ | ✅ | ✖️ |
+| Sana | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| Bria | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| DiT-XL | ✅ | ✅ | ✖️ | ✅ | ✖️ |
+| Allegro | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| Cosmos | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| OmniGen | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| EasyAnimate | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| StableDiffusion-3 | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| Amused | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| AuraFlow | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
 
 </div>
 
