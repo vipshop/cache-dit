@@ -646,7 +646,7 @@ class CachedAdapter:
         cls.release_hooks(pipe_or_adapter, remove_stats, remove_stats, remove_stats)
 
         # maybe release parallelism stats
-        from cache_dit.parallelism.parallel_interface import (
+        from cache_dit.parallelism import (
             remove_parallelism_stats,
         )
 
