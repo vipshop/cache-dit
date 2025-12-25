@@ -51,6 +51,8 @@ _env_path_mapping = {
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
     "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
     "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
+    "QWEN_IMAGE_EDIT_2511_DIR": "Qwen/Qwen-Image-Edit-2511",
+    "QWEN_IMAGE_EDIT_2511_LIGHT_DIR": "lightx2v/Qwen-Image-Edit-2511-Lightning",
     "QWEN_IMAGE_CONTROLNET_DIR": "InstantX/Qwen-Image-ControlNet-Inpainting",
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
     "WAN_DIR": "Wan2.1-T2V-1.3B-Diffusers",
@@ -60,7 +62,8 @@ _env_path_mapping = {
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
-    "Z_IMAGE_CONTROLNET_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+    "Z_IMAGE_CONTROLNET_2_1_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+    "Z_IMAGE_CONTROLNET_2_0_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
 }
@@ -286,6 +289,10 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
 
 @ExampleRegister.register("qwen_image_edit", default="Qwen/Qwen-Image-Edit-2509")
 @ExampleRegister.register("qwen_image_edit_lightning", default="lightx2v/Qwen-Image-Lightning")
+@ExampleRegister.register("qwen_image_edit_2511", default="Qwen/Qwen-Image-Edit-2511")
+@ExampleRegister.register(
+    "qwen_image_edit_2511_lightning", default="lightx2v/Qwen-Image-Edit-2511-Lightning"
+)
 def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImageEditPlusPipeline
 
@@ -298,14 +305,18 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         # For lightning model, only 8 or 4 inference steps are supported
         steps = 8 if args.num_inference_steps is None else args.num_inference_steps
         assert steps in [8, 4]
-        lora_weights_path = os.path.join(
-            _path("lightx2v/Qwen-Image-Lightning", args, lora=True),
-            "Qwen-Image-Edit-2509",
-        )
-        lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
+        if "2511" in args.example.lower():
+            assert steps == 4, "Qwen-Image-Edit-2511-Lightning only supports 4 steps."
+            lora_weights_path = _path("lightx2v/Qwen-Image-Edit-2511-Lightning", args, lora=True)
+            lora_weight_name = f"Qwen-Image-Edit-2511-Lightning-{steps}steps-V1.0-bf16.safetensors"
+        else:
+            lora_weights_path = os.path.join(
+                _path("lightx2v/Qwen-Image-Lightning", args, lora=True),
+                "Qwen-Image-Edit-2509",
+            )
+            lora_weight_name = f"Qwen-Image-Edit-2509-Lightning-{steps}steps-V1.0-bf16.safetensors"
         cache_config = _qwen_light_cache_config(args)
         true_cfg_scale = 1.0  # means no separate cfg for lightning models
-
     else:
         steps = 50 if args.num_inference_steps is None else args.num_inference_steps
         lora_weights_path = None
@@ -313,13 +324,16 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         cache_config = None
         true_cfg_scale = 4.0
 
-    base_image_url = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image"
+    if "2511" in args.example.lower():
+        model_path_or_name = _path("Qwen/Qwen-Image-Edit-2511", args)
+    else:
+        model_path_or_name = _path("Qwen/Qwen-Image-Edit-2509", args)
 
     return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.IE2I,  # Image Editing to Image
-            model_name_or_path=_path("Qwen/Qwen-Image-Edit-2509"),
+            model_name_or_path=model_path_or_name,
             pipeline_class=QwenImageEditPlusPipeline,
             scheduler=scheduler,
             bnb_4bit_components=["text_encoder", "transformer"],
@@ -342,8 +356,8 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             true_cfg_scale=true_cfg_scale,  # 1.0 means no separate cfg for lightning models
             # image1, image2
             image=[
-                load_image(f"{base_image_url}/edit2509/edit2509_1.jpg"),
-                load_image(f"{base_image_url}/edit2509/edit2509_2.jpg"),
+                load_image("./data/edit2509_1.jpg"),
+                load_image("./data/edit2509_2.jpg"),
             ],
         ),
     )
@@ -796,7 +810,10 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
 
 
 @ExampleRegister.register(
-    "zimage_controlnet", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+    "zimage_controlnet_2.1", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+)
+@ExampleRegister.register(
+    "zimage_controlnet_2.0", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0"
 )
 def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImageControlNetPipeline, ZImageControlNetModel
@@ -805,19 +822,35 @@ def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
 
-    controlnet_dir = _path(
-        "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
-        args=args,
-        controlnet=True,
-    )
-    controlnet = ZImageControlNetModel.from_single_file(
-        os.path.join(controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"),
-        torch_dtype=torch.bfloat16,
-    )
-    control_image = load_image(
-        "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/asset/pose.jpg?download=true"
-    )
+    if "2.0" in args.example.lower():
+        controlnet_dir = _path(
+            "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+            args=args,
+            controlnet=True,
+        )
+        controlnet_path = os.path.join(
+            controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors"
+        )
+        controlnet = ZImageControlNetModel.from_single_file(
+            controlnet_path,
+            torch_dtype=torch.bfloat16,
+            config="hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+        )
+    else:
+        controlnet_dir = _path(
+            "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+            args=args,
+            controlnet=True,
+        )
+        controlnet_path = os.path.join(
+            controlnet_dir, "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+        )
+        controlnet = ZImageControlNetModel.from_single_file(
+            controlnet_path,
+            torch_dtype=torch.bfloat16,
+        )
 
+    control_image = load_image("./data/pose.jpg")
     steps_computation_mask = _zimage_turbo_steps_mask(args)
 
     return Example(
