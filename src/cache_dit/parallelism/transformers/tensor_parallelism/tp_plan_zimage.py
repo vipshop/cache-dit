@@ -3,7 +3,7 @@ from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
 from cache_dit.logger import init_logger
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.parallelism.config import ParallelismConfig
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 from .tp_utils import shard_divisible_attr
@@ -21,7 +21,7 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
         **kwargs,
     ) -> torch.nn.Module:
         assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
-            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
+            "config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type

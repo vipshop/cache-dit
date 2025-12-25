@@ -124,7 +124,7 @@ def _ulysses_attn_with_async_qkv_proj_ovis_image(
     image_rotary_emb: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
 
-    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
+    ulysses_mesh: DeviceMesh = self._config.context_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
@@ -182,7 +182,7 @@ def _ulysses_attn_with_async_qkv_proj_ovis_image(
         value,
         attn_mask=attention_mask,
         backend=self._attention_backend,
-        parallel_config=None,  # set to None to avoid double parallelism
+        config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
     if encoder_hidden_states is not None:
@@ -224,10 +224,10 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
     image_rotary_emb: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
-        self._parallel_config is not None
-        and hasattr(self._parallel_config, "context_parallel_config")
-        and self._parallel_config.context_parallel_config is not None
-        and self._parallel_config.context_parallel_config.ulysses_degree > 1
+        self._config is not None
+        and hasattr(self._config, "context_config")
+        and self._config.context_config is not None
+        and self._config.context_config.ulysses_degree > 1
     ):
         return _ulysses_attn_with_async_qkv_proj_ovis_image(
             self,

@@ -1,6 +1,6 @@
 import dataclasses
 from typing import Optional, Dict, Any
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
+from cache_dit.parallelism.backend import ParallelismBackend
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

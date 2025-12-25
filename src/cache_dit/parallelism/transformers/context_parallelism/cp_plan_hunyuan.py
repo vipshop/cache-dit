@@ -213,8 +213,8 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
     )
     # NOTE(DefTruth): Permute attention_mask if context parallel is used.
     # For example, if work size = 2: [H, E] -> [H_0, E_0, H_1, E_1]
-    if self._parallel_config is not None:
-        cp_config = getattr(self._parallel_config, "context_parallel_config", None)
+    if self._config is not None:
+        cp_config = getattr(self._config, "context_config", None)
         if cp_config is not None and cp_config._world_size > 1:
             hidden_mask = attention_mask[:, : hidden_states.shape[1]]
             encoder_mask = attention_mask[:, hidden_states.shape[1] :]
@@ -332,8 +332,8 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
         HunyuanVideoTransformer3DModel.forward = __patch__HunyuanVideoTransformer3DModel_forward__
         HunyuanVideoAttnProcessor2_0.__call__ = __patch_HunyuanVideoAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
-        if not hasattr(HunyuanVideoAttnProcessor2_0, "_parallel_config"):
-            HunyuanVideoAttnProcessor2_0._parallel_config = None
+        if not hasattr(HunyuanVideoAttnProcessor2_0, "_config"):
+            HunyuanVideoAttnProcessor2_0._config = None
         if not hasattr(HunyuanVideoAttnProcessor2_0, "_attention_backend"):
             HunyuanVideoAttnProcessor2_0._attention_backend = None
 
@@ -450,8 +450,8 @@ def __patch__HunyuanVideoTransformer3DModel_forward__(
     attention_mask = attention_mask.masked_fill(mask_indices, False)
     # NOTE(DefTruth): Permute attention_mask if context parallel is used.
     # For example, if work size = 2: [H, E] -> [H_0, E_0, H_1, E_1]
-    if self._parallel_config is not None:
-        cp_config = getattr(self._parallel_config, "context_parallel_config", None)
+    if self._config is not None:
+        cp_config = getattr(self._config, "context_config", None)
         if cp_config is not None and cp_config._world_size > 1:
             hidden_mask = attention_mask[:, :latent_sequence_length]
             encoder_mask = attention_mask[:, latent_sequence_length:]
@@ -631,7 +631,7 @@ def __patch_HunyuanVideoAttnProcessor2_0__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=getattr(self, "_attention_backend", None),
-        parallel_config=getattr(self, "_parallel_config", None),
+        config=getattr(self, "_config", None),
     )
     # NOTE(DefTruth): no transpose
     hidden_states = hidden_states.flatten(2, 3)

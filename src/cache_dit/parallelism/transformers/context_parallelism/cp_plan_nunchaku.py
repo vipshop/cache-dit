@@ -69,12 +69,12 @@ class NunchakuFluxContextParallelismPlanner(ContextParallelismPlanner):
 
         NunchakuFluxFA2Processor.__call__ = __patch_NunchakuFluxFA2Processor__call__
         # Also need to patch the parallel config and attention backend
-        if not hasattr(NunchakuFluxFA2Processor, "_parallel_config"):
-            NunchakuFluxFA2Processor._parallel_config = None
+        if not hasattr(NunchakuFluxFA2Processor, "_config"):
+            NunchakuFluxFA2Processor._config = None
         if not hasattr(NunchakuFluxFA2Processor, "_attention_backend"):
             NunchakuFluxFA2Processor._attention_backend = None
-        if not hasattr(NunchakuFluxAttention, "_parallel_config"):
-            NunchakuFluxAttention._parallel_config = None
+        if not hasattr(NunchakuFluxAttention, "_config"):
+            NunchakuFluxAttention._config = None
         if not hasattr(NunchakuFluxAttention, "_attention_backend"):
             NunchakuFluxAttention._attention_backend = None
 
@@ -190,7 +190,7 @@ def __patch_NunchakuFluxFA2Processor__call__(
         value,
         attn_mask=attention_mask,
         backend=getattr(self, "_attention_backend", None),
-        parallel_config=getattr(self, "_parallel_config", None),
+        config=getattr(self, "_config", None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)
@@ -235,12 +235,12 @@ class NunchakuQwenImageContextParallelismPlanner(ContextParallelismPlanner):
             __patch_NunchakuQwenImageNaiveFA2Processor__call__
         )
         # Also need to patch the parallel config and attention backend
-        if not hasattr(NunchakuQwenImageNaiveFA2Processor, "_parallel_config"):
-            NunchakuQwenImageNaiveFA2Processor._parallel_config = None
+        if not hasattr(NunchakuQwenImageNaiveFA2Processor, "_config"):
+            NunchakuQwenImageNaiveFA2Processor._config = None
         if not hasattr(NunchakuQwenImageNaiveFA2Processor, "_attention_backend"):
             NunchakuQwenImageNaiveFA2Processor._attention_backend = None
-        if not hasattr(NunchakuQwenAttention, "_parallel_config"):
-            NunchakuQwenAttention._parallel_config = None
+        if not hasattr(NunchakuQwenAttention, "_config"):
+            NunchakuQwenAttention._config = None
         if not hasattr(NunchakuQwenAttention, "_attention_backend"):
             NunchakuQwenAttention._attention_backend = None
 
@@ -364,7 +364,7 @@ def __patch_NunchakuQwenImageNaiveFA2Processor__call__(
         # NOTE(DefTruth): Use the patched attention backend and
         # parallel config to make context parallelism work here.
         backend=getattr(self, "_attention_backend", None),
-        parallel_config=getattr(self, "_parallel_config", None),
+        config=getattr(self, "_config", None),
     )
 
     # Reshape back

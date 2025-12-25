@@ -103,7 +103,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage_controlnet(
     freqs_cis: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
 
-    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
+    ulysses_mesh: DeviceMesh = self._config.context_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
@@ -168,7 +168,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage_controlnet(
         dropout_p=0.0,
         is_causal=False,
         backend=self._attention_backend,
-        parallel_config=None,  # set to None to avoid double parallelism
+        config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
     out_wait = _all_to_all_o_async_func(out, group, **metadata)  # (B, S_LOCAL, H_GLOBAL, D)
@@ -198,10 +198,10 @@ def __patch_ZSingleStreamAttnProcessor_ulysses_async__call__(
     freqs_cis: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if (
-        self._parallel_config is not None
-        and hasattr(self._parallel_config, "context_parallel_config")
-        and self._parallel_config.context_parallel_config is not None
-        and self._parallel_config.context_parallel_config.ulysses_degree > 1
+        self._config is not None
+        and hasattr(self._config, "context_config")
+        and self._config.context_config is not None
+        and self._config.context_config.ulysses_degree > 1
     ):
         return _ulysses_attn_with_async_qkv_proj_zimage_controlnet(
             self,

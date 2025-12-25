@@ -59,8 +59,8 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
         # CogView3Plus and CogVideoX share the same attention processor
         CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
-        if not hasattr(CogVideoXAttnProcessor2_0, "_parallel_config"):
-            CogVideoXAttnProcessor2_0._parallel_config = None
+        if not hasattr(CogVideoXAttnProcessor2_0, "_config"):
+            CogVideoXAttnProcessor2_0._config = None
         if not hasattr(CogVideoXAttnProcessor2_0, "_attention_backend"):
             CogVideoXAttnProcessor2_0._attention_backend = None
 
@@ -126,8 +126,8 @@ class CogView4ContextParallelismPlanner(ContextParallelismPlanner):
 
         CogView4AttnProcessor.__call__ = __patch_CogView4AttnProcessor__call__
         # Also need to patch the parallel config and attention backend
-        if not hasattr(CogView4AttnProcessor, "_parallel_config"):
-            CogView4AttnProcessor._parallel_config = None
+        if not hasattr(CogView4AttnProcessor, "_config"):
+            CogView4AttnProcessor._config = None
         if not hasattr(CogView4AttnProcessor, "_attention_backend"):
             CogView4AttnProcessor._attention_backend = None
 
@@ -252,7 +252,7 @@ def __patch_CogView4AttnProcessor__call__(
         attention_mask = (
             (attn_mask_matrix > 0).unsqueeze(1).to(query.dtype)
         )  # [B, 1, seq_len, seq_len]
-        if hasattr(self, "_parallel_config") and self._parallel_config is not None:
+        if hasattr(self, "_config") and self._config is not None:
             raise NotImplementedError(
                 "Attention mask with context parallelism for CogView4 " "is not implemented yet."
             )
@@ -266,7 +266,7 @@ def __patch_CogView4AttnProcessor__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=getattr(self, "_attention_backend", None),
-        parallel_config=getattr(self, "_parallel_config", None),
+        config=getattr(self, "_config", None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.type_as(query)

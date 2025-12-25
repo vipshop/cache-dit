@@ -2,8 +2,8 @@ import torch
 from typing import Optional
 
 from diffusers.models.modeling_utils import ModelMixin
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.parallelism.backend import ParallelismBackend
+from cache_dit.parallelism.config import ParallelismConfig
 from cache_dit.logger import init_logger
 
 try:
@@ -82,7 +82,7 @@ def maybe_enable_context_parallelism(
                     )
 
                 transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-                _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
+                _maybe_patch_native_config(transformer, **extra_parallel_kwargs)
             else:
                 raise ValueError(
                     f"{transformer.__class__.__name__} does not support context parallelism."
@@ -91,7 +91,7 @@ def maybe_enable_context_parallelism(
     return transformer
 
 
-def _maybe_patch_native_parallel_config(
+def _maybe_patch_native_config(
     transformer: torch.nn.Module,
     **kwargs,
 ) -> torch.nn.Module:
@@ -135,7 +135,7 @@ def _maybe_patch_native_parallel_config(
         "transformer must be an instance of NunchakuFluxTransformer2DModelV2 "
         f"or NunchakuQwenImageTransformer2DModel, but got {type(transformer)}"
     )
-    config = transformer._parallel_config
+    config = transformer._config
 
     attention_classes = (
         NunchakuFluxAttention,
@@ -147,8 +147,8 @@ def _maybe_patch_native_parallel_config(
         if not isinstance(module, attention_classes):
             continue
         processor = getattr(module, "processor", None)
-        if processor is None or not hasattr(processor, "_parallel_config"):
+        if processor is None or not hasattr(processor, "_config"):
             continue
-        processor._parallel_config = config
+        processor._config = config
 
     return transformer

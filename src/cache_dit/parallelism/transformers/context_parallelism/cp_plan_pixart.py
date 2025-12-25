@@ -57,8 +57,8 @@ class PixArtContextParallelismPlanner(ContextParallelismPlanner):
         # Apply monkey patch to fix attention mask preparation at class level
         Attention.prepare_attention_mask = __patch_Attention_prepare_attention_mask__
         AttnProcessor2_0.__call__ = __patch_AttnProcessor2_0__call__
-        if not hasattr(AttnProcessor2_0, "_parallel_config"):
-            AttnProcessor2_0._parallel_config = None
+        if not hasattr(AttnProcessor2_0, "_config"):
+            AttnProcessor2_0._config = None
         if not hasattr(AttnProcessor2_0, "_attention_backend"):
             AttnProcessor2_0._attention_backend = None
 
@@ -182,7 +182,7 @@ def __patch_AttnProcessor2_0__call__(
     )
 
     if attention_mask is not None:
-        if self._parallel_config is None:
+        if self._config is None:
             attention_mask = attn.prepare_attention_mask(
                 attention_mask, sequence_length, batch_size
             )
@@ -196,7 +196,7 @@ def __patch_AttnProcessor2_0__call__(
             # accordingly. The head_size is also adjusted based on the world size
             # in order to make sdpa work correctly, otherwise, the sdpa op will raise
             # error due to the mismatch between attention_mask shape and expected shape.
-            cp_config = getattr(self._parallel_config, "context_parallel_config", None)
+            cp_config = getattr(self._config, "context_config", None)
             if cp_config is not None and cp_config._world_size > 1:
                 head_size = attn.heads // cp_config._world_size
                 attention_mask = attn.prepare_attention_mask(
@@ -245,7 +245,7 @@ def __patch_AttnProcessor2_0__call__(
         dropout_p=0.0,
         is_causal=False,
         backend=getattr(self, "_attention_backend", None),
-        parallel_config=getattr(self, "_parallel_config", None),
+        config=getattr(self, "_config", None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)

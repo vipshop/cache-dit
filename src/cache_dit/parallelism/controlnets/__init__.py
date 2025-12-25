@@ -6,8 +6,8 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.parallelism.backend import ParallelismBackend
+from cache_dit.parallelism.config import ParallelismConfig
 from .context_parallelism import maybe_enable_context_parallelism
 
 

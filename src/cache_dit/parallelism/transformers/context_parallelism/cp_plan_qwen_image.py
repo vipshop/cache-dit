@@ -146,7 +146,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
             "QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)"
         )
 
-    ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
+    ulysses_mesh: DeviceMesh = self._config.context_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
     _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
@@ -222,7 +222,7 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
         dropout_p=0.0,
         is_causal=False,
         backend=self._attention_backend,
-        parallel_config=None,  # set to None to avoid double parallelism
+        config=None,  # set to None to avoid double parallelism
     )  # (B, S_GLOBAL, H_LOCAL, D)
 
     # TODO: Split output before all to all to apply Async all to all,
@@ -262,10 +262,10 @@ def __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__(
     image_rotary_emb: Optional[torch.Tensor] = None,
 ) -> torch.FloatTensor:
     if (
-        self._parallel_config is not None
-        and hasattr(self._parallel_config, "context_parallel_config")
-        and self._parallel_config.context_parallel_config is not None
-        and self._parallel_config.context_parallel_config.ulysses_degree > 1
+        self._config is not None
+        and hasattr(self._config, "context_config")
+        and self._config.context_config is not None
+        and self._config.context_config.ulysses_degree > 1
     ):
         return _ulysses_attn_with_async_qkv_proj_qwen_image(
             self,

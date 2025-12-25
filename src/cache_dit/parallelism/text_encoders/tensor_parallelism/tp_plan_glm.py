@@ -15,7 +15,7 @@ from torch.distributed.tensor.parallel import (
 
 from cache_dit.logger import init_logger
 from cache_dit.utils import maybe_empty_cache
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.parallelism.config import ParallelismConfig
 
 from .tp_plan_registers import (
     TextEncoderTensorParallelismPlanner,

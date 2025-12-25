@@ -54,8 +54,8 @@ class CosisIDContextParallelismPlanner(ContextParallelismPlanner):
         # ConsisID uses the same attention processor as CogVideoX.
         CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__
         # Also need to patch the parallel config and attention backend
-        if not hasattr(CogVideoXAttnProcessor2_0, "_parallel_config"):
-            CogVideoXAttnProcessor2_0._parallel_config = None
+        if not hasattr(CogVideoXAttnProcessor2_0, "_config"):
+            CogVideoXAttnProcessor2_0._config = None
         if not hasattr(CogVideoXAttnProcessor2_0, "_attention_backend"):
             CogVideoXAttnProcessor2_0._attention_backend = None
 

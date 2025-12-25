@@ -7,8 +7,8 @@ logger = init_logger(__name__)
 
 from diffusers.models.modeling_utils import ModelMixin
 
-from cache_dit.parallelism.parallel_backend import ParallelismBackend
-from cache_dit.parallelism.parallel_config import ParallelismConfig
+from cache_dit.parallelism.backend import ParallelismBackend
+from cache_dit.parallelism.config import ParallelismConfig
 
 
 def maybe_enable_parallelism_for_transformer(
