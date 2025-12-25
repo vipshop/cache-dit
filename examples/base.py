@@ -230,14 +230,14 @@ class ExampleOutputData:
         if self.image is not None:
             if isinstance(self.image, Image.Image):
                 self.image.save(save_path)
+                logger.info(f"Image saved to {save_path}")
             elif isinstance(self.image, list):
-                save_pre = save_path.split(".")[0]
+                save_pre = ".".join(save_path.split(".")[:-1])
                 save_ext = save_path.split(".")[-1]
                 for i, img in enumerate(self.image):
                     img_save_path = f"{save_pre}_{i}.{save_ext}"
                     img.save(img_save_path)
                     logger.info(f"Image {i} saved to {img_save_path}")
-            logger.info(f"Image saved to {save_path}")
 
         if self.video is not None:
             export_to_video(self.video, save_path, fps=8)

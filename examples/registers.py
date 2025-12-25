@@ -422,12 +422,13 @@ def qwen_image_layered_example(args: argparse.Namespace, **kwargs) -> Example:
             model_name_or_path=model_name_or_path,
             pipeline_class=QwenImageLayeredPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "enable_separate_cfg": False,  # negative prompt is not used in example
+            },
         ),
         input_data=ExampleInputData(
-            image=load_image("./data/yarn_art_pikachu.png").convert("RGBA"),
+            image=load_image("./data/yarn-art-pikachu.png").convert("RGBA"),
             prompt="",
-            height=640,
-            width=640,
             num_inference_steps=50,
             true_cfg_scale=4.0,
             layers=4,
