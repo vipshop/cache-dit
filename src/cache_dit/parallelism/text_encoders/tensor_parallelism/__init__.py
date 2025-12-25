@@ -26,9 +26,9 @@ def maybe_enable_tensor_parallelism(
     text_encoder: torch.nn.Module,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
-    assert isinstance(text_encoder, torch.nn.Module), (
-        "text_encoder must be an instance of torch.nn.Module, " f"but got {type(text_encoder)}"
-    )
+    assert isinstance(
+        text_encoder, torch.nn.Module
+    ), f"text_encoder must be an instance of torch.nn.Module, but got {type(text_encoder)}"
 
     if parallelism_config is None:
         return text_encoder

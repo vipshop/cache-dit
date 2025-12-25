@@ -27,11 +27,12 @@ logger = init_logger(__name__)
 
 
 def maybe_enable_context_parallelism(
-    transformer: torch.nn.Module,
+    transformer: torch.nn.Module | ModelMixin,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
-    assert isinstance(transformer, ModelMixin), (
-        "transformer must be an instance of diffusers' ModelMixin, " f"but got {type(transformer)}"
+    assert isinstance(transformer, (torch.nn.Module, ModelMixin)), (
+        "transformer must be an instance of torch.nn.Module or ModelMixin, "
+        f"but got {type(transformer)}"
     )
     if parallelism_config is None:
         return transformer

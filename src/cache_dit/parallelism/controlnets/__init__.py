@@ -6,18 +6,21 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
+from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.backend import ParallelismBackend
 from cache_dit.parallelism.config import ParallelismConfig
 from .context_parallelism import maybe_enable_context_parallelism
 
 
 def maybe_enable_parallelism_for_controlnet(
-    controlnet: torch.nn.Module,
+    controlnet: torch.nn.Module | ModelMixin,
     parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
-    assert isinstance(
-        controlnet, torch.nn.Module
-    ), f"controlnet must be an instance of torch.nn.Module, but got {type(controlnet)}"
+    assert isinstance(controlnet, (torch.nn.Module, ModelMixin)), (
+        "controlnet must be an instance of torch.nn.Module or ModelMixin, "
+        f"but got {type(controlnet)}"
+    )
+
     if parallelism_config is None:
         return controlnet
 
