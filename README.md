@@ -81,6 +81,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | FLUX.2-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | FLUX.1-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | FLUX.1-Fill-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
+| FLUX.1-Kontext-dev | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-2509 | ✅ | ✅ | ✅ | ✅ | ✖️ |
@@ -129,9 +130,9 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | HunyuanDiT | ✅ | ✖️ | ✅ | ✅ | ✖️ |
 | Sana-1600M-1024px | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
 | DiT-XL-2-256 | ✅ | ✅ | ✖️ | ✅ | ✖️ |
-| Allegro | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| OmniGen | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
-| StableDiffusion-3.5 | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| Allegro-T2V | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| OmniGen-2 | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
+| stable-diffusion-3.5-large | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
 | Amused-512 | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
 | AuraFlow | ✅ | ✖️ | ✖️ | ✅ | ✖️ |
 
