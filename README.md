@@ -80,8 +80,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 <div align="center">
 
-| 📚Supported DiTs: `🤗60+` | Cache  | C-P | T-P | TE-P | CN-P |
-|:---:|:---:|:---:|:---:|:---:|:---:|
+| 📚Supported DiTs: `🤗60+` | Cache  | C-P | T-P | TE-P | CN-P | VAE-P |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Qwen-Image-Edit-2511-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | Qwen-Image-Edit-2511 | ✅ | ✅ | ✅ | ✅ | ✖️ |
 | LongCat-Image | ✅ | ✅ | ✅ | ✅ | ✖️ |
