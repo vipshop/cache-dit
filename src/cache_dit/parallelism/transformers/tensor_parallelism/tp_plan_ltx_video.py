@@ -115,7 +115,7 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
         **kwargs,
     ) -> torch.nn.Module:
         assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
-            "config.tp_size must be set and greater than 1 for " "tensor parallelism"
+            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
         )
 
         device_type = torch.accelerator.current_accelerator().type
