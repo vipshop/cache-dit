@@ -101,8 +101,6 @@ def _maybe_patch_native_parallel_config(
     if not cls_name.startswith("Nunchaku"):
         return transformer
 
-    from diffusers import FluxTransformer2DModel, QwenImageTransformer2DModel
-
     try:
         from nunchaku.models.transformers.transformer_flux_v2 import (
             NunchakuFluxTransformer2DModelV2,
@@ -114,41 +112,53 @@ def _maybe_patch_native_parallel_config(
             NunchakuQwenImageNaiveFA2Processor,
             NunchakuQwenImageTransformer2DModel,
         )
+        from nunchaku.models.transformers.transformer_zimage import (
+            NunchakuZImageTransformer2DModel,
+            NunchakuZSingleStreamAttnProcessor,
+            NunchakuZImageAttention,
+        )
     except ImportError:
         raise ImportError(
-            "NunchakuFluxTransformer2DModelV2 or NunchakuQwenImageTransformer2DModel "
-            "requires the 'nunchaku' package. Please install nunchaku before using "
-            "the context parallelism for nunchaku 4-bits models."
+            "NunchakuZImageTransformer2DModel, NunchakuFluxTransformer2DModelV2 and "
+            "NunchakuQwenImageTransformer2DModel requires the 'nunchaku' package. "
+            "Please install nunchaku>=1.10 before using the context parallelism for "
+            "nunchaku 4-bits models."
         )
+
     assert isinstance(
         transformer,
         (
             NunchakuFluxTransformer2DModelV2,
-            FluxTransformer2DModel,
-        ),
-    ) or isinstance(
-        transformer,
-        (
             NunchakuQwenImageTransformer2DModel,
-            QwenImageTransformer2DModel,
+            NunchakuZImageTransformer2DModel,
         ),
-    ), (
-        "transformer must be an instance of NunchakuFluxTransformer2DModelV2 "
-        f"or NunchakuQwenImageTransformer2DModel, but got {type(transformer)}"
     )
-    config = transformer._parallel_config
+    config = getattr(transformer, "_parallel_config", None)
+    if config is None:
+        raise logger.warning(
+            f"The transformer {cls_name} does not have _parallel_config attribute. "
+            "Skipping patching native parallel config."
+        )
 
     attention_classes = (
         NunchakuFluxAttention,
         NunchakuFluxFA2Processor,
         NunchakuQwenAttention,
         NunchakuQwenImageNaiveFA2Processor,
+        NunchakuZImageAttention,
+        NunchakuZSingleStreamAttnProcessor,
     )
     for module in transformer.modules():
         if not isinstance(module, attention_classes):
             continue
         processor = getattr(module, "processor", None)
         if processor is None or not hasattr(processor, "_parallel_config"):
+            continue
+        if getattr(processor, "_parallel_config", None) is not None:
+            logger.warning(
+                f"The attention processor {processor.__class__.__name__} already has "
+                "_parallel_config attribute set. Skipping patching native parallel config."
+            )
             continue
         processor._parallel_config = config
 

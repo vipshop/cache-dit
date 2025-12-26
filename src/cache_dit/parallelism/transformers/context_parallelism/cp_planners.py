@@ -96,6 +96,9 @@ def _activate_cp_planners():
         from .cp_plan_nunchaku import (  # noqa: F401
             NunchakuQwenImageContextParallelismPlanner,
         )
+        from .cp_plan_nunchaku import (  # noqa: F401
+            NunchakuZImageContextParallelismPlanner,
+        )
 
 
 __all__ = ["_activate_cp_planners"]
