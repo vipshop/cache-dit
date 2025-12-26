@@ -82,7 +82,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 | 📚Supported DiTs: `🤗65+` | Cache  | C-P | T-P | TE-P | CN-P | VAE-P |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Z-Image-Turbo `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Z-Image-Turbo `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Layered | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Edit-2511-Lightning | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Edit-2511 | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
@@ -114,14 +114,14 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | HunyuanImage-2.1 | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | HunyuanVideo-1.5 | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
 | HunyuanVideo | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
-| FLUX.1-dev `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| FLUX.1-Fill-dev `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen-Image `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen-Image-Edit `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen-Image-Edit-2509 `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen-Image-Lightning `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen-Image-Edit-Lightning `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen-Image-Edit-2509-Lightning `Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| FLUX.1-dev `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| FLUX.1-Fill-dev `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen-Image `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen-Image-Edit `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen-Image-Edit-2509 `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen-Image-Lightning `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen...Edit-Lightning `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen...Edit-2509-Lightning `⚡️Nunchaku` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | SkyReels-V2-T2V | ✅ | ✅  | ✅  | ✅ | ✖️ | ✖️ |
 | LongCat-Video | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
 | ChronoEdit-14B | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
