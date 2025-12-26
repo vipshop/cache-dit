@@ -82,6 +82,7 @@ python3 generate.py qwen_image
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
+python3 generate.py zimage_nunchaku 
 python3 generate.py zimage_controlnet_2.1 
 python3 generate.py generate longcat_image
 python3 generate.py generate longcat_image_edit
