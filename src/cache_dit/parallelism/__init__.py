@@ -74,6 +74,7 @@ def enable_parallelism(
             elif _is_vae(module) and not _is_parallelized(module):
                 logger.warning("Parallelism for VAE is not supported yet. Skipped!")
 
+    transformer._extra_parallel_modules = extra_parallel_modules  # type: ignore[attr-defined]
     # NOTE: Workaround for potential memory peak issue after parallelism
     # enabling, specially for tensor parallelism in native pytorch backend.
     maybe_empty_cache()
@@ -84,14 +85,27 @@ def enable_parallelism(
 def remove_parallelism_stats(
     module: torch.nn.Module,
 ) -> torch.nn.Module:
+
     if not getattr(module, "_is_parallelized", False):
-        logger.warning("The transformer is not parallelized. Skipping removing parallelism.")
         return module
 
-    if hasattr(module, "_is_parallelized"):
-        del module._is_parallelized  # type: ignore[attr-defined]
-    if hasattr(module, "_parallelism_config"):
-        del module._parallelism_config  # type: ignore[attr-defined]
+    def _remove_parallel_stats(module: torch.nn.Module) -> None:
+        if hasattr(module, "_is_parallelized"):
+            del module._is_parallelized
+        if hasattr(module, "_parallelism_config"):
+            del module._parallelism_config
+
+    _remove_parallel_stats(module)
+
+    # remove parallelism stats for extra parallel modules
+    if not hasattr(module, "_extra_parallel_modules"):
+        return module
+
+    extra_parallel_modules = getattr(module, "_extra_parallel_modules", [])
+    for extra_module in extra_parallel_modules:
+        _remove_parallel_stats(extra_module)
+
+    del module._extra_parallel_modules  # type: ignore[attr-defined]
     return module
 
 
