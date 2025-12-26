@@ -273,6 +273,11 @@ class ExampleOutputData:
     def summary(self, args: argparse.Namespace) -> str:
         logger.info("🤖 Example Output Summary:")
         summary_str = f"- Model: {args.example}\n- Optimization: {self.strify_tag}\n"
+        device_name = torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU"
+        world_size = (
+            1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
+        )
+        summary_str += f"- Device: {device_name} x {world_size}\n"
         if self.load_time is not None:
             summary_str += f"- Load Time: {self.load_time:.2f}s\n"
         if self.warmup_time is not None:
