@@ -822,7 +822,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
             transformer=True,
         )
         transformer = NunchakuZImageTransformer2DModel.from_pretrained(
-            f"{nunchaku_zimage_dir}/svdq-int4_r32-z-image-turbo.safetensors"
+            f"{nunchaku_zimage_dir}/svdq-int4_r128-z-image-turbo.safetensors"
         )
     else:
         transformer = None
