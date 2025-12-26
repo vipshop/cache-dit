@@ -58,6 +58,7 @@ python3 generate.py list  # list all available examples
 [generate.py:53] - ✅ wan2.2_vace                    - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
 [generate.py:53] - ✅ wan2.1_vace                    - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
 [generate.py:53] - ✅ ovis_image                     - Defalut: AIDC-AI/Ovis-Image-7B
+[generate.py:53] - ✅ zimage_nunchaku                - Defalut: nunchaku/nunchaku-z-image-turbo
 [generate.py:53] - ✅ zimage                         - Defalut: Tongyi-MAI/Z-Image-Turbo
 [generate.py:53] - ✅ zimage_controlnet_2.0          - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
 [generate.py:53] - ✅ zimage_controlnet_2.1          - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
@@ -81,6 +82,7 @@ python3 generate.py qwen_image
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
+python3 generate.py zimage_nunchaku 
 python3 generate.py zimage_controlnet_2.1 
 python3 generate.py generate longcat_image
 python3 generate.py generate longcat_image_edit

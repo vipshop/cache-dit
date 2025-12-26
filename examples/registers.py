@@ -64,6 +64,7 @@ _env_path_mapping = {
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
     "ZIMAGE_DIR": "Tongyi-MAI/Z-Image-Turbo",
+    "NUNCHAKU_ZIMAGE_DIR": "nunchaku-tech/nunchaku-z-image-turbo",
     "Z_IMAGE_CONTROLNET_2_1_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
     "Z_IMAGE_CONTROLNET_2_0_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
@@ -804,12 +805,27 @@ def _zimage_turbo_steps_mask(
 
 
 @ExampleRegister.register("zimage", default="Tongyi-MAI/Z-Image-Turbo")
+@ExampleRegister.register("zimage_nunchaku", default="nunchaku/nunchaku-z-image-turbo")
 def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImagePipeline
 
     if args.cache:
         # Only warmup 4 steps (total 9 steps) for distilled models
         args.max_warmup_steps = min(4, args.max_warmup_steps)
+
+    if "nunchaku" in args.example.lower():
+        from nunchaku import NunchakuZImageTransformer2DModel
+
+        nunchaku_zimage_dir = _path(
+            "nunchaku-tech/nunchaku-z-image-turbo",
+            args=args,
+            transformer=True,
+        )
+        transformer = NunchakuZImageTransformer2DModel.from_pretrained(
+            f"{nunchaku_zimage_dir}/svdq-int4_r128-z-image-turbo.safetensors"
+        )
+    else:
+        transformer = None
 
     steps_computation_mask = _zimage_turbo_steps_mask(args)
     return Example(
@@ -818,6 +834,7 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
             task_type=ExampleType.T2I,  # Text to Image
             model_name_or_path=_path("Tongyi-MAI/Z-Image-Turbo"),
             pipeline_class=ZImagePipeline,
+            transformer=transformer,  # maybe use Nunchaku zimage transformer
             bnb_4bit_components=["text_encoder"],
             extra_optimize_kwargs={
                 "steps_computation_mask": steps_computation_mask,
