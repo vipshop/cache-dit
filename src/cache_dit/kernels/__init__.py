@@ -1,1 +1,1 @@
-from cache_dit.kernels.triton_per_token_quant_8bit import per_token_quant_fp8, per_token_dequant_fp8
+from .triton import per_token_quant_fp8, per_token_dequant_fp8

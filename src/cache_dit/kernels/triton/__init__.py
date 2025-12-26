@@ -1,0 +1,2 @@
+from .per_token_quant_8bit import per_token_quant_fp8
+from .per_token_quant_8bit import per_token_dequant_fp8

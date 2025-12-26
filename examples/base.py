@@ -64,6 +64,11 @@ class ExampleInputData:
     control_image: Optional[Union[List[Image.Image], Image.Image]] = None
     control_mask: Optional[Union[List[Image.Image], Image.Image]] = None
     controlnet_conditioning_scale: Optional[float] = None
+    # Specific inputs for Qwen Image Layered
+    layers: Optional[int] = None
+    resolution: Optional[int] = None
+    cfg_normalize: Optional[bool] = None
+    use_en_prompt: Optional[bool] = None
     # Other inputs
     seed: Optional[int] = None
     generator: torch.Generator = torch.Generator("cpu").manual_seed(0)
@@ -203,7 +208,9 @@ class ExampleOutputData:
     model_tag: Optional[str] = None
     strify_tag: Optional[str] = None
     # Generated image or video
-    image: Optional[Image.Image] = None  # Single PIL Images
+    image: Optional[Image.Image | List[Image.Image]] = (
+        None  # Single PIL Images or list of PIL Images
+    )
     video: Optional[List[Image.Image]] = None  # List of PIL Images or video frames
     # Performance metrics
     load_time: Optional[float] = None
@@ -223,8 +230,16 @@ class ExampleOutputData:
                 return
 
         if self.image is not None:
-            self.image.save(save_path)
-            logger.info(f"Image saved to {save_path}")
+            if isinstance(self.image, Image.Image):
+                self.image.save(save_path)
+                logger.info(f"Image saved to {save_path}")
+            elif isinstance(self.image, list):
+                save_pre = ".".join(save_path.split(".")[:-1])
+                save_ext = save_path.split(".")[-1]
+                for i, img in enumerate(self.image):
+                    img_save_path = f"{save_pre}_{i}.{save_ext}"
+                    img.save(img_save_path)
+                    logger.info(f"Image {i} saved to {img_save_path}")
 
         if self.video is not None:
             export_to_video(self.video, save_path, fps=8)
@@ -258,6 +273,11 @@ class ExampleOutputData:
     def summary(self, args: argparse.Namespace) -> str:
         logger.info("🤖 Example Output Summary:")
         summary_str = f"- Model: {args.example}\n- Optimization: {self.strify_tag}\n"
+        device_name = torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU"
+        world_size = (
+            1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
+        )
+        summary_str += f"- Device: {device_name} x {world_size}\n"
         if self.load_time is not None:
             summary_str += f"- Load Time: {self.load_time:.2f}s\n"
         if self.warmup_time is not None:

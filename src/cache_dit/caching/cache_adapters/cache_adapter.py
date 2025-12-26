@@ -566,6 +566,7 @@ class CachedAdapter:
         pipe_or_adapter: Union[
             DiffusionPipeline,
             BlockAdapter,
+            torch.nn.Module,  # Transformer-only
         ],
     ):
         # release model hooks
@@ -646,7 +647,7 @@ class CachedAdapter:
         cls.release_hooks(pipe_or_adapter, remove_stats, remove_stats, remove_stats)
 
         # maybe release parallelism stats
-        from cache_dit.parallelism.parallel_interface import (
+        from cache_dit.parallelism import (
             remove_parallelism_stats,
         )
 
@@ -664,25 +665,38 @@ class CachedAdapter:
             DiffusionPipeline,
             BlockAdapter,
         ],
-        _release_blocks: Callable,
-        _release_transformer: Callable,
-        _release_pipeline: Callable,
+        _release_blocks: Optional[Callable] = None,
+        _release_transformer: Optional[Callable] = None,
+        _release_pipeline: Optional[Callable] = None,
     ):
         if isinstance(pipe_or_adapter, DiffusionPipeline):
             pipe = pipe_or_adapter
-            _release_pipeline(pipe)
+            if _release_pipeline is not None:
+                _release_pipeline(pipe)
             if hasattr(pipe, "transformer"):
-                _release_transformer(pipe.transformer)
+                if _release_transformer is not None:
+                    _release_transformer(pipe.transformer)
             if hasattr(pipe, "transformer_2"):  # Wan 2.2
-                _release_transformer(pipe.transformer_2)
+                if _release_transformer is not None:
+                    _release_transformer(pipe.transformer_2)
         elif isinstance(pipe_or_adapter, BlockAdapter):
             adapter = pipe_or_adapter
             BlockAdapter.assert_normalized(adapter)
-            _release_pipeline(adapter.pipe)
+            if _release_pipeline is not None:
+                _release_pipeline(adapter.pipe)
             for transformer in BlockAdapter.flatten(adapter.transformer):
-                _release_transformer(transformer)
+                if _release_transformer is not None:
+                    _release_transformer(transformer)
             for blocks in BlockAdapter.flatten(adapter.blocks):
-                _release_blocks(blocks)
+                if _release_blocks is not None:
+                    _release_blocks(blocks)
+        elif isinstance(pipe_or_adapter, torch.nn.Module):
+            transformer = pipe_or_adapter
+            if _release_transformer is not None:
+                _release_transformer(transformer)
+            for blocks in BlockAdapter.find_blocks(transformer):
+                if _release_blocks is not None:
+                    _release_blocks(blocks)
 
     @classmethod
     def maybe_refresh_context(

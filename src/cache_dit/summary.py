@@ -270,10 +270,10 @@ def _summary(
         cache_options = module._context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
-            print(f"\n🤗Context Options: {cls_name}\n\n{cache_options}")
+            print(f"\n🤗Context Options: {cls_name}\n\n{cache_options}", flush=True)
     else:
         if logging:
-            logger.warning(f"Can't find Context Options for: {cls_name}", flush=True)
+            logger.warning(f"Can't find Context Options for: {cls_name}")
 
     if hasattr(module, "_parallelism_config"):
         parallelism_config: ParallelismConfig = module._parallelism_config
@@ -517,14 +517,14 @@ def supported_matrix() -> str | None:
         _pipelines_supported_cache += [
             "LongCatVideo",  # not in diffusers, but supported
         ]
-        from cache_dit.parallelism.transformers.native_diffusers import (
+        from cache_dit.parallelism.transformers.context_parallelism import (
             ContextParallelismPlannerRegister,
         )
 
         _pipelines_supported_context_parallelism = (
             ContextParallelismPlannerRegister.supported_planners()[1]
         )
-        from cache_dit.parallelism.transformers.native_pytorch import (
+        from cache_dit.parallelism.transformers.tensor_parallelism import (
             TensorParallelismPlannerRegister,
         )
 

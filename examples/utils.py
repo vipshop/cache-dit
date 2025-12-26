@@ -76,6 +76,24 @@ def get_args(
         help="Override model path if provided",
     )
     parser.add_argument(
+        "--controlnet-path",
+        type=str,
+        default=None,
+        help="Override controlnet model path if provided",
+    )
+    parser.add_argument(
+        "--lora-path",
+        type=str,
+        default=None,
+        help="Override lora model path if provided",
+    )
+    parser.add_argument(
+        "--transformer-path",
+        type=str,
+        default=None,
+        help="Override transformer model path if provided",
+    )
+    parser.add_argument(
         "--image-path",
         type=str,
         default=None,
@@ -259,13 +277,6 @@ def get_args(
         default=False,
         help="Enable quantization for transformer",
     )
-    parser.add_argument(
-        "--quantize-text-encoder",
-        "--q-text",
-        action="store_true",
-        default=False,
-        help="Enable quantization for text encoder",
-    )
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -288,8 +299,42 @@ def get_args(
         ],
     )
     parser.add_argument(
+        "--quantize-text-encoder",
+        "--q-text",
+        action="store_true",
+        default=False,
+        help="Enable quantization for text encoder",
+    )
+    parser.add_argument(
         "--quantize-text-type",
         "--q-text-type",
+        type=str,
+        default=None,
+        choices=[
+            None,
+            "float8",
+            "float8_weight_only",
+            "float8_wo",  # alias for float8_weight_only
+            "int8",
+            "int8_weight_only",
+            "int8_wo",  # alias for int8_weight_only
+            "int4",
+            "int4_weight_only",
+            "int4_wo",  # alias for int4_weight_only
+            "bitsandbytes_4bit",
+            "bnb_4bit",  # alias for bitsandbytes_4bit
+        ],
+    )
+    parser.add_argument(
+        "--quantize-controlnet",
+        "--q-controlnet",
+        action="store_true",
+        default=False,
+        help="Enable quantization for text encoder",
+    )
+    parser.add_argument(
+        "--quantize-controlnet-type",
+        "--q-controlnet-type",
         type=str,
         default=None,
         choices=[
@@ -334,6 +379,12 @@ def get_args(
         help="Enable text encoder parallelism if applicable.",
     )
     parser.add_argument(
+        "--parallel-controlnet",
+        action="store_true",
+        default=False,
+        help="Enable ControlNet parallelism if applicable.",
+    )
+    parser.add_argument(
         "--attn",  # attention backend for context parallelism
         type=str,
         default=None,
@@ -370,13 +421,6 @@ def get_args(
         action="store_true",
         default=False,
         help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
-    )
-    parser.add_argument(
-        "--disable-compute-comm-overlap",
-        "--dcco",
-        action="store_true",
-        default=False,
-        help="Disable compute-communication overlap during compilation",
     )
     # Offload settings
     parser.add_argument(
@@ -437,6 +481,12 @@ def get_args(
         action="store_true",
         default=False,
         help="Enable compile for text encoder",
+    )
+    parser.add_argument(
+        "--compile-controlnet",
+        action="store_true",
+        default=False,
+        help="Enable compile for ControlNet",
     )
     parser.add_argument(
         "--max-autotune",
@@ -508,13 +558,9 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
 
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+    # Force enable quantization if quantize_type is specified
     if args.quantize_type is not None:
-        # Force enable quantization if quantize_type is specified
         args.quantize = True
-
-    if args.quantize_text_type is not None:
-        # Force enable quantization for text encoder if quantize_text_type is specified
-        args.quantize_text_encoder = True
 
     # Handle alias for quantize_type
     if args.quantize and args.quantize_type is None:
@@ -529,6 +575,9 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.quantize_type == "bnb_4bit":  # alias
         args.quantize_type = "bitsandbytes_4bit"
 
+    # Force enable quantization for text encoder if quantize_text_type is specified
+    if args.quantize_text_type is not None:
+        args.quantize_text_encoder = True
     # Handle alias for quantize_text_type
     if args.quantize_text_encoder and args.quantize_text_type is None:
         # default to same as quantize_type
@@ -542,6 +591,23 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.quantize_text_type = "int4_weight_only"
     if args.quantize_text_type == "bnb_4bit":  # alias
         args.quantize_text_type = "bitsandbytes_4bit"
+
+    # Force enable quantization for controlnet if quantize_controlnet_type is specified
+    if args.quantize_controlnet_type is not None:
+        args.quantize_controlnet = True
+    # Handle alias for quantize_controlnet_type
+    if args.quantize_controlnet and args.quantize_controlnet_type is None:
+        # default to same as quantize_type
+        args.quantize_controlnet_type = args.quantize_type
+
+    if args.quantize_controlnet_type == "float8_wo":  # alias
+        args.quantize_controlnet_type = "float8_weight_only"
+    if args.quantize_controlnet_type == "int8_wo":  # alias
+        args.quantize_controlnet_type = "int8_weight_only"
+    if args.quantize_controlnet_type == "int4_wo":  # alias
+        args.quantize_controlnet_type = "int4_weight_only"
+    if args.quantize_controlnet_type == "bnb_4bit":  # alias
+        args.quantize_controlnet_type = "bitsandbytes_4bit"
 
     if args.mask_policy is not None and not args.steps_mask:
         # Enable steps mask if mask_policy is specified
@@ -603,6 +669,11 @@ def prepare_extra_parallel_modules(
     if args.parallel_vae:
         if hasattr(pipe, "vae"):
             extra_parallel_modules.append(getattr(pipe, "vae"))
+    if args.parallel_controlnet:
+        if hasattr(pipe, "controlnet"):
+            extra_parallel_modules.append(getattr(pipe, "controlnet"))
+        else:
+            logger.warning("parallel-controlnet is set but no ControlNet found in the pipeline.")
     return extra_parallel_modules
 
 
@@ -664,6 +735,44 @@ def maybe_compile_text_encoder(
         else:
             logger.warning("compile-text-encoder is set but no text encoder found in the pipeline.")
     return pipe_or_adapter
+
+
+def maybe_compile_controlnet(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.compile_controlnet:
+        cache_dit.set_compile_configs()
+        torch.set_float32_matmul_precision("high")
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please compile transformer manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "controlnet"):
+            controlnet = getattr(pipe, "controlnet", None)
+            if controlnet is not None and not isinstance(
+                controlnet,
+                torch._dynamo.OptimizedModule,  # already compiled
+            ):
+                controlnet_cls_name = controlnet.__class__.__name__
+                if isinstance(controlnet, torch.nn.Module):
+                    logger.info(f"Compiling controlnet module: {controlnet_cls_name} ...")
+                    controlnet = torch.compile(
+                        controlnet,
+                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                    )
+                    setattr(pipe, "controlnet", controlnet)
+                else:
+                    logger.warning(
+                        f"Cannot compile controlnet module: {controlnet_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "controlnet", controlnet)
+        else:
+            logger.warning("compile is set but no controlnet found in the pipeline.")
 
 
 def maybe_compile_vae(
@@ -899,6 +1008,50 @@ def maybe_quantize_text_encoder(
     return pipe_or_adapter
 
 
+def maybe_quantize_controlnet(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    # Quantize controlnet by default if quantize_controlnet is enabled
+    if args.quantize_controlnet:
+        if args.quantize_controlnet_type in ("bitsandbytes_4bit", "bnb_4bit"):
+            logger.debug(
+                "bitsandbytes_4bit quantization should be handled by"
+                " PipelineQuantizationConfig in from_pretrained."
+            )
+            return pipe_or_adapter
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please quantize controlnet manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        if hasattr(pipe, "controlnet"):
+            controlnet = getattr(pipe, "controlnet", None)
+            if controlnet is not None:
+                controlnet_cls_name = controlnet.__class__.__name__
+                if isinstance(controlnet, torch.nn.Module):
+                    logger.info(
+                        f"Quantizing controlnet module: {controlnet_cls_name} to"
+                        f" {args.quantize_controlnet_type} ..."
+                    )
+                    controlnet = cache_dit.quantize(
+                        controlnet,
+                        quant_type=args.quantize_controlnet_type,
+                    )
+                    setattr(pipe, "controlnet", controlnet)
+                else:
+                    logger.warning(
+                        f"Cannot quantize controlnet module: {controlnet_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            setattr(pipe, "controlnet", controlnet)
+        else:
+            logger.warning("quantize_controlnet is set but no controlnet found in the pipeline.")
+    return pipe_or_adapter
+
+
 def pipe_quant_bnb_4bit_config(
     args,
     components_to_quantize: Optional[List[str]] = ["text_encoder"],
@@ -1017,11 +1170,6 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
-    if args.disable_compute_comm_overlap:
-        # Enable compute comm overlap default for torch.compile if used
-        # cache_dit.set_compile_flags(), users need to disable it explicitly.
-        cache_dit.disable_compute_comm_overlap()
-
     if args.cache or args.parallel_type is not None:
 
         cache_config = kwargs.pop("cache_config", None)
@@ -1104,6 +1252,7 @@ def maybe_apply_optimization(
     # applied after TP.
     maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
+    maybe_quantize_controlnet(args, pipe_or_adapter)
 
     # VAE Tiling or Slicing
     maybe_vae_tiling_or_slicing(args, pipe_or_adapter)
@@ -1111,6 +1260,7 @@ def maybe_apply_optimization(
     # Compilation
     maybe_compile_transformer(args, pipe_or_adapter)
     maybe_compile_text_encoder(args, pipe_or_adapter)
+    maybe_compile_controlnet(args, pipe_or_adapter)
     maybe_compile_vae(args, pipe_or_adapter)
 
     # CPU Offload
@@ -1151,6 +1301,8 @@ def strify(args, pipe_or_stats):
         base_str += "_TEP"  # Text Encoder Parallelism
     if args.parallel_vae:
         base_str += "_VAEP"  # VAE Parallelism
+    if args.parallel_controlnet:
+        base_str += "_CNP"  # ControlNet Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
     return base_str
