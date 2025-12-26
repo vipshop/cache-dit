@@ -428,10 +428,12 @@ def disable_cache(
     pipe_or_adapter: Union[
         DiffusionPipeline,
         BlockAdapter,
+        torch.nn.Module,  # Transformer-only
     ],
 ):
+    cls_name = pipe_or_adapter.__class__.__name__
     CachedAdapter.maybe_release_hooks(pipe_or_adapter)
-    logger.warning(f"Cache Acceleration is disabled for: " f"{pipe_or_adapter.__class__.__name__}.")
+    logger.warning(f"Acceleration hooks is disabled for: {cls_name}.")
 
 
 def supported_pipelines(
