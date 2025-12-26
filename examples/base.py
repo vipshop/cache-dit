@@ -146,11 +146,6 @@ class ExampleInputData:
 
     def summary(self, args: argparse.Namespace) -> str:
         summary_str = "🤖 Example Input Summary:\n"
-        device_name = torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU"
-        world_size = (
-            1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
-        )
-        summary_str += f"- Device: {device_name} x {world_size}\n"
         data = self.data(args)
         for k, v in data.items():
             if k in ["prompt", "negative_prompt"]:
@@ -277,6 +272,11 @@ class ExampleOutputData:
 
     def summary(self, args: argparse.Namespace) -> str:
         logger.info("🤖 Example Output Summary:")
+        device_name = torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU"
+        world_size = (
+            1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
+        )
+        summary_str += f"- Device: {device_name} x {world_size}\n"
         summary_str = f"- Model: {args.example}\n- Optimization: {self.strify_tag}\n"
         if self.load_time is not None:
             summary_str += f"- Load Time: {self.load_time:.2f}s\n"
