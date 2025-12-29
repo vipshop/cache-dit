@@ -1,4 +1,5 @@
 import torch
+import copy
 from typing import Callable, Optional, List
 from cache_dit.utils import maybe_empty_cache
 from cache_dit.logger import init_logger
@@ -35,6 +36,13 @@ def quantize_ao(
         "int4_weight_only": "int4_w4a16_wo",
         "int4_wo": "int4_w4a16_wo",
     }
+    alias_map_rev = copy.deepcopy(alias_map)
+    # remove duplicates *_wo in rev map
+    for key in list(alias_map_rev.keys()):
+        if key.endswith("_wo"):
+            alias_map_rev.pop(key)
+    alias_map_rev = {v: k for k, v in alias_map_rev.items()}
+
     if quant_type.lower() in alias_map:
         quant_type = alias_map[quant_type.lower()]
 
@@ -187,7 +195,6 @@ def quantize_ao(
 
     maybe_empty_cache()
 
-    alias_map_rev = {v: k for k, v in alias_map.items()}
     if quant_type in alias_map_rev:
         quant_type = alias_map_rev[quant_type]
 
