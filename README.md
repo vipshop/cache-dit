@@ -120,8 +120,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | Qwen-Image-Edit `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Edit-2509 `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Lightning `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen...Edit-Lightning `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
-| Qwen..E..2509-Lightning `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen-Image-Edit-Lightning `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| Qwen-Image-Edit-2509-Lightning `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | SkyReels-V2-T2V | ✅ | ✅  | ✅  | ✅ | ✖️ | ✖️ |
 | LongCat-Video | ✅ | ✖️ | ✖️ | ✅ | ✖️ | ✖️ |
 | ChronoEdit-14B | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
