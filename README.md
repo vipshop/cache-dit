@@ -116,6 +116,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | HunyuanVideo | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
 | FLUX.1-dev `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | FLUX.1-Fill-dev `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
+| FLUX.1-Kontext-dev `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | Qwen-Image `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Edit `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
 | Qwen-Image-Edit-2509 `🤖Q` | ✅ | ✅ | ✖️ | ✅ | ✖️ | ✖️ |
