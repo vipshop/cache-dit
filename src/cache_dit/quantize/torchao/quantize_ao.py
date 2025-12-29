@@ -26,11 +26,14 @@ def quantize_ao(
     alias_map = {
         "float8": "fp8_w8a8_dq",
         "float8_weight_only": "fp8_w8a16_wo",
+        "float8_wo": "fp8_w8a16_wo",
         "int8": "int8_w8a8_dq",
         "int8_weight_only": "int8_w8a16_wo",
+        "int8_wo": "int8_w8a16_wo",
         "int4": "int4_w4a8_dq",
         "int4_w4a4": "int4_w4a4_dq",
         "int4_weight_only": "int4_w4a16_wo",
+        "int4_wo": "int4_w4a16_wo",
     }
     if quant_type.lower() in alias_map:
         quant_type = alias_map[quant_type.lower()]
