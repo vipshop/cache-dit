@@ -38,22 +38,7 @@ from cache_dit.profiler import profile_function
 from cache_dit.profiler import create_profiler_context
 from cache_dit.profiler import get_profiler_output_dir
 from cache_dit.profiler import set_profiler_output_dir
-
-try:
-    from cache_dit.quantize import quantize
-except ImportError as e:  # noqa: F841
-    err_msg = str(e)
-
-    def _raise_import_error(func_name: str):
-        raise ImportError(
-            f"{func_name} requires additional dependencies. "
-            "Please install cache-dit[quantization] or cache-dit[all] "
-            f"to use this feature. Error message: {err_msg}"
-        )
-
-    def quantize(*args, **kwargs):
-        _raise_import_error("quantize")
-
+from cache_dit.quantize import quantize
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
