@@ -10,19 +10,27 @@ logger = init_logger(__name__)
 def quantize_ao(
     module: torch.nn.Module,
     quant_type: str = "float8_weight_only",
+    # Paramters for FP8 DQ quantization
+    # Whether to quantize per row (True) or per tensor (False)
+    per_row: bool = True,
     exclude_layers: List[str] = [
         "embedder",
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
-    # paramters for fp8 quantization
-    per_row: bool = True,
     **kwargs,
 ) -> torch.nn.Module:
     # Apply FP8 DQ for module and skip any `embed` modules
     # by default to avoid non-trivial precision downgrade. Please
     # set `exclude_layers` as `[]` if you don't want this behavior.
     assert isinstance(module, torch.nn.Module)
+    try:
+        import torchao  # noqa: F401
+    except ImportError:
+        raise ImportError(
+            "Quantization functionality requires the 'quantization' extra dependencies. "
+            "Install with: pip install cache-dit[quantization]"
+        )
 
     alias_map = {
         "float8": "fp8_w8a8_dq",
