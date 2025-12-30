@@ -1186,7 +1186,9 @@ def maybe_apply_optimization(
                 return
             if hasattr(module, "set_attention_backend"):
                 module.set_attention_backend(args.attn)
-                logger.info(f"Set attention backend to {args.attn} for module: {module.__class__.__name__}.")
+                logger.info(
+                    f"Set attention backend to {args.attn} for module: {module.__class__.__name__}."
+                )
             else:
                 logger.warning(
                     "--attn was provided but module does not support set_attention_backend: "
