@@ -10,6 +10,9 @@ def set_compile_configs(
     descent_tuning: bool = False,
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
+    fx_graph_cache: bool = True,
+    fx_graph_remote_cache: bool = False,
+    autotune_local_cache: bool = False,
     use_fast_math: bool = False,
     compute_comm_overlap: bool = True,
     capture_scalar_outputs: bool = False,
@@ -21,10 +24,10 @@ def set_compile_configs(
     torch._dynamo.config.accumulated_recompile_limit = 8192  # default is 256
     # Handle compiler caches
     # https://github.com/vllm-project/vllm/blob/23baa2180b0ebba5ae94073ba9b8e93f88b75486/vllm/compilation/compiler_interface.py#L270
-    torch._inductor.config.fx_graph_cache = True
-    torch._inductor.config.fx_graph_remote_cache = False
+    torch._inductor.config.fx_graph_cache = fx_graph_cache
+    torch._inductor.config.fx_graph_remote_cache = fx_graph_remote_cache
     # https://github.com/pytorch/pytorch/issues/153791
-    torch._inductor.config.autotune_local_cache = False
+    torch._inductor.config.autotune_local_cache = autotune_local_cache
 
     if dist.is_initialized():
         # Enable compute comm overlap
