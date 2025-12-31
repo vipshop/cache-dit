@@ -1170,6 +1170,53 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
+    if args.attn is not None and args.parallel_type is None and not args.cache:
+        try:
+            from cache_dit.parallelism.attention import _maybe_register_custom_attn_backends
+
+            _maybe_register_custom_attn_backends()
+        except Exception as e:
+            logger.warning(
+                "Failed to register custom attention backends. "
+                f"Proceeding to set attention backend anyway. Error: {e}"
+            )
+
+        def _set_backend(module):
+            if module is None:
+                return
+            if hasattr(module, "set_attention_backend"):
+                module.set_attention_backend(args.attn)
+                logger.info(
+                    f"Set attention backend to {args.attn} for module: {module.__class__.__name__}."
+                )
+            else:
+                logger.warning(
+                    "--attn was provided but module does not support set_attention_backend: "
+                    f"{module.__class__.__name__}."
+                )
+
+        try:
+            if isinstance(pipe_or_adapter, BlockAdapter):
+                transformer = pipe_or_adapter.transformer
+                if isinstance(transformer, list):
+                    for t in transformer:
+                        _set_backend(t)
+                else:
+                    _set_backend(transformer)
+            else:
+                pipe = pipe_or_adapter
+                if hasattr(pipe, "transformer"):
+                    _set_backend(getattr(pipe, "transformer"))
+                else:
+                    _set_backend(pipe)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to set attention backend to {args.attn}. "
+                "This usually means the backend is unavailable (e.g., FlashAttention-3 not installed) "
+                "or the model/shape/dtype is unsupported. "
+                f"Original error: {e}"
+            ) from e
+
     if args.cache or args.parallel_type is not None:
 
         cache_config = kwargs.pop("cache_config", None)
