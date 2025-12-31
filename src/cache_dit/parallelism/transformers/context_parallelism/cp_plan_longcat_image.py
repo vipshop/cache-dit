@@ -12,7 +12,7 @@ try:
         LongCatImageAttention,
         apply_rotary_emb,
         dispatch_attention_fn,
-    )
+    )  # requires diffusers>=0.37.0.dev0
 
     _longcat_image_is_available = True
 except ImportError:
@@ -55,7 +55,7 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
         if not _longcat_image_is_available:
             logger.warning(
                 "Diffusers LongCatImageTransformer2DModel or related classes are not found. "
-                "Please install diffusers>=0.36.0 from source. Skipping CP plan for LongCatImage."
+                "Please install diffusers>=0.37.0.dev0 from source. Skipping CP plan for LongCatImage."
             )
             return transformer
 
