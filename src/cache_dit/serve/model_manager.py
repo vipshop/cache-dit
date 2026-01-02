@@ -353,14 +353,17 @@ class ModelManager:
                 dist.barrier()
 
             logger.info(f"Warming up for shape {width}x{height}...")
-            _ = self.pipe(
-                prompt=prompt,
-                height=height,
-                width=width,
-                num_inference_steps=1,
-            )
-            self.warmed_up_shapes.add(shape_key)
-            logger.info(f"Warmup completed for {width}x{height}")
+            try:
+                _ = self.pipe(
+                    prompt=prompt,
+                    height=height,
+                    width=width,
+                    num_inference_steps=1,
+                )
+                self.warmed_up_shapes.add(shape_key)
+                logger.info(f"Warmup completed for {width}x{height}")
+            except Exception as e:
+                logger.warning(f"Warmup failed: {e}")
 
             if self.parallel_type in ["tp", "ulysses", "ring"]:
                 dist.barrier()
