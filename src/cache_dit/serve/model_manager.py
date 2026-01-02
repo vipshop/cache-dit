@@ -285,7 +285,7 @@ class ModelManager:
             from cache_dit import DBCacheConfig
 
             cache_config_obj = DBCacheConfig(
-                residual_diff_threshold=0.08,
+                residual_diff_threshold=0.24,
             )
             if self.cache_config:
                 for key, value in self.cache_config.items():

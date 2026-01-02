@@ -11,6 +11,7 @@ from cache_dit.serve.model_manager import ModelManager
 from cache_dit.serve.api_server import create_app
 from cache_dit.logger import init_logger
 from cache_dit.utils import normalize_quantize_type
+from cache_dit.serve.cache_alignment import align_cache_config
 
 logger = init_logger(__name__)
 
@@ -35,19 +36,61 @@ def get_args(
         default=False,
         help="Disable LoRA fusion (keep LoRA weights separate)",
     )
-    parser.add_argument("--steps", type=int, default=None)
+    parser.add_argument(
+        "--num-inference-steps",
+        "--steps",
+        dest="num_inference_steps",
+        type=int,
+        default=None,
+    )
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--repeat", type=int, default=None)
-    parser.add_argument("--Fn", type=int, default=8)
-    parser.add_argument("--Bn", type=int, default=0)
-    parser.add_argument("--rdt", type=float, default=0.08)
-    parser.add_argument("--max-warmup-steps", "--w", type=int, default=8)
+    parser.add_argument(
+        "--Fn-compute-blocks",
+        "--Fn",
+        dest="Fn_compute_blocks",
+        type=int,
+        default=1,
+    )
+    parser.add_argument(
+        "--Bn-compute-blocks",
+        "--Bn",
+        dest="Bn_compute_blocks",
+        type=int,
+        default=0,
+    )
+    parser.add_argument(
+        "--residual-diff-threshold",
+        "--rdt",
+        dest="residual_diff_threshold",
+        type=float,
+        default=0.24,
+    )
+    parser.add_argument("--max-warmup-steps", "--ws", "--w", type=int, default=8)
     parser.add_argument("--warmup-interval", "--wi", type=int, default=1)
     parser.add_argument("--max-cached-steps", "--mc", type=int, default=-1)
-    parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=-1)
+    parser.add_argument("--max-continuous-cached-steps", "--mcc", type=int, default=3)
     parser.add_argument("--taylorseer", action="store_true", default=False)
     parser.add_argument("--taylorseer-order", "-order", type=int, default=1)
-    parser.add_argument("--steps-mask", "--scm", action="store_true", default=False)
+    parser.add_argument("--steps-mask", action="store_true", default=False)
+    parser.add_argument(
+        "--mask-policy",
+        "--scm",
+        type=str,
+        default=None,
+        choices=[
+            None,
+            "slow",
+            "s",
+            "medium",
+            "m",
+            "fast",
+            "f",
+            "ultra",
+            "u",
+        ],
+        help="Pre-defined steps computation mask policy",
+    )
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
@@ -166,6 +209,22 @@ def get_args(
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
         args_or_parser.quantize_type = normalize_quantize_type(args_or_parser.quantize_type)
+        if args_or_parser.quantize_type is not None:
+            args_or_parser.quantize = True
+        if args_or_parser.quantize and args_or_parser.quantize_type is None:
+            args_or_parser.quantize_type = "float8_weight_only"
+
+        if args_or_parser.mask_policy is not None and not args_or_parser.steps_mask:
+            args_or_parser.steps_mask = True
+        if args_or_parser.mask_policy == "s":
+            args_or_parser.mask_policy = "slow"
+        if args_or_parser.mask_policy == "m":
+            args_or_parser.mask_policy = "medium"
+        if args_or_parser.mask_policy == "f":
+            args_or_parser.mask_policy = "fast"
+        if args_or_parser.mask_policy == "u":
+            args_or_parser.mask_policy = "ultra"
+
     return args_or_parser
 
 
@@ -266,14 +325,20 @@ def launch_server(args=None):
     cache_config = None
     if enable_cache:
         cache_config = {
-            "residual_diff_threshold": args.rdt,
-            "Fn_compute_blocks": args.Fn,
-            "Bn_compute_blocks": args.Bn,
+            "residual_diff_threshold": args.residual_diff_threshold,
+            "Fn_compute_blocks": args.Fn_compute_blocks,
+            "Bn_compute_blocks": args.Bn_compute_blocks,
             "max_warmup_steps": args.max_warmup_steps,
             "warmup_interval": args.warmup_interval,
             "max_cached_steps": args.max_cached_steps,
             "max_continuous_cached_steps": args.max_continuous_cached_steps,
         }
+
+        cache_config = align_cache_config(
+            model_path=args.model_path,
+            args=args,
+            base_cache_config=cache_config,
+        )
 
     parallel_args = {}
     if args.parallel_type in ["ulysses", "ring"]:
