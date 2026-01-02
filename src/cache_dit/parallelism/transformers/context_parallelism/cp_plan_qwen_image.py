@@ -117,7 +117,8 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             #     -> un-split output
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
-        if transformer.zero_cond_t:
+        zero_cond_t = getattr(transformer, "zero_cond_t", False)
+        if zero_cond_t:
             # modulate_index: [b, l=seq_len], Qwen-Image-Edit-2511
             _cp_plan.update(
                 {
