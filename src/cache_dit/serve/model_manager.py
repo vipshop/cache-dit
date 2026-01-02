@@ -23,6 +23,7 @@ import cache_dit
 from cache_dit.logger import init_logger
 from diffusers import WanImageToVideoPipeline
 from .utils import prepare_extra_parallel_modules
+from .cache_alignment import get_default_params_modifiers
 
 logger = init_logger(__name__)
 
@@ -290,6 +291,14 @@ class ModelManager:
                 for key, value in self.cache_config.items():
                     setattr(cache_config_obj, key, value)
 
+        params_modifiers = None
+        if self.enable_cache and cache_config_obj is not None:
+            params_modifiers = get_default_params_modifiers(
+                pipe=self.pipe,
+                model_path=self.model_path,
+                cache_config_obj=cache_config_obj,
+            )
+
         parallelism_config = None
         if self.parallel_type is not None:
             logger.info(
@@ -329,6 +338,7 @@ class ModelManager:
             cache_dit.enable_cache(
                 self.pipe,
                 cache_config=cache_config_obj,
+                params_modifiers=params_modifiers,
                 parallelism_config=parallelism_config,
             )
 
