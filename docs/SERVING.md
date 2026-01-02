@@ -192,11 +192,16 @@ Enable model quantization to reduce memory usage:
 cache-dit-serve \
     --model-path black-forest-labs/FLUX.1-dev \
     --cache \
-    --quantize \
-    --pipeline-quant-config-path /path/to/quantize_config_bitsandbytes.py
+    --quantize-type float8_wo
 ```
 
-To create a custom pipeline quantization config, implement `get_pipeline_quant_config()` in the Python file specified by `--pipeline-quant-config-path`:
+**Notes:**
+- **`float8_wo` / `float8_weight_only` uses torchao online quantization** (via `cache_dit.quantize(...)`) and does **NOT** require a `PipelineQuantizationConfig` file.
+- Install deps: `pip install "cache-dit[quantization]"`.
+- FP8 requires modern GPUs (see `cache_dit/quantize/torchao/quantize_ao.py`, currently checks compute capability \(\ge 8.9\)).
+- If you load LoRA weights, LoRA fusion will be automatically disabled when transformer is (or will be) quantized.
+
+For **4-bit W4A16** quantization (recommended: **bitsandbytes nf4**), use `--pipeline-quant-config-path` and `PipelineQuantizationConfig`:
 
 ```python
 import torch

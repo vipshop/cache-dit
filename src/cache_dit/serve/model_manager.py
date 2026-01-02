@@ -191,10 +191,24 @@ class ModelManager:
 
         # Load pipeline quantization config
         quantization_config = None
+        components_quantized_by_diffusers: set[str] = set()
         if self.quantize and self.pipeline_quant_config_path:
             quantization_config = load_pipeline_quant_config(self.pipeline_quant_config_path)
+            components_quantized_by_diffusers = set(
+                getattr(quantization_config, "components_to_quantize", []) or []
+            )
         elif self.quantize:
             logger.warning("Quantization enabled but no pipeline_quant_config_path provided")
+
+        # Will we quantize transformer via cache-dit(torchao) after parallelism is applied?
+        # NOTE: This is different from diffusers' PipelineQuantizationConfig (e.g., bitsandbytes_4bit).
+        will_torchao_quantize_transformer = (
+            self.quantize
+            and (self.quantize_type is not None)
+            and (self.quantize_type not in ("bitsandbytes_4bit",))
+            and ("transformer" not in components_quantized_by_diffusers)
+            and ("transformer_2" not in components_quantized_by_diffusers)
+        )
 
         if "Wan2.2-I2V-A14B-Diffusers" in self.model_path:
             logger.info("Detected Wan2.2-I2V model, using WanImageToVideoPipeline")
@@ -243,11 +257,14 @@ class ModelManager:
                     )
                     logger.info("Scheduler updated for Lightning model")
 
-                should_fuse = self.fuse_lora and (
-                    quantization_config is None
-                    or "transformer"
-                    not in getattr(quantization_config, "components_to_quantize", [])
+                # If transformer will be quantized (either by diffusers quantization_config
+                # or by cache-dit/torchao quantization), do NOT fuse LoRA into transformer.
+                transformer_quantized_or_will_be = (
+                    ("transformer" in components_quantized_by_diffusers)
+                    or ("transformer_2" in components_quantized_by_diffusers)
+                    or will_torchao_quantize_transformer
                 )
+                should_fuse = self.fuse_lora and (not transformer_quantized_or_will_be)
 
                 if should_fuse:
                     logger.info("Fusing LoRA weights into transformer...")
@@ -260,12 +277,6 @@ class ModelManager:
                     )
         elif self.lora_path is not None or self.lora_name is not None:
             logger.warning("Both --lora-path and --lora-name must be provided to load LoRA weights")
-
-        # TODO(wxy): support quantization by quantize_type
-        if self.quantize and self.quantize_type is not None:
-            logger.warning(
-                f"Quantization type {self.quantize_type} is not supported yet in Serving mode"
-            )
 
         cache_config_obj = None
         if self.enable_cache:
@@ -320,6 +331,78 @@ class ModelManager:
                 cache_config=cache_config_obj,
                 parallelism_config=parallelism_config,
             )
+
+        # Quantize transformer by quantize_type (torchao backend).
+        # WARN: Must apply torchao quantization after tensor/context parallelism is applied.
+        if self.quantize and self.quantize_type is not None:
+            if self.quantize_type in ("bitsandbytes_4bit",):
+                if quantization_config is None:
+                    logger.warning(
+                        "Requested bitsandbytes_4bit quantization but no "
+                        "--pipeline-quant-config-path provided. "
+                        "Please provide a PipelineQuantizationConfig that sets "
+                        "quant_backend='bitsandbytes_4bit'."
+                    )
+            else:
+                if ("transformer" in components_quantized_by_diffusers) or (
+                    "transformer_2" in components_quantized_by_diffusers
+                ):
+                    logger.warning(
+                        "Transformer is already quantized by diffusers PipelineQuantizationConfig; "
+                        f"skipping cache-dit(torchao) quantize_type={self.quantize_type}."
+                    )
+                else:
+                    # Mirror logic from examples: some models do not support per-row quantization.
+                    class_not_supported_per_row = {
+                        "QwenImageTransformer2DModel",
+                    }
+
+                    def is_per_row_supported(m: torch.nn.Module) -> bool:
+                        return m.__class__.__name__ not in class_not_supported_per_row
+
+                    if hasattr(self.pipe, "transformer"):
+                        transformer = getattr(self.pipe, "transformer", None)
+                        if isinstance(transformer, torch.nn.Module):
+                            logger.info(
+                                f"Quantizing transformer module: {transformer.__class__.__name__} "
+                                f"to {self.quantize_type} (torchao) ..."
+                            )
+                            setattr(
+                                self.pipe,
+                                "transformer",
+                                cache_dit.quantize(
+                                    transformer,
+                                    quant_type=self.quantize_type,
+                                    per_row=is_per_row_supported(transformer),
+                                ),
+                            )
+                        elif transformer is not None:
+                            logger.warning(
+                                "Cannot quantize transformer: it is not a torch.nn.Module "
+                                f"(got {type(transformer)})."
+                            )
+
+                    if hasattr(self.pipe, "transformer_2"):
+                        transformer_2 = getattr(self.pipe, "transformer_2", None)
+                        if isinstance(transformer_2, torch.nn.Module):
+                            logger.info(
+                                f"Quantizing transformer_2 module: {transformer_2.__class__.__name__} "
+                                f"to {self.quantize_type} (torchao) ..."
+                            )
+                            setattr(
+                                self.pipe,
+                                "transformer_2",
+                                cache_dit.quantize(
+                                    transformer_2,
+                                    quant_type=self.quantize_type,
+                                    per_row=is_per_row_supported(transformer_2),
+                                ),
+                            )
+                        elif transformer_2 is not None:
+                            logger.warning(
+                                "Cannot quantize transformer_2: it is not a torch.nn.Module "
+                                f"(got {type(transformer_2)})."
+                            )
 
         # Move pipeline to CUDA
         if self.device_map is None and self.device == "cuda":
