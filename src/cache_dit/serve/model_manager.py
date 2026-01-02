@@ -10,6 +10,7 @@ import base64
 import tempfile
 import math
 import torch
+import torch.distributed as dist
 import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
@@ -158,6 +159,31 @@ class ModelManager:
             f"Initializing ModelManager: model_path={model_path}, device={self.device}, "
             f"parallel_type={parallel_type}, attn_backend={attn_backend}"
         )
+
+    def startup_warmup(self, resolutions: List[tuple[int, int]], prompt: str):
+        if self.pipe is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        for width, height in resolutions:
+            shape_key = (width, height)
+            if shape_key in self.warmed_up_shapes:
+                continue
+
+            if self.parallel_type in ["tp", "ulysses", "ring"]:
+                dist.barrier()
+
+            logger.info(f"Startup warming up for shape {width}x{height}...")
+            _ = self.pipe(
+                prompt=prompt,
+                height=height,
+                width=width,
+                num_inference_steps=1,
+            )
+            self.warmed_up_shapes.add(shape_key)
+            logger.info(f"Startup warmup completed for {width}x{height}")
+
+            if self.parallel_type in ["tp", "ulysses", "ring"]:
+                dist.barrier()
 
     def load_model(self):
         """Load the diffusion model."""
@@ -324,27 +350,19 @@ class ModelManager:
         shape_key = (width, height)
         if self.enable_compile and shape_key not in self.warmed_up_shapes:
             if self.parallel_type in ["tp", "ulysses", "ring"]:
-                import torch.distributed as dist
-
                 dist.barrier()
 
             logger.info(f"Warming up for shape {width}x{height}...")
-            try:
-                _ = self.pipe(
-                    prompt=prompt,
-                    height=height,
-                    width=width,
-                    num_inference_steps=4,
-                    guidance_scale=1.0,
-                )
-                self.warmed_up_shapes.add(shape_key)
-                logger.info(f"Warmup completed for {width}x{height}")
-            except Exception as e:
-                logger.warning(f"Warmup failed: {e}")
+            _ = self.pipe(
+                prompt=prompt,
+                height=height,
+                width=width,
+                num_inference_steps=1,
+            )
+            self.warmed_up_shapes.add(shape_key)
+            logger.info(f"Warmup completed for {width}x{height}")
 
             if self.parallel_type in ["tp", "ulysses", "ring"]:
-                import torch.distributed as dist
-
                 dist.barrier()
 
     def _load_images_from_urls(self, image_urls: List[str]) -> Optional[List[Image.Image]]:

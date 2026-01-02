@@ -8,6 +8,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 import cache_dit
 from cache_dit import init_logger
+from cache_dit.utils import normalize_quantize_type
 from cache_dit import (
     BlockAdapter,
     DBCacheConfig,
@@ -566,14 +567,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.quantize and args.quantize_type is None:
         args.quantize_type = "float8_weight_only"  # default type
 
-    if args.quantize_type == "float8_wo":  # alias
-        args.quantize_type = "float8_weight_only"
-    if args.quantize_type == "int8_wo":  # alias
-        args.quantize_type = "int8_weight_only"
-    if args.quantize_type == "int4_wo":  # alias
-        args.quantize_type = "int4_weight_only"
-    if args.quantize_type == "bnb_4bit":  # alias
-        args.quantize_type = "bitsandbytes_4bit"
+    args.quantize_type = normalize_quantize_type(args.quantize_type)
 
     # Force enable quantization for text encoder if quantize_text_type is specified
     if args.quantize_text_type is not None:
@@ -583,14 +577,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         # default to same as quantize_type
         args.quantize_text_type = args.quantize_type
 
-    if args.quantize_text_type == "float8_wo":  # alias
-        args.quantize_text_type = "float8_weight_only"
-    if args.quantize_text_type == "int8_wo":  # alias
-        args.quantize_text_type = "int8_weight_only"
-    if args.quantize_text_type == "int4_wo":  # alias
-        args.quantize_text_type = "int4_weight_only"
-    if args.quantize_text_type == "bnb_4bit":  # alias
-        args.quantize_text_type = "bitsandbytes_4bit"
+    args.quantize_text_type = normalize_quantize_type(args.quantize_text_type)
 
     # Force enable quantization for controlnet if quantize_controlnet_type is specified
     if args.quantize_controlnet_type is not None:
@@ -600,14 +587,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         # default to same as quantize_type
         args.quantize_controlnet_type = args.quantize_type
 
-    if args.quantize_controlnet_type == "float8_wo":  # alias
-        args.quantize_controlnet_type = "float8_weight_only"
-    if args.quantize_controlnet_type == "int8_wo":  # alias
-        args.quantize_controlnet_type = "int8_weight_only"
-    if args.quantize_controlnet_type == "int4_wo":  # alias
-        args.quantize_controlnet_type = "int4_weight_only"
-    if args.quantize_controlnet_type == "bnb_4bit":  # alias
-        args.quantize_controlnet_type = "bitsandbytes_4bit"
+    args.quantize_controlnet_type = normalize_quantize_type(args.quantize_controlnet_type)
 
     if args.mask_policy is not None and not args.steps_mask:
         # Enable steps mask if mask_policy is specified

@@ -10,8 +10,27 @@ import uvicorn
 from cache_dit.serve.model_manager import ModelManager
 from cache_dit.serve.api_server import create_app
 from cache_dit.logger import init_logger
+from cache_dit.utils import normalize_quantize_type
 
 logger = init_logger(__name__)
+
+
+def _parse_resolution_list(resolutions: str | None) -> list[tuple[int, int]]:
+    if not resolutions:
+        return []
+    items = []
+    for raw in resolutions.replace(";", ",").split(","):
+        token = raw.strip()
+        if not token:
+            continue
+        if "x" in token:
+            w_str, h_str = token.lower().split("x", 1)
+        elif "*" in token:
+            w_str, h_str = token.lower().split("*", 1)
+        else:
+            raise ValueError(f"Invalid resolution format: {token}")
+        items.append((int(w_str.strip()), int(h_str.strip())))
+    return items
 
 
 def get_args(
@@ -52,15 +71,20 @@ def get_args(
     parser.add_argument("--quantize", "-q", action="store_true", default=False)
     parser.add_argument(
         "--quantize-type",
+        "--quant-type",
         type=str,
-        default="float8_weight_only",
+        default=None,
         choices=[
+            None,
             "float8",
             "float8_weight_only",
+            "float8_wo",
             "int8",
             "int8_weight_only",
+            "int8_wo",
             "int4",
             "int4_weight_only",
+            "int4_wo",
             "bitsandbytes_4bit",
             "bnb_4bit",
         ],
@@ -157,10 +181,21 @@ def get_args(
     )
     parser.add_argument("--profile-with-stack", action="store_true", default=True)
     parser.add_argument("--profile-record-shapes", action="store_true", default=True)
+
+    parser.add_argument("--startup-warmup", action="store_true", default=False)
+    parser.add_argument(
+        "--startup-warmup-resolutions",
+        type=str,
+        default="1024x1024,1024x576,576x1024",
+    )
+    parser.add_argument(
+        "--startup-warmup-prompt",
+        type=str,
+        default="warmup",
+    )
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
-        if args_or_parser.quantize_type == "bnb_4bit":
-            args_or_parser.quantize_type = "bitsandbytes_4bit"
+        args_or_parser.quantize_type = normalize_quantize_type(args_or_parser.quantize_type)
     return args_or_parser
 
 
@@ -214,9 +249,12 @@ def parse_args():
 
     args = parser.parse_args()
 
-    # Handle quantize_type alias
-    if hasattr(args, "quantize_type") and args.quantize_type == "bnb_4bit":
-        args.quantize_type = "bitsandbytes_4bit"
+    args.quantize_type = normalize_quantize_type(getattr(args, "quantize_type", None))
+
+    if args.quantize_type is not None:
+        args.quantize = True
+    if args.quantize and args.quantize_type is None:
+        args.quantize_type = "float8_weight_only"
 
     # Ensure model_path is required
     if not args.model_path:
@@ -308,6 +346,17 @@ def launch_server(args=None):
     logger.info("Loading model...")
     model_manager.load_model()
     logger.info("Model loaded successfully!")
+
+    if args.startup_warmup:
+        try:
+            resolutions = _parse_resolution_list(args.startup_warmup_resolutions)
+        except Exception as e:
+            raise ValueError(f"Invalid --startup-warmup-resolutions: {e}")
+
+        model_manager.startup_warmup(
+            resolutions=resolutions,
+            prompt=args.startup_warmup_prompt,
+        )
 
     # For TP and CP, we need all ranks to participate in inference
     # We use a simple broadcast mechanism to synchronize requests
