@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import cache_dit
 from cache_dit import DBCacheConfig, ParamsModifier
 
+
 def get_default_params_modifiers(
     *,
     pipe,
@@ -72,7 +73,9 @@ def align_cache_config(
         or "qwen-image-edit-2509-lightning" in model_path_lower
     )
     if is_qwen_lightning:
-        steps = 8 if getattr(args, "num_inference_steps", None) is None else args.num_inference_steps
+        steps = (
+            8 if getattr(args, "num_inference_steps", None) is None else args.num_inference_steps
+        )
         if steps not in (4, 8):
             raise ValueError("Qwen-Image Lightning only supports 4 or 8 steps.")
         cache_config.update(
@@ -97,9 +100,7 @@ def align_cache_config(
             4,
         )
         total_steps = (
-            9
-            if getattr(args, "num_inference_steps", None) is None
-            else args.num_inference_steps
+            9 if getattr(args, "num_inference_steps", None) is None else args.num_inference_steps
         )
         steps_computation_mask = None
         if getattr(args, "mask_policy", None) is not None:
