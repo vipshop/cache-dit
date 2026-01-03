@@ -10,6 +10,7 @@ import base64
 import tempfile
 import math
 import torch
+import torch.distributed as dist
 import requests
 from io import BytesIO
 from typing import Optional, Dict, Any, List
@@ -22,6 +23,7 @@ import cache_dit
 from cache_dit.logger import init_logger
 from diffusers import WanImageToVideoPipeline
 from .utils import prepare_extra_parallel_modules
+from .cache_alignment import get_default_params_modifiers
 
 logger = init_logger(__name__)
 
@@ -159,16 +161,55 @@ class ModelManager:
             f"parallel_type={parallel_type}, attn_backend={attn_backend}"
         )
 
+    def startup_warmup(self, resolutions: List[tuple[int, int]], prompt: str):
+        if self.pipe is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        for width, height in resolutions:
+            shape_key = (width, height)
+            if shape_key in self.warmed_up_shapes:
+                continue
+
+            if self.parallel_type in ["tp", "ulysses", "ring"]:
+                dist.barrier()
+
+            logger.info(f"Startup warming up for shape {width}x{height}...")
+            _ = self.pipe(
+                prompt=prompt,
+                height=height,
+                width=width,
+                num_inference_steps=1,
+            )
+            self.warmed_up_shapes.add(shape_key)
+            logger.info(f"Startup warmup completed for {width}x{height}")
+
+            if self.parallel_type in ["tp", "ulysses", "ring"]:
+                dist.barrier()
+
     def load_model(self):
         """Load the diffusion model."""
         logger.info(f"Loading model: {self.model_path}")
 
         # Load pipeline quantization config
         quantization_config = None
+        components_quantized_by_diffusers: set[str] = set()
         if self.quantize and self.pipeline_quant_config_path:
             quantization_config = load_pipeline_quant_config(self.pipeline_quant_config_path)
+            components_quantized_by_diffusers = set(
+                getattr(quantization_config, "components_to_quantize", []) or []
+            )
         elif self.quantize:
             logger.warning("Quantization enabled but no pipeline_quant_config_path provided")
+
+        # Will we quantize transformer via cache-dit(torchao) after parallelism is applied?
+        # NOTE: This is different from diffusers' PipelineQuantizationConfig (e.g., bitsandbytes_4bit).
+        will_torchao_quantize_transformer = (
+            self.quantize
+            and (self.quantize_type is not None)
+            and (self.quantize_type not in ("bitsandbytes_4bit",))
+            and ("transformer" not in components_quantized_by_diffusers)
+            and ("transformer_2" not in components_quantized_by_diffusers)
+        )
 
         if "Wan2.2-I2V-A14B-Diffusers" in self.model_path:
             logger.info("Detected Wan2.2-I2V model, using WanImageToVideoPipeline")
@@ -217,11 +258,14 @@ class ModelManager:
                     )
                     logger.info("Scheduler updated for Lightning model")
 
-                should_fuse = self.fuse_lora and (
-                    quantization_config is None
-                    or "transformer"
-                    not in getattr(quantization_config, "components_to_quantize", [])
+                # If transformer will be quantized (either by diffusers quantization_config
+                # or by cache-dit/torchao quantization), do NOT fuse LoRA into transformer.
+                transformer_quantized_or_will_be = (
+                    ("transformer" in components_quantized_by_diffusers)
+                    or ("transformer_2" in components_quantized_by_diffusers)
+                    or will_torchao_quantize_transformer
                 )
+                should_fuse = self.fuse_lora and (not transformer_quantized_or_will_be)
 
                 if should_fuse:
                     logger.info("Fusing LoRA weights into transformer...")
@@ -235,23 +279,25 @@ class ModelManager:
         elif self.lora_path is not None or self.lora_name is not None:
             logger.warning("Both --lora-path and --lora-name must be provided to load LoRA weights")
 
-        # TODO(wxy): support quantization by quantize_type
-        if self.quantize and self.quantize_type is not None:
-            logger.warning(
-                f"Quantization type {self.quantize_type} is not supported yet in Serving mode"
-            )
-
         cache_config_obj = None
         if self.enable_cache:
             logger.info("Enabling DBCache acceleration")
             from cache_dit import DBCacheConfig
 
             cache_config_obj = DBCacheConfig(
-                residual_diff_threshold=0.08,
+                residual_diff_threshold=0.24,
             )
             if self.cache_config:
                 for key, value in self.cache_config.items():
                     setattr(cache_config_obj, key, value)
+
+        params_modifiers = None
+        if self.enable_cache and cache_config_obj is not None:
+            params_modifiers = get_default_params_modifiers(
+                pipe=self.pipe,
+                model_path=self.model_path,
+                cache_config_obj=cache_config_obj,
+            )
 
         parallelism_config = None
         if self.parallel_type is not None:
@@ -292,8 +338,81 @@ class ModelManager:
             cache_dit.enable_cache(
                 self.pipe,
                 cache_config=cache_config_obj,
+                params_modifiers=params_modifiers,
                 parallelism_config=parallelism_config,
             )
+
+        # Quantize transformer by quantize_type (torchao backend).
+        # WARN: Must apply torchao quantization after tensor/context parallelism is applied.
+        if self.quantize and self.quantize_type is not None:
+            if self.quantize_type in ("bitsandbytes_4bit",):
+                if quantization_config is None:
+                    logger.warning(
+                        "Requested bitsandbytes_4bit quantization but no "
+                        "--pipeline-quant-config-path provided. "
+                        "Please provide a PipelineQuantizationConfig that sets "
+                        "quant_backend='bitsandbytes_4bit'."
+                    )
+            else:
+                if ("transformer" in components_quantized_by_diffusers) or (
+                    "transformer_2" in components_quantized_by_diffusers
+                ):
+                    logger.warning(
+                        "Transformer is already quantized by diffusers PipelineQuantizationConfig; "
+                        f"skipping cache-dit(torchao) quantize_type={self.quantize_type}."
+                    )
+                else:
+                    # Mirror logic from examples: some models do not support per-row quantization.
+                    class_not_supported_per_row = {
+                        "QwenImageTransformer2DModel",
+                    }
+
+                    def is_per_row_supported(m: torch.nn.Module) -> bool:
+                        return m.__class__.__name__ not in class_not_supported_per_row
+
+                    if hasattr(self.pipe, "transformer"):
+                        transformer = getattr(self.pipe, "transformer", None)
+                        if isinstance(transformer, torch.nn.Module):
+                            logger.info(
+                                f"Quantizing transformer module: {transformer.__class__.__name__} "
+                                f"to {self.quantize_type} (torchao) ..."
+                            )
+                            setattr(
+                                self.pipe,
+                                "transformer",
+                                cache_dit.quantize(
+                                    transformer,
+                                    quant_type=self.quantize_type,
+                                    per_row=is_per_row_supported(transformer),
+                                ),
+                            )
+                        elif transformer is not None:
+                            logger.warning(
+                                "Cannot quantize transformer: it is not a torch.nn.Module "
+                                f"(got {type(transformer)})."
+                            )
+
+                    if hasattr(self.pipe, "transformer_2"):
+                        transformer_2 = getattr(self.pipe, "transformer_2", None)
+                        if isinstance(transformer_2, torch.nn.Module):
+                            logger.info(
+                                f"Quantizing transformer_2 module: {transformer_2.__class__.__name__} "
+                                f"to {self.quantize_type} (torchao) ..."
+                            )
+                            setattr(
+                                self.pipe,
+                                "transformer_2",
+                                cache_dit.quantize(
+                                    transformer_2,
+                                    quant_type=self.quantize_type,
+                                    per_row=is_per_row_supported(transformer_2),
+                                ),
+                            )
+                        elif transformer_2 is not None:
+                            logger.warning(
+                                "Cannot quantize transformer_2: it is not a torch.nn.Module "
+                                f"(got {type(transformer_2)})."
+                            )
 
         # Move pipeline to CUDA
         if self.device_map is None and self.device == "cuda":
@@ -324,8 +443,6 @@ class ModelManager:
         shape_key = (width, height)
         if self.enable_compile and shape_key not in self.warmed_up_shapes:
             if self.parallel_type in ["tp", "ulysses", "ring"]:
-                import torch.distributed as dist
-
                 dist.barrier()
 
             logger.info(f"Warming up for shape {width}x{height}...")
@@ -334,8 +451,7 @@ class ModelManager:
                     prompt=prompt,
                     height=height,
                     width=width,
-                    num_inference_steps=4,
-                    guidance_scale=1.0,
+                    num_inference_steps=1,
                 )
                 self.warmed_up_shapes.add(shape_key)
                 logger.info(f"Warmup completed for {width}x{height}")
@@ -343,8 +459,6 @@ class ModelManager:
                 logger.warning(f"Warmup failed: {e}")
 
             if self.parallel_type in ["tp", "ulysses", "ring"]:
-                import torch.distributed as dist
-
                 dist.barrier()
 
     def _load_images_from_urls(self, image_urls: List[str]) -> Optional[List[Image.Image]]:
