@@ -369,7 +369,6 @@ def _all_to_all_single_qkv_fp8_async(
     H_LOCAL = (H + H_PAD) // world_size
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D)
     x = qkv_permute_quant_fp8(x)
-    _shape = (world_size, S_LOCAL, B, H_LOCAL, D)
     shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
