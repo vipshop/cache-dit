@@ -10,7 +10,7 @@ import uvicorn
 from cache_dit.serve.model_manager import ModelManager
 from cache_dit.serve.api_server import create_app
 from cache_dit.logger import init_logger
-from cache_dit.utils import normalize_quantize_type
+from cache_dit.quantize.utils import normalize_quantize_type
 from cache_dit.serve.cache_alignment import align_cache_config
 
 logger = init_logger(__name__)

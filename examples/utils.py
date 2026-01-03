@@ -8,7 +8,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 import cache_dit
 from cache_dit import init_logger
-from cache_dit.utils import normalize_quantize_type
+from cache_dit.quantize.utils import normalize_quantize_type
 from cache_dit import (
     BlockAdapter,
     DBCacheConfig,
