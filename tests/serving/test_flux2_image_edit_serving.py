@@ -10,6 +10,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
   --compile \
   --ulysses-anything
 """
+
 import os
 import requests
 import base64
