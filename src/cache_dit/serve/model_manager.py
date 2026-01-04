@@ -582,8 +582,6 @@ class ModelManager:
             logger.debug(f"Created generator with seed {seed} on CPU")
 
         if self.parallel_type in ["tp", "ulysses", "ring"]:
-            import torch.distributed as dist
-
             dist.barrier()
 
         inference_start_time = time.time()
@@ -630,8 +628,6 @@ class ModelManager:
         output = self.pipe(**pipe_kwargs)
 
         if self.parallel_type in ["tp", "ulysses", "ring"]:
-            import torch.distributed as dist
-
             dist.barrier()
 
         inference_end_time = time.time()
@@ -639,8 +635,6 @@ class ModelManager:
 
         # Debug: Check output shape in distributed mode
         if self.parallel_type is not None:
-            import torch.distributed as dist
-
             rank = dist.get_rank()
             if is_video_mode:
                 logger.info(f"Rank {rank}: Generated video with {len(output.frames[0])} frames")
