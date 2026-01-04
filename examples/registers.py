@@ -50,6 +50,7 @@ _env_path_mapping = {
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
+    "QWEN_IMAGE_2512_DIR": "Qwen/Qwen-Image-2512",
     "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
     "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
     "QWEN_IMAGE_EDIT_2511_DIR": "Qwen/Qwen-Image-Edit-2511",
@@ -228,6 +229,7 @@ def _qwen_light_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig
 
 
 @ExampleRegister.register("qwen_image", default="Qwen/Qwen-Image")
+@ExampleRegister.register("qwen_image_2512", default="Qwen/Qwen-Image-2512")
 @ExampleRegister.register("qwen_image_lightning", default="lightx2v/Qwen-Image-Lightning")
 def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImagePipeline
