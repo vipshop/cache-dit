@@ -6,7 +6,12 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
-from cache_dit.kernels import per_token_quant_fp8, per_token_dequant_fp8
+from cache_dit.kernels import (
+    per_token_quant_fp8,
+    per_token_dequant_fp8,
+    qkv_permute_quant_fp8,
+    qkv_dequant_permute_fp8,
+)
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -362,10 +367,8 @@ def _all_to_all_single_qkv_fp8_async(
     B, S_LOCAL, H, D = x.shape
     x, H_PAD = _maybe_pad_qkv_head(x, H, group)
     H_LOCAL = (H + H_PAD) // world_size
-    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-    _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
-
-    x = per_token_quant_fp8(x)  # type: torch.Tensor
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D)
+    x = qkv_permute_quant_fp8(x)
     shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
@@ -373,12 +376,8 @@ def _all_to_all_single_qkv_fp8_async(
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
         x = _wait_tensor(x)
-        x = x.reshape(shape_with_scale)
-        x = per_token_dequant_fp8(x)
-        # (world_size, S_LOCAL, B, H_LOCAL, D)
-        # -> (S_GLOBAL, B, H_LOCAL, D)
-        # -> (B, S_GLOBAL, H_LOCAL, D)
-        x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+        x = x.reshape(shape_with_scale).flatten(0, 1)
+        x = qkv_dequant_permute_fp8(x)
         x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
@@ -521,7 +520,7 @@ def _all_to_all_single_any_qkv_fp8_async(
     x, H_PAD = _maybe_pad_qkv_head(x, H, group)
     H_LOCAL = (H + H_PAD) // world_size
     # (world_size, S_LOCAL, B, H_LOCAL, D)
-    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+    x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D)
 
     input_split_sizes = [S_LOCAL] * world_size
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
@@ -531,15 +530,14 @@ def _all_to_all_single_any_qkv_fp8_async(
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    x = per_token_quant_fp8(x)
+    x = qkv_permute_quant_fp8(x)
     x = x.flatten(0, 1)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
         x = _wait_tensor(x)
-        x = per_token_dequant_fp8(x)
-        x = x.permute(1, 0, 2, 3).contiguous()
+        x = qkv_dequant_permute_fp8(x)
         x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
