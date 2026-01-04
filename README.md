@@ -63,7 +63,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 
 ### 📚Core Features
 
-- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **cache-dit** now supports nearly **all** of Diffusers' **DiTs**, include **[60+](./examples/)** DiT-based models, nearly **[100+](./examples/)** pipelines: 🔥FLUX, 🔥Qwen-Image, 🔥Z-image, 🔥Wan, etc.  
+- **[🎉Full 🤗Diffusers Support](./docs/User_Guide.md#supported-pipelines)**: Notably, **cache-dit** now supports nearly **all** of Diffusers' **DiTs**, include **[65+](./examples/)** DiT-based models, nearly **[100+](./examples/)** pipelines: 🔥FLUX, 🔥Qwen-Image, 🔥Z-image, 🔥Wan, etc.  
 - **[🎉Extremely Easy to Use](./docs/User_Guide.md#unified-cache-apis)**: In most cases, you only need **one line** of code: `cache_dit.enable_cache(...)`. After calling this API, just use the pipeline as normal.   
 - **[🎉State-of-the-Art Performance](./bench/)**: Compared with other algorithms, cache-dit achieved the **SOTA** w/ **7.4x↑🎉** speedup on ClipScore! Surprisingly, it's **DBCache** also works for extremely few-step distilled models.  
 - **[🎉Compatibility with Other Optimizations](./docs/User_Guide.md#️torch-compile)**: Designed to work seamlessly with torch.compile, Quantization, CPU or Sequential Offloading, Context Parallelism, Tensor Parallelism, etc.  
