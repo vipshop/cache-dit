@@ -52,6 +52,11 @@ def generate_image(
     if result.get("time_cost"):
         print(f"Time cost: {result['time_cost']:.2f}s")
 
+    if result.get("inference_start_time"):
+        print(f"Inference start time: {result['inference_start_time']}")
+    if result.get("inference_end_time"):
+        print(f"Inference end time: {result['inference_end_time']}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cache-DiT serving client")
