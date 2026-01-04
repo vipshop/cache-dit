@@ -101,6 +101,10 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
             #     -> all gather
             #     -> un-split output
             "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            # Wan 2.2 TI2V: https://github.com/huggingface/diffusers/pull/12562
+            "": {
+                "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+            },
         }
         return _cp_plan
 
