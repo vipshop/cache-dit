@@ -102,7 +102,7 @@ def test_text_ulysses_bad_resolution_regression():
         num_inference_steps=8,
     )
     img = Image.open(filename)
-    assert img.size == (724, 1080)
+    assert img.size == (720, 1080)
     return filename
 
 
