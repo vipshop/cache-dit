@@ -33,9 +33,10 @@ def test_generate_returns_inference_timestamps():
     end = data["inference_end_time"]
     time_cost = data["time_cost"]
 
-    print('start', start)
-    print('end', end)
-    print('time_cost', time_cost)
+    print("start", start)
+    print("end", end)
+    print("time_cost", time_cost)
+
 
 if __name__ == "__main__":
     test_generate_returns_inference_timestamps()
