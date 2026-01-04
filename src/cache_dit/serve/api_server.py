@@ -5,6 +5,7 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/ht
 """
 
 import asyncio
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
@@ -17,6 +18,16 @@ logger = init_logger(__name__)
 
 _global_model_manager: Optional[ModelManager] = None
 _request_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _format_ts_with_tz(ts: Optional[float]) -> Optional[str]:
+    if ts is None:
+        return None
+    dt = datetime.fromtimestamp(ts).astimezone()
+    s = dt.strftime("%Y-%m-%d %H:%M:%S%z")
+    if len(s) >= 5:
+        s = s[:-2] + ":" + s[-2:]
+    return s
 
 
 class GenerateRequestAPI(BaseModel):
@@ -47,11 +58,11 @@ class GenerateResponseAPI(BaseModel):
     video: Optional[str] = Field(None, description="Base64 encoded video (mp4)")
     stats: Optional[Dict[str, Any]] = Field(None, description="Cache statistics")
     time_cost: Optional[float] = Field(None, description="Generation time in seconds")
-    inference_start_time: Optional[float] = Field(
-        None, description="Inference start time (unix timestamp, seconds)"
+    inference_start_time: Optional[str] = Field(
+        None, description="Inference start time (local time with timezone offset)"
     )
-    inference_end_time: Optional[float] = Field(
-        None, description="Inference end time (unix timestamp, seconds)"
+    inference_end_time: Optional[str] = Field(
+        None, description="Inference end time (local time with timezone offset)"
     )
 
 
@@ -117,8 +128,8 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     video=response.video,
                     stats=response.stats,
                     time_cost=response.time_cost,
-                    inference_start_time=response.inference_start_time,
-                    inference_end_time=response.inference_end_time,
+                    inference_start_time=_format_ts_with_tz(response.inference_start_time),
+                    inference_end_time=_format_ts_with_tz(response.inference_end_time),
                 )
 
             except Exception as e:
