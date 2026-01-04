@@ -1,6 +1,5 @@
 import os
 import requests
-import pytest
 
 
 def _call_generate_api(**overrides):
