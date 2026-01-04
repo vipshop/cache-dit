@@ -111,6 +111,8 @@ class GenerateResponse:
     video: Optional[str] = None  # Base64 encoded video (mp4)
     stats: Optional[Dict[str, Any]] = None
     time_cost: Optional[float] = None
+    inference_start_time: Optional[float] = None
+    inference_end_time: Optional[float] = None
 
 
 class ModelManager:
@@ -552,7 +554,7 @@ class ModelManager:
 
             dist.barrier()
 
-        start_time = time.time()
+        inference_start_time = time.time()
 
         # Build kwargs for pipe call
         pipe_kwargs = {
@@ -600,7 +602,8 @@ class ModelManager:
 
             dist.barrier()
 
-        time_cost = time.time() - start_time
+        inference_end_time = time.time()
+        time_cost = inference_end_time - inference_start_time
 
         # Debug: Check output shape in distributed mode
         if self.parallel_type is not None:
@@ -666,6 +669,8 @@ class ModelManager:
             video=video_base64,
             stats=stats,
             time_cost=time_cost,
+            inference_start_time=inference_start_time,
+            inference_end_time=inference_end_time,
         )
 
     def get_model_info(self) -> Dict[str, Any]:
