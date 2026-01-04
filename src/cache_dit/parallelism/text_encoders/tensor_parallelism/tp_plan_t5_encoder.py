@@ -68,8 +68,8 @@ class T5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                     "layer.0.SelfAttention.k": ColwiseParallel(),
                     "layer.0.SelfAttention.v": ColwiseParallel(),
                     "layer.0.SelfAttention.o": RowwiseParallel(),
-                    "layer.1.T5DenseActDense.wi": ColwiseParallel(),
-                    "layer.1.T5DenseActDense.wo": RowwiseParallel(),
+                    "layer.1.DenseReluDense.wi": ColwiseParallel(),
+                    "layer.1.DenseReluDense.wo": RowwiseParallel(),
                 }
             elif isinstance(block.layer[1].DenseReluDense, T5DenseGatedActDense):
                 layer_plan = {
