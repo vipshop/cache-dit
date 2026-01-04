@@ -47,6 +47,12 @@ class GenerateResponseAPI(BaseModel):
     video: Optional[str] = Field(None, description="Base64 encoded video (mp4)")
     stats: Optional[Dict[str, Any]] = Field(None, description="Cache statistics")
     time_cost: Optional[float] = Field(None, description="Generation time in seconds")
+    inference_start_time: Optional[float] = Field(
+        None, description="Inference start time (unix timestamp, seconds)"
+    )
+    inference_end_time: Optional[float] = Field(
+        None, description="Inference end time (unix timestamp, seconds)"
+    )
 
 
 def create_app(model_manager: ModelManager) -> FastAPI:
@@ -111,6 +117,8 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     video=response.video,
                     stats=response.stats,
                     time_cost=response.time_cost,
+                    inference_start_time=response.inference_start_time,
+                    inference_end_time=response.inference_end_time,
                 )
 
             except Exception as e:
