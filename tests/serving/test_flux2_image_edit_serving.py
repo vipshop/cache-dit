@@ -1,3 +1,15 @@
+"""
+CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
+  -m cache_dit.serve.serve \
+  --model-path black-forest-labs/FLUX.2-dev \
+  --parallel-type ulysses \
+  --parallel-text-encoder \
+  --quantize-type float8_wo \
+  --attn _flash_3 \
+  --cache \
+  --compile \
+  --ulysses-anything
+"""
 import os
 import requests
 import base64
