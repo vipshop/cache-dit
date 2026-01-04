@@ -50,23 +50,42 @@ class T5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         text_encoder: T5EncoderModel,
         tp_mesh: DeviceMesh,
     ):
-        from transformers.models.t5.modeling_t5 import T5Block, T5Attention
+        from transformers.models.t5.modeling_t5 import (
+            T5Block,
+            T5Attention,
+            T5DenseActDense,
+            T5DenseGatedActDense,
+        )
 
         for i, block in enumerate(text_encoder.encoder.block):
             assert isinstance(block, T5Block)
             assert isinstance(block.layer[0].SelfAttention, T5Attention)
             block.layer[0].SelfAttention.n_heads //= tp_mesh.size()
             block.layer[0].SelfAttention.inner_dim //= tp_mesh.size()
-            layer_plan = {
-                "layer.0.SelfAttention.q": ColwiseParallel(),
-                "layer.0.SelfAttention.k": ColwiseParallel(),
-                "layer.0.SelfAttention.v": ColwiseParallel(),
-                "layer.0.SelfAttention.o": RowwiseParallel(),
-                "layer.1.DenseReluDense.wi_0": ColwiseParallel(),
-                "layer.1.DenseReluDense.wi_1": ColwiseParallel(),
-                "layer.1.DenseReluDense.wo": RowwiseParallel(),
-            }
-            if i == 0:
+            if isinstance(block.layer[1].DenseReluDense, T5DenseActDense):
+                layer_plan = {
+                    "layer.0.SelfAttention.q": ColwiseParallel(),
+                    "layer.0.SelfAttention.k": ColwiseParallel(),
+                    "layer.0.SelfAttention.v": ColwiseParallel(),
+                    "layer.0.SelfAttention.o": RowwiseParallel(),
+                    "layer.1.T5DenseActDense.wi": ColwiseParallel(),
+                    "layer.1.T5DenseActDense.wo": RowwiseParallel(),
+                }
+            elif isinstance(block.layer[1].DenseReluDense, T5DenseGatedActDense):
+                layer_plan = {
+                    "layer.0.SelfAttention.q": ColwiseParallel(),
+                    "layer.0.SelfAttention.k": ColwiseParallel(),
+                    "layer.0.SelfAttention.v": ColwiseParallel(),
+                    "layer.0.SelfAttention.o": RowwiseParallel(),
+                    "layer.1.DenseReluDense.wi_0": ColwiseParallel(),
+                    "layer.1.DenseReluDense.wi_1": ColwiseParallel(),
+                    "layer.1.DenseReluDense.wo": RowwiseParallel(),
+                }
+            else:
+                raise NotImplementedError(
+                    f"Unsupported feed-forward layer type: {type(block.layer[1].DenseReluDense)}"
+                )
+            if block.layer[0].SelfAttention.has_relative_attention_bias:
                 layer_plan["layer.0.SelfAttention.relative_attention_bias"] = ColwiseParallel()
             parallelize_module(
                 module=block,
