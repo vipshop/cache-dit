@@ -8,7 +8,6 @@ import os
 import time
 import base64
 import tempfile
-import math
 import torch
 import torch.distributed as dist
 import requests
@@ -24,6 +23,10 @@ from cache_dit.logger import init_logger
 from diffusers import WanImageToVideoPipeline
 from .utils import prepare_extra_parallel_modules
 from .cache_alignment import get_default_params_modifiers
+from .resolution_alignment import (
+    maybe_align_resolution_for_context_parallel,
+    center_crop_pil_image,
+)
 
 logger = init_logger(__name__)
 
@@ -167,7 +170,21 @@ class ModelManager:
         if self.pipe is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
         for width, height in resolutions:
+            aligned_w, aligned_h = maybe_align_resolution_for_context_parallel(
+                pipe=self.pipe,
+                model_path=self.model_path,
+                parallel_type=self.parallel_type,
+                world_size=world_size,
+                width=width,
+                height=height,
+            )
+            if (aligned_w, aligned_h) != (width, height):
+                logger.warning(
+                    f"Startup warmup: aligning resolution {width}x{height} -> {aligned_w}x{aligned_h}"
+                )
+            width, height = aligned_w, aligned_h
             shape_key = (width, height)
             if shape_key in self.warmed_up_shapes:
                 continue
@@ -522,8 +539,23 @@ class ModelManager:
                     f"Loaded {len(input_images)} input image(s) for {'image2video' if is_image2video_mode else 'editing'}"
                 )
 
+        requested_width, requested_height = request.width, request.height
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
+        aligned_width, aligned_height = maybe_align_resolution_for_context_parallel(
+            pipe=self.pipe,
+            model_path=self.model_path,
+            parallel_type=self.parallel_type,
+            world_size=world_size,
+            width=requested_width,
+            height=requested_height,
+        )
+        if (aligned_width, aligned_height) != (requested_width, requested_height):
+            logger.warning(
+                f"Aligning resolution {requested_width}x{requested_height} -> {aligned_width}x{aligned_height}"
+            )
+
         if not is_edit_mode and not is_video_mode:
-            self._warmup_if_needed(request.width, request.height, request.prompt)
+            self._warmup_if_needed(aligned_width, aligned_height, request.prompt)
 
         seed = request.seed
         if seed is None and self.parallel_type in ["tp", "ulysses", "ring"]:
@@ -559,8 +591,8 @@ class ModelManager:
         # Build kwargs for pipe call
         pipe_kwargs = {
             "prompt": request.prompt,
-            "width": request.width,
-            "height": request.height,
+            "width": aligned_width,
+            "height": aligned_height,
             "num_inference_steps": request.num_inference_steps,
             "guidance_scale": request.guidance_scale,
             "generator": generator,
@@ -657,6 +689,12 @@ class ModelManager:
         else:
             images_base64 = []
             for image in output.images:
+                if (aligned_width, aligned_height) != (requested_width, requested_height):
+                    image = center_crop_pil_image(
+                        image,
+                        target_width=requested_width,
+                        target_height=requested_height,
+                    )
                 buffered = BytesIO()
                 image.save(buffered, format="PNG")
                 img_str = base64.b64encode(buffered.getvalue()).decode()
