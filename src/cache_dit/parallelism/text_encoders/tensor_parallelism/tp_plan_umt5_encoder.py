@@ -61,27 +61,29 @@ class UMT5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             assert isinstance(block.layer[0].SelfAttention, UMT5Attention)
             block.layer[0].SelfAttention.n_heads //= tp_mesh.size()
             block.layer[0].SelfAttention.inner_dim //= tp_mesh.size()
-            if isinstance(block.layer[1], UMT5DenseActDense):
+            if isinstance(block.layer[1].DenseReluDense, UMT5DenseActDense):
                 layer_plan = {
                     "layer.0.SelfAttention.q": ColwiseParallel(),
                     "layer.0.SelfAttention.k": ColwiseParallel(),
                     "layer.0.SelfAttention.v": ColwiseParallel(),
                     "layer.0.SelfAttention.o": RowwiseParallel(),
-                    "layer.1.UMT5DenseActDense.wi": ColwiseParallel(),
-                    "layer.1.UMT5DenseActDense.wo": RowwiseParallel(),
+                    "layer.1.DenseReluDense.wi": ColwiseParallel(),
+                    "layer.1.DenseReluDense.wo": RowwiseParallel(),
                 }
-            elif isinstance(block.layer[1], UMT5DenseGatedActDense):
+            elif isinstance(block.layer[1].DenseReluDense, UMT5DenseGatedActDense):
                 layer_plan = {
                     "layer.0.SelfAttention.q": ColwiseParallel(),
                     "layer.0.SelfAttention.k": ColwiseParallel(),
                     "layer.0.SelfAttention.v": ColwiseParallel(),
                     "layer.0.SelfAttention.o": RowwiseParallel(),
-                    "layer.1.UMT5DenseGatedActDense.wi_0": ColwiseParallel(),
-                    "layer.1.UMT5DenseGatedActDense.wi_1": ColwiseParallel(),
-                    "layer.1.UMT5DenseGatedActDense.wo": RowwiseParallel(),
+                    "layer.1.DenseReluDense.wi_0": ColwiseParallel(),
+                    "layer.1.DenseReluDense.wi_1": ColwiseParallel(),
+                    "layer.1.DenseReluDense.wo": RowwiseParallel(),
                 }
             else:
-                raise ValueError(f"Unsupported feed-forward layer type: {type(block.layer[1])}")
+                raise NotImplementedError(
+                    f"Unsupported feed-forward layer type: {type(block.layer[1].DenseReluDense)}"
+                )
             # SelfAttention in UMT5Attention always has relative_attention_bias, nn.Embedding layer.
             if block.layer[0].SelfAttention.has_relative_attention_bias:
                 layer_plan["layer.0.SelfAttention.relative_attention_bias"] = ColwiseParallel()
