@@ -164,9 +164,23 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         _save_ctx: bool = True,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
-        # Native attention does not return_lse
         if return_lse:
-            raise ValueError("Native attention does not support return_lse=True")
+            # Use native flash attention to get lse if return_lse is True
+            if attn_mask is not None:
+                raise ValueError(
+                    "`attn_mask` is not yet supported for native flash attention with lse."
+                )
+            out, lse = torch.ops.aten._scaled_dot_product_flash_attention(
+                query.transpose(1, 2),
+                key.transpose(1, 2),
+                value.transpose(1, 2),
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+            )[:2]
+            out = out.transpose(1, 2)
+            lse = lse.transpose(1, 2)
+            return out, lse
 
         # used for backward pass
         if _save_ctx:
