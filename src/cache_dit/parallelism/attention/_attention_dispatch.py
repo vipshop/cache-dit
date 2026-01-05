@@ -164,6 +164,15 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         _save_ctx: bool = True,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
+        # used for backward pass
+        if _save_ctx:
+            ctx.save_for_backward(query, key, value)
+            ctx.attn_mask = attn_mask
+            ctx.dropout_p = dropout_p
+            ctx.is_causal = is_causal
+            ctx.scale = scale
+            ctx.enable_gqa = enable_gqa
+
         if return_lse:
             # Use native flash attention to get lse if return_lse is True
             if attn_mask is not None:
@@ -181,15 +190,6 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             out = out.transpose(1, 2)
             lse = lse.transpose(1, 2)
             return out, lse
-
-        # used for backward pass
-        if _save_ctx:
-            ctx.save_for_backward(query, key, value)
-            ctx.attn_mask = attn_mask
-            ctx.dropout_p = dropout_p
-            ctx.is_causal = is_causal
-            ctx.scale = scale
-            ctx.enable_gqa = enable_gqa
 
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
