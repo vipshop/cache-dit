@@ -58,7 +58,7 @@ _env_path_mapping = {
     "QWEN_IMAGE_CONTROLNET_DIR": "InstantX/Qwen-Image-ControlNet-Inpainting",
     "QWEN_IMAGE_LAYERED_DIR": "Qwen/Qwen-Image-Layered",
     "SKYREELS_V2_DIR": "Skywork/SkyReels-V2-T2V-14B-720P-Diffusers",
-    "WAN_DIR": "Wan2.1-T2V-1.3B-Diffusers",
+    "WAN_DIR": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
     "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
     "WAN_I2V_DIR": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers",
     "WAN_2_2_I2V_DIR": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
