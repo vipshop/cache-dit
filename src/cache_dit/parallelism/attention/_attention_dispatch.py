@@ -164,10 +164,6 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         _save_ctx: bool = True,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
-        # Native attention does not return_lse
-        if return_lse:
-            raise ValueError("Native attention does not support return_lse=True")
-
         # used for backward pass
         if _save_ctx:
             ctx.save_for_backward(query, key, value)
@@ -176,6 +172,24 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             ctx.is_causal = is_causal
             ctx.scale = scale
             ctx.enable_gqa = enable_gqa
+
+        if return_lse:
+            # Use native flash attention to get lse if return_lse is True
+            if attn_mask is not None:
+                raise ValueError(
+                    "`attn_mask` is not yet supported for native flash attention with lse."
+                )
+            out, lse = torch.ops.aten._scaled_dot_product_flash_attention(
+                query.transpose(1, 2),
+                key.transpose(1, 2),
+                value.transpose(1, 2),
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+            )[:2]
+            out = out.transpose(1, 2)
+            lse = lse.transpose(1, 2)
+            return out, lse
 
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
