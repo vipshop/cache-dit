@@ -41,6 +41,8 @@
 - [🤖Async FP8 Ulysses Attention](#ulysses-async-fp8)
 - [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
 - [🤖Parallelize Text Encoder](#parallel-text-encoder)
+- [🤖Parallelize Auto Encoder](#parallel-auto-encoder)
+- [🤖Parallelize ControlNet](#parallel-controlnet)
 - [🤖Low-bits Quantization](#quantization)
 - [🤖How to use FP8 Attention](#fp8-attention)
 - [🛠Metrics Command Line](#metrics)
@@ -946,6 +948,55 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
+## 🤖Parallelize Auto Encoder (VAE)
+
+<div id="parallel-auto-encoder"></div>
+
+Currently, cache-dit supported auto encoder (namely, vae) parallelism for **AutoencoderKL, AutoencoderKLQwenImage, AutoencoderKLWan, and AutoencoderKLHunyuanVideo** series, namely, supported almost **[🔥ALL](./User_Guide.md)** pipelines in diffusers. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the auto encoder. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+# Transformer Context Parallelism + Text Encoder Tensor Parallelism + VAE Data Parallelism
+cache_dit.enable_cache(
+    pipe, 
+    cache_config=DBCacheConfig(...),
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2,
+        parallel_kwargs={
+            "extra_parallel_modules": [pipe.text_encoder, pipe.vae], # FLUX.1
+        },
+    ),
+)
+# torchrun --nproc_per_node=2 parallel_cache.py
+```
+
+## 🤖Parallelize ControlNet
+
+<div id="parallel-controlnet"></div>
+
+Further, cache-dit even supported controlnet parallelism for specific models, such as Z-Image-Turbo with ControlNet. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+# Transformer Context Parallelism + Text Encoder Tensor Parallelism 
+# + VAE Data Parallelism + ControlNet Context Parallelism
+cache_dit.enable_cache(
+    pipe, 
+    cache_config=DBCacheConfig(...),
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2,
+        # case: Z-Image-Turbo-Fun-ControlNet-2.1
+        parallel_kwargs={
+            "extra_parallel_modules": [pipe.text_encoder, pipe.vae, pipe.controlnet],
+        },
+    ),
+)
+# torchrun --nproc_per_node=2 parallel_cache.py
+```
 
 ## 🤖Low-bits Quantization
 

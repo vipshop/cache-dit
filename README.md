@@ -297,6 +297,8 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 - [🤖Async FP8 Ulysses Attention](./docs/User_Guide.md#ulysses-async-fp8)
 - [⚡️Hybrid Tensor Parallelism](./docs/User_Guide.md#tensor-parallelism)
 - [🤖Parallelize Text Encoder](./docs/User_Guide.md#parallel-text-encoder)
+- [🤖Parallelize Auto Encoder](./docs/User_Guide.md#parallel-auto-encoder)
+- [🤖Parallelize ControlNet](./docs/User_Guide.md##parallel-controlnet)
 - [🤖Low-bits Quantization](./docs/User_Guide.md#quantization)
 - [🤖How to use FP8 Attention](./docs/User_Guide.md#fp8-attention)
 - [🛠Metrics Command Line](./docs/User_Guide.md#metrics-cli)
