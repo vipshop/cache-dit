@@ -253,7 +253,10 @@ class ExampleOutputData:
             except Exception:
                 HxW_str = None
             if HxW_str is not None:
-                return f"{self.model_tag}.{HxW_str}.{self.strify_tag}.png"
+                if HxW_str not in self.strify_tag:
+                    return f"{self.model_tag}.{HxW_str}.{self.strify_tag}.png"
+                else:
+                    return f"{self.model_tag}.{self.strify_tag}.png"
             else:
                 return f"{self.model_tag}.{self.strify_tag}.png"
         elif self.video is not None:
@@ -264,7 +267,10 @@ class ExampleOutputData:
             except Exception:
                 HxW_str = None
             if HxW_str is not None:
-                return f"{self.model_tag}.{HxW_str}.{self.strify_tag}.mp4"
+                if HxW_str not in self.strify_tag:
+                    return f"{self.model_tag}.{HxW_str}.{self.strify_tag}.mp4"
+                else:
+                    return f"{self.model_tag}.{self.strify_tag}.mp4"
             else:
                 return f"{self.model_tag}.{self.strify_tag}.mp4"
         else:
