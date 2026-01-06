@@ -34,7 +34,7 @@ def maybe_enable_parallelism_for_auto_encoder(
     auto_encoder._parallelism_config = parallelism_config  # type: ignore[attr-defined]
 
     logger.info(
-        f"Parallelize VAE: {auto_encoder.__class__.__name__}, "
+        f"Parallelize Auto Encoder: {auto_encoder.__class__.__name__}, "
         f"id:{id(auto_encoder)}, {parallelism_config.strify(True, vae=True)}"
     )
 
