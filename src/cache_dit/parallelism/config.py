@@ -140,10 +140,14 @@ class ParallelismConfig:
         return world_size
 
     @property
-    def vae_world_size(self) -> int:
+    def auto_encoder_world_size(self) -> int:
         """Get the world size for VAE parallelism."""
         world_size = self._get_extra_module_world_size()
         assert (
             world_size is None or world_size > 1
         ), "VAE world size must be None or greater than 1 for parallelism."
         return world_size
+
+    @property
+    def vae_world_size(self) -> int:  # alias of auto_encoder_world_size
+        return self.vae_world_size

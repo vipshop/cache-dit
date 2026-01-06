@@ -1,9 +1,9 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/pull/53
+# Adapted from: https://github.com/chengzeyi/ParaAttention.git
 import functools
 
 import torch
 import torch.distributed as dist
-from diffusers import AutoencoderKLQwenImage
+from diffusers import AutoencoderKLHunyuanVideo
 from diffusers.models.autoencoders.vae import DecoderOutput
 
 from cache_dit.logger import init_logger
@@ -17,8 +17,8 @@ from .utils import send_tensor, recv_tensor
 logger = init_logger(__name__)
 
 
-@AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLQwenImage")
-class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
+@AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLHunyuanVideo")
+class AutoencoderKLHunyuanVideoDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
     def apply(
         self,
         auto_encoder: torch.nn.Module,
@@ -26,8 +26,8 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
         **kwargs,
     ) -> torch.nn.Module:
         assert isinstance(
-            auto_encoder, AutoencoderKLQwenImage
-        ), "AutoencoderKLQwenImageDataParallelismPlanner can only be applied to AutoencoderKLQwenImage"
+            auto_encoder, AutoencoderKLHunyuanVideo
+        ), "AutoencoderKLHunyuanVideoDataParallelismPlanner can only be applied to AutoencoderKLHunyuanVideo"
         auto_encoder_world_size = parallelism_config.auto_encoder_world_size
         device_type = torch.accelerator.current_accelerator().type
         dp_mesh = dist.init_device_mesh(
@@ -44,7 +44,7 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
 
     def parallelize_tiling(
         self,
-        auto_encoder: AutoencoderKLQwenImage,
+        auto_encoder: AutoencoderKLHunyuanVideo,
         dp_mesh: dist.DeviceMesh,
     ):
         group = dp_mesh.get_group()
@@ -55,12 +55,12 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
 
         @functools.wraps(auto_encoder.__class__.tiled_encode)
         def new_tiled_encode(
-            self: AutoencoderKLQwenImage,
+            self: AutoencoderKLHunyuanVideo,
             x: torch.Tensor,
             *args,
             **kwargs,
         ):
-            _, _, num_frames, height, width = x.shape
+            batch_size, num_channels, num_frames, height, width = x.shape
             latent_height = height // self.spatial_compression_ratio
             latent_width = width // self.spatial_compression_ratio
 
@@ -76,48 +76,35 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
             blend_height = tile_latent_min_height - tile_latent_stride_height
             blend_width = tile_latent_min_width - tile_latent_stride_width
 
+            if hasattr(self, "tile_sample_min_height"):
+                tile_sample_min_height = self.tile_sample_min_height
+            else:
+                tile_sample_min_height = self.tile_sample_min_size
+
+            if hasattr(self, "tile_sample_min_width"):
+                tile_sample_min_width = self.tile_sample_min_width
+            else:
+                tile_sample_min_width = self.tile_sample_min_size
+
             # Split x into overlapping tiles and encode them separately.
+            # The tiles have an overlap to avoid seams between tiles.
             count = 0
             rows = []
             for i in range(0, height, self.tile_sample_stride_height):
                 row = []
                 for j in range(0, width, self.tile_sample_stride_width):
                     if count % world_size == rank:
-                        self.clear_cache()
-                        time = []
-                        frame_range = 1 + (num_frames - 1) // 4
-                        for k in range(frame_range):
-                            self._enc_conv_idx = [0]
-                            if k == 0:
-                                tile = x[
-                                    :,
-                                    :,
-                                    :1,
-                                    i : i + self.tile_sample_min_height,
-                                    j : j + self.tile_sample_min_width,
-                                ]
-                            else:
-                                tile = x[
-                                    :,
-                                    :,
-                                    1 + 4 * (k - 1) : 1 + 4 * k,
-                                    i : i + self.tile_sample_min_height,
-                                    j : j + self.tile_sample_min_width,
-                                ]
-                            tile = self.encoder(
-                                tile, feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx
-                            )
-                            tile = self.quant_conv(tile)
-                            time.append(tile)
-                        tile_result = torch.cat(time, dim=2)
+                        tile = x[
+                            :, :, :, i : i + tile_sample_min_height, j : j + tile_sample_min_width
+                        ]
+                        tile = self.encoder(tile)
+                        tile = self.quant_conv(tile)
                     else:
-                        tile_result = None
-                    row.append(tile_result)
+                        tile = None
+                    row.append(tile)
                     count += 1
                 rows.append(row)
-            self.clear_cache()
 
-            # Gather all tiles to rank 0
             if rank == 0:
                 count = 0
                 for i in range(len(rows)):
@@ -134,7 +121,6 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                         if tile is not None:
                             send_tensor(tile, 0, group)
 
-            # Blend tiles on rank 0
             if rank == 0:
                 result_rows = []
                 for i, row in enumerate(rows):
@@ -154,24 +140,21 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                 enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
             else:
                 enc = recv_tensor(rank - 1, group, device=x.device, dtype=x.dtype)
-
-            # Propagate result through all ranks
             if rank < world_size - 1:
                 send_tensor(enc, rank + 1, group)
-
             return enc
 
         auto_encoder.tiled_encode = new_tiled_encode.__get__(auto_encoder)
 
         @functools.wraps(auto_encoder.__class__.tiled_decode)
         def new_tiled_decode(
-            self: AutoencoderKLQwenImage,
+            self: AutoencoderKLHunyuanVideo,
             z: torch.Tensor,
             *args,
-            return_dict: bool = True,
+            return_dict: bool = False,
             **kwargs,
         ):
-            _, _, num_frames, height, width = z.shape
+            batch_size, num_channels, num_frames, height, width = z.shape
             sample_height = height * self.spatial_compression_ratio
             sample_width = width * self.spatial_compression_ratio
 
@@ -188,37 +171,24 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
             blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
 
             # Split z into overlapping tiles and decode them separately.
+            # The tiles have an overlap to avoid seams between tiles.
             count = 0
             rows = []
             for i in range(0, height, tile_latent_stride_height):
                 row = []
                 for j in range(0, width, tile_latent_stride_width):
                     if count % world_size == rank:
-                        self.clear_cache()
-                        time = []
-                        for k in range(num_frames):
-                            self._conv_idx = [0]
-                            tile = z[
-                                :,
-                                :,
-                                k : k + 1,
-                                i : i + tile_latent_min_height,
-                                j : j + tile_latent_min_width,
-                            ]
-                            tile = self.post_quant_conv(tile)
-                            decoded = self.decoder(
-                                tile, feat_cache=self._feat_map, feat_idx=self._conv_idx
-                            )
-                            time.append(decoded)
-                        decoded_result = torch.cat(time, dim=2)
+                        tile = z[
+                            :, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width
+                        ]
+                        tile = self.post_quant_conv(tile)
+                        decoded = self.decoder(tile)
                     else:
-                        decoded_result = None
-                    row.append(decoded_result)
+                        decoded = None
+                    row.append(decoded)
                     count += 1
                 rows.append(row)
-            self.clear_cache()
 
-            # Gather all tiles to rank 0
             if rank == 0:
                 count = 0
                 for i in range(len(rows)):
@@ -235,7 +205,6 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                         if decoded is not None:
                             send_tensor(decoded, 0, group)
 
-            # Blend tiles on rank 0
             if rank == 0:
                 result_rows = []
                 for i, row in enumerate(rows):
@@ -261,15 +230,12 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                 dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
             else:
                 dec = recv_tensor(rank - 1, group, device=z.device, dtype=z.dtype)
-
-            # Propagate result through all ranks
             if rank < world_size - 1:
                 send_tensor(dec, rank + 1, group)
 
             if not return_dict:
                 return (dec,)
-
-            return DecoderOutput(sample=dec)
+            return DecoderOutput(dec, dec)
 
         auto_encoder.tiled_decode = new_tiled_decode.__get__(auto_encoder)
 
