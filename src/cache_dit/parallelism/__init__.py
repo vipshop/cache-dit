@@ -71,8 +71,15 @@ def enable_parallelism(
                     parallelism_config=parallelism_config,
                 )
             # Enable parallelism for VAE
-            elif _is_vae(module) and not _is_parallelized(module):
-                logger.warning("Parallelism for VAE is not supported yet. Skipped!")
+            elif _is_auto_encoder(module) and not _is_parallelized(module):
+                from .autoencoders import (
+                    maybe_enable_parallelism_for_auto_encoder,
+                )
+
+                maybe_enable_parallelism_for_auto_encoder(
+                    auto_encoder=module,
+                    parallelism_config=parallelism_config,
+                )
 
     transformer._extra_parallel_modules = extra_parallel_modules  # type: ignore[attr-defined]
     # NOTE: Workaround for potential memory peak issue after parallelism
@@ -159,7 +166,7 @@ def _is_controlnet(module: torch.nn.Module) -> bool:
     return _import_module.startswith("diffusers.models.controlnet")
 
 
-def _is_vae(module: torch.nn.Module) -> bool:
+def _is_auto_encoder(module: torch.nn.Module) -> bool:
     _import_module = module.__class__.__module__
     return _import_module.startswith("diffusers.models.autoencoder")
 

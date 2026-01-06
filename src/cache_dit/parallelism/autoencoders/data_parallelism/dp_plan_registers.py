@@ -8,45 +8,45 @@ from cache_dit.logger import init_logger
 logger = init_logger(__name__)
 
 
-class VAEDataParallelismPlanner:
+class AutoEncoderDataParallelismPlanner:
 
     @abstractmethod
     def apply(
         self,
-        vae: torch.nn.Module,
+        auto_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
         raise NotImplementedError("apply method must be implemented by subclasses")
 
 
-class VAEDataParallelismPlannerRegister:
-    _vae_dp_planner_registry: Dict[str, VAEDataParallelismPlanner] = {}
+class AutoEncoderDataParallelismPlannerRegister:
+    _auto_encoder_dp_planner_registry: Dict[str, AutoEncoderDataParallelismPlanner] = {}
 
     @classmethod
     def register(cls, name: str):
-        def decorator(planner_cls: type[VAEDataParallelismPlanner]):
+        def decorator(planner_cls: type[AutoEncoderDataParallelismPlanner]):
             assert (
-                name not in cls._vae_dp_planner_registry
-            ), f"VAEDataParallelismPlanner with name {name} is already registered."
+                name not in cls._auto_encoder_dp_planner_registry
+            ), f"AutoEncoderDataParallelismPlanner with name {name} is already registered."
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"Registering VAEDataParallelismPlanner: {name}")
-            cls._vae_dp_planner_registry[name] = planner_cls
+                logger.debug(f"Registering AutoEncoderDataParallelismPlanner: {name}")
+            cls._auto_encoder_dp_planner_registry[name] = planner_cls
             return planner_cls
 
         return decorator
 
     @classmethod
-    def get_planner(cls, vae: str | torch.nn.Module) -> type[VAEDataParallelismPlanner]:
-        if isinstance(vae, torch.nn.Module):
-            name = vae.__class__.__name__
+    def get_planner(
+        cls, auto_encoder: str | torch.nn.Module
+    ) -> type[AutoEncoderDataParallelismPlanner]:
+        if isinstance(auto_encoder, torch.nn.Module):
+            name = auto_encoder.__class__.__name__
         else:
-            name = vae
+            name = auto_encoder
         planner_cls = None
-        for planner_name in cls._vae_dp_planner_registry:
-            if name.startswith(planner_name):
-                planner_cls = cls._vae_dp_planner_registry.get(planner_name)
-                break
+        if name in cls._auto_encoder_dp_planner_registry:
+            planner_cls = cls._auto_encoder_dp_planner_registry[name]
         if planner_cls is None:
             raise ValueError(f"No planner registered under name: {name}")
         return planner_cls
@@ -55,5 +55,5 @@ class VAEDataParallelismPlannerRegister:
     def supported_planners(
         cls,
     ) -> tuple[int, list[str]]:
-        val_planners = cls._vae_dp_planner_registry.keys()
+        val_planners = cls._auto_encoder_dp_planner_registry.keys()
         return len(val_planners), [p for p in val_planners]
