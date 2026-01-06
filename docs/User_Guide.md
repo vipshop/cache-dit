@@ -952,7 +952,7 @@ cache_dit.enable_cache(
 
 <div id="parallel-auto-encoder"></div>
 
-Currently, cache-dit supported auto encoder (namely, vae) parallelism for **AutoencoderKL, AutoencoderKLQwenImage, AutoencoderKLWan, and AutoencoderKLHunyuanVideo** series, namely, supported almost **[🔥ALL](./User_Guide.md)** pipelines in diffusers. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the auto encoder. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
+Currently, cache-dit supported auto encoder (vae) parallelism for **AutoencoderKL, AutoencoderKLQwenImage, AutoencoderKLWan, and AutoencoderKLHunyuanVideo** series, namely, supported almost **[🔥ALL](./User_Guide.md)** pipelines in diffusers. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the auto encoder. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
 
 ```python
 # pip3 install "cache-dit[parallelism]"
