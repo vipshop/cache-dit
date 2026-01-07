@@ -1358,7 +1358,6 @@ def get_rank_device():
 
 
 def maybe_init_distributed(args=None):
-    from cache_dit.platforms import current_platform
     from cache_dit.platforms.platform import CpuPlatform
 
     platform_full_backend = current_platform.full_dist_backend
