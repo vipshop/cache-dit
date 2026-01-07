@@ -2,7 +2,6 @@ import torch
 
 
 class CpuPlatform:
-    device_name: str = "cpu"
     device_type: str = "cpu"
     dist_backend: str = "gloo"
     full_dist_backend: str = "cpu:gloo"
@@ -11,9 +10,12 @@ class CpuPlatform:
     def default_device():
         return torch.device("cpu")
 
+    @staticmethod
+    def get_device_name():
+        return "CPU"
+
 
 class CudaPlatform:
-    device_name: str = "cuda"
     device_type: str = "cuda"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
     dispatch_key: str = "CUDA"
@@ -44,9 +46,12 @@ class CudaPlatform:
     def synchronize():
         torch.cuda.synchronize()
 
+    @staticmethod
+    def device_count():
+        return torch.cuda.device_count()
+
 
 class NPUPlatform:
-    device_name: str = "npu"
     device_type: str = "npu"
     device_control_env_var: str = "ASCEND_RT_VISIBLE_DEVICES"
     dispatch_key: str = "PrivateUse1"
@@ -79,3 +84,7 @@ class NPUPlatform:
     @staticmethod
     def synchronize():
         torch.npu.synchronize()
+
+    @staticmethod
+    def device_count():
+        return torch.npu.device_count()

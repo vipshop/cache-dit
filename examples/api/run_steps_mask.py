@@ -8,6 +8,7 @@ import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args, strify, MemoryTracker
 import cache_dit
+from cache_dit.platforms import current_platform
 
 
 parser = get_args(parse=False)
@@ -110,7 +111,7 @@ if args.quantize:
     )
     print(f"Applied quantization: {args.quantize_type} to Transformer and Text Encoder 2.")
 
-pipe.to("cuda")
+pipe.to(current_platform.device_type)
 
 if args.attn is not None:
     if hasattr(pipe.transformer, "set_attention_backend"):

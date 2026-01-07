@@ -105,7 +105,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         for _, block in transformer.transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
             old_device = next(block.parameters()).device
-            block.to(current_platform.device_name)
+            block.to(current_platform.device_type)
             self.rearrange_feedforward_weight(block, tp_size)
             block.to(old_device)
             shard_divisible_attr(
@@ -140,7 +140,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         for _, block in transformer.single_transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
             old_device = next(block.parameters()).device
-            block.to(current_platform.device_name)
+            block.to(current_platform.device_type)
             self.rearrange_singleblock_weight(block, tp_size)
             block.to(old_device)
             shard_divisible_attr(

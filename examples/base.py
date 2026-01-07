@@ -277,9 +277,11 @@ class ExampleOutputData:
             return None
 
     def summary(self, args: argparse.Namespace) -> str:
+        from cache_dit.platforms import current_platform
+
         logger.info("🤖 Example Output Summary:")
         summary_str = f"- Model: {args.example}\n- Optimization: {self.strify_tag}\n"
-        device_name = torch.cuda.get_device_name() if torch.cuda.is_available() else "CPU"
+        device_name = current_platform.get_device_name()
         world_size = (
             1 if not torch.distributed.is_initialized() else torch.distributed.get_world_size()
         )
