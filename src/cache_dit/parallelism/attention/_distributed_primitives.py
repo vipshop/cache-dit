@@ -16,11 +16,18 @@ try:
         qkv_dequant_permute_fp8,
     )
 except ImportError:
-    per_token_quant_fp8 = None
-    per_token_dequant_fp8 = None
-    qkv_permute_quant_fp8 = None
-    qkv_dequant_permute_fp8 = None
 
+    def _fp8_kernel_unavailable(*args, **kwargs):
+        raise RuntimeError(
+            "FP8 kernels could not be imported (e.g., Triton may not be available on this "
+            "platform). FP8 async operations are not supported. Please install the required "
+            "dependencies or disable FP8 mode."
+        )
+
+    per_token_quant_fp8 = _fp8_kernel_unavailable
+    per_token_dequant_fp8 = _fp8_kernel_unavailable
+    qkv_permute_quant_fp8 = _fp8_kernel_unavailable
+    qkv_dequant_permute_fp8 = _fp8_kernel_unavailable
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
