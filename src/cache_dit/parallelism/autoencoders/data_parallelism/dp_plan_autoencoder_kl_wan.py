@@ -5,6 +5,7 @@ import torch
 import torch.distributed as dist
 from diffusers import AutoencoderKLWan
 from diffusers.models.autoencoders.vae import DecoderOutput
+from diffusers.models.autoencoders.autoencoder_kl_wan import unpatchify
 
 from cache_dit.logger import init_logger
 from cache_dit.parallelism.config import ParallelismConfig
@@ -50,98 +51,76 @@ class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
         world_size = dist.get_world_size(group)
         rank = dist.get_rank(group)
 
-        def blend_v(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
-            blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
-            for y in range(blend_extent):
-                b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[
-                    :, :, :, y, :
-                ] * (y / blend_extent)
-            return b
+        auto_encoder.enable_tiling()
 
-        def blend_h(a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
-            blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
-            for x in range(blend_extent):
-                b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[
-                    :, :, :, :, x
-                ] * (x / blend_extent)
-            return b
-
-        @functools.wraps(auto_encoder.__class__._encode)
-        def new_encode(
+        @functools.wraps(auto_encoder.__class__.tiled_encode)
+        def new_tiled_encode(
             self: AutoencoderKLWan,
             x: torch.Tensor,
             *args,
             **kwargs,
         ):
-            self.tile_sample_min_height = 256
-            self.tile_sample_min_width = 256
+            _, _, num_frames, height, width = x.shape
+            encode_spatial_compression_ratio = self.spatial_compression_ratio
+            if self.config.patch_size is not None:
+                assert encode_spatial_compression_ratio % self.config.patch_size == 0
+                encode_spatial_compression_ratio = (
+                    self.spatial_compression_ratio // self.config.patch_size
+                )
 
-            # The minimal distance between two spatial tiles
-            self.tile_sample_stride_height = 192
-            self.tile_sample_stride_width = 192
-            self.spatial_compression_ratio = 8
+            latent_height = height // encode_spatial_compression_ratio
+            latent_width = width // encode_spatial_compression_ratio
 
-            batch_size, num_channels, num_frames, height, width = x.shape
-            latent_height = height // self.spatial_compression_ratio
-            latent_width = width // self.spatial_compression_ratio
-
-            tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-            tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+            tile_latent_min_height = self.tile_sample_min_height // encode_spatial_compression_ratio
+            tile_latent_min_width = self.tile_sample_min_width // encode_spatial_compression_ratio
             tile_latent_stride_height = (
-                self.tile_sample_stride_height // self.spatial_compression_ratio
+                self.tile_sample_stride_height // encode_spatial_compression_ratio
             )
             tile_latent_stride_width = (
-                self.tile_sample_stride_width // self.spatial_compression_ratio
+                self.tile_sample_stride_width // encode_spatial_compression_ratio
             )
 
             blend_height = tile_latent_min_height - tile_latent_stride_height
             blend_width = tile_latent_min_width - tile_latent_stride_width
 
-            if hasattr(self, "tile_sample_min_height"):
-                tile_sample_min_height = self.tile_sample_min_height
-            else:
-                tile_sample_min_height = self.tile_sample_min_size
-
-            if hasattr(self, "tile_sample_min_width"):
-                tile_sample_min_width = self.tile_sample_min_width
-            else:
-                tile_sample_min_width = self.tile_sample_min_size
-
             # Split x into overlapping tiles and encode them separately.
             # The tiles have an overlap to avoid seams between tiles.
             count = 0
             rows = []
-            for j in range(0, height, self.tile_sample_stride_height):
+            for i in range(0, height, self.tile_sample_stride_height):
                 row = []
-                for k in range(0, width, self.tile_sample_stride_width):
+                for j in range(0, width, self.tile_sample_stride_width):
+                    # TODO(DefTrut): Reduce computation overhead caused by iteration over all
+                    # frames inside each tile. We can try to encode all frames in a tile at once.
                     if count % world_size == rank:
-                        tile = x[
-                            :, :, :, j : j + tile_sample_min_height, k : k + tile_sample_min_width
-                        ]
                         self.clear_cache()
-                        t = tile.shape[2]
-                        iter_ = 1 + (t - 1) // 4
-                        for i in range(iter_):
+                        time = []
+                        frame_range = 1 + (num_frames - 1) // 4
+                        for k in range(frame_range):
                             self._enc_conv_idx = [0]
-                            if i == 0:
-                                out = self.encoder(
-                                    tile[:, :, :1, :, :],
-                                    feat_cache=self._enc_feat_map,
-                                    feat_idx=self._enc_conv_idx,
-                                )
+                            if k == 0:
+                                tile = x[
+                                    :,
+                                    :,
+                                    :1,
+                                    i : i + self.tile_sample_min_height,
+                                    j : j + self.tile_sample_min_width,
+                                ]
                             else:
-                                out_ = self.encoder(
-                                    tile[:, :, 1 + 4 * (i - 1) : 1 + 4 * i, :, :],
-                                    feat_cache=self._enc_feat_map,
-                                    feat_idx=self._enc_conv_idx,
-                                )
-                                out = torch.cat([out, out_], 2)
-
-                        enc = self.quant_conv(out)
-                        # mu, logvar = enc[:, : self.z_dim, :, :, :], enc[:, self.z_dim :, :, :, :]
-                        # enc = torch.cat([mu, logvar], dim=1)
+                                tile = x[
+                                    :,
+                                    :,
+                                    1 + 4 * (k - 1) : 1 + 4 * k,
+                                    i : i + self.tile_sample_min_height,
+                                    j : j + self.tile_sample_min_width,
+                                ]
+                            tile = self.encoder(
+                                tile, feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx
+                            )
+                            tile = self.quant_conv(tile)
+                            time.append(tile)
+                        enc = torch.cat(time, dim=2)
                         self.clear_cache()
-                        # tile = self.encoder(tile)
                     else:
                         enc = None
                     row.append(enc)
@@ -172,9 +151,9 @@ class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
                         # blend the above tile and the left tile
                         # to the current tile and add the current tile to the result row
                         if i > 0:
-                            tile = blend_v(rows[i - 1][j], tile, blend_height)
+                            tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                         if j > 0:
-                            tile = blend_h(row[j - 1], tile, blend_width)
+                            tile = self.blend_h(row[j - 1], tile, blend_width)
                         result_row.append(
                             tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width]
                         )
@@ -187,26 +166,17 @@ class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
                 send_tensor(enc, rank + 1, group)
             return enc
 
-        auto_encoder._encode = new_encode.__get__(auto_encoder)
+        auto_encoder.tiled_encode = new_tiled_encode.__get__(auto_encoder)
 
-        @functools.wraps(auto_encoder.__class__._decode)
-        def new_decode(
+        @functools.wraps(auto_encoder.__class__.tiled_decode)
+        def new_tiled_decode(
             self: AutoencoderKLWan,
             z: torch.Tensor,
             *args,
             return_dict: bool = True,
             **kwargs,
         ):
-
-            self.tile_sample_min_height = 256
-            self.tile_sample_min_width = 256
-
-            # The minimal distance between two spatial tiles
-            self.tile_sample_stride_height = 192
-            self.tile_sample_stride_width = 192
-            self.spatial_compression_ratio = 8
-
-            batch_size, num_channels, num_frames, height, width = z.shape
+            _, _, num_frames, height, width = z.shape
             sample_height = height * self.spatial_compression_ratio
             sample_width = width * self.spatial_compression_ratio
 
@@ -218,40 +188,54 @@ class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
             tile_latent_stride_width = (
                 self.tile_sample_stride_width // self.spatial_compression_ratio
             )
-
-            blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
-            blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
+            tile_sample_stride_height = self.tile_sample_stride_height
+            tile_sample_stride_width = self.tile_sample_stride_width
+            if self.config.patch_size is not None:
+                sample_height = sample_height // self.config.patch_size
+                sample_width = sample_width // self.config.patch_size
+                tile_sample_stride_height = tile_sample_stride_height // self.config.patch_size
+                tile_sample_stride_width = tile_sample_stride_width // self.config.patch_size
+                blend_height = (
+                    self.tile_sample_min_height // self.config.patch_size
+                    - tile_sample_stride_height
+                )
+                blend_width = (
+                    self.tile_sample_min_width // self.config.patch_size - tile_sample_stride_width
+                )
+            else:
+                blend_height = self.tile_sample_min_height - tile_sample_stride_height
+                blend_width = self.tile_sample_min_width - tile_sample_stride_width
 
             # Split z into overlapping tiles and decode them separately.
             # The tiles have an overlap to avoid seams between tiles.
             count = 0
             rows = []
-            for j in range(0, height, tile_latent_stride_height):
+            for i in range(0, height, tile_latent_stride_height):
                 row = []
-                for k in range(0, width, tile_latent_stride_width):
+                for j in range(0, width, tile_latent_stride_width):
+                    # TODO(DefTrut): Reduce computation overhead caused by iteration over all
+                    # frames inside each tile. We can try to decode all frames in a tile at once.
                     if count % world_size == rank:
-                        tile = z[
-                            :, :, :, j : j + tile_latent_min_height, k : k + tile_latent_min_width
-                        ]
-                        tile = self.post_quant_conv(tile)
                         self.clear_cache()
-                        iter_ = tile.shape[2]
-                        for i in range(iter_):
+                        time = []
+                        for k in range(num_frames):
                             self._conv_idx = [0]
-                            if i == 0:
-                                out = self.decoder(
-                                    tile[:, :, i : i + 1, :, :],
-                                    feat_cache=self._feat_map,
-                                    feat_idx=self._conv_idx,
-                                )
-                            else:
-                                out_ = self.decoder(
-                                    tile[:, :, i : i + 1, :, :],
-                                    feat_cache=self._feat_map,
-                                    feat_idx=self._conv_idx,
-                                )
-                                out = torch.cat([out, out_], 2)
-                        decoded = torch.clamp(out, min=-1.0, max=1.0)
+                            tile = z[
+                                :,
+                                :,
+                                k : k + 1,
+                                i : i + tile_latent_min_height,
+                                j : j + tile_latent_min_width,
+                            ]
+                            tile = self.post_quant_conv(tile)
+                            decoded = self.decoder(
+                                tile,
+                                feat_cache=self._feat_map,
+                                feat_idx=self._conv_idx,
+                                first_chunk=(k == 0),
+                            )
+                            time.append(decoded)
+                        decoded = torch.cat(time, dim=2)
                         self.clear_cache()
                     else:
                         decoded = None
@@ -283,30 +267,28 @@ class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
                         # blend the above tile and the left tile
                         # to the current tile and add the current tile to the result row
                         if i > 0:
-                            tile = blend_v(rows[i - 1][j], tile, blend_height)
+                            tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                         if j > 0:
-                            tile = blend_h(row[j - 1], tile, blend_width)
+                            tile = self.blend_h(row[j - 1], tile, blend_width)
                         result_row.append(
-                            tile[
-                                :,
-                                :,
-                                :,
-                                : self.tile_sample_stride_height,
-                                : self.tile_sample_stride_width,
-                            ]
+                            tile[:, :, :, :tile_sample_stride_height, :tile_sample_stride_width]
                         )
                     result_rows.append(torch.cat(result_row, dim=-1))
-
                 dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
             else:
                 dec = recv_tensor(rank - 1, group, device=z.device, dtype=z.dtype)
             if rank < world_size - 1:
                 send_tensor(dec, rank + 1, group)
 
+            if self.config.patch_size is not None:
+                dec = unpatchify(dec, patch_size=self.config.patch_size)
+
+            dec = torch.clamp(dec, min=-1.0, max=1.0)
+
             if not return_dict:
                 return (dec,)
-            return DecoderOutput(dec, dec)
+            return DecoderOutput(sample=dec)
 
-        auto_encoder._decode = new_decode.__get__(auto_encoder)
+        auto_encoder.tiled_decode = new_tiled_decode.__get__(auto_encoder)
 
         return auto_encoder
