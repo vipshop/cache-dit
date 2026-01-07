@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 from PIL import Image
 from enum import Enum
+import numpy as np
 from typing import Dict, Any, Union, Optional, List, Callable
 from diffusers.utils import export_to_video
 from diffusers.schedulers import SchedulerMixin
@@ -261,9 +262,23 @@ class ExampleOutputData:
                 return f"{self.model_tag}.{self.strify_tag}.png"
         elif self.video is not None:
             try:
-                W, H = self.video[0].size
-                num_frames = len(self.video)
-                HxW_str = f"{H}x{W}x{num_frames}"
+                if isinstance(self.video, (list, np.ndarray)) and len(self.video) > 0:
+                    if isinstance(self.video[0], Image.Image):
+                        W, H = self.video[0].size
+                    elif isinstance(self.video[0], np.ndarray):
+                        frame = self.video[0]  # type: np.ndarray
+                        H, W = frame.shape[:2]
+                    else:
+                        raise ValueError("Invalid video frame type.")
+                    if isinstance(self.video, list):
+                        num_frames = len(self.video)
+                    elif isinstance(self.video, np.ndarray):
+                        num_frames = self.video.shape[0]
+                    else:
+                        raise ValueError("Invalid video type.")
+                    HxW_str = f"{H}x{W}x{num_frames}"
+                else:
+                    HxW_str = None
             except Exception:
                 HxW_str = None
             if HxW_str is not None:
