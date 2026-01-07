@@ -2,6 +2,8 @@ import torch
 import triton
 import triton.language as tl
 
+from cache_dit.platforms import current_platform
+
 __all__ = [
     "per_token_quant_fp8",
     "per_token_dequant_fp8",
@@ -83,7 +85,7 @@ def per_token_quant_fp8(x: torch.Tensor) -> torch.Tensor:
     BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
     num_warps = min(max(BLOCK // 256, 1), 8)
 
-    with torch.cuda.device(x.device):
+    with current_platform.device_ctx(x.device):
         _per_token_quant_8bit[(M,)](
             y,
             x,
@@ -108,7 +110,7 @@ def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
     BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
     num_warps = min(max(BLOCK // 256, 1), 8)
 
-    with torch.cuda.device(x.device):
+    with current_platform.device_ctx(x.device):
         _per_token_dequant_8bit[(M,)](
             y,
             x,
@@ -211,7 +213,7 @@ def qkv_permute_quant_fp8(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
     grid = (P * S * B,)
 
-    with torch.cuda.device(x.device):
+    with current_platform.device_ctx(x.device):
         _qkv_permute_quant[grid](
             quant_x,
             x,
@@ -241,7 +243,7 @@ def qkv_dequant_permute_fp8(
 
     grid = (B * S,)
 
-    with torch.cuda.device(x.device):
+    with current_platform.device_ctx(x.device):
         _qkv_dequant_permute[grid](
             x,
             quant_x,

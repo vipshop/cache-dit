@@ -6,6 +6,7 @@ import builtins as __builtin__
 import contextlib
 
 from cache_dit.logger import init_logger
+from cache_dit.platforms import current_platform
 
 logger = init_logger(__name__)
 
@@ -32,12 +33,12 @@ def maybe_empty_cache():
     try:
         time.sleep(1)
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+        current_platform.empty_cache()
+        current_platform.ipc_collect()
         time.sleep(1)
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+        current_platform.empty_cache()
+        current_platform.ipc_collect()
     except Exception:
         pass
 
