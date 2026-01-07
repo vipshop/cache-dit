@@ -11,3 +11,6 @@ def _activate_auto_encoder_dp_planners():
     from .dp_plan_autoencoder_kl_hunyuanvideo import (  # noqa: F401
         AutoencoderKLHunyuanVideoDataParallelismPlanner,
     )
+    from .dp_plan_autoencoder_kl_flux2 import (  # noqa: F401
+        AutoencoderKLFlux2DataParallelismPlanner,
+    )
