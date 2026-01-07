@@ -5,7 +5,6 @@ import torch.distributed as dist
 from .envs import ENV
 
 _FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
-_FORMAT_2 = "%(levelname)s %(asctime)s [%(name)s:%(lineno)d] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
 
 _LOG_LEVEL = ENV.CACHE_DIT_LOG_LEVEL
@@ -33,14 +32,11 @@ _default_file_handler = None
 _inference_log_file_handler = {}
 
 
-def _setup_logger(format_2: bool = False):
+def _setup_logger():
     _root_logger.setLevel(_LOG_LEVEL)
     global _default_handler
     global _default_file_handler
-    if format_2:
-        fmt = NewLineFormatter(_FORMAT_2, datefmt=_DATE_FORMAT)
-    else:
-        fmt = NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
+    fmt = NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
 
     if _default_handler is None:
         _default_handler = logging.StreamHandler(sys.stdout)
@@ -71,7 +67,7 @@ def _setup_logger(format_2: bool = False):
 _setup_logger()
 
 
-def init_logger(name: str, format_2: bool = False) -> logging.Logger:
+def init_logger(name: str):
     pid = os.getpid()
     # Use the same settings as above for root logger
     logger = logging.getLogger(name)
@@ -90,14 +86,9 @@ def init_logger(name: str, format_2: bool = False) -> logging.Logger:
                     _root_logger.warn(f"Error creating directory {_LOG_DIR} : {e}")
             _inference_log_file_handler[pid] = logging.FileHandler(_LOG_DIR + f"/process.{pid}.log")
             _inference_log_file_handler[pid].setLevel(_LOG_LEVEL)
-            if format_2:
-                _inference_log_file_handler[pid].setFormatter(
-                    NewLineFormatter(_FORMAT_2, datefmt=_DATE_FORMAT)
-                )
-            else:
-                _inference_log_file_handler[pid].setFormatter(
-                    NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
-                )
+            _inference_log_file_handler[pid].setFormatter(
+                NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
+            )
             _root_logger.addHandler(_inference_log_file_handler[pid])
             logger.addHandler(_inference_log_file_handler[pid])
     logger.propagate = False
