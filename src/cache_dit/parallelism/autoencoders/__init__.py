@@ -6,7 +6,7 @@ from cache_dit.parallelism.config import ParallelismConfig
 
 from cache_dit.logger import init_logger
 
-logger = init_logger(__name__)
+logger = init_logger("parallelism", True)
 
 
 def maybe_enable_parallelism_for_auto_encoder(

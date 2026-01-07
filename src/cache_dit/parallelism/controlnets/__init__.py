@@ -3,13 +3,12 @@ import torch
 from typing import Optional
 from cache_dit.logger import init_logger
 
-logger = init_logger(__name__)
-
-
 from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.backend import ParallelismBackend
 from cache_dit.parallelism.config import ParallelismConfig
 from .context_parallelism import maybe_enable_context_parallelism
+
+logger = init_logger("parallelism", True)
 
 
 def maybe_enable_parallelism_for_controlnet(

@@ -7,7 +7,7 @@ from cache_dit.logger import init_logger
 from cache_dit.envs import ENV
 
 
-logger = init_logger(__name__)
+logger = init_logger("parallelism", True)
 
 
 def enable_parallelism(

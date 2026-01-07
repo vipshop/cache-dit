@@ -1,4 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention.git
 import functools
 
 import torch
