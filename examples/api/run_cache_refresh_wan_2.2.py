@@ -13,7 +13,7 @@ from diffusers.schedulers.scheduling_unipc_multistep import (
 )
 from utils import get_args, GiB, strify, MemoryTracker
 import cache_dit
-
+from cache_dit.platforms import current_platform
 
 parser = get_args(parse=False)
 parser.add_argument(
@@ -38,7 +38,7 @@ pipe = WanPipeline.from_pretrained(
     ),
     torch_dtype=torch.bfloat16,
     # https://huggingface.co/docs/diffusers/main/en/tutorials/inference_with_big_models#device-placement
-    device_map=("balanced" if (torch.cuda.device_count() > 1 and GiB() <= 48) else None),
+    device_map=("balanced" if (current_platform.device_count() > 1 and GiB() <= 48) else None),
 )
 
 # flow shift should be 3.0 for 480p images, 5.0 for 720p images
@@ -109,12 +109,12 @@ if args.cache:
 
 # When device_map is None, we need to explicitly move the model to GPU
 # or enable CPU offload to avoid running on CPU
-if torch.cuda.device_count() <= 1:
+if current_platform.device_count() <= 1:
     # Single GPU: use CPU offload for memory efficiency
     pipe.enable_model_cpu_offload()
-elif torch.cuda.device_count() > 1 and pipe.device.type == "cpu":
+elif current_platform.device_count() > 1 and pipe.device.type == "cpu":
     # Multi-GPU but model is on CPU (device_map was None): move to default GPU
-    pipe.to("cuda")
+    pipe.to(current_platform.device_type)
 
 # Wan currently requires installing diffusers from source
 assert isinstance(pipe.vae, AutoencoderKLWan)  # enable type check for IDE
@@ -164,7 +164,7 @@ def split_inference_steps(num_inference_steps: int = 30) -> tuple[int, int]:
         boundary_timestep = pipe.config.boundary_ratio * pipe.scheduler.config.num_train_timesteps
     else:
         boundary_timestep = None
-    pipe.scheduler.set_timesteps(num_inference_steps, device="cuda")
+    pipe.scheduler.set_timesteps(num_inference_steps, device=current_platform.device_type)
     timesteps = pipe.scheduler.timesteps
     num_high_noise_steps = 0  # high-noise steps for transformer
     for t in timesteps:
