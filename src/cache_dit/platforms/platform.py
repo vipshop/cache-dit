@@ -14,6 +14,10 @@ class CpuPlatform:
     def get_device_name():
         return "CPU"
 
+    @staticmethod
+    def is_accelerator_available():
+        return False
+
 
 class CudaPlatform:
     device_type: str = "cuda"
@@ -43,12 +47,36 @@ class CudaPlatform:
         return torch.device("cuda")
 
     @staticmethod
-    def synchronize():
-        torch.cuda.synchronize()
+    def synchronize(device=None):
+        torch.cuda.synchronize(device)
 
     @staticmethod
     def device_count():
         return torch.cuda.device_count()
+
+    @staticmethod
+    def is_accelerator_available():
+        return torch.cuda.is_available()
+
+    @staticmethod
+    def current_device():
+        return torch.cuda.current_device()
+
+    @staticmethod
+    def reset_peak_memory_stats(device=None):
+        return torch.cuda.reset_peak_memory_stats(device)
+
+    @staticmethod
+    def max_memory_allocated(device=None):
+        return torch.cuda.max_memory_allocated(device)
+
+    @staticmethod
+    def get_device_properties(device=None):
+        return torch.cuda.get_device_properties(device)
+
+    @staticmethod
+    def set_device(device):
+        return torch.cuda.set_device(device)
 
 
 class NPUPlatform:
@@ -82,9 +110,33 @@ class NPUPlatform:
         return torch.device("npu")
 
     @staticmethod
-    def synchronize():
-        torch.npu.synchronize()
+    def synchronize(device=None):
+        torch.npu.synchronize(device)
 
     @staticmethod
     def device_count():
         return torch.npu.device_count()
+
+    @staticmethod
+    def is_accelerator_available():
+        return torch.npu.is_available()
+
+    @staticmethod
+    def current_device():
+        return torch.npu.current_device()
+
+    @staticmethod
+    def reset_peak_memory_stats(device=None):
+        return torch.npu.reset_peak_memory_stats(device)
+
+    @staticmethod
+    def max_memory_allocated(device=None):
+        return torch.npu.max_memory_allocated(device)
+
+    @staticmethod
+    def get_device_properties(device=None):
+        return torch.npu.get_device_properties(device)
+
+    @staticmethod
+    def set_device(device):
+        return torch.npu.set_device(device)
