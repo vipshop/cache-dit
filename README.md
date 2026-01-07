@@ -93,7 +93,7 @@ You can install the stable release of cache-dit from PyPI, or the latest develop
 | Z-Image-Turbo-Fun-ControlNet-2.0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Z-Image-Turbo-Fun-ControlNet-2.1 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Ovis-Image |✅ | ✅ | ✅ | ✅ | ✖️ | ✅ |
-| FLUX.2-dev | ✅ | ✅ | ✅ | ✅ | ✖️ | ✖️ |
+| FLUX.2-dev | ✅ | ✅ | ✅ | ✅ | ✖️ | ✅ |
 | FLUX.1-dev | ✅ | ✅ | ✅ | ✅ | ✖️ | ✅ |
 | FLUX.1-Fill-dev | ✅ | ✅ | ✅ | ✅ | ✖️ | ✅ |
 | FLUX.1-Kontext-dev | ✅ | ✅ | ✅ | ✅ | ✖️ | ✅ |
