@@ -6,6 +6,8 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
+from cache_dit.platforms import current_platform
+
 from cache_dit.kernels import (
     per_token_quant_fp8,
     per_token_dequant_fp8,
@@ -72,7 +74,7 @@ def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     comm_backends = str(dist.get_backend(group=group))
     # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
-    gather_device = "cpu" if "cpu" in comm_backends else torch.device("cuda")
+    gather_device = "cpu" if "cpu" in comm_backends else current_platform.default_device()
     gathered_sizes = [
         torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)
     ]

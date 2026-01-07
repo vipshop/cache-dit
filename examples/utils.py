@@ -1354,10 +1354,20 @@ def get_rank_device():
 
 
 def maybe_init_distributed(args=None):
+    from cache_dit.platforms import current_platform
+    from cache_dit.platforms.platform import CpuPlatform
+
+    platform_full_backend = current_platform.full_dist_backend
+    cpu_full_backend = CpuPlatform.full_dist_backend
+    backend = (
+        f"{cpu_full_backend},{platform_full_backend}"
+        if args.ulysses_anything
+        else platform_full_backend
+    )
     if args is not None:
         if args.parallel_type is not None:
             dist.init_process_group(
-                backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
+                backend=backend,
             )
             rank, device = get_rank_device()
             torch.cuda.set_device(device)
@@ -1370,7 +1380,7 @@ def maybe_init_distributed(args=None):
         # always init distributed for other examples
         if not dist.is_initialized():
             dist.init_process_group(
-                backend="nccl",
+                backend=platform_full_backend,
             )
         rank, device = get_rank_device()
         torch.cuda.set_device(device)
