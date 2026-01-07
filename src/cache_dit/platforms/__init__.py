@@ -1,9 +1,10 @@
 import torch
 import importlib
-from typing import Any
+from typing import TYPE_CHECKING
+from .platform import BasePlatform
 
 
-def resolve_obj_by_qualname(qualname: str) -> Any:
+def resolve_obj_by_qualname(qualname: str) -> BasePlatform:
     """
     Resolve an object by its fully-qualified class name.
     """
@@ -23,7 +24,11 @@ def resolve_current_platform_cls_qualname() -> str:
         return "cache_dit.platforms.platform.CpuPlatform"
 
 
-_current_platform = None
+_current_platform: BasePlatform = None
+
+
+if TYPE_CHECKING:
+    current_platform: BasePlatform
 
 
 def __getattr__(name: str):
@@ -37,3 +42,16 @@ def __getattr__(name: str):
         return globals()[name]
     else:
         raise AttributeError(f"No attribute named '{name}' exists in {__name__}.")
+
+
+def __setattr__(name: str, value):
+    if name == "current_platform":
+        global _current_platform
+        _current_platform = value
+    elif name in globals():
+        globals()[name] = value
+    else:
+        raise AttributeError(f"No attribute named '{name}' exists in {__name__}.")
+
+
+__all__ = ["BasePlatform", "current_platform"]
