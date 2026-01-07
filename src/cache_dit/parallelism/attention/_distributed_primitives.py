@@ -8,12 +8,19 @@ import torch.nn.functional as F
 
 from cache_dit.platforms import current_platform
 
-from cache_dit.kernels import (
-    per_token_quant_fp8,
-    per_token_dequant_fp8,
-    qkv_permute_quant_fp8,
-    qkv_dequant_permute_fp8,
-)
+try:
+    from cache_dit.kernels import (
+        per_token_quant_fp8,
+        per_token_dequant_fp8,
+        qkv_permute_quant_fp8,
+        qkv_dequant_permute_fp8,
+    )
+except ImportError:
+    per_token_quant_fp8 = None
+    per_token_dequant_fp8 = None
+    qkv_permute_quant_fp8 = None
+    qkv_dequant_permute_fp8 = None
+
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
