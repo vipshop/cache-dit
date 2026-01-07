@@ -1366,7 +1366,7 @@ def maybe_init_distributed(args=None):
     backend = (
         f"{cpu_full_backend},{platform_full_backend}"
         if args.ulysses_anything
-        else platform_full_backend
+        else current_platform.dist_backend
     )
     if args is not None:
         if args.parallel_type is not None:
