@@ -1,9 +1,10 @@
 import torch
 import importlib
 from typing import Any
+from .platform import BasePlatform
 
 
-def resolve_obj_by_qualname(qualname: str) -> Any:
+def resolve_obj_by_qualname(qualname: str) -> BasePlatform:
     """
     Resolve an object by its fully-qualified class name.
     """
@@ -23,7 +24,7 @@ def resolve_current_platform_cls_qualname() -> str:
         return "cache_dit.platforms.platform.CpuPlatform"
 
 
-_current_platform = None
+_current_platform: BasePlatform = None
 
 
 def __getattr__(name: str):

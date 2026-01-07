@@ -1,8 +1,72 @@
+# Adapted from: https://github.com/vllm-project/vllm/tree/main/vllm/platforms
 import torch
+from abc import ABC
 
 
-class CpuPlatform:
+class BasePlatform(ABC):
+    device_type: str
+    device_control_env_var: str
+    dispatch_key: str
+    dist_backend: str
+    full_dist_backend: str
+
+    @staticmethod
+    def empty_cache(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def ipc_collect(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def get_device_name():
+        raise NotImplementedError
+
+    @staticmethod
+    def device_ctx(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def default_device(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def synchronize(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def device_count(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def is_accelerator_available(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def current_device(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def reset_peak_memory_stats(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def max_memory_allocated(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def get_device_properties(*args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def set_device(*args, **kwargs):
+        raise NotImplementedError
+
+
+class CpuPlatform(BasePlatform):
     device_type: str = "cpu"
+    dispatch_key: str = "CPU"
+    device_control_env_var = "CPU_VISIBLE_MEMORY_NODES"
     dist_backend: str = "gloo"
     full_dist_backend: str = "cpu:gloo"
 
@@ -19,7 +83,7 @@ class CpuPlatform:
         return False
 
 
-class CudaPlatform:
+class CudaPlatform(BasePlatform):
     device_type: str = "cuda"
     device_control_env_var: str = "CUDA_VISIBLE_DEVICES"
     dispatch_key: str = "CUDA"
@@ -79,7 +143,7 @@ class CudaPlatform:
         return torch.cuda.set_device(device)
 
 
-class NPUPlatform:
+class NPUPlatform(BasePlatform):
     device_type: str = "npu"
     device_control_env_var: str = "ASCEND_RT_VISIBLE_DEVICES"
     dispatch_key: str = "PrivateUse1"
