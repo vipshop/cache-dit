@@ -16,16 +16,16 @@
 
 **[Cache-DiT](https://github.com/vipshop/cache-dit)** is built on top of diffusers library, Notably, Cache-DiT now supports nearly all of Diffusers' DiTs, include [🤗65+](https://github.com/vipshop/cache-dit) DiT-based models, nearly [100+](https://github.com/vipshop/cache-dit) pipelines. The optimizations made by Cache-DiT for diffusers include: 
 
-- 🎉Hybrid Cache Acceleration (DBCache, TaylorSeer, SCM and more)
-- 🎉Context Parallelism (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses CP)
-- 🎉Tensor Parallelism (w/ PyTorch native DTensor and Tensor Parallel API)
-- 🎉Text Encoder Parallelism (Tensor Parallelism)
-- 🎉AutoEncoder (VAE) Parallelism (latest, Data/Tile Parallelism)
-- 🎉ControlNet Parallelism (currently, Context Parallelism)
-- 🎉Compatible with compile, offload, quantization, ...
-- 🎉Built-in HTTP serving support with simple REST API
-- 🎉vLLM-Omni, SGLang Diffusion, SD.Next, ... integration
-- 🎉NVIDIA GPU, Ascend NPU support (latest)
+- 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
+- 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses CP)
+- 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallel API)
+- 🎉T**ext Encoder Parallelism** (Tensor Parallelism)
+- 🎉**AutoEncoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
+- 🎉**ControlNet Parallelism** (currently, Context Parallelism)
+- 🎉Compatible with **compile, offload, quantization**, ...
+- 🎉Built-in **HTTP serving** support with simple REST API
+- 🎉**vLLM-Omni**, **SGLang Diffusion**, SD.Next, ... integration
+- 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
 
 ## 🚀Quick Start 
 
