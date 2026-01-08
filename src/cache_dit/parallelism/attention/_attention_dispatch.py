@@ -49,7 +49,7 @@ from ._templated_ring import UnifiedTemplatedRingAttention
 from ._templated_ulysses import UnifiedTemplatedUlyssesAttention
 
 logger = init_logger(__name__)
-
+MAX_TOKEN = 2147483647
 
 __all__ = [
     "_native_attention",
@@ -653,22 +653,16 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         if return_lse:
             raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
         if _parallel_config is None:
-            query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
             out = npu_fusion_attention(
                 query,
                 key,
                 value,
-                query.size(1),  # num_heads
-                input_layout="BNSD",
-                # input_layout="BSND",
-                pse=None,
+                atten_mask=None,
+                input_layout="BSND",
                 scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
-                pre_tockens=65536,
-                next_tockens=65536,
-                keep_prob=1.0 - dropout_p,
-                sync=False,
-                inner_precise=0,
-            )[0]
+                pre_tockens=MAX_TOKEN,
+                next_tockens=MAX_TOKEN,
+                head_num=query.size(2))[0]
         else:
             out = _unified_templated_context_parallel_attention(
                 query,
@@ -677,7 +671,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
                 None,
                 dropout_p,
                 None,
-                scale,
+                1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
                 None,
                 return_lse,
                 forward_op=_npu_attention_forward_op,
@@ -706,34 +700,22 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         _save_ctx: bool = True,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
-        # if enable_gqa:
-        #     raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
         if return_lse:
             raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
 
-        # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
-        # if the input tensors are not contiguous.
-        query = query.transpose(1, 2).contiguous()
-        key = key.transpose(1, 2).contiguous()
-        value = value.transpose(1, 2).contiguous()
-
+        if attn_mask is not None:
+            attn_mask = ~attn_mask.to(torch.bool)
         out = npu_fusion_attention(
             query,
             key,
             value,
-            query.size(1),  # num_heads
-            input_layout="BNSD",
-            # input_layout="BSND",
-            pse=None,
-            scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
-            pre_tockens=65536,
-            next_tockens=65536,
-            keep_prob=1.0 - dropout_p,
-            sync=False,
-            inner_precise=0,
-        )[0]
+            atten_mask=attn_mask,
+            input_layout="BSND",
+            scale=scale,
+            pre_tockens=MAX_TOKEN,
+            next_tockens=MAX_TOKEN,
+            head_num=query.size(2))[0]
         
-        out = out.transpose(1, 2).contiguous()
         return out
 
 
