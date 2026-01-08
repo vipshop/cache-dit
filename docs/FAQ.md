@@ -83,6 +83,6 @@ Currently supported backends in cache-dit (see [`examples/utils.py#L126`](https:
 ## Other Questions
 
 For other questions or issues not covered here, please:
-1. Check the [documentation](docs/)
+1. Check the [documentation](https://cache-dit.readthedocs.io/en/latest/)
 2. Search [existing issues](https://github.com/vipshop/cache-dit/issues)
 3. [Open a new issue](https://github.com/vipshop/cache-dit/issues/new) if needed

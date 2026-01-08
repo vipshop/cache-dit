@@ -14,17 +14,16 @@
 
 ## 🤗Why Cache-DiT?
 
-**Cache-DiT** is built on top of the Diffusers library. Notably, Cache-DiT now supports nearly **ALL** DiT-based models from Diffusers, including over [🤗65+](https://github.com/vipshop/cache-dit) DiT-based models and nearly [100+](https://github.com/vipshop/cache-dit) pipelines. The optimizations made by Cache-DiT for diffusers include: 
+**Cache-DiT** is built on top of the Diffusers library. Notably, Cache-DiT now supports nearly **🔥ALL** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models and nearly **[100+](https://github.com/vipshop/cache-dit)** pipelines. The optimizations made by Cache-DiT for diffusers include: 
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
-- 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses CP)
+- 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses)
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallel API)
-- 🎉T**ext Encoder Parallelism** (Tensor Parallelism)
-- 🎉**AutoEncoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
-- 🎉**ControlNet Parallelism** (currently, Context Parallelism)
-- 🎉Compatible with **compile, offload, quantization**, ...
-- 🎉Built-in **HTTP serving** support with simple REST API
-- 🎉**vLLM-Omni**, **SGLang Diffusion**, SD.Next, ... integration
+- 🎉**Text Encoder Parallelism** (via Tensor Parallelism w/ DTensor API)
+- 🎉**Auto Encoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
+- 🎉Built-in **HTTP serving** deployment support with simple REST API
+- 🎉Compatible with **compile**, **offloading**, **quantization**, ...
+- 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
 - 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
 
 Please refer to our online documentation at [cache-dit.readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
@@ -50,12 +49,23 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 
 - [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
 - [🌐HTTP Serving](https://cache-dit-dev.readthedocs.io/en/latest/SERVING/) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
-- [🎉User Guide](https://cache-dit-dev.readthedocs.io/en/latest/User_Guide/) - For more advanced features, please refer to the [🎉User_Guide.md](https://cache-dit-dev.readthedocs.io/en/latest/User_Guide/) for details.
+- [🎉User Guide](https://cache-dit-dev.readthedocs.io/en/latest/User_Guide/) - For more advanced features, please refer to the [🎉User Guide](https://cache-dit-dev.readthedocs.io/en/latest/User_Guide/) for details.
 - [❓FAQ](https://cache-dit-dev.readthedocs.io/en/latest/FAQ/) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
+
+## 🌐Community Integration
+
+- 🎉[Diffusers x Cache-DiT](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)
+- 🎉[SGLang Diffusion x Cache-DiT](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md)
+- 🎉[vLLM-Omni x Cache-DiT](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/acceleration/cache_dit_acceleration/)
+- 🎉[Nunchaku x Cache-DiT](https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit)
+- 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
+- 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)
+
 
 ## ©️Acknowledgements
 
 Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and production-level deployment of this project. We learned the design and reused code from the following projects: [🤗Diffusers](https://huggingface.co/docs/diffusers), [SGLang](https://github.com/sgl-project/sglang), [ParaAttention](https://github.com/chengzeyi/ParaAttention), [xDiT](https://github.com/xdit-project/xDiT), [TaylorSeer](https://github.com/Shenyi-Z/TaylorSeer) and [LeMiCa](https://github.com/UnicomAI/LeMiCa).
+
 
 ## ©️Citations
 
