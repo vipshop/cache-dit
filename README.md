@@ -14,7 +14,7 @@
 
 ## 🤗Why Cache-DiT?
 
-**[Cache-DiT](https://github.com/vipshop/cache-dit)** is built on top of diffusers library, Notably, Cache-DiT now supports nearly all of Diffusers' DiTs, include [🤗65+](https://github.com/vipshop/cache-dit) DiT-based models, nearly [100+](https://github.com/vipshop/cache-dit) pipelines. The optimizations made by Cache-DiT for diffusers include: 
+**Cache-DiT** is built on top of the Diffusers library. Notably, Cache-DiT now supports nearly **ALL** DiTs from Diffusers, including over [🤗65+](https://github.com/vipshop/cache-dit) DiT-based models and nearly [100+](https://github.com/vipshop/cache-dit) pipelines. The optimizations made by Cache-DiT for diffusers include: 
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
 - 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses CP)
@@ -26,6 +26,8 @@
 - 🎉Built-in **HTTP serving** support with simple REST API
 - 🎉**vLLM-Omni**, **SGLang Diffusion**, SD.Next, ... integration
 - 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
+
+Please refer to our online documentation at [readthedocs.io](https://cache-dit-dev.readthedocs.io/en/latest/) for more details.
 
 ## 🚀Quick Start 
 
@@ -47,9 +49,9 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ## 🚀Quick Links
 
 - [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
-- [🌐HTTP Serving](./docs/SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
-- [🎉User Guide](./docs/User_Guide.md) - For more advanced features, please refer to the [🎉User_Guide.md](./docs/User_Guide.md) for details.
-- [❓FAQ](./docs/FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
+- [🌐HTTP Serving](https://cache-dit-dev.readthedocs.io/en/latest/SERVING/) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
+- [🎉User Guide](https://cache-dit-dev.readthedocs.io/en/latest/User_Guide/) - For more advanced features, please refer to the [🎉User_Guide.md](https://cache-dit-dev.readthedocs.io/en/latest/User_Guide/) for details.
+- [❓FAQ](https://cache-dit-dev.readthedocs.io/en/latest/FAQ/) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
 
 ## ©️Acknowledgements
 
