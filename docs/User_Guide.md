@@ -965,4 +965,3 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
 Please check [perf.py](https://github.com/vipshop/cache-dit/blob/main/bench/perf.py) for more details.
-
