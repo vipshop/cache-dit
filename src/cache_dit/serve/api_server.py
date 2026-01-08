@@ -6,7 +6,7 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/ht
 
 import asyncio
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -49,13 +49,22 @@ class GenerateRequestAPI(BaseModel):
         None, description="Number of frames for video generation", ge=1, le=200
     )
     fps: Optional[int] = Field(16, description="Frames per second for video output", ge=1, le=60)
+    include_stats: bool = Field(False, description="Include stats field in response")
+    output_format: Literal["base64", "path"] = Field(
+        "base64",
+        description="Output format: base64 or path",
+    )
+    output_dir: Optional[str] = Field(
+        None,
+        description="Output directory when output_format=path (server-side path)",
+    )
 
 
 class GenerateResponseAPI(BaseModel):
     """API response model for image/video generation."""
 
-    images: Optional[list[str]] = Field(None, description="Base64 encoded images")
-    video: Optional[str] = Field(None, description="Base64 encoded video (mp4)")
+    images: Optional[list[str]] = Field(None, description="Base64 encoded images or file paths")
+    video: Optional[str] = Field(None, description="Base64 encoded video (mp4) or file path")
     stats: Optional[Dict[str, Any]] = Field(None, description="Cache statistics")
     time_cost: Optional[float] = Field(None, description="Generation time in seconds")
     inference_start_time: Optional[str] = Field(
@@ -93,7 +102,7 @@ def create_app(model_manager: ModelManager) -> FastAPI:
 
         return JSONResponse(content=_global_model_manager.get_model_info())
 
-    @app.post("/generate", response_model=GenerateResponseAPI)
+    @app.post("/generate", response_model=GenerateResponseAPI, response_model_exclude_none=True)
     async def generate(request: GenerateRequestAPI):
         """Generate images from text prompt."""
         if _global_model_manager is None:
@@ -116,6 +125,9 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     image_urls=request.image_urls,
                     num_frames=request.num_frames,
                     fps=request.fps,
+                    include_stats=request.include_stats,
+                    output_format=request.output_format,
+                    output_dir=request.output_dir,
                 )
 
                 loop = asyncio.get_event_loop()

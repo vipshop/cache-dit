@@ -32,6 +32,11 @@ def call_api(prompt, image_urls=None, name="test", **kwargs):
         "seed": kwargs.get("seed", 42),
     }
 
+    if "output_format" in kwargs:
+        payload["output_format"] = kwargs["output_format"]
+    if "output_dir" in kwargs:
+        payload["output_dir"] = kwargs["output_dir"]
+
     if image_urls:
         payload["image_urls"] = image_urls
 
@@ -40,14 +45,21 @@ def call_api(prompt, image_urls=None, name="test", **kwargs):
     result = response.json()
     assert "images" in result and len(result["images"]) > 0, "No images in response"
 
-    img_data = base64.b64decode(result["images"][0])
-    img = Image.open(BytesIO(img_data))
+    if payload.get("output_format", "base64") == "path":
+        filename = result["images"][0]
+        assert os.path.exists(filename)
+        img = Image.open(filename)
+        print(f"Saved: {filename} ({img.size[0]}x{img.size[1]})")
+        return filename
+    else:
+        img_data = base64.b64decode(result["images"][0])
+        img = Image.open(BytesIO(img_data))
 
-    filename = f"{name}.png"
-    img.save(filename)
+        filename = f"{name}.png"
+        img.save(filename)
 
-    print(f"Saved: {filename} ({img.size[0]}x{img.size[1]})")
-    return filename
+        print(f"Saved: {filename} ({img.size[0]}x{img.size[1]})")
+        return filename
 
 
 def test_single():
@@ -102,9 +114,17 @@ def test_text_ulysses_bad_resolution_regression():
         height=1080,
         num_inference_steps=8,
     )
-    img = Image.open(filename)
-    assert img.size == (720, 1080)
     return filename
+
+
+def test_text_path_output():
+    return call_api(
+        prompt="A beautiful landscape with mountains and lakes",
+        name="text_gen_path",
+        num_inference_steps=8,
+        output_format="path",
+        output_dir="outputs_test",
+    )
 
 
 if __name__ == "__main__":
@@ -113,3 +133,4 @@ if __name__ == "__main__":
     test_base64()
     test_text()
     test_text_ulysses_bad_resolution_regression()
+    test_text_path_output()

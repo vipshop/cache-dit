@@ -4,14 +4,14 @@ This test demonstrates how to use cache-dit serving with LoRA models.
 Qwen-Image-Lightning is a distilled model that generates high-quality images in 4 or 8 steps.
 
 Server setup:
-    cache-dit-serve \
+    CUDA_VISIBLE_DEVICES=7 cache-dit-serve \
         --model-path Qwen/Qwen-Image \
         --lora-path lightx2v/Qwen-Image-Lightning \
         --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
         --cache
 
 For 4-step model:
-    cache-dit-serve \
+    CUDA_VISIBLE_DEVICES=7 cache-dit-serve \
         --model-path Qwen/Qwen-Image \
         --lora-path lightx2v/Qwen-Image-Lightning \
         --lora-name Qwen-Image-Lightning-4steps-V1.1-bf16.safetensors \
@@ -42,6 +42,9 @@ def call_api(prompt, name="test", **kwargs):
         "seed": kwargs.get("seed", 42),
         "num_images": kwargs.get("num_images", 1),
     }
+
+    if "include_stats" in kwargs:
+        payload["include_stats"] = kwargs["include_stats"]
 
     if "negative_prompt" in kwargs:
         payload["negative_prompt"] = kwargs["negative_prompt"]
@@ -88,6 +91,35 @@ def test_basic_8steps():
     )
 
 
+def test_include_stats():
+    """Test include_stats parameter returns stats."""
+    host = os.environ.get("CACHE_DIT_HOST", "localhost")
+    port = int(os.environ.get("CACHE_DIT_PORT", 8000))
+
+    model_info_resp = requests.get(f"http://{host}:{port}/get_model_info", timeout=30)
+    model_info_resp.raise_for_status()
+    enable_cache = bool(model_info_resp.json().get("enable_cache", False))
+
+    result = requests.post(
+        f"http://{host}:{port}/generate",
+        json={
+            "prompt": "A cute puppy playing in the garden",
+            "width": 1024,
+            "height": 1024,
+            "num_inference_steps": 8,
+            "guidance_scale": 1.0,
+            "seed": 456,
+            "num_images": 1,
+            "include_stats": True,
+        },
+        timeout=300,
+    )
+    result.raise_for_status()
+    data = result.json()
+    if enable_cache:
+        assert "stats" in data
+
+
 def test_basic_4steps():
     """Test basic image generation with 4 steps (Lightning-4steps model)."""
     return call_api(
@@ -132,6 +164,9 @@ if __name__ == "__main__":
     # Run tests
     print("\n[1/4] Testing basic 8-step generation...")
     test_basic_8steps()
+
+    print("\n[1.5/4] Testing include_stats...")
+    test_include_stats()
 
     print("\n[2/4] Testing basic 4-step generation...")
     test_basic_4steps()
