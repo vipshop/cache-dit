@@ -55,6 +55,21 @@ dev = [
     "scikit-image",
 ]
 
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-api-autonav",
+    "mkdocs-material",
+    "mkdocstrings-python",
+    "mkdocs-gen-files",
+    "mkdocs-awesome-nav",
+    "mkdocs-glightbox",
+    "mkdocs-git-revision-date-localized-plugin",
+    "mkdocs-minify-plugin",
+    "regex",
+    "ruff",
+    "pydantic",
+]
+
 all = [
     "cache-dit[parallelism]",
     "cache-dit[quantization]",
