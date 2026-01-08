@@ -402,7 +402,7 @@ def get_args(
             # with attn masks, e.g., ZImage. It is not in diffusers yet.
             "_sdpa_cudnn",
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
-            "_native_npu", # native npu attention
+            "_native_npu",  # native npu attention
         ],
     )
     parser.add_argument(
