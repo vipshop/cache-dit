@@ -7,49 +7,15 @@
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>
 </div>
 
-## 📖Table of Contents
+## Overviews
 
-<div id="contents"></div>
+Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Supported Matrix](./SUPPORTED.md) for more details. Here are just some of the tested models listed.
 
-### 🚀Quick Links
-
-- [📊Examples](../examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
+- [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
 - [🌐HTTP Serving](./SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text-to-video** generation
 - [❓FAQ](./FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips
 
-### 📚Documentation
-- [⚙️Installation](#️installation)
-- [🔥Supported DiTs](#supported)
-- [🔥Benchmarks](#benchmarks)
-- [🎉Unified Cache APIs](#unified)
-  - [📚Forward Pattern Matching](#forward-pattern-matching)
-  - [📚Cache with One-line Code](#%EF%B8%8Fcache-acceleration-with-one-line-code)
-  - [🔥Automatic Block Adapter](#automatic-block-adapter)
-  - [📚Hybrid Forward Pattern](#automatic-block-adapter)
-  - [📚Implement Patch Functor](#implement-patch-functor)
-  - [📚Transformer-Only Interface](#transformer-only-interface)
-  - [📚How to use ParamsModifier](#how-to-use-paramsmodifier)
-  - [🤖Cache Acceleration Stats](#cache-acceleration-stats-summary)
-- [⚡️DBCache: Dual Block Cache](#dbcache)
-- [⚡️DBPrune: Dynamic Block Prune](#dbprune)
-- [⚡️Hybrid Cache CFG](#cfg)
-- [🔥Hybrid TaylorSeer Calibrator](#taylorseer)
-- [🤖SCM: Steps Computation Masking](#steps-mask)
-- [⚡️Hybrid Context Parallelism](#context-parallelism)
-- [🤖UAA: Ulysses Anything Attention](#ulysses-anything-attention)
-- [🤖Async Ulysses QKV Projection](#ulysses-async)
-- [🤖Async FP8 Ulysses Attention](#ulysses-async-fp8)
-- [⚡️Hybrid Tensor Parallelism](#tensor-parallelism)
-- [🤖Parallelize Text Encoder](#parallel-text-encoder)
-- [🤖Parallelize Auto Encoder](#parallel-auto-encoder)
-- [🤖Parallelize ControlNet](#parallel-controlnet)
-- [🤖Low-bits Quantization](#quantization)
-- [🤖How to use FP8 Attention](#fp8-attention)
-- [🛠Metrics Command Line](#metrics)
-- [⚙️Torch Compile](#compile)
-- [📚API Documents](#api-docs)
-
-## ⚙️Installation  
+## Installation  
 
 <div id="installation"></div>
 
@@ -68,116 +34,17 @@ Please also install the latest main branch of diffusers for context parallelism:
 pip3 install git+https://github.com/huggingface/diffusers.git
 ```
 
-## 🔥Supported DiTs  
-
-<div id="supported"></div>
-
-Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examples) for more details. Here are just some of the tested models listed.
-
-```python
->>> import cache_dit
->>> cache_dit.supported_pipelines()
-(32, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTX*', 'Allegro*',
-'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'StableDiffusion3*',
-'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
-'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*',
-'Kandinsky5*', 'PRX*'])
-```
-## 🔥Benchmarks
-
-<div id="benchmarks"></div>
-
-cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/tree/main/bench/).
-
-### 📚Text2Image DrawBench: FLUX.1-dev
-
-Comparisons between different FnBn compute block configurations show that **more compute blocks result in higher precision**. For example, the F8B0_W8MC0 configuration achieves the best Clip Score (33.007) and ImageReward (1.0333). **Device**: NVIDIA L20. **F**: Fn_compute_blocks, **B**: Bn_compute_blocks, 50 steps.
-
-<div align="center">
-
-
-| Config | Clip Score(↑) | ImageReward(↑) | PSNR(↑) | TFLOPs(↓) | SpeedUp(↑) |
-| --- | --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 32.9217 | 1.0412 | INF | 3726.87 | 1.00x |
-| F8B0_W4MC0_R0.08 | 32.9871 | 1.0370 | 33.8317 | 2064.81 | 1.80x |
-| F8B0_W4MC2_R0.12 | 32.9535 | 1.0185 | 32.7346 | 1935.73 | 1.93x |
-| F8B0_W4MC3_R0.12 | 32.9234 | 1.0085 | 32.5385 | 1816.58 | 2.05x |
-| F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47x |
-| F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
-
-</div>
-
-### 📚Compare with Other Methods: Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa
-
-<div align="center">
-
-![image-reward-bench](https://github.com/vipshop/cache-dit/raw/main/assets/image-reward-bench.png)
-
-![clip-score-bench](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
-
-</div>
-
-The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **4x**, cache-dit achieved the best accuracy. Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/). NOTE: Except for DBCache, other performance data are referenced from the paper [FoCa, arxiv.2508.16211](https://arxiv.org/pdf/2508.16211).
-
-<div align="center">
-
-| Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
-| --- | --- | --- | --- | --- |
-| [**FLUX.1**-dev]: 50 steps | 3726.87 | 1.00× | 0.9898 | 32.404 |
-| [**FLUX.1**-dev]: 60% steps | 2231.70 | 1.67× | 0.9663 | 32.312 |
-| Δ-DiT(N=2) | 2480.01 | 1.50× | 0.9444 | 32.273 |
-| Δ-DiT(N=3) | 1686.76 | 2.21× | 0.8721 | 32.102 |
-| [**FLUX.1**-dev]: 34% steps | 1264.63 | 3.13× | 0.9453 | 32.114 |
-| Chipmunk | 1505.87 | 2.47× | 0.9936 | 32.776 |
-| FORA(N=3) | 1320.07 | 2.82× | 0.9776 | 32.266 |
-| **[DBCache(S)](https://github.com/vipshop/cache-dit)** | 1400.08 | **2.66×** | **1.0065** | 32.838 |
-| DuCa(N=5) | 978.76 | 3.80× | 0.9955 | 32.241 |
-| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
-| **[DBCache(S)+TS](https://github.com/vipshop/cache-dit)** | 1153.05 | **3.23×** | **1.0221** | 32.819 |
-| **[DBCache(M)](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | 0.9997 | 32.849 |
-| **[DBCache(M)+TS](https://github.com/vipshop/cache-dit)** | 944.75 | **3.94×** | **1.0107** | 32.865 |
-| **[FoCa(N=5): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 893.54 | **4.16×** | 1.0029 | **32.948** |
-| [**FLUX.1**-dev]: 22% steps | 818.29 | 4.55× | 0.8183 | 31.772 |
-| FORA(N=7) | 670.14 | 5.55× | 0.7418 | 31.519 |
-| ToCa(N=12) | 644.70 | 5.77× | 0.7155 | 31.808 |
-| DuCa(N=10) | 606.91 | 6.13× | 0.8382 | 31.759 |
-| TeaCache(l=1.2) | 669.27 | 5.56× | 0.7394 | 31.704 |
-| TaylorSeer(N=7,O=2) | 670.44 | 5.54× | 0.9128 | 32.128 |
-| **[DBCache(F)](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | 0.9271 | 32.552 |
-| **[FoCa(N=8): arxiv.2508.16211](https://arxiv.org/pdf/2508.16211)** | 596.07 | 6.24× | 0.9502 | 32.706 |
-| **[DBCache(F)+TS](https://github.com/vipshop/cache-dit)** | 651.90 | **5.72x** | **0.9526** | 32.568 |
-| **[DBCache(U)+TS](https://github.com/vipshop/cache-dit)** | 505.47 | **7.37x** | 0.8645 | **32.719** |
-
-</div>
-
-### 📚Text2Image Distillation DrawBench: Qwen-Image-Lightning
-
-Surprisingly, cache-dit: DBCache still works in the extremely few-step distill model. For example,  **Qwen-Image-Lightning w/ 4 steps**, with the F16B16 configuration, the PSNR is 34.8163, the Clip Score is 35.6109, and the ImageReward is 1.2614. It maintained a relatively high precision.
-
-<div align="center">
-
-| Config                     |  PSNR(↑)      | Clip Score(↑) | ImageReward(↑) | TFLOPs(↓)   | SpeedUp(↑) |
-|----------------------------|-----------|------------|--------------|----------|------------|
-| [**Lightning**]: 4 steps   | INF       | 35.5797    | 1.2630       | 274.33   | 1.00x       |
-| F24B24_W2MC1_R0.8          | 36.3242   | 35.6224    | 1.2630       | 264.74   | 1.04x       |
-| F16B16_W2MC1_R0.8          | 34.8163   | 35.6109    | 1.2614       | 244.25   | 1.12x       |
-| F12B12_W2MC1_R0.8          | 33.8953   | 35.6535    | 1.2549       | 234.63   | 1.17x       |
-| F8B8_W2MC1_R0.8            | 33.1374   | 35.7284    | 1.2517       | 224.29   | 1.22x       |
-| F1B0_W2MC1_R0.8            | 31.8317   | 35.6651    | 1.2397       | 206.90   | 1.33x       |
-
-</div>
-
-## 🎉Unified Cache APIs
+## Unified Cache APIs
 
 <div id="unified"></div>  
 
-### 📚Forward Pattern Matching 
+### Forward Pattern Matching 
 
 Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **Input/Output patterns**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the `cache_dit.enable_cache(...)` API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
-### ♥️Cache Acceleration with One-line Code
+### Cache Acceleration with One-line Code
 
 In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/run_qwen_image.py) as an example. 
 
@@ -195,7 +62,7 @@ output = pipe(...)
 cache_dit.disable_cache(pipe)
 ```
 
-### 🔥Automatic Block Adapter
+### Automatic Block Adapter
 
 But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_qwen_image_adapter.py) as an example.
 
@@ -225,7 +92,7 @@ cache_dit.enable_cache(
 ```
 For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. 
 
-### 📚Hybrid Forward Pattern
+### Hybrid Forward Pattern
 
 Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. 
 ```python
@@ -289,7 +156,7 @@ cache_dit.enable_cache(
 )
 ```
 
-### 📚Implement Patch Functor
+### Implement Patch Functor
 
 For any PATTERN not in {0...5}, we introduced the simple abstract concept of **Patch Functor**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
 
@@ -321,7 +188,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 ```
 
-### 📚Transformer-Only Interface
+### Transformer-Only Interface
 
 In some cases, users may **not use Diffusers or DiffusionPipeline** at all, and may not even have the concept of a "pipeline"—for instance, **ComfyUI** (which breaks down the pipeline into individual components while still retaining transformer components). cache-dit also supports such scenarios; it only needs to be configured via **BlockAdapter**. The pipeline is not mandatory, and you can simply keep it at the default value of None. In this case, the `num_inference_steps` parameter in cache_config **must be set**, as cache-dit relies on this parameter to refresh the cache context at the appropriate time. Please refer to [📚run_transformer_only.py](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_transformer_only.py) as an example.
 
@@ -378,7 +245,7 @@ output = pipe(...) # Just call the pipe as normal.
 stats = cache_dit.summary(pipe.transformer) # Then, get the summary
 ```
 
-### 📚How to use ParamsModifier
+### ParamsModifier
 
 Sometimes you may encounter more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`), or FLUX.1, which has multiple transformer blocks (namely `single_transformer_blocks` and `transformer_blocks`). cache-dit will assign separate cache contexts for different `blocks` instances but share the same `cache_config` by default. Users who want to achieve fine-grained control over different cache contexts can consider using `ParamsModifier`. Just pass the `ParamsModifier` per `blocks` to the `BlockAdapter` or `enable_cache(...)` API. Then, the shared `cache_config` will be overwritten by the new configurations from the `ParamsModifier`. For example:
 
@@ -423,7 +290,7 @@ cache_dit.enable_cache(
 )
 ```
 
-### 🤖Cache Acceleration Stats Summary
+### Cache Stats Summary
 
 After finishing each inference of `pipe(...)`, you can call the `cache_dit.summary()` API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
 ```python
@@ -440,7 +307,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 | 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.297     |
 ```
 
-## ⚡️DBCache: Dual Block Cache  
+## DBCache: Dual Block Cache  
 
 <div id="dbcache"></div>
 
@@ -487,7 +354,6 @@ cache_dit.enable_cache(
   </p>
 </div>
 
-<div align="center">
 
 |Baseline(L20x1)|F1B0 (0.08)|F1B0 (0.20)|F8B8 (0.15)|F12B12 (0.20)|F16B16 (0.20)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
@@ -497,7 +363,6 @@ cache_dit.enable_cache(
 |27.85s|6.04s|5.88s|5.77s|6.01s|6.20s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_NONE_R0.08.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F1B0_R0.08.png width=140px> |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B8_R0.12.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B12_R0.12.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B16_R0.2.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/TEXTURE_DBCACHE_F8B20_R0.2.png width=140px>|
 
-</div>
 
 <div align="center">
   <p align="center">
@@ -507,7 +372,7 @@ cache_dit.enable_cache(
 
 These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
 
-## ⚡️DBPrune: Dynamic Block Prune
+## DBPrune: Dynamic Block Prune
 
 <div id="dbprune"></div>  
 
@@ -549,16 +414,12 @@ cache_dit.enable_cache(
   </p>
 </div>
 
-<div align="center">
-
 |Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(38%)|Pruned(45%)|Pruned(60%)|
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|19.43s|16.82s|15.95s|14.24s|10.66s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=140px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.05_P38.3_T15.95s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=140px>|
 
-</div>
-
-## ⚡️Hybrid Cache CFG
+## Hybrid Cache CFG
 
 <div id="cfg"></div>
 
@@ -588,17 +449,13 @@ cache_dit.enable_cache(
 )
 ```
 
-## 🔥Hybrid TaylorSeer Calibrator
+## Hybrid TaylorSeer Calibrator
 
 <div id="taylorseer"></div>
 
 We have supported the [TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers](https://arxiv.org/pdf/2503.06923) algorithm to further improve the precision of DBCache in cases where the cached steps are large, namely, **Hybrid TaylorSeer + DBCache**. At timesteps with significant intervals, the feature similarity in diffusion models decreases substantially, significantly harming the generation quality. 
 
-$$
-\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)=\mathcal{F}\left(x_t^l\right)+\sum_{i=1}^m \frac{\Delta^i \mathcal{F}\left(x_t^l\right)}{i!\cdot N^i}(-k)^i
-$$
-
-**TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That is $\mathcal{F}\_{\text {pred }, m}\left(x_{t-k}^l\right)$ can be a residual cache or a hidden-state cache.
+**TaylorSeer** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That F_pred can be a residual cache or a hidden-state cache.
 
 ```python
 from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
@@ -630,32 +487,23 @@ cache_dit.enable_cache(
   </p>
 </div>
 
-<div align="center">
-
 |Baseline(L20x1)|F1B0 (0.12)|+TaylorSeer|F1B0 (0.15)|+TaylorSeer|+compile|  
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|12.85s|12.86s|10.27s|10.28s|8.48s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T10.28s.png width=140px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=140px>|
 
-</div>
-
-## 🤖SCM: Steps Computation Masking
+## SCM: Steps Computation Masking
 
 <div id="steps-mask"></div>
 
 
 The `steps_computation_mask` parameter adopts a step-wise computation masking approach inspired by [LeMiCa](https://github.com/UnicomAI/LeMiCa) and [EasyCache](https://github.com/H-EmbodVis/EasyCache). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. 
 
-<div align="center">
-
 |LeMiCa: Non-Uniform Cache Steps|LeMiCa: Cache Errors|EasyCache: Transformation rate Analysis|
 |:---:|:---:|:---:|
-|<img src=https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb width=383px>|<img src="./assets/lemica_0.png" width=235px>|<img src="./assets/easy_cache_0.png" width=343px>|
-
-</div>
+|<img src=https://github.com/user-attachments/assets/4ba5e4c4-0e69-43f8-aded-7e872bf0f8bb width=383px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/lemica_0.png" width=235px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/easy_cache_0.png" width=343px>|
 
 It is a list of length num_inference_steps indicating whether to compute each step or not. 1 means must compute, 0 means use dynamic/static cache. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](../examples/api/run_steps_mask.py) for more details.
-
 
 
 ```python
@@ -691,12 +539,11 @@ cache_dit.enable_cache(
 
 As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (please click to enlarge) has shown **obvious blurriness**. However, the **Ultra** version under **dynamic cache** (`SCM Ultra D*`) still maintains excellent clarity. Therefore, we prioritize recommending the use of dynamic cache while using `SCM: steps_computation_mask`.
 
-<div align="center">
 
 |Baseline|SCM S S*|SCM S D*|SCM F D*|SCM U D*|+TS|+compile|+FP8 +Sage|  
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.4s|17.1s|11.4s|8.2s|8.2s|7.1s|4.5s|
-|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=95px>|<img src="../assets/steps_mask/static.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="../assets/steps_mask/flux.C1_Q1_float8_DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/static.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.C1_Q1_float8_DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|
 
 <p align="center">
   Scheme: <b>DBCache + SCM(steps_computation_mask) + TaylorSeer</b>, L20x1, S*: static cache, <b>D*: dynamic cache</b>, <br><b>S</b>: Slow, <b>F</b>: Fast, <b>U</b>: Ultra Fast, <b>TS</b>: TaylorSeer, FP8: FP8 DQ, Sage: SageAttention, <b>FLUX.1-Dev</b>, <br>Steps: 28, HxW=1024x1024, Prompt: "A cat holding a sign that says hello world"
@@ -705,16 +552,14 @@ As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (
 |DBCache + SCM Slow S*|DBCache + SCM Ultra D* + TaylorSeer + compile| 
 |:---:|:---:|
 |15.4s|7.1s|
-|<img src="../assets/steps_mask/static.png" width=460px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=460px>|
+|<img src="https://github.com/vipshop/cache-dit/raw/main//assets/steps_mask/static.png" width=460px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=460px>|
 
 <p align="center">
 <b>Dynamic Caching is all you need!</b> The <b>Ultra</b> fast version under dynamic cache (<b>SCM Ultra D*</b>) <br>maintains <b>better clarity</b> than the slower static cache one (<b>SCM Slow S*</b>).
 </p>
 
-</div>
 
-
-## ⚡️Hybrid Context Parallelism
+## Hybrid Context Parallelism
 
 <div id="context-parallelism"></div>
 
@@ -733,7 +578,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## 🤖UAA: Ulysses Anything Attention 
+## UAA: Ulysses Anything Attention 
 
 <div id="ulysses-anything-attention"></div>
 
@@ -765,8 +610,6 @@ dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
 Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce communication latency.
 
-<div align="center">
-
 <p align="center">
     ✅<b>Any Sequence Length</b><br>
     U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
@@ -780,11 +623,9 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 |1024x1024|1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
 |✔️U* ✔️UAA|✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA|NO CP|❌U* ✔️UAA|
 
-</div>
 
 ✅**Any Head Num**: By the way, Ulysses Attention and UAA in cache-dit now **support arbitrary numbers of heads** via additional padding and unpadding operations implemented before and after all-to-all. The overhead incurred by these extra padding and unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
 
-<div align="center">
 
 <p align="center">
     ✅<b>Any Head Num</b><br>
@@ -797,7 +638,6 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 |1024x1024, 3.19s|1024x1024, 1.98s|1024x1024, 1.89s|1024x1024, 1.63s|1024x1024, 1.23s|    
 |<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses2_sdpa_cudnn" src="https://github.com/user-attachments/assets/4beef601-52b1-4d16-a388-1e0b05ee832e" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_sdpa_cudnn" src="https://github.com/user-attachments/assets/f6b30c59-74ca-47b2-a1de-ecaa163e129e" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn" src="https://github.com/user-attachments/assets/c5bf6358-1999-4723-941e-f6e855a9b21d" />|<img width="180" height="180" alt="zimage C1_Q0_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/user-attachments/assets/4da67bca-a860-4c2d-b165-fe28693a624f" />|<img width="180" height="180" alt="zimage C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/user-attachments/assets/6f1f837f-701e-43c3-8745-77eb07cf143b" />|    
 
-</div>
 
 We have also implemented a ✅**padding-free** version that support any head num. Please be informed that this solution cannot be used when seq len is not divisible by world size. Users can enable this feature through environment variables:
 
@@ -805,18 +645,14 @@ We have also implemented a ✅**padding-free** version that support any head num
 export CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD=1 # NOT WORK if seq len is also not divisible by world size
 ```
 
-> [!Important]
-> Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the `cpu:gloo` commucation backend is not available.
+Important: Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the `cpu:gloo` commucation backend is not available.
 
-## 🤖Async Ulysses QKV Projection
+## Async Ulysses QKV Projection
 
 <div id="ulysses-async"></div>
 
-<div align="center">
 
-![alt text](../assets/parallelism/async_ulysses.png)
-
-</div>
+![async_ulysses](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses.png)
 
 Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image) and 🔥[Ovis-Image](https://github.com/AIDC-AI/Ovis-Image) models are supported, and more models will be added in the future—stay tuned!
 
@@ -838,7 +674,6 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache_ulysses_async.py
 ```
 
-<div align="center">
 
 <p align="center">
     Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attenton with Async QKV Projection
@@ -847,19 +682,13 @@ cache_dit.enable_cache(
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
 |:---:|:---:|:---:|:---:|  
 |FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
-|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
+|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
 
-</div>
-
-## 🤖Async FP8 Ulysses Attention
+## Async FP8 Ulysses Attention
 
 <div id="ulysses-async-fp8"></div>
 
-<div align="center">
-
-![alt text](../assets/parallelism/async_ulysses_fp8.png)
-
-</div>
+![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
 cache-dit has implemented **Async FP8 Ulysses Attention** for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `experimental_ulysses_float8=True`. To maintain higher precision during softmax computation—where `Softmax(Q@K^T)` is sensitive to numerical instability—we currently retain `K in FP16/BF16` format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
 
@@ -884,11 +713,10 @@ cache_dit.enable_cache(
 |L20x2 w/ Ulysses| w/ Ulysses FP8|w/ Ulysses + compile|w/ Ulysses FP8 + compile|
 |:---:|:---:|:---:|:---:|
 |FLUX.1, 13.87s|**🎉13.36s**|12.21s|**🎉11.54s**|
-|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="../assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|
 
 
-
-## ⚡️Hybrid Tensor Parallelism
+## Hybrid Tensor Parallelism
 
 <div id="tensor-parallelism"></div>
 
@@ -910,7 +738,7 @@ cache_dit.enable_cache(
 > [!Important] 
 > Please note that in the short term, we have no plans to support Hybrid Parallelism. Please choose to use either Context Parallelism or Tensor Parallelism based on your actual scenario.
 
-## 🤖Parallelize Text Encoder
+## Parallelize Text Encoder
 
 <div id="parallel-text-encoder"></div>
 
@@ -948,7 +776,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## 🤖Parallelize Auto Encoder (VAE)
+## Parallelize Auto Encoder (VAE)
 
 <div id="parallel-auto-encoder"></div>
 
@@ -972,7 +800,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## 🤖Parallelize ControlNet
+## Parallelize ControlNet
 
 <div id="parallel-controlnet"></div>
 
@@ -998,7 +826,7 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## 🤖Low-bits Quantization
+## Low-bits Quantization
 
 <div id="quantization"></div>
 
@@ -1060,7 +888,7 @@ pipe = QwenImagePipeline.from_pretrained(
 cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 ```
 
-## 🤖How to use FP8 Attention
+## How to use FP8 Attention
 
 <div id="fp8-attention"></div>
 
@@ -1085,9 +913,9 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_fp8_cache.py
 ```
 
-## 🛠Metrics Command Line
+## Metrics Command Line
 
-<div id="metrics"></div>    
+<div id="metrics"></div>
 
 You can utilize the APIs provided by cache-dit to quickly evaluate the accuracy losses caused by different cache configurations. For example:
 
@@ -1118,7 +946,7 @@ cache-dit-metrics-cli all  -i1 true.png -i2 test.png  # image
 cache-dit-metrics-cli all  -i1 true_dir -i2 test_dir  # image dir
 ```
 
-## ⚙️Torch Compile
+## Torch Compile
 
 <div id="compile"></div>  
 
@@ -1137,124 +965,3 @@ torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
 Please check [perf.py](https://github.com/vipshop/cache-dit/blob/main/bench/perf.py) for more details.
-
----
-
-## 📚API Documentation
-
-<div id="api-docs"></div>  
-
-Unified Cache API for almost Any Diffusion Transformers (with Transformer Blocks that match the specific Input and Output patterns). For a good balance between performance and precision, DBCache is configured by default with F8B0, 8 warmup steps, and unlimited cached steps. All the configurable params are listed beflows.
-
-### 👏API: enable_cache
-
-```python
-def enable_cache(...) -> Union[DiffusionPipeline, BlockAdapter, Transformer]
-```
-
-### 🌟Function Description
-
-The `enable_cache` function serves as a unified caching interface designed to optimize the performance of diffusion transformer models by implementing an intelligent caching mechanism known as `DBCache`. This API is engineered to be compatible with nearly `all` diffusion transformer architectures that feature transformer blocks adhering to standard input-output patterns, eliminating the need for architecture-specific modifications.  
-
-By strategically caching intermediate outputs of transformer blocks during the diffusion process, `DBCache` significantly reduces redundant computations without compromising generation quality. The caching mechanism works by tracking residual differences between consecutive steps, allowing the model to reuse previously computed features when these differences fall below a configurable threshold. This approach maintains a balance between computational efficiency and output precision.  
-
-The default configuration (`F8B0, 8 warmup steps, unlimited cached steps`) is carefully tuned to provide an optimal tradeoff for most common use cases. The "F8B0" configuration indicates that the first 8 transformer blocks are used to compute stable feature differences, while no final blocks are employed for additional fusion. The warmup phase ensures the model establishes sufficient feature representation before caching begins, preventing potential degradation of output quality.  
-
-This function seamlessly integrates with both standard diffusion pipelines and custom block adapters, making it versatile for various deployment scenarios—from research prototyping to production environments where inference speed is critical. By abstracting the complexity of caching logic behind a simple interface, it enables developers to enhance model performance with minimal code changes.
-
-### 👇Quick Start
-
-```python
->>> import cache_dit
->>> from diffusers import DiffusionPipeline
->>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
->>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
->>> output = pipe(...) # Just call the pipe as normal.
->>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
->>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
-```
-
-### 👇Parameter Description
-
-- **pipe_or_adapter**(`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):  
-  The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
-  For example: `cache_dit.enable_cache(FluxPipeline(...))`.
-
-- **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
-  Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
-  - `Fn_compute_blocks`: (`int`, *required*, defaults to 8):  
-    Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.
-    Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md for more details of DBCache.
-  - `Bn_compute_blocks`: (`int`, *required*, defaults to 0):  
-    Further fuses approximate information in the**last n**Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
-  - `residual_diff_threshold`: (`float`, *required*, defaults to 0.08):  
-    The value of residual difference threshold, a higher value leads to faster performance at the cost of lower precision.
-  - `max_accumulated_residual_diff_threshold`: (`float`, *optional*, defaults to None):  
-    The maximum accumulated relative l1 diff threshold for Cache. If set, when the
-    accumulated relative l1 diff exceeds this threshold, the caching strategy will be
-    disabled for current step. This is useful for some cases where the input condition
-    changes significantly in a single step. Default None means this feature is disabled.  
-  - `max_warmup_steps`: (`int`, *required*, defaults to 8):  
-    DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
-  - `warmup_interval`: (`int`, *required*, defaults to 1):    
-    Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps
-    in warmup steps will be computed, others will use dynamic cache.
-  - `max_cached_steps`: (`int`, *required*, defaults to -1):  
-    DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
-  - `max_continuous_cached_steps`: (`int`, *required*, defaults to -1):  
-    DBCache disables the caching strategy when the previous continuous cached steps exceed this value to prevent precision degradation.
-  - `enable_separate_cfg`: (`bool`, *required*, defaults to None):  
-    Whether to use separate cfg or not, such as in Wan 2.1, Qwen-Image. For models that fuse CFG and non-CFG into a single forward step, set enable_separate_cfg as False. Examples include: CogVideoX, HunyuanVideo, Mochi, etc.
-  - `cfg_compute_first`: (`bool`, *required*, defaults to False):    
-    Whether to compute cfg forward first, default is False, meaning:  
-    0, 2, 4, ... -> non-CFG step; 1, 3, 5, ... -> CFG step.
-  - `cfg_diff_compute_separate`: (`bool`, *required*, defaults to True):    
-    Whether to compute separate difference values for CFG and non-CFG steps, default is True. If False, we will use the computed difference from the current non-CFG transformer step for the current CFG step.
-  - `num_inference_steps` (`int`, *optional*, defaults to None):  
-    num_inference_steps for DiffusionPipeline, used to adjust some internal settings
-    for better caching performance. For example, we will refresh the cache once the
-    executed steps exceed num_inference_steps if num_inference_steps is provided.
-  - `steps_computation_mask`: (`List[int]`, *optional*, defaults to None):  
-    This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list
-    of length num_inference_steps indicating whether to compute each step or not.
-    1 means must compute, 0 means use dynamic/static cache. If provided, will override
-    other settings to decide whether to compute each step.  
-  - `steps_computation_policy`: (`str`, *optional*, defaults to "dynamic"):  
-    The computation policy for steps when using steps_computation_mask. It can be
-    "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
-    in steps_computation_mask, while "static" means using static cache for those steps.
-
-- **calibrator_config** (`CalibratorConfig`, *optional*, defaults to None):  
-  Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
-
-- **params_modifiers** ('ParamsModifier', *optional*, defaults to None):  
-  Modify cache context parameters for specific blocks. The configurable parameters are listed below:
-  - `cache_config`: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
-    The same as the 'cache_config' parameter in the cache_dit.enable_cache() interface.
-  - `calibrator_config`: (`CalibratorConfig`, *optional*, defaults to None):  
-    The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.
-  - `**kwargs`: (`dict`, *optional*, defaults to {}):  
-    The same as the 'kwargs' parameter in the cache_dit.enable_cache() interface.
-
-- **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):  
-    Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
-    parallelism for cache-dit.
-    - `backend`: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.NATIVE_DIFFUSER"):  
-        Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
-        For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
-        only NATIVE_PYTORCH backend is supported.
-    - `ulysses_size`: (`int`, *optional*, defaults to None):  
-        The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
-        This setting is only valid when backend is NATIVE_DIFFUSER.
-    - `ring_size`: (`int`, *optional*, defaults to None):  
-        The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
-        This setting is only valid when backend is NATIVE_DIFFUSER.
-    - `tp_size`: (`int`, *optional*, defaults to None):  
-        The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
-        This setting is only valid when backend is NATIVE_PYTORCH.
-    - `parallel_kwargs`: (`dict`, *optional*, defaults to {}):  
-        Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
-        it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
-
-- **kwargs** (`dict`, *optional*, defaults to {}):   
-  Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py for more details.
