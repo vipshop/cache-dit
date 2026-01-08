@@ -56,7 +56,7 @@ nav:
   - Documentation:
       - User Guide: User_Guide.md
       - Support Matrix: SUPPORTED.md
-      - DBCache Design: DBCACHE.md
+      - DBCache Design: DBCache.md
       - Benchmark Performance: BENCHMARK.md
       - Service Deployment: SERVING.md
       - API Documentation: API_DOCS.md
