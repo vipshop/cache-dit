@@ -512,20 +512,20 @@ class ModelManager:
 
     def _resolve_output_dir(self, output_dir: Optional[str]) -> str:
         if output_dir is not None:
-            return output_dir
+            return os.path.abspath(output_dir)
         return os.path.join(os.getcwd(), "outputs")
 
     def _save_image_to_dir(self, image: Image.Image, output_dir: str, name: str) -> str:
         os.makedirs(output_dir, exist_ok=True)
         path = os.path.join(output_dir, name)
         image.save(path, format="PNG")
-        return path
+        return os.path.abspath(path)
 
     def _save_video_to_dir(self, video_frames, output_dir: str, name: str, fps: int) -> str:
         os.makedirs(output_dir, exist_ok=True)
         path = os.path.join(output_dir, name)
         export_to_video(video_frames, path, fps=fps)
-        return path
+        return os.path.abspath(path)
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         if self.pipe is None:
