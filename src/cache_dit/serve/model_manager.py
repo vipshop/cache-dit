@@ -87,6 +87,9 @@ class GenerateRequest:
     image_urls: Optional[List[str]] = None
     num_frames: Optional[int] = None
     fps: Optional[int] = 16
+    include_stats: bool = False
+    output_format: str = "base64"
+    output_dir: Optional[str] = None
 
     def __repr__(self):
         image_urls_repr = None
@@ -107,8 +110,8 @@ class GenerateRequest:
 class GenerateResponse:
     """Image/Video generation response."""
 
-    images: Optional[List[str]] = None  # Base64 encoded images
-    video: Optional[str] = None  # Base64 encoded video (mp4)
+    images: Optional[List[str]] = None  # Base64 encoded images or file paths
+    video: Optional[str] = None  # Base64 encoded video (mp4) or file path
     stats: Optional[Dict[str, Any]] = None
     time_cost: Optional[float] = None
     inference_start_time: Optional[float] = None
@@ -507,9 +510,31 @@ class ModelManager:
 
         return images
 
+    def _resolve_output_dir(self, output_dir: Optional[str]) -> str:
+        if output_dir is not None:
+            return output_dir
+        return os.path.join(os.getcwd(), "outputs")
+
+    def _save_image_to_dir(self, image: Image.Image, output_dir: str, name: str) -> str:
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, name)
+        image.save(path, format="PNG")
+        return path
+
+    def _save_video_to_dir(self, video_frames, output_dir: str, name: str, fps: int) -> str:
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, name)
+        export_to_video(video_frames, path, fps=fps)
+        return path
+
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         if self.pipe is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        if request.output_format not in ("base64", "path"):
+            raise ValueError(
+                f"Invalid output_format: {request.output_format}. Must be 'base64' or 'path'."
+            )
 
         is_edit_mode = request.image_urls is not None and len(request.image_urls) > 0
         is_video_mode = request.num_frames is not None and request.num_frames > 1
@@ -605,6 +630,17 @@ class ModelManager:
         inference_end_time = time.time()
         time_cost = inference_end_time - inference_start_time
 
+        is_primary_rank = True
+        if (
+            self.parallel_type in ["tp", "ulysses", "ring"]
+            and dist.is_available()
+            and dist.is_initialized()
+        ):
+            try:
+                is_primary_rank = dist.get_rank() == 0
+            except Exception:
+                is_primary_rank = True
+
         # Debug: Check output shape in distributed mode
         if self.parallel_type is not None:
             import torch.distributed as dist
@@ -616,7 +652,7 @@ class ModelManager:
                 logger.info(f"Rank {rank}: Generated {len(output.images)} images")
 
         stats = None
-        if self.enable_cache:
+        if is_primary_rank and request.include_stats and self.enable_cache:
             stats_list = cache_dit.summary(self.pipe)
             # Convert List[CacheStats] to dict for JSON serialization
             if stats_list:
@@ -633,8 +669,18 @@ class ModelManager:
                     ]
                 }
 
-        images_base64 = None
-        video_base64 = None
+        images_payload = None
+        video_payload = None
+
+        if not is_primary_rank:
+            return GenerateResponse(
+                images=None,
+                video=None,
+                stats=None,
+                time_cost=time_cost,
+                inference_start_time=inference_start_time,
+                inference_end_time=inference_end_time,
+            )
 
         if is_video_mode:
             video_frames = output.frames[0]
@@ -642,31 +688,51 @@ class ModelManager:
                 f"Video generation completed with {len(video_frames)} frames in {time_cost:.2f}s"
             )
 
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
+            if request.output_format == "path":
+                out_dir = self._resolve_output_dir(request.output_dir)
+                video_payload = self._save_video_to_dir(
+                    video_frames,
+                    out_dir,
+                    name=f"video_{int(inference_end_time * 1000)}.mp4",
+                    fps=request.fps,
+                )
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
 
-            try:
-                export_to_video(video_frames, tmp_path, fps=request.fps)
+                try:
+                    export_to_video(video_frames, tmp_path, fps=request.fps)
 
-                with open(tmp_path, "rb") as f:
-                    video_bytes = f.read()
-                    video_base64 = base64.b64encode(video_bytes).decode()
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
+                    with open(tmp_path, "rb") as f:
+                        video_bytes = f.read()
+                        video_payload = base64.b64encode(video_bytes).decode()
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
         else:
-            images_base64 = []
-            for image in output.images:
-                buffered = BytesIO()
-                image.save(buffered, format="PNG")
-                img_str = base64.b64encode(buffered.getvalue()).decode()
-                images_base64.append(img_str)
+            images_payload = []
+            if request.output_format == "path":
+                out_dir = self._resolve_output_dir(request.output_dir)
+                for idx, image in enumerate(output.images):
+                    images_payload.append(
+                        self._save_image_to_dir(
+                            image,
+                            out_dir,
+                            name=f"image_{int(inference_end_time * 1000)}_{idx}.png",
+                        )
+                    )
+            else:
+                for image in output.images:
+                    buffered = BytesIO()
+                    image.save(buffered, format="PNG")
+                    img_str = base64.b64encode(buffered.getvalue()).decode()
+                    images_payload.append(img_str)
 
             logger.info(f"Image generation completed in {time_cost:.2f}s")
 
         return GenerateResponse(
-            images=images_base64,
-            video=video_base64,
+            images=images_payload,
+            video=video_payload,
             stats=stats,
             time_cost=time_cost,
             inference_start_time=inference_start_time,

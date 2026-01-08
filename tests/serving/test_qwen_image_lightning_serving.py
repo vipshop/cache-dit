@@ -43,6 +43,9 @@ def call_api(prompt, name="test", **kwargs):
         "num_images": kwargs.get("num_images", 1),
     }
 
+    if "include_stats" in kwargs:
+        payload["include_stats"] = kwargs["include_stats"]
+
     if "negative_prompt" in kwargs:
         payload["negative_prompt"] = kwargs["negative_prompt"]
 
@@ -86,6 +89,35 @@ def test_basic_8steps():
         guidance_scale=1.0,
         seed=42,
     )
+
+
+def test_include_stats():
+    """Test include_stats parameter returns stats."""
+    host = os.environ.get("CACHE_DIT_HOST", "localhost")
+    port = int(os.environ.get("CACHE_DIT_PORT", 8000))
+
+    model_info_resp = requests.get(f"http://{host}:{port}/get_model_info", timeout=30)
+    model_info_resp.raise_for_status()
+    enable_cache = bool(model_info_resp.json().get("enable_cache", False))
+
+    result = requests.post(
+        f"http://{host}:{port}/generate",
+        json={
+            "prompt": "A cute puppy playing in the garden",
+            "width": 1024,
+            "height": 1024,
+            "num_inference_steps": 8,
+            "guidance_scale": 1.0,
+            "seed": 456,
+            "num_images": 1,
+            "include_stats": True,
+        },
+        timeout=300,
+    )
+    result.raise_for_status()
+    data = result.json()
+    if enable_cache:
+        assert "stats" in data
 
 
 def test_basic_4steps():
