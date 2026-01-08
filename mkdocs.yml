@@ -54,7 +54,7 @@ theme:
 nav:
   - Home: README.md 
   - Documentation:
-      - User Guide: USER_GUIDE.md
+      - User Guide: User_Guide.md
       - Support Matrix: SUPPORTED.md
       - DBCache Design: DBCACHE.md
       - Benchmark Performance: BENCHMARK.md
