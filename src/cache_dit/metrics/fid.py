@@ -16,6 +16,7 @@ from cache_dit.metrics.inception import InceptionV3
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import _VIDEO_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.platforms import current_platform
 from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
 
@@ -225,7 +226,9 @@ def calculate_activation_statistics(
 class FrechetInceptionDistance:
     def __init__(
         self,
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        device=(
+            current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
+        ),
         dims: int = 2048,
         num_workers: int = 1,
         batch_size: int = 1,
