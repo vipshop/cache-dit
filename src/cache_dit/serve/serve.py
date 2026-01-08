@@ -7,7 +7,6 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/launch_server.py
 import argparse
 import torch
 import uvicorn
-import torch.distributed as dist
 from cache_dit.serve.model_manager import ModelManager
 from cache_dit.serve.api_server import create_app
 from cache_dit.logger import init_logger
@@ -296,6 +295,8 @@ def parse_args():
 
 
 def get_rank_device():
+    import torch.distributed as dist
+
     available = current_platform.is_accelerator_available()
     device_type = current_platform.device_type
     if dist.is_initialized():
@@ -306,6 +307,8 @@ def get_rank_device():
 
 
 def maybe_init_distributed(args):
+    import torch.distributed as dist
+
     platform_full_backend = current_platform.full_dist_backend
     cpu_full_backend = CpuPlatform.full_dist_backend
     backend = (
@@ -333,6 +336,8 @@ def launch_server(args=None):
 
     rank, device = maybe_init_distributed(args)
     if args.parallel_type is not None:
+        import torch.distributed as dist
+
         logger.info(f"Initialized distributed: rank={rank}, world_size={dist.get_world_size()}")
 
     torch_dtype = getattr(torch, args.dtype)
