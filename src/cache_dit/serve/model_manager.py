@@ -22,6 +22,7 @@ from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
 from diffusers import WanImageToVideoPipeline
+from cache_dit.platforms import current_platform
 from .utils import prepare_extra_parallel_modules
 from .cache_alignment import get_default_params_modifiers
 
@@ -142,7 +143,9 @@ class ModelManager:
         fuse_lora: bool = True,
     ):
         self.model_path = model_path
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device or (
+            current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
+        )
         self.torch_dtype = torch_dtype
         self.enable_cache = enable_cache
         self.cache_config = cache_config or {}
@@ -419,12 +422,12 @@ class ModelManager:
                                 f"(got {type(transformer_2)})."
                             )
 
-        # Move pipeline to CUDA
-        if self.device_map is None and self.device == "cuda":
-            logger.info("Moving pipeline to CUDA")
-            self.pipe.to("cuda")
+        # Move pipeline to device
+        if self.device_map is None and self.device == current_platform.device_type:
+            logger.info(f"Moving pipeline to {current_platform.device_type}")
+            self.pipe.to(self.device)
 
-        if self.enable_cpu_offload and torch.cuda.device_count() <= 1:
+        if self.enable_cpu_offload and current_platform.device_count() <= 1:
             logger.info("Enabling CPU offload")
             self.pipe.enable_model_cpu_offload()
 

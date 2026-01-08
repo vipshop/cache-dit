@@ -15,7 +15,7 @@ from cache_dit import (
     TaylorSeerCalibratorConfig,
 )
 import cache_dit
-
+from cache_dit.platforms import current_platform
 
 parser = get_args(parse=False)
 parser.add_argument(
@@ -50,7 +50,7 @@ pipe = FluxPipeline.from_pretrained(
         )
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+).to(current_platform.device_type)
 
 if args.cache:
 

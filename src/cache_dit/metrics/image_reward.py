@@ -14,6 +14,7 @@ import torchvision.transforms.v2 as T
 from typing import Tuple, Union
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.platforms import current_platform
 from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
 
@@ -29,7 +30,9 @@ DISABLE_VERBOSE = not get_metrics_verbose()
 class ImageRewardScore:
     def __init__(
         self,
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        device=(
+            current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
+        ),
         imagereward_model_path: str = None,
     ):
         self.device = device

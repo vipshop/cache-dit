@@ -29,6 +29,7 @@ from .cp_plan_registers import (
 from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
 from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
 from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
+from cache_dit.platforms import current_platform
 
 from cache_dit.logger import init_logger
 
@@ -112,7 +113,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage_controlnet(
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-        with torch.amp.autocast("cuda", enabled=False):
+        with torch.amp.autocast(current_platform.device_type, enabled=False):
             x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
             freqs_cis = freqs_cis.unsqueeze(2)
             x_out = torch.view_as_real(x * freqs_cis).flatten(3)

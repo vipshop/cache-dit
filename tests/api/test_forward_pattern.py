@@ -3,11 +3,15 @@ import pytest
 import torch
 import cache_dit
 from cache_dit import ForwardPattern, BlockAdapter, DBCacheConfig
-
+from cache_dit.platforms import current_platform
 from utils import RandPipeline
 
 
-DEVICES = ["cpu"] if not torch.cuda.is_available() else ["cpu", "cuda"]
+DEVICES = (
+    ["cpu"]
+    if not current_platform.is_accelerator_available()
+    else ["cpu", current_platform.device_type]
+)
 PATTERNS = [
     ForwardPattern.Pattern_0,
     ForwardPattern.Pattern_1,
@@ -17,7 +21,11 @@ PATTERNS = [
     ForwardPattern.Pattern_5,
 ]
 
-DTYPES = [torch.float32] if not torch.cuda.is_available() else [torch.float32, torch.bfloat16]
+DTYPES = (
+    [torch.float32]
+    if not current_platform.is_accelerator_available()
+    else [torch.float32, torch.bfloat16]
+)
 STEPS = [50]
 
 
@@ -65,7 +73,7 @@ def test_forward_pattern(device, pattern, dtype, steps):
             dtype=dtype,
         )
 
-    if device == "cuda":
+    if device == current_platform.device_type:
         pipe.to(device)
         hidden_states = hidden_states.to(device)
         if encoder_hidden_states is not None:

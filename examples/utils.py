@@ -17,6 +17,8 @@ from cache_dit import (
     TaylorSeerCalibratorConfig,
 )
 
+from cache_dit.platforms import current_platform
+
 logger = init_logger(__name__)
 
 
@@ -24,20 +26,20 @@ class MemoryTracker:
     """Track peak GPU memory usage during execution."""
 
     def __init__(self, device=None):
-        self.device = device if device is not None else torch.cuda.current_device()
-        self.enabled = torch.cuda.is_available()
+        self.device = device if device is not None else current_platform.current_device()
+        self.enabled = current_platform.is_accelerator_available()
         self.peak_memory = 0
 
     def __enter__(self):
         if self.enabled:
-            torch.cuda.reset_peak_memory_stats(self.device)
-            torch.cuda.synchronize(self.device)
+            current_platform.reset_peak_memory_stats(self.device)
+            current_platform.synchronize(self.device)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.enabled:
-            torch.cuda.synchronize(self.device)
-            self.peak_memory = torch.cuda.max_memory_allocated(self.device)
+            current_platform.synchronize(self.device)
+            self.peak_memory = current_platform.max_memory_allocated(self.device)
 
     def get_peak_memory_gb(self):
         """Get peak memory in GB."""
@@ -54,10 +56,10 @@ class MemoryTracker:
 
 def GiB():
     try:
-        if not torch.cuda.is_available():
+        if not current_platform.is_accelerator_available():
             return 0
-        total_memory_bytes = torch.cuda.get_device_properties(
-            torch.cuda.current_device(),
+        total_memory_bytes = current_platform.get_device_properties(
+            current_platform.current_device(),
         ).total_memory
         total_memory_gib = total_memory_bytes / (1024**3)
         return int(total_memory_gib)
@@ -1346,21 +1348,32 @@ def strify(args, pipe_or_stats):
 
 
 def get_rank_device():
+    available = current_platform.is_accelerator_available()
+    device_type = current_platform.device_type
     if dist.is_initialized():
         rank = dist.get_rank()
-        device = torch.device("cuda", rank % torch.cuda.device_count())
+        device = torch.device(device_type, rank % current_platform.device_count())
         return rank, device
-    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return 0, torch.device(device_type if available else "cpu")
 
 
 def maybe_init_distributed(args=None):
+    from cache_dit.platforms.platform import CpuPlatform
+
+    platform_full_backend = current_platform.full_dist_backend
+    cpu_full_backend = CpuPlatform.full_dist_backend
+    backend = (
+        f"{cpu_full_backend},{platform_full_backend}"
+        if args.ulysses_anything
+        else current_platform.dist_backend
+    )
     if args is not None:
         if args.parallel_type is not None:
             dist.init_process_group(
-                backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
+                backend=backend,
             )
             rank, device = get_rank_device()
-            torch.cuda.set_device(device)
+            current_platform.set_device(device)
             return rank, device
         else:
             # no distributed needed
@@ -1370,10 +1383,10 @@ def maybe_init_distributed(args=None):
         # always init distributed for other examples
         if not dist.is_initialized():
             dist.init_process_group(
-                backend="nccl",
+                backend=platform_full_backend,
             )
         rank, device = get_rank_device()
-        torch.cuda.set_device(device)
+        current_platform.set_device(device)
         return rank, device
 
 

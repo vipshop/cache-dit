@@ -12,6 +12,7 @@ from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, 
 from cache_dit.logger import init_logger
 from cache_dit.parallelism.config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
+from cache_dit.platforms import current_platform
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 from .tp_utils import shard_divisible_attr
@@ -104,7 +105,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         for _, block in transformer.transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
             old_device = next(block.parameters()).device
-            block.to("cuda")
+            block.to(current_platform.device_type)
             self.rearrange_feedforward_weight(block, tp_size)
             block.to(old_device)
             shard_divisible_attr(
@@ -139,7 +140,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         for _, block in transformer.single_transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
             old_device = next(block.parameters()).device
-            block.to("cuda")
+            block.to(current_platform.device_type)
             self.rearrange_singleblock_weight(block, tp_size)
             block.to(old_device)
             shard_divisible_attr(

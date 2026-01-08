@@ -6,12 +6,28 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
-from cache_dit.kernels import (
-    per_token_quant_fp8,
-    per_token_dequant_fp8,
-    qkv_permute_quant_fp8,
-    qkv_dequant_permute_fp8,
-)
+from cache_dit.platforms import current_platform
+
+try:
+    from cache_dit.kernels import (
+        per_token_quant_fp8,
+        per_token_dequant_fp8,
+        qkv_permute_quant_fp8,
+        qkv_dequant_permute_fp8,
+    )
+except ImportError:
+
+    def _fp8_kernel_unavailable(*args, **kwargs):
+        raise RuntimeError(
+            "FP8 kernels could not be imported (e.g., Triton may not be available on this "
+            "platform). FP8 async operations are not supported. Please install the required "
+            "dependencies or disable FP8 mode."
+        )
+
+    per_token_quant_fp8 = _fp8_kernel_unavailable
+    per_token_dequant_fp8 = _fp8_kernel_unavailable
+    qkv_permute_quant_fp8 = _fp8_kernel_unavailable
+    qkv_dequant_permute_fp8 = _fp8_kernel_unavailable
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -72,7 +88,7 @@ def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
     # HACK: Use Gloo backend for all_gather to avoid H2D and D2H overhead
     comm_backends = str(dist.get_backend(group=group))
     # NOTE: e.g., dist.init_process_group(backend="cpu:gloo,cuda:nccl")
-    gather_device = "cpu" if "cpu" in comm_backends else torch.device("cuda")
+    gather_device = "cpu" if "cpu" in comm_backends else current_platform.default_device()
     gathered_sizes = [
         torch.empty((1,), device=gather_device, dtype=torch.int64) for _ in range(world_size)
     ]

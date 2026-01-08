@@ -1,4 +1,3 @@
-# Adapted from: https://github.com/chengzeyi/ParaAttention/pull/53
 import functools
 
 import torch
@@ -61,6 +60,15 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
             **kwargs,
         ):
             _, _, num_frames, height, width = x.shape
+
+            # Overwrite tile size and stride for better performance while
+            # still reducing memory usage.
+            if min(height, width) >= 1024:
+                self.tile_sample_min_height = 512
+                self.tile_sample_min_width = 512
+                self.tile_sample_stride_height = 384
+                self.tile_sample_stride_width = 384
+
             latent_height = height // self.spatial_compression_ratio
             latent_width = width // self.spatial_compression_ratio
 
@@ -83,6 +91,7 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                 row = []
                 for j in range(0, width, self.tile_sample_stride_width):
                     if count % world_size == rank:
+                        # num_frames = 1 for image model
                         self.clear_cache()
                         time = []
                         frame_range = 1 + (num_frames - 1) // 4
@@ -109,10 +118,10 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                             )
                             tile = self.quant_conv(tile)
                             time.append(tile)
-                        tile_result = torch.cat(time, dim=2)
+                        tile = torch.cat(time, dim=2)
                     else:
-                        tile_result = None
-                    row.append(tile_result)
+                        tile = None
+                    row.append(tile)
                     count += 1
                 rows.append(row)
             self.clear_cache()
@@ -172,8 +181,17 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
             **kwargs,
         ):
             _, _, num_frames, height, width = z.shape
+
             sample_height = height * self.spatial_compression_ratio
             sample_width = width * self.spatial_compression_ratio
+
+            # Overwrite tile size and stride for better performance while
+            # still reducing memory usage.
+            if min(sample_height, sample_width) >= 1024:
+                self.tile_sample_min_height = 512
+                self.tile_sample_min_width = 512
+                self.tile_sample_stride_height = 384
+                self.tile_sample_stride_width = 384
 
             tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
             tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -194,6 +212,7 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                 row = []
                 for j in range(0, width, tile_latent_stride_width):
                     if count % world_size == rank:
+                        # num_frames = 1 for image model
                         self.clear_cache()
                         time = []
                         for k in range(num_frames):
@@ -210,10 +229,10 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                                 tile, feat_cache=self._feat_map, feat_idx=self._conv_idx
                             )
                             time.append(decoded)
-                        decoded_result = torch.cat(time, dim=2)
+                        decoded = torch.cat(time, dim=2)
                     else:
-                        decoded_result = None
-                    row.append(decoded_result)
+                        decoded = None
+                    row.append(decoded)
                     count += 1
                 rows.append(row)
             self.clear_cache()
