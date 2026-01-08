@@ -29,4 +29,5 @@ def _maybe_register_custom_attn_backends():
         _sdpa_cudnn_attention,
         _sage_attention,
         _flash_attention_3,
+        _native_npu_attention,
     )

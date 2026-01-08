@@ -1,5 +1,7 @@
 import torch
+import math
 from typing import Optional
+from cache_dit.platforms import current_platform
 
 try:
     from diffusers.models.attention_dispatch import (
@@ -27,6 +29,12 @@ try:
         flash_attn_3_func = None
         _flash_attn_3_available = False
 
+    # For native npu attention backend re-registration
+    if current_platform.device_type == "npu":
+        from torch_npu import npu_fusion_attention
+    else:
+        npu_fusion_attention = None
+
     from diffusers.models._modeling_parallel import ParallelConfig
 except ImportError:
     raise ImportError(
@@ -41,13 +49,14 @@ from ._templated_ring import UnifiedTemplatedRingAttention
 from ._templated_ulysses import UnifiedTemplatedUlyssesAttention
 
 logger = init_logger(__name__)
-
+MAX_TOKEN = 2147483647
 
 __all__ = [
     "_native_attention",
     "_sdpa_cudnn_attention",
     "_sage_attention",
     "_flash_attention_3",
+    "_native_npu_attention",
 ]
 
 
@@ -626,6 +635,100 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         _flash_attention_3 = None  # type: ignore[assignment]
         logger.info("Flash Attention 3 not available, skipping _FLASH_3 backend registration.")
 
+    _registry_pop_attn_backend(AttentionBackendName._NATIVE_NPU)
+
+    @_AttentionBackendRegistry.register(
+        AttentionBackendName._NATIVE_NPU,
+        constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+        supports_context_parallel=True,
+    )
+    def _native_npu_attention(
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        dropout_p: float = 0.0,
+        scale: Optional[float] = None,
+        return_lse: bool = False,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ) -> torch.Tensor:
+        if return_lse:
+            raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
+        if _parallel_config is None:
+            out = npu_fusion_attention(
+                query,
+                key,
+                value,
+                atten_mask=None,
+                input_layout="BSND",
+                scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
+                pre_tockens=MAX_TOKEN,
+                next_tockens=MAX_TOKEN,
+                head_num=query.size(2),
+            )[0]
+        else:
+            out = _unified_templated_context_parallel_attention(
+                query,
+                key,
+                value,
+                None,
+                dropout_p,
+                None,
+                1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
+                None,
+                return_lse,
+                forward_op=_npu_attention_forward_op,
+                backward_op=_npu_attention_backward_op,
+                _parallel_config=_parallel_config,
+            )
+        return out
+
+    logger.warning(
+        "Re-registered _NATIVE_NPU attention backend to enable context parallelism "
+        "You can disable this behavior by: "
+        "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
+    )
+
+    def _npu_attention_forward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
+        return_lse: bool = False,
+        _save_ctx: bool = True,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        if return_lse:
+            raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
+
+        if attn_mask is not None:
+            attn_mask = ~attn_mask.to(torch.bool)
+        out = npu_fusion_attention(
+            query,
+            key,
+            value,
+            atten_mask=attn_mask,
+            input_layout="BSND",
+            scale=scale,
+            pre_tockens=MAX_TOKEN,
+            next_tockens=MAX_TOKEN,
+            head_num=query.size(2),
+        )[0]
+
+        return out
+
+    def _npu_attention_backward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        grad_out: torch.Tensor,
+        *args,
+        **kwargs,
+    ):
+        raise NotImplementedError("Backward pass is not implemented for Npu Fusion Attention.")
+
 else:
     from diffusers.models.attention_dispatch import (
         _native_attention,
@@ -638,5 +741,6 @@ else:
         _flash_attention_3 = None  # type: ignore[assignment]
 
     _sdpa_cudnn_attention = None  # type: ignore[assignment]
+    _native_npu_attention = None  # type: ignore[assignment]
 
     logger.info("Skipped custom attention backend registration in cache-dit.")
