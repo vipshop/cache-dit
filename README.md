@@ -14,18 +14,18 @@
 
 ## 🤗Why Cache-DiT?
 
-[Cache-DiT](https://github.com/vipshop/cache-dit) is built on top of diffusers library, Notably, Cache-DiT now supports nearly all of Diffusers' DiTs, include [🤗65+](https://github.com/vipshop/cache-dit) DiT-based models, nearly [100+](https://github.com/vipshop/cache-dit) pipelines. The optimizations made by Cache-DiT for diffusers include: 
+**[Cache-DiT](https://github.com/vipshop/cache-dit)** is built on top of diffusers library, Notably, Cache-DiT now supports nearly all of Diffusers' DiTs, include [🤗65+](https://github.com/vipshop/cache-dit) DiT-based models, nearly [100+](https://github.com/vipshop/cache-dit) pipelines. The optimizations made by Cache-DiT for diffusers include: 
 
-- Hybrid Cache Acceleration (DBCache, TaylorSeer, SCM and more)
-- Context Parallelism (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses CP)
-- Tensor Parallelism (w/ PyTorch native DTensor and Tensor Parallel API)
-- Text Encoder Parallelism (Tensor Parallelism)
-- AutoEncoder (VAE) Parallelism (latest, Data/Tile Parallelism)
-- ControlNet Parallelism (currently, Context Parallelism)
-- Compatible with compile, offload, quantization, ...
-- Built-in HTTP serving support with simple REST API
-- vLLM-Omni, SGLang Diffusion, SD.Next, ... integration
-- NVIDIA GPU, Ascend NPU support (latest)
+- 🎉Hybrid Cache Acceleration (DBCache, TaylorSeer, SCM and more)
+- 🎉Context Parallelism (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses CP)
+- 🎉Tensor Parallelism (w/ PyTorch native DTensor and Tensor Parallel API)
+- 🎉Text Encoder Parallelism (Tensor Parallelism)
+- 🎉AutoEncoder (VAE) Parallelism (latest, Data/Tile Parallelism)
+- 🎉ControlNet Parallelism (currently, Context Parallelism)
+- 🎉Compatible with compile, offload, quantization, ...
+- 🎉Built-in HTTP serving support with simple REST API
+- 🎉vLLM-Omni, SGLang Diffusion, SD.Next, ... integration
+- 🎉NVIDIA GPU, Ascend NPU support (latest)
 
 ## 🚀Quick Start 
 
@@ -47,9 +47,9 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ## 🚀Quick Links
 
 - [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
-- [🌐HTTP Serving](./SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
-- [🎉User Guide](./USER_GUIDE.md) - For more advanced features, please refer to the [🎉User_Guide.md](./USER_GUIDE.md) for details.
-- [❓FAQ](./FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
+- [🌐HTTP Serving](./docs/SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
+- [🎉User Guide](./docs/USER_GUIDE.md) - For more advanced features, please refer to the [🎉User_Guide.md](./docs/USER_GUIDE.md) for details.
+- [❓FAQ](./docs/FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
 
 ## ©️Acknowledgements
 
