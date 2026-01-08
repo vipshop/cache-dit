@@ -12,7 +12,11 @@
   </p>
 </div>
 
-## 🤗Why Cache-DiT?
+<div align="center">
+<p align="center">
+    <h3>🤗Why Cache-DiT?</h3>
+</p>
+</div>
 
 **Cache-DiT** is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models. Please refer to our online documentation at [cache-dit.readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:   
 
