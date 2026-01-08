@@ -133,3 +133,4 @@ if __name__ == "__main__":
     test_base64()
     test_text()
     test_text_ulysses_bad_resolution_regression()
+    test_text_path_output()

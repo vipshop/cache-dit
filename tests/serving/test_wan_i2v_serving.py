@@ -136,4 +136,7 @@ if __name__ == "__main__":
     print("\n4. Base64 encoded image:")
     test_with_base64_image()
 
+    print("\n5. Path output:")
+    test_path_output()
+
     print("\nAll tests completed!")

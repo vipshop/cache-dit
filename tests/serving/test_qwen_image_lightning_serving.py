@@ -165,6 +165,9 @@ if __name__ == "__main__":
     print("\n[1/4] Testing basic 8-step generation...")
     test_basic_8steps()
 
+    print("\n[1.5/4] Testing include_stats...")
+    test_include_stats()
+
     print("\n[2/4] Testing basic 4-step generation...")
     test_basic_4steps()
 

@@ -117,6 +117,7 @@ def test_different_resolution():
 if __name__ == "__main__":
     test_basic()
     test_custom_prompt()
+    test_path_output()
     test_with_negative_prompt()
     test_short_video()
     test_different_resolution()
