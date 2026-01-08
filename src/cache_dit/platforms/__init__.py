@@ -1,7 +1,7 @@
 import torch
 import importlib
 from typing import TYPE_CHECKING
-from .platform import BasePlatform
+from .platform import BasePlatform, CudaPlatform, CpuPlatform, NPUPlatform  # noqa: F401
 
 
 def resolve_obj_by_qualname(qualname: str) -> BasePlatform:

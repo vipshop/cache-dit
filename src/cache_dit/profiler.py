@@ -12,6 +12,7 @@ from typing import List, Optional
 
 import torch
 from torch.profiler import ProfilerActivity, profile
+from cache_dit.platforms import current_platform
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ class ProfilerContext:
         with_stack: bool = True,
         record_shapes: bool = True,
     ):
+        assert (
+            current_platform.is_accelerator_available() and current_platform.device_type == "cuda"
+        ), "Torch ProfilerContext currently only supports CUDA devices."
         self.enabled = enabled
         self.activities = activities or ["CPU", "GPU"]
         self.output_dir = Path(output_dir or PROFILER_DIR).expanduser()
@@ -44,6 +48,10 @@ class ProfilerContext:
     def __enter__(self):
         if not self.enabled:
             return self
+
+        assert (
+            current_platform.is_accelerator_available() and current_platform.device_type == "cuda"
+        ), "Torch ProfilerContext currently only supports CUDA devices."
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 

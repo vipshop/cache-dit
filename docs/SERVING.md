@@ -12,6 +12,11 @@ pip install -e ".[serving]"
 cache-dit-serve --model-path black-forest-labs/FLUX.1-dev --cache
 
 curl http://localhost:8000/health
+
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"A beautiful landscape with mountains and a lake"}' \
+  http://localhost:8000/generate
 ```
 
 ## Supported Tasks
