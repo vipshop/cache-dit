@@ -7,11 +7,13 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/launch_server.py
 import argparse
 import torch
 import uvicorn
+import torch.distributed as dist
 from cache_dit.serve.model_manager import ModelManager
 from cache_dit.serve.api_server import create_app
 from cache_dit.logger import init_logger
 from cache_dit.quantize.utils import normalize_quantize_type
 from cache_dit.serve.cache_alignment import align_cache_config
+from cache_dit.platforms import current_platform, CpuPlatform
 
 logger = init_logger(__name__)
 
@@ -293,18 +295,35 @@ def parse_args():
     return args
 
 
-def maybe_init_distributed(args):
-    import torch.distributed as dist
+def get_rank_device():
+    available = current_platform.is_accelerator_available()
+    device_type = current_platform.device_type
+    if dist.is_initialized():
+        rank = dist.get_rank()
+        device = torch.device(device_type, rank % current_platform.device_count())
+        return rank, device
+    return 0, torch.device(device_type if available else "cpu")
 
+
+def maybe_init_distributed(args):
+    platform_full_backend = current_platform.full_dist_backend
+    cpu_full_backend = CpuPlatform.full_dist_backend
+    backend = (
+        f"{cpu_full_backend},{platform_full_backend}"
+        if args.ulysses_anything
+        else current_platform.dist_backend
+    )
+
+    available = current_platform.is_accelerator_available()
+    device_type = current_platform.device_type
     if args.parallel_type is not None:
         dist.init_process_group(
-            backend="cpu:gloo,cuda:nccl" if args.ulysses_anything else "nccl",
+            backend=backend,
         )
-        rank = dist.get_rank()
-        device = torch.device("cuda", rank % torch.cuda.device_count())
-        torch.cuda.set_device(device)
+        rank, device = get_rank_device()
+        current_platform.set_device(device)
         return rank, device
-    return 0, torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return 0, torch.device(device_type if available else "cpu")
 
 
 def launch_server(args=None):
@@ -314,8 +333,6 @@ def launch_server(args=None):
 
     rank, device = maybe_init_distributed(args)
     if args.parallel_type is not None:
-        import torch.distributed as dist
-
         logger.info(f"Initialized distributed: rank={rank}, world_size={dist.get_world_size()}")
 
     torch_dtype = getattr(torch, args.dtype)
@@ -361,7 +378,7 @@ def launch_server(args=None):
     logger.info("Initializing model manager...")
     model_manager = ModelManager(
         model_path=args.model_path,
-        device=args.device or "cuda",
+        device=args.device or current_platform.device_type,
         torch_dtype=torch_dtype,
         enable_cache=enable_cache,
         cache_config=cache_config,

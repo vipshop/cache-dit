@@ -17,7 +17,8 @@ import threading
 import torch
 import torch.distributed as dist
 
-from cache_dit.serve.model_manager import GenerateRequest, GenerateResponse
+from cache_dit.platforms import current_platform
+from cache_dit.serve.model_manager import GenerateRequest, GenerateResponse, ModelManager
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class TPCoordinator:
     Runs on rank 0 and broadcasts requests to all TP workers.
     """
 
-    def __init__(self, model_manager, rank: int, world_size: int):
+    def __init__(self, model_manager: ModelManager, rank: int, world_size: int):
         self.model_manager = model_manager
         self.rank = rank
         self.world_size = world_size
@@ -60,7 +61,9 @@ class TPCoordinator:
                     if time.time() - self._last_broadcast_time > HEARTBEAT_INTERVAL:
                         try:
                             size_tensor = torch.tensor(
-                                [HEARTBEAT_SIZE], dtype=torch.long, device="cuda"
+                                [HEARTBEAT_SIZE],
+                                dtype=torch.long,
+                                device=current_platform.device_type,
                             )
                             dist.broadcast(size_tensor, src=0)
                             self._last_broadcast_time = time.time()
@@ -84,18 +87,22 @@ class TPCoordinator:
         This method broadcasts the request to all ranks and collects the result.
         """
         with self._heartbeat_lock:
-            torch.cuda.synchronize()
+            current_platform.synchronize()
 
             request_data = pickle.dumps(request)
             request_size = len(request_data)
 
-            size_tensor = torch.tensor([request_size], dtype=torch.long, device="cuda")
+            size_tensor = torch.tensor(
+                [request_size], dtype=torch.long, device=current_platform.device_type
+            )
             dist.broadcast(size_tensor, src=0)
 
             padded_size = (
                 (request_size + self.world_size - 1) // self.world_size
             ) * self.world_size
-            request_tensor = torch.zeros(padded_size, dtype=torch.uint8, device="cuda")
+            request_tensor = torch.zeros(
+                padded_size, dtype=torch.uint8, device=current_platform.device_type
+            )
             request_tensor[:request_size].copy_(torch.frombuffer(request_data, dtype=torch.uint8))
             dist.broadcast(request_tensor, src=0)
 
@@ -113,7 +120,7 @@ class TPCoordinator:
         return response
 
 
-def run_tp_worker(model_manager, rank: int):
+def run_tp_worker(model_manager: ModelManager, rank: int):
     """
     Worker loop for TP ranks > 0.
 
@@ -123,9 +130,9 @@ def run_tp_worker(model_manager, rank: int):
 
     while True:
         try:
-            torch.cuda.synchronize()
+            current_platform.synchronize()
 
-            size_tensor = torch.tensor([0], dtype=torch.long, device="cuda")
+            size_tensor = torch.tensor([0], dtype=torch.long, device=current_platform.device_type)
             dist.broadcast(size_tensor, src=0)
             request_size = size_tensor.item()
 
@@ -136,7 +143,9 @@ def run_tp_worker(model_manager, rank: int):
             padded_size = (
                 (request_size + dist.get_world_size() - 1) // dist.get_world_size()
             ) * dist.get_world_size()
-            request_tensor = torch.zeros(padded_size, dtype=torch.uint8, device="cuda")
+            request_tensor = torch.zeros(
+                padded_size, dtype=torch.uint8, device=current_platform.device_type
+            )
             dist.broadcast(request_tensor, src=0)
 
             request_data = request_tensor[:request_size].cpu().numpy().tobytes()
