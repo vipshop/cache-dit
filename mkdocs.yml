@@ -64,6 +64,10 @@ nav:
       - How to Contribute: CONTRIBUTE.md
       - Profiler Usage: PROFILER.md
       - Community Integration: COMMUNITY.md
+  - User Guide: USER_GUIDE.md
+  - Community: COMMUNITY.md
+  - Support Matrix: SUPPORTED.md
+  - API Documentation: API_DOCS.md
 
 plugins:
   - search
