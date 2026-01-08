@@ -25,9 +25,9 @@ def quantize_ao(
     # by default to avoid non-trivial precision downgrade. Please
     # set `exclude_layers` as `[]` if you don't want this behavior.
     assert isinstance(module, torch.nn.Module)
-    assert current_platform.is_accelerator_available() and current_platform.device_type == "cuda", (
-        "Quantization functionality with torchao backend is only " "supported on CUDA devices."
-    )
+    assert (
+        current_platform.is_accelerator_available() and current_platform.device_type == "cuda"
+    ), "Quantization functionality with torchao backend is only supported on CUDA devices."
     try:
         import torchao  # noqa: F401
     except ImportError:
