@@ -10,6 +10,7 @@ from transformers import CLIPProcessor, CLIPModel
 from typing import Tuple, Union
 from cache_dit.metrics.config import _IMAGE_EXTENSIONS
 from cache_dit.metrics.config import get_metrics_verbose
+from cache_dit.platforms import current_platform
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -21,7 +22,9 @@ DISABLE_VERBOSE = not get_metrics_verbose()
 class CLIPScore:
     def __init__(
         self,
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        device=(
+            current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
+        ),
         clip_model_path: str = None,
     ):
         self.device = device

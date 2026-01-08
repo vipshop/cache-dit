@@ -62,6 +62,10 @@ class BasePlatform(ABC):
     def set_device(*args, **kwargs):
         raise NotImplementedError
 
+    @staticmethod
+    def get_device_capability(*args, **kwargs):
+        raise NotImplementedError
+
 
 class CpuPlatform(BasePlatform):
     device_type: str = "cpu"
@@ -141,6 +145,10 @@ class CudaPlatform(BasePlatform):
     @staticmethod
     def set_device(device):
         return torch.cuda.set_device(device)
+
+    @staticmethod
+    def get_device_capability(device=None):
+        return torch.cuda.get_device_capability(device)
 
 
 class NPUPlatform(BasePlatform):

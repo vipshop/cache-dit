@@ -2,6 +2,7 @@ import torch
 import copy
 from typing import Callable, Optional, List
 from cache_dit.utils import maybe_empty_cache
+from cache_dit.platforms import current_platform
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -24,6 +25,9 @@ def quantize_ao(
     # by default to avoid non-trivial precision downgrade. Please
     # set `exclude_layers` as `[]` if you don't want this behavior.
     assert isinstance(module, torch.nn.Module)
+    assert (
+        current_platform.is_accelerator_available() and current_platform.device_type == "cuda"
+    ), "Quantization functionality with torchao backend is only supported on CUDA devices."
     try:
         import torchao  # noqa: F401
     except ImportError:
@@ -66,7 +70,7 @@ def quantize_ao(
     ), f"{quant_type} is not supported for torchao backend now!"
 
     if "fp8" in quant_type:
-        assert torch.cuda.get_device_capability() >= (
+        assert current_platform.get_device_capability() >= (
             8,
             9,
         ), "FP8 is not supported for current device."

@@ -1,6 +1,7 @@
 import torch
 import torch.distributed as dist
 from cache_dit.envs import ENV
+from cache_dit.platforms import current_platform
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -37,7 +38,7 @@ def set_compile_configs(
         # L20 64 GB/s, PCIe; A100/A800 NVLink 300 GB/s.
         if torch._inductor.config.reorder_for_compute_comm_overlap:
             torch._inductor.config.intra_node_bw = (
-                64 if "L20" in torch.cuda.get_device_name() else 300
+                64 if "L20" in current_platform.get_device_name() else 300
             )
 
     # https://docs.pytorch.org/docs/stable/nested.html#data-dependent-operation-within-torch-compile
