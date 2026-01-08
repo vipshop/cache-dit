@@ -21,7 +21,7 @@
 
 ## 🤗Why Cache-DiT?
 
-**Cache-DiT** is built on top of the Diffusers library and now supports nearly **🔥ALL** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models and nearly **[100+](https://github.com/vipshop/cache-dit)** pipelines. The optimizations made by Cache-DiT for diffusers include:  
+**Cache-DiT** is built on top of the Diffusers library and now supports nearly **🔥ALL** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models. The optimizations made by Cache-DiT include:  
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
 - 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses)
