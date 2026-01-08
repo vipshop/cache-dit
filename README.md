@@ -27,7 +27,7 @@
 - 🎉**vLLM-Omni**, **SGLang Diffusion**, SD.Next, ... integration
 - 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
 
-Please refer to our online documentation at [readthedocs.io](https://cache-dit-dev.readthedocs.io/en/latest/) for more details.
+Please refer to our online documentation at [cache-dit-dev.readthedocs.io](https://cache-dit-dev.readthedocs.io/en/latest/) for more details.
 
 ## 🚀Quick Start 
 
