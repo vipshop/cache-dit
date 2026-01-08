@@ -55,6 +55,7 @@ nav:
   - Home: README.md 
   - Documentation:
       - User Guide: USER_GUIDE.md
+      - Examples: EXAMPLES.md
       - Support Matrix: SUPPORTED.md
       - DBCache Design: DBCACHE.md
       - Benchmark Performance: BENCHMARK.md
@@ -64,6 +65,11 @@ nav:
       - How to Contribute: CONTRIBUTE.md
       - Profiler Usage: PROFILER.md
       - Community Integration: COMMUNITY.md
+  - User Guide: USER_GUIDE.md
+  - Examples: EXAMPLES.md
+  - Community: COMMUNITY.md
+  - Support Matrix: SUPPORTED.md
+  - API Documentation: API_DOCS.md
 
 plugins:
   - search
