@@ -14,7 +14,7 @@
 
 ## 🤗Why Cache-DiT?
 
-**Cache-DiT** is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models. The optimizations made by Cache-DiT include:  
+**Cache-DiT** is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) and [supported matrix](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/) for more details. The optimizations made by Cache-DiT include:  
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
 - 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses)
@@ -26,7 +26,6 @@
 - 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
 - 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
 
-Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) and [supported matrix](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/) for more details.
 
 ## 🚀Quick Start 
 
