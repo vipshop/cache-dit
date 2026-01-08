@@ -28,9 +28,9 @@ try:
     except ImportError:
         flash_attn_3_func = None
         _flash_attn_3_available = False
-    
+
     # For native npu attention backend re-registration
-    if current_platform.device_type == 'npu':
+    if current_platform.device_type == "npu":
         from torch_npu import npu_fusion_attention
     else:
         npu_fusion_attention = None
@@ -56,6 +56,7 @@ __all__ = [
     "_sdpa_cudnn_attention",
     "_sage_attention",
     "_flash_attention_3",
+    "_native_npu_attention",
 ]
 
 
@@ -633,7 +634,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
     else:
         _flash_attention_3 = None  # type: ignore[assignment]
         logger.info("Flash Attention 3 not available, skipping _FLASH_3 backend registration.")
-        
+
     _registry_pop_attn_backend(AttentionBackendName._NATIVE_NPU)
 
     @_AttentionBackendRegistry.register(
@@ -662,7 +663,8 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
                 scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
                 pre_tockens=MAX_TOKEN,
                 next_tockens=MAX_TOKEN,
-                head_num=query.size(2))[0]
+                head_num=query.size(2),
+            )[0]
         else:
             out = _unified_templated_context_parallel_attention(
                 query,
@@ -685,7 +687,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         "You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
     )
-    
+
     def _npu_attention_forward_op(
         ctx: torch.autograd.function.FunctionCtx,
         query: torch.Tensor,
@@ -714,13 +716,11 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             scale=scale,
             pre_tockens=MAX_TOKEN,
             next_tockens=MAX_TOKEN,
-            head_num=query.size(2))[0]
-        
+            head_num=query.size(2),
+        )[0]
+
         return out
 
-
-    # backward declaration:
-    #   aten::_scaled_dot_product_cudnn_attention_backward(Tensor grad_out, Tensor query, Tensor key, Tensor value, Tensor out, Tensor logsumexp, Tensor philox_seed, Tensor philox_offset, Tensor attn_bias, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, *, float? scale=None) -> (Tensor, Tensor, Tensor)
     def _npu_attention_backward_op(
         ctx: torch.autograd.function.FunctionCtx,
         grad_out: torch.Tensor,
@@ -741,5 +741,6 @@ else:
         _flash_attention_3 = None  # type: ignore[assignment]
 
     _sdpa_cudnn_attention = None  # type: ignore[assignment]
+    _native_npu_attention = None  # type: ignore[assignment]
 
     logger.info("Skipped custom attention backend registration in cache-dit.")
