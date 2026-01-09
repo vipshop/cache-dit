@@ -7,6 +7,7 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/token
 import os
 import time
 import base64
+import inspect
 import tempfile
 import math
 import torch
@@ -83,6 +84,7 @@ class GenerateRequest:
     height: int = 1024
     num_inference_steps: int = 50
     guidance_scale: float = 7.5
+    sigmas: Optional[List[float]] = None
     seed: Optional[int] = None
     num_images: int = 1
     image_urls: Optional[List[str]] = None
@@ -594,6 +596,16 @@ class ModelManager:
             "generator": generator,
         }
 
+        if request.sigmas is not None:
+            try:
+                sig = inspect.signature(self.pipe.__call__)
+                if "sigmas" in sig.parameters:
+                    pipe_kwargs["sigmas"] = request.sigmas
+                else:
+                    logger.warning("Pipeline does not support sigmas, ignoring request.sigmas")
+            except Exception:
+                pipe_kwargs["sigmas"] = request.sigmas
+
         # Add num_frames for video generation
         if is_video_mode:
             pipe_kwargs["num_frames"] = request.num_frames
@@ -614,8 +626,6 @@ class ModelManager:
         # Some pipelines (like Flux2Pipeline) don't support negative_prompt
         if request.negative_prompt:
             try:
-                import inspect
-
                 sig = inspect.signature(self.pipe.__call__)
                 if "negative_prompt" in sig.parameters:
                     pipe_kwargs["negative_prompt"] = request.negative_prompt
