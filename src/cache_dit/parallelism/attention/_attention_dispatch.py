@@ -88,6 +88,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
         "_native_attention_forward_op",
         "_sdpa_cudnn_attention_forward_op",
+        "_npu_attention_forward_op",
     ]
 
     # Re-define templated context parallel attention to support attn mask
