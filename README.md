@@ -46,6 +46,8 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ...   pipe, cache_config=DBCacheConfig(), 
 ...   parallelism_config=ParallelismConfig(ulysses_size=2)
 ... )
+>>> # Or, Load Acceleration config from a custom yaml file
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("config.yaml"))
 >>> output = pipe(...) # Just call the pipe as normal.
 ```
 Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
