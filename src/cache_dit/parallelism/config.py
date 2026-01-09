@@ -8,8 +8,9 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class ParallelismConfig:
-    # Parallelism backend, defaults to NATIVE_DIFFUSER
-    backend: ParallelismBackend = ParallelismBackend.NATIVE_DIFFUSER
+    # Parallelism backend, defaults to AUTO. We will auto select the backend
+    # based on the parallelism configuration.
+    backend: ParallelismBackend = ParallelismBackend.AUTO
     # Context parallelism config
     # ulysses_size (`int`, *optional*):
     #     The degree of ulysses parallelism.
@@ -32,6 +33,17 @@ class ParallelismConfig:
             f"Parallel backend {self.backend} is not supported. "
             f"Please make sure the required packages are installed."
         )
+        if self.backend == ParallelismBackend.AUTO:
+            # Auto select the backend based on the parallelism configuration
+            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
+                self.ring_size is not None and self.ring_size > 1
+            ):
+                self.backend = ParallelismBackend.NATIVE_DIFFUSER
+            elif self.tp_size is not None and self.tp_size > 1:
+                self.backend = ParallelismBackend.NATIVE_PYTORCH
+            else:
+                self.backend = ParallelismBackend.NONE
+            logger.info(f"Auto selected parallelism backend for transformer: {self.backend}")
 
         # Validate the parallelism configuration and auto adjust the backend if needed
         if self.tp_size is not None and self.tp_size > 1:

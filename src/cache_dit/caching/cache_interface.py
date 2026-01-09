@@ -308,6 +308,19 @@ def enable_cache(
                 pipe_or_adapter,
             )
 
+        # Parse extra parallel modules from names to actual modules
+        if (
+            extra_parallel_module := parallelism_config.parallel_kwargs.get(
+                "extra_parallel_modules", None
+            )
+        ) is not None:
+            parallelism_config.parallel_kwargs["extra_parallel_modules"] = (
+                _parse_extra_parallel_modules(
+                    pipe_or_adapter,
+                    extra_parallel_module,
+                )
+            )
+
         transformers = []
         if isinstance(pipe_or_adapter, DiffusionPipeline):
             adapter = BlockAdapterRegister.get_adapter(
@@ -355,6 +368,62 @@ def _has_controlnet(pipe_or_adapter: DiffusionPipeline | BlockAdapter) -> bool:
     if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
         return True
     return False
+
+
+def _parse_text_encoder(
+    pipe: DiffusionPipeline,
+) -> Tuple[Optional[torch.nn.Module], Optional[str]]:
+    pipe_cls_name = pipe.__class__.__name__
+    if (
+        hasattr(pipe, "text_encoder_2")
+        and not pipe_cls_name.startswith("Hunyuan")
+        and not pipe_cls_name.startswith("Kandinsky")
+    ):
+        # Specific for FluxPipeline, FLUX.1-dev
+        return getattr(pipe, "text_encoder_2"), "text_encoder_2"
+    elif hasattr(pipe, "text_encoder_3"):  # HiDream pipeline
+        return getattr(pipe, "text_encoder_3"), "text_encoder_3"
+    elif hasattr(pipe, "text_encoder"):  # General case
+        return getattr(pipe, "text_encoder"), "text_encoder"
+    else:
+        return None, None
+
+
+def _parse_extra_parallel_modules(
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+    extra_parallel_module: List[str | torch.nn.Module],
+) -> Union[List[torch.nn.Module], List]:
+    if isinstance(pipe_or_adapter, BlockAdapter):
+        pipe = pipe_or_adapter.pipe
+    else:
+        pipe = pipe_or_adapter
+
+    if not extra_parallel_module:  # empty list
+        return []
+
+    parsed_extra_parallel_modules: List[torch.nn.Module] = []
+    for module_or_name in extra_parallel_module:
+        if isinstance(module_or_name, torch.nn.Module):
+            parsed_extra_parallel_modules.append(module_or_name)
+            continue
+
+        if hasattr(pipe, module_or_name):
+            if module_or_name == "text_encoder":
+                # Special handling for text encoder
+                text_encoder, _ = _parse_text_encoder(pipe)
+                if text_encoder is not None:
+                    parsed_extra_parallel_modules.append(text_encoder)
+                else:
+                    logger.warning(
+                        "Text encoder not found in the pipeline for extra parallel module."
+                    )
+            else:
+                parsed_extra_parallel_modules.append(getattr(pipe, module_or_name))
+        else:
+            logger.warning(
+                f"Extra parallel module name {module_or_name} not found in the pipeline."
+            )
+    return parsed_extra_parallel_modules
 
 
 def refresh_context(

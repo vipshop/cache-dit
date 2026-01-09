@@ -2,6 +2,7 @@ from enum import Enum
 
 
 class ParallelismBackend(Enum):
+    AUTO = "Auto"
     NATIVE_DIFFUSER = "Native_Diffuser"
     NATIVE_PYTORCH = "Native_PyTorch"
     NONE = "None"
@@ -24,6 +25,13 @@ class ParallelismBackend(Enum):
                 )
             return True
         return False
+
+    @classmethod
+    def from_str(cls, backend_str: str) -> "ParallelismBackend":
+        for backend in cls:
+            if backend.value.lower() == backend_str.lower():
+                return backend
+        raise ValueError(f"Unsupported parallelism backend: {backend_str}.")
 
     def __str__(self) -> str:
         return self.value

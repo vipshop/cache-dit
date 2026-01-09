@@ -7,7 +7,10 @@ except ImportError:
 
 from cache_dit.utils import disable_print
 from cache_dit.logger import init_logger
-from cache_dit.caching import load_options
+from cache_dit.caching import load_options  # deprecated
+from cache_dit.caching import load_cache_config
+from cache_dit.caching import load_parallelism_config
+from cache_dit.caching import load_configs
 from cache_dit.caching import enable_cache
 from cache_dit.caching import refresh_context
 from cache_dit.caching import steps_mask
