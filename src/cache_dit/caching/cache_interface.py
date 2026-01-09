@@ -307,6 +307,9 @@ def enable_cache(
             parallelism_config.parallel_kwargs["has_controlnet"] = _has_controlnet(
                 pipe_or_adapter,
             )
+            parallelism_config._has_controlnet = parallelism_config.parallel_kwargs[
+                "has_controlnet"
+            ]
 
         # Parse extra parallel modules from names to actual modules
         if (
