@@ -39,6 +39,10 @@ class GenerateRequestAPI(BaseModel):
     height: int = Field(1024, description="Image/Video height", ge=64, le=4096)
     num_inference_steps: int = Field(50, description="Number of inference steps", ge=1, le=200)
     guidance_scale: float = Field(7.5, description="Guidance scale", ge=0.0, le=20.0)
+    sigmas: Optional[List[float]] = Field(
+        None,
+        description="Custom sigma schedule (e.g. for turbo inference). Length should typically match num_inference_steps.",
+    )
     seed: Optional[int] = Field(None, description="Random seed")
     num_images: int = Field(1, description="Number of images to generate", ge=1, le=4)
     image_urls: Optional[List[str]] = Field(
@@ -120,6 +124,7 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     height=request.height,
                     num_inference_steps=request.num_inference_steps,
                     guidance_scale=request.guidance_scale,
+                    sigmas=request.sigmas,
                     seed=request.seed,
                     num_images=request.num_images,
                     image_urls=request.image_urls,
