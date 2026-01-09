@@ -138,17 +138,17 @@ def load_cache_config(
 
     cache_config_kwargs = kwargs["cache_config"]
     # Parse steps_mask if exists
-    if "steps_mask" in cache_config_kwargs:
-        step_mask = cache_config_kwargs["steps_mask"]
-        if isinstance(step_mask, str):
+    if "steps_computation_mask" in cache_config_kwargs:
+        steps_computation_mask = cache_config_kwargs["steps_computation_mask"]
+        if isinstance(steps_computation_mask, str):
             assert (
                 "num_inference_steps" in cache_config_kwargs
             ), "To parse steps_mask from str, 'num_inference_steps' must be provided in cache_config."
             from .cache_interface import steps_mask
 
             num_inference_steps = cache_config_kwargs["num_inference_steps"]
-            cache_config_kwargs["steps_mask"] = steps_mask(
-                total_steps=num_inference_steps, mask_policy=step_mask
+            cache_config_kwargs["steps_computation_mask"] = steps_mask(
+                total_steps=num_inference_steps, mask_policy=steps_computation_mask
             )
     # Reuse load_cache_options_from_dict to parse cache_config
     cache_context_kwargs = load_cache_options_from_dict(

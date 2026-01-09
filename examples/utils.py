@@ -1411,6 +1411,10 @@ def maybe_init_distributed(args=None):
                 rank, device = get_rank_device()
                 current_platform.set_device(device)
                 return rank, device
+            else:
+                # no distributed needed
+                rank, device = get_rank_device()
+                return rank, device
         else:
             # no distributed needed
             rank, device = get_rank_device()
