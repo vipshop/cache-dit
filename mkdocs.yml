@@ -61,13 +61,15 @@ nav:
       - Context Parallelism: user_guide/CONTEXT_PARALLEL.md
       - Tensor Parallelism: user_guide/TENSOR_PARALLEL.md
       - Extra Modules Parallelism: user_guide/EXTRA_PARALLEL.md
+      - Serving Deployment: user_guide/SERVING.md
       - Low-Bits Quantization: user_guide/QUANTIZATION.md
       - Attention Backends: user_guide/ATTENTION.md
       - Torch Compile: user_guide/COMPILE.md
       - Metrics Tools: user_guide/METRICS.md
       - Profiler Usage: user_guide/PROFILER.md
-      - API Docs: user_guide/API_DOCS.md
+      - API Docmentation: user_guide/API_DOCS.md
   - Support Matrix: SUPPORTED.md
+  - Benchmark: BENCHMARK.md
   - Developer Guide: CONTRIBUTE.md
   - Quick Examples: EXAMPLES.md
   - Community Integration: COMMUNITY.md
