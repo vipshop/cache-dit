@@ -111,6 +111,7 @@ def get_args(
     # Acceleration Config path
     parser.add_argument(
         "--config-path",
+        "--config",
         type=str,
         default=None,
         help="Path to CacheDiT configuration YAML file",
