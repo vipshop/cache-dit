@@ -1,12 +1,18 @@
 """Test FLUX.2 Turbo LoRA model serving.
 
 Server setup:
-    CUDA_VISIBLE_DEVICES=0 cache-dit-serve \
+    CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
+        -m cache_dit.serve.serve \
         --model-path black-forest-labs/FLUX.2-dev \
         --lora-path fal/FLUX.2-dev-Turbo \
         --lora-name flux.2-turbo-lora.safetensors \
-        --dtype bfloat16 \
-        --cache
+        --parallel-type ulysses \
+        --parallel-text-encoder \
+        --quantize-type float8_wo \
+        --attn _flash_3 \
+        --cache \
+        --compile \
+        --ulysses-anything
 
 This test calls /generate with a custom sigma schedule (TURBO_SIGMAS) for 8-step turbo inference.
 
