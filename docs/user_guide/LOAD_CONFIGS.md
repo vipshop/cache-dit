@@ -51,3 +51,17 @@ Then, apply the distributed inference acceleration config from yaml. `ulysses_si
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_config.yaml"))
 ```
+
+## Quick Examples 
+
+```bash
+pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
+pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
+pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
+pip3 install git+https://github.com/vipshop/cache-dit.git # latest
+
+git clone https://github.com/vipshop/cache-dit.git && cd examples
+
+python3 generate.py flux --config config.yaml
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py flux --config parallel_config.yaml
+```
