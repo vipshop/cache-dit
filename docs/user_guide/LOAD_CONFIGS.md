@@ -4,7 +4,7 @@ Cache-DiT now supported load the acceleration configs from a custom yaml file. H
 
 ## Single GPU inference  
 
-Define a `config.yaml` that contains:
+Define a `config.yaml` file that contains:
 
 ```yaml
 cache_config:
@@ -27,7 +27,7 @@ Then, apply the acceleration config from yaml.
 
 ## Distributed inference  
 
-Define a `parallel_config.yaml` that contains:
+Define a `parallel_config.yaml` file that contains:
 
 ```yaml
 cache_config:
