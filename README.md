@@ -12,7 +12,7 @@
   </p>
 </div>
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiT models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:     
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:     
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
 - 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses)
@@ -46,6 +46,8 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ...   pipe, cache_config=DBCacheConfig(), 
 ...   parallelism_config=ParallelismConfig(ulysses_size=2)
 ... )
+>>> # Or, Load Acceleration config from a custom yaml file
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("config.yaml"))
 >>> output = pipe(...) # Just call the pipe as normal.
 ```
 Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
