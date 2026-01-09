@@ -43,6 +43,8 @@ theme:
     - navigation.sections
     - navigation.indexes
     - navigation.top
+    - navigation.footer
+    - navigation.sidebar
     - search.suggest
     - search.highlight
     - search.share
