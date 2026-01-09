@@ -12,15 +12,16 @@
   </p>
 </div>
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiT-based models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiT-based models. Please refer to our online documentation at [cache-dit.readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:   
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiT models from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:     
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
 - 🎉**Context Parallelism** (w/ Ulysses Anything Attention, FP8 All2All, Async Ulysses)
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallel API)
 - 🎉**Text Encoder Parallelism** (via Tensor Parallelism w/ DTensor API)
 - 🎉**Auto Encoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
+- 🎉**ControlNet Parallelism** (currently, Z-Image-Turbo, Qwen-Image)
 - 🎉Built-in **HTTP serving** deployment support with simple REST API
-- 🎉Compatible with **compile**, **offloading**, **quantization**, ...
+- 🎉Natively compatible with **Compile**, **Offloading**, **Quantization**, ...
 - 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
 - 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
 
@@ -35,19 +36,26 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 ```python
 >>> import cache_dit
 >>> from diffusers import DiffusionPipeline
->>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image") # Can be any diffusion pipeline
->>> cache_dit.enable_cache(pipe) # One-line code with default cache options.
+>>> # The pipe can be any diffusion pipeline
+>>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+>>> # Cache Acceleration with One-line code
+>>> cache_dit.enable_cache(pipe)
+>>> # Or, Hybrid Cache Acceleration + Parallelism
+>>> from cache_dit import DBCacheConfig, ParallelismConfig
+>>> cache_dit.enable_cache(
+...   pipe, cache_config=DBCacheConfig(), 
+...   parallelism_config=ParallelismConfig(ulysses_size=2)
+... )
 >>> output = pipe(...) # Just call the pipe as normal.
->>> stats = cache_dit.summary(pipe) # Then, get the summary of cache acceleration stats.
->>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```
+Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
 
 ## 🚀Quick Links
 
 - [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
-- [🌐HTTP Serving](https://cache-dit.readthedocs.io/en/latest/SERVING/) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
-- [🎉User Guide](https://cache-dit.readthedocs.io/en/latest/USER_GUIDE/) - For more advanced features, please refer to the [🎉User Guide](https://cache-dit.readthedocs.io/en/latest/USER_GUIDE/) for details.
-- [❓FAQ](https://cache-dit.readthedocs.io/en/latest/FAQ/) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
+- [🌐HTTP Serving](https://cache-dit.readthedocs.io/en/latest) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
+- [🎉User Guide](https://cache-dit.readthedocs.io/en/latest/) - For more advanced features, please refer to the [🎉User Guide](https://cache-dit.readthedocs.io/en/latest/) for details.
+- [❓FAQ](https://cache-dit.readthedocs.io/en/latest) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
 
 ## 🌐Community Integration
 
@@ -57,11 +65,12 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 - 🎉[Nunchaku x Cache-DiT](https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit)
 - 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
 - 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)
+- 🎉[jetson-containers x Cache-DiT](https://github.com/dusty-nv/jetson-containers/tree/master/packages/diffusion/cache_edit)
 
 
 ## ©️Acknowledgements
 
-Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and production-level deployment of this project. We learned the design and reused code from the following projects: [🤗Diffusers](https://huggingface.co/docs/diffusers), [SGLang](https://github.com/sgl-project/sglang), [ParaAttention](https://github.com/chengzeyi/ParaAttention), [xDiT](https://github.com/xdit-project/xDiT), [TaylorSeer](https://github.com/Shenyi-Z/TaylorSeer) and [LeMiCa](https://github.com/UnicomAI/LeMiCa).
+Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and deployment of this project. We learned the design and reused code from the following projects: [Diffusers](https://huggingface.co/docs/diffusers), [SGLang](https://github.com/sgl-project/sglang), [vLLM-Omni](https://github.com/vllm-project/vllm-omni), [ParaAttention](https://github.com/chengzeyi/ParaAttention), [xDiT](https://github.com/xdit-project/xDiT), [TaylorSeer](https://github.com/Shenyi-Z/TaylorSeer) and [LeMiCa](https://github.com/UnicomAI/LeMiCa).
 
 
 ## ©️Citations

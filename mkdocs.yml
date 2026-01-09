@@ -43,6 +43,8 @@ theme:
     - navigation.sections
     - navigation.indexes
     - navigation.top
+    - navigation.footer
+    - navigation.sidebar
     - search.suggest
     - search.highlight
     - search.share
@@ -53,23 +55,27 @@ theme:
 
 nav:
   - Home: README.md 
-  - Documentation:
-      - User Guide: USER_GUIDE.md
-      - Examples: EXAMPLES.md
-      - Support Matrix: SUPPORTED.md
-      - DBCache Design: DBCACHE.md
-      - Benchmark Performance: BENCHMARK.md
-      - Service Deployment: SERVING.md
-      - API Documentation: API_DOCS.md
-      - Frequently Asked Questions: FAQ.md
-      - How to Contribute: CONTRIBUTE.md
-      - Profiler Usage: PROFILER.md
-      - Community Integration: COMMUNITY.md
-  - User Guide: USER_GUIDE.md
-  - Examples: EXAMPLES.md
-  - Community: COMMUNITY.md
+  - Docmentation:
+      - Overviews: user_guide/OVERVIEWS.md
+      - Installation: user_guide/INSTALL.md
+      - Unified Cache APIs: user_guide/CACHE_API.md
+      - DBCache Design: user_guide/DBCACHE_DESIGN.md
+      - Context Parallelism: user_guide/CONTEXT_PARALLEL.md
+      - Tensor Parallelism: user_guide/TENSOR_PARALLEL.md
+      - Extra Modules Parallelism: user_guide/EXTRA_PARALLEL.md
+      - Serving Deployment: user_guide/SERVING.md
+      - Low-Bits Quantization: user_guide/QUANTIZATION.md
+      - Attention Backends: user_guide/ATTENTION.md
+      - Torch Compile: user_guide/COMPILE.md
+      - Metrics Tools: user_guide/METRICS.md
+      - Profiler Usage: user_guide/PROFILER.md
+      - API Docmentation: user_guide/API_DOCS.md
   - Support Matrix: SUPPORTED.md
-  - API Documentation: API_DOCS.md
+  - Benchmark: BENCHMARK.md
+  - Developer Guide: CONTRIBUTE.md
+  - Quick Examples: EXAMPLES.md
+  - Community Integration: COMMUNITY.md
+  - FAQ: FAQ.md
 
 plugins:
   - search
