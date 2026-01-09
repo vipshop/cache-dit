@@ -161,7 +161,9 @@ def load_cache_config(
     return cache_config, calibrator_config
 
 
-def load_parallelism_config(path_or_dict: str | dict, **kwargs) -> Optional[ParallelismConfig]:
+def load_parallelism_config(
+    path_or_dict: str | dict, **kwargs
+) -> Optional[ParallelismConfig] | bool:
     r"""
     Load parallelism configuration from a YAML file or a dictionary. Assumes that the yaml
     contains a 'parallelism_config' section, and returns only that section. Raise ValueError
@@ -185,6 +187,9 @@ def load_parallelism_config(path_or_dict: str | dict, **kwargs) -> Optional[Para
     else:
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
+    if kwargs.get("check_only", False):
+        return "parallelism_config" in kwargs
+
     # Allow missing parallelism_config
     if "parallelism_config" not in kwargs:
         return None
@@ -206,22 +211,29 @@ def load_parallelism_config(path_or_dict: str | dict, **kwargs) -> Optional[Para
             if dist.is_initialized():
                 # Assume world size is the parallel size
                 size = dist.get_world_size()
-            logger.info(f"Auto selected parallel size to {size}.")
+            if size == 1:
+                logger.warning(
+                    "Auto parallel size selected as 1. Make sure to run with torch.distributed "
+                    "to utilize multiple devices for parallelism."
+                )
+            else:
+                logger.info(f"Auto selected parallel size to {size}.")
             return size
         raise ValueError(f"Invalid parallel size value: {size}. Must be int or 'auto'.")
 
-    if "ulysses_size" in parallelism_config_kwargs:
-        parallelism_config_kwargs["ulysses_size"] = _maybe_auto_parallel_size(
-            parallelism_config_kwargs["ulysses_size"]
-        )
-    if "ring_size" in parallelism_config_kwargs:
-        parallelism_config_kwargs["ring_size"] = _maybe_auto_parallel_size(
-            parallelism_config_kwargs["ring_size"]
-        )
-    if "tp_size" in parallelism_config_kwargs:
-        parallelism_config_kwargs["tp_size"] = _maybe_auto_parallel_size(
-            parallelism_config_kwargs["tp_size"]
-        )
+    if kwargs.get("auto_parallel_size", True):
+        if "ulysses_size" in parallelism_config_kwargs:
+            parallelism_config_kwargs["ulysses_size"] = _maybe_auto_parallel_size(
+                parallelism_config_kwargs["ulysses_size"]
+            )
+        if "ring_size" in parallelism_config_kwargs:
+            parallelism_config_kwargs["ring_size"] = _maybe_auto_parallel_size(
+                parallelism_config_kwargs["ring_size"]
+            )
+        if "tp_size" in parallelism_config_kwargs:
+            parallelism_config_kwargs["tp_size"] = _maybe_auto_parallel_size(
+                parallelism_config_kwargs["tp_size"]
+            )
 
     parallelism_config = ParallelismConfig(**parallelism_config_kwargs)
     return parallelism_config
@@ -264,6 +276,8 @@ def load_configs(
     """
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)
+    if isinstance(parallelism_config, bool):
+        parallelism_config = None
     if return_dict:
         return {
             "cache_config": cache_config,

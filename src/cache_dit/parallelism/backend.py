@@ -9,7 +9,9 @@ class ParallelismBackend(Enum):
 
     @classmethod
     def is_supported(cls, backend: "ParallelismBackend") -> bool:
-        if backend == cls.NATIVE_PYTORCH:
+        if backend == cls.AUTO:
+            return True
+        elif backend == cls.NATIVE_PYTORCH:
             return True
         elif backend == cls.NATIVE_DIFFUSER:
             try:

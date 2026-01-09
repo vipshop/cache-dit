@@ -12,6 +12,4 @@ parallelism_config:
   ulysses_size: auto
   parallel_kwargs:
     attention_backend: native
-    experimental_ulysses_anything: true
-    experimental_ulysses_float8: true
     extra_parallel_modules: ["text_encoder", "vae"]

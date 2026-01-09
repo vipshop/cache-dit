@@ -79,6 +79,13 @@ class ParallelismConfig:
                     )
                     self.backend = ParallelismBackend.NATIVE_DIFFUSER
 
+    def enabled(self) -> bool:
+        return (
+            (self.ulysses_size is not None and self.ulysses_size > 1)
+            or (self.ring_size is not None and self.ring_size > 1)
+            or (self.tp_size is not None and self.tp_size > 1)
+        )
+
     def strify(
         self,
         details: bool = False,

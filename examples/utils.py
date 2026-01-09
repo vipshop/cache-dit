@@ -1394,6 +1394,20 @@ def maybe_init_distributed(args=None):
             rank, device = get_rank_device()
             current_platform.set_device(device)
             return rank, device
+        elif args.config_path is not None:
+            # check if distributed is needed from config file
+            has_parallelism_config = cache_dit.load_parallelism_config(
+                args.config_path,
+                check_only=True,
+            )
+            if has_parallelism_config:
+                if not dist.is_initialized():
+                    dist.init_process_group(
+                        backend=backend,
+                    )
+                rank, device = get_rank_device()
+                current_platform.set_device(device)
+                return rank, device
         else:
             # no distributed needed
             rank, device = get_rank_device()
