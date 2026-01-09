@@ -59,9 +59,9 @@ Please refer to our online documentation at [readthedocs.io](https://cache-dit.r
 ## 🚀Quick Links
 
 - [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to enable **hybrid cache acceleration** and **parallelism** for DiTs with cache-dit is to start with our examples for popular models: FLUX, Z-Image, Qwen-Image, Wan, etc.
-- [🌐HTTP Serving](./SERVING.md) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
-- [🎉User Guide](./USER_GUIDE.md) - For more advanced features, please refer to the [🎉User Guide](./USER_GUIDE.md) for details.
-- [❓FAQ](./FAQ.md) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
+- [🌐HTTP Serving](https://cache-dit.readthedocs.io/en/latest) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, **multi-image editing**, and **text/image-to-video** generation.
+- [🎉User Guide](https://cache-dit.readthedocs.io/en/latest/) - For more advanced features, please refer to the [🎉User Guide](https://cache-dit.readthedocs.io/en/latest/) for details.
+- [❓FAQ](https://cache-dit.readthedocs.io/en/latest) - Frequently asked questions including attention backend configuration, troubleshooting, and optimization tips.
 
 ## 🌐Community Integration
 
