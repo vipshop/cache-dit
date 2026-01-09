@@ -5,7 +5,7 @@
 Cache-DiT supports multiple Attention backends for better performance. The supported list is as follows:
 
 |backend|details|context/tensor parallel|attn_mask|
-|:---:|:---:|:---:|  
+|:---:|:---:|:---:|:---:|    
 |native| Native SDPA Attention, w/ cache-dit optimized|✅|✅|  
 |_sdpa_cudnn| CUDNN Attention via SDPA API, w/ cache-dit optimized|✅|✅|
 |_native_cudnn| CUDNN Attention via SDPA API, w/o cache-dit optimized|✅|✖️|
