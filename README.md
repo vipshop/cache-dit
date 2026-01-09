@@ -37,25 +37,16 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 import cache_dit
 from diffusers import DiffusionPipeline
 
-# pipe: can be any diffusion pipeline
+# The pipe can be any diffusion pipeline
 pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
-
 # Cache Acceleration with One-line code
 cache_dit.enable_cache(pipe)
-
-# Hybrid Cache Acceleration + Parallelism
+# Or, Hybrid Cache Acceleration + Parallelism
 from cache_dit import DBCacheConfig, ParallelismConfig
 cache_dit.enable_cache(
     pipe, cache_config=DBCacheConfig(), 
     parallelism_config=ParallelismConfig(ulysses_size=2)
 )
-
-output = pipe(...) # Just call the pipe as normal.
-
-# Then, get the summary of acceleration stats.
-stats = cache_dit.summary(pipe) 
-# Disable cache and run original pipe.
-cache_dit.disable_cache(pipe)
 ```
 Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
 
