@@ -35,4 +35,7 @@ from cache_dit.caching.cache_interface import supported_pipelines
 from cache_dit.caching.cache_interface import get_adapter
 from cache_dit.caching.cache_interface import steps_mask
 
-from cache_dit.caching.utils import load_options
+from cache_dit.caching.utils import load_options  # deprecated
+from cache_dit.caching.utils import load_cache_config
+from cache_dit.caching.utils import load_parallelism_config
+from cache_dit.caching.utils import load_configs
