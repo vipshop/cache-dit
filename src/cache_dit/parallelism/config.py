@@ -8,8 +8,9 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class ParallelismConfig:
-    # Parallelism backend, defaults to NATIVE_DIFFUSER
-    backend: ParallelismBackend = ParallelismBackend.NATIVE_DIFFUSER
+    # Parallelism backend, defaults to AUTO. We will auto select the backend
+    # based on the parallelism configuration.
+    backend: ParallelismBackend = ParallelismBackend.AUTO
     # Context parallelism config
     # ulysses_size (`int`, *optional*):
     #     The degree of ulysses parallelism.
@@ -26,12 +27,27 @@ class ParallelismConfig:
     #     NATIVE_DIFFUSER backend, it can include `cp_plan` and
     #     `attention_backend` arguments for `Context Parallelism`.
     parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(default_factory=dict)
+    # Some internal fields for utils usage
+    _has_text_encoder: bool = False
+    _has_auto_encoder: bool = False
+    _has_controlnet: bool = False
 
     def __post_init__(self):
         assert ParallelismBackend.is_supported(self.backend), (
             f"Parallel backend {self.backend} is not supported. "
             f"Please make sure the required packages are installed."
         )
+        if self.backend == ParallelismBackend.AUTO:
+            # Auto select the backend based on the parallelism configuration
+            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
+                self.ring_size is not None and self.ring_size > 1
+            ):
+                self.backend = ParallelismBackend.NATIVE_DIFFUSER
+            elif self.tp_size is not None and self.tp_size > 1:
+                self.backend = ParallelismBackend.NATIVE_PYTORCH
+            else:
+                self.backend = ParallelismBackend.NONE
+            logger.info(f"Auto selected parallelism backend for transformer: {self.backend}")
 
         # Validate the parallelism configuration and auto adjust the backend if needed
         if self.tp_size is not None and self.tp_size > 1:
@@ -66,6 +82,13 @@ class ParallelismConfig:
                         "backend right now. Force set backend to NATIVE_DIFFUSER."
                     )
                     self.backend = ParallelismBackend.NATIVE_DIFFUSER
+
+    def enabled(self) -> bool:
+        return (
+            (self.ulysses_size is not None and self.ulysses_size > 1)
+            or (self.ring_size is not None and self.ring_size > 1)
+            or (self.tp_size is not None and self.tp_size > 1)
+        )
 
     def strify(
         self,
@@ -108,11 +131,11 @@ class ParallelismConfig:
                 parallel_str += f"Ring{self.ring_size}"
             if self.tp_size is not None:
                 parallel_str += f"TP{self.tp_size}"
-            if text_encoder:
+            if text_encoder or self._has_text_encoder:
                 parallel_str += "_TEP"  # Text Encoder Parallelism
-            if vae:
+            if vae or self._has_auto_encoder:
                 parallel_str += "_VAEP"  # VAE Parallelism
-            if controlnet:
+            if controlnet or self._has_controlnet:
                 parallel_str += "_CNP"  # ControlNet Parallelism
             return parallel_str
 
@@ -137,6 +160,7 @@ class ParallelismConfig:
         assert (
             world_size is None or world_size > 1
         ), "Text encoder world size must be None or greater than 1 for parallelism."
+        self._has_text_encoder = True
         return world_size
 
     @property
@@ -146,8 +170,19 @@ class ParallelismConfig:
         assert (
             world_size is None or world_size > 1
         ), "VAE world size must be None or greater than 1 for parallelism."
+        self._has_auto_encoder = True
         return world_size
 
     @property
     def vae_world_size(self) -> int:  # alias of auto_encoder_world_size
         return self.vae_world_size
+
+    @property
+    def controlnet_world_size(self) -> int:
+        """Get the world size for ControlNet parallelism."""
+        world_size = self._get_extra_module_world_size()
+        assert (
+            world_size is None or world_size > 1
+        ), "ControlNet world size must be None or greater than 1 for parallelism."
+        self._has_controlnet = True
+        return world_size

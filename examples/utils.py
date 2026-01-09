@@ -108,6 +108,14 @@ def get_args(
         default=None,
         help="Override mask image path if provided",
     )
+    # Acceleration Config path
+    parser.add_argument(
+        "--config-path",
+        "--config",
+        type=str,
+        default=None,
+        help="Path to CacheDiT configuration YAML file",
+    )
     # Sampling settings
     parser.add_argument(
         "--prompt",
@@ -402,6 +410,7 @@ def get_args(
             # with attn masks, e.g., ZImage. It is not in diffusers yet.
             "_sdpa_cudnn",
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
+            "_native_npu",  # native npu attention
         ],
     )
     parser.add_argument(
@@ -1209,81 +1218,91 @@ def maybe_apply_optimization(
                 f"Original error: {e}"
             ) from e
 
-    if args.cache or args.parallel_type is not None:
+    if args.cache or args.parallel_type is not None or args.config_path is not None:
 
-        cache_config = kwargs.pop("cache_config", None)
-        parallelism_config = kwargs.pop("parallelism_config", None)
+        if args.config_path is None:
+            # Construct acceleration configs from command line args if config path is not provided
+            cache_config = kwargs.pop("cache_config", None)
+            parallelism_config = kwargs.pop("parallelism_config", None)
 
-        backend = (
-            ParallelismBackend.NATIVE_PYTORCH
-            if args.parallel_type in ["tp"]
-            else ParallelismBackend.NATIVE_DIFFUSER
-        )
-
-        extra_parallel_modules = prepare_extra_parallel_modules(
-            args,
-            pipe_or_adapter,
-            custom_extra_modules=kwargs.get("extra_parallel_modules", None),
-        )
-
-        parallel_kwargs = {
-            "attention_backend": ("native" if not args.attn else args.attn),
-            # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
-            "extra_parallel_modules": extra_parallel_modules,
-        }
-        if backend == ParallelismBackend.NATIVE_PYTORCH:
-            if args.attn is None:
-                parallel_kwargs["attention_backend"] = None
-
-        if backend == ParallelismBackend.NATIVE_DIFFUSER:
-            parallel_kwargs.update(
-                {
-                    "experimental_ulysses_anything": args.ulysses_anything,
-                    "experimental_ulysses_float8": args.ulysses_float8,
-                    "experimental_ulysses_async": args.ulysses_async,
-                }
+            backend = (
+                ParallelismBackend.NATIVE_PYTORCH
+                if args.parallel_type in ["tp"]
+                else ParallelismBackend.NATIVE_DIFFUSER
             )
 
-        # Caching and Parallelism
-        cache_dit.enable_cache(
-            pipe_or_adapter,
-            cache_config=(
-                DBCacheConfig(
-                    Fn_compute_blocks=args.Fn_compute_blocks,
-                    Bn_compute_blocks=args.Bn_compute_blocks,
-                    max_warmup_steps=args.max_warmup_steps,
-                    warmup_interval=args.warmup_interval,
-                    max_cached_steps=args.max_cached_steps,
-                    max_continuous_cached_steps=args.max_continuous_cached_steps,
-                    residual_diff_threshold=args.residual_diff_threshold,
-                    enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
-                    steps_computation_mask=kwargs.get("steps_computation_mask", None),
+            extra_parallel_modules = prepare_extra_parallel_modules(
+                args,
+                pipe_or_adapter,
+                custom_extra_modules=kwargs.get("extra_parallel_modules", None),
+            )
+
+            parallel_kwargs = {
+                "attention_backend": ("native" if not args.attn else args.attn),
+                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
+                "extra_parallel_modules": extra_parallel_modules,
+            }
+            if backend == ParallelismBackend.NATIVE_PYTORCH:
+                if args.attn is None:
+                    parallel_kwargs["attention_backend"] = None
+
+            if backend == ParallelismBackend.NATIVE_DIFFUSER:
+                parallel_kwargs.update(
+                    {
+                        "experimental_ulysses_anything": args.ulysses_anything,
+                        "experimental_ulysses_float8": args.ulysses_float8,
+                        "experimental_ulysses_async": args.ulysses_async,
+                    }
                 )
-                if cache_config is None and args.cache
-                else cache_config
-            ),
-            calibrator_config=(
-                TaylorSeerCalibratorConfig(
-                    taylorseer_order=args.taylorseer_order,
-                )
-                if args.taylorseer
-                else None
-            ),
-            params_modifiers=kwargs.get("params_modifiers", None),
-            parallelism_config=(
-                ParallelismConfig(
-                    ulysses_size=(
-                        dist.get_world_size() if args.parallel_type == "ulysses" else None
-                    ),
-                    ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
-                    tp_size=(dist.get_world_size() if args.parallel_type == "tp" else None),
-                    backend=backend,
-                    parallel_kwargs=parallel_kwargs,
-                )
-                if parallelism_config is None and args.parallel_type in ["ulysses", "ring", "tp"]
-                else parallelism_config
-            ),
-        )
+
+            # Caching and Parallelism
+            cache_dit.enable_cache(
+                pipe_or_adapter,
+                cache_config=(
+                    DBCacheConfig(
+                        Fn_compute_blocks=args.Fn_compute_blocks,
+                        Bn_compute_blocks=args.Bn_compute_blocks,
+                        max_warmup_steps=args.max_warmup_steps,
+                        warmup_interval=args.warmup_interval,
+                        max_cached_steps=args.max_cached_steps,
+                        max_continuous_cached_steps=args.max_continuous_cached_steps,
+                        residual_diff_threshold=args.residual_diff_threshold,
+                        enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
+                        steps_computation_mask=kwargs.get("steps_computation_mask", None),
+                    )
+                    if cache_config is None and args.cache
+                    else cache_config
+                ),
+                calibrator_config=(
+                    TaylorSeerCalibratorConfig(
+                        taylorseer_order=args.taylorseer_order,
+                    )
+                    if args.taylorseer
+                    else None
+                ),
+                params_modifiers=kwargs.get("params_modifiers", None),
+                parallelism_config=(
+                    ParallelismConfig(
+                        ulysses_size=(
+                            dist.get_world_size() if args.parallel_type == "ulysses" else None
+                        ),
+                        ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
+                        tp_size=(dist.get_world_size() if args.parallel_type == "tp" else None),
+                        backend=backend,
+                        parallel_kwargs=parallel_kwargs,
+                    )
+                    if parallelism_config is None
+                    and args.parallel_type in ["ulysses", "ring", "tp"]
+                    else parallelism_config
+                ),
+            )
+        else:
+            # Apply acceleration configs from config path
+            cache_dit.enable_cache(
+                pipe_or_adapter,
+                **cache_dit.load_configs(args.config_path),
+            )
+            logger.info(f"Applied acceleration from {args.config_path}.")
 
     # Quantization
     # WARN: Must apply quantization after tensor parallelism is applied.
@@ -1337,11 +1356,14 @@ def strify(args, pipe_or_stats):
     if args.ulysses_async:
         base_str += "_ulysses_async"
     if args.parallel_text_encoder:
-        base_str += "_TEP"  # Text Encoder Parallelism
+        if "_TEP" not in base_str:
+            base_str += "_TEP"  # Text Encoder Parallelism
     if args.parallel_vae:
-        base_str += "_VAEP"  # VAE Parallelism
+        if "_VAEP" not in base_str:
+            base_str += "_VAEP"  # VAE Parallelism
     if args.parallel_controlnet:
-        base_str += "_CNP"  # ControlNet Parallelism
+        if "_CNP" not in base_str:
+            base_str += "_CNP"  # ControlNet Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
     return base_str
@@ -1375,6 +1397,24 @@ def maybe_init_distributed(args=None):
             rank, device = get_rank_device()
             current_platform.set_device(device)
             return rank, device
+        elif args.config_path is not None:
+            # check if distributed is needed from config file
+            has_parallelism_config = cache_dit.load_parallelism_config(
+                args.config_path,
+                check_only=True,
+            )
+            if has_parallelism_config:
+                if not dist.is_initialized():
+                    dist.init_process_group(
+                        backend=backend,
+                    )
+                rank, device = get_rank_device()
+                current_platform.set_device(device)
+                return rank, device
+            else:
+                # no distributed needed
+                rank, device = get_rank_device()
+                return rank, device
         else:
             # no distributed needed
             rank, device = get_rank_device()

@@ -1,6 +1,5 @@
 # Torch Profiler Usage
 
-Reference: Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py .
 ## Quick Start
 
 ### Basic Usage
@@ -138,11 +137,11 @@ Visit https://ui.perfetto.dev/ and drag-drop the generated `.trace.json.gz` file
 Use `run_flux.py` as an example to dispaly FLUX.1.dev model profiling results.
 
 
-<img width="1240" height="711" alt="图片" src="https://github.com/user-attachments/assets/d74b9130-9f66-46c7-8fa7-91c008984657" />
+<img width="1240" height="711" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_0.png" />
 
-<img width="1225" height="545" alt="图片" src="https://github.com/user-attachments/assets/77645d79-276b-4696-ae80-da8622ad16d2" />
+<img width="1225" height="545" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_1.png" />
 
-<img width="1111" height="281" alt="图片" src="https://github.com/user-attachments/assets/b4656c5f-8be0-4d87-abf4-88108fd2897b" />
+<img width="1111" height="281" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_2.png" />
 
 
 ### Chrome Tracing
@@ -222,3 +221,7 @@ from cache_dit import profile_function
 def my_function():
     return model(input)
 ```
+
+## Reference
+
+- [sglang/bench_one_batch.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py)
