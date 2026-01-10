@@ -4,16 +4,41 @@
 
 ### Basic Usage
 
-Add profiler to your example script with minimal changes:
+`cache-dit` examples have Torch Profiler built in: pass `--profile` to `examples/generate.py` to generate a trace file.
+
+Before running examples, make sure `cache_dit` is importable by Python.
+
+Recommended: run from the `examples/` directory (consistent with `examples/README.md`):
+
+```bash
+cd examples
+
+# List all available examples
+python3 generate.py list
+
+# Basic profiling (recommended: reduce steps to keep the trace small)
+python3 generate.py flux --profile --steps 3
+```
+
+If you want to write traces to a specific directory (or customize the filename prefix):
+
+```bash
+cd examples
+python3 generate.py flux --profile --steps 3 --profile-dir /tmp/cache_dit_profiles --profile-name flux_test
+```
+
+> Note: for multi-GPU runs (`torchrun`), each rank produces its own trace file, e.g. `flux_test-rank0.trace.json.gz`.
+
+---
+
+If you want minimal-intrusion integration in your own script, reuse `create_profiler_from_args`:
 
 ```python
 from utils import create_profiler_from_args
 
 def run_pipe():
-    # Reduce steps when profiling to keep trace file small
-    steps = args.steps if args.steps is not None else 28
-    if args.profile and args.steps is None:
-        steps = 3
+    # Recommended: reduce steps during profiling to keep the trace file small
+    steps = args.num_inference_steps if args.num_inference_steps is not None else 28
     image = pipe(
         prompt,
         num_inference_steps=steps,
@@ -31,66 +56,24 @@ else:
     image = run_pipe()
 ```
 
-### Example: run_flux.py Integration
+### Example: `examples/base.py` Integration (Already Done)
 
-```python
-import time
-import torch
-from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, cachify, MemoryTracker, create_profiler_from_args
-import cache_dit
-
-args = get_args()
-pipe = FluxPipeline.from_pretrained(...)
-
-# ... model setup code ...
-
-def run_pipe():
-    steps = args.steps if args.steps is not None else 28
-    if args.profile and args.steps is None:
-        steps = 3
-    image = pipe(
-        prompt,
-        height=1024,
-        width=1024,
-        num_inference_steps=steps,
-        generator=torch.Generator("cpu").manual_seed(0),
-    ).images[0]
-    return image
-
-_ = run_pipe()  # warmup
-
-memory_tracker = MemoryTracker() if args.track_memory else None
-
-if memory_tracker:
-    memory_tracker.__enter__()
-
-start = time.time()
-if args.profile:
-    profiler = create_profiler_from_args(args, profile_name="flux_inference")
-    with profiler:
-        image = run_pipe()
-    print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
-else:
-    image = run_pipe()
-end = time.time()
-
-if memory_tracker:
-    memory_tracker.__exit__(None, None, None)
-    memory_tracker.report()
-```
+`generate.py` eventually calls `ExampleBase.run()`, which already integrates `--profile/--profile-dir/--profile-activities`; you only need to pass these flags on the command line.
 
 ## Command-Line Arguments
 
 ```bash
 # Basic profiling
-python examples/pipeline/run_flux.py --profile
+cd examples
+python3 generate.py flux --profile --steps 3
 
 # With custom profile name and output directory
-python examples/pipeline/run_flux.py --profile --profile-name flux_test --profile-dir /tmp/profiles
+cd examples
+python3 generate.py flux --profile --steps 3 --profile-name flux_test --profile-dir /tmp/profiles
 
 # Profile with memory tracking
-python examples/pipeline/run_flux.py --profile --profile-activities CPU GPU MEM
+cd examples
+python3 generate.py flux --profile --steps 3 --profile-activities CPU GPU MEM --track-memory
 ```
 
 ## Parameters
@@ -119,14 +102,19 @@ Creates a ProfilerContext from command-line arguments.
 
 ### Controlling Trace File Size
 
-When `--profile` is enabled without specifying `--steps`, the inference steps are automatically reduced to 1 to keep trace files small. The profiler captures all operations during these steps.
+Torch Profiler trace files can be large. Recommendations:
+- Reduce `--steps` (e.g., 3–5)
+- Reduce `--repeat`
+- Optionally disable `--profile-with-stack` / `--profile-record-shapes` (if you add a way to disable them in your workflow)
 
 ```bash
 # Profile with 3 steps (small trace file, recommended)
-python examples/pipeline/run_flux.py --profile
+cd examples
+python3 generate.py flux --profile --steps 3 --warmup 0 --repeat 1
 
 # Profile with full 28 steps (larger trace file)
-python examples/pipeline/run_flux.py --profile --steps 28
+cd examples
+python3 generate.py flux --profile --steps 28 --warmup 0 --repeat 1
 ```
 
 ## View Results
@@ -134,7 +122,7 @@ python examples/pipeline/run_flux.py --profile --steps 28
 ### Perfetto UI (Recommended)
 Visit https://ui.perfetto.dev/ and drag-drop the generated `.trace.json.gz` file. Perfetto provides a more powerful and feature-rich interface compared to Chrome Tracing.
 
-Use `run_flux.py` as an example to dispaly FLUX.1.dev model profiling results.
+The screenshots below show an example profiling result from `generate.py flux` (model: FLUX.1-dev).
 
 
 <img width="1240" height="711" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_0.png" />
@@ -153,12 +141,6 @@ pip install tensorboard
 tensorboard --logdir=/path/to/profiles
 ```
 
-### Memory Analysis
-```bash
-pip install memory_viz
-python -c "import torch; torch.cuda.memory._load_snapshot('profile-rank0-memory-*.pickle')"
-```
-
 ## Multi-GPU Usage
 
 The profiler automatically handles distributed environments. Each rank will generate its own trace file.
@@ -167,8 +149,10 @@ The profiler automatically handles distributed environments. Each rank will gene
 
 ```bash
 # 2 GPUs with tensor parallelism
-torchrun --nproc_per_node=2 examples/parallelism/run_flux_tp.py \
-    --profile --profile-name flux_tp
+cd examples
+torchrun --nproc_per_node=2 generate.py flux \
+    --parallel tp \
+    --profile --profile-name flux_tp --steps 3 --warmup 0 --repeat 1
 
 # Output files:
 # - flux_tp-rank0.trace.json.gz
@@ -179,8 +163,11 @@ torchrun --nproc_per_node=2 examples/parallelism/run_flux_tp.py \
 
 ```bash
 # 4 GPUs with context parallelism
-torchrun --nproc_per_node=4 examples/parallelism/run_flux_cp.py \
-    --profile --profile-name flux_cp --profile-activities CPU GPU MEM
+cd examples
+torchrun --nproc_per_node=4 generate.py flux \
+    --parallel ulysses \
+    --profile --profile-name flux_cp --profile-activities CPU GPU MEM \
+    --steps 3 --warmup 0 --repeat 1
 
 # Output files:
 # - flux_cp-rank0.trace.json.gz
@@ -222,6 +209,45 @@ def my_function():
     return model(input)
 ```
 
-## Reference
+---
 
-- [sglang/bench_one_batch.py](https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py)
+# Nsight Systems (nsys) Usage
+
+If you need a lower-level CUDA view (kernel timeline, CUDA API, CPU/GPU concurrency, etc.), use Nsight Systems.
+
+## Installation
+
+Follow NVIDIA Nsight Systems installation instructions (the CLI is usually `nsys`), or your internal environment setup.
+
+## Basic Profiling
+
+The example below profiles a single inference (recommended: set `--warmup 0` so warmup is not included):
+
+```bash
+cd examples
+nsys profile \
+  --trace=cuda,nvtx,osrt \
+  --force-overwrite=true \
+  -o cache_dit_flux \
+  python3 generate.py flux --steps 28 --warmup 0 --repeat 1
+```
+
+## Targeted Capture (reduce file size)
+
+Use `--delay/--duration` to skip model loading/initialization and capture only the main inference window:
+
+```bash
+cd examples
+nsys profile \
+  --trace=cuda,nvtx,osrt \
+  --force-overwrite=true \
+  --delay 10 \
+  --duration 30 \
+  -o cache_dit_flux_infer \
+  python3 generate.py flux --steps 28 --warmup 0 --repeat 1
+```
+
+**Parameter notes:**
+- `--delay N`: wait N seconds before capture (commonly used to skip initialization)
+- `--duration N`: stop capture after N seconds (commonly used to limit file size)
+- `-o <NAME>`: output file prefix
