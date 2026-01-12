@@ -236,6 +236,8 @@ class ModelManager:
                 device_map=self.device_map,
                 quantization_config=quantization_config,
             )
+        # Cache for optional LTX2 image2video pipeline view (built lazily from components)
+        self._ltx2_i2v_pipe = None
 
         if self.lora_path is not None and self.lora_name is not None:
             if not isinstance(self.pipe, LoraBaseMixin):
@@ -586,6 +588,52 @@ class ModelManager:
 
         inference_start_time = time.time()
 
+        def _select_pipe_for_request():
+            # Default: use the loaded pipeline
+            if not is_image2video_mode:
+                return self.pipe
+
+            # For LTX2, the repo "Lightricks/LTX-2" may load as LTX2Pipeline by default,
+            # which does NOT accept `image`. In image2video mode, we need LTX2ImageToVideoPipeline.
+            try:
+                sig = inspect.signature(self.pipe.__call__)
+                accepts_image = "image" in sig.parameters
+            except Exception:
+                accepts_image = True
+
+            if accepts_image:
+                return self.pipe
+
+            # Lazily build an i2v pipeline from existing components to avoid re-downloading weights.
+            if self._ltx2_i2v_pipe is not None:
+                return self._ltx2_i2v_pipe
+
+            try:
+                from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
+
+                components = getattr(self.pipe, "components", None)
+                if components is None:
+                    raise RuntimeError("Current pipeline has no .components, cannot build LTX2ImageToVideoPipeline.")
+
+                self._ltx2_i2v_pipe = LTX2ImageToVideoPipeline(**components)
+
+                # Keep device placement consistent with current pipeline.
+                if self.device_map is None and self.device == current_platform.device_type:
+                    self._ltx2_i2v_pipe.to(self.device)
+                if self.enable_cpu_offload and current_platform.device_count() <= 1:
+                    self._ltx2_i2v_pipe.enable_model_cpu_offload()
+
+                logger.info("Built LTX2ImageToVideoPipeline from existing components for image2video requests.")
+                return self._ltx2_i2v_pipe
+            except Exception as e:
+                logger.warning(
+                    f"Failed to build LTX2ImageToVideoPipeline from components ({type(e).__name__}: {e}). "
+                    "Falling back to the original pipeline; image2video may fail."
+                )
+                return self.pipe
+
+        pipe_to_use = _select_pipe_for_request()
+
         # Build kwargs for pipe call
         pipe_kwargs = {
             "prompt": request.prompt,
@@ -609,6 +657,19 @@ class ModelManager:
         # Add num_frames for video generation
         if is_video_mode:
             pipe_kwargs["num_frames"] = request.num_frames
+            # For some video pipelines (e.g. LTX2), `frame_rate` is an input condition.
+            # We unify it with request.fps to avoid redundant parameters.
+            try:
+                sig = inspect.signature(pipe_to_use.__call__)
+                if "frame_rate" in sig.parameters:
+                    pipe_kwargs["frame_rate"] = float(request.fps) if request.fps is not None else 24.0
+                # For LTX2 i2v, exporting + audio handling is easier with numpy output
+                if "output_type" in sig.parameters:
+                    pipe_kwargs["output_type"] = "np"
+                if "return_dict" in sig.parameters:
+                    pipe_kwargs["return_dict"] = True
+            except Exception:
+                pipe_kwargs["frame_rate"] = float(request.fps) if request.fps is not None else 24.0
         else:
             pipe_kwargs["num_images_per_prompt"] = request.num_images
 
@@ -633,7 +694,7 @@ class ModelManager:
                 # If we can't inspect, try to add it anyway
                 pipe_kwargs["negative_prompt"] = request.negative_prompt
 
-        output = self.pipe(**pipe_kwargs)
+        output = pipe_to_use(**pipe_kwargs)
 
         if self.parallel_type in ["tp", "ulysses", "ring"]:
             import torch.distributed as dist
@@ -703,18 +764,81 @@ class ModelManager:
 
             if request.output_format == "path":
                 out_dir = self._resolve_output_dir(request.output_dir)
-                video_payload = self._save_video_to_dir(
-                    video_frames,
-                    out_dir,
-                    name=f"video_{int(inference_end_time * 1000)}.mp4",
-                    fps=request.fps,
-                )
+                # If pipeline returns audio (LTX2), export mp4 with audio track.
+                audio = getattr(output, "audio", None)
+                if audio is not None:
+                    try:
+                        from diffusers.pipelines.ltx2.export_utils import encode_video
+
+                        video_np = video_frames
+                        # video_np: (T, H, W, C) float in [0,1]
+                        video_uint8 = (video_np * 255).round().astype("uint8")
+                        video_t = torch.from_numpy(video_uint8)
+                        audio_t = audio[0]
+                        if not isinstance(audio_t, torch.Tensor):
+                            audio_t = torch.from_numpy(audio_t)
+                        audio_t = audio_t.float().cpu()
+                        sample_rate = getattr(getattr(pipe_to_use, "vocoder", None), "config", None)
+                        sample_rate = getattr(sample_rate, "output_sampling_rate", 24000)
+
+                        os.makedirs(out_dir, exist_ok=True)
+                        out_path = os.path.abspath(
+                            os.path.join(out_dir, f"video_{int(inference_end_time * 1000)}.mp4")
+                        )
+                        encode_video(
+                            video_t,
+                            fps=float(request.fps),
+                            audio=audio_t,
+                            audio_sample_rate=sample_rate,
+                            output_path=out_path,
+                        )
+                        video_payload = out_path
+                    except Exception as e:
+                        logger.warning(
+                            f"encode_video(with audio) failed ({type(e).__name__}: {e}), "
+                            "falling back to export_to_video(video-only)."
+                        )
+                        video_payload = self._save_video_to_dir(
+                            video_frames,
+                            out_dir,
+                            name=f"video_{int(inference_end_time * 1000)}.mp4",
+                            fps=request.fps,
+                        )
+                else:
+                    video_payload = self._save_video_to_dir(
+                        video_frames,
+                        out_dir,
+                        name=f"video_{int(inference_end_time * 1000)}.mp4",
+                        fps=request.fps,
+                    )
             else:
                 with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
                     tmp_path = tmp_file.name
 
                 try:
-                    export_to_video(video_frames, tmp_path, fps=request.fps)
+                    audio = getattr(output, "audio", None)
+                    if audio is not None:
+                        from diffusers.pipelines.ltx2.export_utils import encode_video
+
+                        video_np = video_frames
+                        video_uint8 = (video_np * 255).round().astype("uint8")
+                        video_t = torch.from_numpy(video_uint8)
+                        audio_t = audio[0]
+                        if not isinstance(audio_t, torch.Tensor):
+                            audio_t = torch.from_numpy(audio_t)
+                        audio_t = audio_t.float().cpu()
+                        sample_rate = getattr(getattr(pipe_to_use, "vocoder", None), "config", None)
+                        sample_rate = getattr(sample_rate, "output_sampling_rate", 24000)
+
+                        encode_video(
+                            video_t,
+                            fps=float(request.fps),
+                            audio=audio_t,
+                            audio_sample_rate=sample_rate,
+                            output_path=tmp_path,
+                        )
+                    else:
+                        export_to_video(video_frames, tmp_path, fps=request.fps)
 
                     with open(tmp_path, "rb") as f:
                         video_bytes = f.read()
