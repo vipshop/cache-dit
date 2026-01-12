@@ -1,0 +1,67 @@
+name: Check MkDocs Build
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/**'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/**'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4 
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Check build configuration
+        run: |
+          if [ ! -f "pyproject.toml" ]; then
+            echo "Error: pyproject.toml not found! Cannot build docs."
+            exit 1
+          fi
+          echo "✅ Build configuration file (pyproject.toml) found."
+      
+      - name: Install Docs Build Dependencies
+        run: |
+          pip install -U pip && pip install -e .[docs]
+
+      # Build MkDocs documentation with strict mode and fail it if the 
+      # logs contains 'WARNING', 'aborted', 'ERROR', or not contains 
+      # 'Documentation built'.
+      - name: Build MkDocs Documentation Strictly
+        run: |
+          mkdocs build --strict 2>&1 | tee build.log
+          if grep -E 'WARNING|aborted|abort|ERROR' build.log; then
+            echo "MkDocs build failed due to warnings or errors."
+            exit 1
+          elif ! grep -q 'Documentation built' build.log; then
+            echo "MkDocs build did not complete successfully."
+            exit 1
+          else
+            echo "MkDocs build completed successfully!"
+          fi
