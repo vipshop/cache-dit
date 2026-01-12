@@ -1,4 +1,4 @@
-# Benchmarks
+# Hybrid Cache Acceleration Benchmark
 
 ![clip-score-bench](https://github.com/vipshop/cache-dit/raw/main/assets/clip-score-bench.png)
 

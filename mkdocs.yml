@@ -72,7 +72,10 @@ nav:
       - Profiler Usage: user_guide/PROFILER.md
       - API Docmentation: user_guide/API_DOCS.md
   - Support Matrix: SUPPORTED.md
-  - Benchmark: BENCHMARK.md
+  - Benchmark: 
+    - Hybrid Cache: benchmark/HYBRID_CACHE.md
+    - NVIDIA GPU: benchmark/NVIDIA_GPU.md
+    - Ascend NPU: benchmark/ASCEND_NPU.md
   - Developer Guide: CONTRIBUTE.md
   - Quick Examples: EXAMPLES.md
   - Community Integration: COMMUNITY.md
