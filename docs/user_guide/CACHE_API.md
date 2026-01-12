@@ -271,6 +271,14 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 | 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.297     |
 ```
 
+## Disable Cache  
+
+Users can call `cache_dit.disable_cache` API to disable and delete all acceleration hooks from the optimized pipeline or adapter. 
+
+```python
+cache_dit.disable_cache(pipe_or_adapter)
+```
+
 ## DBCache: Dual Block Cache  
 
 <div id="dbcache"></div>

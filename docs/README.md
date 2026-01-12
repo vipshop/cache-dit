@@ -56,8 +56,6 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 >>> # Or, Load Acceleration config from a custom yaml file.
 >>> cache_dit.enable_cache(pipe, **load_configs("config.yaml"))
 >>> output = pipe(...) # Just call the pipe as normal.
->>> stats = cache_dit.summary(pipe) # Get the cache stats summary.
->>> cache_dit.disable_cache(pipe) # Disable cache and run original pipe.
 ```
 Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
 
