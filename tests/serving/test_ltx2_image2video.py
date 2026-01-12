@@ -14,8 +14,7 @@ Server setup (base model):
          -m cache_dit.serve.serve \
          --model-path Lightricks/LTX-2 \
          --parallel-type tp \
-         --cache \
-         --compile
+         --cache
 
 Server setup (base + LoRA):
     # NOTE: the LoRA weight filename may differ. Common filenames include:

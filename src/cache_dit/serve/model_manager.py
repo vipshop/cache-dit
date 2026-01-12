@@ -617,6 +617,28 @@ class ModelManager:
 
                 self._ltx2_i2v_pipe = LTX2ImageToVideoPipeline(**components)
 
+                if self.enable_cache:
+                    from cache_dit import DBCacheConfig
+
+                    cache_config_obj = DBCacheConfig(
+                        residual_diff_threshold=0.24,
+                    )
+                    if self.cache_config:
+                        for key, value in self.cache_config.items():
+                            setattr(cache_config_obj, key, value)
+
+                    params_modifiers = get_default_params_modifiers(
+                        pipe=self._ltx2_i2v_pipe,
+                        model_path=self.model_path,
+                        cache_config_obj=cache_config_obj,
+                    )
+                    cache_dit.enable_cache(
+                        self._ltx2_i2v_pipe,
+                        cache_config=cache_config_obj,
+                        params_modifiers=params_modifiers,
+                        parallelism_config=None,
+                    )
+
                 # Keep device placement consistent with current pipeline.
                 if self.device_map is None and self.device == current_platform.device_type:
                     self._ltx2_i2v_pipe.to(self.device)
