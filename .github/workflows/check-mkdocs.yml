@@ -48,7 +48,7 @@ jobs:
       
       - name: Install Docs Build Dependencies
         run: |
-          pip install -U pip && 
+          pip install -U pip && mkdir -p ./docs_deps && 
           pip download .[docs] --no-deps -d ./docs_deps && 
           pip install ./docs_deps/*
 
