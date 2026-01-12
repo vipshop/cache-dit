@@ -1,4 +1,4 @@
-"""Test LTX-2 Image-to-Video model serving.
+"""Test LTX-2 Text-to-Video model serving.
 
 Server setup (base model):
     CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
@@ -27,10 +27,10 @@ Server setup (base + LoRA):
 
 Usage:
     # Base model
-    CACHE_DIT_LTX2_MODE=base python -m pytest -q cache-dit/tests/serving/test_ltx2_image2video.py
+    CACHE_DIT_LTX2_MODE=base python -m pytest -q cache-dit/tests/serving/test_ltx2_text2video.py
 
     # LoRA model
-    CACHE_DIT_LTX2_MODE=lora python -m pytest -q cache-dit/tests/serving/test_ltx2_image2video.py
+    CACHE_DIT_LTX2_MODE=lora python -m pytest -q cache-dit/tests/serving/test_ltx2_text2video.py
 """
 
 import os
@@ -38,7 +38,7 @@ import base64
 import requests
 
 
-def call_api(prompt, image_url, name="ltx2_i2v", **kwargs):
+def call_api(prompt, name="ltx2_t2v", **kwargs):
     host = os.environ.get("CACHE_DIT_HOST", "localhost")
     port = int(os.environ.get("CACHE_DIT_PORT", 8000))
     url = f"http://{host}:{port}/generate"
@@ -46,7 +46,6 @@ def call_api(prompt, image_url, name="ltx2_i2v", **kwargs):
     payload = {
         "prompt": prompt,
         "negative_prompt": kwargs.get("negative_prompt", ""),
-        "image_urls": [image_url],
         "width": kwargs.get("width", 768),
         "height": kwargs.get("height", 512),
         "num_inference_steps": kwargs.get("num_inference_steps", 40),
@@ -81,37 +80,26 @@ def call_api(prompt, image_url, name="ltx2_i2v", **kwargs):
     return filename
 
 
-def test_ltx2_image2video():
-    # Align with upstream diffusers LTX2 example.
-    image_url = (
-        "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/"
-        "diffusers/astronaut.jpg"
-    )
-
+def test_ltx2_text2video():
     mode = os.environ.get("CACHE_DIT_LTX2_MODE", "base").lower()
     if mode not in ("base", "lora"):
         raise ValueError("CACHE_DIT_LTX2_MODE must be 'base' or 'lora'")
 
     if mode == "base":
         prompt = (
-            "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking and peeling "
-            "apart in gentle low-gravity motion. Fine lunar dust lifts and drifts outward with each movement, "
-            "floating in slow arcs before settling back onto the ground. The astronaut pushes free in a deliberate, "
-            "weightless motion, small fragments of the egg tumbling and spinning through the air. In the background, "
-            "the deep darkness of space subtly shifts as stars glide with the camera's movement, emphasizing vast "
-            "depth and scale. The camera performs a smooth, cinematic slow push-in, with natural parallax between the "
-            "foreground dust, the astronaut, and the distant starfield. Ultra-realistic detail, physically accurate "
-            "low-gravity motion, cinematic lighting, and a breath-taking, movie-like shot."
+            "A cinematic tracking shot through a neon-lit rainy cyberpunk street at night. "
+            "Reflections shimmer on wet asphalt, holographic signs flicker, and steam rises from vents. "
+            "A sleek motorbike glides past the camera in slow motion, droplets scattering in the air. "
+            "Smooth camera motion, natural parallax, ultra-realistic detail, cinematic lighting, film look."
         )
         negative_prompt = (
             "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion smear, "
-            "motion artifacts, fused fingers, bad anatomy, weird hand, ugly, transition, static."
+            "motion artifacts, bad anatomy, ugly, transition, static, text, watermark."
         )
         return call_api(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            image_url=image_url,
-            name="ltx2_base_i2v",
+            name="ltx2_base_t2v",
             seed=42,
             width=768,
             height=512,
@@ -121,11 +109,11 @@ def test_ltx2_image2video():
             guidance_scale=4.0,
         )
 
-    # LoRA Canny Control variant. The API schema doesn't expose an explicit canny control image field,
-    # so we still provide `image_urls` as the conditioning image and a canny-oriented prompt.
+    # LoRA mode: for validation that serving + LoRA wiring works end-to-end.
+    # The same text-only request schema applies.
     prompt = (
-        "Canny edge control style: keep structure of the input image, "
-        "turn it into a cinematic animated sequence with strong edges and clean contours."
+        "Cinematic animated sequence, strong edges and clean contours, high contrast lighting, "
+        "a robot walks through a foggy corridor, smooth camera dolly in."
     )
     negative_prompt = (
         "worst quality, low quality, jpeg artifacts, blurry, deformed, disfigured, "
@@ -133,18 +121,15 @@ def test_ltx2_image2video():
     )
     return call_api(
         prompt=prompt,
-        image_url=image_url,
-        name="ltx2_lora_canny_i2v",
         negative_prompt=negative_prompt,
+        name="ltx2_lora_t2v",
         seed=123,
         fps=24,
     )
 
 
 if __name__ == "__main__":
-    print("Testing LTX-2 Image-to-Video Serving...")
+    print("Testing LTX-2 Text-to-Video Serving...")
     print(f"CACHE_DIT_LTX2_MODE={os.environ.get('CACHE_DIT_LTX2_MODE', 'base')}")
-    test_ltx2_image2video()
+    test_ltx2_text2video()
     print("Done.")
-
-
