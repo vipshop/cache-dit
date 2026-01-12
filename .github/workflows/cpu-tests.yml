@@ -87,6 +87,11 @@ jobs:
         run: |
           cd tests
           pytest api/test_taylorseers.py -v -s -x
+      
+      - name: Run Load Configs CPU Tests (pytest)
+        run: |
+          cd tests
+          pytest api/test_load_configs.py -v -s -x
     
       - name: Verify cache_dit installation
         run: |
