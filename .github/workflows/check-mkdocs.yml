@@ -46,11 +46,12 @@ jobs:
           fi
           echo "✅ Build configuration file (pyproject.toml) found."
       
-      - name: Install Docs Build Dependencies
+      - name: Install Only MkDocs Dependencies
         run: |
-          pip install -U pip && mkdir -p ./docs_deps && 
-          pip download .[docs] --no-deps -d ./docs_deps && 
-          pip install ./docs_deps/*
+          pip mkdocs>=1.5.0 mkdocs-api-autonav mkdocs-material \
+              mkdocstrings-python mkdocs-gen-files mkdocs-awesome-nav \
+              mkdocs-glightbox mkdocs-git-revision-date-localized-plugin \
+              mkdocs-minify-plugin regex ruff pydantic
 
       # Build MkDocs documentation with strict mode and fail it if the 
       # logs contains 'WARNING', 'aborted', 'ERROR', or not contains 
