@@ -1,6 +1,5 @@
 import torch
 from typing import Union
-
 from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 from transformers import (
     GemmaModel,
@@ -9,9 +8,7 @@ from transformers import (
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Gemma3ForCausalLM,
-    Gemma3ForConditionalGeneration,
 )
-
 from transformers.models.gemma.modeling_gemma import GemmaDecoderLayer
 from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer
 from transformers.models.gemma3.modeling_gemma3 import Gemma3DecoderLayer
@@ -43,7 +40,6 @@ _supported_gemma_classes = (
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Gemma3ForCausalLM,
-    Gemma3ForConditionalGeneration,
 )
 
 
@@ -55,7 +51,6 @@ _supported_gemma_classes = (
 @TextEncoderTensorParallelismPlannerRegister.register("GemmaForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma2ForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForCausalLM")
-@TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForConditionalGeneration")
 class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     def apply(
         self,
@@ -90,7 +85,6 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             GemmaForCausalLM,
             Gemma2ForCausalLM,
             Gemma3ForCausalLM,
-            "Gemma3ForConditionalGeneration",
         ],
         tp_mesh: DeviceMesh,
     ):
@@ -101,15 +95,11 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 GemmaForCausalLM,
                 Gemma2ForCausalLM,
                 Gemma3ForCausalLM,
-                Gemma3ForConditionalGeneration,
             ),
         ):
             model = text_encoder.model
         else:
             model = text_encoder
-
-        if not hasattr(model, "layers") and hasattr(model, "model"):
-            model = model.model
 
         assert isinstance(
             model, (GemmaModel, Gemma2Model, Gemma3Model)
@@ -146,7 +136,6 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 GemmaForCausalLM,
                 Gemma2ForCausalLM,
                 Gemma3ForCausalLM,
-                Gemma3ForConditionalGeneration,
             ),
         ):
             text_encoder.model = model

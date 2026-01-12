@@ -5,10 +5,17 @@ Server setup (base model):
         -m cache_dit.serve.serve \
         --model-path Lightricks/LTX-2 \
         --parallel-type ulysses \
-        --parallel-text-encoder \
         --cache \
         --compile \
         --ulysses-anything
+
+ Server setup (base model, TP4):
+     CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
+         -m cache_dit.serve.serve \
+         --model-path Lightricks/LTX-2 \
+         --parallel-type tp \
+         --cache \
+         --compile
 
 Server setup (base + LoRA):
     # NOTE: the LoRA weight filename may differ. Common filenames include:
@@ -20,10 +27,22 @@ Server setup (base + LoRA):
         --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
         --lora-name pytorch_lora_weights.safetensors \
         --parallel-type ulysses \
-        --parallel-text-encoder \
         --cache \
         --compile \
         --ulysses-anything
+
+ Server setup (base + LoRA, TP4):
+     # NOTE: the LoRA weight filename may differ. Common filenames include:
+     # - pytorch_lora_weights.safetensors
+     # - adapter_model.safetensors
+     CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
+         -m cache_dit.serve.serve \
+         --model-path Lightricks/LTX-2 \
+         --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
+         --lora-name pytorch_lora_weights.safetensors \
+         --parallel-type tp \
+         --cache \
+         --compile
 
 Usage:
     # Base model
