@@ -47,10 +47,79 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
             transformer, LTX2VideoTransformer3DModel
         ), "Transformer must be an instance of LTX2VideoTransformer3DModel"
 
-        if transformer is not None and self._cp_planner_preferred_native_diffusers:
-            if hasattr(transformer, "_cp_plan"):
-                if transformer._cp_plan is not None:
-                    return transformer._cp_plan
+        # NOTE:
+        # - LTX2ImageToVideoPipeline passes `timestep` as a 2D tensor (B, seq_len) named `video_timestep`.
+        # - diffusers native LTX2 `_cp_plan` does NOT shard `timestep`, causing shape mismatch under CP:
+        #     hidden_states: (B, seq_len/world, C) but temb built from timestep.flatten(): (B, seq_len, ...)
+        #   leading to: RuntimeError size mismatch (1536 vs 6144).
+        # So we must use a custom plan for correctness under Ulysses/Ring CP.
+        self._cp_planner_preferred_native_diffusers = False
+
+        # Patch attention_mask preparation for CP head sharding + global seq padding
+        LTX2Attention.prepare_attention_mask = __patch__LTX2Attention_prepare_attention_mask__  # type: ignore[assignment]
+        LTX2AudioVideoAttnProcessor.__call__ = __patch__LTX2AudioVideoAttnProcessor__call__  # type: ignore[assignment]
+
+        rope_type = getattr(getattr(transformer, "config", None), "rope_type", "interleaved")
+        if rope_type == "split":
+            # split RoPE returns (B, H, T, D/2), shard along T dim
+            rope_expected_dims = 4
+            rope_split_dim = 2
+        else:
+            # interleaved RoPE returns (B, T, D), shard along T dim
+            rope_expected_dims = 3
+            rope_split_dim = 1
+
+        _cp_plan: ContextParallelModelPlan = {
+            "": {
+                # Shard video/audio latents across sequence
+                "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "audio_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                # Shard prompt embeds across sequence
+                "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "audio_encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                # IMPORTANT: shard video timestep (B, seq_len) to match sharded hidden_states
+                "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+                # NOTE: do NOT shard attention masks; handled in patched attention processor
+            },
+            # Split RoPE outputs to match CP-sharded sequence length
+            "rope": {
+                0: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+                1: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+            },
+            "audio_rope": {
+                0: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+                1: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+            },
+            "cross_attn_rope": {
+                0: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+                1: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+            },
+            "cross_attn_audio_rope": {
+                0: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+                1: ContextParallelInput(
+                    split_dim=rope_split_dim, expected_dims=rope_expected_dims, split_output=True
+                ),
+            },
+            # Gather outputs before returning
+            "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            "audio_proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        }
+
+        return _cp_plan
 
 @functools.wraps(LTX2Attention.prepare_attention_mask)
 def __patch__LTX2Attention_prepare_attention_mask__(
