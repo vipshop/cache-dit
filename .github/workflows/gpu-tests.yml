@@ -1,4 +1,4 @@
-name: Run CPU Tests
+name: Run GPU Tests
 
 on:
   pull_request:
