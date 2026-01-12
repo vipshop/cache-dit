@@ -1,4 +1,4 @@
-name: Basic_GPU_Tests
+name: Run CPU Tests
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  flux-model-test:
+  Basic_GPU_Tests:
     runs-on: [self-hosted, gpu, private-server]
     permissions:
       contents: read
