@@ -271,11 +271,13 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 | 23          | 0.045     | 0.084     | 0.114     | 0.147     | 0.241     | 0.297     |
 ```
 
-## Disable Cache  
+## Disable Cache Acceleration
 
-Users can call `cache_dit.disable_cache` API to disable and delete all acceleration hooks from the optimized pipeline or adapter. 
+Users can call `cache_dit.disable_cache` API to disable and delete the all acceleration hooks from the optimized pipeline or block adapter. 
 
 ```python
+import cache_dit
+# Disable all acceleration and run the original pipe.
 cache_dit.disable_cache(pipe_or_adapter)
 ```
 
