@@ -136,6 +136,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         if "audio_hidden_states" in kwargs:
             block_kwargs = dict(kwargs)
             block_kwargs.pop("encoder_hidden_states", None)
+            block_kwargs.pop("_prompt_encoder_hidden_states", None)
             audio_hidden_states = block_kwargs.pop("audio_hidden_states")
             prompt_encoder_hidden_states = encoder_hidden_states
 
@@ -242,6 +243,8 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *args,
         **kwargs,
     ):
+        if "audio_hidden_states" in kwargs and "_prompt_encoder_hidden_states" not in kwargs:
+            kwargs["_prompt_encoder_hidden_states"] = encoder_hidden_states
         # Use it's own cache context.
         try:
             self.context_manager.set_context(self.cache_context)
@@ -438,6 +441,23 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *args,
         **kwargs,
     ):
+        if "audio_hidden_states" in kwargs:
+            block_kwargs = dict(kwargs)
+            block_kwargs.pop("encoder_hidden_states", None)
+            block_kwargs.pop("_prompt_encoder_hidden_states", None)
+            audio_hidden_states = block_kwargs.pop("audio_hidden_states")
+            prompt_encoder_hidden_states = encoder_hidden_states
+
+            for block in self._Fn_blocks():
+                hidden_states, audio_hidden_states = block(
+                    hidden_states=hidden_states,
+                    audio_hidden_states=audio_hidden_states,
+                    encoder_hidden_states=prompt_encoder_hidden_states,
+                    *args,
+                    **block_kwargs,
+                )
+            return hidden_states, audio_hidden_states
+
         for block in self._Fn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -460,6 +480,45 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
     ):
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
+
+        if "audio_hidden_states" in kwargs:
+            block_kwargs = dict(kwargs)
+            # LTX2 audio blocks are called with keyword args. We remove keys that would
+            # conflict with our explicit `encoder_hidden_states=...` / `audio_hidden_states=...`.
+            # - `encoder_hidden_states`: will be passed explicitly as prompt encoder states.
+            # - `_prompt_encoder_hidden_states`: our internal stash of prompt encoder states.
+            # - `audio_hidden_states`: the running audio states are carried via
+            #   `encoder_hidden_states` in Fn/Mn/Bn, and passed explicitly here.
+            block_kwargs.pop("encoder_hidden_states", None)
+            prompt_encoder_hidden_states = block_kwargs.pop(
+                "_prompt_encoder_hidden_states", None
+            )
+            block_kwargs.pop("audio_hidden_states", None)
+
+            audio_hidden_states = encoder_hidden_states
+
+            for block in self._Mn_blocks():
+                hidden_states, audio_hidden_states = block(
+                    hidden_states=hidden_states,
+                    audio_hidden_states=audio_hidden_states,
+                    encoder_hidden_states=prompt_encoder_hidden_states,
+                    *args,
+                    **block_kwargs,
+                )
+
+            hidden_states = hidden_states.contiguous()
+            hidden_states_residual = hidden_states - original_hidden_states
+
+            audio_hidden_states = audio_hidden_states.contiguous()
+            encoder_hidden_states_residual = audio_hidden_states - original_encoder_hidden_states
+
+            return (
+                hidden_states,
+                audio_hidden_states,
+                hidden_states_residual,
+                encoder_hidden_states_residual,
+            )
+
         for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
@@ -498,6 +557,26 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
     ):
         if self.context_manager.Bn_compute_blocks() == 0:
             return hidden_states, encoder_hidden_states
+
+        if "audio_hidden_states" in kwargs:
+            block_kwargs = dict(kwargs)
+            block_kwargs.pop("encoder_hidden_states", None)
+            prompt_encoder_hidden_states = block_kwargs.pop(
+                "_prompt_encoder_hidden_states", None
+            )
+            block_kwargs.pop("audio_hidden_states", None)
+
+            audio_hidden_states = encoder_hidden_states
+
+            for block in self._Bn_blocks():
+                hidden_states, audio_hidden_states = block(
+                    hidden_states=hidden_states,
+                    audio_hidden_states=audio_hidden_states,
+                    encoder_hidden_states=prompt_encoder_hidden_states,
+                    *args,
+                    **block_kwargs,
+                )
+            return hidden_states, audio_hidden_states
 
         for block in self._Bn_blocks():
             hidden_states = block(
