@@ -133,6 +133,22 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         *args,
         **kwargs,
     ):
+        if "audio_hidden_states" in kwargs:
+            block_kwargs = dict(kwargs)
+            block_kwargs.pop("encoder_hidden_states", None)
+            audio_hidden_states = block_kwargs.pop("audio_hidden_states")
+            prompt_encoder_hidden_states = encoder_hidden_states
+
+            for block in self.transformer_blocks:
+                hidden_states, audio_hidden_states = block(
+                    hidden_states=hidden_states,
+                    audio_hidden_states=audio_hidden_states,
+                    encoder_hidden_states=prompt_encoder_hidden_states,
+                    *args,
+                    **block_kwargs,
+                )
+            return hidden_states, audio_hidden_states
+
         # Call all blocks to process the hidden states without cache.
         for block in self.transformer_blocks:
             hidden_states = block(
