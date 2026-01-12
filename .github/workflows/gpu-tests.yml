@@ -15,10 +15,11 @@ concurrency:
 
 jobs:
   Basic_GPU_Tests:
-    runs-on: [self-hosted, cache_dit_gpu_ci, gpu]
+    runs-on: cache_dit_gpu_ci
     permissions:
       contents: read
       pull-requests: write
+      actions: read
 
     steps:
       - name: 🔍 Environment Precheck (Container/Model/GPU)
