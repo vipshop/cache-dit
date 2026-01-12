@@ -549,7 +549,9 @@ class Example:
         # actual inference
         model_tag = self.args.example if self.args.example is not None else "None"
         if self.args.profile:
-            profiler = create_profiler_from_args(self.args, profile_name=f"{model_tag}_profile")
+            requested_profile_name = getattr(self.args, "profile_name", None)
+            profile_name = requested_profile_name or f"{model_tag}_profile"
+            profiler = create_profiler_from_args(self.args, profile_name=profile_name)
             with profiler:
                 for _ in range(self.args.repeat):
                     input_kwargs = self.new_generator(input_kwargs, self.args)
