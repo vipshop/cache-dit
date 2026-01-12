@@ -108,6 +108,9 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         else:
             model = text_encoder
 
+        if not hasattr(model, "layers") and hasattr(model, "model"):
+            model = model.model
+
         assert isinstance(
             model, (GemmaModel, Gemma2Model, Gemma3Model)
         ), "model must be an instance of GemmaModel, Gemma2Model, or Gemma3Model."
