@@ -67,6 +67,7 @@ nav:
       - Low-Bits Quantization: user_guide/QUANTIZATION.md
       - Attention Backends: user_guide/ATTENTION.md
       - Torch Compile: user_guide/COMPILE.md
+      - Ascend NPU: user_guide/ASCEND_NPU.md
       - Config with YAML: user_guide/LOAD_CONFIGS.md
       - Metrics Tools: user_guide/METRICS.md
       - Profiler Usage: user_guide/PROFILER.md
