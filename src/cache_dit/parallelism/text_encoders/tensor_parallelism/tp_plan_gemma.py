@@ -8,6 +8,9 @@ from transformers import (
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Gemma3ForCausalLM,
+    GemmaForConditionalGeneration,
+    Gemma2ForConditionalGeneration,
+    Gemma3ForConditionalGeneration,
 )
 from transformers.models.gemma.modeling_gemma import GemmaDecoderLayer
 from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer
@@ -40,6 +43,9 @@ _supported_gemma_classes = (
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Gemma3ForCausalLM,
+    GemmaForConditionalGeneration,
+    Gemma2ForConditionalGeneration,
+    Gemma3ForConditionalGeneration,
 )
 
 
@@ -51,6 +57,9 @@ _supported_gemma_classes = (
 @TextEncoderTensorParallelismPlannerRegister.register("GemmaForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma2ForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForCausalLM")
+@TextEncoderTensorParallelismPlannerRegister.register("GemmaForConditionalGeneration")
+@TextEncoderTensorParallelismPlannerRegister.register("Gemma2ForConditionalGeneration")
+@TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForConditionalGeneration")
 class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     def apply(
         self,
@@ -85,21 +94,17 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             GemmaForCausalLM,
             Gemma2ForCausalLM,
             Gemma3ForCausalLM,
+            # Optional conditional generation variants
+            "GemmaForConditionalGeneration",
+            "Gemma2ForConditionalGeneration",
+            "Gemma3ForConditionalGeneration",
         ],
         tp_mesh: DeviceMesh,
     ):
 
-        if isinstance(
-            text_encoder,
-            (
-                GemmaForCausalLM,
-                Gemma2ForCausalLM,
-                Gemma3ForCausalLM,
-            ),
-        ):
-            model = text_encoder.model
-        else:
-            model = text_encoder
+        # Many HuggingFace *For* wrappers expose the underlying transformer as `.model`.
+        # LTX-2 uses Gemma3ForConditionalGeneration.
+        model = getattr(text_encoder, "model", text_encoder)
 
         assert isinstance(
             model, (GemmaModel, Gemma2Model, Gemma3Model)
@@ -130,15 +135,9 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
-        if isinstance(
-            text_encoder,
-            (
-                GemmaForCausalLM,
-                Gemma2ForCausalLM,
-                Gemma3ForCausalLM,
-            ),
-        ):
-            text_encoder.model = model
+        # If the wrapper has `.model`, keep wrapper and update it in-place.
+        if hasattr(text_encoder, "model"):
+            text_encoder.model = model  # type: ignore[attr-defined]
         else:
             text_encoder = model
 
