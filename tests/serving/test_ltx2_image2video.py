@@ -1,16 +1,15 @@
 """Test LTX-2 Image-to-Video model serving.
 
 Server setup (base model):
-    CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
+    CACHE_DIT_LTX2_PIPELINE=i2v CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
         -m cache_dit.serve.serve \
         --model-path Lightricks/LTX-2 \
         --parallel-type ulysses \
         --cache \
-        --compile \
         --ulysses-anything
 
  Server setup (base model, TP4):
-     CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
+     CACHE_DIT_LTX2_PIPELINE=i2v CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
          -m cache_dit.serve.serve \
          --model-path Lightricks/LTX-2 \
          --parallel-type tp \
@@ -20,28 +19,26 @@ Server setup (base + LoRA):
     # NOTE: the LoRA weight filename may differ. Common filenames include:
     # - pytorch_lora_weights.safetensors
     # - adapter_model.safetensors
-    CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
+    CACHE_DIT_LTX2_PIPELINE=i2v CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
         -m cache_dit.serve.serve \
         --model-path Lightricks/LTX-2 \
         --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
         --lora-name pytorch_lora_weights.safetensors \
         --parallel-type ulysses \
         --cache \
-        --compile \
         --ulysses-anything
 
  Server setup (base + LoRA, TP4):
      # NOTE: the LoRA weight filename may differ. Common filenames include:
      # - pytorch_lora_weights.safetensors
      # - adapter_model.safetensors
-     CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
+     CACHE_DIT_LTX2_PIPELINE=i2v CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
          -m cache_dit.serve.serve \
          --model-path Lightricks/LTX-2 \
          --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
          --lora-name pytorch_lora_weights.safetensors \
          --parallel-type tp \
-         --cache \
-         --compile
+         --cache
 
 Usage:
     # Base model

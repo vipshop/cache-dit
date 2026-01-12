@@ -230,14 +230,41 @@ class ModelManager:
                 quantization_config=quantization_config,
             )
         else:
-            self.pipe = DiffusionPipeline.from_pretrained(
-                self.model_path,
-                torch_dtype=self.torch_dtype,
-                device_map=self.device_map,
-                quantization_config=quantization_config,
-            )
-        # Cache for optional LTX2 image2video pipeline view (built lazily from components)
-        self._ltx2_i2v_pipe = None
+            if "LTX-2" in self.model_path:
+                ltx2_pipeline = os.environ.get("CACHE_DIT_LTX2_PIPELINE", "t2v").strip().lower()
+                if ltx2_pipeline in ("t2v", "text2video", "text", "default"):
+                    from diffusers import LTX2Pipeline
+
+                    logger.info("Detected LTX-2 model, using LTX2Pipeline (text-to-video)")
+                    self.pipe = LTX2Pipeline.from_pretrained(
+                        self.model_path,
+                        torch_dtype=self.torch_dtype,
+                        device_map=self.device_map,
+                        quantization_config=quantization_config,
+                    )
+                elif ltx2_pipeline in ("i2v", "image2video", "image"):
+                    from diffusers import LTX2ImageToVideoPipeline
+
+                    logger.info(
+                        "Detected LTX-2 model, using LTX2ImageToVideoPipeline (image-to-video)"
+                    )
+                    self.pipe = LTX2ImageToVideoPipeline.from_pretrained(
+                        self.model_path,
+                        torch_dtype=self.torch_dtype,
+                        device_map=self.device_map,
+                        quantization_config=quantization_config,
+                    )
+                else:
+                    raise ValueError(
+                        "Invalid CACHE_DIT_LTX2_PIPELINE. Please set it to 't2v' or 'i2v'."
+                    )
+            else:
+                self.pipe = DiffusionPipeline.from_pretrained(
+                    self.model_path,
+                    torch_dtype=self.torch_dtype,
+                    device_map=self.device_map,
+                    quantization_config=quantization_config,
+                )
 
         if self.lora_path is not None and self.lora_name is not None:
             if not isinstance(self.pipe, LoraBaseMixin):
@@ -588,73 +615,19 @@ class ModelManager:
 
         inference_start_time = time.time()
 
-        def _select_pipe_for_request():
-            # Default: use the loaded pipeline
-            if not is_image2video_mode:
-                return self.pipe
+        pipe_to_use = self.pipe
 
-            # For LTX2, the repo "Lightricks/LTX-2" may load as LTX2Pipeline by default,
-            # which does NOT accept `image`. In image2video mode, we need LTX2ImageToVideoPipeline.
+        if is_image2video_mode:
             try:
-                sig = inspect.signature(self.pipe.__call__)
+                sig = inspect.signature(pipe_to_use.__call__)
                 accepts_image = "image" in sig.parameters
             except Exception:
                 accepts_image = True
-
-            if accepts_image:
-                return self.pipe
-
-            # Lazily build an i2v pipeline from existing components to avoid re-downloading weights.
-            if self._ltx2_i2v_pipe is not None:
-                return self._ltx2_i2v_pipe
-
-            try:
-                from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
-
-                components = getattr(self.pipe, "components", None)
-                if components is None:
-                    raise RuntimeError("Current pipeline has no .components, cannot build LTX2ImageToVideoPipeline.")
-
-                self._ltx2_i2v_pipe = LTX2ImageToVideoPipeline(**components)
-
-                if self.enable_cache:
-                    from cache_dit import DBCacheConfig
-
-                    cache_config_obj = DBCacheConfig(
-                        residual_diff_threshold=0.24,
-                    )
-                    if self.cache_config:
-                        for key, value in self.cache_config.items():
-                            setattr(cache_config_obj, key, value)
-
-                    params_modifiers = get_default_params_modifiers(
-                        pipe=self._ltx2_i2v_pipe,
-                        model_path=self.model_path,
-                        cache_config_obj=cache_config_obj,
-                    )
-                    cache_dit.enable_cache(
-                        self._ltx2_i2v_pipe,
-                        cache_config=cache_config_obj,
-                        params_modifiers=params_modifiers,
-                        parallelism_config=None,
-                    )
-
-                # Keep device placement consistent with current pipeline.
-                if self.device_map is None and self.device == current_platform.device_type:
-                    self._ltx2_i2v_pipe.to(self.device)
-                if self.enable_cpu_offload and current_platform.device_count() <= 1:
-                    self._ltx2_i2v_pipe.enable_model_cpu_offload()
-
-                logger.info("Built LTX2ImageToVideoPipeline from existing components for image2video requests.")
-                return self._ltx2_i2v_pipe
-            except Exception as e:
-                logger.warning(
-                    f"Failed to build LTX2ImageToVideoPipeline from components ({type(e).__name__}: {e}). "
-                    "Falling back to the original pipeline; image2video may fail."
+            if not accepts_image:
+                raise ValueError(
+                    "Current LTX-2 pipeline does not support image2video. "
+                    "Please restart server with CACHE_DIT_LTX2_PIPELINE=i2v."
                 )
-                return self.pipe
-
-        pipe_to_use = _select_pipe_for_request()
 
         # Build kwargs for pipe call
         pipe_kwargs = {
