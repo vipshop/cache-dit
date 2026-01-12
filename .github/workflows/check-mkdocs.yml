@@ -48,7 +48,9 @@ jobs:
       
       - name: Install Docs Build Dependencies
         run: |
-          pip install -U pip && pip install -e .[docs]
+          pip install -U pip && 
+          pip download .[docs] --no-deps -d ./docs_deps && 
+          pip install ./docs_deps/*
 
       # Build MkDocs documentation with strict mode and fail it if the 
       # logs contains 'WARNING', 'aborted', 'ERROR', or not contains 
