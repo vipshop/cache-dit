@@ -85,48 +85,64 @@ def test_refresh_context(device, pattern, dtype):
         ForwardPattern.Pattern_1,
         ForwardPattern.Pattern_2,
     ]:
-        for steps in STEPS:
+        for i, steps in enumerate(STEPS):
             # Refresh cache context
-            cache_dit.refresh_context(
-                transformer,
-                cache_config=DBCacheConfig(
-                    Fn_compute_blocks=1,
-                    Bn_compute_blocks=0,
-                    residual_diff_threshold=0.08,
+            if i == 0:
+                # Test num_inference_steps only case
+                cache_dit.refresh_context(
+                    transformer,
                     num_inference_steps=steps,
-                    steps_computation_mask=cache_dit.steps_mask(
-                        mask_policy="fast",
-                        total_steps=steps,
+                    verbose=True,
+                )
+            else:
+                cache_dit.refresh_context(
+                    transformer,
+                    cache_config=DBCacheConfig(
+                        Fn_compute_blocks=1,
+                        Bn_compute_blocks=0,
+                        residual_diff_threshold=0.08,
+                        num_inference_steps=steps,
+                        steps_computation_mask=cache_dit.steps_mask(
+                            mask_policy="fast",
+                            total_steps=steps,
+                        ),
+                        steps_computation_policy="dynamic",
+                        enable_separate_cfg=False,
                     ),
-                    steps_computation_policy="dynamic",
-                    enable_separate_cfg=False,
-                ),
-                verbose=True,
-            )
+                    verbose=True,
+                )
             _ = pipe(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 num_inference_steps=steps,
             )
     else:
-        for steps in STEPS:
-            # Refresh cache context
-            cache_dit.refresh_context(
-                transformer,
-                cache_config=DBCacheConfig(
-                    Fn_compute_blocks=1,
-                    Bn_compute_blocks=0,
-                    residual_diff_threshold=0.08,
+        for i, steps in enumerate(STEPS):
+            if i == 0:
+                # Test num_inference_steps only case
+                cache_dit.refresh_context(
+                    transformer,
                     num_inference_steps=steps,
-                    steps_computation_mask=cache_dit.steps_mask(
-                        mask_policy="fast",
-                        total_steps=steps,
+                    verbose=True,
+                )
+            else:
+                # Refresh cache context
+                cache_dit.refresh_context(
+                    transformer,
+                    cache_config=DBCacheConfig(
+                        Fn_compute_blocks=1,
+                        Bn_compute_blocks=0,
+                        residual_diff_threshold=0.08,
+                        num_inference_steps=steps,
+                        steps_computation_mask=cache_dit.steps_mask(
+                            mask_policy="fast",
+                            total_steps=steps,
+                        ),
+                        steps_computation_policy="dynamic",
+                        enable_separate_cfg=False,
                     ),
-                    steps_computation_policy="dynamic",
-                    enable_separate_cfg=False,
-                ),
-                verbose=True,
-            )
+                    verbose=True,
+                )
             _ = pipe(
                 hidden_states,
                 num_inference_steps=steps,
