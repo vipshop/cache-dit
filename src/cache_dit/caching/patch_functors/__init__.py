@@ -16,9 +16,31 @@ from cache_dit.caching.patch_functors.functor_qwen_image_controlnet import (
 from cache_dit.caching.patch_functors.functor_wan_vace import (
     WanVACEPatchFunctor,
 )
-from cache_dit.caching.patch_functors.functor_zimage_controlnet import (
-    ZImageControlNetPatchFunctor,
-)
-from cache_dit.caching.patch_functors.functor_ltx2 import (
-    LTX2PatchFunctor,
-)
+
+
+class ImportErrorPatchFunctor(PatchFunctor):
+    def _apply(
+        self,
+        transformer,
+        **kwargs,
+    ):
+        raise ImportError(
+            "This PatchFunctor requires latest diffusers to be installed. "
+            "Please install diffusers from source."
+        )
+
+
+try:
+    from cache_dit.caching.patch_functors.functor_ltx2 import (
+        LTX2PatchFunctor,
+    )
+except ImportError:
+    LTX2PatchFunctor = ImportErrorPatchFunctor
+
+
+try:
+    from cache_dit.caching.patch_functors.functor_zimage_controlnet import (
+        ZImageControlNetPatchFunctor,
+    )
+except ImportError:
+    ZImageControlNetPatchFunctor = ImportErrorPatchFunctor
