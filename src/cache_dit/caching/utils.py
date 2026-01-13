@@ -14,6 +14,19 @@ logger = init_logger(__name__)
 
 
 def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dict:
+    r"""
+    Load cache options from a dictionary. We keep this function for backward compatibility.
+    Args:
+        cache_kwargs (`dict`):
+            A dictionary containing the cache configuration.
+        reset (`bool`, *optional*, defaults to `False`):
+            Whether to reset the configuration to default values to None before applying the loaded settings.
+            This is useful when you want to ensure that only the settings specified in the dictionary
+            are applied, without retaining any previous configurations (e.g., when using ParaModifier to modify
+            existing configurations).
+    Returns:
+        `dict`: A dictionary containing the loaded cache options.
+    """
     try:
         # deep copy to avoid modifying original kwargs
         kwargs: dict = copy.deepcopy(cache_kwargs)
@@ -134,7 +147,18 @@ def load_cache_config(
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
     if "cache_config" not in kwargs:
-        raise ValueError("No 'cache_config' section found in the provided configuration.")
+        if "parallelism_config" in kwargs:
+            # Allow missing cache_config for only parallelism_config checking
+            return None, None
+        # Try to load full cache options for backward compatibility if cache_config not found
+        # and the parallelism_config is also not provided. This is to support old config files
+        # and refresh_context api that only contains cache options (already used in vllm-omni).
+        cache_context_kwargs = load_cache_options_from_dict(kwargs, kwargs.get("reset", False))
+        cache_config: DBCacheConfig = cache_context_kwargs.get("cache_config", None)
+        calibrator_config = cache_context_kwargs.get("calibrator_config", None)
+        if cache_config is None:
+            raise ValueError("Failed to load 'cache_config'. Got None.")
+        return cache_config, calibrator_config
 
     cache_config_kwargs = kwargs["cache_config"]
     # Parse steps_mask if exists
@@ -157,7 +181,7 @@ def load_cache_config(
     cache_config: DBCacheConfig = cache_context_kwargs.get("cache_config", None)
     calibrator_config = cache_context_kwargs.get("calibrator_config", None)
     if cache_config is None:
-        raise ValueError("Failed to load 'cache_config'.")
+        raise ValueError("Failed to load 'cache_config'. Got None.")
     return cache_config, calibrator_config
 
 

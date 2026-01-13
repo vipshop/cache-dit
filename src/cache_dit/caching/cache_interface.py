@@ -474,12 +474,15 @@ def refresh_context(
             verbose = force_refresh_kwargs.pop("verbose", False)
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
-            from cache_dit.caching.utils import load_options
+            from cache_dit.caching.utils import load_cache_config
 
-            force_refresh_kwargs = load_options(
+            cache_config, calibrator_config = load_cache_config(
                 force_refresh_kwargs,
                 reset=True,
             )
+            force_refresh_kwargs["cache_config"] = copy.deepcopy(cache_config)
+            if calibrator_config is not None:
+                force_refresh_kwargs["calibrator_config"] = copy.deepcopy(calibrator_config)
             force_refresh_kwargs["verbose"] = verbose
         else:
             allowed_keys = {"cache_config", "calibrator_config", "verbose"}
