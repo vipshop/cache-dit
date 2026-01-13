@@ -8,6 +8,7 @@ from transformers import (
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Gemma3ForCausalLM,
+    Gemma3ForConditionalGeneration,
 )
 from transformers.models.gemma.modeling_gemma import GemmaDecoderLayer
 from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer
@@ -40,6 +41,7 @@ _supported_gemma_classes = (
     GemmaForCausalLM,
     Gemma2ForCausalLM,
     Gemma3ForCausalLM,
+    Gemma3ForConditionalGeneration,
 )
 
 
@@ -51,6 +53,7 @@ _supported_gemma_classes = (
 @TextEncoderTensorParallelismPlannerRegister.register("GemmaForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma2ForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForCausalLM")
+@TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForConditionalGeneration")
 class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     def apply(
         self,
@@ -85,6 +88,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             GemmaForCausalLM,
             Gemma2ForCausalLM,
             Gemma3ForCausalLM,
+            Gemma3ForConditionalGeneration,
         ],
         tp_mesh: DeviceMesh,
     ):
@@ -95,6 +99,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 GemmaForCausalLM,
                 Gemma2ForCausalLM,
                 Gemma3ForCausalLM,
+                Gemma3ForConditionalGeneration,
             ),
         ):
             model = text_encoder.model
@@ -136,6 +141,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 GemmaForCausalLM,
                 Gemma2ForCausalLM,
                 Gemma3ForCausalLM,
+                Gemma3ForConditionalGeneration,
             ),
         ):
             text_encoder.model = model
