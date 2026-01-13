@@ -471,7 +471,6 @@ def refresh_context(
     """
     if force_refresh_kwargs:
         if "cache_config" not in force_refresh_kwargs:
-            verbose = force_refresh_kwargs.pop("verbose", False)
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
             from cache_dit.caching.utils import load_cache_config
@@ -483,7 +482,6 @@ def refresh_context(
             force_refresh_kwargs["cache_config"] = copy.deepcopy(cache_config)
             if calibrator_config is not None:
                 force_refresh_kwargs["calibrator_config"] = copy.deepcopy(calibrator_config)
-            force_refresh_kwargs["verbose"] = verbose
         else:
             allowed_keys = {"cache_config", "calibrator_config", "verbose"}
             not_allowed_keys = set(force_refresh_kwargs.keys()) - allowed_keys
