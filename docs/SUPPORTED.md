@@ -58,6 +58,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |PRX-512-t2i-sft|✅|✖️|✖️|
 |LTX-Video-v0.9.8|✅|✅|✅|
 |LTX-Video-v0.9.7|✅|✅|✅|
+|LTX-2|✅|✅|✅|
 |CogVideoX|✅|✅|✅|
 |CogVideoX-1.5|✅|✅|✅|
 |CogView-4|✅|✅|✅|
@@ -131,6 +132,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |PRX-512-t2i-sft|✅|✖️|
 |LTX-Video-v0.9.8|✅|✖️|
 |LTX-Video-v0.9.7|✅|✖️|
+|LTX-2|✅|✅|
 |CogVideoX|✅|✖️|
 |CogVideoX-1.5|✅|✖️|
 |CogView-4|✅|✅|

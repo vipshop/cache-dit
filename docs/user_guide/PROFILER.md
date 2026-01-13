@@ -247,7 +247,8 @@ nsys profile \
   python3 generate.py flux --steps 28 --warmup 0 --repeat 1
 ```
 
-**Parameter notes:**
-- `--delay N`: wait N seconds before capture (commonly used to skip initialization)
-- `--duration N`: stop capture after N seconds (commonly used to limit file size)
-- `-o <NAME>`: output file prefix
+**Parameter notes:**  
+
+- `--delay N` : wait N seconds before capture (commonly used to skip initialization)
+- `--duration N` : stop capture after N seconds (commonly used to limit file size)
+- `-o <NAME>` : output file prefix

@@ -36,6 +36,8 @@ python3 generate.py list  # list all available examples
 [generate.py:53] - ✅ qwen_image_edit                - Defalut: Qwen/Qwen-Image-Edit-2509
 [generate.py:53] - ✅ qwen_image_controlnet          - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
 [generate.py:53] - ✅ qwen_image_layered             - Defalut: Qwen/Qwen-Image-Layered
+[generate.py:53] - ✅ ltx2_t2v                       - Defalut: Lightricks/LTX-2
+[generate.py:53] - ✅ ltx2_i2v                       - Defalut: Lightricks/LTX-2
 [generate.py:53] - ✅ skyreels_v2                    - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
 [generate.py:53] - ✅ wan2.2_t2v                     - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
 [generate.py:53] - ✅ wan2.1_t2v                     - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
@@ -65,6 +67,12 @@ python3 generate.py flux2
 python3 generate.py ovis_image
 python3 generate.py qwen_image_edit_lightning
 python3 generate.py qwen_image
+python3 generate.py ltx2_t2v --parallel-vae --parallel-text-encoder --cache
+python3 generate.py ltx2_i2v --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_t2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_t2v --parallel tp --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_i2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_i2v --parallel tp --parallel-vae --parallel-text-encoder --cache
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
