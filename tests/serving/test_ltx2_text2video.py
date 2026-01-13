@@ -9,7 +9,7 @@ Server setup (base model):
         --ulysses-anything
 
  Server setup (base model, TP4):
-     CACHE_DIT_LTX2_PIPELINE=t2v CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun --nproc_per_node=4 \
+     CACHE_DIT_LTX2_PIPELINE=t2v CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 \
          -m cache_dit.serve.serve \
          --model-path Lightricks/LTX-2 \
          --parallel-type tp \
@@ -23,7 +23,7 @@ Server setup (base + LoRA):
         -m cache_dit.serve.serve \
         --model-path Lightricks/LTX-2 \
         --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
-        --lora-name pytorch_lora_weights.safetensors \
+        --lora-name ltx-2-19b-ic-lora-canny-control.safetensors \
         --parallel-type ulysses \
         --cache \
         --ulysses-anything
@@ -36,7 +36,7 @@ Server setup (base + LoRA):
          -m cache_dit.serve.serve \
          --model-path Lightricks/LTX-2 \
          --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
-         --lora-name pytorch_lora_weights.safetensors \
+         --lora-name ltx-2-19b-ic-lora-canny-control.safetensors \
          --parallel-type tp \
          --cache
 
