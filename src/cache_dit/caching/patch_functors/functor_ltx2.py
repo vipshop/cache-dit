@@ -1,9 +1,15 @@
 import torch
 from typing import Optional, Dict, Any
-from diffusers.models.transformers.transformer_ltx2 import (
-    LTX2VideoTransformer3DModel,
-    AudioVisualModelOutput,
-)
+
+try:
+    from diffusers.models.transformers.transformer_ltx2 import (
+        LTX2VideoTransformer3DModel,
+        AudioVisualModelOutput,
+    )
+except ImportError:
+    LTX2VideoTransformer3DModel = None
+    AudioVisualModelOutput = None
+
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     scale_lora_layers,
@@ -21,9 +27,14 @@ class LTX2PatchFunctor(PatchFunctor):
 
     def _apply(
         self,
-        transformer: LTX2VideoTransformer3DModel,
+        transformer: torch.nn.Module,
         **kwargs,
-    ) -> LTX2VideoTransformer3DModel:
+    ) -> torch.nn.Module:
+        if LTX2VideoTransformer3DModel is None:
+            raise ImportError(
+                "LTX2VideoTransformer3DModel is not available. "
+                "Please install the latest version of diffusers."
+            )
 
         if hasattr(transformer, "_is_patched"):
             return transformer
@@ -51,7 +62,7 @@ class LTX2PatchFunctor(PatchFunctor):
 
 
 def __patch_transformer_forward__(
-    self: LTX2VideoTransformer3DModel,
+    self,
     hidden_states: torch.Tensor,
     audio_hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
