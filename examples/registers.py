@@ -30,6 +30,8 @@ __all__ = [
     "qwen_image_edit_example",
     "qwen_image_layered_example",
     "skyreels_v2_example",
+    "ltx2_t2v_example",
+    "ltx2_i2v_example",
     "wan_example",
     "wan_i2v_example",
     "wan_vace_example",
@@ -49,6 +51,7 @@ _env_path_mapping = {
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
+    "LTX2_DIR": "Lightricks/LTX-2",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
     "QWEN_IMAGE_2512_DIR": "Qwen/Qwen-Image-2512",
     "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
@@ -487,6 +490,88 @@ def skyreels_v2_example(args: argparse.Namespace, **kwargs) -> Example:
             width=1280,
             num_frames=21,
             num_inference_steps=50,
+        ),
+    )
+
+
+@ExampleRegister.register("ltx2_t2v", default="Lightricks/LTX-2")
+def ltx2_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import LTX2Pipeline
+
+    model_name_or_path = _path(
+        "Lightricks/LTX-2",
+        args=args,
+    )
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2V,  # Text to Video
+            model_name_or_path=model_name_or_path,
+            pipeline_class=LTX2Pipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "A cinematic tracking shot through a neon-lit rainy cyberpunk street at night. "
+                "Reflections shimmer on wet asphalt, holographic signs flicker, and steam rises from vents. "
+                "Smooth camera motion, natural parallax, ultra-realistic detail, cinematic lighting."
+            ),
+            negative_prompt=(
+                "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion artifacts, "
+                "bad anatomy, ugly, transition, static, text, watermark"
+            ),
+            height=512,
+            width=768,
+            num_frames=121,
+            num_inference_steps=40,
+            guidance_scale=4.0,
+            extra_input_kwargs={
+                "frame_rate": 24.0,
+            },
+        ),
+    )
+
+
+@ExampleRegister.register("ltx2_i2v", default="Lightricks/LTX-2")
+def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import LTX2ImageToVideoPipeline
+
+    model_name_or_path = _path(
+        "Lightricks/LTX-2",
+        args=args,
+    )
+
+    height = 512 if args.height is None else args.height
+    width = 768 if args.width is None else args.width
+    image = load_image("./data/cat.png").convert("RGB")
+    image = image.resize((width, height))
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.I2V,  # Image to Video
+            model_name_or_path=model_name_or_path,
+            pipeline_class=LTX2ImageToVideoPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "An astronaut hatches from a fragile egg on the surface of the Moon, "
+                "ultra-realistic detail, low-gravity motion, cinematic lighting."
+            ),
+            negative_prompt=(
+                "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion artifacts, "
+                "bad anatomy, ugly, transition, static, text, watermark"
+            ),
+            image=image,
+            height=height,
+            width=width,
+            num_frames=121,
+            num_inference_steps=40,
+            guidance_scale=4.0,
+            extra_input_kwargs={
+                "frame_rate": 24.0,
+            },
         ),
     )
 
