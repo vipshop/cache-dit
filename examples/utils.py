@@ -1,6 +1,5 @@
-import argparse
-
 import torch
+import argparse
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
 from typing import Optional, List, Tuple

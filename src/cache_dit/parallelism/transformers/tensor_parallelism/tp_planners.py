@@ -8,6 +8,7 @@ def _activate_tp_planners():
     from .tp_plan_kandinsky5 import Kandinsky5TensorParallelismPlanner  # noqa: F401
     from .tp_plan_mochi import MochiTensorParallelismPlanner  # noqa: F401
     from .tp_plan_ltx_video import LTXVideoTensorParallelismPlanner  # noqa: F401
+    from .tp_plan_ltx2_video import LTX2VideoTensorParallelismPlanner  # noqa: F401
     from .tp_plan_pixart import PixArtTensorParallelismPlanner  # noqa: F401
     from .tp_plan_qwen_image import QwenImageTensorParallelismPlanner  # noqa: F401
     from .tp_plan_wan import WanTensorParallelismPlanner  # noqa: F401

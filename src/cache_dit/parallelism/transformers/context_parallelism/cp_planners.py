@@ -65,6 +65,7 @@ def _activate_cp_planners():
     from .cp_plan_wan import WanContextParallelismPlanner  # noqa: F401
     from .cp_plan_wan import WanVACEContextParallelismPlanner  # noqa: F401
     from .cp_plan_ltxvideo import LTXVideoContextParallelismPlanner  # noqa: F401
+    from .cp_plan_ltx2 import LTX2ContextParallelismPlanner  # noqa: F401
     from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner  # noqa: F401
     from .cp_plan_hunyuan import HunyuanVideoContextParallelismPlanner  # noqa: F401
     from .cp_plan_cogvideox import CogVideoXContextParallelismPlanner  # noqa: F401

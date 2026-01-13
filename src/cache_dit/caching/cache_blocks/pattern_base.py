@@ -444,6 +444,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
     ):
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
+
         for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
