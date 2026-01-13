@@ -2,6 +2,9 @@
 def _activate_auto_encoder_dp_planners():
     """Function to register all built-in auto encoder data parallelism planners."""
     from .dp_plan_autoencoder_kl import AutoencoderKLDataParallelismPlanner  # noqa: F401
+    from .dp_plan_autoencoder_kl_ltx2 import (  # noqa: F401
+        AutoencoderKLLTX2VideoDataParallelismPlanner,
+    )
     from .dp_plan_autoencoder_kl_qwen_image import (  # noqa: F401
         AutoencoderKLQwenImageDataParallelismPlanner,
     )

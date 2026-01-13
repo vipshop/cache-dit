@@ -5,6 +5,7 @@ Server setup (base model):
         -m cache_dit.serve.serve \
         --model-path Lightricks/LTX-2 \
         --parallel-type ulysses \
+        --parallel-vae \
         --cache \
         --ulysses-anything
 
@@ -25,6 +26,7 @@ Server setup (base + LoRA):
         --lora-path Lightricks/LTX-2-19b-IC-LoRA-Canny-Control \
         --lora-name ltx-2-19b-ic-lora-canny-control.safetensors \
         --parallel-type ulysses \
+        --parallel-vae \
         --cache \
         --ulysses-anything
 

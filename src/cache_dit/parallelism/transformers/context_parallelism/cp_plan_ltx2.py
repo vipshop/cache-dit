@@ -121,6 +121,10 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
 
         return _cp_plan
 
+# Upstream links (for cross-checking when updating diffusers):
+# - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_ltx2.py
+# - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention.py
+
 @functools.wraps(LTX2Attention.prepare_attention_mask)
 def __patch__LTX2Attention_prepare_attention_mask__(
     self: LTX2Attention,
@@ -131,6 +135,11 @@ def __patch__LTX2Attention_prepare_attention_mask__(
     # NOTE: Allow specifying head_size for CP
     head_size: Optional[int] = None,
 ) -> torch.Tensor:
+    # Differences vs diffusers:
+    # - diffusers signature does not accept `head_size` and always uses `self.heads`.
+    # - under Context Parallelism, each rank only owns `attn.heads // world_size` heads.
+    #   If we keep repeating the mask with the full `self.heads`, the mask shape will not
+    #   match the sharded attention computation.
     if head_size is None:
         head_size = self.heads
     if attention_mask is None:
@@ -165,6 +174,16 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
     query_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     key_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
 ) -> torch.Tensor:
+    # Differences vs diffusers (transformer_ltx2.py):
+    # - diffusers always prepares attention_mask using the *local* `sequence_length` and
+    #   reshapes it with `attn.heads`.
+    # - when Context Parallelism is enabled, `hidden_states` is sharded on seq dim, so
+    #   `sequence_length` here is per-rank. However attention_mask typically corresponds
+    #   to the *global* sequence length (before sharding), and each rank only uses a shard
+    #   of heads (`attn.heads // world_size`).
+    # - this patch therefore:
+    #   1) uses `target_length = sequence_length * world_size` when CP is active
+    #   2) repeats/reshapes the mask using `head_size = attn.heads // world_size`
     batch_size, sequence_length, _ = (
         hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
     )
@@ -232,5 +251,3 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
     hidden_states = attn.to_out[0](hidden_states)
     hidden_states = attn.to_out[1](hidden_states)
     return hidden_states
-
-
