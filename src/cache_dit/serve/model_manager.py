@@ -657,7 +657,9 @@ class ModelManager:
             try:
                 sig = inspect.signature(pipe_to_use.__call__)
                 if "frame_rate" in sig.parameters:
-                    pipe_kwargs["frame_rate"] = float(request.fps) if request.fps is not None else 24.0
+                    pipe_kwargs["frame_rate"] = (
+                        float(request.fps) if request.fps is not None else 24.0
+                    )
                 # For LTX2 i2v, exporting + audio handling is easier with numpy output
                 if "output_type" in sig.parameters:
                     pipe_kwargs["output_type"] = "np"

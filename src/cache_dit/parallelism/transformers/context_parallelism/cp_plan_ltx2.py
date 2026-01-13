@@ -72,11 +72,19 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
         _cp_plan: ContextParallelModelPlan = {
             "": {
                 # Shard video/audio latents across sequence
-                "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                "audio_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+                "audio_hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
                 # Shard prompt embeds across sequence
-                "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                "audio_encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "encoder_hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+                "audio_encoder_hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
                 # IMPORTANT: shard video timestep (B, seq_len) to match sharded hidden_states
                 "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
                 # NOTE: do NOT shard attention masks; handled in patched attention processor
@@ -121,9 +129,11 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
 
         return _cp_plan
 
+
 # Upstream links (for cross-checking when updating diffusers):
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_ltx2.py
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention.py
+
 
 @functools.wraps(LTX2Attention.prepare_attention_mask)
 def __patch__LTX2Attention_prepare_attention_mask__(
@@ -149,7 +159,9 @@ def __patch__LTX2Attention_prepare_attention_mask__(
     if current_length != target_length:
         if attention_mask.device.type == "mps":
             padding_shape = (attention_mask.shape[0], attention_mask.shape[1], target_length)
-            padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
+            padding = torch.zeros(
+                padding_shape, dtype=attention_mask.dtype, device=attention_mask.device
+            )
             attention_mask = torch.cat([attention_mask, padding], dim=2)
         else:
             attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
@@ -190,8 +202,12 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
 
     if attention_mask is not None:
         if self._parallel_config is None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+            attention_mask = attn.prepare_attention_mask(
+                attention_mask, sequence_length, batch_size
+            )
+            attention_mask = attention_mask.view(
+                batch_size, attn.heads, -1, attention_mask.shape[-1]
+            )
         else:
             cp_config = getattr(self._parallel_config, "context_parallel_config", None)
             if cp_config is not None and cp_config._world_size > 1:
@@ -203,10 +219,16 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
                     3,
                     head_size,
                 )
-                attention_mask = attention_mask.view(batch_size, head_size, -1, attention_mask.shape[-1])
+                attention_mask = attention_mask.view(
+                    batch_size, head_size, -1, attention_mask.shape[-1]
+                )
             else:
-                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-                attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+                attention_mask = attn.prepare_attention_mask(
+                    attention_mask, sequence_length, batch_size
+                )
+                attention_mask = attention_mask.view(
+                    batch_size, attn.heads, -1, attention_mask.shape[-1]
+                )
 
     if encoder_hidden_states is None:
         encoder_hidden_states = hidden_states
@@ -224,12 +246,16 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
             from diffusers.models.transformers.transformer_ltx2 import apply_interleaved_rotary_emb
 
             query = apply_interleaved_rotary_emb(query, query_rotary_emb)
-            key = apply_interleaved_rotary_emb(key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb)
+            key = apply_interleaved_rotary_emb(
+                key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
+            )
         elif attn.rope_type == "split":
             from diffusers.models.transformers.transformer_ltx2 import apply_split_rotary_emb
 
             query = apply_split_rotary_emb(query, query_rotary_emb)
-            key = apply_split_rotary_emb(key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb)
+            key = apply_split_rotary_emb(
+                key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
+            )
 
     query = query.unflatten(2, (attn.heads, -1))
     key = key.unflatten(2, (attn.heads, -1))

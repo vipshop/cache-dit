@@ -490,9 +490,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             # - `audio_hidden_states`: the running audio states are carried via
             #   `encoder_hidden_states` in Fn/Mn/Bn, and passed explicitly here.
             block_kwargs.pop("encoder_hidden_states", None)
-            prompt_encoder_hidden_states = block_kwargs.pop(
-                "_prompt_encoder_hidden_states", None
-            )
+            prompt_encoder_hidden_states = block_kwargs.pop("_prompt_encoder_hidden_states", None)
             block_kwargs.pop("audio_hidden_states", None)
 
             audio_hidden_states = encoder_hidden_states
@@ -561,9 +559,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
         if "audio_hidden_states" in kwargs:
             block_kwargs = dict(kwargs)
             block_kwargs.pop("encoder_hidden_states", None)
-            prompt_encoder_hidden_states = block_kwargs.pop(
-                "_prompt_encoder_hidden_states", None
-            )
+            prompt_encoder_hidden_states = block_kwargs.pop("_prompt_encoder_hidden_states", None)
             block_kwargs.pop("audio_hidden_states", None)
 
             audio_hidden_states = encoder_hidden_states

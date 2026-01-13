@@ -7,7 +7,10 @@ from torch import nn
 from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
-from diffusers.models.transformers.transformer_ltx2 import LTX2AudioVideoAttnProcessor, LTX2VideoTransformer3DModel
+from diffusers.models.transformers.transformer_ltx2 import (
+    LTX2AudioVideoAttnProcessor,
+    LTX2VideoTransformer3DModel,
+)
 
 from cache_dit.logger import init_logger
 from cache_dit.parallelism.config import ParallelismConfig
@@ -134,9 +137,9 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
-            "parallel_config.tp_size must be set and greater than 1 for tensor parallelism"
-        )
+        assert (
+            parallelism_config.tp_size is not None and parallelism_config.tp_size > 1
+        ), "parallel_config.tp_size must be set and greater than 1 for tensor parallelism"
         assert isinstance(transformer, LTX2VideoTransformer3DModel), (
             "Transformer must be an instance of LTX2VideoTransformer3DModel, "
             f"but got {type(transformer)}"
@@ -233,7 +236,9 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
                 "video_to_audio_attn",
             ):
                 attn = getattr(block, attn_name)
-                if hasattr(attn, "processor") and isinstance(attn.processor, LTX2AudioVideoAttnProcessor):
+                if hasattr(attn, "processor") and isinstance(
+                    attn.processor, LTX2AudioVideoAttnProcessor
+                ):
                     attn.processor = ShardRotaryEmbProcessor.from_attn_processor(
                         processor=attn.processor,
                         tp_size=tp_size,
@@ -242,5 +247,3 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
             prepare_block(block)
 
         return transformer
-
-

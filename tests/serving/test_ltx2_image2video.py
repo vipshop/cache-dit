@@ -84,7 +84,9 @@ def call_api(prompt, image_url, name="ltx2_i2v", **kwargs):
     response.raise_for_status()
     result = response.json()
 
-    assert "video" in result and result["video"] is not None, f"No video in response: keys={list(result.keys())}"
+    assert (
+        "video" in result and result["video"] is not None
+    ), f"No video in response: keys={list(result.keys())}"
 
     if payload.get("output_format", "base64") == "path":
         filename = result["video"]
@@ -165,5 +167,3 @@ if __name__ == "__main__":
     print(f"CACHE_DIT_LTX2_MODE={os.environ.get('CACHE_DIT_LTX2_MODE', 'base')}")
     test_ltx2_image2video()
     print("Done.")
-
-

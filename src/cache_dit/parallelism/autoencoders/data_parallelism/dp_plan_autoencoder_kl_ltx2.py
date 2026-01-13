@@ -65,8 +65,12 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
 
             tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
             tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-            tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-            tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+            tile_latent_stride_height = (
+                self.tile_sample_stride_height // self.spatial_compression_ratio
+            )
+            tile_latent_stride_width = (
+                self.tile_sample_stride_width // self.spatial_compression_ratio
+            )
 
             blend_height = tile_latent_min_height - tile_latent_stride_height
             blend_width = tile_latent_min_width - tile_latent_stride_width
@@ -77,7 +81,13 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                 row = []
                 for j in range(0, width, self.tile_sample_stride_width):
                     if count % world_size == rank:
-                        tile = x[:, :, :, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
+                        tile = x[
+                            :,
+                            :,
+                            :,
+                            i : i + self.tile_sample_min_height,
+                            j : j + self.tile_sample_min_width,
+                        ]
                         tile = self.encoder(tile, causal=causal)
                     else:
                         tile = None
@@ -110,7 +120,9 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                             tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                         if j > 0:
                             tile = self.blend_h(row[j - 1], tile, blend_width)
-                        result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
+                        result_row.append(
+                            tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width]
+                        )
                     result_rows.append(torch.cat(result_row, dim=4))
 
                 enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
@@ -140,8 +152,12 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
 
             tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
             tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-            tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-            tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+            tile_latent_stride_height = (
+                self.tile_sample_stride_height // self.spatial_compression_ratio
+            )
+            tile_latent_stride_width = (
+                self.tile_sample_stride_width // self.spatial_compression_ratio
+            )
 
             blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
             blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
@@ -152,7 +168,9 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                 row = []
                 for j in range(0, width, tile_latent_stride_width):
                     if count % world_size == rank:
-                        tile = z[:, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
+                        tile = z[
+                            :, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width
+                        ]
                         decoded = self.decoder(tile, temb, causal=causal)
                     else:
                         decoded = None
@@ -185,7 +203,15 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                             tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                         if j > 0:
                             tile = self.blend_h(row[j - 1], tile, blend_width)
-                        result_row.append(tile[:, :, :, : self.tile_sample_stride_height, : self.tile_sample_stride_width])
+                        result_row.append(
+                            tile[
+                                :,
+                                :,
+                                :,
+                                : self.tile_sample_stride_height,
+                                : self.tile_sample_stride_width,
+                            ]
+                        )
                     result_rows.append(torch.cat(result_row, dim=4))
 
                 dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]

@@ -83,7 +83,9 @@ def call_api(prompt, name="ltx2_t2v", **kwargs):
     response.raise_for_status()
     result = response.json()
 
-    assert "video" in result and result["video"] is not None, f"No video in response: keys={list(result.keys())}"
+    assert (
+        "video" in result and result["video"] is not None
+    ), f"No video in response: keys={list(result.keys())}"
 
     if payload.get("output_format", "base64") == "path":
         filename = result["video"]

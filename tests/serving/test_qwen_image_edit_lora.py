@@ -56,9 +56,9 @@ def call_api(prompt, image_paths, name="qwen_image_edit_lora", **kwargs):
     response.raise_for_status()
     result = response.json()
 
-    assert "images" in result and result["images"], (
-        f"No images in response: keys={list(result.keys())}"
-    )
+    assert (
+        "images" in result and result["images"]
+    ), f"No images in response: keys={list(result.keys())}"
 
     if payload.get("output_format", "base64") == "path":
         filename = result["images"][0]
@@ -104,6 +104,7 @@ def test_qwen_image_edit_lora():
     out_img = Image.open(filename)
     assert out_img.size == (width, height)
     return filename
+
 
 if __name__ == "__main__":
     test_qwen_image_edit_lora()
