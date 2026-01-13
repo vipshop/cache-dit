@@ -5,7 +5,7 @@ Server setup (base model):
         -m cache_dit.serve.serve \
         --model-path Lightricks/LTX-2 \
         --parallel-type ulysses \
-        --parallel-vae \
+        --parallel-text-encoder \
         --cache \
         --ulysses-anything
 
