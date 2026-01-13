@@ -1,5 +1,6 @@
 import torch
 import functools
+import diffusers
 from typing import Optional
 from torch.distributed import DeviceMesh
 from diffusers.models.modeling_utils import ModelMixin
@@ -68,55 +69,43 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        # Otherwise, use the custom CP plan defined here, this maybe
-        # a little different from the native diffusers implementation
-        # for some models.
-        _cp_plan = {
-            # Here is a Transformer level CP plan for Qwen-Image, which will
-            # only apply the only 1 split hook (pre_forward) on the forward
-            # of Transformer, and gather the output after Transformer forward.
-            # Pattern of transformer forward, split_output=False:
-            #     un-split input -> splited input (inside transformer)
-            # Pattern of the transformer_blocks, single_transformer_blocks:
-            #     splited input (previous splited output) -> to_qkv/...
-            #     -> all2all
-            #     -> attn (local head, full seqlen)
-            #     -> all2all
-            #     -> splited output
-            # The `hidden_states` and `encoder_hidden_states` will still keep
-            # itself splited after block forward (namely, automatic split by
-            # the all2all comm op after attn) for the all blocks.
-            "": {
-                "hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
-                ),
-                # NOTE: Due to the joint attention implementation of
-                # QwenImageTransformerBlock, we must split the
-                # encoder_hidden_states as well.
-                "encoder_hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
-                ),
-                # NOTE: But encoder_hidden_states_mask seems never used in
-                # QwenImageTransformerBlock, so we do not split it here.
-                "encoder_hidden_states_mask": ContextParallelInput(
-                    split_dim=1, expected_dims=2, split_output=False
-                ),
-            },
-            # Pattern of pos_embed, split_output=True (split output rather than input):
-            #    un-split input
-            #    -> keep input un-split
-            #    -> rope
-            #    -> splited output
-            "pos_embed": {
-                0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
-                1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
-            },
-            # Then, the final proj_out will gather the splited output.
-            #     splited input (previous splited output)
-            #     -> all gather
-            #     -> un-split output
-            "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-        }
+        if diffusers.__version__ <= "0.36.0":
+            _cp_plan = {
+                "": {
+                    "hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "encoder_hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "encoder_hidden_states_mask": ContextParallelInput(
+                        split_dim=1, expected_dims=2, split_output=False
+                    ),
+                },
+                "pos_embed": {
+                    0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                    1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                },
+                "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            }
+        else:
+            # Make CP plan compatible with https://github.com/huggingface/diffusers/pull/12702
+            _cp_plan = {
+                "transformer_blocks.0": {
+                    "hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "encoder_hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                "pos_embed": {
+                    0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                    1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+                },
+                "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            }
+
         zero_cond_t = getattr(transformer, "zero_cond_t", False)
         if zero_cond_t:
             # modulate_index: [b, l=seq_len], Qwen-Image-Edit-2511
@@ -129,6 +118,7 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
                     }
                 }
             )
+
         return _cp_plan
 
 
