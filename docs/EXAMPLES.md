@@ -67,8 +67,12 @@ python3 generate.py flux2
 python3 generate.py ovis_image
 python3 generate.py qwen_image_edit_lightning
 python3 generate.py qwen_image
-python3 generate.py ltx2_t2v
-python3 generate.py ltx2_i2v
+python3 generate.py ltx2_t2v --parallel-vae --parallel-text-encoder --cache
+python3 generate.py ltx2_i2v --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_t2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_t2v --parallel tp --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_i2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 generate.py ltx2_i2v --parallel tp --parallel-vae --parallel-text-encoder --cache
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
