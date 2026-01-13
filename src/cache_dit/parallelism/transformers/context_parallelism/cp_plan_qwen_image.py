@@ -98,9 +98,9 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
                 ),
                 # NOTE: But encoder_hidden_states_mask seems never used in
                 # QwenImageTransformerBlock, so we do not split it here.
-                # "encoder_hidden_states_mask": ContextParallelInput(
-                #     split_dim=1, expected_dims=2, split_output=False
-                # ),
+                "encoder_hidden_states_mask": ContextParallelInput(
+                    split_dim=1, expected_dims=2, split_output=False
+                ),
             },
             # Pattern of pos_embed, split_output=True (split output rather than input):
             #    un-split input
