@@ -2,7 +2,7 @@
 
 Server (single GPU):
     CUDA_VISIBLE_DEVICES=0 python -m cache_dit.serve.serve \
-      --model-path models/Qwen/Qwen-Image-Edit-2511 \
+      --model-path Qwen/Qwen-Image-Edit-2511 \
       --lora-path /home/lmsys/bbuf/qwen-image-lora3 \
       --lora-name lora3-diffusers.safetensors \
       --cache
@@ -10,7 +10,7 @@ Server (single GPU):
 Server (2 GPUs, ulysses2):
     CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 \
       -m cache_dit.serve.serve \
-      --model-path models/Qwen/Qwen-Image-Edit-2511 \
+      --model-path Qwen/Qwen-Image-Edit-2511 \
       --lora-path /home/lmsys/bbuf/qwen-image-lora3 \
       --lora-name lora3-diffusers.safetensors \
       --parallel-type ulysses \
@@ -105,3 +105,5 @@ def test_qwen_image_edit_lora():
     assert out_img.size == (width, height)
     return filename
 
+if __name__ == "__main__":
+    test_qwen_image_edit_lora()
