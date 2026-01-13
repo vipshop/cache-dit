@@ -123,9 +123,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 "under `language_model` (and optionally `language_model.model`)."
             )
 
-        assert isinstance(
-            model, (GemmaModel, Gemma2Model, Gemma3Model, T5GemmaEncoder)
-        ), "model must be an instance of GemmaModel, Gemma2Model, Gemma3Model, or T5GemmaEncoder."
+        assert isinstance(model, torch.nn.Module), "model must be a torch.nn.Module"
         for _, block in model.layers.named_children():
             assert isinstance(
                 block,
@@ -135,6 +133,9 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                     Gemma3DecoderLayer,
                     T5GemmaEncoderLayer,
                 ),
+            ), (
+                f"Unsupported layer type {block.__class__.__name__} for Gemma TP. "
+                "Expected a GemmaDecoderLayer/Gemma2DecoderLayer/Gemma3DecoderLayer/T5GemmaEncoderLayer."
             )
             layer_plan = {
                 "self_attn.q_proj": ColwiseParallel(),
