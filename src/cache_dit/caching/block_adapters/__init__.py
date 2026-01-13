@@ -300,10 +300,18 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     # - LTX-2 blocks return `(hidden_states, audio_hidden_states)` -> Pattern_0
     from diffusers import LTXVideoTransformer3DModel
 
+    cls_name: str = pipe.transformer.__class__.__name__
+    is_ltx2: bool = cls_name.startswith("LTX2")
+    forward_pattern = ForwardPattern.Pattern_0 if is_ltx2 else ForwardPattern.Pattern_2
+
     try:
         from diffusers import LTX2VideoTransformer3DModel
+        from cache_dit.caching.patch_functors import LTX2PatchFunctor
+
+        patch_functor = LTX2PatchFunctor() if is_ltx2 else None
     except Exception:
         LTX2VideoTransformer3DModel = None  # requires newer diffusers
+        patch_functor = None
 
     supported_transformers = (LTXVideoTransformer3DModel,)
     if LTX2VideoTransformer3DModel is not None:
@@ -311,16 +319,16 @@ def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
 
     _relaxed_assert(pipe.transformer, supported_transformers)
 
-    cls_name = pipe.transformer.__class__.__name__
-    forward_pattern = (
-        ForwardPattern.Pattern_0 if cls_name.startswith("LTX2") else ForwardPattern.Pattern_2
-    )
     return BlockAdapter(
         pipe=pipe,
         transformer=pipe.transformer,
         blocks=pipe.transformer.transformer_blocks,
         forward_pattern=forward_pattern,
-        check_forward_pattern=True,
+        patch_functor=patch_functor,
+        # Tips: Treat the audio_hidden_states in LTX-2 as encoder_hidden_states in Pattern_0
+        # while using cache. This values will not affect the correctness since audio_hidden_states
+        # will be cache and update normally.
+        check_forward_pattern=False,
         **kwargs,
     )
 

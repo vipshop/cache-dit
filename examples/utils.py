@@ -1,6 +1,6 @@
-import argparse
-
+import os
 import torch
+import argparse
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
 from typing import Optional, List, Tuple
@@ -1396,6 +1396,7 @@ def maybe_init_distributed(args=None):
             )
             rank, device = get_rank_device()
             current_platform.set_device(device)
+            os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
             return rank, device
         elif args.config_path is not None:
             # check if distributed is needed from config file
@@ -1410,6 +1411,7 @@ def maybe_init_distributed(args=None):
                     )
                 rank, device = get_rank_device()
                 current_platform.set_device(device)
+                os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
                 return rank, device
             else:
                 # no distributed needed
@@ -1427,6 +1429,7 @@ def maybe_init_distributed(args=None):
             )
         rank, device = get_rank_device()
         current_platform.set_device(device)
+        os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
         return rank, device
 
 

@@ -19,3 +19,6 @@ from cache_dit.caching.patch_functors.functor_wan_vace import (
 from cache_dit.caching.patch_functors.functor_zimage_controlnet import (
     ZImageControlNetPatchFunctor,
 )
+from cache_dit.caching.patch_functors.functor_ltx2 import (
+    LTX2PatchFunctor,
+)
