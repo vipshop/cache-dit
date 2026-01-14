@@ -5,12 +5,12 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/token
 """
 
 import os
-import time
 import base64
 import inspect
 import tempfile
 import math
 import uuid
+from datetime import datetime, timezone
 import torch
 import torch.distributed as dist
 import requests
@@ -118,8 +118,8 @@ class GenerateResponse:
     video: Optional[str] = None  # Base64 encoded video (mp4) or file path
     stats: Optional[Dict[str, Any]] = None
     time_cost: Optional[float] = None
-    inference_start_time: Optional[float] = None
-    inference_end_time: Optional[float] = None
+    inference_start_time: Optional[str] = None
+    inference_end_time: Optional[str] = None
 
 
 class ModelManager:
@@ -614,7 +614,7 @@ class ModelManager:
 
             dist.barrier()
 
-        inference_start_time = time.time()
+        start_dt_raw = datetime.now(timezone.utc)
 
         pipe_to_use = self.pipe
 
@@ -699,8 +699,15 @@ class ModelManager:
 
             dist.barrier()
 
-        inference_end_time = time.time()
-        time_cost = inference_end_time - inference_start_time
+        end_dt_raw = datetime.now(timezone.utc)
+
+        start_dt = start_dt_raw.replace(microsecond=(start_dt_raw.microsecond // 1000) * 1000)
+        end_dt = end_dt_raw.replace(microsecond=(end_dt_raw.microsecond // 1000) * 1000)
+
+        time_cost = (end_dt - start_dt).total_seconds()
+
+        inference_start_time = start_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        inference_end_time = end_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
         is_primary_rank = True
         if (

@@ -5,7 +5,6 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/ht
 """
 
 import asyncio
-from datetime import datetime
 from typing import Optional, Dict, Any, List, Literal
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
@@ -18,17 +17,6 @@ logger = init_logger(__name__)
 
 _global_model_manager: Optional[ModelManager] = None
 _request_semaphore: Optional[asyncio.Semaphore] = None
-
-
-def _format_ts_with_tz(ts: Optional[float]) -> Optional[str]:
-    if ts is None:
-        return None
-    dt = datetime.fromtimestamp(ts).astimezone()
-    offset = dt.strftime("%z")
-    if len(offset) >= 5:
-        offset = offset[:-2] + ":" + offset[-2:]
-    ms = dt.microsecond // 1000
-    return dt.strftime("%Y-%m-%d %H:%M:%S") + f".{ms:03d}" + offset
 
 
 class GenerateRequestAPI(BaseModel):
@@ -146,8 +134,8 @@ def create_app(model_manager: ModelManager) -> FastAPI:
                     video=response.video,
                     stats=response.stats,
                     time_cost=response.time_cost,
-                    inference_start_time=_format_ts_with_tz(response.inference_start_time),
-                    inference_end_time=_format_ts_with_tz(response.inference_end_time),
+                    inference_start_time=response.inference_start_time,
+                    inference_end_time=response.inference_end_time,
                 )
 
             except Exception as e:
