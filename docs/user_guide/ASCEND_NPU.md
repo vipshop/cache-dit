@@ -4,8 +4,8 @@
 
 |Device|Hybrid Cache|Context Parallel|Tensor Parallel|Text Encoder Parallel|Auto Encoder(VAE) Parallel|
 |:---|:---:|:---:|:---:|:---:|:---:|
-|910B|✅|✅|✅|✅|✅|
-|800A2|✅|✅|✅|✅|✅|
+|910B 2C|✅|✅|✅|✅|✅|
+|800I A2|✅|✅|✅|✅|✅|
 
 ## Install NPU SDKs Manually
 
@@ -92,6 +92,8 @@ We recommend using the prebuilt image from the [Ascend NPU community](https://qu
 # Make sure CANN_path is set to your CANN installation directory, e.g., export CANN_path=/usr/local/Ascend
 source $CANN_path/ascend-toolkit/set_env.sh
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+# Set NPU devices by ASCEND_RT_VISIBLE_DEVICES env
+export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 ```
 
 Once it is done, you can start to set up `cache-dit`.
@@ -112,3 +114,7 @@ Please also install the latest main branch of diffusers for context parallelism:
 ```bash
 pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 ```
+
+## Exmaples and Benchmark
+
+After the environment configuration is ready. Users can refer to the [Quick Examples](../EXAMPLES.md) and [Ascend NPU Benchmark](../benchmark/ASCEND_NPU.md) for more details.
