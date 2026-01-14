@@ -24,10 +24,11 @@ def _format_ts_with_tz(ts: Optional[float]) -> Optional[str]:
     if ts is None:
         return None
     dt = datetime.fromtimestamp(ts).astimezone()
-    s = dt.strftime("%Y-%m-%d %H:%M:%S%z")
-    if len(s) >= 5:
-        s = s[:-2] + ":" + s[-2:]
-    return s
+    offset = dt.strftime("%z")
+    if len(offset) >= 5:
+        offset = offset[:-2] + ":" + offset[-2:]
+    ms = dt.microsecond // 1000
+    return dt.strftime("%Y-%m-%d %H:%M:%S") + f".{ms:06d}" + offset
 
 
 class GenerateRequestAPI(BaseModel):
