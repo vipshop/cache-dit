@@ -55,33 +55,105 @@
 #
 # ContextParallelOutput:
 #     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
+import importlib
+from cache_dit.logger import init_logger
+from .cp_plan_registers import ContextParallelismPlanner
+
+logger = init_logger(__name__)
 
 
-# NOTE: must import all planner classes to register them
+class ImportErrorContextParallelismPlanner(ContextParallelismPlanner):
+    def plan(
+        self,
+        transformer,
+        **kwargs,
+    ):
+        raise ImportError(
+            "This ContextParallelismPlanner requires latest diffusers to be installed. "
+            "Please install diffusers from source."
+        )
+
+
+def _safe_import(module_name: str, class_name: str) -> type[ContextParallelismPlanner]:
+    try:
+        # e.g., module_name = ".cp_plan_dit", class_name = "DiTContextParallelismPlanner"
+        package = __package__ if __package__ is not None else ""
+        module = importlib.import_module(module_name, package=package)
+        target_class = getattr(module, class_name)
+        return target_class
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Warning: Failed to import {class_name} from {module_name}: {e}")
+        return ImportErrorContextParallelismPlanner
+
+
 def _activate_cp_planners():
     """Function to register all built-in context parallelism planners."""
-    from .cp_plan_flux import FluxContextParallelismPlanner  # noqa: F401
-    from .cp_plan_qwen_image import QwenImageContextParallelismPlanner  # noqa: F401
-    from .cp_plan_wan import WanContextParallelismPlanner  # noqa: F401
-    from .cp_plan_wan import WanVACEContextParallelismPlanner  # noqa: F401
-    from .cp_plan_ltxvideo import LTXVideoContextParallelismPlanner  # noqa: F401
-    from .cp_plan_ltx2 import LTX2ContextParallelismPlanner  # noqa: F401
-    from .cp_plan_hunyuan import HunyuanImageContextParallelismPlanner  # noqa: F401
-    from .cp_plan_hunyuan import HunyuanVideoContextParallelismPlanner  # noqa: F401
-    from .cp_plan_cogvideox import CogVideoXContextParallelismPlanner  # noqa: F401
-    from .cp_plan_cogview import CogView3PlusContextParallelismPlanner  # noqa: F401
-    from .cp_plan_cogview import CogView4ContextParallelismPlanner  # noqa: F401
-    from .cp_plan_cosisid import CosisIDContextParallelismPlanner  # noqa: F401
-    from .cp_plan_chroma import ChromaContextParallelismPlanner  # noqa: F401
-    from .cp_plan_pixart import PixArtContextParallelismPlanner  # noqa: F401
-    from .cp_plan_dit import DiTContextParallelismPlanner  # noqa: F401
-    from .cp_plan_kandinsky import Kandinsky5ContextParallelismPlanner  # noqa: F401
-    from .cp_plan_skyreels import SkyReelsV2ContextParallelismPlanner  # noqa: F401
-    from .cp_plan_flux2 import Flux2ContextParallelismPlanner  # noqa: F401
-    from .cp_plan_zimage import ZImageContextParallelismPlanner  # noqa: F401
-    from .cp_plan_chrono_edit import ChronoEditContextParallelismPlanner  # noqa: F401
-    from .cp_plan_ovis_image import OvisImageContextParallelismPlanner  # noqa: F401
-    from .cp_plan_longcat_image import LongCatImageContextParallelismPlanner  # noqa: F401
+    FluxContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_flux", "FluxContextParallelismPlanner"
+    )
+    QwenImageContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_qwen_image", "QwenImageContextParallelismPlanner"
+    )
+    WanContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_wan", "WanContextParallelismPlanner"
+    )
+    WanVACEContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_wan", "WanVACEContextParallelismPlanner"
+    )
+    LTXVideoContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_ltxvideo", "LTXVideoContextParallelismPlanner"
+    )
+    LTX2ContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_ltx2", "LTX2ContextParallelismPlanner"
+    )
+    HunyuanImageContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_hunyuan", "HunyuanImageContextParallelismPlanner"
+    )
+    HunyuanVideoContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_hunyuan", "HunyuanVideoContextParallelismPlanner"
+    )
+    CogVideoXContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_cogvideox", "CogVideoXContextParallelismPlanner"
+    )
+    CogView3PlusContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_cogview", "CogView3PlusContextParallelismPlanner"
+    )
+    CogView4ContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_cogview", "CogView4ContextParallelismPlanner"
+    )
+    CosisIDContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_cosisid", "CosisIDContextParallelismPlanner"
+    )
+    ChromaContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_chroma", "ChromaContextParallelismPlanner"
+    )
+    PixArtContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_pixart", "PixArtContextParallelismPlanner"
+    )
+    DiTContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_dit", "DiTContextParallelismPlanner"
+    )
+    Kandinsky5ContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_kandinsky", "Kandinsky5ContextParallelismPlanner"
+    )
+    SkyReelsV2ContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_skyreels", "SkyReelsV2ContextParallelismPlanner"
+    )
+    Flux2ContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_flux2", "Flux2ContextParallelismPlanner"
+    )
+    ZImageContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_zimage", "ZImageContextParallelismPlanner"
+    )
+    ChronoEditContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_chrono_edit", "ChronoEditContextParallelismPlanner"
+    )
+    OvisImageContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_ovis_image", "OvisImageContextParallelismPlanner"
+    )
+    LongCatImageContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_longcat_image", "LongCatImageContextParallelismPlanner"
+    )
 
     try:
         import nunchaku  # noqa: F401
@@ -91,14 +163,14 @@ def _activate_cp_planners():
         _nunchaku_available = False
 
     if _nunchaku_available:
-        from .cp_plan_nunchaku import (  # noqa: F401
-            NunchakuFluxContextParallelismPlanner,
+        NunchakuFluxContextParallelismPlanner = _safe_import(  # noqa: F841
+            ".cp_plan_nunchaku", "NunchakuFluxContextParallelismPlanner"
         )
-        from .cp_plan_nunchaku import (  # noqa: F401
-            NunchakuQwenImageContextParallelismPlanner,
+        NunchakuQwenImageContextParallelismPlanner = _safe_import(  # noqa: F841
+            ".cp_plan_nunchaku", "NunchakuQwenImageContextParallelismPlanner"
         )
-        from .cp_plan_nunchaku import (  # noqa: F401
-            NunchakuZImageContextParallelismPlanner,
+        NunchakuZImageContextParallelismPlanner = _safe_import(  # noqa: F841
+            ".cp_plan_nunchaku", "NunchakuZImageContextParallelismPlanner"
         )
 
 
