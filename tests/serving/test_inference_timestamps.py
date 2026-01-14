@@ -29,7 +29,7 @@ def test_generate_returns_inference_timestamps():
     assert "inference_end_time" in data
     assert "time_cost" in data
 
-    print('data: ', data)
+    print("data: ", data)
 
     start = data["inference_start_time"]
     end = data["inference_end_time"]
