@@ -1,4 +1,4 @@
-# Developer Guide
+# Prepare before commit
 
 ## 👨‍💻 Run Pre-commit
 
