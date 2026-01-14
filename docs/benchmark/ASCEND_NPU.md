@@ -13,7 +13,7 @@
 
 ## Text Encoder & VAE Optimization
 
-|📚Models: `🤗70+`|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
+|📚Models: |Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
 |FLUX.1-dev|✅|✅|
 |Qwen-Image-Edit|✅|✅|
