@@ -17,7 +17,7 @@ class ImportErrorPatchFunctor(PatchFunctor):
         )
 
 
-def __safe_import__(module_name: str, class_name: str) -> type[PatchFunctor]:
+def _safe_import(module_name: str, class_name: str) -> type[PatchFunctor]:
     try:
         # e.g., module_name = ".functor_dit", class_name = "DiTPatchFunctor"
         package = __package__ if __package__ is not None else ""
@@ -29,16 +29,16 @@ def __safe_import__(module_name: str, class_name: str) -> type[PatchFunctor]:
         return ImportErrorPatchFunctor
 
 
-DiTPatchFunctor = __safe_import__(".functor_dit", "DiTPatchFunctor")
-FluxPatchFunctor = __safe_import__(".functor_flux", "FluxPatchFunctor")
-ChromaPatchFunctor = __safe_import__(".functor_chroma", "ChromaPatchFunctor")
-HiDreamPatchFunctor = __safe_import__(".functor_hidream", "HiDreamPatchFunctor")
-HunyuanDiTPatchFunctor = __safe_import__(".functor_hunyuan_dit", "HunyuanDiTPatchFunctor")
-QwenImageControlNetPatchFunctor = __safe_import__(
+DiTPatchFunctor = _safe_import(".functor_dit", "DiTPatchFunctor")
+FluxPatchFunctor = _safe_import(".functor_flux", "FluxPatchFunctor")
+ChromaPatchFunctor = _safe_import(".functor_chroma", "ChromaPatchFunctor")
+HiDreamPatchFunctor = _safe_import(".functor_hidream", "HiDreamPatchFunctor")
+HunyuanDiTPatchFunctor = _safe_import(".functor_hunyuan_dit", "HunyuanDiTPatchFunctor")
+QwenImageControlNetPatchFunctor = _safe_import(
     ".functor_qwen_image_controlnet", "QwenImageControlNetPatchFunctor"
 )
-WanVACEPatchFunctor = __safe_import__(".functor_wan_vace", "WanVACEPatchFunctor")
-LTX2PatchFunctor = __safe_import__(".functor_ltx2", "LTX2PatchFunctor")
-ZImageControlNetPatchFunctor = __safe_import__(
+WanVACEPatchFunctor = _safe_import(".functor_wan_vace", "WanVACEPatchFunctor")
+LTX2PatchFunctor = _safe_import(".functor_ltx2", "LTX2PatchFunctor")
+ZImageControlNetPatchFunctor = _safe_import(
     ".functor_zimage_controlnet", "ZImageControlNetPatchFunctor"
 )
