@@ -24,7 +24,7 @@ from PIL import Image
 import cache_dit
 from cache_dit.logger import init_logger
 from diffusers import WanImageToVideoPipeline
-from cache_dit.platforms import current_platform
+from ..platforms import current_platform
 from .utils import prepare_extra_parallel_modules
 from .cache_alignment import get_default_params_modifiers
 

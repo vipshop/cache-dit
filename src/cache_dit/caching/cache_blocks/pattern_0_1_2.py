@@ -1,5 +1,5 @@
-from cache_dit.caching import ForwardPattern
-from cache_dit.caching.cache_blocks.pattern_base import (
+from ..forward_pattern import ForwardPattern
+from .pattern_base import (
     CachedBlocks_Pattern_Base,
     PrunedBlocks_Pattern_Base,
 )

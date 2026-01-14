@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
-from cache_dit.envs import ENV
-from cache_dit.platforms import current_platform
+from ..envs import ENV
+from ..platforms import current_platform
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

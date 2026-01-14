@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 import cache_dit
-from cache_dit import DBCacheConfig, ParamsModifier
+from .. import DBCacheConfig, ParamsModifier
 
 
 def get_default_params_modifiers(

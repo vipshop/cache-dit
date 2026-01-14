@@ -15,10 +15,10 @@ try:
         enable_ulysses_float8,
     )
     from .cp_plan_registers import ControlNetContextParallelismPlannerRegister
-    from .cp_planners import _activate_cp_planners
+    from .cp_planners import _activate_controlnet_cp_planners
 
     _maybe_register_custom_attn_backends()
-    _activate_cp_planners()
+    _activate_controlnet_cp_planners()
 except ImportError as e:
     raise ImportError(e)
 

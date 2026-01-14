@@ -2,12 +2,8 @@ import torch
 import functools
 from typing import Dict, List, Tuple, Union
 
-from cache_dit.caching.cache_contexts.cache_manager import (
-    CachedContextManager,
-)
-from cache_dit.caching.cache_contexts.prune_context import (
-    PrunedContext,
-)
+from .cache_manager import CachedContextManager
+from .prune_context import PrunedContext
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

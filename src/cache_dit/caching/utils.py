@@ -1,13 +1,13 @@
 import yaml
 import copy
 from typing import Tuple, Optional, Union
-from cache_dit.caching.cache_contexts import (
+from .cache_contexts import (
     DBCacheConfig,
     TaylorSeerCalibratorConfig,
     DBPruneConfig,
     CalibratorConfig,
 )
-from cache_dit.parallelism import ParallelismConfig, ParallelismBackend
+from ..parallelism import ParallelismConfig, ParallelismBackend
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

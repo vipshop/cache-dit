@@ -7,17 +7,17 @@ try:
         AudioVisualModelOutput,
     )
 except ImportError:
-    LTX2VideoTransformer3DModel = None
-    AudioVisualModelOutput = None
+    raise ImportError(
+        "LTX2VideoTransformer3DModel is not available. "
+        "Please install the latest version of diffusers."
+    )
 
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     scale_lora_layers,
     unscale_lora_layers,
 )
-from cache_dit.caching.patch_functors.functor_base import (
-    PatchFunctor,
-)
+from .functor_base import PatchFunctor
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -27,17 +27,14 @@ class LTX2PatchFunctor(PatchFunctor):
 
     def _apply(
         self,
-        transformer: torch.nn.Module,
+        transformer: LTX2VideoTransformer3DModel,
         **kwargs,
     ) -> torch.nn.Module:
-        if LTX2VideoTransformer3DModel is None:
-            raise ImportError(
-                "LTX2VideoTransformer3DModel is not available. "
-                "Please install the latest version of diffusers."
-            )
 
         if hasattr(transformer, "_is_patched"):
             return transformer
+
+        assert isinstance(transformer, LTX2VideoTransformer3DModel)
 
         is_patched = False
 
@@ -62,7 +59,7 @@ class LTX2PatchFunctor(PatchFunctor):
 
 
 def __patch_transformer_forward__(
-    self,
+    self: LTX2VideoTransformer3DModel,
     hidden_states: torch.Tensor,
     audio_hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,

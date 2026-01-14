@@ -1,7 +1,7 @@
 import torch
 import dataclasses
 from typing import Optional, Union, List
-from cache_dit.caching.cache_types import CacheType
+from ..cache_types import CacheType
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

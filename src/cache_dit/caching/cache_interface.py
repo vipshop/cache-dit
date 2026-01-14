@@ -2,17 +2,17 @@ import copy
 import torch
 from typing import Any, Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline, ModelMixin
-from cache_dit.caching.cache_types import CacheType
-from cache_dit.caching.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters import BlockAdapterRegister
-from cache_dit.caching.cache_adapters import CachedAdapter
-from cache_dit.caching.cache_contexts import BasicCacheConfig
-from cache_dit.caching.cache_contexts import DBCacheConfig
-from cache_dit.caching.cache_contexts import DBPruneConfig
-from cache_dit.caching.cache_contexts import CalibratorConfig
-from cache_dit.caching.params_modifier import ParamsModifier
-from cache_dit.parallelism import ParallelismConfig
-from cache_dit.parallelism import enable_parallelism
+from .cache_types import CacheType
+from .block_adapters import BlockAdapter
+from .block_adapters import BlockAdapterRegister
+from .cache_adapters import CachedAdapter
+from .cache_contexts import BasicCacheConfig
+from .cache_contexts import DBCacheConfig
+from .cache_contexts import DBPruneConfig
+from .cache_contexts import CalibratorConfig
+from .params_modifier import ParamsModifier
+from ..parallelism import ParallelismConfig
+from ..parallelism import enable_parallelism
 
 from cache_dit.logger import init_logger
 
@@ -254,7 +254,7 @@ def enable_cache(
             "deprecated and will be removed in the future, please use "
             "`calibrator_config` parameter instead!"
         )
-        from cache_dit.caching.cache_contexts.calibrators import (
+        from .cache_contexts.calibrators import (
             TaylorSeerCalibratorConfig,
         )
 
@@ -473,7 +473,7 @@ def refresh_context(
         if "cache_config" not in force_refresh_kwargs:
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
-            from cache_dit.caching.utils import load_cache_config
+            from .utils import load_cache_config
 
             cache_config, calibrator_config = load_cache_config(
                 force_refresh_kwargs,

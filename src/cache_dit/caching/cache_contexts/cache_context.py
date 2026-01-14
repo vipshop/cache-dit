@@ -7,12 +7,12 @@ from typing import Any, DefaultDict, Dict, List, Optional, Union, Tuple
 
 import torch
 
-from cache_dit.caching.cache_contexts.cache_config import (
+from .cache_config import (
     BasicCacheConfig,
     ExtraCacheConfig,
     DBCacheConfig,
 )
-from cache_dit.caching.cache_contexts.calibrators import (
+from .calibrators import (
     Calibrator,
     CalibratorBase,
     CalibratorConfig,

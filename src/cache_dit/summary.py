@@ -7,13 +7,13 @@ from pprint import pprint
 from diffusers import DiffusionPipeline
 
 from typing import Dict, Any, List, Union
-from cache_dit.caching import CacheType
-from cache_dit.caching import BlockAdapter
-from cache_dit.caching import BasicCacheConfig
-from cache_dit.caching import CalibratorConfig
-from cache_dit.caching import FakeDiffusionPipeline
-from cache_dit.parallelism import ParallelismConfig
-from cache_dit.caching import load_options
+from .caching import CacheType
+from .caching import BlockAdapter
+from .caching import BasicCacheConfig
+from .caching import CalibratorConfig
+from .caching import FakeDiffusionPipeline
+from .parallelism import ParallelismConfig
+from .caching import load_options
 from cache_dit.logger import init_logger
 
 

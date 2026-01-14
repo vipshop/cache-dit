@@ -12,10 +12,10 @@ import torchvision.transforms.v2.functional as TF
 import torchvision.transforms.v2 as T
 
 from typing import Tuple, Union
-from cache_dit.metrics.config import _IMAGE_EXTENSIONS
-from cache_dit.metrics.config import get_metrics_verbose
-from cache_dit.platforms import current_platform
-from cache_dit.utils import disable_print
+from .config import _IMAGE_EXTENSIONS
+from .config import get_metrics_verbose
+from ..platforms import current_platform
+from ..utils import disable_print
 from cache_dit.logger import init_logger
 
 warnings.filterwarnings("ignore")

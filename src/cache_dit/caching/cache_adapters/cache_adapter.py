@@ -7,15 +7,15 @@ from typing import Dict, List, Tuple, Any, Union, Callable, Optional
 
 from diffusers import DiffusionPipeline, ModelMixin
 
-from cache_dit.caching.cache_types import CacheType
-from cache_dit.caching.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters import FakeDiffusionPipeline
-from cache_dit.caching.block_adapters import ParamsModifier
-from cache_dit.caching.block_adapters import BlockAdapterRegister
-from cache_dit.caching.cache_contexts import ContextManager
-from cache_dit.caching.cache_contexts import BasicCacheConfig
-from cache_dit.caching.cache_contexts import CalibratorConfig
-from cache_dit.caching.cache_blocks import UnifiedBlocks
+from ..cache_types import CacheType
+from ..block_adapters import BlockAdapter
+from ..block_adapters import FakeDiffusionPipeline
+from ..block_adapters import ParamsModifier
+from ..block_adapters import BlockAdapterRegister
+from ..cache_contexts import ContextManager
+from ..cache_contexts import BasicCacheConfig
+from ..cache_contexts import CalibratorConfig
+from ..cache_blocks import UnifiedBlocks
 from cache_dit.logger import init_logger
 
 try:
@@ -538,7 +538,7 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
     ):
-        from cache_dit.caching.cache_blocks import (
+        from ..cache_blocks import (
             apply_stats,
         )
 
@@ -640,7 +640,7 @@ class CachedAdapter:
         )
 
         # release stats hooks
-        from cache_dit.caching.cache_blocks import (
+        from ..cache_blocks import (
             remove_stats,
         )
 

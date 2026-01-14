@@ -1,1 +1,1 @@
-from cache_dit.compile.utils import set_compile_configs
+from .utils import set_compile_configs

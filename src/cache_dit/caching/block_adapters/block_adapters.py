@@ -7,9 +7,9 @@ from collections.abc import Iterable
 from typing import Any, Tuple, List, Optional, Union
 
 from diffusers import DiffusionPipeline, ModelMixin
-from cache_dit.caching.patch_functors import PatchFunctor
-from cache_dit.caching.forward_pattern import ForwardPattern
-from cache_dit.caching.params_modifier import ParamsModifier
+from ..patch_functors import PatchFunctor
+from ..forward_pattern import ForwardPattern
+from ..params_modifier import ParamsModifier
 
 from cache_dit.logger import init_logger
 
