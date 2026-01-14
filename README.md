@@ -22,7 +22,7 @@
 **🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:     
 
 - 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
-- 🎉**Context Parallelism** (via Extended Diffusers' CP APIs, w/ UAA, Async Ulysses, ...)
+- 🎉**Context Parallelism** (via Extended Diffusers' CP APIs, w/ [**UAA**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses, ...)
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallel APIs)
 - 🎉**Text Encoder Parallelism** (via Tensor Parallelism w/ DTensor APIs)
 - 🎉**Auto Encoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
