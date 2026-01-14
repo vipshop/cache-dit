@@ -1,6 +1,6 @@
 import importlib
 from cache_dit.logger import init_logger
-from cache_dit.caching.patch_functors.functor_base import PatchFunctor
+from .functor_base import PatchFunctor
 
 logger = init_logger(__name__)
 
