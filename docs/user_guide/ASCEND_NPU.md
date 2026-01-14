@@ -1,11 +1,18 @@
 # Ascend NPU Support 
 
+## Features Support 
+
+|Device|Hybrid Cache|Context Parallel|Tensor Parallel|Text Encoder Parallel|Auto Encoder(VAE) Parallel|
+|:---|:---:|:---:|:---:|:---:|:---:|
+|910B|✅|✅|✅|✅|✅|
+|800A2|✅|✅|✅|✅|✅|
+
+## Install NPU SDKs Manually
+
 There are two installation methods:  
 
 - **Using pip**: first prepare env manually or via CANN image, then install `cache-dit` using pip.  
 - **Using docker**: use the [Ascend NPU community](https://quay.io/repository/ascend/vllm-ascend?tab=tags) pre-built docker image directly. (**Recommended**, no need for installing torch and torch_npu manually)
-
-## Install NPU SDKs Manually
 
 This section describes how to install NPU environment manually.
 
