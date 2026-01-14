@@ -83,6 +83,13 @@ pip3 install torch==2.8.0+cpu  --index-url https://download.pytorch.org/whl/cpu
 
 Strongly recommend install torch_npu by acquire `torch_npu-2.8.0*.whl` file by [Link](https://gitcode.com/Ascend/pytorch/releases) and install manually. For more detail about Ascend Pytorch Adapter installation, please refer [https://gitcode.com/Ascend/pytorch](https://gitcode.com/Ascend/pytorch)
 
+### Install Extra Dependences
+
+```bash
+pip install --no-deps torchvision==0.16.0 
+pip install einops sentencepiece 
+```
+
 ## Use prebuilt Docker Image
 
 We recommend using the prebuilt image from the [Ascend NPU community](https://quay.io/repository/ascend/vllm-ascend?tab=tags) as the base image of Ascend NPU for cache-dit. You can just pull the **prebuilt image** from the image [repository](https://quay.io/repository/ascend/vllm-ascend?tab=tags) and run it with bash.
