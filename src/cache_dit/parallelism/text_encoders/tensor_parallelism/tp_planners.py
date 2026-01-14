@@ -25,7 +25,7 @@ def _safe_import(module_name: str, class_name: str) -> type[TextEncoderTensorPar
         target_class = getattr(module, class_name)
         return target_class
     except (ImportError, AttributeError) as e:
-        logger.warning(f"Warning: Failed to import {class_name} from {module_name}: {e}")
+        logger.debug(f"Failed to import {class_name} from {module_name}: {e}")
         return ImportErrorTextEncoderTensorParallelismPlanner
 
 
