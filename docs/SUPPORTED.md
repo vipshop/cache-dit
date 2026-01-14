@@ -162,3 +162,29 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|
 |Qwen-Image-ControlNet|TODO|
 |Qwen-Image-ControlNet-Inpainting|TODO|
+
+## Ascend NPU
+
+## Transformer Optimization
+
+|📚Models:|Hybrid Cache|Context Parallel|Tensor Parallel|
+|:---|:---:|:---:|:---:|
+|FLUX.1-dev|✅|✅|✅|
+|Qwen-Image-Edit|✅|✅|✅|
+|Qwen-Image-Edit-2509|✅|✅|✅|
+|Qwen-Image-Lightning|✅|✅|✅|
+|Qwen-Image-Edit-Lightning|✅|✅|✅|
+|Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
+
+## Text Encoder & VAE Optimization
+
+|📚Models: |Text Encoder Parallel|AutoEncoder(VAE) Parallel|
+|:---|:---:|:---:|
+|FLUX.1-dev|✅|✅|
+|Qwen-Image-Edit|✅|✅|
+|Qwen-Image-Edit-2509|✅|✅|
+|Qwen-Image-Lightning|✅|✅|
+|Qwen-Image-Edit-Lightning|✅|✅|
+|Qwen-Image-Edit-2509-Lightning|✅|✅|
+
+We will support more models for Ascend NPU, stay tune for update!
