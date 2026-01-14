@@ -1,21 +1,8 @@
+import importlib
+from cache_dit.logger import init_logger
 from cache_dit.caching.patch_functors.functor_base import PatchFunctor
-from cache_dit.caching.patch_functors.functor_dit import DiTPatchFunctor
-from cache_dit.caching.patch_functors.functor_flux import FluxPatchFunctor
-from cache_dit.caching.patch_functors.functor_chroma import (
-    ChromaPatchFunctor,
-)
-from cache_dit.caching.patch_functors.functor_hidream import (
-    HiDreamPatchFunctor,
-)
-from cache_dit.caching.patch_functors.functor_hunyuan_dit import (
-    HunyuanDiTPatchFunctor,
-)
-from cache_dit.caching.patch_functors.functor_qwen_image_controlnet import (
-    QwenImageControlNetPatchFunctor,
-)
-from cache_dit.caching.patch_functors.functor_wan_vace import (
-    WanVACEPatchFunctor,
-)
+
+logger = init_logger(__name__)
 
 
 class ImportErrorPatchFunctor(PatchFunctor):
@@ -30,17 +17,28 @@ class ImportErrorPatchFunctor(PatchFunctor):
         )
 
 
-try:
-    from cache_dit.caching.patch_functors.functor_ltx2 import (
-        LTX2PatchFunctor,
-    )
-except ImportError:
-    LTX2PatchFunctor = ImportErrorPatchFunctor
+def __safe_import__(module_name: str, class_name: str) -> type[PatchFunctor]:
+    try:
+        # e.g., module_name = ".functor_dit", class_name = "DiTPatchFunctor"
+        package = __package__ if __package__ is not None else ""
+        module = importlib.import_module(module_name, package=package)
+        target_class = getattr(module, class_name)
+        return target_class
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Warning: Failed to import {class_name} from {module_name}: {e}")
+        return ImportErrorPatchFunctor
 
 
-try:
-    from cache_dit.caching.patch_functors.functor_zimage_controlnet import (
-        ZImageControlNetPatchFunctor,
-    )
-except ImportError:
-    ZImageControlNetPatchFunctor = ImportErrorPatchFunctor
+DiTPatchFunctor = __safe_import__(".functor_dit", "DiTPatchFunctor")
+FluxPatchFunctor = __safe_import__(".functor_flux", "FluxPatchFunctor")
+ChromaPatchFunctor = __safe_import__(".functor_chroma", "ChromaPatchFunctor")
+HiDreamPatchFunctor = __safe_import__(".functor_hidream", "HiDreamPatchFunctor")
+HunyuanDiTPatchFunctor = __safe_import__(".functor_hunyuan_dit", "HunyuanDiTPatchFunctor")
+QwenImageControlNetPatchFunctor = __safe_import__(
+    ".functor_qwen_image_controlnet", "QwenImageControlNetPatchFunctor"
+)
+WanVACEPatchFunctor = __safe_import__(".functor_wan_vace", "WanVACEPatchFunctor")
+LTX2PatchFunctor = __safe_import__(".functor_ltx2", "LTX2PatchFunctor")
+ZImageControlNetPatchFunctor = __safe_import__(
+    ".functor_zimage_controlnet", "ZImageControlNetPatchFunctor"
+)
