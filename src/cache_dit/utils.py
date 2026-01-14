@@ -6,7 +6,7 @@ import builtins as __builtin__
 import contextlib
 
 from cache_dit.logger import init_logger
-from cache_dit.platforms import current_platform
+from .platforms import current_platform
 
 logger = init_logger(__name__)
 

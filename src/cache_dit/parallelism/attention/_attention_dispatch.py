@@ -307,7 +307,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             )
         return out
 
-    logger.warning(
+    logger.info(
         "Re-registered NATIVE attention backend to enable context parallelism "
         "with attn mask in cache-dit. You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -475,7 +475,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
         return (out, lse) if return_lse else out
 
-    logger.warning(
+    logger.info(
         "Re-registered SAGE attention backend to enable context parallelism "
         "with FP8 Attention in cache-dit. You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -627,7 +627,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
             return (out, lse) if return_lse else out
 
-        logger.warning(
+        logger.info(
             "Re-registered FLASH_3 attention backend to enable context parallelism "
             "with Ulysses Anything/Float8 in cache-dit. You can disable this behavior by: "
             "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -683,7 +683,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             )
         return out
 
-    logger.warning(
+    logger.info(
         "Re-registered _NATIVE_NPU attention backend to enable context parallelism "
         "You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."

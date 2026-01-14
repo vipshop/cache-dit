@@ -5,10 +5,8 @@ from typing import Dict, Optional, Tuple, Union, List
 import torch
 import torch.distributed as dist
 
-from cache_dit.caching.cache_contexts.calibrators import CalibratorBase
-from cache_dit.caching.cache_contexts.cache_context import (
-    CachedContext,
-)
+from .calibrators import CalibratorBase
+from .cache_context import CachedContext
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

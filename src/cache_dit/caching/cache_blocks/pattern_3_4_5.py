@@ -1,17 +1,17 @@
 import torch
 
-from cache_dit.caching import ForwardPattern
-from cache_dit.caching.cache_contexts.cache_manager import (
+from ..forward_pattern import ForwardPattern
+from ..cache_contexts.cache_manager import (
     ContextNotExistError,
 )
-from cache_dit.caching.cache_blocks.pattern_base import (
+from .pattern_base import (
     CachedBlocks_Pattern_Base,
 )
-from cache_dit.caching.cache_contexts.prune_context import PrunedContext
-from cache_dit.caching.cache_contexts.prune_manager import (
+from ..cache_contexts.prune_context import PrunedContext
+from ..cache_contexts.prune_manager import (
     PrunedContextManager,
 )
-from cache_dit.caching.cache_types import CacheType
+from ..cache_types import CacheType
 
 from cache_dit.logger import init_logger
 

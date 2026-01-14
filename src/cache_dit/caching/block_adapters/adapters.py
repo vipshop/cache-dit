@@ -1,10 +1,8 @@
 import torch
 from typing import List, Tuple, Union, Optional
-from cache_dit.caching.forward_pattern import ForwardPattern
-from cache_dit.caching.block_adapters.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters.block_registers import (
-    BlockAdapterRegister,
-)
+from ..forward_pattern import ForwardPattern
+from .block_adapters import BlockAdapter
+from .block_registers import BlockAdapterRegister
 from cache_dit.envs import ENV
 from cache_dit.logger import init_logger
 

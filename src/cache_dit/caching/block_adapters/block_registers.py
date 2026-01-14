@@ -2,7 +2,7 @@ import torch
 from typing import Any, Tuple, List, Dict, Callable, Union
 
 from diffusers import DiffusionPipeline
-from cache_dit.caching.block_adapters.block_adapters import (
+from .block_adapters import (
     BlockAdapter,
     FakeDiffusionPipeline,
 )

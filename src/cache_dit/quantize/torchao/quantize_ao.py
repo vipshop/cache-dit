@@ -1,8 +1,8 @@
 import torch
 import copy
 from typing import Callable, Optional, List
-from cache_dit.utils import maybe_empty_cache
-from cache_dit.platforms import current_platform
+from ...utils import maybe_empty_cache
+from ...platforms import current_platform
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

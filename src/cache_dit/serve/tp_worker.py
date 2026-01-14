@@ -17,8 +17,8 @@ import threading
 import torch
 import torch.distributed as dist
 
-from cache_dit.platforms import current_platform
-from cache_dit.serve.model_manager import GenerateRequest, GenerateResponse, ModelManager
+from ..platforms import current_platform
+from .model_manager import GenerateRequest, GenerateResponse, ModelManager
 
 logger = logging.getLogger(__name__)
 

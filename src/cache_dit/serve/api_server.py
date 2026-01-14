@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from cache_dit.serve.model_manager import ModelManager, GenerateRequest
+from .model_manager import ModelManager, GenerateRequest
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

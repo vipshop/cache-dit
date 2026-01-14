@@ -3,17 +3,17 @@ import logging
 import torch
 import torch.distributed as dist
 from diffusers.hooks import HookRegistry
-from cache_dit.caching.cache_contexts.cache_context import CachedContext
-from cache_dit.caching.cache_contexts.prune_context import PrunedContext
-from cache_dit.caching.cache_contexts.cache_manager import (
+from ..cache_contexts.cache_context import CachedContext
+from ..cache_contexts.prune_context import PrunedContext
+from ..cache_contexts.cache_manager import (
     CachedContextManager,
     ContextNotExistError,
 )
-from cache_dit.caching.cache_contexts.prune_manager import (
+from ..cache_contexts.prune_manager import (
     PrunedContextManager,
 )
-from cache_dit.caching import ForwardPattern
-from cache_dit.caching.cache_types import CacheType
+from ..forward_pattern import ForwardPattern
+from ..cache_types import CacheType
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

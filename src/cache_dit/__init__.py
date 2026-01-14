@@ -5,43 +5,43 @@ except ImportError:
     version_tuple = (0, 0, "unknown version")
 
 
-from cache_dit.utils import disable_print
-from cache_dit.logger import init_logger
-from cache_dit.caching import load_options  # deprecated
-from cache_dit.caching import load_cache_config
-from cache_dit.caching import load_parallelism_config
-from cache_dit.caching import load_configs
-from cache_dit.caching import enable_cache
-from cache_dit.caching import refresh_context
-from cache_dit.caching import steps_mask
-from cache_dit.caching import disable_cache
-from cache_dit.caching import cache_type
-from cache_dit.caching import block_range
-from cache_dit.caching import CacheType
-from cache_dit.caching import BlockAdapter
-from cache_dit.caching import ParamsModifier
-from cache_dit.caching import ForwardPattern
-from cache_dit.caching import PatchFunctor
-from cache_dit.caching import BasicCacheConfig
-from cache_dit.caching import DBCacheConfig
-from cache_dit.caching import DBPruneConfig
-from cache_dit.caching import CalibratorConfig
-from cache_dit.caching import TaylorSeerCalibratorConfig
-from cache_dit.caching import FoCaCalibratorConfig
-from cache_dit.caching import supported_pipelines
-from cache_dit.caching import get_adapter
-from cache_dit.parallelism import ParallelismBackend
-from cache_dit.parallelism import ParallelismConfig
-from cache_dit.compile import set_compile_configs
-from cache_dit.summary import supported_matrix
-from cache_dit.summary import summary
-from cache_dit.summary import strify
-from cache_dit.profiler import ProfilerContext
-from cache_dit.profiler import profile_function
-from cache_dit.profiler import create_profiler_context
-from cache_dit.profiler import get_profiler_output_dir
-from cache_dit.profiler import set_profiler_output_dir
-from cache_dit.quantize import quantize
+from .utils import disable_print
+from .logger import init_logger
+from .caching import load_options  # deprecated
+from .caching import load_cache_config
+from .caching import load_parallelism_config
+from .caching import load_configs
+from .caching import enable_cache
+from .caching import refresh_context
+from .caching import steps_mask
+from .caching import disable_cache
+from .caching import cache_type
+from .caching import block_range
+from .caching import CacheType
+from .caching import BlockAdapter
+from .caching import ParamsModifier
+from .caching import ForwardPattern
+from .caching import PatchFunctor
+from .caching import BasicCacheConfig
+from .caching import DBCacheConfig
+from .caching import DBPruneConfig
+from .caching import CalibratorConfig
+from .caching import TaylorSeerCalibratorConfig
+from .caching import FoCaCalibratorConfig
+from .caching import supported_pipelines
+from .caching import get_adapter
+from .parallelism import ParallelismBackend
+from .parallelism import ParallelismConfig
+from .compile import set_compile_configs
+from .summary import supported_matrix
+from .summary import summary
+from .summary import strify
+from .profiler import ProfilerContext
+from .profiler import profile_function
+from .profiler import create_profiler_context
+from .profiler import get_profiler_output_dir
+from .profiler import set_profiler_output_dir
+from .quantize import quantize
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache

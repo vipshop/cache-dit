@@ -5,9 +5,7 @@ from diffusers.models.transformers.hunyuan_transformer_2d import (
     HunyuanDiTBlock,
     Transformer2DModelOutput,
 )
-from cache_dit.caching.patch_functors.functor_base import (
-    PatchFunctor,
-)
+from .functor_base import PatchFunctor
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

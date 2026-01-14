@@ -8,9 +8,7 @@ from diffusers.models.transformers.transformer_z_image import (
     pad_sequence,
 )
 
-from cache_dit.caching.patch_functors.functor_base import (
-    PatchFunctor,
-)
+from .functor_base import PatchFunctor
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)

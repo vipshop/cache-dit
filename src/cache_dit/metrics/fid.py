@@ -12,12 +12,12 @@ import torchvision.transforms as TF
 from torch.nn.functional import adaptive_avg_pool2d
 
 from typing import Tuple, Union
-from cache_dit.metrics.inception import InceptionV3
-from cache_dit.metrics.config import _IMAGE_EXTENSIONS
-from cache_dit.metrics.config import _VIDEO_EXTENSIONS
-from cache_dit.metrics.config import get_metrics_verbose
-from cache_dit.platforms import current_platform
-from cache_dit.utils import disable_print
+from .inception import InceptionV3
+from .config import _IMAGE_EXTENSIONS
+from .config import _VIDEO_EXTENSIONS
+from .config import get_metrics_verbose
+from ..platforms import current_platform
+from ..utils import disable_print
 from cache_dit.logger import init_logger
 
 warnings.filterwarnings("ignore")

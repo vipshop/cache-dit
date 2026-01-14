@@ -7,12 +7,14 @@ https://github.com/sgl-project/sglang/blob/main/python/sglang/launch_server.py
 import argparse
 import torch
 import uvicorn
-from cache_dit.serve.model_manager import ModelManager
-from cache_dit.serve.api_server import create_app
+
+from ..quantize.utils import normalize_quantize_type
+from ..platforms import current_platform, CpuPlatform
+from .model_manager import ModelManager
+from .api_server import create_app
+from .cache_alignment import align_cache_config
+
 from cache_dit.logger import init_logger
-from cache_dit.quantize.utils import normalize_quantize_type
-from cache_dit.serve.cache_alignment import align_cache_config
-from cache_dit.platforms import current_platform, CpuPlatform
 
 logger = init_logger(__name__)
 

@@ -12,7 +12,7 @@ from typing import List, Optional
 
 import torch
 from torch.profiler import ProfilerActivity, profile
-from cache_dit.platforms import current_platform
+from .platforms import current_platform
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,7 @@
 import dataclasses
 from typing import List
-from cache_dit.caching.cache_types import CacheType
-from cache_dit.caching.cache_contexts.cache_config import (
-    BasicCacheConfig,
-)
+from ..cache_types import CacheType
+from .cache_config import BasicCacheConfig
 
 from cache_dit.logger import init_logger
 
