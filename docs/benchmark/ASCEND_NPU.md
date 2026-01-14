@@ -24,7 +24,7 @@
 
 ## Ascend 800I A2
 
-#### FLUX.1-dev
+### FLUX.1-dev
 
 <p align="center">
     Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attenton with Async QKV Projection, <b>NPU Attn Backend</b>: NPU Attention Backend, <b>UAA: Ulysses Anything Attenton</b>
@@ -36,7 +36,7 @@
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/npu_sample/flux.1024x1024.C0_Q0_NONE.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/npu_sample/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/npu_sample/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/npu_sample/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_native_npu.png" width=222px>
 
 
-#### Qwen-Image-Edit
+### Qwen-Image-Edit
 
 |800I A2x2 w/ UAA + TEP| 800I A2x4 w/ UAA + TEP|w/ UAA + TEP + Async Ulysses| w/ UAA + TEP + Async Ulysses + NPU Attn Backend|
 |:---:|:---:|:---:|:---:|
