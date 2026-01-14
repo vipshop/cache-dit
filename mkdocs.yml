@@ -77,7 +77,9 @@ nav:
     - Hybrid Cache: benchmark/HYBRID_CACHE.md
     - NVIDIA GPU: benchmark/NVIDIA_GPU.md
     - Ascend NPU: benchmark/ASCEND_NPU.md
-  - Developer Guide: CONTRIBUTE.md
+  - Developer Guide: 
+    - pre-commit: developer_guide/PRE_COMMIT.md
+    - Support New Model: developer_guide/SUPPORT_NEW_MODEL.md
   - Quick Examples: EXAMPLES.md
   - Community Integration: COMMUNITY.md
   - FAQ: FAQ.md
