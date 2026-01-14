@@ -14,6 +14,7 @@ def _call_generate_api(**overrides):
         "num_inference_steps": overrides.get("num_inference_steps", 8),
         "guidance_scale": overrides.get("guidance_scale", 1.0),
         "seed": overrides.get("seed", 42),
+        "output_format": "path",
     }
 
     response = requests.post(url, json=payload, timeout=600)
@@ -27,6 +28,8 @@ def test_generate_returns_inference_timestamps():
     assert "inference_start_time" in data
     assert "inference_end_time" in data
     assert "time_cost" in data
+
+    print('data: ', data)
 
     start = data["inference_start_time"]
     end = data["inference_end_time"]
