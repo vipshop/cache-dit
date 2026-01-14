@@ -165,7 +165,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 ## Ascend NPU
 
-## Transformer Optimization
+### Transformer Optimization
 
 |📚Models:|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
@@ -176,7 +176,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-Lightning|✅|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
 
-## Text Encoder & VAE Optimization
+### Text Encoder & VAE Optimization
 
 |📚Models: |Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
