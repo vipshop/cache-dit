@@ -1,27 +1,5 @@
 # Ascend NPU Benchmark
 
-# Supported Matrix  
-
-|📚Models:|Hybrid Cache|Context Parallel|Tensor Parallel|
-|:---|:---:|:---:|:---:|
-|FLUX.1-dev|✅|✅|✅|
-|Qwen-Image-Edit|✅|✅|✅|
-|Qwen-Image-Edit-2509|✅|✅|✅|
-|Qwen-Image-Lightning|✅|✅|✅|
-|Qwen-Image-Edit-Lightning|✅|✅|✅|
-|Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
-
-## Text Encoder & VAE Optimization
-
-|📚Models: |Text Encoder Parallel|AutoEncoder(VAE) Parallel|
-|:---|:---:|:---:|
-|FLUX.1-dev|✅|✅|
-|Qwen-Image-Edit|✅|✅|
-|Qwen-Image-Edit-2509|✅|✅|
-|Qwen-Image-Lightning|✅|✅|
-|Qwen-Image-Edit-Lightning|✅|✅|
-|Qwen-Image-Edit-2509-Lightning|✅|✅|
-
 ## Ascend 800I A2
 
 ### FLUX.1-dev
