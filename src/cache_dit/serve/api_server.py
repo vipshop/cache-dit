@@ -28,7 +28,7 @@ def _format_ts_with_tz(ts: Optional[float]) -> Optional[str]:
     if len(offset) >= 5:
         offset = offset[:-2] + ":" + offset[-2:]
     ms = dt.microsecond // 1000
-    return dt.strftime("%Y-%m-%d %H:%M:%S") + f".{ms:06d}" + offset
+    return dt.strftime("%Y-%m-%d %H:%M:%S") + f".{ms:03d}" + offset
 
 
 class GenerateRequestAPI(BaseModel):
