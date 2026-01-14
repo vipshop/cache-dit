@@ -36,6 +36,8 @@ def test_generate_returns_inference_timestamps():
     print("end", end)
     print("time_cost", time_cost)
 
+    assert isinstance(time_cost, (int, float)) and time_cost >= 0
+
 
 if __name__ == "__main__":
     test_generate_returns_inference_timestamps()

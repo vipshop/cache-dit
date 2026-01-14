@@ -10,6 +10,7 @@ import base64
 import inspect
 import tempfile
 import math
+import uuid
 import torch
 import torch.distributed as dist
 import requests
@@ -780,7 +781,7 @@ class ModelManager:
 
                         os.makedirs(out_dir, exist_ok=True)
                         out_path = os.path.abspath(
-                            os.path.join(out_dir, f"video_{int(inference_end_time * 1000)}.mp4")
+                            os.path.join(out_dir, f"video_{uuid.uuid4().hex}.mp4")
                         )
                         encode_video(
                             video_t,
@@ -798,14 +799,14 @@ class ModelManager:
                         video_payload = self._save_video_to_dir(
                             video_frames,
                             out_dir,
-                            name=f"video_{int(inference_end_time * 1000)}.mp4",
+                            name=f"video_{uuid.uuid4().hex}.mp4",
                             fps=request.fps,
                         )
                 else:
                     video_payload = self._save_video_to_dir(
                         video_frames,
                         out_dir,
-                        name=f"video_{int(inference_end_time * 1000)}.mp4",
+                        name=f"video_{uuid.uuid4().hex}.mp4",
                         fps=request.fps,
                     )
             else:
@@ -852,7 +853,7 @@ class ModelManager:
                         self._save_image_to_dir(
                             image,
                             out_dir,
-                            name=f"image_{int(inference_end_time * 1000)}_{idx}.png",
+                            name=f"image_{uuid.uuid4().hex}_{idx}.png",
                         )
                     )
             else:
