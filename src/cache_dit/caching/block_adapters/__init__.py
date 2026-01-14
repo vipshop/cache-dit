@@ -21,7 +21,7 @@ def import_error_adapter(
 
 def _safe_import(module_name: str, func_name: str) -> Callable[..., BlockAdapter]:
     try:
-        # e.g., module_name = ".adapters", func_name = "DiTBlockAdapter"
+        # e.g., module_name = ".adapters", func_name = "flux_adapter"
         package = __package__ if __package__ is not None else ""
         module = importlib.import_module(module_name, package=package)
         target_func = getattr(module, func_name)
