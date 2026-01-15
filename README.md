@@ -19,14 +19,14 @@
 </div>
 
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:     
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include: (**UAA**: [Ulysses Anything Attention](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention))     
 
-- 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
-- 🎉**Context Parallelism** (Better performance with Extended Diffusers' CP APIs, [**UAA: Ulysses Anything Attention**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention) for Any sequence length and Any head num, Async Ulysses CP, Fused FP8 All2All and more)
-- 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallel APIs)
-- 🎉**Text Encoder Parallelism** (via Tensor Parallelism w/ DTensor APIs)
-- 🎉**Auto Encoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
-- 🎉**ControlNet Parallelism** (currently, Z-Image-Turbo, Qwen-Image)
+- 🎉**Hybrid Cache Acceleration** (DBCache, DBPrune, TaylorSeer, SCM and more)
+- 🎉**Context Parallelism** (w/ Extended Diffusers' CP APIs, [**UAA**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses, FP8 comm)
+- 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Text Encoder Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
+- 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
 - 🎉Built-in **HTTP serving** deployment support with simple REST APIs
 - 🎉Natively compatible with **Compile**, **Offloading**, **Quantization**, ...
 - 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
