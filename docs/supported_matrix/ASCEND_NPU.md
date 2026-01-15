@@ -14,6 +14,7 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|✅|
+|Z-Image-Turbo|✅|✅|✅|
 |Qwen-Image|✅|✅|✅|
 |Qwen-Image-Layered|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
@@ -41,6 +42,7 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |FLUX.1-dev|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|
+|Z-Image-Turbo|✅|✅|
 |Qwen-Image|✅|✅|✅|
 |Qwen-Image-Layered|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
