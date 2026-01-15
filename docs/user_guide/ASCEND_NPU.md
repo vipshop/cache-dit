@@ -106,7 +106,7 @@ We recommend using the prebuilt image from the [Ascend NPU community: vllm-ascen
 
 ```bash
 # Download pre-built image for Ascend NPU
-docker pull quay.io/ascend/vllm-ascend:v0.12.0rc1
+docker pull quay.io/ascend/vllm-ascend:v0.13.0rc1
 
 # Use the pre-built image for cache-dit
 docker run \
@@ -123,7 +123,7 @@ docker run \
     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
     -v /etc/ascend_install.info:/etc/ascend_install.info \
     -v /data:/data \
-    -itd quay.io/ascend/vllm-ascend:v0.12.0rc1 bash
+    -itd quay.io/ascend/vllm-ascend:v0.13.0rc1 bash
 ```
 
 ## Ascend Environment variables
