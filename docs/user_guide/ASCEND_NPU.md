@@ -168,9 +168,9 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples
 ```
 
-### Single GPU Inference
+### Single NPU Inference
 
-The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is to start with single GPU inference. For examples:  
+The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is to start with single NPU inference. For examples:  
 
 ```bash
 # use default model path, e.g, "black-forest-labs/FLUX.1-dev"
@@ -180,7 +180,7 @@ python3 generate.py flux --cache
 python3 generate.py qwen_image --cache
 ```
 
-### Multi-GPU Inference 
+### Multi-NPU Inference 
 
 cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
