@@ -80,8 +80,8 @@
 
 |Model|Baseline H100x1|Ulysses 2| + FA3| + cache| + compile|  
 |:---:|:---:|:---:|:---:|:---:|:---:|
-FLUX.1-dev: 50 steps |  9.30s |  6.04s | 5.99s  | 2.60s | 1.92s |
-Qwen-Image: 50 steps | 18.49s  | 12.81s  | 12.75s  |  5.67s | 4.20s |
+|FLUX.1-dev: 50 steps |  9.30s |  6.04s | 5.99s  | 2.60s | 1.92s |
+|Qwen-Image: 50 steps | 18.49s  | 12.81s  | 12.75s  |  5.67s | 4.20s |
 
 Reproduce command:
 
