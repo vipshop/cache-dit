@@ -672,9 +672,12 @@ def wan_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
     else:
         params_modifiers = None
 
-    image = load_image(
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image = load_image(
+            "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
+        )
 
     max_area = 480 * 832
     aspect_ratio = image.height / image.width
@@ -1052,9 +1055,13 @@ def longcat_image_example(args: argparse.Namespace, **kwargs) -> Example:
 def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import LongCatImageEditPipeline
 
-    image_url = (
-        "https://huggingface.co/meituan-longcat/LongCat-Image-Edit/resolve/main/assets/test.png"
-    )
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image_url = (
+            "https://huggingface.co/meituan-longcat/LongCat-Image-Edit/resolve/main/assets/test.png"
+        )
+        image = load_image(image_url).convert("RGB")
 
     return Example(
         args=args,
@@ -1069,6 +1076,6 @@ def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             negative_prompt="",
             num_inference_steps=50,
             guidance_scale=4.5,
-            image=load_image(image_url),
+            image=image,
         ),
     )

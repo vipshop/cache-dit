@@ -78,15 +78,15 @@
 
 ## NVIDIA H100
 
-|Model|Baseline H100x1|Ulysses 2|Ulysses 4|Ulysses 4 + cache|Ulysses 4 + cache + compile|  
-|:---:|:---:|:---:|:---:|:---:|:---:|  
+|Model|Baseline H100x1|Ulysses 2| + FA3| + cache| + compile|  
+|:---:|:---:|:---:|:---:|:---:|:---:|
 |FLUX.1-dev: 50 steps||||||
 |Qwen-Image: 50 steps||||||
 
 
 ## NVIDIA H800
 
-|Model|Baseline H800x1|Ulysses 2|Ulysses 4|Ulysses 4 + cache|Ulysses 4 + cache + compile|  
-|:---:|:---:|:---:|:---:|:---:|:---:|  
+|Model|Baseline H800x1|Ulysses 2| + FA3| + cache| + compile|  
+|:---:|:---:|:---:|:---:|:---:|:---:|
 |FLUX.1-dev: 50 steps||||||
 |Qwen-Image: 50 steps||||||
