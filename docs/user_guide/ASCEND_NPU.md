@@ -19,6 +19,17 @@ Please refer to **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.m
 |Atlas 800T A2|✅|✅|✅|✅|✅|
 |Atlas 800I A2|✅|✅|✅|✅|✅|
 
+## Attention backend
+
+Cache-DiT supports multiple Attention backends for better performance. The supported attention backends for Ascend NPU list is as follows:
+
+|backend|details|parallelism|attn_mask|
+|:---|:---|:---|:---|    
+|native| Native SDPA Attention in PyTorch|✅|✅|  
+|_native_npu| Optimized Ascend NPU Attention|✅|✅|
+
+We strongly recommend using the `_native_npu` backend to achieve better performance.
+
 ## Environment Requirements
 
 There are two installation methods:  
