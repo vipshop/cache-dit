@@ -184,19 +184,19 @@ The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is t
 
 ```bash
 # use default model path, e.g, "black-forest-labs/FLUX.1-dev"
-python3 generate.py flux 
-python3 generate.py qwen_image
-python3 generate.py flux --cache
-python3 generate.py qwen_image --cache
+python3 generate.py flux --attn _native_npu
+python3 generate.py qwen_image --attn _native_npu
+python3 generate.py flux --cache --attn _native_npu
+python3 generate.py qwen_image --cache --attn _native_npu
 ```
 
 ### Multi-NPUs Inference 
 
-cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
+cache-dit is designed to work 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
 ```bash
-torchrun --nproc_per_node=4 generate.py flux --parallel ulysses 
-torchrun --nproc_per_node=4 generate.py qwen_image --parallel ulysses
-torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --cache
-torchrun --nproc_per_node=4 generate.py qwen_image --parallel ulysses --cache
+torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --attn _native_npu
+torchrun --nproc_per_node=4 generate.py qwen_image --parallel ulysses --attn _native_npu
+torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --cache --attn _native_npu
+torchrun --nproc_per_node=4 generate.py qwen_image --parallel ulysses --cache --attn _native_npu
 ```
