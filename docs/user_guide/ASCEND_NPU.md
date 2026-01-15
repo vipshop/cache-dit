@@ -180,7 +180,7 @@ python3 generate.py flux --cache
 python3 generate.py qwen_image --cache
 ```
 
-### Multi-NPU Inference 
+### Multi-NPUs Inference 
 
 cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
