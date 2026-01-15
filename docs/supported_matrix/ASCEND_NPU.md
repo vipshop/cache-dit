@@ -10,7 +10,6 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 
 |📚Models|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
-|Z-Image-Turbo|✅|✅|✅|
 |FLUX.2-dev|✅|✅|✅|
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|
@@ -25,9 +24,6 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |Qwen-Image-Edit-Lightning|✅|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
 |Qwen-Image-Edit-2511-Lightning|✅|✅|✅|
-|Wan-2.2-T2V|✅|✅|✅|
-|Wan-2.2-I2V|✅|✅|✅|
-|Wan-2.1-T2V|✅|✅|✅|
 |Wan-2.1-I2V|✅|✅|✅|
 |LongCat-Image|✅|✅|✅|
 |LongCat-Image-Edit|✅|✅|✅|
@@ -38,7 +34,6 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 
 |📚Models|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|  
-|Z-Image-Turbo|✅|✅|
 |FLUX.2-dev|✅|✅|
 |FLUX.1-dev|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|
@@ -53,9 +48,6 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |Qwen-Image-Edit-Lightning|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|
 |Qwen-Image-Edit-2511-Lightning|✅|✅|
-|Wan-2.2-T2V|✅|✅|
-|Wan-2.2-I2V|✅|✅|
-|Wan-2.1-T2V|✅|✅|
 |Wan-2.1-I2V|✅|✅|
 |LongCat-Image|✅|✅|
 |LongCat-Image-Edit|✅|✅|

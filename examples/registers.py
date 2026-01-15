@@ -672,9 +672,12 @@ def wan_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
     else:
         params_modifiers = None
 
-    image = load_image(
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image = load_image(
+            "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
+        )
 
     max_area = 480 * 832
     aspect_ratio = image.height / image.width
