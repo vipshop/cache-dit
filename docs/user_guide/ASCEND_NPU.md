@@ -10,6 +10,8 @@
 - **ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
 - Built-in **HTTP serving** deployment support with simple REST APIs
 
+Please refer to **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
+
 ## Features Support 
 
 |Device|Hybrid Cache|Context Parallel|Tensor Parallel|Text Encoder Parallel|Auto Encoder(VAE) Parallel|
@@ -155,7 +157,7 @@ pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 
 ## Exmaples and Benchmark
 
-After the environment configuration is complete, users can refer to the **[Quick Examples](../EXAMPLES.md)**, **[Ascend NPU Benchmark](../benchmark/ASCEND_NPU.md)** and [Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md) for more details.
+After the environment configuration is complete, users can refer to the **[Quick Examples](../EXAMPLES.md)**, **[Ascend NPU Benchmark](../benchmark/ASCEND_NPU.md)** and **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
 
 ```bash
 pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
