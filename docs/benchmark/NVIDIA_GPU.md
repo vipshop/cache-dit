@@ -106,4 +106,3 @@ torchrun --nproc_per_node=2 generate.py qwen_image --steps 50 --parallel ulysses
 |:---:|:---:|:---:|:---:|:---:|:---:|
 |FLUX.1-dev: 50 steps||||||
 |Qwen-Image: 50 steps||||||
-
