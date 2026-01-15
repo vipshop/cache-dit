@@ -24,6 +24,9 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |Qwen-Image-Edit-Lightning|✅|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
 |Qwen-Image-Edit-2511-Lightning|✅|✅|✅|
+|Wan-2.2-T2V|✅|✅|✅|
+|Wan-2.2-I2V|✅|✅|✅|
+|Wan-2.1-T2V|✅|✅|✅|
 |Wan-2.1-I2V|✅|✅|✅|
 |LongCat-Image|✅|✅|✅|
 |LongCat-Image-Edit|✅|✅|✅|
@@ -48,6 +51,9 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |Qwen-Image-Edit-Lightning|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|
 |Qwen-Image-Edit-2511-Lightning|✅|✅|
+|Wan-2.2-T2V|✅|✅|
+|Wan-2.2-I2V|✅|✅|
+|Wan-2.1-T2V|✅|✅|
 |Wan-2.1-I2V|✅|✅|
 |LongCat-Image|✅|✅|
 |LongCat-Image-Edit|✅|✅|
