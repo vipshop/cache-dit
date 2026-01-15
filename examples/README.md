@@ -43,6 +43,7 @@ python3 generate.py list  # list all available examples
 [generate.py:47] Available examples:
 [generate.py:53] - ✅ flux_nunchaku                  - Defalut: nunchaku-tech/nunchaku-flux.1-dev
 [generate.py:53] - ✅ flux                           - Defalut: black-forest-labs/FLUX.1-dev
+[generate.py:53] - ✅ flux_fill                      - Defalut: black-forest-labs/FLUX.1-Fill-dev
 [generate.py:53] - ✅ flux2                          - Defalut: black-forest-labs/FLUX.2-dev
 [generate.py:53] - ✅ qwen_image_lightning           - Defalut: lightx2v/Qwen-Image-Lightning
 [generate.py:53] - ✅ qwen_image_2512                - Defalut: Qwen/Qwen-Image-2512
