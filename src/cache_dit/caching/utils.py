@@ -136,31 +136,33 @@ def load_cache_config(
     if isinstance(path_or_dict, str):
         try:
             with open(path_or_dict, "r") as f:
-                kwargs: dict = yaml.safe_load(f)
+                cache_kwargs: dict = yaml.safe_load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Configuration file not found: {path_or_dict}")
         except yaml.YAMLError as e:
             raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
     elif isinstance(path_or_dict, dict):
-        kwargs: dict = copy.deepcopy(path_or_dict)
+        cache_kwargs: dict = copy.deepcopy(path_or_dict)
     else:
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
-    if "cache_config" not in kwargs:
-        if "parallelism_config" in kwargs:
+    if "cache_config" not in cache_kwargs:
+        if "parallelism_config" in cache_kwargs:
             # Allow missing cache_config for only parallelism_config checking
             return None, None
         # Try to load full cache options for backward compatibility if cache_config not found
         # and the parallelism_config is also not provided. This is to support old config files
         # and refresh_context api that only contains cache options (already used in vllm-omni).
-        cache_context_kwargs = load_cache_options_from_dict(kwargs, kwargs.get("reset", False))
+        cache_context_kwargs = load_cache_options_from_dict(
+            cache_kwargs, kwargs.get("reset", False)
+        )
         cache_config: DBCacheConfig = cache_context_kwargs.get("cache_config", None)
         calibrator_config = cache_context_kwargs.get("calibrator_config", None)
         if cache_config is None:
             raise ValueError("Failed to load 'cache_config'. Got None.")
         return cache_config, calibrator_config
 
-    cache_config_kwargs = kwargs["cache_config"]
+    cache_config_kwargs = cache_kwargs["cache_config"]
     # Parse steps_mask if exists
     if "steps_computation_mask" in cache_config_kwargs:
         steps_computation_mask = cache_config_kwargs["steps_computation_mask"]
@@ -201,24 +203,24 @@ def load_parallelism_config(
     if isinstance(path_or_dict, str):
         try:
             with open(path_or_dict, "r") as f:
-                kwargs: dict = yaml.safe_load(f)
+                parallel_kwargs: dict = yaml.safe_load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Configuration file not found: {path_or_dict}")
         except yaml.YAMLError as e:
             raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
     elif isinstance(path_or_dict, dict):
-        kwargs: dict = copy.deepcopy(path_or_dict)
+        parallel_kwargs: dict = copy.deepcopy(path_or_dict)
     else:
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
     if kwargs.get("check_only", False):
-        return "parallelism_config" in kwargs
+        return "parallelism_config" in parallel_kwargs
 
     # Allow missing parallelism_config
-    if "parallelism_config" not in kwargs:
+    if "parallelism_config" not in parallel_kwargs:
         return None
 
-    parallelism_config_kwargs = kwargs["parallelism_config"]
+    parallelism_config_kwargs = parallel_kwargs["parallelism_config"]
     if "backend" in parallelism_config_kwargs:
         backend_str = parallelism_config_kwargs["backend"]
         parallelism_config_kwargs["backend"] = ParallelismBackend.from_str(backend_str)
