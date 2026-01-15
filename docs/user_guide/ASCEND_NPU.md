@@ -108,7 +108,7 @@ Strongly recommend install torch_npu by acquire `torch_npu-2.8.0*.whl` file by [
 
 ```bash
 pip install --no-deps torchvision==0.16.0 
-pip install einops sentencepiece 
+pip install einops sentencepiece accelerate
 ```
 
 ## Use prebuilt Docker Image
@@ -171,7 +171,6 @@ pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 After the environment configuration is complete, users can refer to the **[Quick Examples](../EXAMPLES.md)**, **[Ascend NPU Benchmark](../benchmark/ASCEND_NPU.md)** and **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
 
 ```bash
-pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
 pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
