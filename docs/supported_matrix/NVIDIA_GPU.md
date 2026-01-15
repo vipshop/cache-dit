@@ -9,6 +9,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|LTX-2|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
 |Z-Image-Turbo `🤖Q`|✅|✅|✖️|
 |Qwen-Image-Layered|✅|✅|✅|
@@ -33,10 +34,10 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-Lightning|✅|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
 |Wan-2.2-T2V|✅|✅|✅|
-|Wan-2.2-ITV|✅|✅|✅|
+|Wan-2.2-I2V|✅|✅|✅|
 |Wan-2.2-VACE-Fun|✅|✅|✅|
 |Wan-2.1-T2V|✅|✅|✅|
-|Wan-2.1-ITV|✅|✅|✅|
+|Wan-2.1-I2V|✅|✅|✅|
 |Wan-2.1-FLF2V|✅|✅|✅|
 |Wan-2.1-VACE|✅|✅|✅|
 |HunyuanImage-2.1|✅|✅|✅|
@@ -58,7 +59,6 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |PRX-512-t2i-sft|✅|✖️|✖️|
 |LTX-Video-v0.9.8|✅|✅|✅|
 |LTX-Video-v0.9.7|✅|✅|✅|
-|LTX-2|✅|✅|✅|
 |CogVideoX|✅|✅|✅|
 |CogVideoX-1.5|✅|✅|✅|
 |CogView-4|✅|✅|✅|
@@ -84,6 +84,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
+|LTX-2|✅|✅|
 |Qwen-Image-2512|✅|✅|
 |Z-Image-Turbo `🤖Q`|✅|✅|
 |Qwen-Image-Layered|✅|✅|
@@ -108,10 +109,10 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-Lightning|✅|✅|
 |Qwen-Image-Edit-2509-Lightning|✅|✅|
 |Wan-2.2-T2V|✅|✅|
-|Wan-2.2-ITV|✅|✅|
+|Wan-2.2-I2V|✅|✅|
 |Wan-2.2-VACE-Fun|✅|✅|
 |Wan-2.1-T2V|✅|✅|
-|Wan-2.1-ITV|✅|✅|
+|Wan-2.1-I2V|✅|✅|
 |Wan-2.1-FLF2V|✅|✅|
 |Wan-2.1-VACE|✅|✅|
 |HunyuanImage-2.1|✅|✖️|
@@ -132,7 +133,6 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |PRX-512-t2i-sft|✅|✖️|
 |LTX-Video-v0.9.8|✅|✖️|
 |LTX-Video-v0.9.7|✅|✖️|
-|LTX-2|✅|✅|
 |CogVideoX|✅|✖️|
 |CogVideoX-1.5|✅|✖️|
 |CogView-4|✅|✅|
@@ -162,29 +162,3 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|
 |Qwen-Image-ControlNet|TODO|
 |Qwen-Image-ControlNet-Inpainting|TODO|
-
-## Ascend NPU
-
-### Transformer Optimization
-
-|📚Models:|Hybrid Cache|Context Parallel|Tensor Parallel|
-|:---|:---:|:---:|:---:|
-|FLUX.1-dev|✅|✅|✅|
-|Qwen-Image-Edit|✅|✅|✅|
-|Qwen-Image-Edit-2509|✅|✅|✅|
-|Qwen-Image-Lightning|✅|✅|✅|
-|Qwen-Image-Edit-Lightning|✅|✅|✅|
-|Qwen-Image-Edit-2509-Lightning|✅|✅|✅|
-
-### Text Encoder & VAE Optimization
-
-|📚Models: |Text Encoder Parallel|AutoEncoder(VAE) Parallel|
-|:---|:---:|:---:|
-|FLUX.1-dev|✅|✅|
-|Qwen-Image-Edit|✅|✅|
-|Qwen-Image-Edit-2509|✅|✅|
-|Qwen-Image-Lightning|✅|✅|
-|Qwen-Image-Edit-Lightning|✅|✅|
-|Qwen-Image-Edit-2509-Lightning|✅|✅|
-
-We will support more models for Ascend NPU, stay tune for update!
