@@ -16,6 +16,8 @@ pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvisi
 pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
+
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples
 ```
 
 ## Available Examples
@@ -67,12 +69,8 @@ python3 generate.py flux2
 python3 generate.py ovis_image
 python3 generate.py qwen_image_edit_lightning
 python3 generate.py qwen_image
-python3 generate.py ltx2_t2v --parallel-vae --parallel-text-encoder --cache
-python3 generate.py ltx2_i2v --parallel-vae --parallel-text-encoder --cache
-torchrun --nproc_per_node=4 generate.py ltx2_t2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
-torchrun --nproc_per_node=4 generate.py ltx2_t2v --parallel tp --parallel-vae --parallel-text-encoder --cache
-torchrun --nproc_per_node=4 generate.py ltx2_i2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
-torchrun --nproc_per_node=4 generate.py ltx2_i2v --parallel tp --parallel-vae --parallel-text-encoder --cache
+python3 generate.py ltx2_t2v --cache --cpu-offload
+python3 generate.py ltx2_i2v --cache --cpu-offload
 python3 generate.py skyreels_v2
 python3 generate.py wan2.2
 python3 generate.py zimage 
@@ -127,6 +125,10 @@ torchrun --nproc_per_node=4 generate.py flux --parallel tp --parallel-text-encod
 torchrun --nproc_per_node=4 generate.py qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
 # Hint: set `--local-ranks-filter=0` to torchrun -> only show logs on rank 0
 torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py flux --parallel ulysses 
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py ltx2_t2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py ltx2_t2v --parallel tp --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py ltx2_i2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache
+torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py ltx2_i2v --parallel tp --parallel-vae --parallel-text-encoder --cache
 ```
 
 ## Low-bits Quantization 
