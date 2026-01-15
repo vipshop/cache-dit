@@ -18,20 +18,18 @@
 
 </div>
 
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include: (**UAA**: [Ulysses Anything Attention](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention))   
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/SUPPORTED/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:     
-
-- 🎉**Hybrid Cache Acceleration** (DBCache, TaylorSeer, SCM and more)
-- 🎉**Context Parallelism** (via Extended Diffusers' CP APIs, w/ [**UAA**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses, ...)
-- 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallel APIs)
-- 🎉**Text Encoder Parallelism** (via Tensor Parallelism w/ DTensor APIs)
-- 🎉**Auto Encoder (VAE) Parallelism** (latest, Data/Tile Parallelism)
-- 🎉**ControlNet Parallelism** (currently, Z-Image-Turbo, Qwen-Image)
+- 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking) and more)
+- 🎉**Context Parallelism** (w/ Extended Diffusers' CP APIs, [**UAA**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses, FP8 comm)
+- 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Text Encoder Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
+- 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
 - 🎉Built-in **HTTP serving** deployment support with simple REST APIs
-- 🎉Natively compatible with **Compile**, **Offloading**, **Quantization**, ...
+- 🎉**Natively** compatible with **Compile**, **Offloading**, **Quantization**, ...
 - 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
-- 🎉**NVIDIA GPU**, **Ascend NPU** support (latest)
-
+- 🎉**Natively** supports **NVIDIA GPUs**, [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) (>= 1.2.0), ...  
 
 ## 🚀Quick Start 
 
@@ -69,9 +67,10 @@ Please refer to our online documentation at [readthedocs.io](https://cache-dit.r
 
 ## 🌐Community Integration
 
+- 🔥[Ascend NPU x Cache-DiT](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/)
 - 🎉[Diffusers x Cache-DiT](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)
 - 🎉[SGLang Diffusion x Cache-DiT](https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/docs/cache_dit.md)
-- 🎉[vLLM-Omni x Cache-DiT](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/acceleration/cache_dit_acceleration/)
+- 🎉[vLLM-Omni x Cache-DiT](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/)
 - 🎉[Nunchaku x Cache-DiT](https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit)
 - 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
 - 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)

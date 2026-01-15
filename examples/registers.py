@@ -24,6 +24,7 @@ logger = init_logger(__name__)
 
 __all__ = [
     "flux_example",
+    "flux_fill_example",
     "flux2_example",
     "qwen_image_example",
     "qwen_image_controlnet_example",
@@ -48,6 +49,7 @@ __all__ = [
 # or paths. The default values are the official model names on HuggingFace Hub.
 _env_path_mapping = {
     "FLUX_DIR": "black-forest-labs/FLUX.1-dev",
+    "FLUX_FILL_DIR": "black-forest-labs/FLUX.1-Fill-dev",
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
@@ -138,6 +140,32 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
         input_data=ExampleInputData(
             prompt="A cat holding a sign that says hello world",
+            height=1024,
+            width=1024,
+            num_inference_steps=28,
+        ),
+    )
+
+
+@ExampleRegister.register("flux_fill", default="black-forest-labs/FLUX.1-Fill-dev")
+def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import FluxFillPipeline
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=_path("black-forest-labs/FLUX.1-Fill-dev"),
+            pipeline_class=FluxFillPipeline,
+            # `text_encoder_2` will be quantized when `--quantize-type`
+            # is set to `bnb_4bit`. Only hints for quantization.
+            bnb_4bit_components=["text_encoder_2"],
+        ),
+        input_data=ExampleInputData(
+            prompt="a white paper cup",
+            image=load_image("./data/cup.png"),
+            mask_image=load_image("./data/cup_mask.png"),
+            guidance_scale=30,
             height=1024,
             width=1024,
             num_inference_steps=28,
@@ -672,9 +700,12 @@ def wan_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
     else:
         params_modifiers = None
 
-    image = load_image(
-        "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
-    )
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image = load_image(
+            "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
+        )
 
     max_area = 480 * 832
     aspect_ratio = image.height / image.width
@@ -1052,9 +1083,13 @@ def longcat_image_example(args: argparse.Namespace, **kwargs) -> Example:
 def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import LongCatImageEditPipeline
 
-    image_url = (
-        "https://huggingface.co/meituan-longcat/LongCat-Image-Edit/resolve/main/assets/test.png"
-    )
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image_url = (
+            "https://huggingface.co/meituan-longcat/LongCat-Image-Edit/resolve/main/assets/test.png"
+        )
+        image = load_image(image_url).convert("RGB")
 
     return Example(
         args=args,
@@ -1069,6 +1104,6 @@ def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             negative_prompt="",
             num_inference_steps=50,
             guidance_scale=4.5,
-            image=load_image(image_url),
+            image=image,
         ),
     )

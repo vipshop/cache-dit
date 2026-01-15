@@ -1,5 +1,6 @@
 def activate_all_examples():
     from registers import flux_example  # noqa: F403, F401
+    from registers import flux_fill_example  # noqa: F403, F401
     from registers import flux2_example  # noqa: F403, F401
     from registers import qwen_image_example  # noqa: F403, F401
     from registers import qwen_image_controlnet_example  # noqa: F403, F401
