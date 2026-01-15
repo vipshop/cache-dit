@@ -65,7 +65,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -U pip
+          pip install -U pip && pip install torch==2.9.1 torchvision --index-url https://download.pytorch.org/whl/cpu  
           if [ -f "dist/*.whl" ]; then
             pip install dist/*.whl
           else
