@@ -245,24 +245,24 @@ def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
         guidance_scale = 4.0  # typical cfg for base model
         enable_separate_cfg = True
         if "4b" in args.example.lower():
-            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-base-4B")
+            model_path = _path("black-forest-labs/FLUX.2-klein-base-4B")
         else:
-            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-base-9B")
+            model_path = _path("black-forest-labs/FLUX.2-klein-base-9B")
     else:
         num_inference_steps = 4
         guidance_scale = 1.0  # no cfg for klein
         enable_separate_cfg = False
         if "4b" in args.example.lower():
-            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-4B")
+            model_path = _path("black-forest-labs/FLUX.2-klein-4B")
         else:
-            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-9B")
+            model_path = _path("black-forest-labs/FLUX.2-klein-9B")
 
     params_modifiers = _flux2_params_modifiers(args)
     return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=model_name_or_path,
+            model_name_or_path=model_path,
             pipeline_class=Flux2KleinPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             # Extra init args for DBCacheConfig, ParamsModifier, etc.
