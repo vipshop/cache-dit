@@ -14,7 +14,7 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|✅|
-|Z-Image-Turbo|✅|✅|✅|
+|Z-Image-Turbo*|✅|✅|✅|
 |Qwen-Image|✅|✅|✅|
 |Qwen-Image-Layered|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
@@ -42,7 +42,7 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |FLUX.1-dev|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|
-|Z-Image-Turbo|✅|✅|
+|Z-Image-Turbo*|✅|✅|
 |Qwen-Image|✅|✅|✅|
 |Qwen-Image-Layered|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
@@ -60,3 +60,5 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 |LongCat-Image|✅|✅|
 |LongCat-Image-Edit|✅|✅|
 |Ovis-Image|✅|✅|
+
+Z-Image-Turbo*: Since diffusers does not support this model by NPU, you need to merge this PR into your local diffusers repo: https://github.com/huggingface/diffusers/pull/12979

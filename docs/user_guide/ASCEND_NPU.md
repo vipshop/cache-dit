@@ -196,7 +196,9 @@ cache-dit is designed to work 🔥Context Parallelism, 🔥Tensor Parallelism. F
 
 ```bash
 torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --attn _native_npu
+torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --attn _native_npu
 torchrun --nproc_per_node=4 generate.py qwen_image --parallel ulysses --attn _native_npu
 torchrun --nproc_per_node=4 generate.py flux --parallel ulysses --cache --attn _native_npu
+torchrun --nproc_per_node=4 generate.py zimage --parallel ulysses --cache --attn _native_npu
 torchrun --nproc_per_node=4 generate.py qwen_image --parallel ulysses --cache --attn _native_npu
 ```
