@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2 align="center">
-        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="140px" width="140px" align="center"><br>
+        <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png align="center"><br>
         A PyTorch-native and Flexible Inference Engine with <br>Hybrid Cache Acceleration and Parallelism for 🤗DiTs<br>
         <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/badge/cache-dit/month ></a>
         <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/badge/cache-dit ></a>
