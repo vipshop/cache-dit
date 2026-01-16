@@ -53,8 +53,10 @@ _env_path_mapping = {
     "FLUX_FILL_DIR": "black-forest-labs/FLUX.1-Fill-dev",
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
-    "FLUX_2_KLEIN_DIR": "black-forest-labs/FLUX.2-klein-4B",
-    "FLUX_2_KLEIN_BASE_DIR": "black-forest-labs/FLUX.2-klein-base-4B",
+    "FLUX_2_KLEIN_4B_DIR": "black-forest-labs/FLUX.2-klein-4B",
+    "FLUX_2_KLEIN_BASE_4B_DIR": "black-forest-labs/FLUX.2-klein-base-4B",
+    "FLUX_2_KLEIN_9B_DIR": "black-forest-labs/FLUX.2-klein-9B",
+    "FLUX_2_KLEIN_BASE_9B_DIR": "black-forest-labs/FLUX.2-klein-base-9B",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
     "LTX2_DIR": "Lightricks/LTX-2",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
@@ -230,8 +232,10 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("flux2_klein", default="black-forest-labs/FLUX.2-klein-4B")
-@ExampleRegister.register("flux2_klein_base", default="black-forest-labs/FLUX.2-klein-base-4B")
+@ExampleRegister.register("flux2_klein_4b", default="black-forest-labs/FLUX.2-klein-4B")
+@ExampleRegister.register("flux2_klein_9b", default="black-forest-labs/FLUX.2-klein-9B")
+@ExampleRegister.register("flux2_klein_base_4b", default="black-forest-labs/FLUX.2-klein-base-4B")
+@ExampleRegister.register("flux2_klein_base_9b", default="black-forest-labs/FLUX.2-klein-base-9B")
 def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import Flux2KleinPipeline
 
@@ -240,17 +244,25 @@ def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
         num_inference_steps = 50
         guidance_scale = 4.0  # typical cfg for base model
         enable_separate_cfg = True
+        if "4b" in args.example.lower():
+            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-base-4B")
+        else:
+            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-base-9B")
     else:
         num_inference_steps = 4
         guidance_scale = 1.0  # no cfg for klein
         enable_separate_cfg = False
+        if "4b" in args.example.lower():
+            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-4B")
+        else:
+            model_name_or_path = _path("black-forest-labs/FLUX.2-klein-9B")
 
     params_modifiers = _flux2_params_modifiers(args)
     return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.T2I,  # Text to Image
-            model_name_or_path=_path("black-forest-labs/FLUX.2-klein-4B"),
+            model_name_or_path=model_name_or_path,
             pipeline_class=Flux2KleinPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
             # Extra init args for DBCacheConfig, ParamsModifier, etc.

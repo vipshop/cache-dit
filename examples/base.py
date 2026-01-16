@@ -122,6 +122,8 @@ class ExampleInputData:
         # Maybe override generator with args.seed
         if args.seed is not None:
             input_data["generator"] = torch.Generator("cpu").manual_seed(args.seed)
+            if "seed" in input_data:
+                input_data.pop("seed")  # remove seed from input data
         return input_data
 
     def new_generator(self, seed: int = None) -> torch.Generator:
