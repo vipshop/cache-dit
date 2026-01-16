@@ -1261,7 +1261,7 @@ def maybe_apply_optimization(
                 )
                 assert (
                     args.num_inference_steps is not None
-                ), "num_inference_steps (--steps or --num_inference_steps) must be provided for steps mask."
+                ), "num_inference_steps (--steps) must be provided for steps mask."
                 steps_computation_mask = cache_dit.steps_mask(
                     total_steps=args.num_inference_steps,
                     mask_policy=args.mask_policy,
