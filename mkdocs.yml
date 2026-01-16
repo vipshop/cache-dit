@@ -10,8 +10,8 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   language: en
-  logo: https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png
-  favicon: https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png
+  logo: https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png
+  favicon: https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png
   palette:
     # Palette toggle for automatic mode
     - media: "(prefers-color-scheme)"
