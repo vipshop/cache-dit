@@ -1255,6 +1255,20 @@ def maybe_apply_optimization(
                 )
 
             # Caching and Parallelism
+            if args.steps_mask and args.mask_policy is not None:
+                logger.info(
+                    f"Using steps computation mask with policy: {args.mask_policy} for caching."
+                )
+                assert (
+                    args.num_inference_steps is not None
+                ), "num_inference_steps (--steps) must be provided for steps mask."
+                steps_computation_mask = cache_dit.steps_mask(
+                    total_steps=args.num_inference_steps,
+                    mask_policy=args.mask_policy,
+                )
+            else:
+                steps_computation_mask = None
+
             cache_dit.enable_cache(
                 pipe_or_adapter,
                 cache_config=(
@@ -1267,7 +1281,7 @@ def maybe_apply_optimization(
                         max_continuous_cached_steps=args.max_continuous_cached_steps,
                         residual_diff_threshold=args.residual_diff_threshold,
                         enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
-                        steps_computation_mask=kwargs.get("steps_computation_mask", None),
+                        steps_computation_mask=steps_computation_mask,
                     )
                     if cache_config is None and args.cache
                     else cache_config
