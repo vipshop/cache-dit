@@ -1,5 +1,7 @@
 # Installation  
 
+## Installation with Nvidia GPU
+
 <div id="installation"></div>
 
 You can install the stable release of `cache-dit` from PyPI:
@@ -16,3 +18,7 @@ Please also install the latest main branch of diffusers for context parallelism:
 ```bash
 pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 ```
+
+## Installation with Ascend NPU
+
+Please refer to [Ascend NPU Support](./ASCEND_NPU.md) documentation for more details.
