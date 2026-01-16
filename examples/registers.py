@@ -54,6 +54,7 @@ _env_path_mapping = {
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
     "FLUX_2_KLEIN_DIR": "black-forest-labs/FLUX.2-Klein-4B",
+    "FLUX_2_KLEIN_BASE_DIR": "black-forest-labs/FLUX.2-Klein-base-4B",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
     "LTX2_DIR": "Lightricks/LTX-2",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
@@ -230,8 +231,19 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
 
 
 @ExampleRegister.register("flux2_klein", default="black-forest-labs/FLUX.2-Klein-4B")
+@ExampleRegister.register("flux2_klein_base", default="black-forest-labs/FLUX.2-Klein-base-4B")
 def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import Flux2KleinPipeline
+
+    # cfg: guidance_scale > 1 and not is_distilled
+    if "base" in args.example.lower():
+        num_inference_steps = 50
+        guidance_scale = 4.0  # typical cfg for base model
+        enable_separate_cfg = True
+    else:
+        num_inference_steps = 4
+        guidance_scale = 1.0  # no cfg for klein
+        enable_separate_cfg = False
 
     params_modifiers = _flux2_params_modifiers(args)
     return Example(
@@ -244,14 +256,15 @@ def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
             # Extra init args for DBCacheConfig, ParamsModifier, etc.
             extra_optimize_kwargs={
                 "params_modifiers": params_modifiers,
+                "enable_separate_cfg": enable_separate_cfg,
             },
         ),
         input_data=ExampleInputData(
             prompt="A cat holding a sign that says hello world",
             height=1024,
             width=1024,
-            num_inference_steps=4,
-            guidance_scale=4,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
         ),
     )
 
