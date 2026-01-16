@@ -26,6 +26,7 @@ __all__ = [
     "flux_example",
     "flux_fill_example",
     "flux2_example",
+    "flux2_klein_example",
     "qwen_image_example",
     "qwen_image_controlnet_example",
     "qwen_image_edit_example",
@@ -52,6 +53,7 @@ _env_path_mapping = {
     "FLUX_FILL_DIR": "black-forest-labs/FLUX.1-Fill-dev",
     "NUNCHAKU_FLUX_DIR": "nunchaku-tech/nunchaku-flux.1-dev",
     "FLUX_2_DIR": "black-forest-labs/FLUX.2-dev",
+    "FLUX_2_KLEIN_DIR": "black-forest-labs/FLUX.2-Klein-4B",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
     "LTX2_DIR": "Lightricks/LTX-2",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
@@ -173,11 +175,8 @@ def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("flux2", default="black-forest-labs/FLUX.2-dev")
-def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
-    from diffusers import Flux2Pipeline
-
-    params_modifiers = [
+def _flux2_params_modifiers(args: argparse.Namespace) -> List[ParamsModifier]:
+    return [
         ParamsModifier(
             # Modified config only for transformer_blocks
             # Must call the `reset` method of DBCacheConfig.
@@ -195,6 +194,13 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
             ),
         ),
     ]
+
+
+@ExampleRegister.register("flux2", default="black-forest-labs/FLUX.2-dev")
+def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import Flux2Pipeline
+
+    params_modifiers = _flux2_params_modifiers(args)
     return Example(
         args=args,
         init_config=ExampleInitConfig(
@@ -218,6 +224,33 @@ def flux2_example(args: argparse.Namespace, **kwargs) -> Example:
             height=1024,
             width=1024,
             num_inference_steps=28,
+            guidance_scale=4,
+        ),
+    )
+
+
+@ExampleRegister.register("flux2_klein", default="black-forest-labs/FLUX.2-Klein-4B")
+def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import Flux2KleinPipeline
+
+    params_modifiers = _flux2_params_modifiers(args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=_path("black-forest-labs/FLUX.2-Klein-4B"),
+            pipeline_class=Flux2KleinPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            # Extra init args for DBCacheConfig, ParamsModifier, etc.
+            extra_optimize_kwargs={
+                "params_modifiers": params_modifiers,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="A cat holding a sign that says hello world",
+            height=1024,
+            width=1024,
+            num_inference_steps=4,
             guidance_scale=4,
         ),
     )
