@@ -10,6 +10,10 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 
 |📚Models|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|FLUX.2-Klein-4B|✅|✅|✅|
+|FLUX.2-Klein-base-4B|✅|✅|✅|
+|FLUX.2-Klein-9B|✅|✅|✅|
+|FLUX.2-Klein-base-9B|✅|✅|✅|
 |FLUX.2-dev|✅|✅|✅|
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|
@@ -38,6 +42,10 @@ Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. H
 
 |📚Models|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|  
+|FLUX.2-Klein-4B|✅|✅|
+|FLUX.2-Klein-base-4B|✅|✅|
+|FLUX.2-Klein-9B|✅|✅|
+|FLUX.2-Klein-base-9B|✅|✅|
 |FLUX.2-dev|✅|✅|
 |FLUX.1-dev|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|
