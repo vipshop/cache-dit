@@ -85,6 +85,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
 
         # rearrange out projection weight
         out_weight = attn.to_out.weight.data.T
+        # FLUX.2-dev, FLUX.2-klein, divide by 4
         attn_out_dim = out_weight.shape[0] // 4
         attn_out_weight = out_weight[:attn_out_dim, ...]
         mlp_out_weight = out_weight[attn_out_dim:, ...]
