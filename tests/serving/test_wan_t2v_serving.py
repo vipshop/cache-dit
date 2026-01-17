@@ -63,7 +63,7 @@ def test_custom_prompt():
     return call_api(
         prompt="A beautiful sunset over the ocean with waves crashing on the shore",
         name="wan_t2v_sunset",
-        seed=42,
+        seed=0,
     )
 
 

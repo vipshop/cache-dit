@@ -133,7 +133,7 @@ def test_ltx2_image2video():
             negative_prompt=negative_prompt,
             image_url=image_url,
             name="ltx2_base_i2v",
-            seed=42,
+            seed=0,
             width=768,
             height=512,
             num_frames=121,

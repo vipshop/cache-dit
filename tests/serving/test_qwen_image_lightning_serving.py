@@ -39,7 +39,7 @@ def call_api(prompt, name="test", **kwargs):
         "height": kwargs.get("height", 1024),
         "num_inference_steps": kwargs.get("num_inference_steps", 8),
         "guidance_scale": kwargs.get("guidance_scale", 1.0),
-        "seed": kwargs.get("seed", 42),
+        "seed": kwargs.get("seed", 0),
         "num_images": kwargs.get("num_images", 1),
     }
 
@@ -127,7 +127,7 @@ def test_basic_4steps():
         name="qwen_lightning_4steps",
         num_inference_steps=4,
         guidance_scale=1.0,
-        seed=42,
+        seed=0,
     )
 
 

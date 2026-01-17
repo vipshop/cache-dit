@@ -43,7 +43,7 @@ def call_api(prompt, name="flux2_turbo", **kwargs):
         "num_inference_steps": kwargs.get("num_inference_steps", 8),
         "guidance_scale": kwargs.get("guidance_scale", 2.5),
         "sigmas": kwargs.get("sigmas", TURBO_SIGMAS),
-        "seed": kwargs.get("seed", 42),
+        "seed": kwargs.get("seed", 0),
         "num_images": kwargs.get("num_images", 1),
     }
 
@@ -90,7 +90,7 @@ def test_flux2_turbo_lora():
         sigmas=TURBO_SIGMAS,
         width=1024,
         height=1024,
-        seed=42,
+        seed=0,
     )
 
 
