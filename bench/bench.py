@@ -134,12 +134,13 @@ def init_flux_pipe(args: argparse.Namespace) -> FluxPipeline:
 
 def gen_flux_image(args: argparse.Namespace, pipe: FluxPipeline, prompt: str = None) -> Image.Image:
     assert prompt is not None
+    gen_device = "cuda" if torch.cuda.is_available() else "cpu"
     image = pipe(
         prompt,
         height=args.height,
         width=args.width,
         num_inference_steps=args.steps,
-        generator=torch.Generator("cpu").manual_seed(args.seed),
+        generator=torch.Generator(gen_device).manual_seed(args.seed),
     ).images[0]
 
     if args.verbose:
