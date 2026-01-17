@@ -29,7 +29,7 @@ def call_api(prompt, image_urls=None, name="test", **kwargs):
         "height": kwargs.get("height", 1024),
         "num_inference_steps": kwargs.get("num_inference_steps", 50),
         "guidance_scale": kwargs.get("guidance_scale", 4.0),
-        "seed": kwargs.get("seed", 42),
+        "seed": kwargs.get("seed", 0),
     }
 
     if "output_format" in kwargs:

@@ -587,7 +587,7 @@ class ModelManager:
 
         seed = request.seed
         if seed is None and self.parallel_type in ["tp", "ulysses", "ring"]:
-            seed = 42
+            seed = 0
             logger.info(f"{self.parallel_type} mode: using fixed seed {seed}")
 
         if is_image2video_mode:

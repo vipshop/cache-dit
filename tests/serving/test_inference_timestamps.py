@@ -13,7 +13,7 @@ def _call_generate_api(**overrides):
         "height": overrides.get("height", 1024),
         "num_inference_steps": overrides.get("num_inference_steps", 8),
         "guidance_scale": overrides.get("guidance_scale", 1.0),
-        "seed": overrides.get("seed", 42),
+        "seed": overrides.get("seed", 0),
         "output_format": "path",
     }
 

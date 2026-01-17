@@ -121,7 +121,7 @@ def test_ltx2_text2video():
             prompt=prompt,
             negative_prompt=negative_prompt,
             name="ltx2_base_t2v",
-            seed=42,
+            seed=0,
             width=768,
             height=512,
             num_frames=121,
