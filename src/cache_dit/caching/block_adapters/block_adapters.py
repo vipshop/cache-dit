@@ -7,9 +7,9 @@ from collections.abc import Iterable
 from typing import Any, Tuple, List, Optional, Union
 
 from diffusers import DiffusionPipeline, ModelMixin
-from cache_dit.caching.patch_functors import PatchFunctor
-from cache_dit.caching.forward_pattern import ForwardPattern
-from cache_dit.caching.params_modifier import ParamsModifier
+from ..patch_functors import PatchFunctor
+from ..forward_pattern import ForwardPattern
+from ..params_modifier import ParamsModifier
 
 from cache_dit.logger import init_logger
 
@@ -223,9 +223,19 @@ class BlockAdapter:
         # Process some specificial cases, specific for transformers
         # that has different forward patterns between single_transformer_blocks
         # and transformer_blocks , such as Flux (diffusers < 0.35.0).
+
         if self.patch_functor is not None:
             if self.transformer is not None:
-                self.patch_functor.apply(self.transformer, *args, **kwargs)
+                if self.nested_depth(self.transformer) == 0:
+                    self.patch_functor.apply(self.transformer, *args, **kwargs)
+                elif self.nested_depth(self.transformer) == 1:
+                    for transformer in self.transformer:
+                        self.patch_functor.apply(transformer, *args, **kwargs)
+                else:
+                    raise ValueError(
+                        "transformer nested depth can't more than 1, "
+                        f"current is: {self.nested_depth(self.transformer)}"
+                    )
             else:
                 assert hasattr(self.pipe, "transformer"), (
                     "pipe.transformer can not be None when patch_functor "

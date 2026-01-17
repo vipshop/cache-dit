@@ -10,16 +10,16 @@ from typing import Callable, Union, Tuple, List
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
-from cache_dit.metrics.config import set_metrics_verbose
-from cache_dit.metrics.config import get_metrics_verbose
-from cache_dit.metrics.config import _IMAGE_EXTENSIONS
-from cache_dit.metrics.config import _VIDEO_EXTENSIONS
+from .config import set_metrics_verbose
+from .config import get_metrics_verbose
+from .config import _IMAGE_EXTENSIONS
+from .config import _VIDEO_EXTENSIONS
+from .fid import compute_fid
+from .fid import compute_video_fid
+from .lpips import compute_lpips_img
+from .clip_score import compute_clip_score
+from .image_reward import compute_reward_score
 from cache_dit.logger import init_logger
-from cache_dit.metrics.fid import compute_fid
-from cache_dit.metrics.fid import compute_video_fid
-from cache_dit.metrics.lpips import compute_lpips_img
-from cache_dit.metrics.clip_score import compute_clip_score
-from cache_dit.metrics.image_reward import compute_reward_score
 
 logger = init_logger(__name__)
 

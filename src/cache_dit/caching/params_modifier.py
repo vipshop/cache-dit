@@ -1,7 +1,7 @@
 from typing import Optional
 
-from cache_dit.caching.cache_contexts import BasicCacheConfig
-from cache_dit.caching.cache_contexts import CalibratorConfig
+from .cache_contexts import BasicCacheConfig
+from .cache_contexts import CalibratorConfig
 
 from cache_dit.logger import init_logger
 

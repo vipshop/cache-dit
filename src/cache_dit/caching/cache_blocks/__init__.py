@@ -1,26 +1,26 @@
 import torch
 
-from cache_dit.caching import ForwardPattern
-from cache_dit.caching.cache_types import CacheType
-from cache_dit.caching.cache_contexts.cache_context import CachedContext
-from cache_dit.caching.cache_contexts.prune_context import PrunedContext
-from cache_dit.caching.cache_contexts.cache_manager import (
+from ..forward_pattern import ForwardPattern
+from ..cache_types import CacheType
+from ..cache_contexts.cache_context import CachedContext
+from ..cache_contexts.prune_context import PrunedContext
+from ..cache_contexts.cache_manager import (
     CachedContextManager,
 )
-from cache_dit.caching.cache_contexts.prune_manager import (
+from ..cache_contexts.prune_manager import (
     PrunedContextManager,
 )
 
-from cache_dit.caching.cache_blocks.pattern_0_1_2 import (
+from .pattern_0_1_2 import (
     CachedBlocks_Pattern_0_1_2,
     PrunedBlocks_Pattern_0_1_2,
 )
-from cache_dit.caching.cache_blocks.pattern_3_4_5 import (
+from .pattern_3_4_5 import (
     CachedBlocks_Pattern_3_4_5,
     PrunedBlocks_Pattern_3_4_5,
 )
-from cache_dit.caching.cache_blocks.pattern_utils import apply_stats
-from cache_dit.caching.cache_blocks.pattern_utils import remove_stats
+from .pattern_utils import apply_stats
+from .pattern_utils import remove_stats
 
 from cache_dit.logger import init_logger
 

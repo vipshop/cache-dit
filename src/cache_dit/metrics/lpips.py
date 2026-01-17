@@ -2,7 +2,7 @@ import warnings
 
 import lpips
 import torch
-from cache_dit.utils import disable_print
+from ..utils import disable_print
 
 
 warnings.filterwarnings("ignore")

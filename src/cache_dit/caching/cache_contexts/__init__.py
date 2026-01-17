@@ -1,28 +1,28 @@
-from cache_dit.caching.cache_contexts.calibrators import (
+from .calibrators import (
     Calibrator,
     CalibratorBase,
     CalibratorConfig,
     TaylorSeerCalibratorConfig,
     FoCaCalibratorConfig,
 )
-from cache_dit.caching.cache_contexts.cache_config import (
+from .cache_config import (
     BasicCacheConfig,
     DBCacheConfig,
 )
-from cache_dit.caching.cache_contexts.cache_context import (
+from .cache_context import (
     CachedContext,
 )
-from cache_dit.caching.cache_contexts.cache_manager import (
+from .cache_manager import (
     CachedContextManager,
     ContextNotExistError,
 )
-from cache_dit.caching.cache_contexts.prune_config import DBPruneConfig
-from cache_dit.caching.cache_contexts.prune_context import (
+from .prune_config import DBPruneConfig
+from .prune_context import (
     PrunedContext,
 )
-from cache_dit.caching.cache_contexts.prune_manager import (
+from .prune_manager import (
     PrunedContextManager,
 )
-from cache_dit.caching.cache_contexts.context_manager import (
+from .context_manager import (
     ContextManager,
 )

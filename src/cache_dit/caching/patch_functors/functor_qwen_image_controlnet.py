@@ -11,9 +11,7 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from cache_dit.caching.patch_functors.functor_base import (
-    PatchFunctor,
-)
+from .functor_base import PatchFunctor
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -21,7 +19,7 @@ logger = init_logger(__name__)
 
 class QwenImageControlNetPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: QwenImageTransformer2DModel,
         **kwargs,

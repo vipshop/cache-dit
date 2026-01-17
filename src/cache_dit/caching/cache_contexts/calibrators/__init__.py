@@ -57,9 +57,11 @@ class CalibratorConfig:
 
     def empty(self, **kwargs) -> "CalibratorConfig":
         # Set all fields to None
+        skip_constants = {"calibrator_type"}
         for field in dataclasses.fields(self):
             if hasattr(self, field.name):
-                setattr(self, field.name, None)
+                if field.name not in skip_constants:
+                    setattr(self, field.name, None)
         if kwargs:
             self.update(**kwargs)
         return self

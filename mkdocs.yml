@@ -1,0 +1,135 @@
+site_name: Cache-DiT
+site_description: A PyTorch-native and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for DiTs
+site_url: https://github.com/vipshop/cache-dit
+site_author: Cache-DiT Team
+
+repo_url: https://github.com/vipshop/cache-dit
+repo_name: vipshop/cache-dit
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  logo: https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png
+  favicon: https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      toggle:
+        icon: material/brightness-2
+        name: Switch to system preference
+  features:
+    - content.action.edit
+    - content.code.copy
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - navigation.sidebar
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.annotate
+    - content.tabs
+    - content.tooltips
+    - toc.follow
+
+nav:
+  - Home: README.md 
+  - Docmentation:
+      - Overviews: user_guide/OVERVIEWS.md
+      - Installation: user_guide/INSTALL.md
+      - Unified Cache APIs: user_guide/CACHE_API.md
+      - DBCache Design: user_guide/DBCACHE_DESIGN.md
+      - Context Parallelism: user_guide/CONTEXT_PARALLEL.md
+      - Tensor Parallelism: user_guide/TENSOR_PARALLEL.md
+      - Extra Modules Parallelism: user_guide/EXTRA_PARALLEL.md
+      - Low-Bits Quantization: user_guide/QUANTIZATION.md
+      - Attention Backends: user_guide/ATTENTION.md
+      - Use Torch Compile: user_guide/COMPILE.md
+      - Ascend NPU Support: user_guide/ASCEND_NPU.md
+      - Config with YAML: user_guide/LOAD_CONFIGS.md
+      - Serving Deployment: user_guide/SERVING.md
+      - Metrics Tools: user_guide/METRICS.md
+      - Profiler Usage: user_guide/PROFILER.md
+      - API Docmentation: user_guide/API_DOCS.md
+  - Supported Matrix: 
+    - NVIDIA GPU: supported_matrix/NVIDIA_GPU.md
+    - Ascend NPU: supported_matrix/ASCEND_NPU.md
+  - Benchmark: 
+    - Hybrid Cache: benchmark/HYBRID_CACHE.md
+    - NVIDIA GPU: benchmark/NVIDIA_GPU.md
+    - Ascend NPU: benchmark/ASCEND_NPU.md
+  - Developer Guide: 
+    - pre-commit: developer_guide/PRE_COMMIT.md
+    - Support New Model: developer_guide/SUPPORT_NEW_MODEL.md
+  - Quick Examples: EXAMPLES.md
+  - Community Integration: COMMUNITY.md
+  - FAQ: FAQ.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - fenced_code
+  - codehilite:
+      guess_lang: false
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+      linenums_style: pymdownx 
+  - pymdownx.inlinehilite  
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tilde 
+  - pymdownx.arithmatex:
+      generic: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vipshop/cache-dit
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/cache-dit/
+  version:
+    provider: mike
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

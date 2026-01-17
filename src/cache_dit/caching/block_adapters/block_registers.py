@@ -2,7 +2,7 @@ import torch
 from typing import Any, Tuple, List, Dict, Callable, Union
 
 from diffusers import DiffusionPipeline
-from cache_dit.caching.block_adapters.block_adapters import (
+from .block_adapters import (
     BlockAdapter,
     FakeDiffusionPipeline,
 )
@@ -24,6 +24,8 @@ class BlockAdapterRegister:
         "Lumina2",
         "Kandinsky5",
         "ChronoEdit",
+        "HunyuanVideo15",
+        "OvisImage",
     ]
 
     @classmethod
@@ -66,25 +68,25 @@ class BlockAdapterRegister:
     @classmethod
     def has_separate_cfg(
         cls,
-        pipe_or_adapter: Union[
+        pipe_or_adapter_or_module: Union[
             DiffusionPipeline,
             FakeDiffusionPipeline,
             BlockAdapter,
-            Any,
+            torch.nn.Module,  # e.g., transformer-only case
         ],
     ) -> bool:
 
-        # Prefer custom setting from block adapter.
-        if isinstance(pipe_or_adapter, BlockAdapter):
-            return pipe_or_adapter.has_separate_cfg
+        # 0. Prefer custom setting from block adapter.
+        if isinstance(pipe_or_adapter_or_module, BlockAdapter):
+            return pipe_or_adapter_or_module.has_separate_cfg
 
         has_separate_cfg = False
-        if isinstance(pipe_or_adapter, FakeDiffusionPipeline):
+        if isinstance(pipe_or_adapter_or_module, FakeDiffusionPipeline):
             return False
 
-        if isinstance(pipe_or_adapter, DiffusionPipeline):
+        if isinstance(pipe_or_adapter_or_module, (DiffusionPipeline, torch.nn.Module)):
             adapter = cls.get_adapter(
-                pipe_or_adapter,
+                pipe_or_adapter_or_module,
                 skip_post_init=True,  # check cfg setting only
             )
             if adapter is not None:
@@ -93,7 +95,7 @@ class BlockAdapterRegister:
         if has_separate_cfg:
             return True
 
-        pipe_cls_name = pipe_or_adapter.__class__.__name__
+        pipe_cls_name = pipe_or_adapter_or_module.__class__.__name__
         for name in cls._predefined_adapters_has_separate_cfg:
             if pipe_cls_name.startswith(name):
                 return True

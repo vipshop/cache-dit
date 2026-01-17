@@ -1,9 +1,9 @@
 import torch
 
 from typing import Any
-from cache_dit.caching import CachedContext
-from cache_dit.caching import CachedContextManager
-from cache_dit.caching import PrunedContextManager
+from ..cache_contexts import CachedContext
+from ..cache_contexts import CachedContextManager
+from ..cache_contexts import PrunedContextManager
 
 
 def apply_stats(

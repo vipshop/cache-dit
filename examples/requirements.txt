@@ -1,5 +1,2 @@
 imageio-ffmpeg
-# wan currently requires installing from source
-diffusers>=0.35.1
-torchao>=0.12.0
 ftfy

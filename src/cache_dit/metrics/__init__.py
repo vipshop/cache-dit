@@ -9,18 +9,18 @@ except ImportError:
         "Install with:\npip install cache-dit[metrics]"
     )
 
-from cache_dit.metrics.metrics import compute_psnr
-from cache_dit.metrics.metrics import compute_ssim
-from cache_dit.metrics.metrics import compute_mse
-from cache_dit.metrics.metrics import compute_video_psnr
-from cache_dit.metrics.metrics import compute_video_ssim
-from cache_dit.metrics.metrics import compute_video_mse
-from cache_dit.metrics.fid import FrechetInceptionDistance
-from cache_dit.metrics.fid import compute_fid
-from cache_dit.metrics.fid import compute_video_fid
-from cache_dit.metrics.config import set_metrics_verbose
-from cache_dit.metrics.config import get_metrics_verbose
-from cache_dit.metrics.metrics import entrypoint
+from .metrics import compute_psnr
+from .metrics import compute_ssim
+from .metrics import compute_mse
+from .metrics import compute_video_psnr
+from .metrics import compute_video_ssim
+from .metrics import compute_video_mse
+from .fid import FrechetInceptionDistance
+from .fid import compute_fid
+from .fid import compute_video_fid
+from .config import set_metrics_verbose
+from .config import get_metrics_verbose
+from .metrics import entrypoint
 
 
 def main():

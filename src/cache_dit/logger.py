@@ -2,13 +2,14 @@ import logging
 import os
 import sys
 import torch.distributed as dist
+from .envs import ENV
 
 _FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
 
-_LOG_LEVEL = os.environ.get("CACHE_DIT_LOG_LEVEL", "info")
+_LOG_LEVEL = ENV.CACHE_DIT_LOG_LEVEL
 _LOG_LEVEL = getattr(logging, _LOG_LEVEL.upper(), 0)
-_LOG_DIR = os.environ.get("CACHE_DIT_LOG_DIR", None)
+_LOG_DIR = ENV.CACHE_DIT_LOG_DIR
 
 
 class NewLineFormatter(logging.Formatter):

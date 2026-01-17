@@ -8,6 +8,7 @@ import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args, strify, MemoryTracker
 import cache_dit
+from cache_dit.platforms import current_platform
 
 
 parser = get_args(parse=False)
@@ -31,7 +32,7 @@ pipe = FluxPipeline.from_pretrained(
         )
     ),
     torch_dtype=torch.bfloat16,
-).to("cuda")
+).to(current_platform.device_type)
 
 if args.cache:
     from cache_dit import (

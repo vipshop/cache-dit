@@ -2,13 +2,8 @@ import torch
 import functools
 from typing import Dict, List, Tuple, Union
 
-from cache_dit.caching.cache_contexts.cache_manager import (
-    BasicCacheConfig,
-    CachedContextManager,
-)
-from cache_dit.caching.cache_contexts.prune_context import (
-    PrunedContext,
-)
+from .cache_manager import CachedContextManager
+from .prune_context import PrunedContext
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -25,12 +20,6 @@ class PrunedContextManager(CachedContextManager):
 
     # Overwrite for Dynamic Block Prune
     def new_context(self, *args, **kwargs) -> PrunedContext:
-        if self._persistent_context:
-            cache_config: BasicCacheConfig = kwargs.get("cache_config", None)
-            assert cache_config is not None and cache_config.num_inference_steps is not None, (
-                "When persistent_context is True, num_inference_steps "
-                "must be set in cache_config for proper cache refreshing."
-            )
         _context = PrunedContext(*args, **kwargs)
         # NOTE: Patch args and kwargs for implicit refresh.
         _context._init_args = args  # maybe empty tuple: ()

@@ -2,13 +2,9 @@ import torch
 import logging
 import dataclasses
 from typing import List
-from cache_dit.caching.cache_types import CacheType
-from cache_dit.caching.cache_contexts.prune_config import (
-    DBPruneConfig,
-)
-from cache_dit.caching.cache_contexts.cache_context import (
-    CachedContext,
-)
+from ..cache_types import CacheType
+from .prune_config import DBPruneConfig
+from .cache_context import CachedContext
 from cache_dit.logger import init_logger
 
 

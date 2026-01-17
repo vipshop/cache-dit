@@ -1,0 +1,67 @@
+name: Build Wheel
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.assets/**'
+      - '**.md'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '.assets/**'
+      - '**.md'
+      - '.gitignore'
+      - '.gitattributes'
+      - 'LICENSE'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4 
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install build
+        run: |
+          pip install -U pip && pip install build
+
+      - name: Check build configuration
+        run: |
+          if [ ! -f "pyproject.toml" ]; then
+            echo "Error: pyproject.toml not found! Cannot build wheel."
+            exit 1
+          fi
+          echo "✅ Build configuration file (pyproject.toml) found."
+
+      - name: Build Wheel
+        run: |
+          python -m build --wheel --outdir dist
+          ls -la dist/
+
+      - name: Upload Wheel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-dist-wheel-py${{ matrix.python-version }}
+          path: dist/*.whl
+          retention-days: 15

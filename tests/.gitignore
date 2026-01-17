@@ -165,3 +165,4 @@ report*.html
 
 .DS_Store
 tmp
+data

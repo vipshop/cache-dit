@@ -6,7 +6,7 @@ import builtins as __builtin__
 import contextlib
 
 from cache_dit.logger import init_logger
-
+from .platforms import current_platform
 
 logger = init_logger(__name__)
 
@@ -33,25 +33,32 @@ def maybe_empty_cache():
     try:
         time.sleep(1)
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+        current_platform.empty_cache()
+        current_platform.ipc_collect()
         time.sleep(1)
         gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
+        current_platform.empty_cache()
+        current_platform.ipc_collect()
     except Exception:
         pass
 
 
-@torch.compiler.disable
 def print_tensor(
     x: torch.Tensor,
     name: str,
     dim: int = 1,
     no_dist_shape: bool = True,
-    disable: bool = False,
+    disable: bool = True,
 ):
     if disable:
+        return
+
+    if x is None:
+        print(f"{name} is None")
+        return
+
+    if not isinstance(x, torch.Tensor):
+        print(f"{name} is not a tensor, type: {type(x)}")
         return
 
     x = x.contiguous()
@@ -66,11 +73,12 @@ def print_tensor(
         else:
             x_shape = x.shape
 
-        if torch.distributed.get_rank() == 0:
-            print(
-                f"{name}, mean: {gather_x.float().mean().item()}, "
-                f"std: {gather_x.float().std().item()}, shape: {x_shape}"
-            )
+        rank = torch.distributed.get_rank()
+        print(
+            f"\nrank: {rank}, {name}, mean: {gather_x.float().mean().item()}, "
+            f"std: {gather_x.float().std().item()}, shape: {x_shape}",
+            flush=True,
+        )
     else:
         print(
             f"{name}, mean: {x.float().mean().item()}, "

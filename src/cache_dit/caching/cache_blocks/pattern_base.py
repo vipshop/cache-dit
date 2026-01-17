@@ -3,17 +3,17 @@ import logging
 import torch
 import torch.distributed as dist
 from diffusers.hooks import HookRegistry
-from cache_dit.caching.cache_contexts.cache_context import CachedContext
-from cache_dit.caching.cache_contexts.prune_context import PrunedContext
-from cache_dit.caching.cache_contexts.cache_manager import (
+from ..cache_contexts.cache_context import CachedContext
+from ..cache_contexts.prune_context import PrunedContext
+from ..cache_contexts.cache_manager import (
     CachedContextManager,
     ContextNotExistError,
 )
-from cache_dit.caching.cache_contexts.prune_manager import (
+from ..cache_contexts.prune_manager import (
     PrunedContextManager,
 )
-from cache_dit.caching import ForwardPattern
-from cache_dit.caching.cache_types import CacheType
+from ..forward_pattern import ForwardPattern
+from ..cache_types import CacheType
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -22,9 +22,9 @@ try:
     from diffusers.hooks.context_parallel import ContextParallelSplitHook
 except ImportError:
     ContextParallelSplitHook = None
-    logger.warning(
-        "Context parallelism requires the 'diffusers>=0.36.dev0'."
-        "Please install latest version of diffusers from source: \n"
+    logger.debug(
+        "Context parallelism in cache-dit requires 'diffusers>=0.36.dev0.\n"
+        "Please install latest version of diffusers from source via: \n"
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 
@@ -444,6 +444,7 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
     ):
         original_hidden_states = hidden_states
         original_encoder_hidden_states = encoder_hidden_states
+
         for block in self._Mn_blocks():
             hidden_states = block(
                 hidden_states,
