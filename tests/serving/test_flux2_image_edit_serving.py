@@ -67,6 +67,7 @@ def test_single():
         prompt="Put a birthday hat on the dog in the image",
         image_urls=["https://modelscope.oss-cn-beijing.aliyuncs.com/Dog.png"],
         name="single_edit",
+        seed=0,
     )
 
 
@@ -78,6 +79,7 @@ def test_multi():
             "https://modelscope.oss-cn-beijing.aliyuncs.com/Frisbee.png",
         ],
         name="multi_edit",
+        seed=0,
     )
 
 
@@ -87,12 +89,12 @@ def test_base64():
     img_base64 = base64.b64encode(response.content).decode("utf-8")
 
     filename1 = call_api(
-        prompt="Put a birthday hat on the dog", image_urls=[img_base64], name="base64_raw"
+        prompt="Put a birthday hat on the dog", image_urls=[img_base64], name="base64_raw", seed=0
     )
 
     data_uri = f"data:image/png;base64,{img_base64}"
     filename2 = call_api(
-        prompt="Put a birthday hat on the dog", image_urls=[data_uri], name="base64_uri"
+        prompt="Put a birthday hat on the dog", image_urls=[data_uri], name="base64_uri", seed=0
     )
 
     return filename1, filename2
@@ -103,6 +105,7 @@ def test_text():
         prompt="A beautiful landscape with mountains and lakes",
         name="text_gen",
         num_inference_steps=28,
+        seed=0,
     )
 
 
@@ -113,6 +116,7 @@ def test_text_ulysses_bad_resolution_regression():
         width=724,
         height=1080,
         num_inference_steps=8,
+        seed=0,
     )
     return filename
 

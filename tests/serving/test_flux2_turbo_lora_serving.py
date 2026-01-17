@@ -90,7 +90,7 @@ def test_flux2_turbo_lora():
         sigmas=TURBO_SIGMAS,
         width=1024,
         height=1024,
-        seed=42,
+        seed=0,
     )
 
 
