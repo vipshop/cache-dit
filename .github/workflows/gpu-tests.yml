@@ -1,0 +1,151 @@
+name: Run GPU Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'cache-dit/src/**'
+      - 'cache-dit/examples/**'
+      - pyproject.toml
+      - '.github/workflows/gpu-tests.yml'  # Updated workflow file path
+
+concurrency:
+  group: ${{ github.ref }}-gpu-tests
+  cancel-in-progress: true
+
+jobs:
+  Basic_GPU_Tests:
+    runs-on: cache_dit_gpu_ci
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+
+    steps:
+      - name: 🔍 Environment Precheck (Container/Model/GPU)
+        run: |
+          echo "=== Server GPU Information ==="
+          nvidia-smi
+          echo "=== Running Container Check ==="
+          CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' cache_dit_ci_test 2>/dev/null || echo "not_exists")
+          if [ "${CONTAINER_STATUS}" != "running" ]; then
+            echo "❌ Container cache_dit_ci_test is not running (Status: ${CONTAINER_STATUS}), please start the container first!"
+            exit 1
+          else
+            echo "✅ Container cache_dit_ci_test is running"
+          fi
+          echo "=== HF_MODELS Env Var Check in Container ==="
+          # Check HF_MODELS (required by generate.py)
+          HF_MODELS=$(docker exec cache_dit_ci_test env | grep -E '^HF_MODELS=' | cut -d= -f2)
+          if [ -z "${HF_MODELS}" ]; then
+            echo "⚠️ HF_MODELS is not configured in container, setting to default path /workspace/dev/vipdev/hf_models"
+            # Temporarily set HF_MODELS (if not exists in container)
+            docker exec cache_dit_ci_test bash -c "export HF_MODELS='/workspace/dev/vipdev/hf_models'"
+          fi
+          echo "✅ HF_MODELS in container: ${HF_MODELS}"
+          # Verify model path exists, e.g., FLUX.1-dev
+          docker exec cache_dit_ci_test bash -c "if [ -d '${HF_MODELS}/FLUX.1-dev' ]; then echo '✅ Model directory exists'; else echo '❌ Model directory does not exist'; exit 1; fi"
+
+      - name: 📥 Pull PR Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - name: 📝 Write Test Execution Script (Reuse Existing Container)
+        run: |
+          cat > run_gpu_tests.sh << 'EOF'
+          #!/bin/bash
+          set -e  # Exit immediately if any command fails (meet the requirement of python exception interrupt as failure)
+
+          # Define key paths
+          LOCAL_CODE_DIR="${PWD}"  # Local PR code directory
+          CONTAINER_CODE_DIR="/workspace/cache-dit-ci"  # Code directory in container
+          CACHE_DIT_DIR="${CONTAINER_CODE_DIR}/cache-dit"  # cache-dit root directory in container
+          EXAMPLES_DIR="${CACHE_DIT_DIR}/examples"  # examples directory in container
+
+          # 1. Create code directory in container
+          echo "📁 Create code directory in container: ${CONTAINER_CODE_DIR}"
+          docker exec cache_dit_ci_test mkdir -p "${CONTAINER_CODE_DIR}"
+
+          # 2. Copy local PR code to container (overwrite existing code)
+          echo "📤 Copy PR code to container..."
+          docker cp "${LOCAL_CODE_DIR}/." cache_dit_ci_test:"${CONTAINER_CODE_DIR}/"
+
+          # 3. Check cache-dit directory and test script existence in container
+          echo "🔍 Check code directories and scripts..."
+          docker exec cache_dit_ci_test bash -c "
+            if [ ! -d '${CACHE_DIT_DIR}' ]; then
+              echo '❌ cache-dit directory does not exist: ${CACHE_DIT_DIR}'
+              exit 1
+            fi
+            if [ ! -d '${EXAMPLES_DIR}' ]; then
+              echo '❌ examples directory does not exist: ${EXAMPLES_DIR}'
+              exit 1
+            fi
+            echo '✅ Code directory check passed'
+            # List contents of current directory (CONTAINER_CODE_DIR in container)
+            echo '=== Contents of code root directory in container ==='
+            ls -l "${CONTAINER_CODE_DIR}"
+          "
+
+          # 4. Install cache-dit (cd to cache-dit directory and execute installation)
+          echo "🔧 Install cache-dit..."
+          docker exec cache_dit_ci_test bash -c "
+            cd '${CACHE_DIT_DIR}' &&
+            echo '=== Contents of current directory (cache-dit) ===' &&
+            ls -l &&  # List contents of current directory
+            echo '=== Start installing cache-dit ===' &&
+            pip install -U pip &&
+            pip install .  # Install cache-dit (add --no-cache-dir if compilation is needed)
+          "
+
+          # 5. Execute generate.py script under examples directory
+          echo "🚀 Execute generate.py in examples directory..."
+          # 5.1 Baseline: FLUX.1-dev w/o any acceleration
+          docker exec cache_dit_ci_test bash -c "
+            cd '${EXAMPLES_DIR}' &&
+            echo '=== Contents of current directory (examples) ===' &&
+            ls -l &&  # List contents of current directory
+            echo '=== Execute python3 generate.py list ===' &&
+            python3 generate.py list &&
+            echo '=== Execute python3 generate.py flux ===' &&
+            python3 generate.py flux --model-path \$HF_MODELS/FLUX.1-dev --track-memory --summary &&
+            echo '=== Contents of examples directory after execution ===' &&
+            ls -l  # List directory contents again
+          "
+
+          # 5.2 FLUX.1-dev w/ cache acceleration, use --cache option
+          docker exec cache_dit_ci_test bash -c "
+            cd '${EXAMPLES_DIR}' &&
+            echo '=== Execute python3 generate.py flux with cache acceleration ===' &&
+            python3 generate.py flux --model-path \$HF_MODELS/FLUX.1-dev --cache --track-memory --summary &&
+            echo '=== Contents of examples directory after cache acceleration execution ===' &&
+            ls -l  # List directory contents again
+          "
+
+          # 6. Completion message
+          echo "✅ All test steps completed successfully!"
+          EOF
+          chmod +x run_gpu_tests.sh
+
+      - name: 🚀 Execute Model Test
+        run: |
+          ./run_gpu_tests.sh
+        timeout-minutes: 1200  # Adjust according to actual test duration
+
+      - name: 📤 Test Result Feedback (On Failure)
+        if: failure()
+        run: |
+          echo "❌ GPU Model Test failed!"
+          gh pr comment ${{ github.event.pull_request.number }} --body "❌ GPU Model Test failed, check CI logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Test Result Feedback (On Success)
+        if: success()
+        run: |
+          echo "✅ GPU Model Test Succeeded!"
+          gh pr comment ${{ github.event.pull_request.number }} --body "✅ GPU Model Test Passed!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
