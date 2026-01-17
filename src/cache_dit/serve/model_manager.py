@@ -602,12 +602,13 @@ class ModelManager:
 
         generator = None
         if seed is not None:
-            # IMPORTANT: Always use CPU generator for TP mode
-            # GPU generators on different devices produce different random sequences,
-            # causing inconsistent results across ranks and blurry images.
-            # CPU generator ensures all ranks use the same random sequence.
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-            logger.debug(f"Created generator with seed {seed} on CPU")
+            gen_device = (
+                current_platform.device_type
+                if current_platform.is_accelerator_available()
+                else "cpu"
+            )
+            generator = torch.Generator(device=gen_device).manual_seed(seed)
+            logger.debug(f"Created generator with seed {seed} on {gen_device}")
 
         if self.parallel_type in ["tp", "ulysses", "ring"]:
             import torch.distributed as dist

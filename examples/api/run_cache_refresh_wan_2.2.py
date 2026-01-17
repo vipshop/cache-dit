@@ -194,13 +194,16 @@ def run_pipe(steps: int = 30):
             verbose=True,
         )
 
+    gen_device = (
+        current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
+    )
     video = pipe(
         prompt=prompt,
         height=height,
         width=width,
         num_frames=81,
         num_inference_steps=steps,
-        generator=torch.Generator("cpu").manual_seed(0),
+        generator=torch.Generator(gen_device).manual_seed(0),
     ).frames[0]
     return video
 
