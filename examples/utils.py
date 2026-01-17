@@ -674,6 +674,19 @@ def prepare_extra_parallel_modules(
 
     return extra_parallel_modules
 
+def platform_aware_compile(
+    model: torch.nn.Module,
+    mode: str,
+    **kwargs,
+) -> torch.nn.Module:
+    if current_platform.device_type == 'npu':
+        try:
+            from mindiesd.compilation import MindieSDBackend
+            return torch.compile(model, backend=MindieSDBackend())
+        except ImportError:
+            logger.warning("MindIE-SD is not installed, using default compile mode.")
+            mode = "default"
+    return torch.compile(model, mode=mode, **kwargs)
 
 def maybe_compile_text_encoder(
     args,
@@ -711,7 +724,7 @@ def maybe_compile_text_encoder(
                     f"Compiling text encoder module {name}:{_text_encoder_cls_name}:"
                     f"{_module_to_compile_cls_name} ..."
                 )
-                _module_to_compile = torch.compile(
+                _module_to_compile = platform_aware_compile(
                     _module_to_compile,
                     mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                 )
@@ -758,7 +771,7 @@ def maybe_compile_controlnet(
                 controlnet_cls_name = controlnet.__class__.__name__
                 if isinstance(controlnet, torch.nn.Module):
                     logger.info(f"Compiling controlnet module: {controlnet_cls_name} ...")
-                    controlnet = torch.compile(
+                    controlnet = platform_aware_compile(
                         controlnet,
                         mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                     )
@@ -797,7 +810,7 @@ def maybe_compile_vae(
                     _encoder_to_compile = vae.encoder
                     if isinstance(_encoder_to_compile, torch.nn.Module):
                         logger.info(f"Compiling VAE encoder module: {vae_cls_name}.encoder ...")
-                        vae.encoder = torch.compile(
+                        vae.encoder = platform_aware_compile(
                             _encoder_to_compile,
                             mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                         )
@@ -810,7 +823,7 @@ def maybe_compile_vae(
                     _decoder_to_compile = vae.decoder
                     if isinstance(_decoder_to_compile, torch.nn.Module):
                         logger.info(f"Compiling VAE decoder module: {vae_cls_name}.decoder ...")
-                        vae.decoder = torch.compile(
+                        vae.decoder = platform_aware_compile(
                             _decoder_to_compile,
                             mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                         )
@@ -850,7 +863,7 @@ def maybe_compile_transformer(
                 transformer_cls_name = transformer.__class__.__name__
                 if isinstance(transformer, torch.nn.Module):
                     logger.info(f"Compiling transformer module: {transformer_cls_name} ...")
-                    transformer = torch.compile(
+                    transformer = platform_aware_compile(
                         transformer,
                         mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                     )
@@ -873,7 +886,7 @@ def maybe_compile_transformer(
                 transformer_2_cls_name = transformer_2.__class__.__name__
                 if isinstance(transformer_2, torch.nn.Module):
                     logger.info(f"Compiling transformer_2 module: {transformer_2_cls_name} ...")
-                    transformer_2 = torch.compile(
+                    transformer_2 = platform_aware_compile(
                         transformer_2,
                         mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
                     )
