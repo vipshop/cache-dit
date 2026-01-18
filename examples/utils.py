@@ -683,7 +683,7 @@ def platform_aware_compile(
     if current_platform.device_type == "npu":
         try:
             from mindiesd.compilation import MindieSDBackend
-            
+
             return torch.compile(model, backend=MindieSDBackend())
         except ImportError:
             logger.warning("MindIE-SD is not installed, using default compile mode.")
