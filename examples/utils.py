@@ -674,19 +674,22 @@ def prepare_extra_parallel_modules(
 
     return extra_parallel_modules
 
+
 def platform_aware_compile(
     model: torch.nn.Module,
     mode: str,
     **kwargs,
 ) -> torch.nn.Module:
-    if current_platform.device_type == 'npu':
+    if current_platform.device_type == "npu":
         try:
             from mindiesd.compilation import MindieSDBackend
+            
             return torch.compile(model, backend=MindieSDBackend())
         except ImportError:
             logger.warning("MindIE-SD is not installed, using default compile mode.")
             mode = "default"
     return torch.compile(model, mode=mode, **kwargs)
+
 
 def maybe_compile_text_encoder(
     args,
