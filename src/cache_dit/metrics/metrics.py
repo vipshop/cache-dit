@@ -1074,6 +1074,10 @@ def entrypoint():
                 if metric.upper() in key or metric.lower() in key:
                     selected_items[key] = METRICS_META[key]
 
+            # skip unselected metric
+            if len(selected_items) == 0:
+                continue
+
             reverse = (
                 True
                 if metric.lower()
