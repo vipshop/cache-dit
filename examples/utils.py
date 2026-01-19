@@ -557,6 +557,15 @@ def get_args(
         default=None,
         help="Disable fuse_lora even if lora weights are provided.",
     )
+    # Generator device
+    parser.add_argument(
+        "--generator-device",
+        "--gen-device",
+        type=str,
+        default=None,
+        help="Device for torch.Generator, e.g., 'cuda' or 'cpu'."
+        " If not set, use current device.",
+    )
 
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
