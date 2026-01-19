@@ -147,14 +147,13 @@ def gen_qwen_image(
     args: argparse.Namespace, pipe: QwenImagePipeline, prompt: str = None
 ) -> Image.Image:
     assert prompt is not None
-    gen_device = "cuda" if torch.cuda.is_available() else "cpu"
     image = pipe(
         prompt,
         height=args.height,
         width=args.width,
         num_inference_steps=args.steps,
         true_cfg_scale=1.0,
-        generator=torch.Generator(gen_device).manual_seed(args.seed),
+        generator=torch.Generator('cpu').manual_seed(args.seed),
     ).images[0]
 
     if args.verbose:
