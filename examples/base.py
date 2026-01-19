@@ -30,14 +30,6 @@ from utils import (
 logger = init_logger(__name__)
 
 
-def _default_generator_device() -> str:
-    if torch.cuda.is_available():
-        return "cuda"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
-
-
 class ExampleType(Enum):
     T2V = "T2V - Text to Video"
     I2V = "I2V - Image to Video"
@@ -79,9 +71,11 @@ class ExampleInputData:
     cfg_normalize: Optional[bool] = None
     use_en_prompt: Optional[bool] = None
     # Other inputs
-    seed: Optional[int] = None
+    seed: int = 0
+    # Use 'cpu' by default for better reproducibility across different hardware
+    gen_device: str = "cpu"
     generator: torch.Generator = dataclasses.field(
-        default_factory=lambda: torch.Generator(_default_generator_device()).manual_seed(0)
+        default_factory=lambda: torch.Generator("cpu").manual_seed(0)
     )
     # Some extra args, e.g, editing model specific inputs
     extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -127,29 +121,29 @@ class ExampleInputData:
                             "image from args.mask_image_path."
                         )
             input_data["mask_image"] = Image.open(args.mask_image_path).convert("RGB")
-        if self.seed is not None:
-            input_data["generator"] = torch.Generator(_default_generator_device()).manual_seed(
-                self.seed
-            )
-        # Maybe override generator with args.seed
+        # Set generator with seed from input data or args
+        if args.generator_device is not None:
+            self.gen_device = args.generator_device
         if args.seed is not None:
-            input_data["generator"] = torch.Generator(_default_generator_device()).manual_seed(
-                args.seed
-            )
-            if "seed" in input_data:
-                input_data.pop("seed")  # remove seed from input data
+            self.seed = args.seed
+        input_data["generator"] = torch.Generator(self.gen_device).manual_seed(self.seed)
+        # Remove redundant keys from input data
+        input_data.pop("seed", None)
+        input_data.pop("gen_device", None)
         return input_data
 
-    def new_generator(self, seed: int = None) -> torch.Generator:
+    def new_generator(self, args: argparse.Namespace = None) -> torch.Generator:
         # NOTE: We should always create a new generator before each inference to
         # ensure reproducibility when using the same seed. Alawys use cpu generator
         # for better cross-device consistency.
-        if seed is not None:
-            return torch.Generator(_default_generator_device()).manual_seed(seed)
+        if args is not None and args.generator_device is not None:
+            self.gen_device = args.generator_device
+        if args is not None and args.seed is not None:
+            return torch.Generator(self.gen_device).manual_seed(args.seed)
         elif self.seed is not None:
-            return torch.Generator(_default_generator_device()).manual_seed(self.seed)
+            return torch.Generator(self.gen_device).manual_seed(self.seed)
         else:
-            return torch.Generator(_default_generator_device()).manual_seed(0)
+            return torch.Generator(self.gen_device).manual_seed(0)
 
     def _preprocess(self):
         if self.image is not None:
@@ -640,7 +634,7 @@ class Example:
     ) -> torch.Generator:
         # NOTE: We should always create a new generator before each inference to
         # ensure reproducibility when using the same seed.
-        input_kwargs["generator"] = self.input_data.new_generator(seed=args.seed)
+        input_kwargs["generator"] = self.input_data.new_generator(args=args)
         return input_kwargs
 
 

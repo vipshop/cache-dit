@@ -33,6 +33,7 @@ Please also check the mkdocs build status on your local branch.
 ```bash
 pip3 install -e ".[docs]"
 mkdocs build --strict
+mkdocs serve # Then check the docs
 ```
 
 Ensure that your new commits do not break the mkdocs build process.
