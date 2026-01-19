@@ -31,6 +31,10 @@
 - 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
 - 🎉**Natively** supports **NVIDIA GPUs**, [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) (>= 1.2.0), ...  
 
+## 🔥Latest News 
+
+- [2026/01] **[🎉v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready! The main updates includes: New Models Support (Z-Image, FLUX.2, LTX-2, etc), Request level cache context, HTTP Serving, Ulysses Anything Attention, Text Encoder Parallelism, VAE Parallelism and [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
+
 ## 🚀Quick Start 
 
 You can install the cache-dit from PyPI or from source: 
