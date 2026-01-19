@@ -131,15 +131,14 @@ class ExampleInputData:
         if args.generator_device is not None:
             self.gen_device = args.generator_device
         # Set generator with seed from input data or args
-        if self.seed is not None:
+        if self.seed is not None or args.generator_device is not None:
             input_data["generator"] = torch.Generator(self.gen_device).manual_seed(self.seed)
         # Maybe override generator with args.seed
-        if args.seed is not None:
+        if args.seed is not None or args.generator_device is not None:
             input_data["generator"] = torch.Generator(self.gen_device).manual_seed(args.seed)
-        if "seed" in input_data:
-            input_data.pop("seed")  # remove seed from input data
-        if "gen_device" in input_data:
-            input_data.pop("gen_device")  # remove gen_device from input data
+        # Remove redundant keys from input data
+        input_data.pop("seed", None)
+        input_data.pop("gen_device", None)
         return input_data
 
     def new_generator(self, args: argparse.Namespace = None) -> torch.Generator:
