@@ -103,12 +103,15 @@ if args.prompt is not None:
 
 
 def run_pipe():
+    gen_device = (
+        current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
+    )
     image = pipe(
         prompt,
         height=1024 if args.height is None else args.height,
         width=1024 if args.width is None else args.width,
         num_inference_steps=28 if args.steps is None else args.steps,
-        generator=torch.Generator("cpu").manual_seed(0),
+        generator=torch.Generator(gen_device).manual_seed(0),
     ).images[0]
     return image
 

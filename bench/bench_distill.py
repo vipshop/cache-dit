@@ -153,7 +153,7 @@ def gen_qwen_image(
         width=args.width,
         num_inference_steps=args.steps,
         true_cfg_scale=1.0,
-        generator=torch.Generator("cpu").manual_seed(args.seed),
+        generator=torch.Generator('cpu').manual_seed(args.seed),
     ).images[0]
 
     if args.verbose:
