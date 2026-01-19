@@ -15,7 +15,6 @@ from transformers import GenerationMixin
 from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.quantizers import PipelineQuantizationConfig
 from cache_dit.logger import init_logger
-from cache_dit.platforms import current_platform
 import cache_dit
 
 from utils import (
@@ -29,13 +28,6 @@ from utils import (
 )
 
 logger = init_logger(__name__)
-
-
-def _default_generator_device() -> str:
-    # Use cuda if available, otherwise mps if available, else cpu.
-    if current_platform.is_accelerator_available():
-        return current_platform.device_type
-    return "cpu"
 
 
 class ExampleType(Enum):
@@ -79,10 +71,11 @@ class ExampleInputData:
     cfg_normalize: Optional[bool] = None
     use_en_prompt: Optional[bool] = None
     # Other inputs
-    seed: Optional[int] = None
-    gen_device: Optional[str] = _default_generator_device()
+    seed: int = 0
+    # Use 'cpu' by default for better reproducibility across different hardware
+    gen_device: str = "cpu"
     generator: torch.Generator = dataclasses.field(
-        default_factory=lambda: torch.Generator(_default_generator_device()).manual_seed(0)
+        default_factory=lambda: torch.Generator("cpu").manual_seed(0)
     )
     # Some extra args, e.g, editing model specific inputs
     extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -128,14 +121,12 @@ class ExampleInputData:
                             "image from args.mask_image_path."
                         )
             input_data["mask_image"] = Image.open(args.mask_image_path).convert("RGB")
+        # Set generator with seed from input data or args
         if args.generator_device is not None:
             self.gen_device = args.generator_device
-        # Set generator with seed from input data or args
-        if self.seed is not None or args.generator_device is not None:
-            input_data["generator"] = torch.Generator(self.gen_device).manual_seed(self.seed)
-        # Maybe override generator with args.seed
-        if args.seed is not None or args.generator_device is not None:
-            input_data["generator"] = torch.Generator(self.gen_device).manual_seed(args.seed)
+        if args.seed is not None:
+            self.seed = args.seed
+        input_data["generator"] = torch.Generator(self.gen_device).manual_seed(self.seed)
         # Remove redundant keys from input data
         input_data.pop("seed", None)
         input_data.pop("gen_device", None)

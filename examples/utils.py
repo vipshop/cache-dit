@@ -563,8 +563,9 @@ def get_args(
         "--gen-device",
         type=str,
         default=None,
-        help="Device for torch.Generator, e.g., 'cuda' or 'cpu'."
-        " If not set, use current device.",
+        help="Device for torch.Generator, e.g., 'cuda' or 'cpu'. "
+        "If not set, use 'cpu' for better reproducibility across "
+        "different hardware.",
     )
 
     args_or_parser = parser.parse_args() if parse else parser
