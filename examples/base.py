@@ -33,8 +33,8 @@ logger = init_logger(__name__)
 
 def _default_generator_device() -> str:
     # Use cuda if available, otherwise mps if available, else cpu.
-    if current_platform.is_accelerator_available() and current_platform.device_type == "cuda":
-        return "cuda"
+    if current_platform.is_accelerator_available():
+        return current_platform.device_type
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
