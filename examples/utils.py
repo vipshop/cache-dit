@@ -142,6 +142,13 @@ def get_args(
         help="Number of warmup steps before measuring performance",
     )
     parser.add_argument(
+        "--warmup-num-inference-steps",
+        "--warmup-steps",
+        type=int,
+        default=None,
+        help="Number of warmup inference steps per warmup before measuring performance",
+    )
+    parser.add_argument(
         "--repeat",
         type=int,
         default=1,

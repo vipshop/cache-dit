@@ -546,14 +546,19 @@ class Example:
             memory_tracker.__enter__()
 
         # warm up
-        start_time
+        num_inference_steps = input_kwargs.get("num_inference_steps", None)
+        start_time = time.time()
         for _ in range(self.args.warmup):
             input_kwargs = self.new_generator(input_kwargs, self.args)
+            if self.args.warmup_num_inference_steps is not None:
+                input_kwargs["num_inference_steps"] = self.args.warmup_num_inference_steps
             _ = pipe(**input_kwargs)
         if self.args.warmup > 0:
             warmup_time = (time.time() - start_time) / self.args.warmup
         else:
             warmup_time = None
+        # restore num_inference_steps
+        input_kwargs["num_inference_steps"] = num_inference_steps
 
         start_time = time.time()
         # actual inference
