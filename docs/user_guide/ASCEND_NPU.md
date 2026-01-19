@@ -190,7 +190,7 @@ python3 generate.py flux --cache --attn _native_npu
 python3 generate.py qwen_image --cache --attn _native_npu
 ```
 
-### Multi-NPUs Inference 
+### Distributed Inference 
 
 cache-dit is designed to work 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
