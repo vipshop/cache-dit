@@ -39,7 +39,7 @@
 
 ## 🔥Latest News 
 
-- [2026/01] **[🎉v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready: New Models Support(Z-Image, FLUX.2, LTX-2, etc), Request level Cache Context, HTTP Serving, **[Ulysses Anything Attention](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention)**, TE-P, VAE-P, CN-P and [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
+- [2026/01] **[🎉v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready: New Models Support(Z-Image, FLUX.2, LTX-2, etc), Request level Cache Context, HTTP Serving, [Ulysses Anything Attention](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), TE-P, VAE-P, CN-P and [Ascend NPUs](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
 
 ## 🚀Quick Start 
 
