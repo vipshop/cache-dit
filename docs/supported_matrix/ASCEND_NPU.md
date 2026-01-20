@@ -2,7 +2,7 @@
 
 <div id="supported"></div>
 
-Currently,**cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examples) for more details. Here are just some of the tested models listed.
+Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examples) for more details. Here are just some of the tested models listed.
 
 Theoretically, almost all models supported by Cache-DiT can run on Ascend NPU. Here, only some of the models we have tested are listed. We will continue testing more models for Ascend NPU, so stay tuned for updates!
 
