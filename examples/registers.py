@@ -618,50 +618,6 @@ def ltx2_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-# @ExampleRegister.register("ltx2_i2v", default="Lightricks/LTX-2")
-# def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
-#     from diffusers import LTX2ImageToVideoPipeline
-
-#     model_name_or_path = _path(
-#         "Lightricks/LTX-2",
-#         args=args,
-#     )
-
-#     height = 512 if args.height is None else args.height
-#     width = 768 if args.width is None else args.width
-#     image = load_image("./data/cat.png").convert("RGB")
-#     image = image.resize((width, height))
-
-#     return Example(
-#         args=args,
-#         init_config=ExampleInitConfig(
-#             task_type=ExampleType.I2V,  # Image to Video
-#             model_name_or_path=model_name_or_path,
-#             pipeline_class=LTX2ImageToVideoPipeline,
-#             bnb_4bit_components=["text_encoder", "transformer"],
-#         ),
-#         input_data=ExampleInputData(
-#             prompt=(
-#                 "An astronaut hatches from a fragile egg on the surface of the Moon, "
-#                 "ultra-realistic detail, low-gravity motion, cinematic lighting."
-#             ),
-#             negative_prompt=(
-#                 "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion artifacts, "
-#                 "bad anatomy, ugly, transition, static, text, watermark"
-#             ),
-#             image=image,
-#             height=height,
-#             width=width,
-#             num_frames=121,
-#             num_inference_steps=40,
-#             guidance_scale=4.0,
-#             extra_input_kwargs={
-#                 "frame_rate": 24.0,
-#             },
-#         ),
-#     )
-
-
 @ExampleRegister.register("ltx2_i2v", default="Lightricks/LTX-2")
 def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import LTX2ImageToVideoPipeline
@@ -694,7 +650,7 @@ def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
                 "A young girl stands calmly in the foreground, looking directly at the camera, "
                 "as a house fire rages in the background."
             ),
-            negative_prompt=("worst quality, inconsistent motion, blurry, jittery, distorted"),
+            negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
             image=image,
             height=height,
             width=width,
