@@ -19,6 +19,11 @@ cache_dit.enable_cache(
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
+|L20x1| Ulysses-2 | Ulysses-4 | + compile |
+|:---:|:---:|:---:|:---:|  
+|FLUX, 23.56s| 13.80s | 8.28s | 7.27s |
+|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE_Ulysses4.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C1_Q0_NONE_Ulysses4.png" width=222px>|
+
 ## UAA: Ulysses Anything Attention 
 
 <div id="ulysses-anything-attention"></div>
