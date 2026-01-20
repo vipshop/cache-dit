@@ -629,7 +629,12 @@ def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
 
     height = 512 if args.height is None else args.height
     width = 768 if args.width is None else args.width
-    image = load_image("./data/cat.png").convert("RGB")
+    if args.image_path is not None:
+        image = load_image(args.image_path)
+    else:
+        image = load_image(
+            "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
+        )
     image = image.resize((width, height))
 
     return Example(
@@ -642,13 +647,10 @@ def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
         input_data=ExampleInputData(
             prompt=(
-                "An astronaut hatches from a fragile egg on the surface of the Moon, "
-                "ultra-realistic detail, low-gravity motion, cinematic lighting."
+                "A young girl stands calmly in the foreground, looking directly at the camera, "
+                "as a house fire rages in the background."
             ),
-            negative_prompt=(
-                "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion artifacts, "
-                "bad anatomy, ugly, transition, static, text, watermark"
-            ),
+            negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
             image=image,
             height=height,
             width=width,
