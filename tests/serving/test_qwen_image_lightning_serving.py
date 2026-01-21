@@ -4,14 +4,14 @@ This test demonstrates how to use cache-dit serving with LoRA models.
 Qwen-Image-Lightning is a distilled model that generates high-quality images in 4 or 8 steps.
 
 Server setup:
-    CUDA_VISIBLE_DEVICES=7 cache-dit-serve \
+    CUDA_VISIBLE_DEVICES=7 torchrun --nproc_per_node=1 -m cache_dit.serve.serve \
         --model-path Qwen/Qwen-Image \
         --lora-path lightx2v/Qwen-Image-Lightning \
         --lora-name Qwen-Image-Lightning-8steps-V1.1-bf16.safetensors \
         --cache
 
 For 4-step model:
-    CUDA_VISIBLE_DEVICES=7 cache-dit-serve \
+    CUDA_VISIBLE_DEVICES=7 torchrun --nproc_per_node=1 -m cache_dit.serve.serve \
         --model-path Qwen/Qwen-Image \
         --lora-path lightx2v/Qwen-Image-Lightning \
         --lora-name Qwen-Image-Lightning-4steps-V1.1-bf16.safetensors \
@@ -87,7 +87,7 @@ def test_basic_8steps():
         name="qwen_lightning_8steps",
         num_inference_steps=8,
         guidance_scale=1.0,
-        seed=42,
+        seed=0,
     )
 
 

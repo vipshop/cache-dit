@@ -86,7 +86,6 @@ GitHub = "https://github.com/vipshop/cache-dit"
 [project.scripts]
 
 cache-dit-metrics-cli = "cache_dit.metrics:main"
-cache-dit-serve = "cache_dit.serve.serve:launch_server"
 
 [build-system]
 
