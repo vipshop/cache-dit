@@ -1187,7 +1187,8 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
-    if args.attn is not None and args.parallel_type is None and not args.cache:
+    if args.attn is not None and args.parallel_type is None:
+        # NON-parallelism case: set attention backend directly
         try:
             from cache_dit.parallelism.attention import _maybe_register_custom_attn_backends
 
