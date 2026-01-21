@@ -535,9 +535,16 @@ class Example:
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
 
-        maybe_apply_optimization(self.args, pipe, **self.init_config.extra_optimize_kwargs)
-
         input_kwargs = self.input_data.data(self.args)
+        default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
+
+        maybe_apply_optimization(
+            self.args,
+            pipe,
+            default_num_inference_steps=default_num_inference_steps,
+            **self.init_config.extra_optimize_kwargs,
+        )
+
         pipe.set_progress_bar_config(disable=self.rank != 0)
 
         # track memory if needed
@@ -546,7 +553,6 @@ class Example:
             memory_tracker.__enter__()
 
         # warm up
-        num_inference_steps = input_kwargs.get("num_inference_steps", None)
         start_time = time.time()
         for _ in range(self.args.warmup):
             input_kwargs = self.new_generator(input_kwargs, self.args)
@@ -558,7 +564,7 @@ class Example:
         else:
             warmup_time = None
         # restore num_inference_steps
-        input_kwargs["num_inference_steps"] = num_inference_steps
+        input_kwargs["num_inference_steps"] = default_num_inference_steps
 
         start_time = time.time()
         # actual inference

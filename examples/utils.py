@@ -1234,6 +1234,7 @@ def maybe_apply_optimization(
                 f"Original error: {e}"
             ) from e
 
+    default_num_inference_steps = kwargs.pop("default_num_inference_steps", None)
     if args.cache or args.parallel_type is not None or args.config_path is not None:
 
         if args.config_path is None:
@@ -1276,11 +1277,15 @@ def maybe_apply_optimization(
                 logger.info(
                     f"Using steps computation mask with policy: {args.mask_policy} for caching."
                 )
-                assert (
-                    args.num_inference_steps is not None
-                ), "num_inference_steps (--steps) must be provided for steps mask."
+                if default_num_inference_steps is None:
+                    assert (
+                        args.num_inference_steps is not None
+                    ), "num_inference_steps (--steps) must be provided for steps mask."
+                    num_inference_steps = args.num_inference_steps
+                else:
+                    num_inference_steps = default_num_inference_steps
                 steps_computation_mask = cache_dit.steps_mask(
-                    total_steps=args.num_inference_steps,
+                    total_steps=num_inference_steps,
                     mask_policy=args.mask_policy,
                 )
             else:
