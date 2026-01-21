@@ -260,6 +260,13 @@ def parse_args():
         help="Device (cuda/cpu), auto-detect by default",
     )
     parser.add_argument(
+        "--generator-device",
+        "--gen-device",
+        type=str,
+        default=None,
+        help="Device for torch.Generator, e.g., 'cuda' or 'cpu'. If not set, auto-detect by default.",
+    )
+    parser.add_argument(
         "--dtype",
         type=str,
         default="bfloat16",
@@ -386,6 +393,7 @@ def launch_server(args=None):
     model_manager = ModelManager(
         model_path=args.model_path,
         device=args.device or current_platform.device_type,
+        generator_device=args.generator_device,
         torch_dtype=torch_dtype,
         enable_cache=enable_cache,
         cache_config=cache_config,
