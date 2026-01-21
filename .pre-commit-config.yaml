@@ -5,7 +5,7 @@ repos:
       - id: check-docstring-first
       - id: check-toml
       - id: check-yaml
-        exclude: packaging/.*
+        exclude: ^(packaging/.*|mkdocs\.yml)$
         args:
           - --allow-multiple-documents
       - id: mixed-line-ending

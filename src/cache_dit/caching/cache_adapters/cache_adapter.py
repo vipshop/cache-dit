@@ -7,16 +7,24 @@ from typing import Dict, List, Tuple, Any, Union, Callable, Optional
 
 from diffusers import DiffusionPipeline, ModelMixin
 
-from cache_dit.caching.cache_types import CacheType
-from cache_dit.caching.block_adapters import BlockAdapter
-from cache_dit.caching.block_adapters import FakeDiffusionPipeline
-from cache_dit.caching.block_adapters import ParamsModifier
-from cache_dit.caching.block_adapters import BlockAdapterRegister
-from cache_dit.caching.cache_contexts import ContextManager
-from cache_dit.caching.cache_contexts import BasicCacheConfig
-from cache_dit.caching.cache_contexts import CalibratorConfig
-from cache_dit.caching.cache_blocks import UnifiedBlocks
+from ..cache_types import CacheType
+from ..block_adapters import BlockAdapter
+from ..block_adapters import FakeDiffusionPipeline
+from ..block_adapters import ParamsModifier
+from ..block_adapters import BlockAdapterRegister
+from ..cache_contexts import ContextManager
+from ..cache_contexts import BasicCacheConfig
+from ..cache_contexts import CalibratorConfig
+from ..cache_blocks import UnifiedBlocks
 from cache_dit.logger import init_logger
+
+try:
+    from accelerate import hooks
+
+    _accelerate_is_availble = True
+except ImportError:
+    _accelerate_is_availble = False
+
 
 logger = init_logger(__name__)
 
@@ -173,7 +181,8 @@ class CachedAdapter:
         BlockAdapter.assert_normalized(block_adapter)
 
         if BlockAdapter.is_cached(block_adapter.pipe):
-            return block_adapter.pipe
+            logger.warning("Pipeline has been already cached, skip creating cache context again.")
+            return None, block_adapter.pipe
 
         # Check context_kwargs
         context_kwargs = cls.check_context_kwargs(block_adapter, **context_kwargs)
@@ -266,45 +275,71 @@ class CachedAdapter:
         for i in range(
             min(len(contexts_kwargs), len(flatten_modifiers)),
         ):
-            if "cache_config" in flatten_modifiers[i]._context_kwargs:
-                modifier_cache_config = flatten_modifiers[i]._context_kwargs.get(
-                    "cache_config", None
-                )
-                modifier_calibrator_config = flatten_modifiers[i]._context_kwargs.get(
-                    "calibrator_config", None
-                )
-                if modifier_cache_config is not None:
-                    assert isinstance(modifier_cache_config, BasicCacheConfig), (
-                        f"cache_config must be BasicCacheConfig, but got "
-                        f"{type(modifier_cache_config)}."
-                    )
-                    contexts_kwargs[i]["cache_config"].update(**modifier_cache_config.as_dict())
-                if modifier_calibrator_config is not None:
-                    assert isinstance(modifier_calibrator_config, CalibratorConfig), (
-                        f"calibrator_config must be CalibratorConfig, but got "
-                        f"{type(modifier_calibrator_config)}."
-                    )
-                    if contexts_kwargs[i].get("calibrator_config", None) is None:
-                        contexts_kwargs[i]["calibrator_config"] = modifier_calibrator_config
-                    else:
-                        contexts_kwargs[i]["calibrator_config"].update(
-                            **modifier_calibrator_config.as_dict()
-                        )
+            contexts_kwargs[i] = cls._modify_context_params(
+                flatten_modifiers[i]._context_kwargs,
+                contexts_kwargs[i],
+            )
             cls._config_messages(**contexts_kwargs[i])
 
         return flatten_contexts, contexts_kwargs
 
     @classmethod
-    def _config_messages(cls, **contexts_kwargs):
+    def _modify_context_params(
+        cls,
+        new_context_kwargs: Dict[str, Any],
+        old_context_kwargs: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        modified_context_kwargs = copy.deepcopy(old_context_kwargs)
+        if "cache_config" in new_context_kwargs:
+            new_cache_config = new_context_kwargs.get("cache_config", None)
+            new_calibrator_config = new_context_kwargs.get("calibrator_config", None)
+            # Modify cache_config
+            if new_cache_config is not None:
+                assert isinstance(new_cache_config, BasicCacheConfig), (
+                    f"cache_config must be BasicCacheConfig, but got " f"{type(new_cache_config)}."
+                )
+                if modified_context_kwargs.get("cache_config", None) is None:
+                    modified_context_kwargs["cache_config"] = new_cache_config
+                else:
+                    assert isinstance(modified_context_kwargs["cache_config"], BasicCacheConfig), (
+                        f"cache_config must be BasicCacheConfig, but got "
+                        f"{type(modified_context_kwargs['cache_config'])}."
+                    )
+                    modified_context_kwargs["cache_config"].update(**new_cache_config.as_dict())
+            # Modify calibrator_config
+            if new_calibrator_config is not None:
+                assert isinstance(new_calibrator_config, CalibratorConfig), (
+                    f"calibrator_config must be CalibratorConfig, but got "
+                    f"{type(new_calibrator_config)}."
+                )
+                if modified_context_kwargs.get("calibrator_config", None) is None:
+                    modified_context_kwargs["calibrator_config"] = new_calibrator_config
+                else:
+                    assert isinstance(
+                        modified_context_kwargs["calibrator_config"], CalibratorConfig
+                    ), (
+                        f"calibrator_config must be CalibratorConfig, but got "
+                        f"{type(modified_context_kwargs['calibrator_config'])}."
+                    )
+                    modified_context_kwargs["calibrator_config"].update(
+                        **new_calibrator_config.as_dict()
+                    )
+        return modified_context_kwargs
+
+    @classmethod
+    def _config_messages(cls, logging: bool = True, **contexts_kwargs):
         cache_config: BasicCacheConfig = contexts_kwargs.get("cache_config", None)
         calibrator_config: CalibratorConfig = contexts_kwargs.get("calibrator_config", None)
+        message = ""
         if cache_config is not None:
             message = f"Collected Context Config: {cache_config.strify()}"
             if calibrator_config is not None:
                 message += f", Calibrator Config: {calibrator_config.strify(details=True)}"
             else:
                 message += ", Calibrator Config: None"
+        if logging:
             logger.info(message)
+        return message
 
     @classmethod
     def mock_blocks(
@@ -362,19 +397,19 @@ class CachedAdapter:
 
         assert isinstance(dummy_blocks_names, list)
 
-        from accelerate import hooks
-
-        _hf_hook: Optional[hooks.ModelHook] = None
-
-        if getattr(transformer, "_hf_hook", None) is not None:
-            _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
-            if hasattr(transformer, "_old_forward"):
-                logger.warning(
-                    "_hf_hook is not None, so, we have to re-direct transformer's "
-                    f"original_forward({id(original_forward)}) to transformer's "
-                    f"_old_forward({id(transformer._old_forward)})"
-                )
-                original_forward = transformer._old_forward
+        if _accelerate_is_availble:
+            _hf_hook: Optional[hooks.ModelHook] = None
+            if getattr(transformer, "_hf_hook", None) is not None:
+                _hf_hook = transformer._hf_hook  # hooks from accelerate.hooks
+                if hasattr(transformer, "_old_forward"):
+                    logger.warning(
+                        "_hf_hook is not None, so, we have to re-direct transformer's "
+                        f"original_forward({id(original_forward)}) to transformer's "
+                        f"_old_forward({id(transformer._old_forward)})"
+                    )
+                    original_forward = transformer._old_forward
+        else:
+            _hf_hook = None
 
         # TODO: remove group offload hooks the re-apply after cache applied.
         # hooks = _diffusers_hook.hooks.copy(); _diffusers_hook.hooks.clear()
@@ -383,6 +418,9 @@ class CachedAdapter:
         # from diffusers.hooks.group_offloading import apply_group_offloading
         context_manager: ContextManager = block_adapter.pipe._context_manager
         assert isinstance(context_manager, ContextManager._supported_managers)
+        # NOTE: Also assign context manager to transformer for transformer-only case
+        transformer._context_manager = context_manager  # instance level
+        transformer._context_names = unique_blocks_name  # instance level
 
         def new_forward(self, *args, **kwargs):
             with ExitStack() as stack:
@@ -500,7 +538,7 @@ class CachedAdapter:
         cls,
         block_adapter: BlockAdapter,
     ):
-        from cache_dit.caching.cache_blocks import (
+        from ..cache_blocks import (
             apply_stats,
         )
 
@@ -528,6 +566,7 @@ class CachedAdapter:
         pipe_or_adapter: Union[
             DiffusionPipeline,
             BlockAdapter,
+            torch.nn.Module,  # Transformer-only
         ],
     ):
         # release model hooks
@@ -541,6 +580,16 @@ class CachedAdapter:
                 del transformer._original_forward
             if hasattr(transformer, "_is_cached"):
                 del transformer._is_cached
+            if hasattr(transformer, "_context_manager"):
+                context_manager = transformer._context_manager
+                if isinstance(context_manager, ContextManager._supported_managers):
+                    context_manager.clear_contexts()
+                try:
+                    del transformer._context_manager
+                except Exception:
+                    pass
+            if hasattr(transformer, "_context_names"):
+                del transformer._context_names
 
         def _release_pipeline_hooks(pipe):
             if hasattr(pipe, "_original_call"):
@@ -591,14 +640,14 @@ class CachedAdapter:
         )
 
         # release stats hooks
-        from cache_dit.caching.cache_blocks import (
+        from ..cache_blocks import (
             remove_stats,
         )
 
         cls.release_hooks(pipe_or_adapter, remove_stats, remove_stats, remove_stats)
 
         # maybe release parallelism stats
-        from cache_dit.parallelism.parallel_interface import (
+        from cache_dit.parallelism import (
             remove_parallelism_stats,
         )
 
@@ -616,22 +665,90 @@ class CachedAdapter:
             DiffusionPipeline,
             BlockAdapter,
         ],
-        _release_blocks: Callable,
-        _release_transformer: Callable,
-        _release_pipeline: Callable,
+        _release_blocks: Optional[Callable] = None,
+        _release_transformer: Optional[Callable] = None,
+        _release_pipeline: Optional[Callable] = None,
     ):
         if isinstance(pipe_or_adapter, DiffusionPipeline):
             pipe = pipe_or_adapter
-            _release_pipeline(pipe)
+            if _release_pipeline is not None:
+                _release_pipeline(pipe)
             if hasattr(pipe, "transformer"):
-                _release_transformer(pipe.transformer)
+                if _release_transformer is not None:
+                    _release_transformer(pipe.transformer)
             if hasattr(pipe, "transformer_2"):  # Wan 2.2
-                _release_transformer(pipe.transformer_2)
+                if _release_transformer is not None:
+                    _release_transformer(pipe.transformer_2)
         elif isinstance(pipe_or_adapter, BlockAdapter):
             adapter = pipe_or_adapter
             BlockAdapter.assert_normalized(adapter)
-            _release_pipeline(adapter.pipe)
+            if _release_pipeline is not None:
+                _release_pipeline(adapter.pipe)
             for transformer in BlockAdapter.flatten(adapter.transformer):
-                _release_transformer(transformer)
+                if _release_transformer is not None:
+                    _release_transformer(transformer)
             for blocks in BlockAdapter.flatten(adapter.blocks):
-                _release_blocks(blocks)
+                if _release_blocks is not None:
+                    _release_blocks(blocks)
+        elif isinstance(pipe_or_adapter, torch.nn.Module):
+            transformer = pipe_or_adapter
+            if _release_transformer is not None:
+                _release_transformer(transformer)
+            for blocks in BlockAdapter.find_blocks(transformer):
+                if _release_blocks is not None:
+                    _release_blocks(blocks)
+
+    @classmethod
+    def maybe_refresh_context(
+        cls,
+        transformer: torch.nn.Module,
+        **force_refresh_kwargs,
+    ):
+        verbose = force_refresh_kwargs.pop("verbose", False)
+        # Get context manager from transformer
+        if not hasattr(transformer, "_context_manager"):
+            logger.warning(
+                "Transformer has no attribute '_context_manager', skip refreshing cache context."
+            )
+            return
+        context_manager: ContextManager = transformer._context_manager
+        assert isinstance(context_manager, ContextManager._supported_managers)
+        if not context_manager.persistent_context:
+            logger.warning(
+                "Transformer's context manager is not persistent, skip refreshing cache context."
+            )
+            return
+        context_names: List[str] = getattr(transformer, "_context_names", [])
+        if not context_names:
+            logger.warning(
+                "Transformer has no attribute '_context_names' or it's empty, "
+                "skip refreshing cache context."
+            )
+            return
+
+        for context_name in context_names:
+            current_context = context_manager.get_context(context_name)
+            old_init_kwargs = getattr(current_context, "_init_kwargs", {})  # type: dict
+            new_init_kwargs = copy.deepcopy(old_init_kwargs)
+            # Remove old context
+            context_manager.remove_context(context_name)
+            new_init_kwargs = cls._modify_context_params(
+                force_refresh_kwargs,
+                new_init_kwargs,
+            )
+            # Re-create new context with old init kwargs updated by
+            # force_refresh_kwargs.
+            context_manager.reset_context(
+                context_name,
+                **new_init_kwargs,
+            )
+            if verbose:
+                logger.info(
+                    f"✅ Refreshed cache context: {context_name}, "
+                    f"{cls._config_messages(logging=False, **new_init_kwargs)}"
+                )
+            # reset _context_kwargs for transformer
+            if hasattr(transformer, "_context_kwargs"):
+                # Will overwrite the _context_kwargs by last context kwargs.
+                # Only used for strify utilization.
+                transformer._context_kwargs = new_init_kwargs

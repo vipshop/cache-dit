@@ -8,6 +8,7 @@ import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args, strify, MemoryTracker
 import cache_dit
+from cache_dit.platforms import current_platform
 
 
 parser = get_args(parse=False)
@@ -36,25 +37,6 @@ step_mask_aliases = {
 if args.step_mask in step_mask_aliases:
     args.step_mask = step_mask_aliases[args.step_mask]
 
-# Define different step computation masks for 28 steps
-step_computation_masks = {
-    "slow": cache_dit.steps_mask(
-        compute_bins=[8, 3, 3, 2, 2],  # 18
-        cache_bins=[1, 2, 2, 2, 3],  # 10
-    ),
-    "medium": cache_dit.steps_mask(
-        compute_bins=[6, 2, 2, 2, 2],  # 14
-        cache_bins=[1, 3, 3, 3, 4],  # 14
-    ),
-    "fast": cache_dit.steps_mask(
-        compute_bins=[6, 1, 1, 1, 1],  # 10
-        cache_bins=[1, 3, 4, 5, 5],  # 18
-    ),
-    "ultra": cache_dit.steps_mask(
-        compute_bins=[4, 1, 1, 1, 1],  # 8
-        cache_bins=[1, 4, 5, 6, 6],  # 20
-    ),
-}
 
 step_computation_dynamic_policy_rdt = {
     "slow": 0.20,
@@ -95,8 +77,12 @@ if args.cache:
             max_continuous_cached_steps=args.max_continuous_cached_steps,
             residual_diff_threshold=args.rdt,
             # LeMiCa or EasyCache style Mask for 28 steps, e.g,
-            # 111111010010000010000100001, 1: compute, 0: cache.
-            steps_computation_mask=step_computation_masks[args.step_mask],
+            # slow: 11111111 0 111 00 111 00 11 00 1 000 1,
+            # 1: full compute steps, 0: dynamic/static cache.
+            steps_computation_mask=cache_dit.steps_mask(
+                mask_policy=args.step_mask,  # slow, medium, fast, ultra.
+                total_steps=28 if args.steps is None else args.steps,
+            ),
             # The policy for cache steps can be 'dynamic' or 'static'
             steps_computation_policy=args.step_policy,
         ),
@@ -125,7 +111,7 @@ if args.quantize:
     )
     print(f"Applied quantization: {args.quantize_type} to Transformer and Text Encoder 2.")
 
-pipe.to("cuda")
+pipe.to(current_platform.device_type)
 
 if args.attn is not None:
     if hasattr(pipe.transformer, "set_attention_backend"):

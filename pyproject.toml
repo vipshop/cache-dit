@@ -11,7 +11,7 @@ readme = "README.md"
 dependencies = [
     "pyyaml",
     "torch>=2.7.1",
-    "diffusers>=0.35.1",
+    "diffusers>=0.36.0",
     "transformers>=4.55.2",
 ]
 
@@ -33,6 +33,13 @@ metrics = [
     "lpips==0.1.4",
 ]
 
+serving = [
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.0.0",
+    "peft",
+]
+
 dev = [
     "packaging",
     "pre-commit",
@@ -49,10 +56,26 @@ dev = [
     "scikit-image",
 ]
 
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-api-autonav",
+    "mkdocs-material",
+    "mkdocstrings-python",
+    "mkdocs-gen-files",
+    "mkdocs-awesome-nav",
+    "mkdocs-glightbox",
+    "mkdocs-git-revision-date-localized-plugin",
+    "mkdocs-minify-plugin",
+    "regex",
+    "ruff",
+    "pydantic",
+]
+
 all = [
     "cache-dit[parallelism]",
     "cache-dit[quantization]",
     "cache-dit[metrics]",
+    "cache-dit[serving]",
 ]
 
 [project.urls]

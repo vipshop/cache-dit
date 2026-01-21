@@ -1,60 +1,23 @@
-import os
-
 import torch
 import torch.distributed as dist
-from cache_dit.logger import init_logger, logging_rank_0
+from ..envs import ENV
+from ..platforms import current_platform
+from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
-
-
-def epilogue_prologue_fusion_enabled(**kwargs) -> bool:
-    mode = kwargs.get("epilogue_prologue_fusion", False)
-    CACHE_DIT_EPILOGUE_PROLOGUE_FUSION = bool(
-        int(os.environ.get("CACHE_DIT_EPILOGUE_PROLOGUE_FUSION", "0"))
-    )
-
-    if CACHE_DIT_EPILOGUE_PROLOGUE_FUSION:
-        logging_rank_0(
-            logger,
-            "CACHE_DIT_EPILOGUE_PROLOGUE_FUSION is set to 1. \n"
-            "Force enable epilogue and prologue fusion.",
-        )
-
-    return CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or mode
-
-
-_CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = (
-    os.environ.get(
-        "CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP",
-        "1",
-    )
-    == "1"
-)
-
-
-def enable_compile_compute_comm_overlap():
-    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
-    _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = True
-    logger.info("Enabled compile compute-communication overlap manually.")
-
-
-def disable_compile_compute_comm_overlap():
-    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
-    _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP = False
-    logger.info("Disabled compile compute-communication overlap manually.")
-
-
-def is_compile_compute_comm_overlap_enabled() -> bool:
-    global _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
-    return _CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
 
 
 def set_compile_configs(
     descent_tuning: bool = False,
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
+    fx_graph_cache: bool = True,
+    fx_graph_remote_cache: bool = False,
+    autotune_local_cache: bool = False,
     use_fast_math: bool = False,
     compute_comm_overlap: bool = True,
+    capture_scalar_outputs: bool = False,
+    capture_dynamic_output_shape_ops: bool = False,
     **kwargs,  # other kwargs
 ):
     # Alway increase recompile_limit for dynamic shape compilation
@@ -62,31 +25,32 @@ def set_compile_configs(
     torch._dynamo.config.accumulated_recompile_limit = 8192  # default is 256
     # Handle compiler caches
     # https://github.com/vllm-project/vllm/blob/23baa2180b0ebba5ae94073ba9b8e93f88b75486/vllm/compilation/compiler_interface.py#L270
-    torch._inductor.config.fx_graph_cache = True
-    torch._inductor.config.fx_graph_remote_cache = False
+    torch._inductor.config.fx_graph_cache = fx_graph_cache
+    torch._inductor.config.fx_graph_remote_cache = fx_graph_remote_cache
     # https://github.com/pytorch/pytorch/issues/153791
-    torch._inductor.config.autotune_local_cache = False
+    torch._inductor.config.autotune_local_cache = autotune_local_cache
 
     if dist.is_initialized():
         # Enable compute comm overlap
         torch._inductor.config.reorder_for_compute_comm_overlap = (
-            compute_comm_overlap and is_compile_compute_comm_overlap_enabled()
+            compute_comm_overlap and ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP
         )
         # L20 64 GB/s, PCIe; A100/A800 NVLink 300 GB/s.
         if torch._inductor.config.reorder_for_compute_comm_overlap:
             torch._inductor.config.intra_node_bw = (
-                64 if "L20" in torch.cuda.get_device_name() else 300
+                64 if "L20" in current_platform.get_device_name() else 300
             )
+
+    # https://docs.pytorch.org/docs/stable/nested.html#data-dependent-operation-within-torch-compile
+    if hasattr(torch._dynamo.config, "capture_scalar_outputs"):
+        torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
+        torch._dynamo.config.capture_dynamic_output_shape_ops = capture_dynamic_output_shape_ops
 
     if not descent_tuning:
         return
 
-    FORCE_DISABLE_CUSTOM_COMPILE_CONFIG = (
-        os.environ.get("CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG", "0") == "1"
-    )
-    if FORCE_DISABLE_CUSTOM_COMPILE_CONFIG:
-        logging_rank_0(
-            logger,
+    if ENV.CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG:
+        logger.info(
             "CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG is set to 1. \n"
             "Force disable custom compile config.",
         )
@@ -107,7 +71,7 @@ def set_compile_configs(
     torch._inductor.config.epilogue_fusion = False
 
     # Enable epilogue and prologue fusion
-    if epilogue_prologue_fusion_enabled(**kwargs):
+    if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or kwargs.get("epilogue_prologue_fusion", False):
         torch._inductor.config.epilogue_fusion = True
         torch._inductor.config.prologue_fusion = True
         torch._inductor.config.epilogue_fusion_first = True

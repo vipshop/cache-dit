@@ -13,9 +13,7 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 
-from cache_dit.caching.patch_functors.functor_base import (
-    PatchFunctor,
-)
+from .functor_base import PatchFunctor
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -23,7 +21,7 @@ logger = init_logger(__name__)
 
 class ChromaPatchFunctor(PatchFunctor):
 
-    def apply(
+    def _apply(
         self,
         transformer: ChromaTransformer2DModel,
         **kwargs,
