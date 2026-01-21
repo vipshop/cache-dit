@@ -529,21 +529,23 @@ class Example:
             raise ValueError("init_config must be provided.")
         return True
 
+    def prepare_input_data(self):
+        input_kwargs = self.input_data.data(self.args)
+        default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
+        extra_optimize_kwargs = self.init_config.extra_optimize_kwargs
+        extra_optimize_kwargs["default_num_inference_steps"] = default_num_inference_steps
+        return input_kwargs, extra_optimize_kwargs
+
     def run(self) -> None:
         self.check_valid()
         start_time = time.time()
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
 
-        input_kwargs = self.input_data.data(self.args)
+        input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
         default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
 
-        maybe_apply_optimization(
-            self.args,
-            pipe,
-            default_num_inference_steps=default_num_inference_steps,
-            **self.init_config.extra_optimize_kwargs,
-        )
+        maybe_apply_optimization(self.args, pipe, **extra_optimize_kwargs)
 
         pipe.set_progress_bar_config(disable=self.rank != 0)
 
