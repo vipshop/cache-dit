@@ -529,15 +529,24 @@ class Example:
             raise ValueError("init_config must be provided.")
         return True
 
+    def prepare_input_data(self):
+        input_kwargs = self.input_data.data(self.args)
+        default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
+        extra_optimize_kwargs = self.init_config.extra_optimize_kwargs
+        extra_optimize_kwargs["default_num_inference_steps"] = default_num_inference_steps
+        return input_kwargs, extra_optimize_kwargs
+
     def run(self) -> None:
         self.check_valid()
         start_time = time.time()
         pipe = self.init_config.get_pipe(self.args)
         load_time = time.time() - start_time
 
-        maybe_apply_optimization(self.args, pipe, **self.init_config.extra_optimize_kwargs)
+        input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
+        default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
 
-        input_kwargs = self.input_data.data(self.args)
+        maybe_apply_optimization(self.args, pipe, **extra_optimize_kwargs)
+
         pipe.set_progress_bar_config(disable=self.rank != 0)
 
         # track memory if needed
@@ -546,7 +555,6 @@ class Example:
             memory_tracker.__enter__()
 
         # warm up
-        num_inference_steps = input_kwargs.get("num_inference_steps", None)
         start_time = time.time()
         for _ in range(self.args.warmup):
             input_kwargs = self.new_generator(input_kwargs, self.args)
@@ -558,7 +566,7 @@ class Example:
         else:
             warmup_time = None
         # restore num_inference_steps
-        input_kwargs["num_inference_steps"] = num_inference_steps
+        input_kwargs["num_inference_steps"] = default_num_inference_steps
 
         start_time = time.time()
         # actual inference

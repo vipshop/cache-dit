@@ -12,7 +12,7 @@
 ## Installation
 
 ```bash
-pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
+pip3 install torch==2.9.1 transformers accelerate torchao==0.14.1 bitsandbytes torchvision 
 pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
