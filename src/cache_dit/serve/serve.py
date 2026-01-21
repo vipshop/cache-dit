@@ -197,18 +197,6 @@ def get_args(
         default=False,
         help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
     )
-    parser.add_argument("--profile", action="store_true", default=False)
-    parser.add_argument("--profile-name", type=str, default=None)
-    parser.add_argument("--profile-dir", type=str, default=None)
-    parser.add_argument(
-        "--profile-activities",
-        type=str,
-        nargs="+",
-        default=["CPU", "GPU"],
-        choices=["CPU", "GPU", "MEM"],
-    )
-    parser.add_argument("--profile-with-stack", action="store_true", default=True)
-    parser.add_argument("--profile-record-shapes", action="store_true", default=True)
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
         args_or_parser.quantize_type = normalize_quantize_type(args_or_parser.quantize_type)

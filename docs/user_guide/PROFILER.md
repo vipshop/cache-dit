@@ -29,34 +29,7 @@ python3 generate.py flux --profile --steps 3 --profile-dir /tmp/cache_dit_profil
 
 > Note: for multi-GPU runs (`torchrun`), each rank produces its own trace file, e.g. `flux_test-rank0.trace.json.gz`.
 
----
-
-If you want minimal-intrusion integration in your own script, reuse `create_profiler_from_args`:
-
-```python
-from utils import create_profiler_from_args
-
-def run_pipe():
-    # Recommended: reduce steps during profiling to keep the trace file small
-    steps = args.num_inference_steps if args.num_inference_steps is not None else 28
-    image = pipe(
-        prompt,
-        num_inference_steps=steps,
-        ...
-    ).images[0]
-    return image
-
-# Only create and use profiler when --profile is enabled
-if args.profile:
-    profiler = create_profiler_from_args(args, profile_name="flux_inference")
-    with profiler:
-        image = run_pipe()
-    print(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
-else:
-    image = run_pipe()
-```
-
-### Example: `examples/base.py` Integration (Already Done)
+### Example: `examples/base.py` Integration
 
 `generate.py` eventually calls `ExampleBase.run()`, which already integrates `--profile/--profile-dir/--profile-activities`; you only need to pass these flags on the command line.
 
@@ -73,7 +46,7 @@ python3 generate.py flux --profile --steps 3 --profile-name flux_test --profile-
 
 # Profile with memory tracking
 cd examples
-python3 generate.py flux --profile --steps 3 --profile-activities CPU GPU MEM --track-memory
+python3 generate.py flux --profile --steps 3 --profile-activities CPU GPU MEM
 ```
 
 ## Parameters
@@ -83,21 +56,25 @@ python3 generate.py flux --profile --steps 3 --profile-activities CPU GPU MEM --
 Creates a ProfilerContext from command-line arguments.
 
 **Arguments:**
-- `args`: Parsed command-line arguments containing profiler settings
+
+- `args` : Parsed command-line arguments containing profiler settings
 - `profile_name` (str, optional): Override the profile name
 
 **Command-Line Arguments:**
-- `--profile`: Enable profiler (default: False)
-- `--profile-name` (str): Profile name prefix (default: auto-generated timestamp)
-- `--profile-dir` (str): Output directory (default: $CACHE_DIT_TORCH_PROFILER_DIR or `/tmp/cache_dit_profiles`)
-- `--profile-activities` (list): Activities to profile - CPU, GPU, MEM (default: ["CPU", "GPU"])
-- `--profile-with-stack`: Record stack traces (default: True, enable for detailed debugging)
-- `--profile-record-shapes`: Record tensor shapes (default: True)
+
+- `--profile` : Enable profiler (default: False)
+- `--profile-name` (str) : Profile name prefix (default: auto-generated timestamp)
+- `--profile-dir` (str) : Output directory (default: $CACHE_DIT_TORCH_PROFILER_DIR or `/tmp/cache_dit_profiles`)
+- `--profile-activities` (list[str]) : Activities to profile - CPU, GPU, MEM (default: ["CPU", "GPU"])
+- `--profile-with-stack` : Record stack traces (default: True, enable for detailed debugging)
+- `--profile-record-shapes` : Record tensor shapes (default: True)
 
 **Returns:**
+
 - `ProfilerContext`: Context manager for profiling
 
 **Environment Variables:**
+
 - `CACHE_DIT_TORCH_PROFILER_DIR`: Default output directory
 
 ### Controlling Trace File Size
@@ -181,35 +158,6 @@ torchrun --nproc_per_node=4 generate.py flux \
 
 You can view each rank's trace separately in Perfetto UI or Chrome Tracing to analyze per-GPU performance.
 
-## Advanced Usage
-
-### Direct API Usage
-
-```python
-from cache_dit import ProfilerContext
-
-with ProfilerContext(
-    enabled=True,
-    activities=["CPU", "GPU"],
-    output_dir="/tmp/profiles",
-    profile_name="my_inference",
-    with_stack=True,
-    record_shapes=True,
-):
-    output = model(input)
-```
-
-### Decorator
-
-```python
-from cache_dit import profile_function
-
-@profile_function(enabled=True, profile_name="forward_pass")
-def my_function():
-    return model(input)
-```
-
----
 
 # Nsight Systems (nsys) Usage
 
