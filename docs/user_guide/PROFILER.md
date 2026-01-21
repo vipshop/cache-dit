@@ -200,4 +200,3 @@ nsys profile \
 - `--delay N` : wait N seconds before capture (commonly used to skip initialization)
 - `--duration N` : stop capture after N seconds (commonly used to limit file size)
 - `-o <NAME>` : output file prefix
-
