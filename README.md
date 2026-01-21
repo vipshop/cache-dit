@@ -3,7 +3,7 @@
     <h2 align="center">
         <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png width=185px align="left">
         A PyTorch-native and Flexible Inference Engine with <br>Hybrid Cache Acceleration and Parallelism for 🤗DiTs<br>
-        <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/badge/cache-dit/month ></a>
+        <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=monthly&units=ABBREVIATION&left_color=GRAY&right_color=BLUE&left_text=downloads/month ></a>
         <img src=https://img.shields.io/github/release/vipshop/cache-dit.svg?color=GREEN >
         <img src="https://img.shields.io/github/license/vipshop/cache-dit.svg?color=blue">
         <a href="https://cache-dit.readthedocs.io/en/latest/COMMUNITY/"><img src=https://img.shields.io/badge/🤗-Community-orange.svg ></a> 
