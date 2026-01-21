@@ -8,7 +8,7 @@ from PIL import Image
 from enum import Enum
 import numpy as np
 from typing import Dict, Any, Union, Optional, List, Callable
-from diffusers.utils import export_to_video
+from diffusers.utils import export_to_video, load_image
 from diffusers.schedulers import SchedulerMixin
 from diffusers import DiffusionPipeline, ModelMixin
 from transformers import GenerationMixin
@@ -111,7 +111,7 @@ class ExampleInputData:
                             "Overriding multiple input images with a single image "
                             "from args.image_path."
                         )
-            input_data["image"] = Image.open(args.image_path).convert("RGB")
+            input_data["image"] = load_image(args.image_path).convert("RGB")
         if args.mask_image_path is not None:
             if "mask_image" in input_data:
                 if isinstance(input_data["mask_image"], list):
@@ -120,7 +120,7 @@ class ExampleInputData:
                             "Overriding multiple input mask images with a single mask "
                             "image from args.mask_image_path."
                         )
-            input_data["mask_image"] = Image.open(args.mask_image_path).convert("RGB")
+            input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
         # Set generator with seed from input data or args
         if args.generator_device is not None:
             self.gen_device = args.generator_device
