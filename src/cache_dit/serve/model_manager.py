@@ -129,6 +129,7 @@ class ModelManager:
         self,
         model_path: str,
         device: Optional[str] = None,
+        generator_device: Optional[str] = None,
         torch_dtype: Optional[torch.dtype] = torch.bfloat16,
         enable_cache: bool = True,
         cache_config: Optional[Dict[str, Any]] = None,
@@ -149,6 +150,7 @@ class ModelManager:
         self.device = device or (
             current_platform.device_type if current_platform.is_accelerator_available() else "cpu"
         )
+        self.generator_device = generator_device
         self.torch_dtype = torch_dtype
         self.enable_cache = enable_cache
         self.cache_config = cache_config or {}
@@ -602,11 +604,13 @@ class ModelManager:
 
         generator = None
         if seed is not None:
-            gen_device = (
-                current_platform.device_type
-                if current_platform.is_accelerator_available()
-                else "cpu"
-            )
+            gen_device = self.generator_device
+            if gen_device is None:
+                gen_device = (
+                    current_platform.device_type
+                    if current_platform.is_accelerator_available()
+                    else "cpu"
+                )
             generator = torch.Generator(device=gen_device).manual_seed(seed)
             logger.debug(f"Created generator with seed {seed} on {gen_device}")
 
