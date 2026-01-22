@@ -1,7 +1,9 @@
 import torch
 import torch.distributed as dist
+from typing import Optional
 from ..envs import ENV
 from ..platforms import current_platform
+from ..parallelism.attention._templated_ulysses import is_ulysses_anything_enabled
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -16,8 +18,8 @@ def set_compile_configs(
     autotune_local_cache: bool = False,
     use_fast_math: bool = False,
     compute_comm_overlap: bool = True,
-    capture_scalar_outputs: bool = False,
-    capture_dynamic_output_shape_ops: bool = False,
+    capture_scalar_outputs: Optional[bool] = None,
+    capture_dynamic_output_shape_ops: Optional[bool] = None,
     **kwargs,  # other kwargs
 ):
     # Alway increase recompile_limit for dynamic shape compilation
@@ -43,8 +45,26 @@ def set_compile_configs(
 
     # https://docs.pytorch.org/docs/stable/nested.html#data-dependent-operation-within-torch-compile
     if hasattr(torch._dynamo.config, "capture_scalar_outputs"):
-        torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
-        torch._dynamo.config.capture_dynamic_output_shape_ops = capture_dynamic_output_shape_ops
+        if capture_scalar_outputs is None:
+            # Exiplicitly set capture_scalar_outputs to True to avoid graph break
+            # while using Ulysses Anything Attention:
+            # Graph break from `Tensor.item()`, consider setting:
+            # torch._dynamo.config.capture_scalar_outputs = True
+            if is_ulysses_anything_enabled():
+                capture_scalar_outputs = True if torch.__version__ >= "2.10.0" else False
+                if capture_scalar_outputs:
+                    logger.info(
+                        "Ulysses Anything Attention is enabled. "
+                        "Auto set capture_scalar_outputs as True "
+                        "to avoid graph break from scalar outpus, "
+                        "e.g., Tensor.item()."
+                    )
+                    torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
+        else:
+            torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
+    if hasattr(torch._dynamo.config, "capture_dynamic_output_shape_ops"):
+        if capture_dynamic_output_shape_ops is not None:
+            torch._dynamo.config.capture_dynamic_output_shape_ops = capture_dynamic_output_shape_ops
 
     if not descent_tuning:
         return
