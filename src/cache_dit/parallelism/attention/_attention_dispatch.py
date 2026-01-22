@@ -1,7 +1,6 @@
 import torch
 import math
 from typing import Optional
-from cache_dit.platforms import current_platform
 
 try:
     from diffusers.models.attention_dispatch import (
@@ -30,9 +29,9 @@ try:
         _flash_attn_3_available = False
 
     # For native npu attention backend re-registration
-    if current_platform.device_type == "npu":
+    try:
         from torch_npu import npu_fusion_attention
-    else:
+    except ImportError:
         npu_fusion_attention = None
 
     from diffusers.models._modeling_parallel import ParallelConfig
