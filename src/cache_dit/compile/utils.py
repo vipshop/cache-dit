@@ -3,6 +3,7 @@ import torch.distributed as dist
 from typing import Optional
 from ..envs import ENV
 from ..platforms import current_platform
+from ..parallelism.attention._templated_ulysses import is_ulysses_anything_enabled
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -49,7 +50,8 @@ def set_compile_configs(
             # while using Ulysses Anything Attention:
             # Graph break from `Tensor.item()`, consider setting:
             # torch._dynamo.config.capture_scalar_outputs = True
-            capture_scalar_outputs = True if torch.__version__ >= "2.10.0" else False
+            if is_ulysses_anything_enabled():
+                capture_scalar_outputs = True if torch.__version__ >= "2.10.0" else False
         if capture_scalar_outputs:
             logger.info(
                 "Set torch._dynamo.config.capture_scalar_outputs = True "
