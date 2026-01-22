@@ -4,7 +4,7 @@ Cache-DiT now supported load the acceleration configs from a custom yaml file. H
 
 ## Single GPU inference  
 
-Define a `config.yaml` file that contains:
+Define a cache only config yaml `cache.yaml` file that contains:
 
 ```yaml
 cache_config:
@@ -22,12 +22,29 @@ Then, apply the acceleration config from yaml.
 
 ```python
 >>> import cache_dit
->>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("config.yaml"))
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("cache.yaml"))
 ```
 
 ## Distributed inference  
 
-Define a `parallel_config.yaml` file that contains:
+Define a parallelism only config yaml `parallel.yaml` file that contains:
+
+```yaml
+parallelism_config:
+  ulysses_size: auto
+  parallel_kwargs:
+    attention_backend: native
+    extra_parallel_modules: ["text_encoder", "vae"]
+```
+Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should mannually set it as specific int number, e.g, 4.
+```python
+>>> import cache_dit
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
+```
+
+## Hybrid Cache and Parallelism
+
+Define a hybrid cache and parallel acceleration config yaml `hybrid.yaml` file that contains:
 
 ```yaml
 cache_config:
@@ -46,10 +63,10 @@ parallelism_config:
     attention_backend: native
     extra_parallel_modules: ["text_encoder", "vae"]
 ```
-Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should mannually set it as specific int number, e.g, 4.
+Then, apply the bybrid cache and parallel acceleration config from yaml. 
 ```python
 >>> import cache_dit
->>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_config.yaml"))
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("hybrid.yaml"))
 ```
 
 ## Quick Examples 
@@ -62,6 +79,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 
 git clone https://github.com/vipshop/cache-dit.git && cd examples
 
-python3 generate.py flux --config config.yaml
-torchrun --nproc_per_node=4 --local-ranks-filter=0 generate.py flux --config parallel_config.yaml
+python3 generate.py flux --config ./configs/cache.yaml
+torchrun --nproc_per_node=4 generate.py flux --config ./configs/parallel.yaml
+torchrun --nproc_per_node=4 generate.py flux --config ./configs/hybrid.yaml
 ```
