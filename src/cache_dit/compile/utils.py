@@ -52,18 +52,18 @@ def set_compile_configs(
             # torch._dynamo.config.capture_scalar_outputs = True
             if is_ulysses_anything_enabled():
                 capture_scalar_outputs = True if torch.__version__ >= "2.10.0" else False
-        if capture_scalar_outputs:
-            logger.info(
-                "Set torch._dynamo.config.capture_scalar_outputs = True "
-                "to avoid graph break from scalar outpus, e.g., Tensor.item()"
-            )
+                if capture_scalar_outputs:
+                    logger.info(
+                        "Ulysses Anything Attention is enabled. "
+                        "Auto set capture_scalar_outputs as True "
+                        "to avoid graph break from scalar outpus, "
+                        "e.g., Tensor.item()."
+                    )
+                    torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
+        else:
             torch._dynamo.config.capture_scalar_outputs = capture_scalar_outputs
     if hasattr(torch._dynamo.config, "capture_dynamic_output_shape_ops"):
-        if capture_dynamic_output_shape_ops:
-            logger.info(
-                "Set torch._dynamo.config.capture_dynamic_output_shape_ops = True "
-                "to support dynamic output shape ops."
-            )
+        if capture_dynamic_output_shape_ops is not None:
             torch._dynamo.config.capture_dynamic_output_shape_ops = capture_dynamic_output_shape_ops
 
     if not descent_tuning:
