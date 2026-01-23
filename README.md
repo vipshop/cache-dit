@@ -18,12 +18,12 @@
 
 </div>
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include: (**UAA**: [Ulysses Anything Attention](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention))   
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:  
 
 - 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking) and more)
-- 🎉**Context Parallelism** (w/ Extended Diffusers' CP APIs, [**UAA**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses, FP8 comm)
+- 🎉**Context Parallelism** (w/ Diffusers' CP APIs, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses)
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
-- 🎉**Text Encoder Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Text Encoder Parallelism** (w/ PyTorch DTensor and Tensor Parallelism APIs)
 - 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
 - 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
 - 🎉Built-in **HTTP serving** deployment support with simple REST APIs
@@ -33,7 +33,7 @@
 
 ## 🔥Latest News 
 
-- [2026/01] **[🎉v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready: New Models Support(Z-Image, FLUX.2, LTX-2, etc), Request level Cache Context, HTTP Serving, [Ulysses Anything Attention](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), TE-P, VAE-P, CN-P and [Ascend NPUs](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
+- [2026/01] **[🎉v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready: New Models Support(Z-Image, FLUX.2, LTX-2, etc), Request level Cache Context, HTTP Serving, [Ulysses Anything](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), TE-P, VAE-P, CN-P and [Ascend NPUs](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
 
 ## 🚀Quick Start 
 
@@ -58,6 +58,8 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 >>> from cache_dit import load_configs
 >>> # Or, Load Acceleration config from a custom yaml file.
 >>> cache_dit.enable_cache(pipe, **load_configs("config.yaml"))
+>>> # Set custom attention backend for better performance.
+>>> cache_dit.set_attn_backend(pipe, attention_backend=...)
 >>> output = pipe(...) # Just call the pipe as normal.
 ```
 Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
