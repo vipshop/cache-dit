@@ -14,7 +14,24 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 |sage| FP8 SageAttention|✅|✖️|
 |_native_npu| Optimized Ascend NPU Attention|✅|✅|
 
-Users can specify Attention backend by setting the `attention_backend` parameter of `parallel_kwargs`:
+
+## Single GPU Inference
+
+Users can specify Attention backend by setting the `attention_backend` parameter of `enable_cache` API or use `set_attn_backend` interface directly.  
+
+```python
+import cache_dit
+
+# Setting the `attention_backend` parameter of `enable_cache` API
+cache_dit.enable_cache(pipe_or_adapter, ..., attention_backend="_sdpa_cudnn")
+# Or, use `set_attn_backend` interface directly.  
+cache_dit.set_attn_backend(pipe_or_adapter, attention_backend="_sdpa_cudnn")
+```
+
+
+## Distributed inference
+
+Users also can specify Attention backend by setting the `attention_backend` parameter of `parallel_kwargs` in the cases of distributed inference:
 
 ```python
 from cache_dit import ParallelismConfig
