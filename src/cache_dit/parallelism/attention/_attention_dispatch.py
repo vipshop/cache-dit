@@ -196,8 +196,12 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
                 is_causal=is_causal,
                 scale=scale,
             )[:2]
-            out = out.transpose(1, 2)
-            lse = lse.transpose(1, 2)
+            # [B, H, N, D] -> [B, N, H, D]
+            out = out.transpose(1, 2)  # type: torch.Tensor
+            lse = lse.transpose(1, 2)  # type: torch.Tensor
+            if lse.dim() == 3:
+                # [B, N, H] -> [B, N, H, 1]
+                lse = lse.unsqueeze(-1)
             return out, lse
 
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
