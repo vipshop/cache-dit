@@ -265,6 +265,35 @@ def load_parallelism_config(
     return parallelism_config
 
 
+def load_attn_backend_config(path_or_dict: str | dict, **kwargs) -> Optional[str]:
+    r"""
+    Load attention backend configuration from a YAML file or a dictionary. Assumes that the yaml
+    contains an 'attention_backend' field, and returns only that field. Raise ValueError
+    if not found.
+    Args:
+        path_or_dict (`str` or `dict`):
+            The file path to the YAML configuration file or a dictionary containing the configuration.
+    Returns:
+        `str`: A string containing the loaded attention backend configuration.
+    """
+    if isinstance(path_or_dict, str):
+        try:
+            with open(path_or_dict, "r") as f:
+                attn_kwargs: dict = yaml.safe_load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {path_or_dict}")
+        except yaml.YAMLError as e:
+            raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
+    elif isinstance(path_or_dict, dict):
+        attn_kwargs: dict = copy.deepcopy(path_or_dict)
+    else:
+        raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
+    if "attention_backend" not in attn_kwargs:
+        return None
+    attention_backend = attn_kwargs["attention_backend"]
+    return attention_backend
+
+
 def load_configs(
     path_or_dict: str | dict,
     return_dict: bool = True,
@@ -302,6 +331,7 @@ def load_configs(
     """
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)
+    attention_backend = load_attn_backend_config(path_or_dict, **kwargs)
     if isinstance(parallelism_config, bool):
         parallelism_config = None
     if return_dict:
@@ -309,5 +339,6 @@ def load_configs(
             "cache_config": cache_config,
             "calibrator_config": calibrator_config,
             "parallelism_config": parallelism_config,
+            "attention_backend": attention_backend,
         }
     return cache_config, calibrator_config, parallelism_config

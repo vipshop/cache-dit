@@ -301,15 +301,20 @@ def enable_cache(
 
     # Set custom attention backend for non-parallelism case
     if attention_backend is not None:
-        if parallelism_config is not None and (
-            "attention_backend" in parallelism_config.parallel_kwargs
-        ):
-            logger.warning(
-                "Both attention_backend in parallelism_config and "
-                "attention_backend param are provided, prefer using "
-                "attention_backend in parallelism_config."
-            )
-            attention_backend = None  # Prefer parallelism_config setting
+        if parallelism_config is not None:
+            if "attention_backend" in parallelism_config.parallel_kwargs:
+                logger.warning(
+                    "Both attention_backend in parallelism_config and "
+                    "attention_backend param are provided, prefer using "
+                    "attention_backend in parallelism_config."
+                )
+                attention_backend = None  # Prefer parallelism_config setting
+            else:
+                logger.info(
+                    "Setting attention_backend from attention_backend "
+                    "param to parallelism_config."
+                )
+                parallelism_config.parallel_kwargs["attention_backend"] = attention_backend
         else:
             set_attn_backend(pipe_or_adapter, attention_backend)
 
