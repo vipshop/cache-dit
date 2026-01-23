@@ -24,10 +24,13 @@ def _maybe_register_custom_attn_backends():
 
     ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH = True
 
-    from ._attention_dispatch import (
-        _native_attention,
-        _sdpa_cudnn_attention,
-        _sage_attention,
-        _flash_attention_3,
-        _native_npu_attention,
-    )
+    try:
+        from ._attention_dispatch import (
+            _native_attention,
+            _sdpa_cudnn_attention,
+            _sage_attention,
+            _flash_attention_3,
+            _native_npu_attention,
+        )
+    except ImportError:
+        pass
