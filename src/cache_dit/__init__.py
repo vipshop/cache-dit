@@ -15,6 +15,7 @@ from .caching import enable_cache
 from .caching import refresh_context
 from .caching import steps_mask
 from .caching import disable_cache
+from .caching import set_attn_backend
 from .caching import cache_type
 from .caching import block_range
 from .caching import CacheType

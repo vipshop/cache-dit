@@ -48,6 +48,8 @@ def enable_cache(
     ] = None,
     # Config for Parallelism
     parallelism_config: Optional[ParallelismConfig] = None,
+    # Allow set custom attention backend for non-parallelism case
+    attention_backend: Optional[str] = None,
     # Other cache context kwargs: Deprecated cache kwargs
     **kwargs,
 ) -> Union[
@@ -178,6 +180,11 @@ def enable_cache(
                 parallel_kwargs: (`dict`, *optional*, defaults to {}):
                     Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
                     it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
+        attention_backend (`str`, *optional*, defaults to None):
+            Custom attention backend in cache-dit for non-parallelism case. If attention_backend is
+            not None, set the attention backend for the transformer module. Supported backends include:
+            "native", "_sdpa_cudnn", "sage", "flash", "flash", "_native_npu", etc. Prefer attention_backend
+            in parallelism_config when both are provided.
 
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py
@@ -291,6 +298,25 @@ def enable_cache(
             "cache_config is None, skip enabling cache for "
             f"{pipe_or_adapter.__class__.__name__}."
         )
+
+    # Set custom attention backend for non-parallelism case
+    if attention_backend is not None:
+        if parallelism_config is not None:
+            if "attention_backend" in parallelism_config.parallel_kwargs:
+                logger.warning(
+                    "Both attention_backend in parallelism_config and "
+                    "attention_backend param are provided, prefer using "
+                    "attention_backend in parallelism_config."
+                )
+                attention_backend = None  # Prefer parallelism_config setting
+            else:
+                logger.info(
+                    "Setting attention_backend from attention_backend "
+                    "param to parallelism_config."
+                )
+                parallelism_config.parallel_kwargs["attention_backend"] = attention_backend
+        else:
+            set_attn_backend(pipe_or_adapter, attention_backend)
 
     # NOTE: Users should always enable parallelism after applying
     # cache to avoid hooks conflict.
@@ -427,6 +453,61 @@ def _parse_extra_parallel_modules(
                 f"Extra parallel module name {module_or_name} not found in the pipeline."
             )
     return parsed_extra_parallel_modules
+
+
+def set_attn_backend(
+    pipe_or_adapter: Union[DiffusionPipeline, BlockAdapter],
+    attention_backend: Optional[str] = None,
+):
+    if attention_backend is None:
+        return
+
+    # non-parallelism or non-cache case: set attention backend directly
+    try:
+        from ..parallelism.attention import _maybe_register_custom_attn_backends
+
+        _maybe_register_custom_attn_backends()
+    except Exception as e:
+        logger.warning(
+            "Failed to register custom attention backends. "
+            f"Proceeding to set attention backend anyway. Error: {e}"
+        )
+
+    def _set_backend(module):
+        if module is None:
+            return
+        if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
+            module.set_attention_backend(attention_backend)
+            logger.info(
+                f"Set attention backend to {attention_backend} for module: {module.__class__.__name__}."
+            )
+        else:
+            logger.warning(
+                "--attn was provided but module does not support set_attention_backend: "
+                f"{module.__class__.__name__}."
+            )
+
+    try:
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            transformer = pipe_or_adapter.transformer
+            if isinstance(transformer, list):
+                for t in transformer:
+                    _set_backend(t)
+            else:
+                _set_backend(transformer)
+        else:
+            pipe = pipe_or_adapter
+            if hasattr(pipe, "transformer"):
+                _set_backend(getattr(pipe, "transformer"))
+            else:
+                _set_backend(pipe)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to set attention backend to {attention_backend}. "
+            "This usually means the backend is unavailable (e.g., FlashAttention-3 not installed) "
+            "or the model/shape/dtype is unsupported. "
+            f"Original error: {e}"
+        ) from e
 
 
 def refresh_context(

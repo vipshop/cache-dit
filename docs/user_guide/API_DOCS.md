@@ -113,6 +113,12 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     - `parallel_kwargs`: (`dict`, *optional*, defaults to {}):  
         Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
         it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
+        
+- **attention_backend** (`str`, *optional*, defaults to None):  
+  Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 
+  not None, set the attention backend for the transformer module. Supported backends include: 
+  "native", "_sdpa_cudnn", "sage", "flash", "flash", "_native_npu", etc. Prefer attention_backend
+  in parallelism_config when both are provided.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):   
   Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py for more details.
