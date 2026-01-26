@@ -639,12 +639,10 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
     _registry_pop_attn_backend(AttentionBackendName._NATIVE_NPU)
 
     def _maybe_modify_attn_mask_npu(
-        query: torch.Tensor,
-        key: torch.Tensor,
-        attn_mask: Optional[torch.Tensor] = None
+        query: torch.Tensor, key: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
     ):
         # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
-        if (attn_mask is not None and torch.all(attn_mask != 0)):
+        if attn_mask is not None and torch.all(attn_mask != 0):
             attn_mask = None
 
         # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
@@ -658,7 +656,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
             attn_mask = ~attn_mask.to(torch.bool)
             attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
-        
+
         return attn_mask
 
 
