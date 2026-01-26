@@ -1,6 +1,7 @@
 import torch
 from typing import Callable, Optional, List
 from cache_dit.logger import init_logger
+from .utils import normalize_quantize_type
 
 logger = init_logger(__name__)
 

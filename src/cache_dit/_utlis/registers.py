@@ -14,10 +14,11 @@ from diffusers import DiffusionPipeline, ModelMixin
 from transformers import GenerationMixin
 from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.quantizers import PipelineQuantizationConfig
-from cache_dit.logger import init_logger
-import cache_dit
 
-from utils import (
+from ..summary import summary
+from ..logger import init_logger
+
+from .utils import (
     strify,
     maybe_destroy_distributed,
     maybe_init_distributed,
@@ -594,7 +595,7 @@ class Example:
 
         if self.args.cache_summary:
             if self.rank == 0:
-                cache_dit.summary(pipe)
+                summary(pipe)
 
         if memory_tracker:
             memory_tracker.__exit__(None, None, None)

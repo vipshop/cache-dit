@@ -5,18 +5,20 @@ from diffusers import DiffusionPipeline
 from typing import Optional, List, Tuple
 from diffusers.quantizers import PipelineQuantizationConfig
 
-import cache_dit
-from cache_dit import init_logger
-from cache_dit.quantize.utils import normalize_quantize_type
-from cache_dit import (
+from ..logger import init_logger
+from ..platforms import current_platform
+from ..quantize import normalize_quantize_type, quantize
+from ..compile.utils import set_compile_configs
+from ..parallelism import ParallelismBackend, ParallelismConfig
+from ..caching import enable_cache, steps_mask, set_attn_backend
+from ..caching import (
     BlockAdapter,
     DBCacheConfig,
-    ParallelismBackend,
-    ParallelismConfig,
     TaylorSeerCalibratorConfig,
+    load_configs,
+    load_parallelism_config,
 )
-
-from cache_dit.platforms import current_platform
+from ..summary import strify as summary_strify
 
 logger = init_logger(__name__)
 
@@ -757,7 +759,7 @@ def maybe_compile_controlnet(
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
     if args.compile_controlnet:
-        cache_dit.set_compile_configs()
+        set_compile_configs()
         torch.set_float32_matmul_precision("high")
 
         if isinstance(pipe_or_adapter, BlockAdapter):
@@ -849,7 +851,7 @@ def maybe_compile_transformer(
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
     if args.compile:
-        cache_dit.set_compile_configs()
+        set_compile_configs()
         torch.set_float32_matmul_precision("high")
 
         if isinstance(pipe_or_adapter, BlockAdapter):
@@ -941,7 +943,7 @@ def maybe_quantize_transformer(
                         f"Quantizing transformer module: {transformer_cls_name} to"
                         f" {args.quantize_type} ..."
                     )
-                    transformer = cache_dit.quantize(
+                    transformer = quantize(
                         transformer,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer),
@@ -965,7 +967,7 @@ def maybe_quantize_transformer(
                         f"Quantizing transformer_2 module: {transformer_2_cls_name} to"
                         f" {args.quantize_type} ..."
                     )
-                    transformer_2 = cache_dit.quantize(
+                    transformer_2 = quantize(
                         transformer_2,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer_2),
@@ -1008,7 +1010,7 @@ def maybe_quantize_text_encoder(
                     f"Quantizing text encoder module: {name}:{text_encoder_cls_name} to"
                     f" {args.quantize_text_type} ..."
                 )
-                text_encoder = cache_dit.quantize(
+                text_encoder = quantize(
                     text_encoder,
                     quant_type=args.quantize_text_type,
                 )
@@ -1051,7 +1053,7 @@ def maybe_quantize_controlnet(
                         f"Quantizing controlnet module: {controlnet_cls_name} to"
                         f" {args.quantize_controlnet_type} ..."
                     )
-                    controlnet = cache_dit.quantize(
+                    controlnet = quantize(
                         controlnet,
                         quant_type=args.quantize_controlnet_type,
                     )
@@ -1237,14 +1239,14 @@ def maybe_apply_optimization(
                     num_inference_steps = args.num_inference_steps
                 else:
                     num_inference_steps = default_num_inference_steps
-                steps_computation_mask = cache_dit.steps_mask(
+                steps_computation_mask = steps_mask(
                     total_steps=num_inference_steps,
                     mask_policy=args.mask_policy,
                 )
             else:
                 steps_computation_mask = None
 
-            cache_dit.enable_cache(
+            enable_cache(
                 pipe_or_adapter,
                 cache_config=(
                     DBCacheConfig(
@@ -1292,16 +1294,16 @@ def maybe_apply_optimization(
             )
         else:
             # Apply acceleration configs from config path
-            cache_dit.enable_cache(
+            enable_cache(
                 pipe_or_adapter,
-                **cache_dit.load_configs(args.config_path),
+                **load_configs(args.config_path),
             )
             logger.info(f"Applied acceleration from {args.config_path}.")
     else:
         logger.info("No caching or parallelism is applied.")
         if args.attn is not None:
             logger.info(f"Applying custom attention backend: {args.attn} ...")
-            cache_dit.set_attn_backend(
+            set_attn_backend(
                 pipe_or_adapter,
                 attention_backend=args.attn,
             )
@@ -1346,7 +1348,7 @@ def strify(args, pipe_or_stats):
         quantize_type = f"_{quantize_type}"
     base_str += (
         f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
-        f"{cache_dit.strify(pipe_or_stats)}"
+        f"{summary_strify(pipe_or_stats)}"
     )
     if args.ulysses_anything:
         base_str += "_ulysses_anything"
@@ -1382,7 +1384,7 @@ def get_rank_device():
 
 
 def maybe_init_distributed(args=None):
-    from cache_dit.platforms.platform import CpuPlatform
+    from ..platforms.platform import CpuPlatform
 
     platform_full_backend = current_platform.full_dist_backend
     cpu_full_backend = CpuPlatform.full_dist_backend
@@ -1401,7 +1403,7 @@ def maybe_init_distributed(args=None):
             return rank, device
         elif args.config_path is not None:
             # check if distributed is needed from config file
-            has_parallelism_config = cache_dit.load_parallelism_config(
+            has_parallelism_config = load_parallelism_config(
                 args.config_path,
                 check_only=True,
             )
@@ -1438,7 +1440,7 @@ def maybe_destroy_distributed():
 
 
 def create_profiler_from_args(args, profile_name=None):
-    from cache_dit.profiler import ProfilerContext
+    from ..profiler import ProfilerContext
 
     return ProfilerContext(
         enabled=args.profile,
