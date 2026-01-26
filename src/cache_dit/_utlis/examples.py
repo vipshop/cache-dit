@@ -3,15 +3,14 @@ import math
 import torch
 import argparse
 import PIL.Image
-import cache_dit
 import numpy as np
 from typing import Tuple, List, Optional
 from diffusers.utils import load_image
 from diffusers import FlowMatchEulerDiscreteScheduler
-from cache_dit import DBCacheConfig, ParamsModifier
-from cache_dit.logger import init_logger
+from ..caching import DBCacheConfig, ParamsModifier, steps_mask
+from ..logger import init_logger
 
-from base import (
+from .registers import (
     Example,
     ExampleType,
     ExampleInputData,
@@ -168,8 +167,10 @@ def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
         input_data=ExampleInputData(
             prompt="a white paper cup",
-            image=load_image("./data/cup.png"),
-            mask_image=load_image("./data/cup_mask.png"),
+            image=load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/cup.png"),
+            mask_image=load_image(
+                "https://github.com/vipshop/cache-dit/raw/main/examples/data/cup_mask.png"
+            ),
             guidance_scale=30,
             height=1024,
             width=1024,
@@ -450,8 +451,12 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             true_cfg_scale=true_cfg_scale,  # 1.0 means no separate cfg for lightning models
             # image1, image2
             image=[
-                load_image("./data/edit2509_1.jpg"),
-                load_image("./data/edit2509_2.jpg"),
+                load_image(
+                    "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_1.jpg"
+                ),
+                load_image(
+                    "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg"
+                ),
             ],
         ),
     )
@@ -519,7 +524,9 @@ def qwen_image_layered_example(args: argparse.Namespace, **kwargs) -> Example:
             },
         ),
         input_data=ExampleInputData(
-            image=load_image("./data/yarn-art-pikachu.png").convert("RGBA"),
+            image=load_image(
+                "https://github.com/vipshop/cache-dit/raw/main/examples/data/yarn-art-pikachu.png"
+            ).convert("RGBA"),
             prompt="",
             num_inference_steps=50,
             true_cfg_scale=4.0,
@@ -875,8 +882,12 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
         mask = [mask_black, *[mask_white] * (num_frames - 2), mask_black]
         return frames, mask
 
-    first_frame = load_image("./data/flf2v_input_first_frame.png")
-    last_frame = load_image("./data/flf2v_input_last_frame.png")
+    first_frame = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/flf2v_input_first_frame.png"
+    )
+    last_frame = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/flf2v_input_last_frame.png"
+    )
 
     height = 512 if args.height is None else args.height
     width = 512 if args.width is None else args.width
@@ -965,14 +976,14 @@ def _zimage_turbo_steps_mask(
     if not args.cache:
         return None
     return (
-        cache_dit.steps_mask(
+        steps_mask(
             # slow, medium, fast, ultra.
             mask_policy=args.mask_policy,
             total_steps=9 if args.num_inference_steps is None else args.num_inference_steps,
         )
         if args.mask_policy is not None
         else (
-            cache_dit.steps_mask(
+            steps_mask(
                 compute_bins=[5, 1, 1],  # = 7 (compute steps)
                 cache_bins=[1, 1],  # = 2 (dynamic cache steps)
             )
@@ -1076,7 +1087,9 @@ def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
             torch_dtype=torch.bfloat16,
         )
 
-    control_image = load_image("./data/pose.jpg")
+    control_image = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/pose.jpg"
+    )
     steps_computation_mask = _zimage_turbo_steps_mask(args)
 
     return Example(

@@ -49,7 +49,9 @@ setup(
     python_requires=">=3.10",
     entry_points={
         "console_scripts": [
-            "cache-dit-metrics-cli = cache_dit.metrics:main",
+            "cache-dit-metrics-cli = cache_dit.metrics:main",  # deprecated
+            "cache-dit-metrics = cache_dit.metrics:main",  # metric entrypoint
+            "cache-dit-generate = cache_dit.generate:main",  # example entrypoint
         ],
     },
 )
