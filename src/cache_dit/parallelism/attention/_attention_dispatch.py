@@ -641,6 +641,27 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
     _registry_pop_attn_backend(AttentionBackendName._NATIVE_NPU)
 
+    def _maybe_modify_attn_mask_npu(
+        query: torch.Tensor, key: torch.Tensor, attn_mask: Optional[torch.Tensor] = None
+    ):
+        # Skip Attention Mask if all values are 1, `None` mask can speedup the computation
+        if attn_mask is not None and torch.all(attn_mask != 0):
+            attn_mask = None
+
+        # Reshape Attention Mask: [batch_size, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+        # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
+        if (
+            attn_mask is not None
+            and attn_mask.ndim == 2
+            and attn_mask.shape[0] == query.shape[0]
+            and attn_mask.shape[1] == key.shape[1]
+        ):
+            B, Sq, Skv = attn_mask.shape[0], query.shape[1], key.shape[1]
+            attn_mask = ~attn_mask.to(torch.bool)
+            attn_mask = attn_mask.unsqueeze(1).expand(B, Sq, Skv).unsqueeze(1).contiguous()
+
+        return attn_mask
+
     @_AttentionBackendRegistry.register(
         AttentionBackendName._NATIVE_NPU,
         constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
@@ -650,6 +671,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: Optional[float] = None,
         return_lse: bool = False,
@@ -658,11 +680,12 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         if return_lse:
             raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
         if _parallel_config is None:
+            attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
             out = npu_fusion_attention(
                 query,
                 key,
                 value,
-                atten_mask=None,
+                atten_mask=attn_mask,
                 input_layout="BSND",
                 scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
                 pre_tockens=MAX_TOKEN,
@@ -674,7 +697,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
                 query,
                 key,
                 value,
-                None,
+                attn_mask,
                 dropout_p,
                 None,
                 1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
@@ -709,8 +732,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         if return_lse:
             raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
 
-        if attn_mask is not None:
-            attn_mask = ~attn_mask.to(torch.bool)
+        attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
         out = npu_fusion_attention(
             query,
             key,
