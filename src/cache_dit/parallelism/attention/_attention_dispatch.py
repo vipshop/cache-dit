@@ -659,7 +659,6 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
         return attn_mask
 
-
     @_AttentionBackendRegistry.register(
         AttentionBackendName._NATIVE_NPU,
         constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
