@@ -11,7 +11,7 @@ from .dp_plan_registers import (
     AutoEncoderDataParallelismPlanner,
     AutoEncoderDataParallelismPlannerRegister,
 )
-from .utils import send_tensor, recv_tensor
+from .utils import TileBatchedP2PComm
 
 
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLLTX2Video")
@@ -50,6 +50,8 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
         rank = dist.get_rank(group)
 
         auto_encoder.enable_tiling()
+
+        comm = TileBatchedP2PComm()
 
         @functools.wraps(auto_encoder.__class__.tiled_encode)
         def new_tiled_encode(
@@ -100,7 +102,7 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                 for i in range(len(rows)):
                     for j in range(len(rows[i])):
                         if count % world_size != rank:
-                            rows[i][j] = recv_tensor(
+                            rows[i][j] = comm.recv_tensor(
                                 count % world_size, group, device=x.device, dtype=x.dtype
                             )
                         count += 1
@@ -109,8 +111,9 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                     for j in range(len(rows[i])):
                         tile = rows[i][j]
                         if tile is not None:
-                            send_tensor(tile, 0, group)
+                            comm.send_tensor(tile, 0, group)
 
+            comm.sync()
             if rank == 0:
                 result_rows = []
                 for i, row in enumerate(rows):
@@ -127,11 +130,12 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
 
                 enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
             else:
-                enc = recv_tensor(rank - 1, group, device=x.device, dtype=x.dtype)
+                enc = comm.recv_tensor(rank - 1, group, device=x.device, dtype=x.dtype)
 
             if rank < world_size - 1:
-                send_tensor(enc, rank + 1, group)
+                comm.send_tensor(enc, rank + 1, group)
 
+            comm.sync()
             return enc
 
         auto_encoder.tiled_encode = new_tiled_encode.__get__(auto_encoder)
@@ -183,7 +187,7 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                 for i in range(len(rows)):
                     for j in range(len(rows[i])):
                         if count % world_size != rank:
-                            rows[i][j] = recv_tensor(
+                            rows[i][j] = comm.recv_tensor(
                                 count % world_size, group, device=z.device, dtype=z.dtype
                             )
                         count += 1
@@ -192,8 +196,9 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
                     for j in range(len(rows[i])):
                         decoded = rows[i][j]
                         if decoded is not None:
-                            send_tensor(decoded, 0, group)
+                            comm.send_tensor(decoded, 0, group)
 
+            comm.sync()
             if rank == 0:
                 result_rows = []
                 for i, row in enumerate(rows):
@@ -216,11 +221,12 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
 
                 dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
             else:
-                dec = recv_tensor(rank - 1, group, device=z.device, dtype=z.dtype)
+                dec = comm.recv_tensor(rank - 1, group, device=z.device, dtype=z.dtype)
 
             if rank < world_size - 1:
-                send_tensor(dec, rank + 1, group)
+                comm.send_tensor(dec, rank + 1, group)
 
+            comm.sync()
             if not return_dict:
                 return (dec,)
 
