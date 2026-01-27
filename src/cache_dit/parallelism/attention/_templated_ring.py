@@ -52,7 +52,7 @@ class UnifiedTemplatedRingAttention(torch.autograd.Function):
                 _parallel_config,
             )
         elif _parallel_config.context_parallel_config.rotate_method == "p2p":
-            return _TemplatedRingP2PAttention.apply(
+            return _TemplatedRingBatchedP2PAttention.apply(
                 query,
                 key,
                 value,
@@ -79,7 +79,7 @@ class _TemplatedRingAllGatherAttention(TemplatedRingAttention):
 
 
 # Adapted from: https://github.com/zhuzilin/ring-flash-attention/blob/main/ring_flash_attn/utils.py#L98
-class _RingP2PComm:
+class _RingBatchedP2PComm:
     def __init__(self, process_group: dist.ProcessGroup):
         self._process_group = process_group
         self._ops = []
@@ -133,7 +133,7 @@ class _RingP2PComm:
         return next_k, next_v
 
 
-class _TemplatedRingP2PAttention(torch.autograd.Function):
+class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx: torch.autograd.function.FunctionCtx,
@@ -153,7 +153,7 @@ class _TemplatedRingP2PAttention(torch.autograd.Function):
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         group = ring_mesh.get_group()
 
-        comm = _RingP2PComm(group)
+        comm = _RingBatchedP2PComm(group)
 
         prev_out = prev_lse = None
 

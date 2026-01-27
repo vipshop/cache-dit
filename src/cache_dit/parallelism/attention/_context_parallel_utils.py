@@ -4,7 +4,7 @@ from diffusers import ContextParallelConfig
 
 
 @dataclass
-class ExtendedContextParallelConfig(ContextParallelConfig):
+class _ExtendedContextParallelConfig(ContextParallelConfig):
     rotate_method: Literal["allgather", "alltoall", "p2p"] = "allgather"
     extra_kwargs: Dict[str, Any] = None  # For future extensions
 

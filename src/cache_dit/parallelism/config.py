@@ -36,7 +36,7 @@ class ParallelismConfig:
     #   `experimental_ulysses_float8: bool, Whether to enable the ulysses float8
     #       attention to use fp8 for faster communication.
     #   `ring_rotate_method`: str, The ring rotate method, include:
-    #       'p2p': Use batched i_send_recv ops to rotate the key and value tensors.
+    #       'p2p': Use batch_isend_irecv ops to rotate the key and value tensors.
     #            This method is more efficient due to th better overlap of communication
     #            and computation.
     #       'allgather': Use allgather to gather the key and value tensors (default).
