@@ -13,14 +13,14 @@ class ParallelismConfig:
     backend: ParallelismBackend = ParallelismBackend.AUTO
     # Context parallelism config
     # ulysses_size (`int`, *optional*):
-    #     The degree of ulysses parallelism.
+    #   The degree of ulysses parallelism.
     ulysses_size: int = None
     # ring_size (`int`, *optional*):
-    #     The degree of ring parallelism.
+    #   The degree of ring parallelism.
     ring_size: int = None
     # Tensor parallelism config
     # tp_size (`int`, *optional*):
-    #     The degree of tensor parallelism.
+    #   The degree of tensor parallelism.
     tp_size: int = None
     # parallel_kwargs (`dict`, *optional*):
     #   Additional kwargs for parallelism backends. For example, for
@@ -35,11 +35,11 @@ class ParallelismConfig:
     #       attention to overlap communication and computation.
     #   `experimental_ulysses_float8: bool, Whether to enable the ulysses float8
     #       attention to use fp8 for faster communication.
-    #   `ring_rotate_method`: str, The ring rotate method, include:
+    #   `ring_rotate_method`: str, The ring rotate method, default is `p2p`:
     #       'p2p': Use batch_isend_irecv ops to rotate the key and value tensors.
     #            This method is more efficient due to th better overlap of communication
-    #            and computation.
-    #       'allgather': Use allgather to gather the key and value tensors (default).
+    #            and computation (default)
+    #       'allgather': Use allgather to gather the key and value tensors.
     #   `ring_convert_to_fp32`: bool, Whether to convert the value output and lse
     #       of ring attention to fp32. Default to True to avoid numerical issues.
     parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(default_factory=dict)
@@ -80,6 +80,11 @@ class ParallelismConfig:
                 )
                 self.backend = ParallelismBackend.NATIVE_PYTORCH
         elif self.usp_enabled():
+            # world size must >= 4 for USP attention
+            assert (
+                self.ulysses_size * self.ring_size >= 4
+            ), "The product of ulysses_size and ring_size must be greater than or equal to 4 for USP attention."
+
             logger.info(
                 "Both ulysses_size and ring_size are set greater than 1. "
                 "USP Attention will be used for context parallelism."
@@ -152,17 +157,18 @@ class ParallelismConfig:
         else:
             parallel_str = ""
             if self.ulysses_size is not None:
-                parallel_str += f"Ulysses{self.ulysses_size}"
+                parallel_str += f"Ulysses{self.ulysses_size}_"
             if self.ring_size is not None:
-                parallel_str += f"Ring{self.ring_size}"
+                parallel_str += f"Ring{self.ring_size}_"
             if self.tp_size is not None:
-                parallel_str += f"TP{self.tp_size}"
+                parallel_str += f"TP{self.tp_size}_"
             if text_encoder or self._has_text_encoder:
-                parallel_str += "_TEP"  # Text Encoder Parallelism
+                parallel_str += "TEP_"  # Text Encoder Parallelism
             if vae or self._has_auto_encoder:
-                parallel_str += "_VAEP"  # VAE Parallelism
+                parallel_str += "VAEP_"  # VAE Parallelism
             if controlnet or self._has_controlnet:
-                parallel_str += "_CNP"  # ControlNet Parallelism
+                parallel_str += "CNP"  # ControlNet Parallelism
+            parallel_str = parallel_str.rstrip("_")
             return parallel_str
 
     def _get_extra_module_world_size(self) -> Optional[int]:

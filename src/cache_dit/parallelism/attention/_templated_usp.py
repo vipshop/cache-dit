@@ -10,7 +10,7 @@ from ._distributed_primitives import (
 
 try:
     from ._templated_ring import UnifiedTemplatedRingAttention
-    from ._templated_ulysses import enable_ulysses_float8
+    from ._templated_ulysses import is_ulysses_float8_enabled
     from diffusers.models._modeling_parallel import ParallelConfig
 except ImportError:
     raise ImportError(
@@ -40,7 +40,7 @@ class UnifiedTemplatedUSPAttention(torch.autograd.Function):
         backward_op,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
-        if enable_ulysses_float8():
+        if is_ulysses_float8_enabled():
             return _TemplatedUSPAttentionFloat8.apply(
                 query,
                 key,
@@ -110,7 +110,7 @@ class _TemplatedUSPAttention(torch.autograd.Function):
         key = key_wait()  # type: torch.Tensor
         value = value_wait()  # type: torch.Tensor
 
-        # USP step 1: Apply Ring attention to process the collected Q, K, V
+        # USP step 1: Apply Ring attention to process the collected partial Q, K, V
         out = UnifiedTemplatedRingAttention.apply(
             query,
             key,
@@ -191,7 +191,7 @@ class _TemplatedUSPAttentionFloat8(torch.autograd.Function):
         value = value_wait()  # type: torch.Tensor
         key = key_wait()  # type: torch.Tensor
 
-        # USP step 1: Apply Ring attention to process the collected Q, K, V
+        # USP step 1: Apply Ring attention to process the collected partial Q, K, V
         out = UnifiedTemplatedRingAttention.apply(
             query,
             key,

@@ -56,9 +56,7 @@ def maybe_enable_context_parallelism(
                 convert_to_fp32=parallelism_config.parallel_kwargs.get(
                     "ring_convert_to_fp32", True
                 ),
-                rotate_method=parallelism_config.parallel_kwargs.get(
-                    "ring_rotate_method", "allgather"
-                ),
+                rotate_method=parallelism_config.parallel_kwargs.get("ring_rotate_method", "p2p"),
             )
         if cp_config is not None:
             experimental_ulysses_anything = parallelism_config.parallel_kwargs.get(

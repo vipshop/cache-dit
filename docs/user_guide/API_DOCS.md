@@ -117,9 +117,9 @@ This function seamlessly integrates with both standard diffusion pipelines and c
        - `experimental_ulysses_anything: bool, Whether to enable the ulysses anything attention to support arbitrary sequence length and arbitrary number of heads.
        - `experimental_ulysses_async: bool, Whether to enable the ulysses async attention to overlap communication and computation.
        - `experimental_ulysses_float8: bool, Whether to enable the ulysses float8 attention to use fp8 for faster communication.
-       - `ring_rotate_method`: str, The ring rotate method, include:   
-          - `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation.
-          - `allgather`: Use allgather to gather the key and value tensors (default).
+       - `ring_rotate_method`: str, The ring rotate method, default is `p2p`:   
+          - `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation (default).
+          - `allgather`: Use allgather to gather the key and value tensors.
        - `ring_convert_to_fp32`: bool, Whether to convert the value output and lse of ring attention to fp32. Default to True to avoid numerical issues.
         
 - **attention_backend** (`str`, *optional*, defaults to None):  

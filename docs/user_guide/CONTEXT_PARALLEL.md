@@ -177,15 +177,41 @@ cache_dit.enable_cache(
     parallelism_config=ParallelismConfig(
         ring_size=2,
         parallel_kwargs={
-            "ring_rotate_method": "p2p",
+            "ring_rotate_method": "p2p", # default is 'p2p'
         },
     ),
 )
 # torchrun --nproc_per_node=2 parallel_ring_batched_p2p.py
 ```
 
-The benchmark for Ring w/ allgather, Ring w/ batched p2p and Ulysses listed as following:
+The FLUX.1-dev benchmark for Ring w/ allgather (AG), Ring w/ batched p2p (p2p) and Ulysses listed as following:
 
-|Ring-2 w/ allgather| Ring-2 w/ batched p2p| Ulysses-2 | Ring-4 w/ allgather| Ring-4 w/ batched p2p| Ulysses-4 |  
+|Ring-2 w/ AG| Ring-2 w/ p2p| Ulysses-2 | Ring-4 w/ AG| Ring-4 w/ p2p| Ulysses-4 |  
 |:---:|:---:|:---:|:---:|:---:|:---:| 
-|FLUX.1-dev: 14.01s|13.43s|13.87s|9.82s|9.16s|8.22s|
+|14.01s|13.43s|13.87s|9.82s|9.16s|8.22s|
+
+
+## USP：Unified Sequence Parallelism
+
+Unified Sequence Parallelism combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses’s all-to-all communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the all-to-all to restore the original layout. Ulysses Attention efficiently parallelizes across attention heads. Ring Attention handles very long sequences with minimal memory overhead. Together, they enable 2D parallelization across both heads and sequence dimensions
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set both `ulysses_size` and `ring_size` greater than 1
+    parallelism_config=ParallelismConfig(
+        ulysses_size=2, ring_size=2,
+    ),
+)
+# torchrun --nproc_per_node=4 parallel_usp.py
+```
+
+From the below table (FLUX.1-dev), it’s clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.
+
+|Ring-4 w/ allgather| Ring-4 w/ batched p2p| Ulysses-4 | USP-2-2 |
+|:---:|:---:|:---:|:---:|
+|9.82s|9.16s|8.22s|8.55s|

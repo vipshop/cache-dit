@@ -382,6 +382,7 @@ def get_args(
             "tp",
             "ulysses",
             "ring",
+            "usp",
         ],
     )
     parser.add_argument(
@@ -448,7 +449,7 @@ def get_args(
         "--ring-rotate-method",
         "--rotate",
         type=str,
-        default="allgather",
+        default="p2p",
         choices=[
             "allgather",
             "p2p",
@@ -1269,6 +1270,20 @@ def maybe_apply_optimization(
             else:
                 steps_computation_mask = None
 
+            def _prepare_distributed_size():
+                if args.parallel_type is not None:
+                    world_size = dist.get_world_size() if dist.is_initialized() else 1
+                    ulysses_size = world_size if args.parallel_type == "ulysses" else None
+                    ring_size = world_size if args.parallel_type == "ring" else None
+                    tp_size = world_size if args.parallel_type == "tp" else None
+                    if args.parallel_type == "usp":
+                        ulysses_size = max(1, world_size // 2)
+                        ring_size = max(1, world_size // 2)
+                    return ulysses_size, ring_size, tp_size
+                return None, None, None
+
+            ulysses_size, ring_size, tp_size = _prepare_distributed_size()
+
             enable_cache(
                 pipe_or_adapter,
                 cache_config=(
@@ -1296,16 +1311,14 @@ def maybe_apply_optimization(
                 params_modifiers=kwargs.get("params_modifiers", None),
                 parallelism_config=(
                     ParallelismConfig(
-                        ulysses_size=(
-                            dist.get_world_size() if args.parallel_type == "ulysses" else None
-                        ),
-                        ring_size=(dist.get_world_size() if args.parallel_type == "ring" else None),
-                        tp_size=(dist.get_world_size() if args.parallel_type == "tp" else None),
+                        ulysses_size=ulysses_size,
+                        ring_size=ring_size,
+                        tp_size=tp_size,
                         backend=backend,
                         parallel_kwargs=parallel_kwargs,
                     )
                     if parallelism_config is None
-                    and args.parallel_type in ["ulysses", "ring", "tp"]
+                    and args.parallel_type in ["ulysses", "ring", "tp", "usp"]
                     else parallelism_config
                 ),
                 # Allow attention backend for non-parallelism case
@@ -1382,7 +1395,7 @@ def strify(args, pipe_or_stats):
             base_str += "_ulysses_float8"
     if args.ulysses_async:
         base_str += "_ulysses_async"
-    if args.parallel_type == "ring":
+    if args.parallel_type == "ring" or args.parallel_type == "usp":
         if args.ring_rotate_method is not None:
             base_str += f"_rotated_{args.ring_rotate_method}"
         if args.ring_no_convert_to_fp32:
