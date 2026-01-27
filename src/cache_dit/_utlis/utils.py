@@ -421,6 +421,7 @@ def get_args(
             "_native_npu",  # native npu attention
         ],
     )
+    # Ulysses context parallelism settings
     parser.add_argument(
         "--ulysses-anything",
         "--uaa",
@@ -441,6 +442,26 @@ def get_args(
         action="store_true",
         default=False,
         help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
+    )
+    # Ring context parallelism settings
+    parser.add_argument(
+        "--ring-rotate-method",
+        "--rotate",
+        type=str,
+        default="allgather",
+        choices=[
+            "allgather",
+            "p2p",
+        ],
+        help="Ring Attention rotation method for context parallelism",
+    )
+    parser.add_argument(
+        "--ring-no-convert-to-fp32",
+        "--ring-no-fp32",
+        "--no-fp32",
+        action="store_true",
+        default=False,
+        help="Disable convert Ring Attention output and lse to fp32 for context parallelism",
     )
     # Offload settings
     parser.add_argument(
@@ -1224,6 +1245,8 @@ def maybe_apply_optimization(
                         "experimental_ulysses_anything": args.ulysses_anything,
                         "experimental_ulysses_float8": args.ulysses_float8,
                         "experimental_ulysses_async": args.ulysses_async,
+                        "ring_rotate_method": args.ring_rotate_method,
+                        "ring_convert_to_fp32": not args.ring_no_convert_to_fp32,
                     }
                 )
 
@@ -1359,6 +1382,11 @@ def strify(args, pipe_or_stats):
             base_str += "_ulysses_float8"
     if args.ulysses_async:
         base_str += "_ulysses_async"
+    if args.parallel_type == "ring":
+        if args.ring_rotate_method is not None:
+            base_str += f"_rotated_{args.ring_rotate_method}"
+        if args.ring_no_convert_to_fp32:
+            base_str += "_no_fp32"
     if args.parallel_text_encoder:
         if "_TEP" not in base_str:
             base_str += "_TEP"  # Text Encoder Parallelism
