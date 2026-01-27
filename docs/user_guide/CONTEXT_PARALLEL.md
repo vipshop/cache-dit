@@ -164,6 +164,7 @@ cache_dit.enable_cache(
 
 ## Ring Attention with Batched P2P  
 
+
 Currently, cache-dit support 2 ring_rotate_method, namely, `allgather` and `p2p`. `allgather`: Use allgather to gather the key and value tensors (default). `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation.
 
 ```python
@@ -183,3 +184,9 @@ cache_dit.enable_cache(
 )
 # torchrun --nproc_per_node=2 parallel_ring_batched_p2p.py
 ```
+
+The benchmark for Ring w/ allgather, Ring w/ batched p2p and Ulysses listed as following:
+
+|Ring-2 w/ allgather| Ring-2 w/ batched p2p| Ulysses-2 | Ring-4 w/ allgather| Ring-4 w/ batched p2p| Ulysses-4 |  
+|:---:|:---:|:---:|:---:|:---:|:---:| 
+|FLUX.1-dev: 14.01s|13.43s|13.87s|9.82s|9.16s|8.22s|
