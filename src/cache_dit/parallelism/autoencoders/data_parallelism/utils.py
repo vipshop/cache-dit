@@ -19,15 +19,15 @@ class TileBatchedP2PComm:
         group: dist.ProcessGroup,
     ) -> None:
         tensor = tensor.contiguous()
-        dist.send_object_list(
-            [tensor.shape],
-            dst=dst,
-            group=group,
-            device=self._s_comm_device,  # 'cpu' is more efficient
-            use_batch=True,
-        )
-        send_op = dist.P2POp(dist.isend, tensor, dst, group=group)
-        self._ops.append(send_op)
+        s_dims = torch.tensor(len(tensor.shape), device=self._s_comm_device, dtype=torch.int64)
+        s_shape = torch.tensor(tensor.shape, device=self._s_comm_device, dtype=torch.int64)
+        send_op_d = dist.P2POp(dist.isend, s_dims, dst, group=group)
+        send_op_s = dist.P2POp(dist.isend, s_shape, dst, group=group)
+        dist.batch_isend_irecv([send_op_d]).pop().wait()
+        dist.batch_isend_irecv([send_op_s]).pop().wait()
+
+        send_op_t = dist.P2POp(dist.isend, tensor, dst, group=group)  # tile
+        self._ops.append(send_op_t)
 
     def recv_tensor(
         self,
@@ -36,17 +36,18 @@ class TileBatchedP2PComm:
         device=None,
         dtype=None,
     ) -> torch.Tensor:
-        objects = [None]
-        dist.recv_object_list(
-            objects,
-            src=src,
-            group=group,
-            device=self._s_comm_device,  # 'cpu' is more efficient
-            use_batch=True,
-        )
-        t = torch.empty(objects[0], device=device, dtype=dtype)
-        recv_op = dist.P2POp(dist.irecv, t, src, group=group)
-        self._ops.append(recv_op)
+
+        s_dims = torch.tensor(0, device=self._s_comm_device, dtype=torch.int64)
+        recv_op_d = dist.P2POp(dist.irecv, s_dims, src, group=group)
+        dist.batch_isend_irecv([recv_op_d]).pop().wait()
+
+        s_shape = torch.empty((s_dims.item(),), device=self._s_comm_device, dtype=torch.int64)
+        recv_op_s = dist.P2POp(dist.irecv, s_shape, src, group=group)
+        dist.batch_isend_irecv([recv_op_s]).pop().wait()
+
+        t = torch.empty(tuple(s_shape.tolist()), device=device, dtype=dtype)
+        recv_op_t = dist.P2POp(dist.irecv, t, src, group=group)  # tile
+        self._ops.append(recv_op_t)
         return t
 
     def commit(self):
