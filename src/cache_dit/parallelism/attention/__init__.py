@@ -33,5 +33,5 @@ def _maybe_register_custom_attn_backends():
             _flash_attention_3,
             _native_npu_attention,
         )
-    except ImportError:
-        pass
+    except ImportError as e:
+        raise e
