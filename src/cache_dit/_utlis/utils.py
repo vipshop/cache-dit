@@ -451,13 +451,14 @@ def get_args(
         default="allgather",
         choices=[
             "allgather",
-            "alltoall",
+            "p2p",
         ],
         help="Ring Attention rotation method for context parallelism",
     )
     parser.add_argument(
         "--ring-no-convert-to-fp32",
         "--ring-no-fp32",
+        "--no-fp32",
         action="store_true",
         default=False,
         help="Disable convert Ring Attention output and lse to fp32 for context parallelism",

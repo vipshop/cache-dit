@@ -51,7 +51,7 @@ class UnifiedTemplatedRingAttention(torch.autograd.Function):
                 backward_op,
                 _parallel_config,
             )
-        elif _parallel_config.context_parallel_config.rotate_method == "alltoall":
+        elif _parallel_config.context_parallel_config.rotate_method == "p2p":
             return _TemplatedRotatedRingAttention.apply(
                 query,
                 key,

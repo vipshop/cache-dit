@@ -7,12 +7,12 @@ from cache_dit.parallelism.config import ParallelismConfig
 from cache_dit.logger import init_logger
 
 try:
-    from diffusers import ContextParallelConfig  # noqa: F401
-    from cache_dit.parallelism.attention import (
+    from ...attention import (
         _maybe_register_custom_attn_backends,
         _is_diffusers_parallelism_available,
         enable_ulysses_anything,
         enable_ulysses_float8,
+        ExtendedContextParallelConfig,
     )
     from .cp_plan_registers import ContextParallelismPlannerRegister
     from .cp_planners import _activate_cp_planners
@@ -50,7 +50,7 @@ def maybe_enable_context_parallelism(
         if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
             # Prepare extra context parallelism config, e.g, convert_to_fp32,
             # rotate_method for ring attention.
-            cp_config = ContextParallelConfig(
+            cp_config = ExtendedContextParallelConfig(
                 ulysses_degree=parallelism_config.ulysses_size,
                 ring_degree=parallelism_config.ring_size,
                 convert_to_fp32=parallelism_config.parallel_kwargs.get(
