@@ -37,7 +37,7 @@ class UnifiedTemplatedRingAttention(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
         if _parallel_config.context_parallel_config.rotate_method == "allgather":
-            return TemplatedRingAttention.apply(
+            return _TemplatedRingAllGatherAttention.apply(
                 query,
                 key,
                 value,
@@ -52,7 +52,7 @@ class UnifiedTemplatedRingAttention(torch.autograd.Function):
                 _parallel_config,
             )
         elif _parallel_config.context_parallel_config.rotate_method == "p2p":
-            return _TemplatedRotatedRingAttention.apply(
+            return _TemplatedRingP2PAttention.apply(
                 query,
                 key,
                 value,
@@ -72,14 +72,14 @@ class UnifiedTemplatedRingAttention(torch.autograd.Function):
             )
 
 
-class _TemplatedRingAttention(TemplatedRingAttention):
+class _TemplatedRingAllGatherAttention(TemplatedRingAttention):
     """A wrapper of diffusers' TemplatedRingAttention to avoid name conflict."""
 
     pass
 
 
 # Adapted from: https://github.com/zhuzilin/ring-flash-attention/blob/main/ring_flash_attn/utils.py#L98
-class _RotatedRingComm:
+class _RingP2PComm:
     def __init__(self, process_group: dist.ProcessGroup):
         self._process_group = process_group
         self._ops = []
@@ -133,7 +133,7 @@ class _RotatedRingComm:
         return next_k, next_v
 
 
-class _TemplatedRotatedRingAttention(torch.autograd.Function):
+class _TemplatedRingP2PAttention(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx: torch.autograd.function.FunctionCtx,
@@ -153,7 +153,7 @@ class _TemplatedRotatedRingAttention(torch.autograd.Function):
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         group = ring_mesh.get_group()
 
-        comm = _RotatedRingComm(group)
+        comm = _RingP2PComm(group)
 
         prev_out = prev_lse = None
 
@@ -219,5 +219,5 @@ class _TemplatedRotatedRingAttention(torch.autograd.Function):
         *args,
     ):
         raise NotImplementedError(
-            "Backward pass is not implemented for _TemplatedRotatedRingAttention."
+            "Backward pass is not implemented for _TemplatedRingP2PAttention."
         )
