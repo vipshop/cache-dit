@@ -117,6 +117,7 @@ cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥
 # context parallelism or tensor parallelism
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ring 
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel usp # USP: Ulysses + Ring
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses 
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parallel ulysses 
