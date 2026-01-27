@@ -23,9 +23,25 @@ class ParallelismConfig:
     #     The degree of tensor parallelism.
     tp_size: int = None
     # parallel_kwargs (`dict`, *optional*):
-    #     Additional kwargs for parallelism backends. For example, for
-    #     NATIVE_DIFFUSER backend, it can include `cp_plan` and
-    #     `attention_backend` arguments for `Context Parallelism`.
+    #   Additional kwargs for parallelism backends. For example, for
+    #   NATIVE_DIFFUSER backend, it can include:
+    #   `cp_plan`: The custom context parallelism plan pass by user.
+    #   `attention_backend`: str, The attention backend for parallel attention,
+    #       e.g, 'native', 'flash', 'sage', etc.
+    #   `experimental_ulysses_anything: bool, Whether to enable the ulysses
+    #       anything attention to support arbitrary sequence length and
+    #       arbitrary number of heads.
+    #   `experimental_ulysses_async: bool, Whether to enable the ulysses async
+    #       attention to overlap communication and computation.
+    #   `experimental_ulysses_float8: bool, Whether to enable the ulysses float8
+    #       attention to use fp8 for faster communication.
+    #   `ring_rotate_method`: str, The ring rotate method, include:
+    #       'alltoall': Use alltoall(implemented by batched i_send_recv ops) to rotate
+    #           the key and value tensors. This method is more efficient due to the
+    #           better overlap of communication and computation.
+    #       'allgather': Use allgather to gather the key and value tensors (default).
+    #   `ring_convert_to_fp32`: bool, Whether to convert the value output and lse
+    #       of ring attention to fp32. Default to True to avoid numerical issues.
     parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(default_factory=dict)
     # Some internal fields for utils usage
     _has_text_encoder: bool = False

@@ -36,20 +36,40 @@ class UnifiedTemplatedRingAttention(torch.autograd.Function):
         backward_op,
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
-        return _TemplatedRingAttention.apply(
-            query,
-            key,
-            value,
-            attn_mask,
-            dropout_p,
-            is_causal,
-            scale,
-            enable_gqa,
-            return_lse,
-            forward_op,
-            backward_op,
-            _parallel_config,
-        )
+        if _parallel_config.context_parallel_config.rotate_method == "allgather":
+            return TemplatedRingAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
+        elif _parallel_config.context_parallel_config.rotate_method == "alltoall":
+            return _TemplatedRotatedRingAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported rotate_method: {_parallel_config.context_parallel_config.rotate_method}"
+            )
 
 
 class _TemplatedRingAttention(TemplatedRingAttention):
@@ -59,7 +79,7 @@ class _TemplatedRingAttention(TemplatedRingAttention):
 
 
 # Adapted from: https://github.com/zhuzilin/ring-flash-attention/blob/main/ring_flash_attn/utils.py#L98
-class _RingComm:
+class _RotatedRingComm:
     def __init__(self, process_group: dist.ProcessGroup):
         self._process_group = process_group
         self._ops = []
@@ -133,7 +153,7 @@ class _TemplatedRotatedRingAttention(torch.autograd.Function):
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         group = ring_mesh.get_group()
 
-        comm = _RingComm(group)
+        comm = _RotatedRingComm(group)
 
         prev_out = prev_lse = None
 
@@ -165,8 +185,8 @@ class _TemplatedRotatedRingAttention(torch.autograd.Function):
             )
 
             if _parallel_config.context_parallel_config.convert_to_fp32:
-                out = out.to(torch.float32)
-                lse = lse.to(torch.float32)
+                out = out.to(torch.float32)  # type: torch.Tensor
+                lse = lse.to(torch.float32)  # type: torch.Tensor
 
             # Refer to:
             # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544

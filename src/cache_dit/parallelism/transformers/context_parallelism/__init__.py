@@ -48,9 +48,17 @@ def maybe_enable_context_parallelism(
     ):
         cp_config = None
         if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
+            # Prepare extra context parallelism config, e.g, convert_to_fp32,
+            # rotate_method for ring attention.
             cp_config = ContextParallelConfig(
                 ulysses_degree=parallelism_config.ulysses_size,
                 ring_degree=parallelism_config.ring_size,
+                convert_to_fp32=parallelism_config.parallel_kwargs.get(
+                    "ring_convert_to_fp32", True
+                ),
+                rotate_method=parallelism_config.parallel_kwargs.get(
+                    "ring_rotate_method", "allgather"
+                ),
             )
         if cp_config is not None:
             experimental_ulysses_anything = parallelism_config.parallel_kwargs.get(
