@@ -79,15 +79,17 @@ class ParallelismConfig:
                     "right now. Force set backend to NATIVE_PYTORCH."
                 )
                 self.backend = ParallelismBackend.NATIVE_PYTORCH
-        elif (
-            self.ulysses_size is not None
-            and self.ulysses_size > 1
-            and self.ring_size is not None
-            and self.ring_size > 1
-        ):
-            raise ValueError(
-                "Ulysses parallelism plus Ring parallelism is not fully supported right now."
+        elif self.usp_enabled():
+            logger.info(
+                "Both ulysses_size and ring_size are set greater than 1. "
+                "USP Attention will be used for context parallelism."
             )
+            if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
+                logger.warning(
+                    "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
+                    "backend right now. Force set backend to NATIVE_DIFFUSER."
+                )
+                self.backend = ParallelismBackend.NATIVE_DIFFUSER
         else:
             if (self.ulysses_size is not None and self.ulysses_size > 1) or (
                 self.ring_size is not None and self.ring_size > 1
@@ -104,6 +106,14 @@ class ParallelismConfig:
             (self.ulysses_size is not None and self.ulysses_size > 1)
             or (self.ring_size is not None and self.ring_size > 1)
             or (self.tp_size is not None and self.tp_size > 1)
+        )
+
+    def usp_enabled(self) -> bool:
+        return (
+            self.ulysses_size is not None
+            and self.ulysses_size > 1
+            and self.ring_size is not None
+            and self.ring_size > 1
         )
 
     def strify(
@@ -161,10 +171,16 @@ class ParallelismConfig:
         sizes = []
         if self.tp_size is not None and self.tp_size > 1:
             sizes.append(self.tp_size)
-        if self.ulysses_size is not None and self.ulysses_size > 1:
-            sizes.append(self.ulysses_size)
-        if self.ring_size is not None and self.ring_size > 1:
-            sizes.append(self.ring_size)
+
+        # Both ulysses_size and ring_size are > 1
+        if self.usp_enabled():
+            sizes.append(self.ulysses_size * self.ring_size)
+        else:
+            if self.ulysses_size is not None and self.ulysses_size > 1:
+                sizes.append(self.ulysses_size)
+            if self.ring_size is not None and self.ring_size > 1:
+                sizes.append(self.ring_size)
+
         if sizes:
             return max(sizes)
         return None
