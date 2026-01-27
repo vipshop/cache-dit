@@ -164,7 +164,6 @@ cache_dit.enable_cache(
 
 ## Ring Attention with Batched P2P  
 
-
 Currently, cache-dit support 2 ring_rotate_method, namely, `allgather` and `p2p`. `allgather`: Use allgather to gather the key and value tensors (default). `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation.
 
 ```python
