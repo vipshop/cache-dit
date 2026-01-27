@@ -9,7 +9,8 @@ def send_tensor(
 ) -> None:
     tensor = tensor.contiguous()
     dist.send_object_list([tensor.shape], dst=dst, group=group, use_batch=True)
-    dist.batch_isend_irecv([dist.P2POp(dist.isend, tensor, dst, group=group)]).pop().wait()
+    send_op = dist.P2POp(dist.isend, tensor, dst, group=group)
+    dist.batch_isend_irecv([send_op]).pop().wait()
 
 
 def recv_tensor(
@@ -21,5 +22,6 @@ def recv_tensor(
     objects = [None]
     dist.recv_object_list(objects, src=src, group=group, use_batch=True)
     t = torch.empty(objects[0], device=device, dtype=dtype)
-    dist.batch_isend_irecv([dist.P2POp(dist.irecv, t, src, group=group)]).pop().wait()
+    recv_op = dist.P2POp(dist.irecv, t, src, group=group)
+    dist.batch_isend_irecv([recv_op]).pop().wait()
     return t
