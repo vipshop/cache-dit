@@ -46,6 +46,8 @@ from cache_dit.envs import ENV
 
 from ._templated_ring import UnifiedTemplatedRingAttention
 from ._templated_ulysses import UnifiedTemplatedUlyssesAttention
+from ._templated_usp import UnifiedTemplatedUSPAttention
+
 
 logger = init_logger(__name__)
 MAX_TOKEN = 2147483647
@@ -120,8 +122,25 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         if enable_gqa:
             raise ValueError("GQA is not yet supported for templated attention.")
 
-        # TODO: add support for unified attention with ring/ulysses degree both being > 1
-        if _parallel_config.context_parallel_config.ring_degree > 1:
+        if (
+            _parallel_config.context_parallel_config.ring_degree > 1
+            and _parallel_config.context_parallel_config.ulysses_degree > 1
+        ):
+            return UnifiedTemplatedUSPAttention.apply(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                return_lse,
+                forward_op,
+                backward_op,
+                _parallel_config,
+            )
+        elif _parallel_config.context_parallel_config.ring_degree > 1:
             return UnifiedTemplatedRingAttention.apply(
                 query,
                 key,

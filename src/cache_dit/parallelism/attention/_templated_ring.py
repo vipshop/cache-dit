@@ -151,9 +151,9 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
     ):
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
-        group = ring_mesh.get_group()
+        ring_group = ring_mesh.get_group()
 
-        comm = _RingBatchedP2PComm(group)
+        comm = _RingBatchedP2PComm(ring_group)
 
         prev_out = prev_lse = None
 
@@ -187,7 +187,7 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
 
             # Refer to:
             # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-            if is_torch_version("<", "2.9.0"):
+            if is_torch_version("<", "2.9.0") and lse.dim() == 3:
                 lse = lse.unsqueeze(-1)
 
             # Use _fused_merge_attn_states to combine the attention outputs and lses
@@ -208,7 +208,7 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
                 key, value = next_k, next_v
 
         out = out.to(query.dtype)
-        lse = lse.squeeze(-1)
+        lse = lse.squeeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL)
 
         return (out, lse) if return_lse else out
 

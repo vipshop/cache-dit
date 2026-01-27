@@ -207,8 +207,6 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         out_wait = _all_to_all_single_o_async(out, group, **metadata)
 
         if return_lse:
-            # NOTE: DON'T use float8 all_to_all for out and lse, as it may
-            # cause more numerical instability.
             lse = lse.unsqueeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL, D=1)
             lse_wait = _all_to_all_single_o_async(lse, group, **metadata)
             out = out_wait()  # type: torch.Tensor
@@ -414,8 +412,6 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _parallel_config: Optional["ParallelConfig"] = None,
         **kwargs,
     ):
-        # TODO: Should we only use float8 all_to_all for VO not QK? The softmax in
-        # QK may cause more numerical instability than P@V matrix multiplication.
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
