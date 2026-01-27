@@ -97,8 +97,9 @@ class _RingBatchedP2PComm:
     def send_recv(
         self, to_send: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        to_send = to_send.contiguous()
         if recv_tensor is None:
-            res = torch.empty_like(to_send)
+            res = torch.empty_like(to_send).contiguous()
         else:
             res = recv_tensor
 
