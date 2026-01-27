@@ -180,7 +180,7 @@ class _TemplatedRotatedRingAttention(torch.autograd.Function):
                 is_causal,
                 scale,
                 enable_gqa,
-                True,
+                True,  # return_lse
                 _save_ctx=step == 0,
                 _parallel_config=_parallel_config,
             )
