@@ -1382,10 +1382,11 @@ def strify(args, pipe_or_stats):
             base_str += "_ulysses_float8"
     if args.ulysses_async:
         base_str += "_ulysses_async"
-    if args.ring_rotate_method is not None:
-        base_str += f"_rotated_{args.ring_rotate_method}"
-    if args.ring_no_convert_to_fp32:
-        base_str += "_no_fp32"
+    if args.parallel_type == "ring":
+        if args.ring_rotate_method is not None:
+            base_str += f"_rotated_{args.ring_rotate_method}"
+        if args.ring_no_convert_to_fp32:
+            base_str += "_no_fp32"
     if args.parallel_text_encoder:
         if "_TEP" not in base_str:
             base_str += "_TEP"  # Text Encoder Parallelism
