@@ -180,6 +180,18 @@ def enable_cache(
                 parallel_kwargs: (`dict`, *optional*, defaults to {}):
                     Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
                     it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
+                    Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
+                    it can include:
+                        cp_plan: The custom context parallelism plan pass by user.
+                        attention_backend: str, The attention backend for parallel attention, e.g, 'native', 'flash', 'sage', etc.
+                        experimental_ulysses_anything: bool, Whether to enable the ulysses anything attention to support arbitrary sequence length and arbitrary number of heads.
+                        experimental_ulysses_async: bool, Whether to enable the ulysses async attention to overlap communication and computation.
+                        experimental_ulysses_float8: bool, Whether to enable the ulysses float8 attention to use fp8 for faster communication.
+                        ring_rotate_method: str, The ring rotate method, default is `p2p`:
+                            `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation (default).
+                            `allgather`: Use allgather to gather the key and value tensors.
+                        ring_convert_to_fp32: bool, Whether to convert the value output and lse of ring attention to fp32. Default to True to avoid numerical issues.
+
         attention_backend (`str`, *optional*, defaults to None):
             Custom attention backend in cache-dit for non-parallelism case. If attention_backend is
             not None, set the attention backend for the transformer module. Supported backends include:
