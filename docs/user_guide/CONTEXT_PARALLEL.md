@@ -160,3 +160,26 @@ cache_dit.enable_cache(
 |:---:|:---:|:---:|:---:|
 |FLUX.1, 13.87s|**🎉13.36s**|12.21s|**🎉11.54s**|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_float8.png" width=222px>|
+
+
+## Ring Attention with Batched P2P  
+
+Currently, cache-dit support 2 ring_rotate_method, namely, `allgather` and `p2p`. `allgather`: Use allgather to gather the key and value tensors (default). `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation.
+
+```python
+# pip3 install "cache-dit[parallelism]"
+from cache_dit import ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    # Set `ring_rotate_method` as 'p2p' to enable the faster ring attention implementation
+    parallelism_config=ParallelismConfig(
+        ring_size=2,
+        parallel_kwargs={
+            "ring_rotate_method": "p2p",
+        },
+    ),
+)
+# torchrun --nproc_per_node=2 parallel_ring_batched_p2p.py
+```
