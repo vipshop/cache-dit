@@ -14,7 +14,7 @@
 - [📚 Available Examples](#-available-examples)
 - [📚 Single GPU Inference](#-single-gpu-inference)  
 - [📚 Custom Model Path](#-custom-model-path)  
-- [📚 Multi-GPU Inference](#-multi-gpu-inference)  
+- [📚 Distributed Inference](#-multi-gpu-inference)  
 - [📚 Low-bits Quantization](#-low-bits-quantization)  
 - [📚 Hybrid Acceleration](#-hybrid-acceleration) 
 - [📚 End2End Examples](#-end2end-examples) 
@@ -24,8 +24,11 @@
 ## 📚 Installation
 
 ```bash
-pip3 install torch==2.9.1 transformers accelerate torchao==0.14.1 bitsandbytes torchvision 
-pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
+# recommend: install latest stable release of torch for better compile compatiblity.
+pip3 install torch==2.10.0 torchvision --index-url https://download.pytorch.org/whl/nightly/cu129 --upgrade
+# recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
+pip3 install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu129
+pip3 install transformers accelerate bitsandbytes opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ```
@@ -121,7 +124,7 @@ python3 -m cache_dit.generate zimage --model-path /PATH/TO/Z-Image-Turbo
 python3 -m cache_dit.generate qwem_image --model-path /PATH/TO/Qwen-Image
 ```
 
-## 📚 Multi-GPU Inference 
+## 📚 Distributed Inference 
 
 cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
@@ -261,7 +264,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
     )
 
-# NOTE: DON'T forget to add `flux_example` into helpers.py
+# NOTE: DON'T forget to import this `flux_example` into __init__.py
 ```
 
 ## 📚 More Usages about Examples
@@ -338,7 +341,7 @@ options:
   --quantize-controlnet, --q-controlnet
                         Enable quantization for text encoder
   --quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
-  --parallel-type {None,tp,ulysses,ring}, --parallel {None,tp,ulysses,ring}
+  --parallel-type {None,tp,ulysses,ring,usp}, --parallel {None,tp,ulysses,ring,usp}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
@@ -351,6 +354,10 @@ options:
                         Enable Ulysses Attention/UAA Float8 for context parallelism
   --ulysses-async, --uaqkv
                         Enabled experimental Async QKV Projection with Ulysses for context parallelism
+  --ring-rotate-method {allgather,p2p}, --rotate {allgather,p2p}
+                        Ring Attention rotation method for context parallelism
+  --ring-no-convert-to-fp32, --ring-no-fp32, --no-fp32
+                        Disable convert Ring Attention output and lse to fp32 for context parallelism
   --cpu-offload, --cpu-offload-model
                         Enable CPU offload for model if applicable.
   --sequential-cpu-offload

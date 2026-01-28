@@ -191,9 +191,11 @@ The FLUX.1-dev benchmark for Ring w/ allgather (AG), Ring w/ batched p2p (p2p) a
 |14.01s|13.43s|13.87s|9.82s|9.16s|8.22s|
 
 
-## USP：Unified Sequence Parallelism
+## USP: Unified Sequence Parallelism
 
-Unified Sequence Parallelism combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses’s all-to-all communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the all-to-all to restore the original layout. Ulysses Attention efficiently parallelizes across attention heads. Ring Attention handles very long sequences with minimal memory overhead. Together, they enable 2D parallelization across both heads and sequence dimensions
+Unified Sequence Parallelism combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses’s all-to-all communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the all-to-all to restore the original layout.   
+
+Ulysses Attention efficiently parallelizes across attention heads. Ring Attention handles very long sequences with minimal memory overhead. Together, they enable 2D parallelization across both heads and sequence dimensions
 
 ```python
 # pip3 install "cache-dit[parallelism]"
