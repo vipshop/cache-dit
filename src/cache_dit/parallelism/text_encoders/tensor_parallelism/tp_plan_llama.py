@@ -1,7 +1,7 @@
 import torch
 from typing import Union
 from transformers import LlamaModel, LlamaForCausalLM
-from torch.distributed import DeviceMesh, init_device_mesh
+from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
@@ -34,13 +34,7 @@ class LlamaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         assert isinstance(
             text_encoder, (LlamaModel, LlamaForCausalLM)
         ), "Qwen3TensorParallelismPlanner can only be applied to Llama Language Models."
-        text_encoder_world_size = parallelism_config.text_encoder_world_size
-        device_type = torch.accelerator.current_accelerator().type
-        tp_mesh: DeviceMesh = init_device_mesh(
-            device_type=device_type,
-            mesh_shape=[text_encoder_world_size],
-        )
-
+        tp_mesh = self.mesh(parallelism_config=parallelism_config)
         text_encoder = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,

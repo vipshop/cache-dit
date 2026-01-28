@@ -1,6 +1,10 @@
+import torch
+import functools
 import dataclasses
-from typing import Optional, Dict, Any
-from cache_dit.parallelism.backend import ParallelismBackend
+from typing import Optional, Dict, Any, Union
+import torch.distributed as dist
+from diffusers import ModelMixin
+from .backend import ParallelismBackend
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -47,6 +51,14 @@ class ParallelismConfig:
     _has_text_encoder: bool = False
     _has_auto_encoder: bool = False
     _has_controlnet: bool = False
+    # mesh for hybrid parallelism: CP/SP + TP
+    _mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _flat_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _cp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _tp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _rank: Optional[int] = None
+    _world_size: Optional[int] = None
+    _device: Optional[torch.device] = None
 
     def __post_init__(self):
         assert ParallelismBackend.is_supported(self.backend), (
@@ -55,56 +67,81 @@ class ParallelismConfig:
         )
         if self.backend == ParallelismBackend.AUTO:
             # Auto select the backend based on the parallelism configuration
-            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
-                self.ring_size is not None and self.ring_size > 1
-            ):
+            if self.hybrid_enabled():
+                self.backend = ParallelismBackend.HYBRID
+            elif self.cp_enabled() or self.usp_enabled():
                 self.backend = ParallelismBackend.NATIVE_DIFFUSER
-            elif self.tp_size is not None and self.tp_size > 1:
+            elif self.tp_enabled():
                 self.backend = ParallelismBackend.NATIVE_PYTORCH
             else:
                 self.backend = ParallelismBackend.NONE
             logger.info(f"Auto selected parallelism backend for transformer: {self.backend}")
 
-        # Validate the parallelism configuration and auto adjust the backend if needed
-        if self.tp_size is not None and self.tp_size > 1:
-            assert (
-                self.ulysses_size is None or self.ulysses_size == 1
-            ), "Tensor parallelism plus Ulysses parallelism is not supported right now."
-            assert (
-                self.ring_size is None or self.ring_size == 1
-            ), "Tensor parallelism plus Ring parallelism is not supported right now."
-            if self.backend != ParallelismBackend.NATIVE_PYTORCH:
-                logger.warning(
-                    "Tensor parallelism is only supported for NATIVE_PYTORCH backend "
-                    "right now. Force set backend to NATIVE_PYTORCH."
-                )
-                self.backend = ParallelismBackend.NATIVE_PYTORCH
-        elif self.usp_enabled():
-            # world size must >= 4 for USP attention
-            assert (
-                self.ulysses_size * self.ring_size >= 4
-            ), "The product of ulysses_size and ring_size must be greater than or equal to 4 for USP attention."
-
-            logger.info(
-                "Both ulysses_size and ring_size are set greater than 1. "
-                "USP Attention will be used for context parallelism."
+        world_size = self._get_world_size()
+        if self.hybrid_enabled():
+            assert world_size >= 4, (
+                "Hybrid Ulysses + Ring + TP parallelism requires at least 4 processes. "
+                f"Got {world_size} processes."
             )
-            if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
-                logger.warning(
-                    "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
-                    "backend right now. Force set backend to NATIVE_DIFFUSER."
+            if self.usp_enabled():
+                assert world_size >= 8, (
+                    "Hybrid Ulysses + Ring + TP parallelism requires at least 8 processes. "
+                    f"Got {world_size} processes."
                 )
-                self.backend = ParallelismBackend.NATIVE_DIFFUSER
+        if self.usp_enabled():
+            assert world_size >= 4, (
+                "Ulysses + Ring parallelism requires at least 4 processes. "
+                f"Got {world_size} processes."
+            )
+
+        # Validate the parallelism configuration and auto adjust the backend if needed
+        if self.hybrid_enabled():
+            assert (
+                self.backend == ParallelismBackend.HYBRID
+            ), "Hybrid parallelism requires the backend to be HYBRID."
+        elif self.cp_enabled() or self.usp_enabled():
+            assert (
+                self.backend == ParallelismBackend.NATIVE_DIFFUSER
+            ), "Context parallelism requires the backend to be NATIVE_DIFFUSER."
+        elif self.tp_enabled():
+            assert (
+                self.backend == ParallelismBackend.NATIVE_PYTORCH
+            ), "Tensor parallelism requires the backend to be NATIVE_PYTORCH."
         else:
-            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
-                self.ring_size is not None and self.ring_size > 1
-            ):
-                if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
-                    logger.warning(
-                        "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
-                        "backend right now. Force set backend to NATIVE_DIFFUSER."
-                    )
-                    self.backend = ParallelismBackend.NATIVE_DIFFUSER
+            raise ValueError(
+                "No parallelism is enabled. Please set ulysses_size, ring_size, or tp_size "
+                "to enable parallelism."
+            )
+
+        if self.backend == ParallelismBackend.HYBRID and self.hybrid_enabled():
+            _patch_modelmixin_for_hybrid_parallelism()
+            self._init_hybrid_meshes()
+
+    def _init_hybrid_meshes(self):
+        self._rank = dist.get_rank()
+        self._world_size = dist.get_world_size()
+        _device_type = torch._C._get_accelerator().type
+        _device_module = torch.get_device_module(_device_type)
+        self._device = torch.device(_device_type, self._rank % _device_module.device_count())
+        # 3d mesh (ring, ulysses, tp) -> 2d cp mesh (ring * ulysses, ) + 1d tp mesh
+        assert (
+            self.hybrid_enabled()
+        ), "Hybrid meshes can only be initialized for hybrid parallelism."
+        ring_size = self.ring_size if self.ring_size is not None else 1
+        ulysses_size = self.ulysses_size if self.ulysses_size is not None else 1
+        tp_size = self.tp_size if self.tp_size is not None else 1
+
+        self._mesh = dist.device_mesh.init_device_mesh(
+            device_type=_device_type,
+            mesh_shape=(ring_size, ulysses_size, tp_size),
+            mesh_dim_names=("ring", "ulysses", "tp"),
+        )
+        # slice cp_mesh and tp_mesh
+        self._cp_mesh = self._mesh["ring", "ulysses"]
+        self._tp_mesh = self._mesh["tp"]
+        self._flat_mesh = self._mesh._flatten()
+        self._rank = self._flat_mesh.get_local_rank()
+        self._world_size = self._flat_mesh.size()
 
     def enabled(self) -> bool:
         return (
@@ -113,6 +150,14 @@ class ParallelismConfig:
             or (self.tp_size is not None and self.tp_size > 1)
         )
 
+    def cp_enabled(self) -> bool:
+        return (self.ulysses_size is not None and self.ulysses_size > 1) or (
+            self.ring_size is not None and self.ring_size > 1
+        )
+
+    def tp_enabled(self) -> bool:
+        return self.tp_size is not None and self.tp_size > 1
+
     def usp_enabled(self) -> bool:
         return (
             self.ulysses_size is not None
@@ -120,6 +165,9 @@ class ParallelismConfig:
             and self.ring_size is not None
             and self.ring_size > 1
         )
+
+    def hybrid_enabled(self) -> bool:
+        return self.cp_enabled() and self.tp_enabled()
 
     def strify(
         self,
@@ -130,7 +178,7 @@ class ParallelismConfig:
     ) -> str:
         if details:
             if text_encoder or vae:
-                extra_module_world_size = self._get_extra_module_world_size()
+                extra_module_world_size = self._get_world_size()
                 # Currently, only support tensor parallelism or data parallelism
                 # for extra modules using pytorch native backend or pure pytorch
                 # implementation. So we just hardcode the backend here.
@@ -171,43 +219,38 @@ class ParallelismConfig:
             parallel_str = parallel_str.rstrip("_")
             return parallel_str
 
-    def _get_extra_module_world_size(self) -> Optional[int]:
+    def _get_world_size(self) -> Optional[int]:
         """Get the world size for extra parallel modules, e.g., text encoder and VAE."""
-        # Maximize the parallel size for extra modules: max(tp_size, ulysses_size, ring_size)
+        # Maximize the parallel size for extra modules
         sizes = []
-        if self.tp_size is not None and self.tp_size > 1:
-            sizes.append(self.tp_size)
+        ring_size = self.ring_size if self.ring_size is not None else 1
+        ulysses_size = self.ulysses_size if self.ulysses_size is not None else 1
+        tp_size = self.tp_size if self.tp_size is not None else 1
 
-        # Both ulysses_size and ring_size are > 1
-        if self.usp_enabled():
-            sizes.append(self.ulysses_size * self.ring_size)
-        else:
-            if self.ulysses_size is not None and self.ulysses_size > 1:
-                sizes.append(self.ulysses_size)
-            if self.ring_size is not None and self.ring_size > 1:
-                sizes.append(self.ring_size)
+        if self.hybrid_enabled():
+            sizes.append(ulysses_size * ring_size * tp_size)
+        elif self.usp_enabled():
+            sizes.append(ulysses_size * ring_size)
+        elif self.cp_enabled():
+            sizes.append(max(ulysses_size, ring_size))
+        elif self.tp_enabled():
+            sizes.append(tp_size)
 
         if sizes:
             return max(sizes)
-        return None
+        return 1
 
     @property
     def text_encoder_world_size(self) -> int:
         """Get the world size for text encoder parallelism."""
-        world_size = self._get_extra_module_world_size()
-        assert (
-            world_size is None or world_size > 1
-        ), "Text encoder world size must be None or greater than 1 for parallelism."
+        world_size = self._get_world_size()
         self._has_text_encoder = True
         return world_size
 
     @property
     def auto_encoder_world_size(self) -> int:
         """Get the world size for VAE parallelism."""
-        world_size = self._get_extra_module_world_size()
-        assert (
-            world_size is None or world_size > 1
-        ), "VAE world size must be None or greater than 1 for parallelism."
+        world_size = self._get_world_size()
         self._has_auto_encoder = True
         return world_size
 
@@ -218,9 +261,111 @@ class ParallelismConfig:
     @property
     def controlnet_world_size(self) -> int:
         """Get the world size for ControlNet parallelism."""
-        world_size = self._get_extra_module_world_size()
-        assert (
-            world_size is None or world_size > 1
-        ), "ControlNet world size must be None or greater than 1 for parallelism."
+        world_size = self._get_world_size()
         self._has_controlnet = True
         return world_size
+
+
+def _patch_modelmixin_for_hybrid_parallelism():
+    """Patch the ModelMixin to support hybrid parallelism config."""
+    from diffusers import ContextParallelConfig, ParallelConfig
+    from diffusers.models._modeling_parallel import ContextParallelModelPlan
+
+    @functools.wraps(ModelMixin.enable_parallelism)
+    def enable_parallelism_with_custom_mesh(
+        self: ModelMixin,
+        *,
+        config: Union[ParallelConfig, ContextParallelConfig],
+        cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
+    ):
+        logger.warning(
+            "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
+        )
+
+        if not torch.distributed.is_available() and not torch.distributed.is_initialized():
+            raise RuntimeError(
+                "torch.distributed must be available and initialized before calling `enable_parallelism`."
+            )
+        from diffusers.hooks.context_parallel import apply_context_parallel
+        from diffusers.models.attention import AttentionModuleMixin
+        from diffusers.models.attention_dispatch import (
+            AttentionBackendName,
+            _AttentionBackendRegistry,
+        )
+        from diffusers.models.attention_processor import Attention, MochiAttention
+
+        if isinstance(config, ContextParallelConfig):
+            config = ParallelConfig(context_parallel_config=config)
+
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+        device_type = torch._C._get_accelerator().type
+        device_module = torch.get_device_module(device_type)
+        device = torch.device(device_type, rank % device_module.device_count())
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_attention_backend"):
+                    continue
+
+                attention_backend = processor._attention_backend
+                if attention_backend is None:
+                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+                else:
+                    attention_backend = AttentionBackendName(attention_backend)
+
+                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                    compatible_backends = sorted(
+                        _AttentionBackendRegistry._supports_context_parallel
+                    )
+                    raise ValueError(
+                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                        f"calling `model.enable_parallelism()`."
+                    )
+
+                # All modules use the same attention processor and backend. We don't need to
+                # iterate over all modules after checking the first processor
+                break
+
+        mesh = None
+        if config.context_parallel_config is not None:
+            cp_config = config.context_parallel_config
+
+            # NOTE(DefTruth): Patch, allow user to pass in a custom mesh
+            if cp_config._mesh is None:
+                mesh = torch.distributed.device_mesh.init_device_mesh(
+                    device_type=device_type,
+                    mesh_shape=cp_config.mesh_shape,
+                    mesh_dim_names=cp_config.mesh_dim_names,
+                )
+                config.setup(rank, world_size, device, mesh=mesh)
+
+        self._parallel_config = config
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_parallel_config"):
+                continue
+            processor._parallel_config = config
+
+        if config.context_parallel_config is not None:
+            if cp_plan is None and self._cp_plan is None:
+                raise ValueError(
+                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+                )
+            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+            apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
+    ModelMixin.enable_parallelism = enable_parallelism_with_custom_mesh
+
+    logger.info("Patched ModelMixin.enable_parallelism to support hybrid parallelism.")

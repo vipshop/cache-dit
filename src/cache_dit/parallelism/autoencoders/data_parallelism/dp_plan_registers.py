@@ -2,6 +2,7 @@ import torch
 import logging
 from abc import abstractmethod
 from typing import Dict
+from torch.distributed import init_device_mesh
 from cache_dit.parallelism.config import ParallelismConfig
 from cache_dit.logger import init_logger
 
@@ -18,6 +19,15 @@ class AutoEncoderDataParallelismPlanner:
         **kwargs,
     ) -> torch.nn.Module:
         raise NotImplementedError("apply method must be implemented by subclasses")
+
+    def mesh(self, parallelism_config: ParallelismConfig, **kwargs):
+        auto_encoder_world_size = parallelism_config.auto_encoder_world_size
+        device_type = torch.accelerator.current_accelerator().type
+        dp_mesh = init_device_mesh(
+            device_type=device_type,
+            mesh_shape=[auto_encoder_world_size],
+        )
+        return dp_mesh
 
 
 class AutoEncoderDataParallelismPlannerRegister:
