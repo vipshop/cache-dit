@@ -1429,11 +1429,8 @@ def maybe_init_distributed(args=None):
 
     platform_full_backend = current_platform.full_dist_backend
     cpu_full_backend = CpuPlatform.full_dist_backend
-    backend = (
-        f"{cpu_full_backend},{platform_full_backend}"
-        if args.ulysses_anything
-        else current_platform.dist_backend
-    )
+    # Always use hybrid comm backend since there no side effect.
+    backend = f"{cpu_full_backend},{platform_full_backend}"
     if args is not None:
         if args.parallel_type is not None:
             dist.init_process_group(
