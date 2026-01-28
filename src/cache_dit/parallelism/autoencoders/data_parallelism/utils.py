@@ -7,7 +7,7 @@ from cache_dit.platforms import current_platform
 class TileBatchedP2PComm:
     def __init__(self):
         self._ops = []
-        self._reqs = None
+        self._reqs = []
         self._backend = dist.get_backend(dist.group.WORLD)
         # Use CPU for communication to avoid Host-GPU sync overhead
         if "cpu" in self._backend:
@@ -16,11 +16,13 @@ class TileBatchedP2PComm:
             self._s_device = current_platform.default_device()
         # We can set s_dims and s_shape before sending/receiving tensors,
         # thus, can reduce the number of ops in each commit.
-        self._s_dims: Optional[int] = None
-        self._s_shape: Optional[torch.Size] = None
         # WARN: The set_xxx and clear_xxx methods must be called by all ranks
         # in order to avoid deadlock. The dims will always be the same across ranks,
         # but the shape may be different.
+        self._s_dims: Optional[int] = None
+        self._s_shape: Optional[torch.Size] = None
+        # Commit each send/recv immediately by default
+        self._commit_streaming: bool = True
 
     def set_dims(self, dims: int):
         self._s_dims = dims
@@ -43,17 +45,25 @@ class TileBatchedP2PComm:
         tensor = tensor.contiguous()
 
         if self._s_dims is None:
-            s_dims = torch.tensor(len(tensor.shape), device=self._s_device, dtype=torch.int64)
+            s_dims = torch.tensor(
+                len(tensor.shape), device=self._s_device, dtype=torch.int64
+            )  # type: torch.Tensor
             send_op_d = dist.P2POp(dist.isend, s_dims, dst, group=group)
             dist.batch_isend_irecv([send_op_d]).pop().wait()
 
         if self._s_shape is None:
-            s_shape = torch.tensor(tensor.shape, device=self._s_device, dtype=torch.int64)
+            s_shape = torch.tensor(
+                tensor.shape, device=self._s_device, dtype=torch.int64
+            )  # type: torch.Tensor
             send_op_s = dist.P2POp(dist.isend, s_shape, dst, group=group)
             dist.batch_isend_irecv([send_op_s]).pop().wait()
 
-        send_op_t = dist.P2POp(dist.isend, tensor, dst, group=group)  # tile
-        self._ops.append(send_op_t)
+        send_op_t = dist.P2POp(dist.isend, tensor, dst, group=group)
+
+        if self._commit_streaming:
+            self._reqs.append(dist.batch_isend_irecv([send_op_t]).pop())
+        else:
+            self._ops.append(send_op_t)
 
     def recv_tensor(
         self,
@@ -72,7 +82,9 @@ class TileBatchedP2PComm:
             s_dims = self._s_dims
 
         if self._s_shape is None:
-            s_shape = torch.empty((s_dims,), device=self._s_device, dtype=torch.int64)
+            s_shape = torch.empty(
+                (s_dims,), device=self._s_device, dtype=torch.int64
+            )  # type: torch.Tensor
             recv_op_s = dist.P2POp(dist.irecv, s_shape, src, group=group)
             dist.batch_isend_irecv([recv_op_s]).pop().wait()
             s_shape = torch.Size(s_shape.tolist())
@@ -81,12 +93,20 @@ class TileBatchedP2PComm:
 
         t = torch.empty(s_shape, device=device, dtype=dtype)
         recv_op_t = dist.P2POp(dist.irecv, t, src, group=group)  # tile
-        self._ops.append(recv_op_t)
+
+        if self._commit_streaming:
+            self._reqs.append(dist.batch_isend_irecv([recv_op_t]).pop())
+        else:
+            self._ops.append(recv_op_t)
 
         return t
 
     def commit(self):
-        if self._reqs is not None:
+
+        if self._commit_streaming:
+            return
+
+        if len(self._reqs) > 0:
             raise RuntimeError("commit called twice")
         self._reqs = dist.batch_isend_irecv(self._ops)
 
@@ -95,7 +115,7 @@ class TileBatchedP2PComm:
             raise RuntimeError("wait called before commit")
         for req in self._reqs:
             req.wait()
-        self._reqs = None
+        self._reqs = []
         self._ops = []
 
     def sync(self):
