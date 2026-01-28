@@ -264,7 +264,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
     )
 
-# NOTE: DON'T forget to add `flux_example` into helpers.py
+# NOTE: DON'T forget to import this `flux_example` into __init__.py
 ```
 
 ## 📚 More Usages about Examples
