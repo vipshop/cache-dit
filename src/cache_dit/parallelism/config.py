@@ -1,7 +1,9 @@
 import torch
+import functools
 import dataclasses
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import torch.distributed as dist
+from diffusers import ModelMixin
 from .backend import ParallelismBackend
 from cache_dit.logger import init_logger
 
@@ -95,6 +97,7 @@ class ParallelismConfig:
             )
 
         if self.backend == ParallelismBackend.HYBRID and self.hybrid_enabled():
+            _patch_modelmixin_for_hybrid_parallelism()
             self.init_hybrid_meshes()
 
     def init_hybrid_meshes(self):
@@ -252,3 +255,108 @@ class ParallelismConfig:
         ), "ControlNet world size must be None or greater than 1 for parallelism."
         self._has_controlnet = True
         return world_size
+
+
+def _patch_modelmixin_for_hybrid_parallelism():
+    """Patch the ModelMixin to support hybrid parallelism config."""
+    from diffusers import ContextParallelConfig, ParallelConfig
+    from diffusers.models._modeling_parallel import ContextParallelModelPlan
+
+    @functools.wraps(ModelMixin.enable_parallelism)
+    def enable_parallelism_with_custom_mesh(
+        self: ModelMixin,
+        *,
+        config: Union[ParallelConfig, ContextParallelConfig],
+        cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
+    ):
+        logger.warning(
+            "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
+        )
+
+        if not torch.distributed.is_available() and not torch.distributed.is_initialized():
+            raise RuntimeError(
+                "torch.distributed must be available and initialized before calling `enable_parallelism`."
+            )
+        from diffusers.hooks.context_parallel import apply_context_parallel
+        from diffusers.models.attention import AttentionModuleMixin
+        from diffusers.models.attention_dispatch import (
+            AttentionBackendName,
+            _AttentionBackendRegistry,
+        )
+        from diffusers.models.attention_processor import Attention, MochiAttention
+
+        if isinstance(config, ContextParallelConfig):
+            config = ParallelConfig(context_parallel_config=config)
+
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+        device_type = torch._C._get_accelerator().type
+        device_module = torch.get_device_module(device_type)
+        device = torch.device(device_type, rank % device_module.device_count())
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_attention_backend"):
+                    continue
+
+                attention_backend = processor._attention_backend
+                if attention_backend is None:
+                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+                else:
+                    attention_backend = AttentionBackendName(attention_backend)
+
+                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                    compatible_backends = sorted(
+                        _AttentionBackendRegistry._supports_context_parallel
+                    )
+                    raise ValueError(
+                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                        f"calling `model.enable_parallelism()`."
+                    )
+
+                # All modules use the same attention processor and backend. We don't need to
+                # iterate over all modules after checking the first processor
+                break
+
+        mesh = None
+        if config.context_parallel_config is not None:
+            cp_config = config.context_parallel_config
+
+            # NOTE(DefTruth): Patch, allow user to pass in a custom mesh
+            if cp_config._mesh is None:
+                mesh = torch.distributed.device_mesh.init_device_mesh(
+                    device_type=device_type,
+                    mesh_shape=cp_config.mesh_shape,
+                    mesh_dim_names=cp_config.mesh_dim_names,
+                )
+                config.setup(rank, world_size, device, mesh=mesh)
+
+        self._parallel_config = config
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_parallel_config"):
+                continue
+            processor._parallel_config = config
+
+        if config.context_parallel_config is not None:
+            if cp_plan is None and self._cp_plan is None:
+                raise ValueError(
+                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+                )
+            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+            apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
+    ModelMixin.enable_parallelism = enable_parallelism_with_custom_mesh
+
+    logger.info("Patched ModelMixin.enable_parallelism to support hybrid parallelism.")
