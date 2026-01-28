@@ -25,4 +25,4 @@ cache_dit.enable_cache(
 |<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE_TP2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE_TP4.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C1_Q0_NONE_TP4.png" width=222px>|
 
 
-Please note that in the short term, we have no plans to support Hybrid Parallelism. Please choose to use either Context Parallelism or Tensor Parallelism based on your actual scenario.
+Please note that we have alreay support Hybrid Parallelism (CP/USP + TP) for DiT's transformer module. Please refer to [Hybrid CP(USP) and TP](./HYBRID_PARALLEL.md) for more details.
