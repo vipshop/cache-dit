@@ -1,13 +1,13 @@
 import torch
 import torch.distributed as dist
-from typing import Optional
+from typing import Optional, List
 from cache_dit.platforms import current_platform
 
 
 class TileBatchedP2PComm:
     def __init__(self):
-        self._ops = []
-        self._reqs = []
+        self._ops: List[dist.P2POp] = []
+        self._reqs: List[dist.Work] = []
         self._backend = dist.get_backend(dist.group.WORLD)
         # Use CPU for communication to avoid Host-GPU sync overhead
         self._s_device = "cpu" if "cpu" in self._backend else current_platform.default_device()
@@ -100,10 +100,10 @@ class TileBatchedP2PComm:
     def commit(self):
         if len(self._reqs) > 0:
             raise RuntimeError("commit called twice")
-        self._reqs = dist.batch_isend_irecv(self._ops)
+        self._reqs.extend(dist.batch_isend_irecv(self._ops))
 
     def wait(self):
-        if self._reqs is None:
+        if len(self._reqs) == 0:
             raise RuntimeError("wait called before commit")
         for req in self._reqs:
             req.wait()
