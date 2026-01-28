@@ -329,7 +329,7 @@ options:
   --quantize-controlnet, --q-controlnet
                         Enable quantization for text encoder
   --quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
-  --parallel-type {None,tp,ulysses,ring}, --parallel {None,tp,ulysses,ring}
+  --parallel-type {None,tp,ulysses,ring,usp}, --parallel {None,tp,ulysses,ring,usp}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
@@ -342,6 +342,10 @@ options:
                         Enable Ulysses Attention/UAA Float8 for context parallelism
   --ulysses-async, --uaqkv
                         Enabled experimental Async QKV Projection with Ulysses for context parallelism
+  --ring-rotate-method {allgather,p2p}, --rotate {allgather,p2p}
+                        Ring Attention rotation method for context parallelism
+  --ring-no-convert-to-fp32, --ring-no-fp32, --no-fp32
+                        Disable convert Ring Attention output and lse to fp32 for context parallelism
   --cpu-offload, --cpu-offload-model
                         Enable CPU offload for model if applicable.
   --sequential-cpu-offload
