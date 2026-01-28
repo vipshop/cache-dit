@@ -384,8 +384,10 @@ def get_args(
             "ring",
             "usp",
             # hybrid cp + tp
-            "ulysses_tp",
+            "ulysses_tp",  # prefer ulysses first
             "ring_tp",
+            "tp_ulysses",  # prefer tp first
+            "tp_ring",
             "usp_tp",
         ],
     )
@@ -1271,13 +1273,21 @@ def maybe_apply_optimization(
                         ring_size = world_size // ulysses_size
                         tp_size = None
                     elif args.parallel_type == "ulysses_tp":
-                        ulysses_size = max(1, world_size // 2)
+                        ulysses_size = max(1, world_size // 2)  # e.g, 4
                         ring_size = None
-                        tp_size = world_size // ulysses_size
+                        tp_size = world_size // ulysses_size  # e.g., 2
+                    elif args.parallel_type == "tp_ulysses":
+                        tp_size = max(1, world_size // 2)
+                        ulysses_size = world_size // tp_size
+                        ring_size = None
                     elif args.parallel_type == "ring_tp":
                         ulysses_size = None
                         ring_size = max(1, world_size // 2)
                         tp_size = world_size // ring_size
+                    elif args.parallel_type == "tp_ring":
+                        ulysses_size = None
+                        tp_size = max(1, world_size // 2)
+                        ring_size = world_size // tp_size
                     elif args.parallel_type == "usp_tp":
                         assert world_size == 8, "usp_tp currently only supports world size of 8."
                         ulysses_size = 2
