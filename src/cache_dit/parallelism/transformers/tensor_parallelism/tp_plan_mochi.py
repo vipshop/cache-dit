@@ -5,7 +5,7 @@ from diffusers.models.transformers.transformer_mochi import (
 )
 from einops import rearrange
 from torch import nn
-from torch.distributed import DeviceMesh, init_device_mesh
+from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
@@ -61,16 +61,7 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
         parallelism_config: ParallelismConfig,
         **kwargs,
     ) -> torch.nn.Module:
-        assert parallelism_config.tp_size is not None and parallelism_config.tp_size > 1, (
-            "parallel_config.tp_size must be set and greater than 1 for " "tensor parallelism"
-        )
-
-        device_type = torch.accelerator.current_accelerator().type
-        tp_mesh: DeviceMesh = init_device_mesh(
-            device_type=device_type,
-            mesh_shape=[parallelism_config.tp_size],
-        )
-
+        tp_mesh = self.mesh(parallelism_config=parallelism_config)
         transformer = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,

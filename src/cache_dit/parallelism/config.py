@@ -204,19 +204,20 @@ class ParallelismConfig:
 
     def _get_extra_module_world_size(self) -> Optional[int]:
         """Get the world size for extra parallel modules, e.g., text encoder and VAE."""
-        # Maximize the parallel size for extra modules: max(tp_size, ulysses_size, ring_size)
+        # Maximize the parallel size for extra modules
         sizes = []
-        if self.tp_size is not None and self.tp_size > 1:
-            sizes.append(self.tp_size)
+        ring_size = self.ring_size if self.ring_size is not None else 1
+        ulysses_size = self.ulysses_size if self.ulysses_size is not None else 1
+        tp_size = self.tp_size if self.tp_size is not None else 1
 
-        # Both ulysses_size and ring_size are > 1
-        if self.usp_enabled():
-            sizes.append(self.ulysses_size * self.ring_size)
-        else:
-            if self.ulysses_size is not None and self.ulysses_size > 1:
-                sizes.append(self.ulysses_size)
-            if self.ring_size is not None and self.ring_size > 1:
-                sizes.append(self.ring_size)
+        if self.hybrid_enabled():
+            sizes.append(ulysses_size * ring_size * tp_size)
+        elif self.usp_enabled():
+            sizes.append(ulysses_size * ring_size)
+        elif self.cp_enabled():
+            sizes.append(max(ulysses_size, ring_size))
+        elif self.tp_enabled():
+            sizes.append(tp_size)
 
         if sizes:
             return max(sizes)
