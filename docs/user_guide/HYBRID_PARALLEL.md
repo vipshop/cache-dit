@@ -1,6 +1,6 @@
 # Hybrid CP (USP) + TP
 
-cache-dit fully supports hybrid Context Parallelism (including USP) and Tensor Parallelism. Thus, it can scale up the performance of large DiT models such as FLUX.2 (112 GiB total) and Qwen-Image (56 GiB total) on low-VRAM devices (e.g., NVIDIA L20/A30, < 48 GiB) with no precision loss.
+cache-dit fully supports hybrid Context Parallelism (including USP) and Tensor Parallelism. Thus, it can scale up the performance of large DiT models such as FLUX.2 (112 GiB total) and Qwen-Image (56 GiB total) on low-VRAM devices (e.g., NVIDIA L20/A30, < 48 GiB) with no precision loss. `Hybrid CP (USP) + TP` is faster than vanilla Tensor Parallelism.
 
 ```python
 # pip3 install "cache-dit[parallelism]"
