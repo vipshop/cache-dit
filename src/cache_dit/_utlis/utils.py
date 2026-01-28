@@ -386,6 +386,7 @@ def get_args(
             # hybrid cp + tp
             "ulysses_tp",
             "ring_tp",
+            "usp_tp",
         ],
     )
     parser.add_argument(
@@ -1277,6 +1278,11 @@ def maybe_apply_optimization(
                         ulysses_size = None
                         ring_size = max(1, world_size // 2)
                         tp_size = max(1, world_size // 2)
+                    elif args.parallel_type == "usp_tp":
+                        assert world_size == 8, "usp_tp currently only supports world size of 8."
+                        ulysses_size = 2
+                        ring_size = 2
+                        tp_size = 2
                     return ulysses_size, ring_size, tp_size
                 return None, None, None
 

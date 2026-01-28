@@ -24,6 +24,7 @@
 - 🎉**Context Parallelism** (w/ Diffusers' CP APIs, Ulysses, Ring, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), ...)
 - 🎉**Unified Sequence Parallelism** (**[USP](https://arxiv.org/pdf/2405.07719)**, Hybrid Ulysses and Ring style parallelism) 
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Hybrid CP (USP) + TP** (Fully hybrid Context Parallelism and Tensor Parallelism)
 - 🎉**Text Encoder Parallelism** (w/ PyTorch DTensor and Tensor Parallelism APIs)
 - 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
 - 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)

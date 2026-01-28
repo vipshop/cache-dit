@@ -77,6 +77,23 @@ class ParallelismConfig:
                 self.backend = ParallelismBackend.NONE
             logger.info(f"Auto selected parallelism backend for transformer: {self.backend}")
 
+        world_size = self._get_world_size()
+        if self.hybrid_enabled():
+            assert world_size >= 4, (
+                "Hybrid Ulysses + Ring + TP parallelism requires at least 4 processes. "
+                f"Got {world_size} processes."
+            )
+            if self.usp_enabled():
+                assert world_size >= 8, (
+                    "Hybrid Ulysses + Ring + TP parallelism requires at least 8 processes. "
+                    f"Got {world_size} processes."
+                )
+        if self.usp_enabled():
+            assert world_size >= 4, (
+                "Ulysses + Ring parallelism requires at least 4 processes. "
+                f"Got {world_size} processes."
+            )
+
         # Validate the parallelism configuration and auto adjust the backend if needed
         if self.hybrid_enabled():
             assert (
@@ -98,9 +115,9 @@ class ParallelismConfig:
 
         if self.backend == ParallelismBackend.HYBRID and self.hybrid_enabled():
             _patch_modelmixin_for_hybrid_parallelism()
-            self.init_hybrid_meshes()
+            self._init_hybrid_meshes()
 
-    def init_hybrid_meshes(self):
+    def _init_hybrid_meshes(self):
         self._rank = dist.get_rank()
         self._world_size = dist.get_world_size()
         _device_type = torch._C._get_accelerator().type
@@ -161,7 +178,7 @@ class ParallelismConfig:
     ) -> str:
         if details:
             if text_encoder or vae:
-                extra_module_world_size = self._get_extra_module_world_size()
+                extra_module_world_size = self._get_world_size()
                 # Currently, only support tensor parallelism or data parallelism
                 # for extra modules using pytorch native backend or pure pytorch
                 # implementation. So we just hardcode the backend here.
@@ -202,7 +219,7 @@ class ParallelismConfig:
             parallel_str = parallel_str.rstrip("_")
             return parallel_str
 
-    def _get_extra_module_world_size(self) -> Optional[int]:
+    def _get_world_size(self) -> Optional[int]:
         """Get the world size for extra parallel modules, e.g., text encoder and VAE."""
         # Maximize the parallel size for extra modules
         sizes = []
@@ -221,25 +238,19 @@ class ParallelismConfig:
 
         if sizes:
             return max(sizes)
-        return None
+        return 1
 
     @property
     def text_encoder_world_size(self) -> int:
         """Get the world size for text encoder parallelism."""
-        world_size = self._get_extra_module_world_size()
-        assert (
-            world_size is None or world_size > 1
-        ), "Text encoder world size must be None or greater than 1 for parallelism."
+        world_size = self._get_world_size()
         self._has_text_encoder = True
         return world_size
 
     @property
     def auto_encoder_world_size(self) -> int:
         """Get the world size for VAE parallelism."""
-        world_size = self._get_extra_module_world_size()
-        assert (
-            world_size is None or world_size > 1
-        ), "VAE world size must be None or greater than 1 for parallelism."
+        world_size = self._get_world_size()
         self._has_auto_encoder = True
         return world_size
 
@@ -250,10 +261,7 @@ class ParallelismConfig:
     @property
     def controlnet_world_size(self) -> int:
         """Get the world size for ControlNet parallelism."""
-        world_size = self._get_extra_module_world_size()
-        assert (
-            world_size is None or world_size > 1
-        ), "ControlNet world size must be None or greater than 1 for parallelism."
+        world_size = self._get_world_size()
         self._has_controlnet = True
         return world_size
 
