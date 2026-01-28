@@ -65,6 +65,7 @@ def maybe_enable_hybrid_parallelism_for_transformer(
         f"Parallelize Transformer: {transformer.__class__.__name__}, "
         f"id:{id(transformer)}, {parallelism_config.strify(True)}"
     )
+    return transformer
 
 
 def maybe_enable_context_parallelism_for_transformer(

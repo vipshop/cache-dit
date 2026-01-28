@@ -51,13 +51,10 @@ class ParallelismConfig:
     _has_controlnet: bool = False
     # mesh for hybrid parallelism: CP/SP + TP
     _mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _flat_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _cp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _tp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _rank: Optional[int] = None
-    _cp_rank: Optional[int] = None
-    _tp_rank: Optional[int] = None
-    _cp_world_size: Optional[int] = None
-    _tp_world_size: Optional[int] = None
     _world_size: Optional[int] = None
     _device: Optional[torch.device] = None
 
@@ -119,14 +116,12 @@ class ParallelismConfig:
             mesh_shape=(ring_size, ulysses_size, tp_size),
             mesh_dim_names=("ring", "ulysses", "tp"),
         )
-
         # slice cp_mesh and tp_mesh
         self._cp_mesh = self._mesh["ring", "ulysses"]
         self._tp_mesh = self._mesh["tp"]
-        self._cp_rank = self._cp_mesh.get_local_rank()
-        self._tp_rank = self._tp_mesh.get_local_rank()
-        self._cp_world_size = self._cp_mesh.size()
-        self._tp_world_size = self._tp_mesh.size()
+        self._flat_mesh = self._mesh._flatten()
+        self._rank = self._flat_mesh.get_local_rank()
+        self._world_size = self._flat_mesh.size()
 
     def enabled(self) -> bool:
         return (
