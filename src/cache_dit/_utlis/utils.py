@@ -1268,16 +1268,16 @@ def maybe_apply_optimization(
                     tp_size = world_size if args.parallel_type == "tp" else None
                     if args.parallel_type == "usp":
                         ulysses_size = max(1, world_size // 2)
-                        ring_size = max(1, world_size // 2)
+                        ring_size = world_size // ulysses_size
                         tp_size = None
                     elif args.parallel_type == "ulysses_tp":
                         ulysses_size = max(1, world_size // 2)
                         ring_size = None
-                        tp_size = max(1, world_size // 2)
+                        tp_size = world_size // ulysses_size
                     elif args.parallel_type == "ring_tp":
                         ulysses_size = None
                         ring_size = max(1, world_size // 2)
-                        tp_size = max(1, world_size // 2)
+                        tp_size = world_size // ring_size
                     elif args.parallel_type == "usp_tp":
                         assert world_size == 8, "usp_tp currently only supports world size of 8."
                         ulysses_size = 2
