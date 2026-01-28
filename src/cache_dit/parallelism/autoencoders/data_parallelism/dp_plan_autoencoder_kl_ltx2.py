@@ -52,6 +52,7 @@ class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPla
         auto_encoder.enable_tiling()
 
         comm = TileBatchedP2PComm()
+        comm.set_dims(5)  # [1, 3, T, H, W]
 
         @functools.wraps(auto_encoder.__class__.tiled_encode)
         def new_tiled_encode(
