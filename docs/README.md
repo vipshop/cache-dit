@@ -30,7 +30,7 @@
 - 🎉**Context Parallelism** (w/ Diffusers' CP APIs, Ulysses, Ring, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), ...)
 - 🎉**Unified Sequence Parallelism** (**[USP](https://arxiv.org/pdf/2405.07719)**, Hybrid Ulysses and Ring style parallelism) 
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
-- 🎉[**Hybrid CP (USP) and TP**](https://cache-dit.readthedocs.io/en/latest/) (Scaling the performance up w/ hybird USP + TP)
+- 🎉[**Hybrid CP (USP) and TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/) (Scaling the performance up w/ hybird USP + TP)
 - 🎉**Text Encoder Parallelism** (w/ PyTorch DTensor and Tensor Parallelism APIs)
 - 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
 - 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
@@ -62,10 +62,7 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 >>> parallelism_config=ParallelismConfig(ulysses_size=2)
 >>> # Or, Hybrid Cache Acceleration + Hybrid Paralellism: CP + TP.
 >>> parallelism_config=ParallelismConfig(ulysses_size=2, tp_size=2)
->>> cache_dit.enable_cache(
-...   pipe, cache_config=DBCacheConfig(), 
-...   parallelism_config=parallelism_config,
-... )
+>>> cache_dit.enable_cache(pipe, DBCacheConfig(), parallelism_config)
 >>> from cache_dit import load_configs
 >>> # Or, Load Acceleration config from a custom yaml file.
 >>> cache_dit.enable_cache(pipe, **load_configs("config.yaml"))
