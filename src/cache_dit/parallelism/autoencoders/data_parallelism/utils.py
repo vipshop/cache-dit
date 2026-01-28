@@ -22,7 +22,7 @@ class TileBatchedP2PComm:
         self._s_dims: Optional[int] = None
         self._s_shape: Optional[torch.Size] = None
         # Commit each send/recv immediately by default
-        self._commit_streaming: bool = True
+        self._commit_streaming: bool = False
 
     def set_dims(self, dims: int):
         self._s_dims = dims
