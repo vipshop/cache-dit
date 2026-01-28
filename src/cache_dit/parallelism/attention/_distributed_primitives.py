@@ -1,4 +1,3 @@
-import functools
 from typing import Tuple, List, Callable, Optional
 
 import torch
