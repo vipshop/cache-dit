@@ -383,6 +383,9 @@ def get_args(
             "ulysses",
             "ring",
             "usp",
+            # hybrid cp + tp
+            "ulysses_tp",
+            "ring_tp",
         ],
     )
     parser.add_argument(
@@ -1219,12 +1222,6 @@ def maybe_apply_optimization(
             cache_config = kwargs.pop("cache_config", None)
             parallelism_config = kwargs.pop("parallelism_config", None)
 
-            backend = (
-                ParallelismBackend.NATIVE_PYTORCH
-                if args.parallel_type in ["tp"]
-                else ParallelismBackend.NATIVE_DIFFUSER
-            )
-
             extra_parallel_modules = prepare_extra_parallel_modules(
                 args,
                 pipe_or_adapter,
@@ -1235,21 +1232,13 @@ def maybe_apply_optimization(
                 "attention_backend": ("native" if not args.attn else args.attn),
                 # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
                 "extra_parallel_modules": extra_parallel_modules,
+                # experimental settings for context parallelism
+                "experimental_ulysses_anything": args.ulysses_anything,
+                "experimental_ulysses_float8": args.ulysses_float8,
+                "experimental_ulysses_async": args.ulysses_async,
+                "ring_rotate_method": args.ring_rotate_method,
+                "ring_convert_to_fp32": not args.ring_no_convert_to_fp32,
             }
-            if backend == ParallelismBackend.NATIVE_PYTORCH:
-                if args.attn is None:
-                    parallel_kwargs["attention_backend"] = None
-
-            if backend == ParallelismBackend.NATIVE_DIFFUSER:
-                parallel_kwargs.update(
-                    {
-                        "experimental_ulysses_anything": args.ulysses_anything,
-                        "experimental_ulysses_float8": args.ulysses_float8,
-                        "experimental_ulysses_async": args.ulysses_async,
-                        "ring_rotate_method": args.ring_rotate_method,
-                        "ring_convert_to_fp32": not args.ring_no_convert_to_fp32,
-                    }
-                )
 
             # Caching and Parallelism
             if args.steps_mask and args.mask_policy is not None:
@@ -1279,6 +1268,15 @@ def maybe_apply_optimization(
                     if args.parallel_type == "usp":
                         ulysses_size = max(1, world_size // 2)
                         ring_size = max(1, world_size // 2)
+                        tp_size = None
+                    elif args.parallel_type == "ulysses_tp":
+                        ulysses_size = max(1, world_size // 2)
+                        ring_size = None
+                        tp_size = max(1, world_size // 2)
+                    elif args.parallel_type == "ring_tp":
+                        ulysses_size = None
+                        ring_size = max(1, world_size // 2)
+                        tp_size = max(1, world_size // 2)
                     return ulysses_size, ring_size, tp_size
                 return None, None, None
 
@@ -1314,11 +1312,10 @@ def maybe_apply_optimization(
                         ulysses_size=ulysses_size,
                         ring_size=ring_size,
                         tp_size=tp_size,
-                        backend=backend,
+                        backend=ParallelismBackend.AUTO,
                         parallel_kwargs=parallel_kwargs,
                     )
-                    if parallelism_config is None
-                    and args.parallel_type in ["ulysses", "ring", "tp", "usp"]
+                    if parallelism_config is None and args.parallel_type is not None
                     else parallelism_config
                 ),
                 # Allow attention backend for non-parallelism case
@@ -1339,10 +1336,7 @@ def maybe_apply_optimization(
         logger.info("No caching or parallelism is applied.")
         if args.attn is not None:
             logger.info(f"Applying custom attention backend: {args.attn} ...")
-            set_attn_backend(
-                pipe_or_adapter,
-                attention_backend=args.attn,
-            )
+            set_attn_backend(pipe_or_adapter, attention_backend=args.attn)
 
     # Quantization
     # WARN: Must apply quantization after tensor parallelism is applied.

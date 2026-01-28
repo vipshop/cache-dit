@@ -25,16 +25,7 @@ def maybe_enable_parallelism_for_transformer(
 
     # Currently, we can dispatch the parallelism based on the backend type.
     if parallelism_config.backend == ParallelismBackend.HYBRID:
-        assert (
-            parallelism_config.hybrid_enabled()
-        ), "hybrid_enabled() must be True for HYBRID backend."
-        # 0. First enable context parallelism
-        transformer = maybe_enable_context_parallelism_for_transformer(
-            transformer=transformer,
-            parallelism_config=parallelism_config,
-        )
-        # 1. Then enable tensor parallelism
-        transformer = maybe_enable_tensor_parallelism_for_transformer(
+        return maybe_enable_hybrid_parallelism_for_transformer(
             transformer=transformer,
             parallelism_config=parallelism_config,
         )
@@ -52,9 +43,33 @@ def maybe_enable_parallelism_for_transformer(
         raise ValueError(f"{parallelism_config.backend} backend is not supported yet")
 
 
+def maybe_enable_hybrid_parallelism_for_transformer(
+    transformer: torch.nn.Module | ModelMixin,
+    parallelism_config: ParallelismConfig,
+):
+    assert parallelism_config.hybrid_enabled(), "hybrid_enabled() must be True for HYBRID backend."
+    # 0. First enable context parallelism
+    transformer = maybe_enable_context_parallelism_for_transformer(
+        transformer=transformer,
+        parallelism_config=parallelism_config,
+    )
+    # 1. Then enable tensor parallelism
+    transformer = maybe_enable_tensor_parallelism_for_transformer(
+        transformer=transformer,
+        parallelism_config=parallelism_config,
+    )
+    transformer._is_parallelized = True  # type: ignore[attr-defined]
+    # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
+    transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
+    logger.info(
+        f"Parallelize Transformer: {transformer.__class__.__name__}, "
+        f"id:{id(transformer)}, {parallelism_config.strify(True)}"
+    )
+
+
 def maybe_enable_context_parallelism_for_transformer(
     transformer: torch.nn.Module | ModelMixin,
-    parallelism_config: Optional[ParallelismConfig],
+    parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
     assert isinstance(transformer, (torch.nn.Module, ModelMixin)), (
         "transformer must be an instance of torch.nn.Module or ModelMixin, "
@@ -85,14 +100,14 @@ def maybe_enable_context_parallelism_for_transformer(
             transformer,
             parallelism_config,
         )
-        transformer._is_parallelized = True  # type: ignore[attr-defined]
-        # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
-        transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-        logger.info(
-            f"Parallelize Transformer: {transformer.__class__.__name__}, "
-            f"id:{id(transformer)}, {parallelism_config.strify(True)}"
-        )
-
+        if not parallelism_config.hybrid_enabled():
+            transformer._is_parallelized = True  # type: ignore[attr-defined]
+            # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
+            transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
+            logger.info(
+                f"Parallelize Transformer: {transformer.__class__.__name__}, "
+                f"id:{id(transformer)}, {parallelism_config.strify(True)}"
+            )
     else:
         raise ValueError(
             "NATIVE_DIFFUSER backend only support context parallelism now. "
@@ -103,7 +118,7 @@ def maybe_enable_context_parallelism_for_transformer(
 
 def maybe_enable_tensor_parallelism_for_transformer(
     transformer: torch.nn.Module | ModelMixin,
-    parallelism_config: Optional[ParallelismConfig],
+    parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
     assert isinstance(transformer, (torch.nn.Module, ModelMixin)), (
         "transformer must be an instance of torch.nn.Module or ModelMixin, "
@@ -134,14 +149,14 @@ def maybe_enable_tensor_parallelism_for_transformer(
             transformer=transformer,
             parallelism_config=parallelism_config,
         )
-        transformer._is_parallelized = True  # type: ignore[attr-defined]
-        # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
-        transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-        logger.info(
-            f"Parallelize Transformer: {transformer.__class__.__name__}, "
-            f"id:{id(transformer)}, {parallelism_config.strify(True)}"
-        )
-
+        if not parallelism_config.hybrid_enabled():
+            transformer._is_parallelized = True  # type: ignore[attr-defined]
+            # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
+            transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
+            logger.info(
+                f"Parallelize Transformer: {transformer.__class__.__name__}, "
+                f"id:{id(transformer)}, {parallelism_config.strify(True)}"
+            )
     else:
         raise ValueError(
             "NATIVE_PYTORCH only supported tensor parallelism now. "

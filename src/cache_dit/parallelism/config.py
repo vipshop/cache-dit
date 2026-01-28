@@ -123,10 +123,10 @@ class ParallelismConfig:
         # slice cp_mesh and tp_mesh
         self._cp_mesh = self._mesh["ring", "ulysses"]
         self._tp_mesh = self._mesh["tp"]
-        self._cp_rank = dist.get_rank(self._cp_mesh)
-        self._tp_rank = dist.get_rank(self._tp_mesh)
-        self._cp_world_size = dist.get_world_size(self._cp_mesh)
-        self._tp_world_size = dist.get_world_size(self._tp_mesh)
+        self._cp_rank = self._cp_mesh.get_local_rank()
+        self._tp_rank = self._tp_mesh.get_local_rank()
+        self._cp_world_size = self._cp_mesh.size()
+        self._tp_world_size = self._tp_mesh.size()
 
     def enabled(self) -> bool:
         return (
