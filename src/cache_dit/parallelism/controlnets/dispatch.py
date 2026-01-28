@@ -30,7 +30,7 @@ def maybe_enable_parallelism_for_controlnet(
         )
         return controlnet
 
-    if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
+    if parallelism_config.cp_enabled():
         controlnet = maybe_enable_context_parallelism(
             controlnet=controlnet,
             parallelism_config=parallelism_config,

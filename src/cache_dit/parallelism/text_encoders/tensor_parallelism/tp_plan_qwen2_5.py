@@ -3,7 +3,7 @@ from typing import Union
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLTextModel
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLDecoderLayer
 
-from torch.distributed import DeviceMesh, init_device_mesh
+from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
@@ -39,13 +39,7 @@ class Qwen2_5_VLTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             "Qwen2_5_VLTensorParallelismPlanner can only be applied to "
             "Qwen2_5_VLForConditionalGeneration or Qwen2_5_VLTextModel"
         )
-        text_encoder_world_size = parallelism_config.text_encoder_world_size
-        device_type = torch.accelerator.current_accelerator().type
-        tp_mesh: DeviceMesh = init_device_mesh(
-            device_type=device_type,
-            mesh_shape=[text_encoder_world_size],
-        )
-
+        tp_mesh = self.mesh(parallelism_config=parallelism_config)
         text_encoder = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,

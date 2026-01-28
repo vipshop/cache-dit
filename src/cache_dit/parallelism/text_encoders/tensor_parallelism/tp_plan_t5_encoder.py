@@ -1,6 +1,6 @@
 import torch
 from transformers import T5EncoderModel
-from torch.distributed import DeviceMesh, init_device_mesh
+from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
     RowwiseParallel,
@@ -31,13 +31,7 @@ class T5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         assert isinstance(
             text_encoder, T5EncoderModel
         ), "T5EncoderTensorParallelismPlanner can only be applied to T5EncoderModel"
-        text_encoder_world_size = parallelism_config.text_encoder_world_size
-        device_type = torch.accelerator.current_accelerator().type
-        tp_mesh: DeviceMesh = init_device_mesh(
-            device_type=device_type,
-            mesh_shape=[text_encoder_world_size],
-        )
-
+        tp_mesh = self.mesh(parallelism_config=parallelism_config)
         text_encoder = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,

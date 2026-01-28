@@ -4,7 +4,7 @@ from transformers import GlmModel, GlmForCausalLM, Glm4Model, Glm4ForCausalLM
 from transformers.models.glm.modeling_glm import GlmDecoderLayer
 from transformers.models.glm4.modeling_glm4 import Glm4DecoderLayer
 
-from torch.distributed import DeviceMesh, init_device_mesh
+from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor import Replicate
 from torch.distributed.tensor.parallel import (
@@ -48,13 +48,7 @@ class GlmTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         assert isinstance(
             text_encoder, _supported_glm_classes
         ), "GlmTensorParallelismPlanner can only be applied to Glm Language Models."
-        text_encoder_world_size = parallelism_config.text_encoder_world_size
-        device_type = torch.accelerator.current_accelerator().type
-        tp_mesh: DeviceMesh = init_device_mesh(
-            device_type=device_type,
-            mesh_shape=[text_encoder_world_size],
-        )
-
+        tp_mesh = self.mesh(parallelism_config=parallelism_config)
         text_encoder = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
