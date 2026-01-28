@@ -13,6 +13,9 @@ cache_dit.enable_cache(
     parallelism_config=ParallelismConfig(
         ulysses_size=4, 
         tp_size=2,
+        parallel_kwargs={
+            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
+        },
     ),
 )
 
@@ -23,6 +26,9 @@ cache_dit.enable_cache(
     parallelism_config=ParallelismConfig(
         ring_size=4, 
         tp_size=2,
+        parallel_kwargs={
+            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
+        },
     ),
 )
 
@@ -34,6 +40,9 @@ cache_dit.enable_cache(
         ulysses_size=2,
         ring_size=2, 
         tp_size=2,
+        parallel_kwargs={
+            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
+        },
     ),
 )
 
