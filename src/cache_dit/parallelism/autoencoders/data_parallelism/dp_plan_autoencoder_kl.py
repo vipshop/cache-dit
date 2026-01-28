@@ -28,13 +28,7 @@ class AutoencoderKLDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
         assert isinstance(
             auto_encoder, AutoencoderKL
         ), "AutoencoderKLDataParallelismPlanner can only be applied to AutoencoderKL"
-        auto_encoder_world_size = parallelism_config.auto_encoder_world_size
-        device_type = torch.accelerator.current_accelerator().type
-        dp_mesh = dist.init_device_mesh(
-            device_type=device_type,
-            mesh_shape=[auto_encoder_world_size],
-        )
-
+        dp_mesh = self.mesh(parallelism_config=parallelism_config)
         auto_encoder = self.parallelize_tiling(
             auto_encoder=auto_encoder,
             dp_mesh=dp_mesh,
