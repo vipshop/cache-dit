@@ -1,6 +1,8 @@
+import torch
 import dataclasses
 from typing import Optional, Dict, Any
-from cache_dit.parallelism.backend import ParallelismBackend
+import torch.distributed as dist
+from .backend import ParallelismBackend
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -47,6 +49,17 @@ class ParallelismConfig:
     _has_text_encoder: bool = False
     _has_auto_encoder: bool = False
     _has_controlnet: bool = False
+    # mesh for hybrid parallelism: CP/SP + TP
+    _mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _cp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _tp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _rank: Optional[int] = None
+    _cp_rank: Optional[int] = None
+    _tp_rank: Optional[int] = None
+    _cp_world_size: Optional[int] = None
+    _tp_world_size: Optional[int] = None
+    _world_size: Optional[int] = None
+    _device: Optional[torch.device] = None
 
     def __post_init__(self):
         assert ParallelismBackend.is_supported(self.backend), (
@@ -55,56 +68,65 @@ class ParallelismConfig:
         )
         if self.backend == ParallelismBackend.AUTO:
             # Auto select the backend based on the parallelism configuration
-            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
-                self.ring_size is not None and self.ring_size > 1
-            ):
+            if self.hybrid_enabled():
+                self.backend = ParallelismBackend.HYBRID
+            elif self.cp_enabled() or self.usp_enabled():
                 self.backend = ParallelismBackend.NATIVE_DIFFUSER
-            elif self.tp_size is not None and self.tp_size > 1:
+            elif self.tp_enabled():
                 self.backend = ParallelismBackend.NATIVE_PYTORCH
             else:
                 self.backend = ParallelismBackend.NONE
             logger.info(f"Auto selected parallelism backend for transformer: {self.backend}")
 
         # Validate the parallelism configuration and auto adjust the backend if needed
-        if self.tp_size is not None and self.tp_size > 1:
+        if self.hybrid_enabled():
             assert (
-                self.ulysses_size is None or self.ulysses_size == 1
-            ), "Tensor parallelism plus Ulysses parallelism is not supported right now."
+                self.backend == ParallelismBackend.HYBRID
+            ), "Hybrid parallelism requires the backend to be HYBRID."
+        elif self.cp_enabled() or self.usp_enabled():
             assert (
-                self.ring_size is None or self.ring_size == 1
-            ), "Tensor parallelism plus Ring parallelism is not supported right now."
-            if self.backend != ParallelismBackend.NATIVE_PYTORCH:
-                logger.warning(
-                    "Tensor parallelism is only supported for NATIVE_PYTORCH backend "
-                    "right now. Force set backend to NATIVE_PYTORCH."
-                )
-                self.backend = ParallelismBackend.NATIVE_PYTORCH
-        elif self.usp_enabled():
-            # world size must >= 4 for USP attention
+                self.backend == ParallelismBackend.NATIVE_DIFFUSER
+            ), "Context parallelism requires the backend to be NATIVE_DIFFUSER."
+        elif self.tp_enabled():
             assert (
-                self.ulysses_size * self.ring_size >= 4
-            ), "The product of ulysses_size and ring_size must be greater than or equal to 4 for USP attention."
-
-            logger.info(
-                "Both ulysses_size and ring_size are set greater than 1. "
-                "USP Attention will be used for context parallelism."
-            )
-            if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
-                logger.warning(
-                    "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
-                    "backend right now. Force set backend to NATIVE_DIFFUSER."
-                )
-                self.backend = ParallelismBackend.NATIVE_DIFFUSER
+                self.backend == ParallelismBackend.NATIVE_PYTORCH
+            ), "Tensor parallelism requires the backend to be NATIVE_PYTORCH."
         else:
-            if (self.ulysses_size is not None and self.ulysses_size > 1) or (
-                self.ring_size is not None and self.ring_size > 1
-            ):
-                if self.backend != ParallelismBackend.NATIVE_DIFFUSER:
-                    logger.warning(
-                        "Ulysses/Ring parallelism is only supported for NATIVE_DIFFUSER "
-                        "backend right now. Force set backend to NATIVE_DIFFUSER."
-                    )
-                    self.backend = ParallelismBackend.NATIVE_DIFFUSER
+            raise ValueError(
+                "No parallelism is enabled. Please set ulysses_size, ring_size, or tp_size "
+                "to enable parallelism."
+            )
+
+        if self.backend == ParallelismBackend.HYBRID and self.hybrid_enabled():
+            self.init_hybrid_meshes()
+
+    def init_hybrid_meshes(self):
+        self._rank = dist.get_rank()
+        self._world_size = dist.get_world_size()
+        _device_type = torch._C._get_accelerator().type
+        _device_module = torch.get_device_module(_device_type)
+        self._device = torch.device(_device_type, self._rank % _device_module.device_count())
+        # 3d mesh (ring, ulysses, tp) -> 2d cp mesh (ring * ulysses, ) + 1d tp mesh
+        assert (
+            self.hybrid_enabled()
+        ), "Hybrid meshes can only be initialized for hybrid parallelism."
+        ring_size = self.ring_size if self.ring_size is not None else 1
+        ulysses_size = self.ulysses_size if self.ulysses_size is not None else 1
+        tp_size = self.tp_size if self.tp_size is not None else 1
+
+        self._mesh = dist.device_mesh.init_device_mesh(
+            device_type=_device_type,
+            mesh_shape=(ring_size, ulysses_size, tp_size),
+            mesh_dim_names=("ring", "ulysses", "tp"),
+        )
+
+        # slice cp_mesh and tp_mesh
+        self._cp_mesh = self._mesh["ring", "ulysses"]
+        self._tp_mesh = self._mesh["tp"]
+        self._cp_rank = dist.get_rank(self._cp_mesh)
+        self._tp_rank = dist.get_rank(self._tp_mesh)
+        self._cp_world_size = dist.get_world_size(self._cp_mesh)
+        self._tp_world_size = dist.get_world_size(self._tp_mesh)
 
     def enabled(self) -> bool:
         return (
@@ -113,6 +135,14 @@ class ParallelismConfig:
             or (self.tp_size is not None and self.tp_size > 1)
         )
 
+    def cp_enabled(self) -> bool:
+        return (self.ulysses_size is not None and self.ulysses_size > 1) or (
+            self.ring_size is not None and self.ring_size > 1
+        )
+
+    def tp_enabled(self) -> bool:
+        return self.tp_size is not None and self.tp_size > 1
+
     def usp_enabled(self) -> bool:
         return (
             self.ulysses_size is not None
@@ -120,6 +150,9 @@ class ParallelismConfig:
             and self.ring_size is not None
             and self.ring_size > 1
         )
+
+    def hybrid_enabled(self) -> bool:
+        return self.cp_enabled() and self.tp_enabled()
 
     def strify(
         self,

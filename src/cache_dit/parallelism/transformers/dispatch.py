@@ -24,9 +24,21 @@ def maybe_enable_parallelism_for_transformer(
         return transformer
 
     # Currently, we can dispatch the parallelism based on the backend type.
-    # Now, The context parallelism is only supported in NATIVE_DIFFUSER backend,
-    # and the tensor parallelism is only supported in NATIVE_PYTORCH backend.
-    if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
+    if parallelism_config.backend == ParallelismBackend.HYBRID:
+        assert (
+            parallelism_config.hybrid_enabled()
+        ), "hybrid_enabled() must be True for HYBRID backend."
+        # 0. First enable context parallelism
+        transformer = maybe_enable_context_parallelism_for_transformer(
+            transformer=transformer,
+            parallelism_config=parallelism_config,
+        )
+        # 1. Then enable tensor parallelism
+        transformer = maybe_enable_tensor_parallelism_for_transformer(
+            transformer=transformer,
+            parallelism_config=parallelism_config,
+        )
+    elif parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
         return maybe_enable_context_parallelism_for_transformer(
             transformer=transformer,
             parallelism_config=parallelism_config,
@@ -57,12 +69,16 @@ def maybe_enable_context_parallelism_for_transformer(
         f" but got {type(parallelism_config)}"
     )
 
-    assert parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER, (
-        f"parallelism backend must be {ParallelismBackend.NATIVE_DIFFUSER}, "
-        f"but got {parallelism_config.backend}"
+    # Ensure the backend is correct, NAITIVE_DIFFUSER or HYBRID
+    assert parallelism_config.backend in (
+        ParallelismBackend.NATIVE_DIFFUSER,
+        ParallelismBackend.HYBRID,
+    ), (
+        "parallelism_config.backend must be ParallelismBackend.NATIVE_DIFFUSER "
+        f"or ParallelismBackend.HYBRID but got {parallelism_config.backend}"
     )
 
-    if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
+    if parallelism_config.cp_enabled() or parallelism_config.hybrid_enabled():
         from .context_parallelism import maybe_enable_context_parallelism
 
         transformer = maybe_enable_context_parallelism(
@@ -97,21 +113,21 @@ def maybe_enable_tensor_parallelism_for_transformer(
     if parallelism_config is None:
         return transformer
 
-    assert parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH, (
+    # Ensure the backend is correct, NATIVE_PYTORCH or HYBRID
+    assert parallelism_config.backend in (
+        ParallelismBackend.NATIVE_PYTORCH,
+        ParallelismBackend.HYBRID,
+    ), (
         "parallelism_config.backend must be ParallelismBackend.NATIVE_PYTORCH "
-        f"but got {parallelism_config.backend}"
+        f"or ParallelismBackend.HYBRID but got {parallelism_config.backend}"
     )
 
     assert isinstance(parallelism_config, ParallelismConfig), (
         "parallelism_config must be an instance of ParallelismConfig"
         f" but got {type(parallelism_config)}"
     )
-    assert parallelism_config.ulysses_size is None and parallelism_config.ring_size is None, (
-        "Ulysses/Ring parallelism is not supported in Native_PyTorch backend. "
-        "Please set it to None in parallelism_config."
-    )
 
-    if parallelism_config.tp_size is not None and parallelism_config.tp_size > 1:
+    if parallelism_config.tp_enabled() or parallelism_config.hybrid_enabled():
         from .tensor_parallelism import maybe_enable_tensor_parallelism
 
         transformer = maybe_enable_tensor_parallelism(

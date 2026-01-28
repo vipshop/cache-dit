@@ -2,7 +2,6 @@ import torch
 from typing import Optional
 
 from diffusers.models.modeling_utils import ModelMixin
-from cache_dit.parallelism.backend import ParallelismBackend
 from cache_dit.parallelism.config import ParallelismConfig
 from cache_dit.logger import init_logger
 
@@ -41,59 +40,55 @@ def maybe_enable_context_parallelism(
         "parallelism_config must be an instance of ParallelismConfig"
         f" but got {type(parallelism_config)}"
     )
+    assert _is_diffusers_parallelism_available(), (
+        "Context parallelism requires the 'diffusers>=0.36.dev0'."
+        "Please install latest version of diffusers from source"
+    )
 
-    if (
-        parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER
-        and _is_diffusers_parallelism_available()
-    ):
-        cp_config = None
-        if parallelism_config.ulysses_size is not None or parallelism_config.ring_size is not None:
-            # Prepare extra context parallelism config, e.g, convert_to_fp32,
-            # rotate_method for ring attention.
-            cp_config = _ExtendedContextParallelConfig(
-                ulysses_degree=parallelism_config.ulysses_size,
-                ring_degree=parallelism_config.ring_size,
-                convert_to_fp32=parallelism_config.parallel_kwargs.get(
-                    "ring_convert_to_fp32", True
-                ),
-                rotate_method=parallelism_config.parallel_kwargs.get("ring_rotate_method", "p2p"),
+    if parallelism_config.cp_enabled():
+        parallel_kwargs = parallelism_config.parallel_kwargs or {}
+        # Prepare extra context parallelism config, e.g, convert_to_fp32,
+        # rotate_method for ring attention.
+        cp_config = _ExtendedContextParallelConfig(
+            ulysses_degree=parallelism_config.ulysses_size,
+            ring_degree=parallelism_config.ring_size,
+            convert_to_fp32=parallel_kwargs.get("ring_convert_to_fp32", True),
+            rotate_method=parallel_kwargs.get("ring_rotate_method", "p2p"),
+        )
+        if parallelism_config.hybrid_enabled():
+            # In hybrid mode, we use the _cp_mesh from ParallelismConfig for
+            # context parallelism.
+            cp_config.setup(
+                rank=parallelism_config._cp_rank,
+                world_size=parallelism_config._cp_world_size,
+                device=parallelism_config._device,
+                mesh=parallelism_config._cp_mesh,
             )
-        if cp_config is not None:
-            experimental_ulysses_anything = parallelism_config.parallel_kwargs.get(
-                "experimental_ulysses_anything", False
-            )
-            # Float8 all_to_all for Ulysses Attention/Ulysses Anything Attention
-            experimental_ulysses_float8 = parallelism_config.parallel_kwargs.get(
-                "experimental_ulysses_float8", False
-            )
 
-            # Must call enable_ulysses_anything before enable_ulysses_float8.
-            if experimental_ulysses_anything:
-                enable_ulysses_anything()
+        if parallel_kwargs.get("experimental_ulysses_anything", False):
+            enable_ulysses_anything()
 
-            if experimental_ulysses_float8:
-                enable_ulysses_float8()
+        if parallel_kwargs.get("experimental_ulysses_float8", False):
+            enable_ulysses_float8()
 
-            if hasattr(transformer, "enable_parallelism"):
-                # Prefer custom cp_plan if provided
-                cp_plan = parallelism_config.parallel_kwargs.get("cp_plan", None)
-                if cp_plan is not None:
-                    logger.info(f"Using custom context parallelism plan: {cp_plan}")
-                else:
-                    # Try get context parallelism plan from register if not provided
-                    extra_parallel_kwargs = {}
-                    if parallelism_config.parallel_kwargs is not None:
-                        extra_parallel_kwargs = parallelism_config.parallel_kwargs
-                    cp_plan = ContextParallelismPlannerRegister.get_planner(transformer)().apply(
-                        transformer=transformer, **extra_parallel_kwargs
-                    )
-
-                transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-                _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
+        if hasattr(transformer, "enable_parallelism"):
+            # Prefer custom cp_plan if provided
+            cp_plan = parallel_kwargs.get("cp_plan", None)
+            if cp_plan is not None:
+                logger.info(f"Using custom context parallelism plan: {cp_plan}")
             else:
-                raise ValueError(
-                    f"{transformer.__class__.__name__} does not support context parallelism."
+                # Try get context parallelism plan from register if not provided
+                extra_parallel_kwargs = parallel_kwargs or {}
+                cp_plan = ContextParallelismPlannerRegister.get_planner(transformer)().apply(
+                    transformer=transformer, **extra_parallel_kwargs
                 )
+
+            transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
+            _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
+        else:
+            raise ValueError(
+                f"{transformer.__class__.__name__} does not support context parallelism."
+            )
 
     return transformer
 
