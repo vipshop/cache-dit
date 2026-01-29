@@ -47,18 +47,28 @@ class ParallelismConfig:
     #   `ring_convert_to_fp32`: bool, Whether to convert the value output and lse
     #       of ring attention to fp32. Default to True to avoid numerical issues.
     parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(default_factory=dict)
-    # Some internal fields for utils usage
+
+    # Flags to indicate whether the model has extra modules that need parallelism
     _has_text_encoder: bool = False
     _has_auto_encoder: bool = False
     _has_controlnet: bool = False
-    # mesh for hybrid parallelism: CP/SP + TP
+
+    # Meshes for hybrid parallelism: CP/SP + TP
     _mesh: Optional[dist.device_mesh.DeviceMesh] = None
-    _flat_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _cp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _tp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _flat_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _flat_cp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
+    _flat_tp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _rank: Optional[int] = None
+    _cp_rank: Optional[int] = None
+    _tp_rank: Optional[int] = None
     _world_size: Optional[int] = None
+    _cp_world_size: Optional[int] = None
+    _tp_world_size: Optional[int] = None
     _device: Optional[torch.device] = None
+    _device_type: Optional[str] = None
+    _device_module: Optional[Any] = None
 
     def __post_init__(self):
         assert ParallelismBackend.is_supported(self.backend), (
@@ -113,35 +123,44 @@ class ParallelismConfig:
                 "to enable parallelism."
             )
 
-        if self.backend == ParallelismBackend.HYBRID and self.hybrid_enabled():
+        if self.hybrid_enabled():
             _patch_modelmixin_for_hybrid_parallelism()
-            self._init_hybrid_meshes()
+            self._maybe_init_hybrid_meshes()
 
-    def _init_hybrid_meshes(self):
+    def _maybe_init_hybrid_meshes(self):
+        if self._mesh is not None or not self.hybrid_enabled():
+            return  # already initialized or not hybrid enabled
         self._rank = dist.get_rank()
         self._world_size = dist.get_world_size()
-        _device_type = torch._C._get_accelerator().type
-        _device_module = torch.get_device_module(_device_type)
-        self._device = torch.device(_device_type, self._rank % _device_module.device_count())
+        self._device_type = torch._C._get_accelerator().type
+        self._device_module = torch.get_device_module(self._device_type)
+        self._device = torch.device(
+            self._device_type,
+            self._rank % self._device_module.device_count(),
+        )
         # 3d mesh (ring, ulysses, tp) -> 2d cp mesh (ring * ulysses, ) + 1d tp mesh
-        assert (
-            self.hybrid_enabled()
-        ), "Hybrid meshes can only be initialized for hybrid parallelism."
         ring_size = self.ring_size if self.ring_size is not None else 1
         ulysses_size = self.ulysses_size if self.ulysses_size is not None else 1
         tp_size = self.tp_size if self.tp_size is not None else 1
 
         self._mesh = dist.device_mesh.init_device_mesh(
-            device_type=_device_type,
+            device_type=self._device_type,
             mesh_shape=(ring_size, ulysses_size, tp_size),
             mesh_dim_names=("ring", "ulysses", "tp"),
         )
-        # slice cp_mesh and tp_mesh
+
+        # Slice cp_mesh and tp_mesh and infer special ranks and world sizes
         self._cp_mesh = self._mesh["ring", "ulysses"]
         self._tp_mesh = self._mesh["tp"]
         self._flat_mesh = self._mesh._flatten()
+        self._flat_cp_mesh = self._cp_mesh._flatten()
+        self._flat_tp_mesh = self._tp_mesh._flatten()
         self._rank = self._flat_mesh.get_local_rank()
+        self._cp_rank = self._flat_cp_mesh.get_local_rank()
+        self._tp_rank = self._flat_tp_mesh.get_local_rank()
         self._world_size = self._flat_mesh.size()
+        self._cp_world_size = self._flat_cp_mesh.size()
+        self._tp_world_size = self._flat_tp_mesh.size()
 
     def enabled(self) -> bool:
         return (

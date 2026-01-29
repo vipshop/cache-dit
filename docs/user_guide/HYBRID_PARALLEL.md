@@ -1,10 +1,10 @@
-# Hybrid CP(USP) and TP
+# Hybrid 2D/3D Parallelism
 
 ## Overviews
 
-cache-dit fully supports hybrid Context Parallelism (including USP) and Tensor Parallelism. Thus, it can scale up the performance of large DiT models such as FLUX.2 (**112 GiB**❗️❗️ total) and Qwen-Image (56 GiB total) on low-VRAM devices (e.g., NVIDIA L20, A30, H20, A800, H800, ..., **<96 GiB**❗️❗️) with no precision loss. `Hybrid CP (USP) + TP` is faster than vanilla Tensor Parallelism and compatible with cache. 
+cache-dit fully supports hybrid Context Parallelism (including USP) and Tensor Parallelism (namely, 2D or 3D Parallelism). Thus, it can scale up the performance of large DiT models such as FLUX.2 (**112 GiB**❗️❗️ total), Qwen-Image (56 GiB total) and LTX-2 (84 GiB total) on low-VRAM devices (e.g., NVIDIA L20, A30, H20, A800, H800, ..., **<96 GiB**❗️❗️) with no precision loss. `Hybrid CP (USP) + TP` is faster than vanilla Tensor Parallelism and compatible with cache. 
 
-From the table below (FLUX.2-dev, **112 GiB** ❗️❗️), it is clear that `Ulysses-4-TP-2` delivers higher throughput than `TP-8`. This allows it to better scale the performance of FLUX.2-dev on an 8×L20 (<48 GiB) GPU node. (Note: The text encoder is always be parallelized; GiB = GiB per GPU; USP = Ulysses + Ring)
+From the table below (FLUX.2-dev, **112 GiB**❗️❗️), it is clear that `Ulysses-4-TP-2` delivers higher throughput than `TP-8`. This allows it to better scale the performance of FLUX.2-dev on an 8×L20 (<48 GiB) GPU node. (Note: The text encoder is always be parallelized; GiB = GiB per GPU; USP = Ulysses + Ring)
 
 |TP-2|Ring-2/4/8|Ulysses-2/4/8|TP-4|TP-8|Ulysses-4-TP-2|
 |:---:|:---:|:---:|:---:|:---:|:---:|
@@ -19,8 +19,9 @@ From the table below (FLUX.2-dev, **112 GiB** ❗️❗️), it is clear that `U
 
 Users can set both `ulysses_size/ring_size(CP, USP)` and `tp_size(TP)` to values greater than 1 to enable hybrid 2D or complex 3D parallelism for the DiT transformer module. For examples:
 
+- 2D Parallelism: Ulysses + TP
+
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 # 2D Parallelism: Ulysses + TP
@@ -28,42 +29,60 @@ cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
-        ulysses_size=4, 
-        tp_size=2,
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
-        },
+        ulysses_size=4, tp_size=2,
     ),
 )
+```
+
+- 2D Parallelism: Ring + TP
+
+```python
+from cache_dit import ParallelismConfig
 
 # 2D Parallelism: Ring + TP
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
-        ring_size=4, 
-        tp_size=2,
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
-        },
+        ring_size=4, tp_size=2,
     ),
 )
+```
+
+- 3D Parallelism: USP + TP
+
+```python
+from cache_dit import ParallelismConfig
 
 # 3D Parallelism: USP + TP
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        ring_size=2, 
-        tp_size=2,
+        ulysses_size=2, ring_size=2, tp_size=2,
+    ),
+)
+```
+
+- 2D/3D Parallelism + TE-P + VAE-P
+
+```python
+from cache_dit import ParallelismConfig
+
+# 2D/3D Parallelism + TE-P
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...),
+    parallelism_config=ParallelismConfig(
+        # ulysses_size=2, ring_size=2, tp_size=2, # 3D Parallelism
+        ulysses_size=4, tp_size=2, # or, 2D Parallelsim
+        # e.g, FLUX.2, we can also parallize the Text Encoder and VAE
+        # module to further reduce the memory usage on low-VRAM devices.
         parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
+            "extra_parallel_modules": [pipe.text_encoder, pipe.vae], 
         },
     ),
 )
-
-# torchrun --nproc_per_node=8 parallel_hybrid.py
 ```
 
 ## Quick Examples
