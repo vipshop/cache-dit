@@ -1079,10 +1079,10 @@ def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
 
 
 @ExampleRegister.register(
-    "zimage_controlnet_2.1", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+    "zimage_turbo_controlnet_2.1", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
 )
 @ExampleRegister.register(
-    "zimage_controlnet_2.0", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0"
+    "zimage_turbo_controlnet_2.0", default="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0"
 )
 def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import ZImageControlNetPipeline, ZImageControlNetModel
