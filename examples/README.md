@@ -8,20 +8,20 @@
 |**🚀6.85s**|6.45s|6.38s|**🚀6.19s, 5.47s**|
 | <img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> | <img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> |<img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=200px> | <img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP_sdpa_cudnn.png" width=200px> 
 
-## 📚 Table of Contents
+## Table of Contents
 
-- [📚 Installation](#-installation)
-- [📚 Available Examples](#-available-examples)
-- [📚 Single GPU Inference](#-single-gpu-inference)  
-- [📚 Custom Model Path](#-custom-model-path)  
-- [📚 Distributed Inference](#-multi-gpu-inference)  
-- [📚 Low-bits Quantization](#-low-bits-quantization)  
-- [📚 Hybrid Acceleration](#-hybrid-acceleration) 
-- [📚 End2End Examples](#-end2end-examples) 
-- [📚 How to Add New Example](#-how-to-add-new-example) 
-- [📚 More Usages about Examples](#-more-usages-about-examples) 
+- [Installation](#-installation)
+- [Available Examples](#-available-examples)
+- [Single GPU Inference](#-single-gpu-inference)  
+- [Custom Model Path](#-custom-model-path)  
+- [Distributed Inference](#-multi-gpu-inference)  
+- [Low-bits Quantization](#-low-bits-quantization)  
+- [Hybrid Acceleration](#-hybrid-acceleration) 
+- [End2End Examples](#-end2end-examples) 
+- [How to Add New Example](#-how-to-add-new-example) 
+- [More Usages about Examples](#-more-usages-about-examples) 
 
-## 📚 Installation
+## Installation
 
 ```bash
 # recommend: install latest stable release of torch for better compile compatiblity.
@@ -33,7 +33,7 @@ pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.3
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ```
 
-## 📚 Available Examples
+## Available Examples
 
 ```bash
 python3 -m cache_dit.generate list  # list all available examples
@@ -74,7 +74,7 @@ python3 -m cache_dit.generate list  # list all available examples
 [generate.py:53] - ✅ longcat_image_edit             - Defalut: meituan-longcat/LongCat-Image-Edit
 ```
 
-## 📚 Single GPU Inference
+## Single GPU Inference
 
 The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is to start with single GPU inference. For examples:  
 
@@ -114,7 +114,7 @@ python3 -m cache_dit.generate flux2 --sequential-cpu-offload # FLUX2 56B total
 python3 -m cache_dit.generate zimage --cache --rdt 0.6 --scm fast --summary
 ```
 
-## 📚 Custom Model Path
+## Custom Model Path
 
 The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`. For examples: 
 
@@ -124,7 +124,7 @@ python3 -m cache_dit.generate zimage --model-path /PATH/TO/Z-Image-Turbo
 python3 -m cache_dit.generate qwem_image --model-path /PATH/TO/Qwen-Image
 ```
 
-## 📚 Distributed Inference 
+## Distributed Inference 
 
 cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
@@ -134,23 +134,25 @@ torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ring 
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel usp # USP: Ulysses + Ring 
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel ulysses_tp # Ulysses + TP
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel ring_tp  # Ring + TP
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel usp_tp # USP + TP
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses 
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parallel ulysses 
 # ulysses anything attention
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --ulysses-anything
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything
-# text encoder parallelism, enable it by add: `--parallel-text-encoder`
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp --parallel-text-encoder
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
-# Hint: set `--local-ranks-filter=0` to torchrun -> only show logs on rank 0
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate flux --parallel ulysses 
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_t2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache --ulysses-anything
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text-encoder --cache
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache --ulysses-anything
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text-encoder --cache
+# text encoder parallelism: `--parallel-text-encoder` or `parallel-text`
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp --parallel-text
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text --cache
 ```
 
-## 📚 Low-bits Quantization 
+## Low-bits Quantization 
 
 cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥torchao, 🔥nunchaku), For examples:
 
@@ -164,7 +166,7 @@ python3 -m cache_dit.generate flux --cache --quantize-type bnb_4bit --compile # 
 python3 -m cache_dit.generate flux_nunchaku --cache --compile # w4a4 SVDQ
 ```
 
-## 📚 Hybrid Acceleration 
+## Hybrid Acceleration 
 
 Here are some examples for `hybrid cache acceleration + parallelism` for popular DiTs with cache-dit.
 
@@ -174,19 +176,19 @@ python3 -m cache_dit.generate flux --cache --scm fast --taylorsees --taylorseer-
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
-         --attn _sdpa_cudnn --parallel-text-encoder --cache --scm fast --taylorseer \
+         --attn _sdpa_cudnn --parallel-text --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
-         --attn sage --parallel-text-encoder --cache --scm fast --taylorseer \
+         --attn sage --parallel-text --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel ulysses --ulysses-anything --parallel-text-encoder \
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
+         --parallel ulysses --ulysses-anything --parallel-text \
          --quantize-type float8_weight_only --steps 4 --track-memory --compile
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel tp --parallel-text-encoder --quantize-type float8_weight_only \
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
+         --parallel tp --parallel-text --quantize-type float8_weight_only \
          --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parallel ulysses \
@@ -197,11 +199,11 @@ torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parall
          --warmup 2 --repeat 4     
 ```
 
-## 📚 End2End Examples
+## End2End Examples
 
 ```bash
 # NO Cache Acceleration: 8.27s
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate flux --parallel ulysses
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses
 
 INFO 12-17 09:02:31 [base.py:151] Example Input Summary:
 INFO 12-17 09:02:31 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -217,7 +219,7 @@ INFO 12-17 09:02:31 [base.py:225] - Inference Time: 8.27s
 INFO 12-17 09:02:32 [base.py:182] Image saved to flux.1024x1024.C0_Q0_NONE_Ulysses4.png
 
 # Enabled Cache Acceleration: 4.23s
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate flux --parallel ulysses --cache --scm fast
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --cache --scm fast
 
 INFO 12-17 09:10:09 [base.py:151] Example Input Summary:
 INFO 12-17 09:10:09 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -237,7 +239,7 @@ INFO 12-17 09:10:09 [base.py:182] Image saved to flux.1024x1024.C0_Q0_DBCache_F1
 |:---:|:---:|
 |![](https://github.com/vipshop/cache-dit/raw/main/examples/assets/flux.1024x1024.C0_Q0_NONE_Ulysses4.png)|![](https://github.com/vipshop/cache-dit/raw/main/examples/assets/flux.1024x1024.C0_Q0_DBCache_F1B0_W8I1M0MC3_R0.24_CFG0_T0O0_Ulysses4_S15.png)|
 
-## 📚 How to Add New Example
+## How to Add New Example
 
 It is very easy to add a new example. Please refer to the specific implementation in [examples.py](https://github.com/vipshop/cache-dit/raw/main/src/_utils/examples.py). For example:
 
@@ -267,7 +269,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 # NOTE: DON'T forget to import this `flux_example` into __init__.py
 ```
 
-## 📚 More Usages about Examples
+## More Usages about Examples
 
 ```bash
 python3 -m cache_dit.generate --help
@@ -341,7 +343,7 @@ options:
   --quantize-controlnet, --q-controlnet
                         Enable quantization for text encoder
   --quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
-  --parallel-type {None,tp,ulysses,ring,usp}, --parallel {None,tp,ulysses,ring,usp}
+  --parallel-type {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}, --parallel {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
