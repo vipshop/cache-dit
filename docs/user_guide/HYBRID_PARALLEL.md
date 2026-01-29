@@ -81,7 +81,7 @@ cache_dit.enable_cache(
     parallelism_config=ParallelismConfig(
         # ulysses_size=2, ring_size=2, tp_size=2, # 3D Parallelism
         ulysses_size=4, tp_size=2, # or, 2D Parallelsim
-        # e.g, FLUX.2, we can also parallize the Text Encoder and VAE
+        # e.g, FLUX.2, we can also parallelize the Text Encoder and VAE
         # module to further reduce the memory usage on low-VRAM devices.
         parallel_kwargs={
             "extra_parallel_modules": [pipe.text_encoder, pipe.vae], 
