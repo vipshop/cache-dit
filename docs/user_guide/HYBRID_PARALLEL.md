@@ -18,7 +18,7 @@ From the table below (Image Generation: FLUX.2-dev, **112 GiB**❗️❗️), it
 
 ### Video Generation 
 
-From the table below (Video Generation: LTX-2, **84 GiB**❗️❗️), it is clear that `Ulysses-2-TP-2` delivers higher throughput than `TP-4`. This also shows that hybrid `CP(USP) + TP` allows the better scaling of the performance for LTX-2 on an 4×L20 (<48 GiB). (Note: The text encoder is always be parallelized; GiB = GiB per GPU; TP-2, Ring-2/4/8, Ulysses-2/4/8: OOM❗️)
+From the table below (Video Generation: LTX-2, **84 GiB**❗️❗️), it is clear that `Ulysses-2-TP-2` delivers higher throughput than `TP-4`. This also shows that hybrid `CP(USP) + TP` allows the better scaling of the performance for LTX-2 on 4×L20 (<48 GiB). (Note: The text encoder is always be parallelized; GiB = GiB per GPU; TP-2, Ring-2/4/8, Ulysses-2/4/8: OOM❗️)
 
 |LTX-2, L20, TP-4|LTX-2, L20, Ulysses-2-TP-2|
 |:---:|:---:|  
