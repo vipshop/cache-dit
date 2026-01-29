@@ -351,6 +351,11 @@ class ExampleInitConfig:
     def __post_init__(self):
         if not self.bnb_4bit_components:
             self.bnb_4bit_components = ["text_encoder"]
+        if self.extra_optimize_kwargs:
+            # remove None values
+            self.extra_optimize_kwargs = {
+                k: v for k, v in self.extra_optimize_kwargs.items() if v is not None
+            }
 
     def get_pipe(self, args: argparse.Namespace, **kwargs) -> DiffusionPipeline:
         if self.pipeline_class is None:
