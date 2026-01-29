@@ -59,8 +59,8 @@ def maybe_enable_context_parallelism(
             # In hybrid mode, we use the _cp_mesh from ParallelismConfig for
             # context parallelism.
             cp_config.setup(
-                rank=parallelism_config._rank,
-                world_size=parallelism_config._world_size,
+                rank=parallelism_config._cp_rank,
+                world_size=parallelism_config._cp_world_size,
                 device=parallelism_config._device,
                 mesh=parallelism_config._cp_mesh,
             )

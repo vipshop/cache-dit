@@ -8,7 +8,6 @@
 |**🚀6.85s**|6.45s|6.38s|**🚀6.19s, 5.47s**|
 | <img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C0_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> | <img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_CNP.png" width=200px> |<img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_async_CNP.png" width=200px> | <img src="https://github.com/vipshop/cache-dit/raw/main/examples/assets/zimage_controlnet.1728x992.C1_Q0_DBCache_F1B0_W4I1M0MC3_R0.6_SCM111101001_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_CNP_sdpa_cudnn.png" width=200px> 
 
-
 ## Installation
 
 ```bash
@@ -120,22 +119,24 @@ cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥
 # context parallelism or tensor parallelism
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ring 
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel usp # USP: Ulysses + Ring
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel usp # USP: Ulysses + Ring 
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel ulysses_tp # Ulysses + TP
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel ring_tp  # Ring + TP
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel usp_tp # USP + TP
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses 
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parallel ulysses 
 # ulysses anything attention
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --ulysses-anything
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything
-# text encoder parallelism, enable it by add: `--parallel-text-encoder`
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp --parallel-text-encoder
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text-encoder
-# Hint: set `--local-ranks-filter=0` to torchrun -> only show logs on rank 0
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate flux --parallel ulysses 
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_t2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache --ulysses-anything
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text-encoder --cache
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text-encoder --cache --ulysses-anything
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text-encoder --cache
+# text encoder parallelism: `--parallel-text-encoder` or `parallel-text`
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp --parallel-text
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text --cache
 ```
 
 ## Low-bits Quantization 
@@ -162,19 +163,19 @@ python3 -m cache_dit.generate flux --cache --scm fast --taylorsees --taylorseer-
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
-         --attn _sdpa_cudnn --parallel-text-encoder --cache --scm fast --taylorseer \
+         --attn _sdpa_cudnn --parallel-text --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
-         --attn sage --parallel-text-encoder --cache --scm fast --taylorseer \
+         --attn sage --parallel-text --cache --scm fast --taylorseer \
          --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel ulysses --ulysses-anything --parallel-text-encoder \
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
+         --parallel ulysses --ulysses-anything --parallel-text \
          --quantize-type float8_weight_only --steps 4 --track-memory --compile
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel tp --parallel-text-encoder --quantize-type float8_weight_only \
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
+         --parallel tp --parallel-text --quantize-type float8_weight_only \
          --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parallel ulysses \
@@ -189,7 +190,7 @@ torchrun --nproc_per_node=4 -m cache_dit.generate zimage_controlnet_2.1 --parall
 
 ```bash
 # NO Cache Acceleration: 8.27s
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate flux --parallel ulysses
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses
 
 INFO 12-17 09:02:31 [base.py:151] Example Input Summary:
 INFO 12-17 09:02:31 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -205,7 +206,7 @@ INFO 12-17 09:02:31 [base.py:225] - Inference Time: 8.27s
 INFO 12-17 09:02:32 [base.py:182] Image saved to flux.1024x1024.C0_Q0_NONE_Ulysses4.png
 
 # Enabled Cache Acceleration: 4.23s
-torchrun --nproc_per_node=4 --local-ranks-filter=0 -m cache_dit.generate flux --parallel ulysses --cache --scm fast
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --cache --scm fast
 
 INFO 12-17 09:10:09 [base.py:151] Example Input Summary:
 INFO 12-17 09:10:09 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -329,7 +330,7 @@ options:
   --quantize-controlnet, --q-controlnet
                         Enable quantization for text encoder
   --quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
-  --parallel-type {None,tp,ulysses,ring,usp}, --parallel {None,tp,ulysses,ring,usp}
+  --parallel-type {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}, --parallel {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
