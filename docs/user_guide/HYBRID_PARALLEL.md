@@ -2,7 +2,7 @@
 
 ## Overviews
 
-cache-dit fully supports hybrid Context Parallelism (including USP) and Tensor Parallelism (namely, 2D or 3D Parallelism). Thus, it can scale up the performance of large DiT models such as FLUX.2 (**112 GiB**❗️❗️ total), Qwen-Image (56 GiB total) and LTX-2 (84 GiB total) on low-VRAM devices (e.g., NVIDIA L20, A30, H20, A800, H800, ..., **<96 GiB**❗️❗️) with no precision loss. `Hybrid CP (USP) + TP` is faster than vanilla Tensor Parallelism and compatible with cache. 
+cache-dit fully supports hybrid Context Parallelism (including USP) and Tensor Parallelism (namely, 2D or 3D Parallelism). Thus, it can scale up the performance of large DiT models such as FLUX.2 (**112 GiB**❗️❗️ total), Qwen-Image (56 GiB total) and LTX-2 (84 GiB total) on low-VRAM devices (e.g., NVIDIA L20, A30, H20, A800, H800, ..., **<96 GiB**❗️❗️) with no precision loss. `Hybrid CP (USP) + TP` is faster than vanilla Tensor Parallelism and fully compatible with TE-P, VAE-P and Cache acceleration. 
 
 ### Image Generation 
 
@@ -18,28 +18,26 @@ From the table below (Image Generation: FLUX.2-dev, **112 GiB**❗️❗️), it
 
 ### Video Generation 
 
-From the table below (Video Generation: LTX-2, **84 GiB**❗️❗️), it is clear that `Ulysses-2-TP-2` delivers higher throughput than `TP-4`. This also shows that hybrid `CP(USP) + TP` allows better scale the performance of LTX-2 on an 4×L20 (<48 GiB) GPU node. (Note: The text encoder is always be parallelized; GiB = GiB per GPU)
+From the table below (Video Generation: LTX-2, **84 GiB**❗️❗️), it is clear that `Ulysses-2-TP-2` delivers higher throughput than `TP-4`. This also shows that hybrid `CP(USP) + TP` allows the better scaling of the performance for LTX-2 on an 4×L20 (<48 GiB). (Note: The text encoder is always be parallelized; GiB = GiB per GPU; TP-2, Ring-2/4/8, Ulysses-2/4/8: OOM❗️)
 
-|TP-2, Ring-2/4/8, Ulysses-2/4/8|TP-4|Ulysses-2-TP-2|
-|:---:|:---:|:---:|  
-|OOM❗️|26.75GiB|35.38GiB|
-|OOM❗️|143.49s|🎉**110.95s**|
-|OOM❗️|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/ltx2_t2v.512x768x121.C0_Q0_NONE_TP4_TEP_VAEP.gif" >|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/ltx2_t2v.512x768x121.C0_Q0_NONE_Ulysses2_TP2_TEP_VAEP_ulysses_anything.gif" >|
+|LTX-2, L20, TP-4|LTX-2, L20, Ulysses-2-TP-2|
+|:---:|:---:|  
+|26.75GiB|35.38GiB|
+|143.49s|🎉**110.95s**|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/ltx2_t2v.512x768x121.C0_Q0_NONE_TP4_TEP_VAEP.gif" >|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/ltx2_t2v.512x768x121.C0_Q0_NONE_Ulysses2_TP2_TEP_VAEP_ulysses_anything.gif" >|
 
 
-## 2D, 3D and 5D Parallelism
+## 2D, 3D, 5D Parallelism and Cache
 
-Users can set both `ulysses_size/ring_size(CP, USP)` and `tp_size(TP)` to values greater than 1 to enable hybrid **2D** or **complex 3D** parallelism for the DiT transformer module. The **2D/3D** hybrid parallelism for the Transformer module in cache-dit is fully compatible with Text Encoder Parallelism (**TE-P**) and Autoencoder Parallelism (**VAE-P**). Thus, you can combine all these parallelism mechanisms to construct a sophisticated **5D** parallelism architecture for **large-scale DiTs**!
+Users can set both `ulysses_size/ring_size(CP, USP)` and `tp_size(TP)` to values greater than 1 to enable hybrid **2D** or **complex 3D** parallelism for the DiT transformer module. The **2D/3D** hybrid parallelism for the Transformer module in cache-dit is fully compatible with Text Encoder Parallelism (**TE-P**), Autoencoder Parallelism (**VAE-P**) and Cache acceleration. Thus, you can combine all these parallelism mechanisms to construct a sophisticated **5D** parallelism + **Cache** architecture for **large-scale DiTs**!
 
 - 🎉2D Transformer Parallelism: Ulysses + TP
 
 ```python
 from cache_dit import ParallelismConfig
 
-# 2D Parallelism: Ulysses + TP
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=4, tp_size=2,
     ),
@@ -51,10 +49,8 @@ cache_dit.enable_cache(
 ```python
 from cache_dit import ParallelismConfig
 
-# 2D Parallelism: Ring + TP
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ring_size=4, tp_size=2,
     ),
@@ -66,25 +62,22 @@ cache_dit.enable_cache(
 ```python
 from cache_dit import ParallelismConfig
 
-# 3D Parallelism: USP + TP
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=2, ring_size=2, tp_size=2,
     ),
 )
 ```
 
-- 🎉5D Parallelism: 2D/3D Transformer Parallelsim + TE-P + VAE-P
+- 🎉5D Parallelism + Cache: 2D/3D Transformer Parallelsim + TE-P + VAE-P + Cache
 
 ```python
-from cache_dit import ParallelismConfig
+from cache_dit import DBCacheConfig, ParallelismConfig
 
-# 2D/3D Parallelism + TE-P
 cache_dit.enable_cache(
     pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
+    cache_config=DBCacheConfig(...), # w/ Cache
     parallelism_config=ParallelismConfig(
         # ulysses_size=2, ring_size=2, tp_size=2, # 3D Parallelism
         ulysses_size=4, tp_size=2, # or, 2D Parallelsim
