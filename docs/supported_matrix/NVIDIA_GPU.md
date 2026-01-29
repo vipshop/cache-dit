@@ -9,6 +9,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|Z-Image|✅|✅|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
 |FLUX.2-Klein-base-4B|✅|✅|✅|
 |FLUX.2-Klein-9B|✅|✅|✅|
@@ -89,10 +90,11 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
-|FLUX.2-Klein-4B|✅|✅|✅|
-|FLUX.2-Klein-base-4B|✅|✅|✅|
-|FLUX.2-Klein-9B|✅|✅|✅|
-|FLUX.2-Klein-base-9B|✅|✅|✅|
+|Z-Image|✅|✅|
+|FLUX.2-Klein-4B|✅|✅|
+|FLUX.2-Klein-base-4B|✅|✅|
+|FLUX.2-Klein-9B|✅|✅|
+|FLUX.2-Klein-base-9B|✅|✅|
 |LTX-2-I2V|✅|✅|
 |LTX-2-T2V|✅|✅|
 |Qwen-Image-2512|✅|✅|
