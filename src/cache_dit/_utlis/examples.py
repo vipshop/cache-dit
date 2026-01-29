@@ -73,6 +73,7 @@ _env_path_mapping = {
     "WAN_2_2_I2V_DIR": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
     "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
     "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
+    "ZIMAGE_DIR": "Tongyi-MAI/Z-Image",
     "ZIMAGE_TURBO_DIR": "Tongyi-MAI/Z-Image-Turbo",
     "NUNCHAKU_ZIMAGE_TURBO_DIR": "nunchaku-tech/nunchaku-z-image-turbo",
     "Z_IMAGE_TURBO_CONTROLNET_2_1_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
