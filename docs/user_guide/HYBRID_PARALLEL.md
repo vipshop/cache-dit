@@ -1,4 +1,4 @@
-# Hybrid 2D/3D Parallelism
+# Hybrid 2D/3D/5D Parallelism
 
 ## Overviews
 
@@ -15,11 +15,11 @@ From the table below (FLUX.2-dev, **112 GiB**❗️❗️), it is clear that `Ul
 |17.98s|17.37s|17.13s|16.06s|🎉**9.00s**|🎉**7.73s**|
 
 
-## 2D/3D Parallelism
+## 2D, 3D and 5D Parallelism
 
-Users can set both `ulysses_size/ring_size(CP, USP)` and `tp_size(TP)` to values greater than 1 to enable hybrid 2D or complex 3D parallelism for the DiT transformer module. For examples:
+Users can set both `ulysses_size/ring_size(CP, USP)` and `tp_size(TP)` to values greater than 1 to enable hybrid **2D** or **complex 3D** parallelism for the DiT transformer module. The **2D/3D** hybrid parallelism for the Transformer module in cache-dit is fully compatible with Text Encoder Parallelism (**TE-P**) and Autoencoder Parallelism (**VAE-P**). Thus, you can combine all these parallelism mechanisms to construct a sophisticated **5D** parallelism architecture for **large-scale DiTs**!
 
-- 2D Parallelism: Ulysses + TP
+- 2D Transformer Parallelism: Ulysses + TP
 
 ```python
 from cache_dit import ParallelismConfig
@@ -34,7 +34,7 @@ cache_dit.enable_cache(
 )
 ```
 
-- 2D Parallelism: Ring + TP
+- 2D Transformer Parallelism: Ring + TP
 
 ```python
 from cache_dit import ParallelismConfig
@@ -49,7 +49,7 @@ cache_dit.enable_cache(
 )
 ```
 
-- 3D Parallelism: USP + TP
+- 3D Transformer Parallelism: USP + TP
 
 ```python
 from cache_dit import ParallelismConfig
@@ -64,7 +64,7 @@ cache_dit.enable_cache(
 )
 ```
 
-- 2D/3D Parallelism + TE-P + VAE-P
+- 5D Parallelism: 2D/3D Transformer Parallelsim + TE-P + VAE-P
 
 ```python
 from cache_dit import ParallelismConfig

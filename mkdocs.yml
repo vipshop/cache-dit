@@ -62,8 +62,8 @@ nav:
       - DBCache Design: user_guide/DBCACHE_DESIGN.md
       - Context Parallelism: user_guide/CONTEXT_PARALLEL.md
       - Tensor Parallelism: user_guide/TENSOR_PARALLEL.md
-      - Hybrid CP(USP) and TP: user_guide/HYBRID_PARALLEL.md
       - Extra Modules Parallelism: user_guide/EXTRA_PARALLEL.md
+      - Hybrid 2D/3D/5D Parallelism: user_guide/HYBRID_PARALLEL.md
       - Low-Bits Quantization: user_guide/QUANTIZATION.md
       - Attention Backends: user_guide/ATTENTION.md
       - Use Torch Compile: user_guide/COMPILE.md

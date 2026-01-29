@@ -29,7 +29,7 @@
 - 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking) and more)
 - 🎉**Context Parallelism** (w/ Ulysses, Ring, **[USP](https://arxiv.org/pdf/2405.07719)**, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), FP8 Comm, ...)
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
-- 🎉**Hybrid 2D/3D Parallelism** ([**USP+TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/), Scale up the performance of **Large DiTs**!)
+- 🎉**Hybrid [2D/3D/5D](ttps://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) Parallelism** ([**USP+TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/)+..., Scale up the speed of **Large DiTs**!)
 - 🎉**Text Encoder Parallelism** (w/ PyTorch DTensor and Tensor Parallelism APIs)
 - 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
 - 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
@@ -48,7 +48,7 @@ You can install the cache-dit from PyPI or from source:
 ```bash
 pip3 install -U cache-dit # or, pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
-Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
+Then accelerate your DiTs with just **♥️one line♥️** of code ~  
 ```python
 >>> import cache_dit
 >>> from diffusers import DiffusionPipeline
@@ -56,16 +56,23 @@ Then try ♥️ Cache Acceleration with just **one line** of code ~ ♥️
 >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 >>> # Cache Acceleration with One-line code.
 >>> cache_dit.enable_cache(pipe)
->>> # Or, Hybrid Cache Acceleration + Context Parallelism.
+>>> # Or, Hybrid Cache Acceleration + 1D Parallelism.
 >>> from cache_dit import DBCacheConfig, ParallelismConfig
->>> parallelism_config=ParallelismConfig(ulysses_size=2)
->>> # Or, Hybrid Cache Acceleration + Hybrid Paralellism: CP + TP.
->>> parallelism_config=ParallelismConfig(ulysses_size=2, tp_size=2)
->>> cache_dit.enable_cache(pipe, DBCacheConfig(), parallelism_config)
+>>> cache_dit.enable_cache(
+...   pipe, cache_config=DBCacheConfig(), # w/ default
+...   parallelism_config=ParallelismConfig(ulysses_size=2))
+>>> # Or, Hybrid Cache Acceleration + 2D Parallelism.
+>>> cache_dit.enable_cache(
+...   pipe, cache_config=DBCacheConfig(), # w/ default
+...   parallelism_config=ParallelismConfig(ulysses_size=2, tp_size=2))
+>>> # Or, Use Distributed Inference without Cache Acceleration.
+>>> cache_dit.enable_cache(
+...   pipe, cache_config=None, # Set cache_config as None.
+...   parallelism_config=ParallelismConfig(ulysses_size=2))
 >>> from cache_dit import load_configs
 >>> # Or, Load Acceleration config from a custom yaml file.
 >>> cache_dit.enable_cache(pipe, **load_configs("config.yaml"))
->>> # Set custom attention backend for better performance.
+>>> # Optional, set attention backend for better performance.
 >>> cache_dit.set_attn_backend(pipe, attention_backend=...)
 >>> output = pipe(...) # Just call the pipe as normal.
 ```
