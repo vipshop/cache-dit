@@ -24,9 +24,9 @@
 - 🎉**Context Parallelism** (w/ Ulysses, Ring, **[USP](https://arxiv.org/pdf/2405.07719)**, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), FP8 Comm)
 - 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
 - 🎉**Hybrid [2D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) and [3D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) Parallelism** (Scale up the performance of [**💥Large DiTs**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/))
-- 🎉**Text Encoder Parallelism** (w/ PyTorch DTensor and Tensor Parallelism APIs)
-- 🎉**Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
-- 🎉**ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
+- 🎉**Text Encoder Parallelism** ([**TE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ PyTorch native Tensor Parallelism APIs)
+- 🎉**Auto Encoder Parallelism** ([**VAE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Tile Parallelism, faster, avoid OOM)
+- 🎉**ControlNet Parallelism** ([**CN-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Context Parallelism for ControlNet)
 - 🎉Built-in **HTTP serving** deployment support with simple REST APIs
 - 🎉**Natively** compatible with **Compile**, **Offloading**, **Quantization**, ...
 - 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
