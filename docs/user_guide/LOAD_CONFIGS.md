@@ -72,14 +72,15 @@ Then, apply the bybrid cache and parallel acceleration config from yaml.
 ## Quick Examples 
 
 ```bash
-pip3 install torch==2.9.1 transformers accelerate torchao bitsandbytes torchvision 
-pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
+# recommend: install latest stable release of torch for better compile compatiblity.
+pip3 install torch==2.10.0 torchvision --index-url https://download.pytorch.org/whl/nightly/cu129 --upgrade
+# recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
+pip3 install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu129
+pip3 install transformers accelerate bitsandbytes opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 
-git clone https://github.com/vipshop/cache-dit.git && cd examples
-
-python3 generate.py flux --config ./configs/cache.yaml
-torchrun --nproc_per_node=4 generate.py flux --config ./configs/parallel.yaml
-torchrun --nproc_per_node=4 generate.py flux --config ./configs/hybrid.yaml
+python3 -m cache_dit.generate flux --config cache.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
 ```
