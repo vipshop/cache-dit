@@ -1,6 +1,6 @@
-# Extra Modules Parallelism
+# TE-P, VAE-P and CN-P 
 
-## Parallelize Text Encoder
+## TE-P: Parallelize Text Encoder
 
 <div id="parallel-text-encoder"></div>
 
@@ -9,10 +9,8 @@ Users can set the `extra_parallel_modules` parameter in parallelism_config (when
 Currently, cache-dit supported text encoder parallelism for **T5Encoder, UMT5Encoder, Llama, Gemma 1/2/3, Mistral, Mistral-3, Qwen-3, Qwen-2.5 VL, Glm and Glm-4** model series, namely, supported almost **[🔥ALL](../supported_matrix/NVIDIA_GPU.md)** pipelines in diffusers.
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
-# Transformer Tensor Parallelism + Text Encoder Tensor Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),
@@ -24,7 +22,6 @@ cache_dit.enable_cache(
     ),
 )
 
-# Transformer Context Parallelism + Text Encoder Tensor Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),
@@ -35,45 +32,46 @@ cache_dit.enable_cache(
         },
     ),
 )
-# torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## Parallelize Auto Encoder (VAE)
+## VAE-P: Parallelize Auto Encoder
 
 <div id="parallel-auto-encoder"></div>
 
 Currently, cache-dit supported auto encoder (vae) parallelism for **AutoencoderKL, AutoencoderKLQwenImage, AutoencoderKLWan, and AutoencoderKLHunyuanVideo** series, namely, supported almost **[🔥ALL](../supported_matrix/NVIDIA_GPU.md)** pipelines in diffusers. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the auto encoder. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
-# Transformer Context Parallelism + Text Encoder Tensor Parallelism + VAE Data Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
         parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder, pipe.vae], # FLUX.1
+            "extra_parallel_modules": [pipe.vae],
         },
     ),
 )
-# torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
-## Parallelize ControlNet
+From the table below (Image Generation: FLUX.2-Klein-4B), it is clear that `Ulysses-4 + VAE-P-4` delivers higher throughput than `Ulysses-4` alone, while also significantly reducing the per-GPU memory usage thus can avoid OOM issues on low-VRAM devices. Furthermore, the image quality remains nearly identical between the two approaches while the inference speed is slightly improved with VAE parallelism.
+
+|FLUX.2-Klein-4B Ulysses-4|FLUX.2-Klein-4B Ulysses-4 + VAE-P-4|
+|:---:|:---:|
+|3.74s, 24.46GiB per GPU|🎉**3.37s, 17.34GiB per GPU**|
+|<img src="../assets/flux2_klein_4b.2048x2048_C0_Q0_NONE_Ulysses4.png" >|<img src="../assets/flux2_klein_4b.2048x2048_C0_Q0_NONE_Ulysses4_VAEP.png" >|
+
+
+## CN-P: Parallelize ControlNet
 
 <div id="parallel-controlnet"></div>
 
-Further, cache-dit even supported controlnet parallelism for specific models, such as Z-Image-Turbo with ControlNet. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
+Further, cache-dit even supported Controlnet Parallelism (CN-P) for specific models, such as Z-Image-Turbo with ControlNet. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
-# Transformer Context Parallelism + Text Encoder Tensor Parallelism 
-# + VAE Data Parallelism + ControlNet Context Parallelism
 cache_dit.enable_cache(
     pipe, 
     cache_config=DBCacheConfig(...),
@@ -81,9 +79,41 @@ cache_dit.enable_cache(
         ulysses_size=2,
         # case: Z-Image-Turbo-Fun-ControlNet-2.1
         parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder, pipe.vae, pipe.controlnet],
+            "extra_parallel_modules": [pipe.controlnet],
         },
     ),
 )
 # torchrun --nproc_per_node=2 parallel_cache.py
 ```
+
+## Hybrid TE-P + VAE-P + CN-P
+
+User can also combine the above techniques together to further reduce the per-GPU memory usage and improve the inference performance, for example:
+
+```python
+from cache_dit import DBCacheConfig, ParallelismConfig
+
+cache_dit.enable_cache(
+    pipe_or_adapter, 
+    cache_config=DBCacheConfig(...), # w/ Cache
+    parallelism_config=ParallelismConfig(
+        ulysses_size=4, tp_size=2, # 2D Parallelsim
+        # e.g, Z-Image-Turbo with ControlNet, we can also parallelize the 
+        # Text Encoder, VAE and ControlNet module to further reduce the 
+        # memory usage on low-VRAM devices.
+        parallel_kwargs={
+            "extra_parallel_modules": [
+                pipe.text_encoder, 
+                pipe.vae,
+                pipe.controlnet, # only support for Z-Image-Turbo currently
+            ], 
+        },
+    ),
+)
+```
+
+From the table below (Image Generation: FLUX.2-Klein-4B), it is clear that combining TE-P and VAE-P with Ulysses-4 (`Ulysses-4 + VAE-P-4 + TE-P-4`) results in a significant reduction in per-GPU memory usage compared to using Ulysses-4 alone. This combined approach not only minimizes memory consumption but also enhances inference speed, making it a highly efficient solution for deploying large diffusion models on devices with limited VRAM.
+
+|FLUX.2-Klein-4B Ulysses-4| Ulysses-4 + VAE-P-4|Ulysses-4 + TE-P-4|Ulysses-4 + VAE-P-4 + TE-P-4|
+|:---:|:---:|:---:|:---:|
+|24.46GiB per GPU| 🎉17.34GiB per GPU|🎉19.37GiB per GPU|🎉12.25GiB per GPU|

@@ -274,7 +274,7 @@ def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
             },
         ),
         input_data=ExampleInputData(
-            prompt="A cute cat holding a sign that says 'Hi Klein!'",
+            prompt="A cute cat sitting on the beach, watching the sunset.",
             height=1024,
             width=1024,
             num_inference_steps=num_inference_steps,
