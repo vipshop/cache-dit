@@ -1,4 +1,4 @@
-# Hybrid 2D/3D/5D Parallelism
+# Hybrid 2D/3D Parallelism
 
 ## Overviews
 
