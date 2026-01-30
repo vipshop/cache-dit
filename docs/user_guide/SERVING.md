@@ -46,6 +46,4 @@ curl -X POST \
 
 ## More Recipes
 
-For t2i / edit / t2v / i2v, LoRA, and multi-GPU launch examples, see:
-
-https://github.com/vipshop/cache-dit/tree/main/tests/serving
+For t2i / edit / t2v / i2v, LoRA, and multi-GPU launch examples, please refer to [tests/serving](https://github.com/vipshop/cache-dit/tree/main/tests/serving) for more details.

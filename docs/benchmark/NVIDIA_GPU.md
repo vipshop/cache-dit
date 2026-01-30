@@ -83,19 +83,19 @@
 |FLUX.1-dev: 50 steps |  9.30s |  6.04s | 5.99s  | 2.60s | 1.92s |
 |Qwen-Image: 50 steps | 18.49s  | 12.81s  | 12.75s  |  5.67s | 4.20s |
 
-Reproduce command:
+Reproduce commands:
 
-```shell
+```bash
 # FLUX.1-dev: 50 steps
-python3 generate.py flux --steps 50
-torchrun --nproc_per_node=2 generate.py flux --steps 50 --parallel ulysses
-torchrun --nproc_per_node=2 generate.py flux --steps 50 --parallel ulysses --attn _flash_3
-torchrun --nproc_per_node=2 generate.py flux --steps 50 --parallel ulysses --attn _flash_3 --cache
-torchrun --nproc_per_node=2 generate.py flux --steps 50 --parallel ulysses --attn _flash_3 --cache --compile
+python3 -m cache_dit.generate flux --steps 50
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses --attn _flash_3
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses --attn _flash_3 --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses --attn _flash_3 --cache --compile
 # Qwen-Image: 50 steps
 python3 generate.py qwen_image --steps 50
-torchrun --nproc_per_node=2 generate.py qwen_image --steps 50 --parallel ulysses
-torchrun --nproc_per_node=2 generate.py qwen_image --steps 50 --parallel ulysses --attn _flash_3
-torchrun --nproc_per_node=2 generate.py qwen_image --steps 50 --parallel ulysses --attn _flash_3 --cache
-torchrun --nproc_per_node=2 generate.py qwen_image --steps 50 --parallel ulysses --attn _flash_3 --cache --compile
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses --attn _flash_3
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses --attn _flash_3 --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses --attn _flash_3 --cache --compile
 ```

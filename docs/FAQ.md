@@ -53,8 +53,8 @@ If you encounter errors with `torch.compile` when running cache-dit examples, tr
    pip install --upgrade torch torchvision
    ```
 
-3. **If the issue persists:**
-   Please [open an issue](https://github.com/vipshop/cache-dit/issues) with:
+3. **If the issue persists:**  
+   Please [open an issue](https://github.com/vipshop/cache-dit/issues) with:  
    - Your PyTorch version (`python -c "import torch; print(torch.__version__)"`)
    - The complete error traceback
    - Your system configuration (GPU model, CUDA version, etc.)
@@ -63,9 +63,7 @@ If you encounter errors with `torch.compile` when running cache-dit examples, tr
 
 ### Which attention backend should I use?
 
-Cache-DiT supports multiple attention backends for different use cases. For a complete overview of attention backends in diffusers, see the [official documentation](https://github.com/huggingface/diffusers/blob/main/docs/source/en/optimization/attention_backends.md).
-
-Currently supported backends in cache-dit (see [`examples/utils.py#L126`](https://github.com/vipshop/cache-dit/blob/main/examples/utils.py#L126)):
+Cache-DiT supports multiple attention backends for different use cases. For a complete overview of attention backends in diffusers, see the [Attention Backends](./user_guide/ATTENTION.md). The main attention backends supported by cache-dit are:  
 
 - **`flash`**: Flash Attention 2 - Good performance on Ampere/Ada GPUs
 - **`_flash_3`**: Flash Attention 3 - Best for Hopper architecture GPUs (H100, H200)
@@ -74,7 +72,8 @@ Currently supported backends in cache-dit (see [`examples/utils.py#L126`](https:
 - **`_sdpa_cudnn`**: SDPA with cuDNN (cache-dit specific, supports context parallelism with attention masks)
 - **`sage`**: Sage Attention - Good balance between performance and compatibility
 
-**Recommendation:**
+**Recommendation:**  
+
 - **H100/H200**: Use `_flash_3` for best performance
 - **A100/A6000**: Use `flash` or `sage`
 - **Other GPUs**: Use `native` or `sage`
@@ -82,7 +81,8 @@ Currently supported backends in cache-dit (see [`examples/utils.py#L126`](https:
 
 ## Other Questions
 
-For other questions or issues not covered here, please:
+For other questions or issues not covered here, please:  
+
 1. Check the [documentation](https://cache-dit.readthedocs.io/en/latest/)
 2. Search [existing issues](https://github.com/vipshop/cache-dit/issues)
 3. [Open a new issue](https://github.com/vipshop/cache-dit/issues/new) if needed
