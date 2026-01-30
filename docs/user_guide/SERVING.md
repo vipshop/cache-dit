@@ -1,8 +1,6 @@
 # Cache-DiT Serving
 
-HTTP serving for diffusion models with cache-dit acceleration. Supports **text-to-image**, **image editing**, **multi-image editing**, **text-to-video**, and **image-to-video** generation.
-
-Adapted from [SGLang](https://github.com/sgl-project/sglang).
+HTTP serving for diffusion models with cache-dit acceleration. Supports **text-to-image**, **image editing**, **multi-image editing**, **text-to-video**, and **image-to-video** generation. Adapted from [SGLang](https://github.com/sgl-project/sglang).
 
 ## Supported Tasks
 
