@@ -6,7 +6,7 @@ Please make sure you have install and initialize pre-commit before adding any ne
 
 In order to support cache acceleration for new model, we have to register it's BlockAdapter at [caching/block_adapters/adapter.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/adapters.py) and use `_safe_import` func to import it at [caching/block_adapters/\_\_init\_\_.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/__init__.py). For example:
 
-- step 1: Implement the `qwenimage_adapter` at [caching/block_adapters/adapter.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/adapters.py)
+- step 1: Implement the `qwenimage_adapter` at [caching/block_adapters/adapters.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/adapters.py)
 
 ```python
 @BlockAdapterRegister.register("QwenImage")
@@ -72,4 +72,4 @@ In order to support auto encoder (VAE) data parallelism for new model, we have t
 
 ## Examples and Tests
 
-Once the acceleration support for the new model is completed, we should add the new models to the [Examples](https://github.com/vipshop/cache-dit/blob/main/examples) and perform the necessary tests.
+Once the acceleration support for the new model is completed, we should add the new models to the [Examples](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/_utils/examples.py) and perform the necessary tests.
