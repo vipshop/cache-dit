@@ -60,7 +60,7 @@ From the table below (Image Generation: FLUX.2-Klein-4B), it is clear that `Ulys
 |FLUX.2-Klein-4B Ulysses-4|FLUX.2-Klein-4B Ulysses-4 + VAE-P-4|
 |:---:|:---:|
 |3.74s, 24.46GiB per GPU|🎉**3.37s, 17.34GiB per GPU**|
-|<img src="../assets/flux2_klein_4b.2048x2048_C0_Q0_NONE_Ulysses4.png" >|<img src="../assets/flux2_klein_4b.2048x2048_C0_Q0_NONE_Ulysses4_VAEP.png" >|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux2_klein_4b.2048x2048_C0_Q0_NONE_Ulysses4.png" >|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux2_klein_4b.2048x2048_C0_Q0_NONE_Ulysses4_VAEP.png" >|
 
 
 ## CN-P: Parallelize ControlNet
