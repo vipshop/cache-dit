@@ -123,5 +123,5 @@ python3 -m cache_dit.generate flux --config cache.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml
-torchrun --nproc_per_node=8 -m cache_dit.generate flux --config parallel.yaml
+torchrun --nproc_per_node=8 -m cache_dit.generate flux --config parallel_3d.yaml
 ```
