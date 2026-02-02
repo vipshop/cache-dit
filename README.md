@@ -34,7 +34,8 @@
    
 ## 🔥Latest News 
 
-- [2026/01] **[🎉v1.2.0 Major Release](https://github.com/vipshop/cache-dit)** is ready: New Models Support(Z-Image, FLUX.2, LTX-2, etc), Request level Cache Context, HTTP Serving, [Ulysses Anything](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), TE-P, VAE-P, CN-P and [Ascend NPUs](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
+- [2026/02] **[🎉v1.2.1](https://github.com/vipshop/cache-dit)** release is ready, the major updates including: [Ring](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL) Attention w/ batched P2P, [USP](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (Hybrid Ring and Ulysses), Hybrid 2D and 3D Parallelism (💥[USP + TP](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/)), VAE-P Comm overhead reduce.
+- [2026/01] **[🎉v1.2.0](https://github.com/vipshop/cache-dit)** stable release is ready: New Models Support(Z-Image, FLUX.2, LTX-2, etc), Request level Cache Context, HTTP Serving, [Ulysses Anything](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), TE-P, VAE-P, CN-P and [Ascend NPUs](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) Support.
 
 ## 🚀Quick Start 
 
@@ -55,14 +56,13 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> cache_dit.enable_cache(
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2))
+>>> # Or, Use Distributed Inference without Cache Acceleration.
+>>> cache_dit.enable_cache(
+...   pipe, parallelism_config=ParallelismConfig(ulysses_size=2))
 >>> # Or, Hybrid Cache Acceleration + 2D Parallelism.
 >>> cache_dit.enable_cache(
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2, tp_size=2))
->>> # Or, Use Distributed Inference without Cache Acceleration.
->>> cache_dit.enable_cache(
-...   pipe, cache_config=None, # Set cache_config as None.
-...   parallelism_config=ParallelismConfig(ulysses_size=2))
 >>> from cache_dit import load_configs
 >>> # Or, Load Acceleration config from a custom yaml file.
 >>> cache_dit.enable_cache(pipe, **load_configs("config.yaml"))
