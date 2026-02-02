@@ -134,11 +134,15 @@ def _maybe_set_module_attention_backend(
             # NOTE: We only set default attention backend for NATIVE_DIFFUSER backend here
             # while using context parallelism. For other backends, we do not change the
             # attention backend if it is None.
-            if parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
+            if (
+                parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER
+                or parallelism_config.backend == ParallelismBackend.NATIVE_HYBRID
+            ):
                 module.set_attention_backend("native")
                 logger.warning(
                     "attention_backend is None, set default attention backend of "
-                    f"{module_cls_name} to native for context parallelism."
+                    f"{module_cls_name} to native for context parallelism or "
+                    "hybrid parallelism."
                 )
         else:
             # Ensure custom attention backends are registered in cache-dit.

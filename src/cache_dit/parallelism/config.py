@@ -78,7 +78,7 @@ class ParallelismConfig:
         if self.backend == ParallelismBackend.AUTO:
             # Auto select the backend based on the parallelism configuration
             if self.hybrid_enabled():
-                self.backend = ParallelismBackend.HYBRID
+                self.backend = ParallelismBackend.NATIVE_HYBRID
             elif self.cp_enabled() or self.usp_enabled():
                 self.backend = ParallelismBackend.NATIVE_DIFFUSER
             elif self.tp_enabled():
@@ -107,8 +107,8 @@ class ParallelismConfig:
         # Validate the parallelism configuration and auto adjust the backend if needed
         if self.hybrid_enabled():
             assert (
-                self.backend == ParallelismBackend.HYBRID
-            ), "Hybrid parallelism requires the backend to be HYBRID."
+                self.backend == ParallelismBackend.NATIVE_HYBRID
+            ), "Hybrid parallelism requires the backend to be NATIVE_HYBRID."
         elif self.cp_enabled() or self.usp_enabled():
             assert (
                 self.backend == ParallelismBackend.NATIVE_DIFFUSER
@@ -125,7 +125,27 @@ class ParallelismConfig:
 
         if self.hybrid_enabled():
             _patch_modelmixin_for_hybrid_parallelism()
-            self._maybe_init_hybrid_meshes()
+            try:
+                self._maybe_init_hybrid_meshes()
+            except Exception as e:
+                # Required: https://github.com/pytorch/pytorch/pull/158899/changes#diff-dbbed99b01763453143e50565b636cb37f8f693aefaf18b57d621781114ed1b7
+                # Related issue: https://github.com/pytorch/pytorch/issues/159013
+                # The hybrid 3D parallelism scheme in cache-dit is:
+                # [ring, ulysses, tp] -> slice to [ring, ulysses] + [tp] -> pass [ring, ulysses] to diffusers CP backend,
+                # then diffusers CP backend will slice [ring] and [ulysses] from the submesh [ring, ulysses]
+                # (namely, [ring, ulysses][ring] -> ring mesh, [ring, ulysses][ulysses] -> ulysses mesh) for
+                # ring and ulysses parallelism. However, in older PyTorch versions, creating a submesh from
+                # a submesh is not supported, which will raise the error "Cannot create a submesh from a submesh".
+                # Here we catch this specific error and provide a more user-friendly message.
+                err_msg = str(e)
+                hit_msg = "Cannot create a submesh from a submesh"
+                if hit_msg in err_msg:
+                    err_msg += (
+                        "\nThis is likely due to using an older version of PyTorch that does not "
+                        "support creating submeshes from submeshes. Please upgrade to PyTorch "
+                        "2.10.0 or later."
+                    )
+                raise RuntimeError(err_msg) from e
 
     def _maybe_init_hybrid_meshes(self):
         if self._mesh is not None or not self.hybrid_enabled():

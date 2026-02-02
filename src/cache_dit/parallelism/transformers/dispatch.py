@@ -24,7 +24,7 @@ def maybe_enable_parallelism_for_transformer(
         return transformer
 
     # Currently, we can dispatch the parallelism based on the backend type.
-    if parallelism_config.backend == ParallelismBackend.HYBRID:
+    if parallelism_config.backend == ParallelismBackend.NATIVE_HYBRID:
         return maybe_enable_hybrid_parallelism_for_transformer(
             transformer=transformer,
             parallelism_config=parallelism_config,
@@ -88,10 +88,10 @@ def maybe_enable_context_parallelism_for_transformer(
     # Ensure the backend is correct, NAITIVE_DIFFUSER or HYBRID
     assert parallelism_config.backend in (
         ParallelismBackend.NATIVE_DIFFUSER,
-        ParallelismBackend.HYBRID,
+        ParallelismBackend.NATIVE_HYBRID,
     ), (
         "parallelism_config.backend must be ParallelismBackend.NATIVE_DIFFUSER "
-        f"or ParallelismBackend.HYBRID but got {parallelism_config.backend}"
+        f"or ParallelismBackend.NATIVE_HYBRID but got {parallelism_config.backend}"
     )
 
     if parallelism_config.cp_enabled() or parallelism_config.hybrid_enabled():
@@ -132,10 +132,10 @@ def maybe_enable_tensor_parallelism_for_transformer(
     # Ensure the backend is correct, NATIVE_PYTORCH or HYBRID
     assert parallelism_config.backend in (
         ParallelismBackend.NATIVE_PYTORCH,
-        ParallelismBackend.HYBRID,
+        ParallelismBackend.NATIVE_HYBRID,
     ), (
         "parallelism_config.backend must be ParallelismBackend.NATIVE_PYTORCH "
-        f"or ParallelismBackend.HYBRID but got {parallelism_config.backend}"
+        f"or ParallelismBackend.NATIVE_HYBRID but got {parallelism_config.backend}"
     )
 
     assert isinstance(parallelism_config, ParallelismConfig), (

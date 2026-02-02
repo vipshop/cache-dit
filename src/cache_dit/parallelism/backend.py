@@ -20,7 +20,7 @@ class ParallelismBackend(Enum):
     AUTO = "Auto"
     NATIVE_DIFFUSER = "Native_Diffuser"  # CP/SP
     NATIVE_PYTORCH = "Native_PyTorch"  # TP or DP
-    HYBRID = "Hybrid"  # CP/SP + TP
+    NATIVE_HYBRID = "Native_Hybrid"  # CP/SP + TP
     NONE = "None"
 
     @classmethod
@@ -31,7 +31,7 @@ class ParallelismBackend(Enum):
             return True
         elif backend == cls.NATIVE_DIFFUSER:
             return _check_diffusers_cp_support()
-        elif backend == cls.HYBRID:
+        elif backend == cls.NATIVE_HYBRID:
             return _check_diffusers_cp_support()
         elif backend == cls.NONE:
             raise ValueError("ParallelismBackend.NONE is not a valid backend")
