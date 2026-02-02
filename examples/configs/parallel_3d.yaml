@@ -1,0 +1,7 @@
+parallelism_config:
+  ulysses_size: 2
+  ring_size: 2
+  tp_size: 2
+  parallel_kwargs:
+    attention_backend: native
+    extra_parallel_modules: ["text_encoder", "vae"]
