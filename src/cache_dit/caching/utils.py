@@ -225,7 +225,9 @@ def load_parallelism_config(
         backend_str = parallelism_config_kwargs["backend"]
         parallelism_config_kwargs["backend"] = ParallelismBackend.from_str(backend_str)
 
-    def _maybe_auto_parallel_size(size: str | int | None) -> Optional[int]:
+    def _maybe_auto_parallel_size(
+        size: str | int | None, partial_max_size: Optional[int] = None
+    ) -> Optional[int]:
         if size is None:
             return None
         if isinstance(size, int):
@@ -236,7 +238,11 @@ def load_parallelism_config(
             size = 1
             if dist.is_initialized():
                 # Assume world size is the parallel size
-                size = dist.get_world_size()
+                world_size = dist.get_world_size()
+                if partial_max_size is not None:
+                    size = world_size // partial_max_size
+                else:
+                    size = world_size
             if size == 1:
                 logger.warning(
                     "Auto parallel size selected as 1. Make sure to run with torch.distributed "
@@ -247,19 +253,39 @@ def load_parallelism_config(
             return size
         raise ValueError(f"Invalid parallel size value: {size}. Must be int or 'auto'.")
 
+    def _maybe_auto_parallel_sizes(parallelism_config_kwargs: dict) -> dict:
+        # Only allow one of the parallel size to be auto for simplicity
+        auto_count = sum(
+            1
+            for key in ["ulysses_size", "ring_size", "tp_size"]
+            if key in parallelism_config_kwargs and parallelism_config_kwargs[key] == "auto"
+        )
+        if auto_count > 1:
+            raise ValueError(
+                "Only one of 'ulysses_size', 'ring_size', or 'tp_size' can be set to 'auto'."
+            )
+
+        ulysses_size = parallelism_config_kwargs.get("ulysses_size", 1)
+        ring_size = parallelism_config_kwargs.get("ring_size", 1)
+        tp_size = parallelism_config_kwargs.get("tp_size", 1)
+        partial_max_size = None
+        if isinstance(ulysses_size, str) and ulysses_size.lower() == "auto":
+            partial_max_size = ring_size * tp_size
+        elif isinstance(ring_size, str) and ring_size.lower() == "auto":
+            partial_max_size = ulysses_size * tp_size
+        elif isinstance(tp_size, str) and tp_size.lower() == "auto":
+            partial_max_size = ulysses_size * ring_size
+
+        for key in ["ulysses_size", "ring_size", "tp_size"]:
+            if key in parallelism_config_kwargs:
+                parallelism_config_kwargs[key] = _maybe_auto_parallel_size(
+                    parallelism_config_kwargs[key], partial_max_size=partial_max_size
+                )
+        return parallelism_config_kwargs
+
     if kwargs.get("auto_parallel_size", True):
-        if "ulysses_size" in parallelism_config_kwargs:
-            parallelism_config_kwargs["ulysses_size"] = _maybe_auto_parallel_size(
-                parallelism_config_kwargs["ulysses_size"]
-            )
-        if "ring_size" in parallelism_config_kwargs:
-            parallelism_config_kwargs["ring_size"] = _maybe_auto_parallel_size(
-                parallelism_config_kwargs["ring_size"]
-            )
-        if "tp_size" in parallelism_config_kwargs:
-            parallelism_config_kwargs["tp_size"] = _maybe_auto_parallel_size(
-                parallelism_config_kwargs["tp_size"]
-            )
+
+        parallelism_config_kwargs = _maybe_auto_parallel_sizes(parallelism_config_kwargs)
 
     parallelism_config = ParallelismConfig(**parallelism_config_kwargs)
     return parallelism_config
