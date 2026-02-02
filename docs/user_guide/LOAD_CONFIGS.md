@@ -27,6 +27,8 @@ Then, apply the acceleration config from yaml.
 
 ## Distributed inference  
 
+- 1D Parallelism
+
 Define a parallelism only config yaml `parallel.yaml` file that contains:
 
 ```yaml
@@ -40,6 +42,43 @@ Then, apply the distributed inference acceleration config from yaml. `ulysses_si
 ```python
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
+```
+
+- 2D Parallelism
+
+You can also define a 2D parallelism config yaml `parallel_2d.yaml` file that contains:
+
+```yaml
+parallelism_config:
+  ulysses_size: auto
+  tp_size: 2
+  parallel_kwargs:
+    attention_backend: native
+    extra_parallel_modules: ["text_encoder", "vae"]
+```
+Then, apply the 2D parallelism config from yaml. Here `tp_size: 2` means using tensor parallelism with size 2. The `ulysses_size: auto` means that cache-dit will auto detect the `world_size // tp_size` as the ulysses_size.
+```python
+>>> import cache_dit
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_2d.yaml"))
+```
+
+- 3D Parallelism
+
+You can also define a 3D parallelism config yaml `parallel_3d.yaml` file that contains:
+
+```yaml
+parallelism_config:
+  ulysses_size: 2
+  ring_size: 2
+  tp_size: 2
+  parallel_kwargs:
+    attention_backend: native
+    extra_parallel_modules: ["text_encoder", "vae"]
+```
+Then, apply the 3D parallelism config from yaml. Here `ulysses_size: 2`, `ring_size: 2`, `tp_size: 2` means using ulysses parallelism with size 2, ring parallelism with size 2 and tensor parallelism with size 2.
+```python
+>>> import cache_dit
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_3d.yaml"))
 ```
 
 ## Hybrid Cache and Parallelism
@@ -81,6 +120,8 @@ pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.3
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 
 python3 -m cache_dit.generate flux --config cache.yaml
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml
+torchrun --nproc_per_node=8 -m cache_dit.generate flux --config parallel.yaml
 ```
