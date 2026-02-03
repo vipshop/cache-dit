@@ -82,7 +82,8 @@ def _enable_parallelism_ext(
 
             processor = module.processor
             if processor is None or not hasattr(processor, "_attention_backend"):
-                continue
+                # Auto attach the _attention_backend attribute if not present
+                processor._attention_backend = None
 
             attention_backend = processor._attention_backend
             if attention_backend is None:
@@ -116,6 +117,8 @@ def _enable_parallelism_ext(
             )
             config.setup(rank, world_size, device, mesh=mesh)
 
+    # Will auto attach the _parallel_config attribute to the model
+    # if not present implicitly by python's dynamic attr setting.
     model._parallel_config = config  # type: ignore[attr-defined]
 
     for module in model.modules():
