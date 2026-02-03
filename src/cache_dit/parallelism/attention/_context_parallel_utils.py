@@ -124,9 +124,11 @@ def _enable_parallelism_ext(
     for module in model.modules():
         if not isinstance(module, attention_classes):
             continue
+
         processor = module.processor
         if processor is None or not hasattr(processor, "_parallel_config"):
-            continue
+            # Auto attach the _parallel_config attribute if not present
+            processor._parallel_config = None
         processor._parallel_config = config
 
     if config.context_parallel_config is not None:
