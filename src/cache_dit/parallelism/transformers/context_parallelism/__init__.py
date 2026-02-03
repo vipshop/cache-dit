@@ -8,6 +8,7 @@ from cache_dit.logger import init_logger
 try:
     from ...attention import (
         _ExtendedContextParallelConfig,
+        _enable_parallelism_ext,
         _maybe_register_custom_attn_backends,
         _is_diffusers_parallelism_available,
         enable_ulysses_anything,
@@ -71,24 +72,19 @@ def maybe_enable_context_parallelism(
         if parallel_kwargs.get("experimental_ulysses_float8", False):
             enable_ulysses_float8()
 
-        if hasattr(transformer, "enable_parallelism"):
-            # Prefer custom cp_plan if provided
-            cp_plan = parallel_kwargs.get("cp_plan", None)
-            if cp_plan is not None:
-                logger.info(f"Using custom context parallelism plan: {cp_plan}")
-            else:
-                # Try get context parallelism plan from register if not provided
-                extra_parallel_kwargs = parallel_kwargs or {}
-                cp_plan = ContextParallelismPlannerRegister.get_planner(transformer)().apply(
-                    transformer=transformer, **extra_parallel_kwargs
-                )
-
-            transformer.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-            _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
+        # Prefer custom cp_plan if provided
+        cp_plan = parallel_kwargs.get("cp_plan", None)
+        if cp_plan is not None:
+            logger.info(f"Using custom context parallelism plan: {cp_plan}")
         else:
-            raise ValueError(
-                f"{transformer.__class__.__name__} does not support context parallelism."
+            # Try get context parallelism plan from register if not provided
+            extra_parallel_kwargs = parallel_kwargs or {}
+            cp_plan = ContextParallelismPlannerRegister.get_planner(transformer)().apply(
+                transformer=transformer, **extra_parallel_kwargs
             )
+
+            _enable_parallelism_ext(transformer, config=cp_config, cp_plan=cp_plan)
+            _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
 
     return transformer
 
