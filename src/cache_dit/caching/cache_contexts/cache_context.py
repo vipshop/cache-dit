@@ -149,7 +149,7 @@ class CachedContext:
                     self.executed_steps += 1
             else:
                 if self.is_separate_cfg_step():
-                    # transformer step: 0,2,4,...
+                    # transformer step: 1,3,5,...
                     self.executed_steps += 1
 
         # Reset the cached steps and residual diffs at the beginning
@@ -269,6 +269,9 @@ class CachedContext:
 
     def get_current_transformer_step(self):
         return self.transformer_executed_steps - 1
+
+    def get_force_refresh_step_hint(self) -> Optional[int]:
+        return self.cache_config.force_refresh_step_hint
 
     def is_separate_cfg_step(self):
         if not self.cache_config.enable_separate_cfg:

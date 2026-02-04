@@ -94,6 +94,18 @@ class CachedContextManager:
                         f"num_inference_steps: {num_inference_steps}."
                     )
                 return True
+
+        force_refresh_step_hint = _context.get_force_refresh_step_hint()
+        if force_refresh_step_hint is not None:
+            current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
+            if current_step == force_refresh_step_hint:
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        f"Force refreshing cache context '{_context.name}' "
+                        f"at step: {current_step} as force_refresh_step_hint is set to {force_refresh_step_hint}."
+                    )
+                return True
+
         return False
 
     @torch.compiler.disable
@@ -254,6 +266,12 @@ class CachedContextManager:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.get_current_transformer_step()
+
+    @torch.compiler.disable
+    def get_force_refresh_step_hint(self) -> Optional[int]:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.get_force_refresh_step_hint()
 
     @torch.compiler.disable
     def get_cached_steps(self) -> List[int]:

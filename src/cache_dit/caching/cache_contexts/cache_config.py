@@ -78,6 +78,14 @@ class BasicCacheConfig:
     #     "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
     #     in steps_computation_mask, while "static" means using static cache for those steps.
     steps_computation_policy: str = "dynamic"  # "dynamic" or "static"
+    # force_refresh_step_hint (`int`, *optional*, defaults to None):
+    #     The step index hint to force refresh the cache. If provided, the cache will be
+    #     refreshed at the beginning of this step. This is useful for some cases where the
+    #     input condition changes significantly at a certain step. Default None means no
+    #     force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25
+    #     will refresh the cache before executing step 25 and view the remaining 25 steps as a
+    #     new inference context.
+    force_refresh_step_hint: Optional[int] = None
 
     def update(self, **kwargs) -> "BasicCacheConfig":
         for key, value in kwargs.items():
@@ -119,6 +127,9 @@ class BasicCacheConfig:
 
         if self.num_inference_steps is not None:
             base_str += f"_N{self.num_inference_steps}"
+
+        if self.force_refresh_step_hint is not None:
+            base_str += f"_FR{self.force_refresh_step_hint}"
 
         if self.enable_separate_cfg is not None:
             base_str += f"_CFG{int(self.enable_separate_cfg)}"

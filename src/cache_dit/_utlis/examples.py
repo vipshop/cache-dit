@@ -42,6 +42,7 @@ __all__ = [
     "zimage_controlnet_example",
     "longcat_image_example",
     "longcat_image_edit_example",
+    "glm_image_example",
 ]
 
 
@@ -81,6 +82,7 @@ _env_path_mapping = {
     "Z_IMAGE_TURBO_CONTROLNET_2_0_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
+    "GLM_IMAGE_DIR": "zai-org/GLM-Image",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
@@ -1277,5 +1279,30 @@ def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             num_inference_steps=50,
             guidance_scale=4.5,
             image=image,
+        ),
+    )
+
+
+@ExampleRegister.register("glm_image", default="zai-org/GLM-Image")
+def glm_image_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import GlmImagePipeline
+
+    force_refresh_step_hint = None  # Set to 1 if the 'image' parameter is used in input_data
+
+    model_name_or_path = _path("zai-org/GLM-Image", args=args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=model_name_or_path,
+            pipeline_class=GlmImagePipeline,
+            bnb_4bit_components=["vision_language_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "force_refresh_step_hint": force_refresh_step_hint,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="A photo of an astronaut riding a horse on mars",
+            num_inference_steps=50,
         ),
     )
