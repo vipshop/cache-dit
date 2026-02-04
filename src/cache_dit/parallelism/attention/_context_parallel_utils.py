@@ -46,7 +46,7 @@ def _enable_context_parallelism_ext(
     cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
     attn_classes_extra: Optional[tuple] = None,
 ):
-    logger.info("Dispatch parallelism using _enable_parallelism_ext in cache-dit.")
+    logger.debug("Dispatch parallelism using the extended context parallelism api in cache-dit.")
 
     if not torch.distributed.is_available() and not torch.distributed.is_initialized():
         raise RuntimeError(
