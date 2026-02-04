@@ -190,7 +190,7 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
                 scale,
                 enable_gqa,
                 True,  # return_lse
-                _save_ctx=step == 0,
+                _save_ctx=False,  # Only support forward pass here, no need to save ctx
                 _parallel_config=_parallel_config,
             )
 
