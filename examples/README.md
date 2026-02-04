@@ -77,6 +77,7 @@ python3 -m cache_dit.generate list  # list all available examples
 [generate.py:48] - ✅ zimage_turbo_controlnet_2.1    - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
 [generate.py:48] - ✅ longcat_image                  - Defalut: meituan-longcat/LongCat-Image
 [generate.py:48] - ✅ longcat_image_edit             - Defalut: meituan-longcat/LongCat-Image-Edit
+[generate.py:48] - ✅ glm_image                      - Defalut: zai-org/GLM-Image
 ```
 
 ## Single GPU Inference
