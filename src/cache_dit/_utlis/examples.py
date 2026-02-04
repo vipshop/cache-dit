@@ -1304,5 +1304,7 @@ def glm_image_example(args: argparse.Namespace, **kwargs) -> Example:
         input_data=ExampleInputData(
             prompt="A photo of an astronaut riding a horse on mars",
             num_inference_steps=50,
+            height=1024,
+            width=1024,
         ),
     )
