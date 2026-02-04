@@ -8,6 +8,7 @@ from cache_dit.logger import init_logger
 try:
     from ...attention import (
         _ExtendedContextParallelConfig,
+        _enable_context_parallelism_ext,
         _maybe_register_custom_attn_backends,
         _is_diffusers_parallelism_available,
         enable_ulysses_anything,
@@ -64,23 +65,17 @@ def maybe_enable_context_parallelism(
         if parallel_kwargs.get("experimental_ulysses_float8", False):
             enable_ulysses_float8()
 
-        if hasattr(controlnet, "enable_parallelism"):
-            # Prefer custom cp_plan if provided
-            cp_plan = parallel_kwargs.get("cp_plan", None)
-            if cp_plan is not None:
-                logger.info(f"Using custom context parallelism plan: {cp_plan}")
-            else:
-                # Try get context parallelism plan from register if not provided
-                extra_parallel_kwargs = parallel_kwargs or {}
-                cp_plan = ControlNetContextParallelismPlannerRegister.get_planner(
-                    controlnet
-                )().apply(controlnet=controlnet, **extra_parallel_kwargs)
-
-            controlnet.enable_parallelism(config=cp_config, cp_plan=cp_plan)
-
+        # Prefer custom cp_plan if provided
+        cp_plan = parallel_kwargs.get("cp_plan", None)
+        if cp_plan is not None:
+            logger.info(f"Using custom context parallelism plan: {cp_plan}")
         else:
-            raise ValueError(
-                f"{controlnet.__class__.__name__} does not support context parallelism."
+            # Try get context parallelism plan from register if not provided
+            extra_parallel_kwargs = parallel_kwargs or {}
+            cp_plan = ControlNetContextParallelismPlannerRegister.get_planner(controlnet)().apply(
+                controlnet=controlnet, **extra_parallel_kwargs
             )
+
+            _enable_context_parallelism_ext(controlnet, config=cp_config, cp_plan=cp_plan)
 
     return controlnet
