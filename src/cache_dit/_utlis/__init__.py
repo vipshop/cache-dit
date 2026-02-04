@@ -32,6 +32,7 @@ def _safe_import(module_name: str, func_name: str) -> Callable[..., Example]:
 flux_example = _safe_import(".examples", "flux_example")
 flux_fill_example = _safe_import(".examples", "flux_fill_example")
 flux2_klein_example = _safe_import(".examples", "flux2_klein_example")
+flux2_klein_edit_example = _safe_import(".examples", "flux2_klein_edit_example")
 flux2_example = _safe_import(".examples", "flux2_example")
 qwen_image_example = _safe_import(".examples", "qwen_image_example")
 qwen_image_controlnet_example = _safe_import(".examples", "qwen_image_controlnet_example")

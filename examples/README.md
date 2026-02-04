@@ -47,6 +47,10 @@ python3 -m cache_dit.generate list  # list all available examples
 [generate.py:48] - ✅ flux2_klein_base_4b            - Defalut: black-forest-labs/FLUX.2-klein-base-4B
 [generate.py:48] - ✅ flux2_klein_9b                 - Defalut: black-forest-labs/FLUX.2-klein-9B
 [generate.py:48] - ✅ flux2_klein_4b                 - Defalut: black-forest-labs/FLUX.2-klein-4B
+[generate.py:48] - ✅ flux2_klein_base_9b_edit       - Defalut: black-forest-labs/FLUX.2-klein-base-9B
+[generate.py:48] - ✅ flux2_klein_base_4b_edit       - Defalut: black-forest-labs/FLUX.2-klein-base-4B
+[generate.py:48] - ✅ flux2_klein_9b_edit            - Defalut: black-forest-labs/FLUX.2-klein-9B
+[generate.py:48] - ✅ flux2_klein_4b_edit            - Defalut: black-forest-labs/FLUX.2-klein-4B
 [generate.py:48] - ✅ qwen_image_lightning           - Defalut: lightx2v/Qwen-Image-Lightning
 [generate.py:48] - ✅ qwen_image_2512                - Defalut: Qwen/Qwen-Image-2512
 [generate.py:48] - ✅ qwen_image                     - Defalut: Qwen/Qwen-Image

@@ -26,6 +26,7 @@ __all__ = [
     "flux_fill_example",
     "flux2_example",
     "flux2_klein_example",
+    "flux2_klein_edit_example",
     "qwen_image_example",
     "qwen_image_controlnet_example",
     "qwen_image_edit_example",
@@ -279,6 +280,72 @@ def flux2_klein_example(args: argparse.Namespace, **kwargs) -> Example:
             width=1024,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
+        ),
+    )
+
+
+@ExampleRegister.register("flux2_klein_4b_edit", default="black-forest-labs/FLUX.2-klein-4B")
+@ExampleRegister.register("flux2_klein_9b_edit", default="black-forest-labs/FLUX.2-klein-9B")
+@ExampleRegister.register(
+    "flux2_klein_base_4b_edit", default="black-forest-labs/FLUX.2-klein-base-4B"
+)
+@ExampleRegister.register(
+    "flux2_klein_base_9b_edit", default="black-forest-labs/FLUX.2-klein-base-9B"
+)
+def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import Flux2KleinPipeline
+
+    # cfg: guidance_scale > 1 and not is_distilled
+    if "base" in args.example.lower():
+        num_inference_steps = 50
+        guidance_scale = 4.0  # typical cfg for base model
+        enable_separate_cfg = True
+        if "4b" in args.example.lower():
+            model_path = _path("black-forest-labs/FLUX.2-klein-base-4B")
+        else:
+            model_path = _path("black-forest-labs/FLUX.2-klein-base-9B")
+    else:
+        num_inference_steps = 4
+        guidance_scale = 1.0  # no cfg for klein
+        enable_separate_cfg = False
+        if "4b" in args.example.lower():
+            model_path = _path("black-forest-labs/FLUX.2-klein-4B")
+        else:
+            model_path = _path("black-forest-labs/FLUX.2-klein-9B")
+
+    height = 1024 if args.height is None else args.height
+    width = 1024 if args.width is None else args.width
+    image1 = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg"
+    )  # bear
+    image2 = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg"
+    )  # cloth
+    # resize images to desired size
+    image1 = image1.resize((width, height))
+    image2 = image2.resize((width, height))
+
+    params_modifiers = _flux2_params_modifiers(args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=model_path,
+            pipeline_class=Flux2KleinPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            # Extra init args for DBCacheConfig, ParamsModifier, etc.
+            extra_optimize_kwargs={
+                "params_modifiers": params_modifiers,
+                "enable_separate_cfg": enable_separate_cfg,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="A cute bear wearing this clothing, sitting on the beach, watching the sunset.",
+            height=height,
+            width=width,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            image=[image1, image2],
         ),
     )
 
