@@ -1,5 +1,8 @@
 from cache_dit.envs import ENV
-from ._context_parallel_utils import _ExtendedContextParallelConfig, _enable_context_parallelism_ext
+from ._context_parallel_utils import (
+    _ExtendedContextParallelConfig,
+    _enable_context_parallelism_ext,
+)
 from ._distributed_primitives import (
     _unified_all_to_all_o_async_fn,
     _unified_all_to_all_qkv_async_fn,
