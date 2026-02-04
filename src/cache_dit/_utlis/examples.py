@@ -317,8 +317,10 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     width = 1024 if args.width is None else args.width
     image1 = load_image(
         "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg"
-    )
-    image2 = load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/cat.png")
+    )  # bear
+    image2 = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg"
+    )  # cloth
     # resize images to desired size
     image1 = image1.resize((width, height))
     image2 = image2.resize((width, height))
@@ -338,7 +340,7 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             },
         ),
         input_data=ExampleInputData(
-            prompt=("Put the cat on the head of the bear."),
+            prompt="A cute bear wearing this clothing, sitting on the beach, watching the sunset.",
             height=height,
             width=width,
             num_inference_steps=num_inference_steps,
