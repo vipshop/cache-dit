@@ -97,7 +97,7 @@ def _enable_context_parallelism_ext(
                     f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
                     f"is using backend '{attention_backend.value}' which does not support context parallelism. "
                     f"Please set a compatible attention backend: {compatible_backends} using `set_attn_backend()` before "
-                    f"calling `_enable_parallelism_ext()`."
+                    f"calling `_enable_context_parallelism_ext()`."
                 )
 
             # All modules use the same attention processor and backend. We don't need to
@@ -108,7 +108,9 @@ def _enable_context_parallelism_ext(
     if config.context_parallel_config is not None:
         cp_config = config.context_parallel_config
 
-        # NOTE(DefTruth): Allow user to pass in a custom mesh
+        # NOTE(DefTruth): Allow user to pass in a custom mesh outside this function.
+        # We only create a new mesh when cp_config._mesh is None. So, that we can
+        # support both custom mesh (e.g, hybrid parallelism) and auto-created mesh.
         if cp_config._mesh is None:
             mesh = torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
