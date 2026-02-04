@@ -141,6 +141,25 @@ class _RingBatchedP2PComm:
         self.commit()
         return next_k, next_v
 
+    def batch_send_recv_kv(
+        self,
+        k: torch.Tensor,  # (B, S_LOCAL, H, D)
+        v: torch.Tensor,  # (B, S_LOCAL, H, D)
+        kv_buffer: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Step 1: Concatenate k and v along the last dimension
+        kv_concat = torch.cat([k, v], dim=0)
+        # Step 2: Perform send_recv on the concatenated tensor
+        kv_recv = self.send_recv(kv_concat, kv_buffer)
+        self.commit()
+        # Step 3: Split the received tensor back into k and v
+        S = k.size(0)
+        # Just views of kv_recv, no copy. DON'T use contiguous here.
+        # contiguous() will create a copy of empty tensor, which
+        # causes wrong results.
+        next_k, next_v = torch.split(kv_recv, [S, S], dim=0)
+        return next_k, next_v
+
 
 class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
     @staticmethod
@@ -213,7 +232,7 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
                 else:
                     if _parallel_config.context_parallel_config.convert_to_fp32:
                         out = out.to(torch.float32)
-                        lse = out.to(torch.float32)
+                        lse = lse.to(torch.float32)
 
                     out = prev_out - F.sigmoid(lse - prev_lse) * (prev_out - out)
                     lse = prev_lse - F.logsigmoid(prev_lse - lse)
@@ -236,5 +255,5 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
         *args,
     ):
         raise NotImplementedError(
-            "Backward pass is not implemented for _TemplatedRingP2PAttention."
+            "Backward pass is not implemented for _TemplatedRingBatchedP2PAttention."
         )
