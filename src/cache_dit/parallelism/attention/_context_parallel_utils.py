@@ -39,7 +39,7 @@ class _ExtendedContextParallelConfig(ContextParallelConfig):
 
 
 # Adapted from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1510
-def _enable_parallelism_ext(
+def _enable_context_parallelism_ext(
     model: ModelMixin | torch.nn.Module,  # e.g Transformer
     *,
     config: Union[ParallelConfig, ContextParallelConfig],

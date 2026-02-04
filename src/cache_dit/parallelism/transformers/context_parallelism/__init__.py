@@ -8,7 +8,7 @@ from cache_dit.logger import init_logger
 try:
     from ...attention import (
         _ExtendedContextParallelConfig,
-        _enable_parallelism_ext,
+        _enable_context_parallelism_ext,
         _maybe_register_custom_attn_backends,
         _is_diffusers_parallelism_available,
         enable_ulysses_anything,
@@ -83,7 +83,7 @@ def maybe_enable_context_parallelism(
                 transformer=transformer, **extra_parallel_kwargs
             )
 
-            _enable_parallelism_ext(transformer, config=cp_config, cp_plan=cp_plan)
+            _enable_context_parallelism_ext(transformer, config=cp_config, cp_plan=cp_plan)
             _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
 
     return transformer
