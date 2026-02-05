@@ -1321,8 +1321,12 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         image_url = "https://github.com/vipshop/cache-dit/raw/main/examples/data/snow_cat.png"
         image = load_image(image_url).convert("RGB")
 
-    # Since 'image' parameter is used in input_data, we have set
-    # force_refresh_step_hint to the number of prompts (which is 1 here).
+    # Since 'image' parameter is used in input_data, we have set the value of
+    # force_refresh_step_hint to the number of prompts x number of images
+    # which is 1 x 1 = 1 here. GLM-Image will do processing for the prompt
+    # and image at each pipeline inference by calling the transformer, so,
+    # we need to force refresh the cached hidden states at after the
+    # preprocessing done.
     force_refresh_step_hint = 1
 
     height = 1024 if args.height is None else args.height
@@ -1347,6 +1351,5 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             height=height,
             width=width,
             num_inference_steps=50,
-            guidance_scale=1.5,
         ),
     )

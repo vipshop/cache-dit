@@ -1,3 +1,4 @@
+import copy
 import logging
 import contextlib
 from typing import Dict, Optional, Tuple, Union, List
@@ -70,7 +71,7 @@ class CachedContextManager:
     def maybe_refresh(
         self,
         cached_context: Optional[CachedContext | str] = None,
-    ) -> bool:
+    ) -> Tuple[bool, str]:  # bool, reason
         if cached_context is None:
             _context = self._current_context
             assert _context is not None, "Current context is not set!"
@@ -93,22 +94,22 @@ class CachedContextManager:
                         f"as current step: {current_step} >= "
                         f"num_inference_steps: {num_inference_steps}."
                     )
-                return True
+                return True, "num_inference_steps"
 
         force_refresh_step_hint = _context.get_force_refresh_step_hint()
         if force_refresh_step_hint is not None:
-            current_step = _context.get_current_step()  # e.g, 0~49,50~99,...
-            if current_step == force_refresh_step_hint:
+            # should use transformer step here
+            current_transformer_step = _context.get_current_transformer_step()
+            if current_transformer_step == force_refresh_step_hint - 1:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
                         f"Force refreshing cache context '{_context.name}' "
-                        f"at step: {current_step} as force_refresh_step_hint is set to {force_refresh_step_hint}."
+                        f"at step: {current_transformer_step} as force_refresh_step_hint "
+                        f"is set to {force_refresh_step_hint}."
                     )
-                # Set force_refresh_step_hint to None after used to avoid multiple refreshes
-                _context.cache_config.force_refresh_step_hint = None
-                return True
+                return True, "force_refresh_step_hint"
 
-        return False
+        return False, ""
 
     @torch.compiler.disable
     def set_context(
@@ -136,7 +137,8 @@ class CachedContextManager:
             else:
                 self._current_context = self._cached_context_manager[cached_context]
 
-        if self.maybe_refresh(self._current_context):
+        should_refresh, reason = self.maybe_refresh(self._current_context)
+        if should_refresh:
             if not any((bool(args), bool(kwargs))):
                 assert hasattr(self._current_context, "_init_args")
                 assert hasattr(self._current_context, "_init_kwargs")
@@ -144,6 +146,13 @@ class CachedContextManager:
                 kwargs = self._current_context._init_kwargs
 
             self._current_context = self.reset_context(self._current_context, *args, **kwargs)
+            if reason == "force_refresh_step_hint":
+                # Set force_refresh_step_hint to None after refresh once. Use deepcopy to avoid
+                # modifying original cache_config (may shared across different users' requests).
+                self._current_context.cache_config = copy.deepcopy(
+                    self._current_context.cache_config
+                )
+                self._current_context.cache_config.force_refresh_step_hint = None
             self._current_step_refreshed = True
         else:
             self._current_step_refreshed = False
