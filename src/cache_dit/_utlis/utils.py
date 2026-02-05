@@ -220,7 +220,7 @@ def get_args(
         "--residual-diff-threshold",
         "--rdt",
         type=float,
-        default=0.24,
+        default=0.12,
         help="CacheDiT residual diff threshold",
     )
     parser.add_argument(
