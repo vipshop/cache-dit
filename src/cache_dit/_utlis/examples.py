@@ -42,6 +42,8 @@ __all__ = [
     "zimage_controlnet_example",
     "longcat_image_example",
     "longcat_image_edit_example",
+    "glm_image_example",
+    "glm_image_edit_example",
 ]
 
 
@@ -81,6 +83,7 @@ _env_path_mapping = {
     "Z_IMAGE_TURBO_CONTROLNET_2_0_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
+    "GLM_IMAGE_DIR": "zai-org/GLM-Image",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
@@ -1277,5 +1280,76 @@ def longcat_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             num_inference_steps=50,
             guidance_scale=4.5,
             image=image,
+        ),
+    )
+
+
+@ExampleRegister.register("glm_image", default="zai-org/GLM-Image")
+def glm_image_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import GlmImagePipeline
+
+    force_refresh_step_hint = None  # Set to 1 if the 'image' parameter is used in input_data
+
+    model_name_or_path = _path("zai-org/GLM-Image", args=args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2I,  # Text to Image
+            model_name_or_path=model_name_or_path,
+            pipeline_class=GlmImagePipeline,
+            bnb_4bit_components=["vision_language_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "force_refresh_step_hint": force_refresh_step_hint,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="A photo of an astronaut riding a horse on mars",
+            num_inference_steps=50,
+            height=1024,
+            width=1024,
+        ),
+    )
+
+
+@ExampleRegister.register("glm_image_edit", default="zai-org/GLM-Image")
+def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import GlmImagePipeline
+
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image_url = "https://github.com/vipshop/cache-dit/raw/main/examples/data/snow_cat.png"
+        image = load_image(image_url).convert("RGB")
+
+    # Since 'image' parameter is used in input_data, we have set the value of
+    # force_refresh_step_hint to the number of prompts x number of images
+    # which is 1 x 1 = 1 here. GLM-Image will do processing for the prompt
+    # and image at each pipeline inference by calling the transformer, so,
+    # we need to force refresh the cached hidden states at after the
+    # preprocessing done.
+    force_refresh_step_hint = 1
+
+    height = 1024 if args.height is None else args.height
+    width = 1024 if args.width is None else args.width
+    image = image.resize((width, height))
+
+    model_name_or_path = _path("zai-org/GLM-Image", args=args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=model_name_or_path,
+            pipeline_class=GlmImagePipeline,
+            bnb_4bit_components=["vision_language_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "force_refresh_step_hint": force_refresh_step_hint,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="Replace the background of the snow forest with an underground station featuring an automatic escalator.",
+            image=[image],  # pass as a list for GLM-Image Edit
+            height=height,
+            width=width,
+            num_inference_steps=50,
         ),
     )

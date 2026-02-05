@@ -82,7 +82,6 @@ class ExampleInputData:
     extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def data(self, args: argparse.Namespace) -> Dict[str, Any]:
-        self._preprocess()
         data = dataclasses.asdict(self)
         # Flatten extra_args and merge into main dict
         extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
@@ -112,7 +111,10 @@ class ExampleInputData:
                             "Overriding multiple input images with a single image "
                             "from args.image_path."
                         )
-            input_data["image"] = load_image(args.image_path).convert("RGB")
+            if isinstance(input_data["image"], list):
+                input_data["image"] = [load_image(args.image_path).convert("RGB")]
+            else:
+                input_data["image"] = load_image(args.image_path).convert("RGB")
         if args.mask_image_path is not None:
             if "mask_image" in input_data:
                 if isinstance(input_data["mask_image"], list):
@@ -121,7 +123,10 @@ class ExampleInputData:
                             "Overriding multiple input mask images with a single mask "
                             "image from args.mask_image_path."
                         )
-            input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
+            if isinstance(input_data["mask_image"], list):
+                input_data["mask_image"] = [load_image(args.mask_image_path).convert("RGB")]
+            else:
+                input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
         # Set generator with seed from input data or args
         if args.generator_device is not None:
             self.gen_device = args.generator_device
@@ -145,16 +150,6 @@ class ExampleInputData:
             return torch.Generator(self.gen_device).manual_seed(self.seed)
         else:
             return torch.Generator(self.gen_device).manual_seed(0)
-
-    def _preprocess(self):
-        if self.image is not None:
-            if isinstance(self.image, list) and len(self.image) == 1:
-                # unwrap single image from list for general use cases
-                self.image = self.image[0]
-        if self.mask_image is not None:
-            if isinstance(self.mask_image, list) and len(self.mask_image) == 1:
-                # unwrap single mask image from list for general use cases
-                self.mask_image = self.mask_image[0]
 
     def summary(self, args: argparse.Namespace) -> str:
         summary_str = "🤖 Example Input Summary:\n"

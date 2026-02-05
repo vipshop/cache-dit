@@ -902,3 +902,25 @@ def longcat_image_adapter(pipe, **kwargs) -> BlockAdapter:
         has_separate_cfg=True,
         **kwargs,
     )
+
+
+@BlockAdapterRegister.register("GlmImage")
+def glm_image_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import GlmImageTransformer2DModel
+    except ImportError:
+        GlmImageTransformer2DModel = None  # requires diffusers>=0.37.dev
+
+    from cache_dit.caching.patch_functors import GlmImagePatchFunctor
+
+    _relaxed_assert(pipe.transformer, GlmImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.transformer_blocks,
+        forward_pattern=ForwardPattern.Pattern_0,
+        patch_functor=GlmImagePatchFunctor(),
+        check_forward_pattern=True,
+        has_separate_cfg=True,  # default, guidance_scale > 1
+        **kwargs,
+    )

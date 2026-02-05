@@ -1311,6 +1311,7 @@ def maybe_apply_optimization(
                         residual_diff_threshold=args.residual_diff_threshold,
                         enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                         steps_computation_mask=steps_computation_mask,
+                        force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
                     )
                     if cache_config is None and args.cache
                     else cache_config

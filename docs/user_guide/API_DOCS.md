@@ -41,8 +41,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 - **cache_config**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
   Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
   - `Fn_compute_blocks`: (`int`, *required*, defaults to 8):  
-    Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.
-    Please check https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md for more details of DBCache.
+    Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.  
   - `Bn_compute_blocks`: (`int`, *required*, defaults to 0):  
     Further fuses approximate information in the**last n**Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
   - `residual_diff_threshold`: (`float`, *required*, defaults to 0.08):  
@@ -81,6 +80,13 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     The computation policy for steps when using steps_computation_mask. It can be
     "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
     in steps_computation_mask, while "static" means using static cache for those steps.
+  - `force_refresh_step_hint`: (`int`, *optional*, defaults to None):  
+    The step index hint to force refresh the cache. If provided, the cache will be
+    refreshed at the beginning of this step. This is useful for some cases where the
+    input condition changes significantly at a certain step. Default None means no
+    force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25
+    will refresh the cache before executing step 25 and view the remaining 25 steps as a
+    new inference context.
 
 - **calibrator_config** (`CalibratorConfig`, *optional*, defaults to None):  
   Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
@@ -91,7 +97,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     The same as the 'cache_config' parameter in the cache_dit.enable_cache() interface.
   - `calibrator_config`: (`CalibratorConfig`, *optional*, defaults to None):  
     The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.
-  - `**kwargs`: (`dict`, *optional*, defaults to {}):  
+  - `kwargs`: (`dict`, *optional*, defaults to {}):  
     The same as the 'kwargs' parameter in the cache_dit.enable_cache() interface.
 
 - **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):  
@@ -111,16 +117,16 @@ This function seamlessly integrates with both standard diffusion pipelines and c
         The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
         This setting is only valid when backend is NATIVE_PYTORCH.
     - `parallel_kwargs` (`dict`, *optional*):  
-       Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend, it can include:
-       - `cp_plan`: The custom context parallelism plan pass by user.
-       - `attention_backend`: str, The attention backend for parallel attention, e.g, 'native', 'flash', 'sage', '_sdpa_cudnn', '_flash_3', etc.
-       - `experimental_ulysses_anything`: bool, Whether to enable the ulysses anything attention to support arbitrary sequence length and arbitrary number of heads.
-       - `experimental_ulysses_async`: bool, Whether to enable the ulysses async attention to overlap communication and computation.
-       - `experimental_ulysses_float8`: bool, Whether to enable the ulysses float8 attention to use fp8 for faster communication. Recommend for devices w/o NVL.  
-       - `ring_rotate_method`: str, The ring rotate method, default is `p2p`:   
-          - `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation (default).
-          - `allgather`: Use allgather to gather the key and value tensors.
-       - `ring_convert_to_fp32`: bool, Whether to convert the value output and lse of ring attention to fp32. Default to True to avoid numerical issues.
+        Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend, it can include:
+        - `cp_plan`: The custom context parallelism plan pass by user.
+        - `attention_backend`: str, The attention backend for parallel attention, e.g, 'native', 'flash', 'sage', '_sdpa_cudnn', '_flash_3', etc.
+        - `experimental_ulysses_anything`: bool, Whether to enable the ulysses anything attention to support arbitrary sequence length and arbitrary number of heads.
+        - `experimental_ulysses_async`: bool, Whether to enable the ulysses async attention to overlap communication and computation.
+        - `experimental_ulysses_float8`: bool, Whether to enable the ulysses float8 attention to use fp8 for faster communication. Recommend for devices w/o NVL.  
+        - `ring_rotate_method`: str, The ring rotate method, default is `p2p`:   
+            - `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation (default).
+            - `allgather`: Use allgather to gather the key and value tensors.
+        - `ring_convert_to_fp32`: bool, Whether to convert the value output and lse of ring attention to fp32. Default to True to avoid numerical issues.
         
 - **attention_backend** (`str`, *optional*, defaults to None):  
   Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 
@@ -129,4 +135,4 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   in parallelism_config when both are provided.
 
 - **kwargs** (`dict`, *optional*, defaults to {}):   
-  Other cache context keyword arguments. Please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py for more details.
+  Other cache context keyword arguments. Please check [cache_contexts/cache_context.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py) for more details.

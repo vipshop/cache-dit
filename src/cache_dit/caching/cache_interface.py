@@ -146,6 +146,13 @@ def enable_cache(
                     The computation policy for steps when using steps_computation_mask. It can be
                     "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
                     in steps_computation_mask, while "static" means using static cache for those steps.
+                force_refresh_step_hint (`int`, *optional*, defaults to None):
+                    The step index hint to force refresh the cache. If provided, the cache will be
+                    refreshed at the beginning of this step. This is useful for some cases where the
+                    input condition changes significantly at a certain step. Default None means no
+                    force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25
+                    will refresh the cache before executing step 25 and view the remaining 25 steps as a
+                    new inference context.
 
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
