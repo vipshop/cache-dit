@@ -7,7 +7,6 @@
 cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples](https://github.com/vipshop/cache-dit/tree/main/examples). Currently, cache-dit supported context parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [LTXVideo](https://huggingface.co/Lightricks/LTX-Video), [Wan 2.1](https://github.com/Wan-Video/Wan2.1), [Wan 2.2](https://github.com/Wan-Video/Wan2.2), [HunyuanImage-2.1](https://huggingface.co/tencent/HunyuanImage-2.1), [HunyuanVideo](https://huggingface.co/hunyuanvideo-community/HunyuanVideo), [CogVideoX 1.0](https://github.com/zai-org/CogVideo), [CogVideoX 1.5](https://github.com/zai-org/CogVideo), [CogView 3/4](https://github.com/zai-org/CogView4) and [VisualCloze](https://github.com/lzyhha/VisualCloze), etc. cache-dit will support more models in the future.
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -16,7 +15,6 @@ cache_dit.enable_cache(
     # Set ulysses_size > 1 to enable ulysses style context parallelism.
     parallelism_config=ParallelismConfig(ulysses_size=2),
 )
-# torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
 |L20x1| Ulysses-2 | Ulysses-4 | + compile |
@@ -32,7 +30,6 @@ cache_dit.enable_cache(
 
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -46,7 +43,6 @@ cache_dit.enable_cache(
         },
     ),
 )
-# torchrun --nproc_per_node=2 parallel_cache_ulysses_anything.py
 ```
 
 For example, in the T2I and I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **✅padding-free** Ulysses Attention (UAA) for **arbitrary sequence length**, which enhances the versatility of Ulysses.
@@ -103,7 +99,6 @@ Important: Please note that **Ulysses Anything Attention (UAA)** is currently an
 Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image) and 🔥[Ovis-Image](https://github.com/AIDC-AI/Ovis-Image) models are supported, and more models will be added in the future—stay tuned!
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -117,7 +112,6 @@ cache_dit.enable_cache(
         },
     ),
 )
-# torchrun --nproc_per_node=2 parallel_cache_ulysses_async.py
 ```
 
 
@@ -139,7 +133,6 @@ cache_dit.enable_cache(
 cache-dit has implemented **Async FP8 Ulysses Attention** for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `experimental_ulysses_float8=True`. To maintain higher precision during softmax computation—where `Softmax(Q@K^T)` is sensitive to numerical instability—we currently retain `K in FP16/BF16` format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -153,7 +146,6 @@ cache_dit.enable_cache(
         },
     ),
 )
-# torchrun --nproc_per_node=2 parallel_cache_ulysses_float8.py
 ```
 
 |L20x2 w/ Ulysses| w/ Ulysses FP8|w/ Ulysses + compile|w/ Ulysses FP8 + compile|
@@ -164,10 +156,9 @@ cache_dit.enable_cache(
 
 ## Ring Attention with Batched P2P  
 
-Currently, cache-dit support 2 ring_rotate_method, namely, `allgather` and `p2p`. `allgather`: Use allgather to gather the key and value tensors (default). `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation.
+Currently, cache-dit support 2 ring_rotate_method, namely, `allgather` and `p2p`. `allgather`: Use allgather to gather the key and value tensors. `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors (default). This method is more efficient due to th better overlap of communication and computation.
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -181,7 +172,6 @@ cache_dit.enable_cache(
         },
     ),
 )
-# torchrun --nproc_per_node=2 parallel_ring_batched_p2p.py
 ```
 
 The FLUX.1-dev benchmark for Ring w/ allgather (AG), Ring w/ batched p2p (p2p) and Ulysses listed as following:
@@ -198,7 +188,6 @@ Unified Sequence Parallelism combines Ring Attention and Ulysses Attention into 
 Ulysses Attention efficiently parallelizes across attention heads. Ring Attention handles very long sequences with minimal memory overhead. Together, they enable 2D parallelization across both heads and sequence dimensions
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
@@ -209,7 +198,6 @@ cache_dit.enable_cache(
         ulysses_size=2, ring_size=2,
     ),
 )
-# torchrun --nproc_per_node=4 parallel_usp.py
 ```
 
 From the below table (FLUX.1-dev), it’s clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.

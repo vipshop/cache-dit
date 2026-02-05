@@ -112,7 +112,10 @@ class ExampleInputData:
                             "Overriding multiple input images with a single image "
                             "from args.image_path."
                         )
-            input_data["image"] = load_image(args.image_path).convert("RGB")
+            if isinstance(input_data["image"], list):
+                input_data["image"] = [load_image(args.image_path).convert("RGB")]
+            else:
+                input_data["image"] = load_image(args.image_path).convert("RGB")
         if args.mask_image_path is not None:
             if "mask_image" in input_data:
                 if isinstance(input_data["mask_image"], list):
@@ -121,7 +124,10 @@ class ExampleInputData:
                             "Overriding multiple input mask images with a single mask "
                             "image from args.mask_image_path."
                         )
-            input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
+            if isinstance(input_data["mask_image"], list):
+                input_data["mask_image"] = [load_image(args.mask_image_path).convert("RGB")]
+            else:
+                input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
         # Set generator with seed from input data or args
         if args.generator_device is not None:
             self.gen_device = args.generator_device

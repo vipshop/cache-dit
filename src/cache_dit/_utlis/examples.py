@@ -1339,7 +1339,7 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
         input_data=ExampleInputData(
             prompt="Replace the background of the snow forest with an underground station featuring an automatic escalator.",
-            image=image,
+            image=[image],
             height=1024,
             width=1024,
             num_inference_steps=50,
