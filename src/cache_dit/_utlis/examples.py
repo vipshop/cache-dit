@@ -1321,11 +1321,6 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         image_url = "https://github.com/vipshop/cache-dit/raw/main/examples/data/snow_cat.png"
         image = load_image(image_url).convert("RGB")
 
-    # WARN: NOT SUPPORTED CACHE for GLM-Image Edit currently, because of the
-    # incompatibility of the kvcache design and mock blocks in cache-dit.
-    # We have to implement a patch functor that fused the kvcache[idx] indexing
-    # into the transformer forward pass to support cache for GLM-Image Edit.
-
     # Since 'image' parameter is used in input_data, we have set the value of
     # force_refresh_step_hint to the number of prompts x number of images
     # which is 1 x 1 = 1 here. GLM-Image will do processing for the prompt
