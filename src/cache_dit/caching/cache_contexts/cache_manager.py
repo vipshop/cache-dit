@@ -104,6 +104,8 @@ class CachedContextManager:
                         f"Force refreshing cache context '{_context.name}' "
                         f"at step: {current_step} as force_refresh_step_hint is set to {force_refresh_step_hint}."
                     )
+                # Set force_refresh_step_hint to None after used to avoid multiple refreshes
+                _context.cache_config.force_refresh_step_hint = None
                 return True
 
         return False
