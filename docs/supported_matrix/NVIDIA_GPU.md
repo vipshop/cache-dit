@@ -9,7 +9,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
-|GLM-Image|✅|✖️|✖️|
+|GLM-Image T2I|✅|✖️|✖️|
+|GLM-Image I2I|✅|✖️|✖️|
 |Z-Image|✅|✅|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
 |FLUX.2-Klein-base-4B|✅|✅|✅|

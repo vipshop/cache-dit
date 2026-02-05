@@ -1325,8 +1325,9 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     # force_refresh_step_hint to the number of prompts (which is 1 here).
     force_refresh_step_hint = 1
 
-    height = image.height if args.height is None else args.height
-    width = image.width if args.width is None else args.width
+    height = 1024 if args.height is None else args.height
+    width = 1024 if args.width is None else args.width
+    image = image.resize((width, height))
 
     model_name_or_path = _path("zai-org/GLM-Image", args=args)
     return Example(
@@ -1342,7 +1343,7 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         ),
         input_data=ExampleInputData(
             prompt="Replace the background of the snow forest with an underground station featuring an automatic escalator.",
-            image=[image],
+            image=[image],  # pass as a list for GLM-Image Edit
             height=height,
             width=width,
             num_inference_steps=50,

@@ -82,7 +82,6 @@ class ExampleInputData:
     extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def data(self, args: argparse.Namespace) -> Dict[str, Any]:
-        self._preprocess()
         data = dataclasses.asdict(self)
         # Flatten extra_args and merge into main dict
         extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
@@ -151,16 +150,6 @@ class ExampleInputData:
             return torch.Generator(self.gen_device).manual_seed(self.seed)
         else:
             return torch.Generator(self.gen_device).manual_seed(0)
-
-    def _preprocess(self):
-        if self.image is not None:
-            if isinstance(self.image, list) and len(self.image) == 1:
-                # unwrap single image from list for general use cases
-                self.image = self.image[0]
-        if self.mask_image is not None:
-            if isinstance(self.mask_image, list) and len(self.mask_image) == 1:
-                # unwrap single mask image from list for general use cases
-                self.mask_image = self.mask_image[0]
 
     def summary(self, args: argparse.Namespace) -> str:
         summary_str = "🤖 Example Input Summary:\n"
