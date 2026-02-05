@@ -43,6 +43,7 @@ __all__ = [
     "longcat_image_example",
     "longcat_image_edit_example",
     "glm_image_example",
+    "glm_image_edit_example",
 ]
 
 
@@ -1306,5 +1307,42 @@ def glm_image_example(args: argparse.Namespace, **kwargs) -> Example:
             num_inference_steps=50,
             height=1024,
             width=1024,
+        ),
+    )
+
+
+@ExampleRegister.register("glm_image_edit", default="zai-org/GLM-Image")
+def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import GlmImagePipeline
+
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image_url = "https://github.com/vipshop/cache-dit/raw/main/examples/data/snow_cat.png"
+        image = load_image(image_url).convert("RGB")
+
+    # Since 'image' parameter is used in input_data, we have set
+    # force_refresh_step_hint to the number of prompts (which is 1 here).
+    force_refresh_step_hint = 1
+
+    model_name_or_path = _path("zai-org/GLM-Image", args=args)
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=model_name_or_path,
+            pipeline_class=GlmImagePipeline,
+            bnb_4bit_components=["vision_language_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "force_refresh_step_hint": force_refresh_step_hint,
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="Replace the background of the snow forest with an underground station featuring an automatic escalator.",
+            image=image,
+            height=1024,
+            width=1024,
+            num_inference_steps=50,
+            guidance_scale=1.5,
         ),
     )

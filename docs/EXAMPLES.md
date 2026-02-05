@@ -65,6 +65,7 @@ python3 -m cache_dit.generate list  # list all available examples
 [generate.py:48] - ✅ longcat_image                  - Defalut: meituan-longcat/LongCat-Image
 [generate.py:48] - ✅ longcat_image_edit             - Defalut: meituan-longcat/LongCat-Image-Edit
 [generate.py:48] - ✅ glm_image                      - Defalut: zai-org/GLM-Image
+[generate.py:48] - ✅ glm_image_edit                 - Defalut: zai-org/GLM-Image
 ```
 
 ## Single GPU Inference
