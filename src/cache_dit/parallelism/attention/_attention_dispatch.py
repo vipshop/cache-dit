@@ -34,6 +34,11 @@ try:
     except ImportError:
         npu_fusion_attention = None
 
+    try:
+        from torch_npu import npu_fused_infer_attention_score
+    except ImportError:
+        npu_fused_infer_attention_score = None
+
     from diffusers.models._modeling_parallel import ParallelConfig
 except ImportError:
     raise ImportError(
@@ -58,6 +63,7 @@ __all__ = [
     "_sage_attention",
     "_flash_attention_3",
     "_native_npu_attention",
+    "_npu_fused_infer_attention",
 ]
 
 
@@ -90,6 +96,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         "_native_attention_forward_op",
         "_sdpa_cudnn_attention_forward_op",
         "_npu_attention_forward_op",
+        "_npu_fused_infer_attention_forward_op",
     ]
 
     # Re-define templated context parallel attention to support attn mask
@@ -763,6 +770,105 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             next_tockens=MAX_TOKEN,
             head_num=query.size(2),
         )[0]
+
+        return out
+
+    _set_new_attn_backend("_NPU_FIA", "_npu_fia")
+    assert hasattr(AttentionBackendName, "_NPU_FIA")
+
+    @_AttentionBackendRegistry.register(
+        AttentionBackendName._NPU_FIA,
+        constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+        supports_context_parallel=True,
+    )
+    def _npu_fused_infer_attention(
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        scale: Optional[float] = None,
+        return_lse: bool = False,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ) -> torch.Tensor:
+        if return_lse:
+            raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
+        if _parallel_config is None:
+            attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
+            out = npu_fused_infer_attention_score(
+                query,
+                key,
+                value,
+                atten_mask=attn_mask,
+                input_layout="BSND",
+                scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
+                pre_tokens=MAX_TOKEN,
+                next_tokens=MAX_TOKEN,
+                num_heads=query.size(2),
+            )
+        else:
+            out = _unified_templated_context_parallel_attention(
+                query,
+                key,
+                value,
+                attn_mask,
+                dropout_p,
+                None,
+                1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
+                None,
+                return_lse,
+                forward_op=_npu_fused_infer_attention_forward_op,
+                backward_op=_npu_attention_backward_op,
+                _parallel_config=_parallel_config,
+            )
+        return out
+
+    logger.info(
+        "Re-registered _NPU_FIA attention backend to enable context parallelism "
+        "You can disable this behavior by: "
+        "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
+    )
+
+    def _npu_fused_infer_attention_forward_op(
+        ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        is_causal: bool = False,
+        scale: Optional[float] = None,
+        enable_gqa: bool = False,
+        return_lse: bool = False,
+        _save_ctx: bool = True,
+        _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+        lse = None
+        attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
+
+        result = npu_fused_infer_attention_score(
+            query,
+            key,
+            value,
+            atten_mask=attn_mask,
+            input_layout="BSND",
+            scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
+            pre_tokens=MAX_TOKEN,
+            next_tokens=MAX_TOKEN,
+            num_heads=query.size(2),
+            softmax_lse_flag=return_lse,
+        )
+
+        if isinstance(result, tuple):
+            out, raw_lse = result
+        else:
+            out, raw_lse = result, None
+
+        if return_lse:
+            if raw_lse is None:
+                raise RuntimeError("return_lse=True but kernel did not return LSE tensor")
+            lse = raw_lse.permute(0, 2, 1, 3)
+            return out, lse
 
         return out
 
