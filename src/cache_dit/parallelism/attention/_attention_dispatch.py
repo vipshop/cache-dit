@@ -791,8 +791,6 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         return_lse: bool = False,
         _parallel_config: Optional["ParallelConfig"] = None,
     ) -> torch.Tensor:
-        if return_lse:
-            raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
         if _parallel_config is None:
             attn_mask = _maybe_modify_attn_mask_npu(query, key, attn_mask)
             out = npu_fused_infer_attention_score(
