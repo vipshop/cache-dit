@@ -426,6 +426,7 @@ def get_args(
             "_sdpa_cudnn",
             "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
             "_native_npu",  # native npu attention
+            "_npu_fia",  # npu fused infer attention
         ],
     )
     # Ulysses context parallelism settings
