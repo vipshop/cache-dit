@@ -60,9 +60,12 @@ class GlmImageTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 "self_attn.o_proj": RowwiseParallel(),
                 # We need to replicate the outputs after ColwiseParallel
                 # due to the `chunk` operation.
+                # WARN: Tensor parallel for MLP layers will lead to lower performance
+                # for GlmImagePipeline, please benchmark before using. I guess it's
+                # because the kv cache passing logic in GlmImageTextModel is not
+                # compatible with tensor parallelism in cache-dit.
                 "mlp.gate_up_proj": ColwiseParallel(output_layouts=Replicate()),
                 "mlp.down_proj": ColwiseParallel(output_layouts=Replicate()),
-                # "mlp.down_proj": RowwiseParallel(input_layouts=Replicate()),
             }
             parallelize_module(
                 module=block,
