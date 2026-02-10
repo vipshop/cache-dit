@@ -63,7 +63,7 @@ class GlmImageTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             }
             parallelize_module(
                 module=block,
-                tp_mesh=tp_mesh,
-                layer_plan=layer_plan,
+                device_mesh=tp_mesh,
+                parallelize_plan=layer_plan,
             )
         maybe_empty_cache()
