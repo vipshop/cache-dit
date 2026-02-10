@@ -1,4 +1,6 @@
 from cache_dit.envs import ENV
+from cache_dit.logger import init_logger
+
 from ._context_parallel_utils import (
     _ExtendedContextParallelConfig,
     _enable_context_parallelism_ext,
@@ -16,6 +18,9 @@ from ._templated_ulysses import (
     enable_ulysses_anything,
     enable_ulysses_float8,
 )
+
+
+logger = init_logger(__name__)
 
 
 def _maybe_register_custom_attn_backends():
@@ -36,6 +41,11 @@ def _maybe_register_custom_attn_backends():
             _flash_attention_3,
             _native_npu_attention,
             _npu_fused_infer_attention,
+        )
+
+        logger.info(
+            "Registered custom attn backends: "
+            "native, _sdpa_cudnn, sage, _flash_3, _native_npu, _npu_fia."
         )
     except ImportError as e:
         raise e

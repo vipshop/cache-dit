@@ -431,6 +431,10 @@ def _parse_text_encoder(
         return getattr(pipe, "text_encoder_2"), "text_encoder_2"
     elif hasattr(pipe, "text_encoder_3"):  # HiDream pipeline
         return getattr(pipe, "text_encoder_3"), "text_encoder_3"
+    elif hasattr(pipe, "vision_language_model") and pipe.__class__.__name__.startswith(
+        "GlmImage"
+    ):  # GLM Image pipeline
+        return getattr(pipe, "vision_language_model"), "vision_language_model"
     elif hasattr(pipe, "text_encoder"):  # General case
         return getattr(pipe, "text_encoder"), "text_encoder"
     else:

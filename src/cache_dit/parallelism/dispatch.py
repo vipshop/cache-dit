@@ -22,6 +22,11 @@ def enable_parallelism(
         logger.warning("The transformer is already parallelized. Skipping parallelism enabling.")
         return transformer
 
+    from .attention import _maybe_register_custom_attn_backends
+
+    # Ensure custom attention backends are registered in cache-dit.
+    _maybe_register_custom_attn_backends()
+
     # Parallelize Transformer: The check of parallelism backend is only for transformer
     # here. Text Encoder and VAE does not have different parallelism backends now.
     from .transformers import maybe_enable_parallelism_for_transformer
@@ -162,6 +167,8 @@ def _maybe_set_module_attention_backend(
 
 def _is_text_encoder(module: torch.nn.Module) -> bool:
     _import_module = module.__class__.__module__
+    # Including the cases for normal text encoder and vision-language
+    # model (e.g, GLM Image) in transformers
     return _import_module.startswith("transformers")
 
 
