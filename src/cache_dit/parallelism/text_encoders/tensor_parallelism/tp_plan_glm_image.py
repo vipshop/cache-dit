@@ -58,12 +58,20 @@ class GlmImageTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 "self_attn.k_proj": ColwiseParallel(),
                 "self_attn.v_proj": ColwiseParallel(),
                 "self_attn.o_proj": RowwiseParallel(),
+                # We need to replicate the outputs after ColwiseParallel
+                # due to the `chunk` operation.
                 "mlp.gate_up_proj": ColwiseParallel(output_layouts=Replicate()),
-                "mlp.down_proj": RowwiseParallel(output_layouts=Replicate()),
+                "mlp.down_proj": ColwiseParallel(output_layouts=Replicate()),
+                # "mlp.down_proj": RowwiseParallel(input_layouts=Replicate()),
             }
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+
+        text_encoder.model.language_model = model
+
         maybe_empty_cache()
+
+        return text_encoder
