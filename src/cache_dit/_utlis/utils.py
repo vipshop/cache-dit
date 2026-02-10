@@ -675,6 +675,10 @@ def get_text_encoder_from_pipe(
         return getattr(pipe, "text_encoder_2"), "text_encoder_2"
     elif hasattr(pipe, "text_encoder_3"):  # HiDream pipeline
         return getattr(pipe, "text_encoder_3"), "text_encoder_3"
+    elif hasattr(pipe, "vision_language_encoder") and pipe_cls_name.startswith(
+        "GlmImage"
+    ):  # GLM Image pipeline
+        return getattr(pipe, "vision_language_encoder"), "vision_language_encoder"
     elif hasattr(pipe, "text_encoder"):  # General case
         return getattr(pipe, "text_encoder"), "text_encoder"
     else:

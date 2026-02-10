@@ -336,7 +336,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             )
         return out
 
-    logger.info(
+    logger.debug(
         "Re-registered NATIVE attention backend to enable context parallelism "
         "with attn mask in cache-dit. You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -449,7 +449,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
         return (out, lse) if return_lse else out
 
-    logger.info(
+    logger.debug(
         "Registered new attention backend: _SDPA_CUDNN to enable context "
         "parallelism with attn mask in cache-dit. You can disable it by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -504,7 +504,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
         return (out, lse) if return_lse else out
 
-    logger.info(
+    logger.debug(
         "Re-registered SAGE attention backend to enable context parallelism "
         "with FP8 Attention in cache-dit. You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -656,14 +656,14 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
 
             return (out, lse) if return_lse else out
 
-        logger.info(
+        logger.debug(
             "Re-registered FLASH_3 attention backend to enable context parallelism "
             "with Ulysses Anything/Float8 in cache-dit. You can disable this behavior by: "
             "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
         )
     else:
         _flash_attention_3 = None  # type: ignore[assignment]
-        logger.info("Flash Attention 3 not available, skipping _FLASH_3 backend registration.")
+        logger.debug("Flash Attention 3 not available, skipping _FLASH_3 backend registration.")
 
     _registry_pop_attn_backend(AttentionBackendName._NATIVE_NPU)
 
@@ -735,7 +735,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             )
         return out
 
-    logger.info(
+    logger.debug(
         "Re-registered _NATIVE_NPU attention backend to enable context parallelism "
         "You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -821,7 +821,7 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
             )
         return out
 
-    logger.info(
+    logger.debug(
         "Re-registered _NPU_FIA attention backend to enable context parallelism "
         "You can disable this behavior by: "
         "export CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH=0."
@@ -892,4 +892,4 @@ else:
     _sdpa_cudnn_attention = None  # type: ignore[assignment]
     _native_npu_attention = None  # type: ignore[assignment]
 
-    logger.info("Skipped custom attention backend registration in cache-dit.")
+    logger.debug("Skipped custom attention backend registration in cache-dit.")

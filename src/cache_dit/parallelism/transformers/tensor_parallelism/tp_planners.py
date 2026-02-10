@@ -76,6 +76,9 @@ def _activate_tp_planners():
     LongCatImageTensorParallelismPlanner = _safe_import(  # noqa: F841
         ".tp_plan_longcat_image", "LongCatImageTensorParallelismPlanner"
     )
+    GlmImageTensorParallelismPlanner = _safe_import(  # noqa: F841
+        ".tp_plan_glm_image", "GlmImageTensorParallelismPlanner"
+    )
 
 
 __all__ = ["_activate_tp_planners"]
