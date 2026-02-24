@@ -48,7 +48,7 @@ jobs:
       
       - name: Install Only MkDocs Dependencies
         run: |
-          pip install mkdocs==1.6.1 mkdocs-api-autonav mkdocs-material \
+          pip install mkdocs==1.6.1 mkdocs-api-autonav mkdocs-material==9.7.1 \
               mkdocstrings-python mkdocs-gen-files mkdocs-awesome-nav \
               mkdocs-glightbox mkdocs-git-revision-date-localized-plugin \
               mkdocs-minify-plugin regex ruff pydantic
