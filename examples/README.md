@@ -79,6 +79,7 @@ python3 -m cache_dit.generate list  # list all available examples
 [generate.py:48] - ✅ longcat_image_edit             - Defalut: meituan-longcat/LongCat-Image-Edit
 [generate.py:48] - ✅ glm_image                      - Defalut: zai-org/GLM-Image
 [generate.py:48] - ✅ glm_image_edit                 - Defalut: zai-org/GLM-Image
+[generate.py:48] - ✅ firered_image_edit_1.0         - Defalut: FireRedTeam/FireRed-Image-Edit-1.0
 ```
 
 ## Single GPU Inference
@@ -101,6 +102,7 @@ python3 -m cache_dit.generate wan2.2
 python3 -m cache_dit.generate zimage_turbo 
 python3 -m cache_dit.generate zimage_turbo_nunchaku 
 python3 -m cache_dit.generate zimage_turbo_controlnet_2.1 
+python3 -m cache_dit.generate firered_image_edit_1.0
 python3 -m cache_dit.generate generate longcat_image
 python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration

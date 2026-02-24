@@ -9,6 +9,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|FireRed-Image-Edit-1.0|✅|✅|✅|  
 |GLM-Image-T2I|✅|✖️|✅|
 |GLM-Image-I2I|✅|✖️|✅|
 |Z-Image|✅|✅|✅|
@@ -92,6 +93,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
+|FireRed-Image-Edit-1.0|✅|✅|  
 |GLM-Image-T2I|✖️|✅|
 |GLM-Image-I2I|✖️|✅|
 |Z-Image|✅|✅|

@@ -57,9 +57,13 @@ dev = [
 ]
 
 docs = [
-    "mkdocs>=1.5.0",
+    # Pinning mkdocs to 1.6.1 and mkdocs-material to 9.7.1 to avoid 
+    # the breaking changes in mkdocs 2.0.0, which causes the CI failure 
+    # in the check-mkdocs workflow.
+    # https://squidfunk.github.io/mkdocs-material/blog/2026/02/18/mkdocs-2.0/
+    "mkdocs==1.6.1",
     "mkdocs-api-autonav",
-    "mkdocs-material",
+    "mkdocs-material==9.7.1",
     "mkdocstrings-python",
     "mkdocs-gen-files",
     "mkdocs-awesome-nav",

@@ -44,6 +44,7 @@ __all__ = [
     "longcat_image_edit_example",
     "glm_image_example",
     "glm_image_edit_example",
+    "firered_image_edit_example",
 ]
 
 
@@ -84,6 +85,7 @@ _env_path_mapping = {
     "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
     "GLM_IMAGE_DIR": "zai-org/GLM-Image",
+    "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
@@ -1351,5 +1353,42 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             height=height,
             width=width,
             num_inference_steps=50,
+        ),
+    )
+
+
+@ExampleRegister.register("firered_image_edit_1.0", default="FireRedTeam/FireRed-Image-Edit-1.0")
+def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import QwenImageEditPlusPipeline
+
+    if args.image_path is not None:
+        image = load_image(args.image_path).convert("RGB")
+    else:
+        image = load_image(
+            "https://github.com/vipshop/cache-dit/raw/main/examples/data/firered_edit_example.png"
+        ).convert("RGB")
+
+    height = 1024 if args.height is None else args.height
+    width = 1024 if args.width is None else args.width
+    image = image.resize((width, height))
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=_path("FireRedTeam/FireRed-Image-Edit-1.0", args=args),
+            pipeline_class=QwenImageEditPlusPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=("在书本封面Python的下方，添加一行英文文字2nd Edition"),
+            negative_prompt=" ",
+            height=height,
+            width=width,
+            seed=43,
+            gen_device="cuda",  # align with the official example.
+            num_inference_steps=40,
+            true_cfg_scale=4.0,
+            image=[image],
         ),
     )

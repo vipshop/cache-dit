@@ -792,7 +792,6 @@ def maybe_compile_controlnet(
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
     if args.compile_controlnet:
-        set_compile_configs()
         torch.set_float32_matmul_precision("high")
 
         if isinstance(pipe_or_adapter, BlockAdapter):
