@@ -169,6 +169,18 @@ def get_args(
         help="Width of the generated image",
     )
     parser.add_argument(
+        "--input-height",
+        type=int,
+        default=None,
+        help="Height of the input image",
+    )
+    parser.add_argument(
+        "--input-width",
+        type=int,
+        default=None,
+        help="Width of the input image",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,

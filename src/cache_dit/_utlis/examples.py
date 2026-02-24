@@ -1368,9 +1368,8 @@ def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             "https://github.com/vipshop/cache-dit/raw/main/examples/data/firered_edit_example.png"
         ).convert("RGB")
 
-    height = 1024 if args.height is None else args.height
-    width = 1024 if args.width is None else args.width
-    image = image.resize((width, height))
+    if args.input_height is not None and args.input_width is not None:
+        image = image.resize((args.input_width, args.input_height))
 
     return Example(
         args=args,
@@ -1383,8 +1382,8 @@ def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
         input_data=ExampleInputData(
             prompt=("在书本封面Python的下方，添加一行英文文字2nd Edition"),
             negative_prompt=" ",
-            height=height,
-            width=width,
+            height=1024,
+            width=1024,
             seed=43,
             gen_device="cuda",  # align with the official example.
             num_inference_steps=40,
