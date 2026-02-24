@@ -110,8 +110,18 @@ class ExampleInputData:
                         )
             if isinstance(input_data["image"], list):
                 input_data["image"] = [load_image(args.image_path).convert("RGB")]
+                if args.input_height is not None and args.input_width is not None:
+                    height = args.input_height
+                    width = args.input_width
+                    input_data["image"] = [
+                        img.resize((width, height)) for img in input_data["image"]
+                    ]
             else:
                 input_data["image"] = load_image(args.image_path).convert("RGB")
+                if args.input_height is not None and args.input_width is not None:
+                    input_data["image"] = input_data["image"].resize(
+                        (args.input_width, args.input_height)
+                    )
         if args.mask_image_path is not None:
             if "mask_image" in input_data:
                 if isinstance(input_data["mask_image"], list):
@@ -122,8 +132,18 @@ class ExampleInputData:
                         )
             if isinstance(input_data["mask_image"], list):
                 input_data["mask_image"] = [load_image(args.mask_image_path).convert("RGB")]
+                if args.input_height is not None and args.input_width is not None:
+                    height = args.input_height
+                    width = args.input_width
+                    input_data["mask_image"] = [
+                        img.resize((width, height)) for img in input_data["mask_image"]
+                    ]
             else:
                 input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
+                if args.input_height is not None and args.input_width is not None:
+                    input_data["mask_image"] = input_data["mask_image"].resize(
+                        (args.input_width, args.input_height)
+                    )
         # Set generator with seed from input data or args
         if args.generator_device is not None:
             self.gen_device = args.generator_device
