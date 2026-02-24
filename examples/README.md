@@ -102,6 +102,7 @@ python3 -m cache_dit.generate wan2.2
 python3 -m cache_dit.generate zimage_turbo 
 python3 -m cache_dit.generate zimage_turbo_nunchaku 
 python3 -m cache_dit.generate zimage_turbo_controlnet_2.1 
+python3 -m cache_dit.generate firered_image_edit_1.0
 python3 -m cache_dit.generate generate longcat_image
 python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
