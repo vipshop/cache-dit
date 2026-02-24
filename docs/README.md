@@ -26,16 +26,15 @@
 
 **🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/)** DiTs from Diffusers, including over **[🤗70+](https://github.com/vipshop/cache-dit)** DiTs. Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details. The optimizations made by Cache-DiT include:  
 
-- 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking) and more)
-- 🎉**Context Parallelism** (Ulysses, Ring, **[USP](https://arxiv.org/pdf/2405.07719)**, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), [**Async Ulysses**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#async-ulysses-qkv-projection))
-- 🎉**Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
-- 🎉**Hybrid [2D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) and [3D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) Parallelism** (Scale up the performance of [**💥Large DiTs**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/))
-- 🎉**Text Encoder Parallelism** ([**TE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ PyTorch native Tensor Parallelism APIs)
-- 🎉**Auto Encoder Parallelism** ([**VAE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Tile Parallelism, faster, avoid OOM)
-- 🎉**ControlNet Parallelism** ([**CN-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Context Parallelism for ControlNet)
-- 🎉Built-in **HTTP serving** deployment support with simple REST APIs
-- 🎉**Natively** compatible with **Compile**, **Offloading**, **Quantization**, ...
-- 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ...
+- 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking), Cache CFG and more)
+- 🎉**Context Parallelism** ([**CP**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) w/ Ulysses, Ring, **[USP](https://arxiv.org/pdf/2405.07719)**, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), [**Async CP**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#async-ulysses-qkv-projection), FP8 Comm)
+- 🎉**Tensor Parallelism** ([**TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) w/ PyTorch native DTensor and Tensor Parallelism APIs, avoid OOM)
+- 🎉**Hybrid [2D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) and [3D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) Parallelism** (w/ 💥[**USP + TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/), scale up the performance of [**Large DiTs**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/))
+- 🎉**Text Encoder Parallelism** ([**TE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ PyTorch native DTensor and Tensor Parallelism APIs)
+- 🎉**Auto Encoder Parallelism** ([**VAE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Data or Tile Parallelism, slightly faster, avoid OOM)
+- 🎉**ControlNet Parallelism** ([**CN-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Context Parallelism for ControlNet modules)
+- 🎉**Natively** compatible with **Torch Compile**, **CPU Offloading**, **Quantization**, ...
+- 🎉Integration into **vLLM-Omni**, **SGLang Diffusion**, SD.Next, ComfyUI, ...
 - 🎉**Natively** supports **NVIDIA GPUs**, [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) (>= 1.2.0), ...  
    
 ## 🔥Latest News 
