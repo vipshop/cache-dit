@@ -75,9 +75,6 @@ class ExampleInputData:
     seed: int = 0
     # Use 'cpu' by default for better reproducibility across different hardware
     gen_device: str = "cpu"
-    generator: torch.Generator = dataclasses.field(
-        default_factory=lambda: torch.Generator("cpu").manual_seed(0)
-    )
     # Some extra args, e.g, editing model specific inputs
     extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
