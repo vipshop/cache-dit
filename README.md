@@ -10,14 +10,6 @@
         <a href="https://hellogithub.com/repository/vipshop/cache-dit" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=b8b03b3b32a449ea84cfc2b96cd384f3&claim_uid=ofSCbzTmdeQk3FD&theme=small" alt="Featured｜HelloGitHub" /></a> 
     </h2>
   </p>
-
-<!---
-|Baseline|SCM Slow|SCM Fast|SCM Ultra|+compile|+FP8*|+CP2|   
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|24.85s|15.4s|11.4s|8.2s|**🎉7.1s**|**🎉4.5s**|**🎉2.9s**|
-|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/static.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.C1_Q1_float8_DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=90px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.1024x1024.C1_Q1_float8_DBCache_F1B0_W8I1M0MC0_R0.35_SCM1111001000001000000100000001_dynamic_CFG0_T1O1_Ulysses2_S19_ulysses_float8_sage.png" width=90px>|
--->
-
 </div>
 
 **🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). The optimizations made by Cache-DiT include: 
