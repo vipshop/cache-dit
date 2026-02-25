@@ -951,8 +951,7 @@ def maybe_compile_transformer(
         if hasattr(pipe, "transformer_2"):
             transformer_2 = getattr(pipe, "transformer_2", None)
             _compile_transformer_module(transformer_2, "transformer_2")
-        else:
-            logger.warning("compile is set but no transformer_2 found in the pipeline.")
+
     return pipe_or_adapter
 
 
