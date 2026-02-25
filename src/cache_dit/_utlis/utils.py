@@ -672,6 +672,10 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.mask_policy = "fast"
     if args.mask_policy == "u":  # alias
         args.mask_policy = "ultra"
+
+    # Force enable compile for repeated blocks if compile_repeated_blocks is enabled
+    if args.compile_repeated_blocks:
+        args.compile = True
     return args
 
 
