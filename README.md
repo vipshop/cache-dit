@@ -71,12 +71,16 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> output = pipe(...) # Just call the pipe as normal.
 ```
 
+For more advanced features, please refer to our online documentation at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/).
+
+<!--
 ## 🚀Quick Links
 
 - [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to use cache-dit is to start with our examples for some popular models.
 - [🌐HTTP Serving](https://cache-dit.readthedocs.io/en/latest) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, and more.
 - [📘Documentation](https://cache-dit.readthedocs.io/en/latest/) - For advanced features, please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/).
 - [❓FAQ](https://cache-dit.readthedocs.io/en/latest) - Frequently asked questions including attention backend, troubleshooting, and optimization tips.
+-->
 
 ## 🌐Community Integration
 
