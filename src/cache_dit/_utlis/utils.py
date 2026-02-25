@@ -526,6 +526,7 @@ def get_args(
     )
     parser.add_argument(
         "--compile-repeated-blocks",
+        "--compile-blocks",
         action="store_true",
         default=False,
         help="Enable compile for repeated blocks in transformer",
@@ -904,50 +905,50 @@ def maybe_compile_transformer(
         else:
             pipe = pipe_or_adapter
 
-        if hasattr(pipe, "transformer"):
-            transformer = getattr(pipe, "transformer", None)
+        def _compile_transformer_module(transformer, name):
             if transformer is not None and not isinstance(
                 transformer,
                 torch._dynamo.OptimizedModule,  # already compiled
             ):
+                from diffusers import ModelMixin
+
                 transformer_cls_name = transformer.__class__.__name__
-                if isinstance(transformer, torch.nn.Module):
-                    logger.info(f"Compiling transformer module: {transformer_cls_name} ...")
-                    transformer = torch.compile(
-                        transformer,
-                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
-                    )
-                    setattr(pipe, "transformer", transformer)
+                if isinstance(transformer, (torch.nn.Module, ModelMixin)):
+                    if args.compile_repeated_blocks and hasattr(
+                        transformer, "compile_repeated_blocks"
+                    ):
+                        logger.info(
+                            f"Compiling repeated blocks in {name} module: {transformer_cls_name} ..."
+                        )
+                        transformer.compile_repeated_blocks(
+                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                        )
+                    else:
+                        logger.info(f"Compiling {name} module: {transformer_cls_name} ...")
+                        transformer = torch.compile(
+                            transformer,
+                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                        )
+                    setattr(pipe, name, transformer)
                 else:
                     logger.warning(
-                        f"Cannot compile transformer module: {transformer_cls_name} Not a"
+                        f"Cannot compile {name} module: {transformer_cls_name} Not a"
                         " torch.nn.Module."
                     )
-            setattr(pipe, "transformer", transformer)
+            else:
+                logger.warning(f"{name} module is already compiled or None, skipping compilation.")
+
+        if hasattr(pipe, "transformer"):
+            transformer = getattr(pipe, "transformer", None)
+            _compile_transformer_module(transformer, "transformer")
         else:
             logger.warning("compile is set but no transformer found in the pipeline.")
 
         if hasattr(pipe, "transformer_2"):
             transformer_2 = getattr(pipe, "transformer_2", None)
-            if transformer_2 is not None and not isinstance(
-                transformer_2,
-                torch._dynamo.OptimizedModule,  # already compiled
-            ):
-                transformer_2_cls_name = transformer_2.__class__.__name__
-                if isinstance(transformer_2, torch.nn.Module):
-                    logger.info(f"Compiling transformer_2 module: {transformer_2_cls_name} ...")
-                    transformer_2 = torch.compile(
-                        transformer_2,
-                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
-                    )
-                    setattr(pipe, "transformer_2", transformer_2)
-                else:
-                    logger.warning(
-                        f"Cannot compile transformer_2 module: {transformer_2_cls_name} Not a"
-                        " torch.nn.Module."
-                    )
-            setattr(pipe, "transformer_2", transformer_2)
-
+            _compile_transformer_module(transformer_2, "transformer_2")
+        else:
+            logger.warning("compile is set but no transformer_2 found in the pipeline.")
     return pipe_or_adapter
 
 
