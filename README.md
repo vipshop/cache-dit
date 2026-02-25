@@ -70,7 +70,6 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> cache_dit.set_attn_backend(pipe, attention_backend=...)
 >>> output = pipe(...) # Just call the pipe as normal.
 ```
-Please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/) for more details.
 
 ## 🚀Quick Links
 
