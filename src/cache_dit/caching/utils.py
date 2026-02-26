@@ -226,7 +226,7 @@ def load_parallelism_config(
         parallelism_config_kwargs["backend"] = ParallelismBackend.from_str(backend_str)
 
     def _maybe_auto_parallel_size(
-        size: str | int | None, partial_max_size: Optional[int] = None
+        size: str | int | None, partial_max_size: Optional[int] = None, name: str = ""
     ) -> Optional[int]:
         if size is None:
             return None
@@ -249,7 +249,7 @@ def load_parallelism_config(
                     "to utilize multiple devices for parallelism."
                 )
             else:
-                logger.info(f"Auto selected parallel size to {size}.")
+                logger.info(f"Auto selected parallel size for {name} to {size}.")
             return size
         raise ValueError(f"Invalid parallel size value: {size}. Must be int or 'auto'.")
 
@@ -279,7 +279,9 @@ def load_parallelism_config(
         for key in ["ulysses_size", "ring_size", "tp_size"]:
             if key in parallelism_config_kwargs:
                 parallelism_config_kwargs[key] = _maybe_auto_parallel_size(
-                    parallelism_config_kwargs[key], partial_max_size=partial_max_size
+                    parallelism_config_kwargs[key],
+                    partial_max_size=partial_max_size,
+                    name=key,
                 )
         return parallelism_config_kwargs
 
