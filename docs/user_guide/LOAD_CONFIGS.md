@@ -38,7 +38,7 @@ parallelism_config:
     attention_backend: native
     extra_parallel_modules: ["text_encoder", "vae"]
 ```
-Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should mannually set it as specific int number, e.g, 4.
+Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should manually set it as specific int number, e.g, 4.
 ```python
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
