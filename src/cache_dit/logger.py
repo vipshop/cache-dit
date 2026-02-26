@@ -4,7 +4,7 @@ import sys
 import torch.distributed as dist
 from .envs import ENV
 
-_FORMAT = "%(levelname)s %(asctime)s [%(filename)s:%(lineno)d] %(message)s"
+_FORMAT = "[Cache-DiT][%(asctime)s] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
 
 _LOG_LEVEL = ENV.CACHE_DIT_LOG_LEVEL
@@ -26,6 +26,16 @@ class NewLineFormatter(logging.Formatter):
         return msg
 
 
+class Rank0Filter(logging.Filter):
+    """Filter that only allows logs from rank 0 to pass through (real-time check)."""
+
+    def filter(self, record):
+        try:
+            return not (dist.is_available() and dist.is_initialized() and dist.get_rank() != 0)
+        except Exception:
+            return True
+
+
 _root_logger = logging.getLogger("CACHE_DIT")
 _default_handler = None
 _default_file_handler = None
@@ -33,49 +43,55 @@ _inference_log_file_handler = {}
 
 
 def _setup_logger():
+    """Setup the root logger with console and file handlers."""
     _root_logger.setLevel(_LOG_LEVEL)
-    global _default_handler
-    global _default_file_handler
+    _root_logger.propagate = False
     fmt = NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
+    rank_filter = Rank0Filter()
 
+    # Setup console handler (always add, filter controls output)
+    global _default_handler
     if _default_handler is None:
         _default_handler = logging.StreamHandler(sys.stdout)
         _default_handler.flush = sys.stdout.flush  # type: ignore
         _default_handler.setLevel(_LOG_LEVEL)
+        _default_handler.setFormatter(fmt)
+        _default_handler.addFilter(rank_filter)
         _root_logger.addHandler(_default_handler)
 
+    # Setup default file handler (always add if dir exists, filter controls output)
+    global _default_file_handler
     if _default_file_handler is None and _LOG_DIR is not None:
         if not os.path.exists(_LOG_DIR):
             try:
                 os.makedirs(_LOG_DIR)
             except OSError as e:
-                _root_logger.warn(f"Error creating directory {_LOG_DIR} : {e}")
+                _root_logger.warning(f"Error creating directory {_LOG_DIR} : {e}")
         _default_file_handler = logging.FileHandler(_LOG_DIR + "/default.log")
         _default_file_handler.setLevel(_LOG_LEVEL)
         _default_file_handler.setFormatter(fmt)
+        _default_file_handler.addFilter(rank_filter)
         _root_logger.addHandler(_default_file_handler)
 
-    _default_handler.setFormatter(fmt)
-    # Setting this will avoid the message
-    # being propagated to the parent logger.
-    _root_logger.propagate = False
 
-
-# The logger is initialized when the module is imported.
-# This is thread-safe as the module is only imported once,
-# guaranteed by the Python GIL.
+# Initialize logger when module is imported
 _setup_logger()
 
 
 def init_logger(name: str):
-    pid = os.getpid()
-    # Use the same settings as above for root logger
+    """Initialize a logger with the given name."""
     logger = logging.getLogger(name)
     logger.setLevel(_LOG_LEVEL)
-    logger.addHandler(_default_handler)
-    if _LOG_DIR is not None and pid is None:
-        logger.addHandler(_default_file_handler)
-    elif _LOG_DIR is not None:
+    logger.propagate = False
+    rank_filter = Rank0Filter()
+
+    # Add console handler
+    if _default_handler is not None:
+        logger.addHandler(_default_handler)
+
+    # Add file handlers if log directory is configured
+    if _LOG_DIR is not None:
+        pid = os.getpid()
         if _inference_log_file_handler.get(pid, None) is not None:
             logger.addHandler(_inference_log_file_handler[pid])
         else:
@@ -83,38 +99,12 @@ def init_logger(name: str):
                 try:
                     os.makedirs(_LOG_DIR)
                 except OSError as e:
-                    _root_logger.warn(f"Error creating directory {_LOG_DIR} : {e}")
-            _inference_log_file_handler[pid] = logging.FileHandler(_LOG_DIR + f"/process.{pid}.log")
-            _inference_log_file_handler[pid].setLevel(_LOG_LEVEL)
-            _inference_log_file_handler[pid].setFormatter(
-                NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT)
-            )
-            _root_logger.addHandler(_inference_log_file_handler[pid])
-            logger.addHandler(_inference_log_file_handler[pid])
-    logger.propagate = False
+                    _root_logger.warning(f"Error creating directory {_LOG_DIR} : {e}")
+            file_handler = logging.FileHandler(_LOG_DIR + f"/process.{pid}.log")
+            file_handler.setLevel(_LOG_LEVEL)
+            file_handler.setFormatter(NewLineFormatter(_FORMAT, datefmt=_DATE_FORMAT))
+            file_handler.addFilter(rank_filter)
+            _inference_log_file_handler[pid] = file_handler
+            logger.addHandler(file_handler)
+
     return logger
-
-
-def logging_rank_0(logger: logging.Logger, message: str, level: int = logging.INFO):
-    if not isinstance(logger, logging.Logger):
-        raise TypeError("logger must be an instance of logging.Logger")
-    if not isinstance(message, str):
-        raise TypeError("message must be a string")
-    if not isinstance(level, int):
-        raise TypeError("level must be an integer representing a logging level")
-
-    def _logging_msg():
-        if level == logging.DEBUG:
-            logger.debug(message)
-        elif level == logging.WARNING:
-            logger.warning(message)
-        elif level == logging.ERROR:
-            logger.error(message)
-        else:
-            logger.info(message)
-
-    if dist.is_initialized():
-        if dist.get_rank() == 0:
-            _logging_msg()
-    else:
-        _logging_msg()
