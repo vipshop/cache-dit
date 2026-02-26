@@ -174,8 +174,8 @@ class ParallelismConfig:
         try:
             self._flat_tp_mesh = self._tp_mesh._flatten()
         except Exception as e:
-            # Workaround for error: SGLang Diffusion + diffusers backend + cache-dit 2D/3D parallelism
-            # + PyTorch 2.9 or earlier, which may not support creating flat meshe from last dim of mesh.
+            # Workaround for error: SGLang Diffusion + diffusers BE + cache-dit hybrid parallelism
+            # + PyTorch <= 2.9, which may not support creating flat mesh from last dim of submesh.
             # RuntimeError: ("tp already exists for submesh of the DeviceMesh((ring=1, ulysses=2, tp=2)
             # NOTE: flat_tp_mesh is only used for tensor parallelism, which is 1D and does not require
             # slicing. So we can just use the original tp_mesh as the flat_tp_mesh without flattening.
