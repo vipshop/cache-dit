@@ -38,7 +38,7 @@ parallelism_config:
     attention_backend: native
     extra_parallel_modules: ["text_encoder", "vae"]
 ```
-Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should mannually set it as specific int number, e.g, 4.
+Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should manually set it as specific int number, e.g, 4.
 ```python
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
@@ -102,7 +102,7 @@ parallelism_config:
     attention_backend: native
     extra_parallel_modules: ["text_encoder", "vae"]
 ```
-Then, apply the bybrid cache and parallel acceleration config from yaml. 
+Then, apply the hybrid cache and parallel acceleration config from yaml. 
 ```python
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("hybrid.yaml"))
@@ -119,9 +119,12 @@ pip3 install transformers accelerate bitsandbytes opencv-python-headless einops 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples/configs
+
 python3 -m cache_dit.generate flux --config cache.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml
 torchrun --nproc_per_node=8 -m cache_dit.generate flux --config parallel_3d.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_usp.yaml
 ```
