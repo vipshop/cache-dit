@@ -88,3 +88,14 @@ class ENV(object):
     CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK: bool = bool(
         int(os.environ.get("CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK", "0"))
     )
+
+    # Logger ENVs
+
+    # Force only rank 0 logging in cache-dit by setting the environment variable to 1.
+    # By default, cache-dit allows only rank 0 to log in real-time, but other ranks
+    # can still log if they are not using the custom logger. Users can set this variable
+    # to 0 to allow all ranks to log, but it is not recommended for distributed training
+    # as it may cause cluttered logs.
+    CACHE_DIT_FORCE_ONLY_RANK0_LOGGING: bool = bool(
+        int(os.environ.get("CACHE_DIT_FORCE_ONLY_RANK0_LOGGING", "1"))
+    )
