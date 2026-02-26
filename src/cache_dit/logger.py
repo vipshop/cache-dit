@@ -30,6 +30,10 @@ class Rank0Filter(logging.Filter):
     """Filter that only allows logs from rank 0 to pass through (real-time check)."""
 
     def filter(self, record):
+
+        if not ENV.CACHE_DIT_FORCE_ONLY_RANK0_LOGGING:
+            return True
+
         try:
             return not (dist.is_available() and dist.is_initialized() and dist.get_rank() != 0)
         except Exception:
