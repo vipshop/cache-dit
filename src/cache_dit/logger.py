@@ -4,7 +4,7 @@ import sys
 import torch.distributed as dist
 from .envs import ENV
 
-_FORMAT = "[Cache-DiT][%(asctime)s] %(message)s"
+_FORMAT = "[%(asctime)s] [Cache-DiT] %(message)s"
 _DATE_FORMAT = "%m-%d %H:%M:%S"
 
 _LOG_LEVEL = ENV.CACHE_DIT_LOG_LEVEL

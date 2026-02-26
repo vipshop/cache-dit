@@ -69,6 +69,7 @@ nav:
       - Use Torch Compile: user_guide/COMPILE.md
       - Ascend NPU Support: user_guide/ASCEND_NPU.md
       - Config with YAML: user_guide/LOAD_CONFIGS.md
+      - Environment Variables: user_guide/ENV.md
       - Serving Deployment: user_guide/SERVING.md
       - Metrics Tools: user_guide/METRICS.md
       - Profiler Usage: user_guide/PROFILER.md
