@@ -102,7 +102,7 @@ parallelism_config:
     attention_backend: native
     extra_parallel_modules: ["text_encoder", "vae"]
 ```
-Then, apply the bybrid cache and parallel acceleration config from yaml. 
+Then, apply the hybrid cache and parallel acceleration config from yaml. 
 ```python
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("hybrid.yaml"))
