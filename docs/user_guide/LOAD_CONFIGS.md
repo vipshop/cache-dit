@@ -119,9 +119,12 @@ pip3 install transformers accelerate bitsandbytes opencv-python-headless einops 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples/configs
+
 python3 -m cache_dit.generate flux --config cache.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml
 torchrun --nproc_per_node=8 -m cache_dit.generate flux --config parallel_3d.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_usp.yaml
 ```
