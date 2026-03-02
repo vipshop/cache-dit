@@ -20,11 +20,11 @@
 
 **🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). The optimizations made by Cache-DiT include:  
 
-![arch](https://github.com/vipshop/cache-dit/raw/main/assets/arch.png)
+[![](https://github.com/vipshop/cache-dit/raw/main/assets/arch.png)](https://cache-dit.readthedocs.io/en/latest/)
 
 - 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking), Cache CFG and more)
 - 🎉**Context Parallelism** ([**CP**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) w/ Ulysses, Ring, **[USP](https://arxiv.org/pdf/2405.07719)**, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), [**Async CP**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#async-ulysses-qkv-projection), FP8 Comm)
-- 🎉**Tensor Parallelism** ([**TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) w/ PyTorch native DTensor and Tensor Parallelism APIs, avoid OOM)
+- 🎉**Tensor Parallelism** ([**TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) w/ PyTorch native DTensor & Tensor Parallelism APIs, avoid OOM)
 - 🎉**Hybrid [2D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) and [3D](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) Parallelism** (w/ 💥[**USP + TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/), scale up the performance of [**Large DiTs**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/))
 - 🎉**Text Encoder Parallelism** ([**TE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ PyTorch native DTensor and Tensor Parallelism APIs)
 - 🎉**Auto Encoder Parallelism** ([**VAE-P**](https://cache-dit.readthedocs.io/en/latest/user_guide/EXTRA_PARALLEL) w/ Data or Tile Parallelism, slightly faster, avoid OOM)
@@ -73,15 +73,6 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 ```
 
 For more advanced features, please refer to our online documentation at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/).
-
-<!--
-## 🚀Quick Links
-
-- [📊Examples](https://github.com/vipshop/cache-dit/tree/main/examples/) - The **easiest** way to use cache-dit is to start with our examples for some popular models.
-- [🌐HTTP Serving](https://cache-dit.readthedocs.io/en/latest) - Deploy cache-dit models with HTTP API for **text-to-image**, **image editing**, and more.
-- [📘Documentation](https://cache-dit.readthedocs.io/en/latest/) - For advanced features, please refer to our online documentation at [readthedocs.io](https://cache-dit.readthedocs.io/en/latest/).
-- [❓FAQ](https://cache-dit.readthedocs.io/en/latest) - Frequently asked questions including attention backend, troubleshooting, and optimization tips.
--->
 
 ## 🌐Community Integration
 

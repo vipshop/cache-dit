@@ -16,6 +16,8 @@
 
 [![](https://github.com/vipshop/cache-dit/raw/main/assets/arch.png)](https://cache-dit.readthedocs.io/en/latest/)
 
+<p align="center">Star ⭐ this repo if you find it useful!</p>
+
 <!--
 
 - 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking), Cache CFG and more)
