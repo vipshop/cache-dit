@@ -103,3 +103,5 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
   year={2025}
 }
 ```
+
+<p align="center">Star ⭐ this repo if you find it useful!</p>
