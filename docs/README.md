@@ -18,7 +18,7 @@
 <a class="github-button" href="https://github.com/vipshop/cache-dit/fork" data-show-count="true" data-icon="octicon-repo-forked" data-size="large" aria-label="Fork">Fork</a>
 </p>
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). The optimizations made by Cache-DiT include:  
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). The optimizations made by Cache-DiT including:  
 
 [![](https://github.com/vipshop/cache-dit/raw/main/assets/arch.png)](https://cache-dit.readthedocs.io/en/latest/)
 
