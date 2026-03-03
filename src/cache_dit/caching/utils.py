@@ -370,4 +370,4 @@ def load_configs(
             "parallelism_config": parallelism_config,
             "attention_backend": attention_backend,
         }
-    return cache_config, calibrator_config, parallelism_config
+    return cache_config, calibrator_config, parallelism_config, attention_backend
