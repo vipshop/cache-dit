@@ -326,7 +326,9 @@ def load_configs(
     path_or_dict: str | dict,
     return_dict: bool = True,
     **kwargs,
-) -> Union[Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig], dict]:
+) -> Union[
+    Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig, Optional[str]], dict
+]:
     r"""
     Load both cache and parallelism configurations from a YAML file or a dictionary. For example,
     the YAML file can be structured as follows:
