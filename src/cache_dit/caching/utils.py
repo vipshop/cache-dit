@@ -147,8 +147,8 @@ def load_cache_config(
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
     if "cache_config" not in cache_kwargs:
-        if "parallelism_config" in cache_kwargs:
-            # Allow missing cache_config for only parallelism_config checking
+        if "parallelism_config" in cache_kwargs or "attention_backend" in cache_kwargs:
+            # Allow missing cache_config for only parallelism_config or attention_backend checking
             return None, None
         # Try to load full cache options for backward compatibility if cache_config not found
         # and the parallelism_config is also not provided. This is to support old config files
@@ -326,7 +326,9 @@ def load_configs(
     path_or_dict: str | dict,
     return_dict: bool = True,
     **kwargs,
-) -> Union[Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig], dict]:
+) -> Union[
+    Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig, Optional[str]], dict
+]:
     r"""
     Load both cache and parallelism configurations from a YAML file or a dictionary. For example,
     the YAML file can be structured as follows:
@@ -357,6 +359,7 @@ def load_configs(
         cache configuration, optional calibrator configuration, and parallelism configuration. If `return_dict`
         is set to `True`, returns a dictionary with keys "cache_config", "calibrator_config", and "parallelism_config".
     """
+    # TODO(DefTruth): support load quantize config from yaml in the future if needed.
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)
     attention_backend = load_attn_backend_config(path_or_dict, **kwargs)
@@ -369,4 +372,4 @@ def load_configs(
             "parallelism_config": parallelism_config,
             "attention_backend": attention_backend,
         }
-    return cache_config, calibrator_config, parallelism_config
+    return cache_config, calibrator_config, parallelism_config, attention_backend

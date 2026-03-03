@@ -1,0 +1,7 @@
+# namely, no cache, temporarily workaround for case when user only want to 
+# set attn backend without cache and parallelism config, which is common 
+# for flash attention. We can remove this workaround after we support more 
+# flexible cache options and decouple cache and attn backend more clearly.
+cache_config:
+  max_warmup_steps: 10000  
+attention_backend: _flash_3

@@ -221,7 +221,8 @@ def enable_cache(
     """
     # Precheck for compatibility of different configurations
     if cache_config is None:
-        if parallelism_config is None:
+        # Allow setting custom attention backend without cache by users.
+        if parallelism_config is None and attention_backend is None:
             # Set default cache config only when parallelism is not enabled
             logger.info("cache_config is None, using default DBCacheConfig")
             cache_config = DBCacheConfig()
