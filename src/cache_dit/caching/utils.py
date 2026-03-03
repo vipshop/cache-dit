@@ -357,6 +357,7 @@ def load_configs(
         cache configuration, optional calibrator configuration, and parallelism configuration. If `return_dict`
         is set to `True`, returns a dictionary with keys "cache_config", "calibrator_config", and "parallelism_config".
     """
+    # TODO(DefTruth): support load quantize config from yaml in the future if needed.
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)
     attention_backend = load_attn_backend_config(path_or_dict, **kwargs)
