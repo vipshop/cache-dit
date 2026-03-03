@@ -147,8 +147,8 @@ def load_cache_config(
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
     if "cache_config" not in cache_kwargs:
-        if "parallelism_config" in cache_kwargs:
-            # Allow missing cache_config for only parallelism_config checking
+        if "parallelism_config" in cache_kwargs or "attention_backend" in cache_kwargs:
+            # Allow missing cache_config for only parallelism_config or attention_backend checking
             return None, None
         # Try to load full cache options for backward compatibility if cache_config not found
         # and the parallelism_config is also not provided. This is to support old config files
