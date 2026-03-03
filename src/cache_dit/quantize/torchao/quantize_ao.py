@@ -13,7 +13,7 @@ def quantize_ao(
     quant_type: str = "float8_weight_only",
     # Paramters for FP8 DQ quantization
     # Whether to quantize per row (True) or per tensor (False)
-    per_row: bool = True,
+    per_row: bool = True,  # Deprecated, will be removed in future.
     exclude_layers: List[str] = [
         "embedder",
         "embed",
@@ -38,6 +38,7 @@ def quantize_ao(
 
     alias_map = {
         "float8": "fp8_w8a8_dq",
+        "float8_blockwise": "fp8_blockwise",
         "float8_weight_only": "fp8_w8a16_wo",
         "float8_wo": "fp8_w8a16_wo",
         "int8": "int8_w8a8_dq",
@@ -62,6 +63,7 @@ def quantize_ao(
     assert quant_type in (
         "fp8_w8a8_dq",
         "fp8_w8a16_wo",
+        "fp8_blockwise",
         "int8_w8a8_dq",
         "int8_w8a16_wo",
         "int4_w4a8_dq",
@@ -86,6 +88,7 @@ def quantize_ao(
         num_layers += 1
         if isinstance(m, torch.nn.Linear):
             num_linear_layers += 1
+
             for exclude_name in exclude_layers:
                 if exclude_name in name:
                     logger.info(f"Skip Quantization: {name} -> " f"pattern<{exclude_name}>")
@@ -98,6 +101,15 @@ def quantize_ao(
                     f"Skip Quantization: {name} -> " f"pattern<dtype({m.weight.dtype})!=bfloat16>"
                 )
 
+                num_skip_linear += 1
+                return False
+
+            # check blockwise fp8 support for linear layers, if not supported, skip quantization for that layer
+            if quant_type == "fp8_blockwise" and not _check_blockwise_fp8_support(m):
+                weight_shape = tuple(m.weight.shape)
+                logger.info(
+                    f"Skip Quantization: {name} -> pattern<w{weight_shape} % block_size(128, 128) != 0>"
+                )
                 num_skip_linear += 1
                 return False
 
@@ -130,6 +142,29 @@ def quantize_ao(
                     granularity=(
                         ((PerRow(), PerRow())) if per_row else ((PerTensor(), PerTensor()))
                     ),
+                )
+
+            elif quant_type == "fp8_blockwise":
+                try:
+                    from torchao.quantization import (
+                        Float8DynamicActivationFloat8WeightConfig,
+                        PerBlock,
+                    )
+                except ImportError:
+                    raise ImportError(
+                        "Blockwise quantization is not supported in current version of torchao. "
+                        "Please upgrade the torchao library to use this feature."
+                    )
+                quant_config = Float8DynamicActivationFloat8WeightConfig(
+                    weight_dtype=kwargs.get(
+                        "weight_dtype",
+                        torch.float8_e4m3fn,
+                    ),
+                    activation_dtype=kwargs.get(
+                        "activation_dtype",
+                        torch.float8_e4m3fn,
+                    ),
+                    granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),
                 )
 
             elif quant_type == "fp8_w8a16_wo":
@@ -169,10 +204,15 @@ def quantize_ao(
                 )
 
             elif quant_type == "int4_w4a4_dq":
-
-                from torchao.quantization import (
-                    Int4DynamicActivationInt4WeightConfig,
-                )
+                try:
+                    from torchao.quantization import (
+                        Int4DynamicActivationInt4WeightConfig,
+                    )
+                except ImportError:
+                    raise ImportError(
+                        "Int4 dynamic activation quantization is removed in newer versions of torchao. "
+                        "Please downgrade the torchao library to use this feature."
+                    )
 
                 quant_config = Int4DynamicActivationInt4WeightConfig()
 
@@ -222,3 +262,27 @@ def quantize_ao(
     module._quantize_type = quant_type
     module._is_quantized = True
     return module
+
+
+def _check_blockwise_fp8_support(module: torch.nn.Linear):
+    try:
+        from torchao.quantization.utils import get_block_size
+        from torchao.quantization import PerBlock
+    except ImportError:
+        return False
+
+    weight_tensor = getattr(module, "weight", None)  # type: torch.Tensor
+    if weight_tensor is None:
+        return False
+
+    weight_granularity = PerBlock([128, 128])
+    try:
+        block_size = get_block_size(weight_tensor.shape, weight_granularity)
+        logger.debug(
+            f"block_size: {block_size}, weight_granularity.block_size: "
+            f"{weight_granularity.block_size}"
+        )
+        return block_size == weight_granularity.block_size
+    except Exception as e:
+        logger.debug(f"Failed to get block size for module {module}: {e}")
+        return False
