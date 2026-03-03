@@ -164,7 +164,13 @@ def quantize_ao(
                         "activation_dtype",
                         torch.float8_e4m3fn,
                     ),
-                    granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),
+                    # Currently, torchao only supports blockwise FP8 quantization for linear
+                    # layers with weight tensors that are divisible by block size (128, 128).
+                    # We will check the block size of the weight tensor and skip quantization
+                    # if it's not supported. Only '_granularity_is_a_1_128_w_128_128' pattern
+                    # is supported now, we will add more patterns in the future once torchao
+                    # supports more blockwise FP8 quantization patterns.
+                    granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),  # hardcode
                 )
 
             elif quant_type == "fp8_w8a16_wo":
@@ -275,7 +281,13 @@ def _check_blockwise_fp8_support(module: torch.nn.Linear):
     if weight_tensor is None:
         return False
 
-    weight_granularity = PerBlock([128, 128])
+    # Currently, torchao only supports blockwise FP8 quantization for linear
+    # layers with weight tensors that are divisible by block size (128, 128).
+    # We will check the block size of the weight tensor and skip quantization
+    # if it's not supported. Only '_granularity_is_a_1_128_w_128_128' pattern
+    # is supported now, we will add more patterns in the future once torchao
+    # supports more blockwise FP8 quantization patterns.
+    weight_granularity = PerBlock([128, 128])  # hardcode
     try:
         block_size = get_block_size(weight_tensor.shape, weight_granularity)
         logger.debug(
