@@ -317,6 +317,7 @@ def get_args(
         choices=[
             None,
             "float8",
+            "float8_blockwise",
             "float8_weight_only",
             "float8_wo",  # alias for float8_weight_only
             "int8",
@@ -344,6 +345,7 @@ def get_args(
         choices=[
             None,
             "float8",
+            "float8_blockwise",
             "float8_weight_only",
             "float8_wo",  # alias for float8_weight_only
             "int8",
@@ -361,7 +363,7 @@ def get_args(
         "--q-controlnet",
         action="store_true",
         default=False,
-        help="Enable quantization for text encoder",
+        help="Enable quantization for ControlNet",
     )
     parser.add_argument(
         "--quantize-controlnet-type",
@@ -371,6 +373,7 @@ def get_args(
         choices=[
             None,
             "float8",
+            "float8_blockwise",
             "float8_weight_only",
             "float8_wo",  # alias for float8_weight_only
             "int8",
