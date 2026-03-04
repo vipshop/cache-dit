@@ -1,4 +1,6 @@
 import logging
+import warnings
+import contextlib
 import os
 import sys
 import torch.distributed as dist
@@ -112,3 +114,57 @@ def init_logger(name: str):
             logger.addHandler(file_handler)
 
     return logger
+
+
+# Adapted from: https://github.com/vllm-project/vllm/blob/a11f4a81e027efd9ef783b943489c222950ac989/vllm/utils/system_utils.py#L60
+@contextlib.contextmanager
+def suppress_stdout():
+    """
+    Suppress stdout from C libraries at the file descriptor level.
+
+    Only suppresses stdout, not stderr, to preserve error messages.
+    Example:
+        with suppress_stdout():
+            # C library calls that would normally print to stdout
+            torch.distributed.new_group(ranks, backend="gloo")
+    """
+    # Don't suppress if logging level is DEBUG
+    if _LOG_LEVEL == logging.DEBUG:
+        yield
+        return
+
+    stdout_fd = sys.stdout.fileno()
+    stdout_dup = os.dup(stdout_fd)
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+
+    try:
+        sys.stdout.flush()
+        os.dup2(devnull_fd, stdout_fd)
+        yield
+    finally:
+        sys.stdout.flush()
+        os.dup2(stdout_dup, stdout_fd)
+        os.close(stdout_dup)
+        os.close(devnull_fd)
+
+
+# Adapted from: https://github.com/sgl-project/sglang/blob/17119a697de72910d77d3bfffc34d097cf6cad09/python/sglang/multimodal_gen/runtime/utils/logging_utils.py#L385
+def suppress_loggers(loggers_to_suppress: list[str], level: int = logging.ERROR) -> dict[str, int]:
+    original_levels = {}
+
+    for logger_name in loggers_to_suppress:
+        logger = logging.getLogger(logger_name)
+        original_levels[logger_name] = logger.level
+        logger.setLevel(level)
+
+    return original_levels
+
+
+def suppress_torch_compile_loggers() -> dict[str, int]:
+    """Set specified torch loggers to ERROR level to suppress warnings."""
+    # Suppress specific warnings from torch._dynamo and torch._inductor when using compile
+    warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._dynamo.*")
+    warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._inductor.*")
+    compile_loggers_names = ["torch._dynamo", "torch._inductor", "torch._functorch"]
+    original_levels = suppress_loggers(compile_loggers_names, level=logging.ERROR)
+    return original_levels

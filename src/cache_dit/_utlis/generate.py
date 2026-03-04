@@ -1,4 +1,4 @@
-from ..logger import init_logger
+from ..logger import init_logger, suppress_torch_compile_loggers
 from .utils import get_base_args, maybe_postprocess_args
 from .registers import ExampleRegister  # noqa: F403, F401
 
@@ -54,6 +54,9 @@ def entrypoint():
                 "see all available examples."
             )
             exit(1)
+
+        if args.compile:
+            suppress_torch_compile_loggers()
 
         # logging all args with better formatting
         logger.info("Running example with the following arguments:")
