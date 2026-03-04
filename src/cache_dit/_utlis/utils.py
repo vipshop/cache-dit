@@ -1460,6 +1460,7 @@ def get_rank_device():
 
 def maybe_init_distributed(args=None):
     from ..platforms.platform import CpuPlatform
+    from ..logger import suppress_stdout
 
     platform_full_backend = current_platform.full_dist_backend
     cpu_full_backend = CpuPlatform.full_dist_backend
@@ -1467,9 +1468,10 @@ def maybe_init_distributed(args=None):
     backend = f"{cpu_full_backend},{platform_full_backend}"
     if args is not None:
         if args.parallel_type is not None:
-            dist.init_process_group(
-                backend=backend,
-            )
+            with suppress_stdout():
+                dist.init_process_group(
+                    backend=backend,
+                )
             rank, device = get_rank_device()
             current_platform.set_device(device)
             return rank, device
@@ -1481,9 +1483,10 @@ def maybe_init_distributed(args=None):
             )
             if has_parallelism_config:
                 if not dist.is_initialized():
-                    dist.init_process_group(
-                        backend=backend,
-                    )
+                    with suppress_stdout():
+                        dist.init_process_group(
+                            backend=backend,
+                        )
                 rank, device = get_rank_device()
                 current_platform.set_device(device)
                 return rank, device
@@ -1498,9 +1501,10 @@ def maybe_init_distributed(args=None):
     else:
         # always init distributed for other examples
         if not dist.is_initialized():
-            dist.init_process_group(
-                backend=platform_full_backend,
-            )
+            with suppress_stdout():
+                dist.init_process_group(
+                    backend=backend,
+                )
         rank, device = get_rank_device()
         current_platform.set_device(device)
         return rank, device
