@@ -4,7 +4,7 @@ from typing import Optional
 from ..envs import ENV
 from ..platforms import current_platform
 from ..parallelism.attention._templated_ulysses import is_ulysses_anything_enabled
-from cache_dit.logger import init_logger, suppress_torch_compile_loggers
+from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
 
@@ -22,8 +22,6 @@ def set_compile_configs(
     capture_dynamic_output_shape_ops: Optional[bool] = None,
     **kwargs,  # other kwargs
 ):
-    # Suppress specific warnings from torch._dynamo and torch._inductor when using compile
-    suppress_torch_compile_loggers()
     # Alway increase recompile_limit for dynamic shape compilation
     torch._dynamo.config.recompile_limit = 1024  # default is 8
     torch._dynamo.config.accumulated_recompile_limit = 8192  # default is 256
