@@ -53,28 +53,16 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 ```python
 >>> import cache_dit
 >>> from diffusers import DiffusionPipeline
->>> # The pipe can be any diffusion pipeline.
 >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
->>> # Cache Acceleration with One-line code.
->>> cache_dit.enable_cache(pipe)
->>> # Or, Hybrid Cache Acceleration + 1D Parallelism.
+>>> cache_dit.enable_cache(pipe) # Cache Acceleration with One-line code.
 >>> from cache_dit import DBCacheConfig, ParallelismConfig
->>> cache_dit.enable_cache(
+>>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + 1D Parallelism.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2))
->>> # Or, Use Distributed Inference without Cache Acceleration.
->>> cache_dit.enable_cache(
-...   pipe, parallelism_config=ParallelismConfig(ulysses_size=2))
->>> # Or, Hybrid Cache Acceleration + 2D Parallelism.
->>> cache_dit.enable_cache(
+>>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + 2D Parallelism.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2, tp_size=2))
->>> from cache_dit import load_configs
->>> # Or, Load Acceleration config from a custom yaml file.
->>> cache_dit.enable_cache(pipe, **load_configs("config.yaml"))
->>> # Optional, set attention backend for better performance.
->>> cache_dit.set_attn_backend(pipe, attention_backend=...)
->>> output = pipe(...) # Just call the pipe as normal.
+>>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
 For more advanced features, please refer to our online documentation at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/).
