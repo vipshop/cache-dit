@@ -31,7 +31,7 @@
 - 🎉**Natively** supports **NVIDIA GPUs**, [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) (>= 1.2.0), ... 
 -->
 
-It is compatible with compilation, CPU offloading, and quantization (TorchAo, nunchaku), fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), SD.Next, ComfyUI, and runs natively on NVIDIA GPUs and Ascend NPUs.
+It is compatible with compilation, CPU offloading, and quantization (TorchAo, nunchaku), fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), SD.Next, ComfyUI, and runs natively on NVIDIA GPUs and Ascend NPUs. Cache-DiT is really **fast**, **easy to use**, and **flexible** for various DiTs.
 
 <div align="center">
   <img src=assets/speedup_v5.png width=800px>
