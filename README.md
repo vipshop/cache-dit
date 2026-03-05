@@ -12,10 +12,11 @@
   </p>
 </div>
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). The optimizations made by Cache-DiT including: 
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). It provides [hybrid cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, DBPrune, TaylorSeer, SCM, etc.) and comprehensive [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) optimizations, including Context Parallelism, Tensor Parallelism, hybrid 2D/3D parallelism, and dedicated parallel support for Text Encoder, VAE, and ControlNet.  
 
 [![](https://github.com/vipshop/cache-dit/raw/main/assets/arch.png)](https://cache-dit.readthedocs.io/en/latest/)
 
+<!--
 - 🎉**Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking), Cache CFG and more)
 - 🎉**Context Parallelism** ([**CP**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) w/ Ulysses, Ring, **[USP](https://arxiv.org/pdf/2405.07719)**, [**Ulysses Anything**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), [**Async CP**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#async-ulysses-qkv-projection), FP8 Comm)
 - 🎉**Tensor Parallelism** ([**TP**](https://cache-dit.readthedocs.io/en/latest/user_guide/HYBRID_PARALLEL/) w/ PyTorch native DTensor and Tensor Parallelism APIs, avoid OOM)
@@ -26,6 +27,9 @@
 - 🎉Compatible with [**Compile**](https://cache-dit.readthedocs.io/en/latest/user_guide/COMPILE/), CPU Offloading, [**Quantization**](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (TorchAo, nunchaku), ...
 - 🎉Fully integrated into [**vLLM-Omni**](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), [**SGLang Diffusion**](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), SD.Next, ComfyUI, ...
 - 🎉**Natively** supports **NVIDIA GPUs**, [**Ascend NPUs**](https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/) (>= 1.2.0), ... 
+-->
+
+It is compatible with compilation, CPU offloading, and quantization (TorchAo, nunchaku), fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), SD.Next, ComfyUI, and runs natively on NVIDIA GPUs and Ascend NPUs.
 
 ## 🔥Latest News 
 
