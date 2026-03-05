@@ -12,7 +12,7 @@
   </p>
 </div>
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly **[🔥ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/)** DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). It provides [**🎉Hybrid Cache Acceleration**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, DBPrune, TaylorSeer, SCM, etc.) and comprehensive [**🔥Parallelism**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) optimizations, including Context Parallelism, Tensor Parallelism, hybrid 2D/3D parallelism, and dedicated parallel support for Text Encoder, VAE, and ControlNet.  
+**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly [ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/) DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). It provides [🎉hybrid cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, DBPrune, TaylorSeer, SCM, etc.) and comprehensive [🔥parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) optimizations, including Context Parallelism, Tensor Parallelism, hybrid 2D/3D parallelism, and dedicated parallel support for Text Encoder, VAE, and ControlNet.  
 
 [![](https://github.com/vipshop/cache-dit/raw/main/assets/arch.png)](https://cache-dit.readthedocs.io/en/latest/)
 
