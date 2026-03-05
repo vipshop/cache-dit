@@ -14,7 +14,7 @@
 
 **🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the Diffusers library and now supports nearly [ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/) DiTs from Diffusers (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)). It provides [hybrid cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, DBPrune, TaylorSeer, SCM, etc.) and comprehensive [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) optimizations, including Context Parallelism, Tensor Parallelism, hybrid 2D/3D parallelism, and dedicated parallel support for Text Encoder, VAE, and ControlNet. 
 
-<div align="left">
+<div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch.png width=850px>
 </div>
 
@@ -33,7 +33,7 @@
 
 It is compatible with compilation, CPU offloading, and quantization (TorchAo, nunchaku), fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), SD.Next, ComfyUI, and runs natively on NVIDIA GPUs and Ascend NPUs.
 
-<div align="left">
+<div align="center">
   <img src=assets/speedup_v5.png width=800px>
 </div>
 
