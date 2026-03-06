@@ -30,6 +30,8 @@ class CacheStats:
     cfg_residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
     accumulated_cached_steps: int = 0
     cfg_accumulated_cached_steps: int = 0
+    accumulated_executed_steps: int = 0
+    accumulated_transformer_executed_steps: int = 0
     # Dynamic Block Prune
     pruned_steps: list[int] = dataclasses.field(default_factory=list)
     pruned_blocks: list[int] = dataclasses.field(default_factory=list)
@@ -293,6 +295,8 @@ def _summary(
         cached_steps: list[int] = module._cached_steps
         residual_diffs: dict[str, list | float] = dict(module._residual_diffs)
         accumulated_cached_steps = module._accumulated_cached_steps
+        accumulated_executed_steps = module._accumulated_executed_steps
+        accumulated_transformer_executed_steps = module._accumulated_transformer_executed_steps
 
         if hasattr(module, "_pruned_steps"):
             pruned_steps: list[int] = module._pruned_steps
@@ -308,6 +312,8 @@ def _summary(
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
         cache_stats.accumulated_cached_steps = accumulated_cached_steps
+        cache_stats.accumulated_executed_steps = accumulated_executed_steps
+        cache_stats.accumulated_transformer_executed_steps = accumulated_transformer_executed_steps
 
         cache_stats.pruned_steps = pruned_steps
         cache_stats.pruned_blocks = pruned_blocks
@@ -351,7 +357,12 @@ def _summary(
                 )
                 print("", flush=True)
             else:
-                print(f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}\n", flush=True)
+                print(
+                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}, "
+                    f"Executed Steps: {accumulated_executed_steps}, "
+                    f"Transformer Executed Steps: {accumulated_transformer_executed_steps}\n",
+                    flush=True,
+                )
 
                 print(
                     "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
@@ -392,7 +403,7 @@ def _summary(
                     )
                     sys.stdout.flush()
                 else:
-                    print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
+                    print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n", flush=True)
                     pprint(
                         f"Cache Steps: {accumulated_cached_steps}, {cached_steps}",
                     )
