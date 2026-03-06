@@ -326,6 +326,12 @@ def _summary(
             q4 = np.percentile(diffs_values, 95)
             qmax = np.max(diffs_values)
 
+            # WARN: The stats here may not be accurate if the force_refresh_step_hint and
+            # force_refresh_step_policy are used, since the cache context will be reset
+            # at the hint step and the stats will be accumulated from the hint step, which
+            # may cause the len of cached_steps list and residual_diffs list not less than
+            # the accumulated_cached_steps.
+
             if pruned_ratio is not None:
                 print(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n", flush=True)
 
