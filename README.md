@@ -23,7 +23,7 @@ Cache-DiT is compatible with compilation, CPU offloading, and quantization (Torc
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
   <p align="center">
-    <i>(Let's go beyond Cache-DiT) 👉 <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a></i>
+    <i>(Let's go beyond Cache-DiT) 👉</i> <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a>
   </p>
 </div>
 
