@@ -44,7 +44,7 @@ def entrypoint():
         for name in ExampleRegister.list_examples():
             default = ExampleRegister.get_default(name)
             # format by max_name_len
-            info = f"- ✅ {name:<{max_name_len}} - Defalut: {default}"
+            info = f"- ✅ {name:<{max_name_len}} - Default: {default}"
             logger.info(info)
         exit(0)
     else:

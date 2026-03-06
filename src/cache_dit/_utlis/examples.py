@@ -45,6 +45,7 @@ __all__ = [
     "glm_image_example",
     "glm_image_edit_example",
     "firered_image_edit_example",
+    "helios_t2v_example",
 ]
 
 
@@ -86,6 +87,7 @@ _env_path_mapping = {
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
     "GLM_IMAGE_DIR": "zai-org/GLM-Image",
     "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
+    "HELIOS_BASE_DIR": "BestWishYsh/Helios-Base",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
@@ -1389,5 +1391,44 @@ def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             num_inference_steps=40,
             true_cfg_scale=4.0,
             image=[image],
+        ),
+    )
+
+
+@ExampleRegister.register("helios_t2v", default="BestWishYsh/Helios-Base")
+def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import HeliosPipeline, AutoencoderKLWan
+
+    model_name_or_path = _path("BestWishYsh/Helios-Base", args=args)
+    vae = AutoencoderKLWan.from_pretrained(
+        model_name_or_path, subfolder="vae", torch_dtype=torch.float32
+    )
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2V,  # Text to Video
+            model_name_or_path=model_name_or_path,
+            pipeline_class=HeliosPipeline,
+            vae=vae,
+            bnb_4bit_components=["text_encoder", "transformer"],
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "A cat and a dog baking a cake together in a kitchen. The cat is "
+                "carefully measuring flour, while the dog is stirring the batter with a wooden spoon. "
+                "The kitchen is cozy, with sunlight streaming through the window."
+            ),
+            negative_prompt=(
+                "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, "
+                "images, static, overall gray, worst quality, low quality, JPEG compression residue, "
+                "ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
+                "disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, "
+                "many people in the background, walking backwards"
+            ),
+            height=384,
+            width=640,
+            num_frames=132,
+            guidance_scale=5.0,
         ),
     )
