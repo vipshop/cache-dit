@@ -1409,6 +1409,9 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
     if current_platform.device_type == "cuda":
         if current_platform.get_device_capability() >= (9, 0):
             num_frames = 132 # >= Hopper
+    
+    num_inference_steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+    force_refresh_step_hint = num_inference_steps
 
     return Example(
         args=args,
@@ -1418,6 +1421,9 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
             pipeline_class=HeliosPipeline,
             vae=vae,
             bnb_4bit_components=["text_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "force_refresh_step_hint": force_refresh_step_hint,
+            },
         ),
         input_data=ExampleInputData(
             prompt=(
@@ -1435,7 +1441,7 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
             height=384,
             width=640,
             num_frames=num_frames,
-            num_inference_steps=50,
+            num_inference_steps=num_inference_steps,
             guidance_scale=5.0,
         ),
     )
