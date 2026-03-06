@@ -366,6 +366,7 @@ def _summary(
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
                 )
+                logger.info("")
 
             if pruned_ratio is not None:
                 logger.info(
