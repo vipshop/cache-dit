@@ -154,6 +154,9 @@ def _activate_cp_planners():
     LongCatImageContextParallelismPlanner = _safe_import(  # noqa: F841
         ".cp_plan_longcat_image", "LongCatImageContextParallelismPlanner"
     )
+    HeliosContextParallelismPlanner = _safe_import(  # noqa: F841
+        ".cp_plan_helios", "HeliosContextParallelismPlanner"
+    )
 
     try:
         import nunchaku  # noqa: F401
