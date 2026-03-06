@@ -924,3 +924,24 @@ def glm_image_adapter(pipe, **kwargs) -> BlockAdapter:
         has_separate_cfg=True,  # default, guidance_scale > 1
         **kwargs,
     )
+
+
+@BlockAdapterRegister.register("Helios")
+def helios_adapter(pipe, **kwargs) -> BlockAdapter:
+    try:
+        from diffusers import HeliosTransformer3DModel
+    except ImportError:
+        HeliosTransformer3DModel = None  # requires diffusers>=0.37.dev
+
+    _relaxed_assert(pipe.transformer, HeliosTransformer3DModel)
+
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=pipe.transformer.blocks,
+        # (hidden_states, encoder_hidden_states) -> hidden_states
+        forward_pattern=ForwardPattern.Pattern_2,
+        check_forward_pattern=True,
+        has_separate_cfg=True,  # default, guidance_scale > 1
+        **kwargs,
+    )
