@@ -272,10 +272,10 @@ def _summary(
         cache_options = module._context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
-            print(f"\n🤗Context Options: {cls_name}\n\n{cache_options}", flush=True)
+            print(f"\n🤗Cache Context Options: {cls_name}\n\n{cache_options}", flush=True)
     else:
         if logging:
-            logger.warning(f"Can't find Context Options for: {cls_name}")
+            logger.warning(f"Can't find Cache Context Options for: {cls_name}")
 
     if hasattr(module, "_parallelism_config"):
         parallelism_config: ParallelismConfig = module._parallelism_config

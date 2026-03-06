@@ -145,6 +145,10 @@ class CachedContextManager:
                 args = self._current_context._init_args
                 kwargs = self._current_context._init_kwargs
 
+            cached_steps = self._current_context.get_cached_steps()
+            cfg_cached_steps = self._current_context.get_cfg_cached_steps()
+            residual_diffs = self._current_context.get_residual_diffs()
+            cfg_residual_diffs = self._current_context.get_cfg_residual_diffs()
             prev_accumulated_cached_steps = self._current_context.get_accumulated_cached_steps()
             prev_cfg_accumulated_cached_steps = (
                 self._current_context.get_cfg_accumulated_cached_steps()
@@ -158,6 +162,10 @@ class CachedContextManager:
                 self._current_context.cfg_accumulated_cached_steps = (
                     prev_cfg_accumulated_cached_steps
                 )
+                self._current_context.cached_steps = copy.deepcopy(cached_steps)
+                self._current_context.cfg_cached_steps = copy.deepcopy(cfg_cached_steps)
+                self._current_context.residual_diffs = copy.deepcopy(residual_diffs)
+                self._current_context.cfg_residual_diffs = copy.deepcopy(cfg_residual_diffs)
                 # Set force_refresh_step_hint to None after refresh once. Use deepcopy to avoid
                 # modifying original cache_config (may shared across different users' requests).
                 self._current_context.cache_config = copy.deepcopy(
