@@ -1405,13 +1405,19 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
         model_name_or_path, subfolder="vae", torch_dtype=torch.float32
     )
 
-    num_frames = 49 # < Hopper (Ada, Ampere)
+    num_frames = 49  # < Hopper (Ada, Ampere)
     if current_platform.device_type == "cuda":
         if current_platform.get_device_capability() >= (9, 0):
-            num_frames = 132 # >= Hopper
-    
+            num_frames = 132  # >= Hopper
+
     num_inference_steps = 50 if args.num_inference_steps is None else args.num_inference_steps
-    force_refresh_step_hint = num_inference_steps - 1 if num_inference_steps - 1 > 0 else None
+    # update cache context per num_inference_steps (e.g, 50) since Helios will split the num_frames
+    # into multiple chunks and do multiple passes of transformer denoise loop, and the cache context
+    # should be refreshed at the end of each loop to ensure the previous cache will never be used
+    # in the next loop.
+    force_refresh_step_hint = num_inference_steps
+    # repeat the same hint for multiple passes of transformer denoise loop
+    force_refresh_step_policy = "repeat"  # 'once' or 'repeat'
 
     return Example(
         args=args,
@@ -1423,6 +1429,7 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
             bnb_4bit_components=["text_encoder", "transformer"],
             extra_optimize_kwargs={
                 "force_refresh_step_hint": force_refresh_step_hint,
+                "force_refresh_step_policy": force_refresh_step_policy,
             },
         ),
         input_data=ExampleInputData(

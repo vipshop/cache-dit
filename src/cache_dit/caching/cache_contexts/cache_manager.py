@@ -152,7 +152,8 @@ class CachedContextManager:
                 self._current_context.cache_config = copy.deepcopy(
                     self._current_context.cache_config
                 )
-                self._current_context.cache_config.force_refresh_step_hint = None
+                if self._current_context.cache_config.force_refresh_step_policy == "once":
+                    self._current_context.cache_config.force_refresh_step_hint = None
             self._current_step_refreshed = True
         else:
             self._current_step_refreshed = False
