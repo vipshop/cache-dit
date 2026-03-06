@@ -9,7 +9,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
-|Helios-Base|✅|✖️|✖️|  
+|Helios-Base|✅|✖️|✅|  
 |FireRed-Image-Edit-1.0|✅|✅|✅|  
 |GLM-Image-T2I|✅|✖️|✅|
 |GLM-Image-I2I|✅|✖️|✅|
