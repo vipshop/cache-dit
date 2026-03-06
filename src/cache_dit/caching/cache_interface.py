@@ -153,6 +153,17 @@ def enable_cache(
                     force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25
                     will refresh the cache before executing step 25 and view the remaining 25 steps as a
                     new inference context.
+                force_refresh_step_policy (`str`, *optional*, defaults to "once"):
+                    The policy to apply when force refreshing the cache at the step specified by
+                    force_refresh_step_hint. It can be "once" or "repeat". "once" means only refresh once
+                    at the step specified by force_refresh_step_hint, while "repeat" means refresh at the
+                    step specified by force_refresh_step_hint and then repeat refreshing every
+                    force_refresh_step_hint steps, e.g., if force_refresh_step_hint=25 and the inference
+                    has 100 steps, then the cache will be refreshed at:
+                    - 'once' policy: step 25, treat the remaining steps as a new inference context,
+                        no more refresh after step 25;
+                    - 'repeat' policy: step 25, 50, 75, treat the steps between each refresh as a new
+                        inference context.
 
         calibrator_config (`CalibratorConfig`, *optional*, defaults to None):
             Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache
