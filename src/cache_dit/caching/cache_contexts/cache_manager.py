@@ -145,6 +145,8 @@ class CachedContextManager:
                 args = self._current_context._init_args
                 kwargs = self._current_context._init_kwargs
 
+            # Saved some global stats before refresh, which will be used for some special
+            # refresh policies like `force_refresh_step_hint`.
             cached_steps = self._current_context.get_cached_steps()
             cfg_cached_steps = self._current_context.get_cfg_cached_steps()
             residual_diffs = self._current_context.get_residual_diffs()
