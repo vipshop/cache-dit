@@ -28,6 +28,8 @@ class CacheStats:
     residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
     cfg_cached_steps: list[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: dict[str, float] = dataclasses.field(default_factory=dict)
+    accumulated_cached_steps: int = 0
+    cfg_accumulated_cached_steps: int = 0
     # Dynamic Block Prune
     pruned_steps: list[int] = dataclasses.field(default_factory=list)
     pruned_blocks: list[int] = dataclasses.field(default_factory=list)
@@ -168,30 +170,30 @@ def strify(
     if isinstance(adapter_or_others, BlockAdapter):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
+        accumulated_cached_steps = stats.accumulated_cached_steps
     elif isinstance(adapter_or_others, DiffusionPipeline):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
+        accumulated_cached_steps = stats.accumulated_cached_steps
     elif isinstance(adapter_or_others, torch.nn.Module):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
+        accumulated_cached_steps = stats.accumulated_cached_steps
     elif isinstance(adapter_or_others, CacheStats):
         stats = adapter_or_others
         cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
+        accumulated_cached_steps = stats.accumulated_cached_steps
     elif isinstance(adapter_or_others, list):
         stats = adapter_or_others[0]
         cache_options = stats.cache_options
-        cached_steps = len(stats.cached_steps)
+        accumulated_cached_steps = stats.accumulated_cached_steps
     elif isinstance(adapter_or_others, dict):
         if (cache_type := adapter_or_others.get("cache_type", None)) is not None:
             if cache_type in [CacheType.NONE, "NONE", "None"]:
                 return "NONE"
         # Assume context_kwargs
         cache_options = load_options(adapter_or_others)
-        cached_steps = None
+        accumulated_cached_steps = None
         stats = None
         parallelism_config = cache_options.get("parallelism_config", None)
     else:
@@ -237,8 +239,8 @@ def strify(
         cache_type_str += f"_{calibrator_str()}"
     cache_type_str += f"{parallelism_str()}"
 
-    if cached_steps:
-        cache_type_str += f"_S{cached_steps}"
+    if accumulated_cached_steps:
+        cache_type_str += f"_S{accumulated_cached_steps}"
 
     return cache_type_str
 
@@ -290,6 +292,7 @@ def _summary(
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
         residual_diffs: dict[str, list | float] = dict(module._residual_diffs)
+        accumulated_cached_steps = module._accumulated_cached_steps
 
         if hasattr(module, "_pruned_steps"):
             pruned_steps: list[int] = module._pruned_steps
@@ -304,6 +307,7 @@ def _summary(
 
         cache_stats.cached_steps = cached_steps
         cache_stats.residual_diffs = residual_diffs
+        cache_stats.accumulated_cached_steps = accumulated_cached_steps
 
         cache_stats.pruned_steps = pruned_steps
         cache_stats.pruned_blocks = pruned_blocks
@@ -352,7 +356,7 @@ def _summary(
                     flush=True,
                 )
                 print(
-                    f"| {len(cached_steps):<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {accumulated_cached_steps:<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
                     flush=True,
@@ -384,7 +388,7 @@ def _summary(
                 else:
                     print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
                     pprint(
-                        f"Cache Steps: {len(cached_steps)}, {cached_steps}",
+                        f"Cache Steps: {accumulated_cached_steps}, {cached_steps}",
                     )
                     sys.stdout.flush()
                     pprint(
@@ -396,6 +400,7 @@ def _summary(
     if hasattr(module, "_cfg_cached_steps"):
         cfg_cached_steps: list[int] = module._cfg_cached_steps
         cfg_residual_diffs: dict[str, list | float] = dict(module._cfg_residual_diffs)
+        cfg_accumulated_cached_steps = module._cfg_accumulated_cached_steps
 
         if hasattr(module, "_cfg_pruned_steps"):
             cfg_pruned_steps: list[int] = module._cfg_pruned_steps
@@ -410,6 +415,8 @@ def _summary(
 
         cache_stats.cfg_cached_steps = cfg_cached_steps
         cache_stats.cfg_residual_diffs = cfg_residual_diffs
+        cache_stats.cfg_accumulated_cached_steps = cfg_accumulated_cached_steps
+
         cache_stats.cfg_pruned_steps = cfg_pruned_steps
         cache_stats.cfg_pruned_blocks = cfg_pruned_blocks
         cache_stats.cfg_actual_blocks = cfg_actual_blocks
@@ -461,7 +468,7 @@ def _summary(
                     flush=True,
                 )
                 print(
-                    f"| {len(cfg_cached_steps):<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                    f"| {cfg_accumulated_cached_steps:<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
                     flush=True,
@@ -495,7 +502,7 @@ def _summary(
                 else:
                     print(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
                     pprint(
-                        f"CFG Cache Steps: {len(cfg_cached_steps)}, {cfg_cached_steps}",
+                        f"CFG Cache Steps: {cfg_accumulated_cached_steps}, {cfg_cached_steps}",
                     )
                     sys.stdout.flush()
                     pprint(

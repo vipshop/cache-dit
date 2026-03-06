@@ -145,8 +145,19 @@ class CachedContextManager:
                 args = self._current_context._init_args
                 kwargs = self._current_context._init_kwargs
 
+            prev_accumulated_cached_steps = self._current_context.get_accumulated_cached_steps()
+            prev_cfg_accumulated_cached_steps = (
+                self._current_context.get_cfg_accumulated_cached_steps()
+            )
+
             self._current_context = self.reset_context(self._current_context, *args, **kwargs)
             if reason == "force_refresh_step_hint":
+                # For force_refresh_step_hint, we will keep the accumulated_cached_steps before refresh,
+                # as the steps before refresh and after refresh are in the same inference context.
+                self._current_context.accumulated_cached_steps = prev_accumulated_cached_steps
+                self._current_context.cfg_accumulated_cached_steps = (
+                    prev_cfg_accumulated_cached_steps
+                )
                 # Set force_refresh_step_hint to None after refresh once. Use deepcopy to avoid
                 # modifying original cache_config (may shared across different users' requests).
                 self._current_context.cache_config = copy.deepcopy(
@@ -154,6 +165,7 @@ class CachedContextManager:
                 )
                 if self._current_context.cache_config.force_refresh_step_policy == "once":
                     self._current_context.cache_config.force_refresh_step_hint = None
+
             self._current_step_refreshed = True
         else:
             self._current_step_refreshed = False
@@ -320,6 +332,18 @@ class CachedContextManager:
         cached_context = self.get_context()
         assert cached_context is not None, "cached_context must be set before"
         return cached_context.cfg_continuous_cached_steps
+
+    @torch.compiler.disable
+    def get_accumulated_cached_steps(self) -> int:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.accumulated_cached_steps
+
+    @torch.compiler.disable
+    def get_cfg_accumulated_cached_steps(self) -> int:
+        cached_context = self.get_context()
+        assert cached_context is not None, "cached_context must be set before"
+        return cached_context.cfg_accumulated_cached_steps
 
     @torch.compiler.disable
     def add_cached_step(self):

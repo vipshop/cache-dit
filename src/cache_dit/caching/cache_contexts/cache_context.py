@@ -60,12 +60,14 @@ class CachedContext:
     )
     accumulated_residual_diff: float = 0.0
     continuous_cached_steps: int = 0
+    accumulated_cached_steps: int = 0
     cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
     cfg_accumulated_residual_diff: float = 0.0
     cfg_continuous_cached_steps: int = 0
+    cfg_accumulated_cached_steps: int = 0
 
     def __post_init__(self):
         if logger.isEnabledFor(logging.DEBUG):
@@ -245,6 +247,7 @@ class CachedContext:
                 self.continuous_cached_steps += 1
 
             self.cached_steps.append(curr_cached_step)
+            self.accumulated_cached_steps += 1
         else:
             if self.cfg_cached_steps:
                 prev_cfg_cached_step = self.cfg_cached_steps[-1]
@@ -257,12 +260,19 @@ class CachedContext:
                 self.cfg_continuous_cached_steps += 1
 
             self.cfg_cached_steps.append(curr_cached_step)
+            self.cfg_accumulated_cached_steps += 1
 
     def get_cached_steps(self):
         return self.cached_steps.copy()
 
     def get_cfg_cached_steps(self):
         return self.cfg_cached_steps.copy()
+
+    def get_accumulated_cached_steps(self):
+        return self.accumulated_cached_steps
+
+    def get_cfg_accumulated_cached_steps(self):
+        return self.cfg_accumulated_cached_steps
 
     def get_current_step(self):
         return self.executed_steps - 1
