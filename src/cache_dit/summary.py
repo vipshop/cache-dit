@@ -3,7 +3,6 @@ import torch
 import dataclasses
 
 import numpy as np
-from pprint import pprint
 from diffusers import DiffusionPipeline
 
 from typing import Dict, Any, List, Union
@@ -274,7 +273,7 @@ def _summary(
         cache_options = module._context_kwargs
         cache_stats.cache_options = cache_options
         if logging:
-            print(f"\n🤗Cache Context Options: {cls_name}\n\n{cache_options}", flush=True)
+            logger.info(f"\n🤗Cache Context Options: {cls_name}\n\n{cache_options}")
     else:
         if logging:
             logger.warning(f"Can't find Cache Context Options for: {cls_name}")
@@ -283,10 +282,7 @@ def _summary(
         parallelism_config: ParallelismConfig = module._parallelism_config
         cache_stats.parallelism_config = parallelism_config
         if logging:
-            print(
-                f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}",
-                flush=True,
-            )
+            logger.info(f"\n🤖Parallelism Config: {cls_name}\n\n{parallelism_config.strify(True)}")
     else:
         if logging:
             logger.warning(f"Can't find Parallelism Config for: {cls_name}")
@@ -339,78 +335,66 @@ def _summary(
             # the accumulated_cached_steps.
 
             if pruned_ratio is not None:
-                print(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}\n", flush=True)
+                logger.info(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}")
 
-                print(
+                logger.info(
                     "| Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
-                    flush=True,
                 )
-                print(
+                logger.info(
                     "|---------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
-                    flush=True,
                 )
-                print(
+                logger.info(
                     f"| {sum(pruned_blocks):<13} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
-                    flush=True,
                 )
-                print("", flush=True)
             else:
-                print(
-                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}"
-                    f"\n⚡️Executed Steps: {accumulated_executed_steps}, "
+                logger.info(
+                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}, "
+                    f"Executed Steps: {accumulated_executed_steps}, "
                     f"Transformer Executed Steps: {accumulated_transformer_executed_steps}\n",
-                    flush=True,
                 )
 
-                print(
+                logger.info(
                     "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
-                    flush=True,
                 )
-                print(
+                logger.info(
                     "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
-                    flush=True,
                 )
-                print(
+                logger.info(
                     f"| {accumulated_cached_steps:<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
                     f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
-                    flush=True,
                 )
-                print("", flush=True)
 
             if pruned_ratio is not None:
-                print(
-                    f"Dynamic Block Prune Ratio: {round(pruned_ratio * 100, 2)}% ({sum(pruned_blocks)}/{sum(actual_blocks)})\n",
-                    flush=True,
+                logger.info(
+                    f"Dynamic Block Prune Ratio: {round(pruned_ratio * 100, 2)}% ({sum(pruned_blocks)}/{sum(actual_blocks)})\n"
                 )
 
             if details:
                 if pruned_ratio is not None:
-                    print(f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n", flush=True)
-                    pprint(
+                    logger.info(f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n")
+                    logger.info(
                         f"Pruned Blocks: {len(pruned_blocks)}, {pruned_blocks}",
                     )
                     sys.stdout.flush()
-                    pprint(
+                    logger.info(
                         f"Actual Blocks: {len(actual_blocks)}, {actual_blocks}",
                     )
                     sys.stdout.flush()
-                    pprint(
+                    logger.info(
                         f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
-                        compact=True,
                     )
                     sys.stdout.flush()
                 else:
-                    print(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n", flush=True)
-                    pprint(
+                    logger.info(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
+                    logger.info(
                         f"Cache Steps: {accumulated_cached_steps}, {cached_steps}",
                     )
                     sys.stdout.flush()
-                    pprint(
+                    logger.info(
                         f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}",
-                        compact=True,
                     )
                     sys.stdout.flush()
 
@@ -452,79 +436,63 @@ def _summary(
             qmax = np.max(cfg_diffs_values)
 
             if cfg_pruned_ratio is not None:
-                print(
-                    f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n", flush=True
-                )
+                logger.info(f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n")
 
-                print(
-                    "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
-                    flush=True,
+                logger.info(
+                    "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
                 )
-                print(
-                    "|-------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
-                    flush=True,
+                logger.info(
+                    "|-------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
                 )
-                print(
+                logger.info(
                     f"| {sum(cfg_pruned_blocks):<18} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
-                    flush=True,
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
                 )
-                print("", flush=True)
+                logger.info("")
             else:
-                print(
-                    f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n", flush=True
-                )
+                logger.info(f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n")
 
-                print(
-                    "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
-                    flush=True,
+                logger.info(
+                    "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
                 )
-                print(
-                    "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
-                    flush=True,
+                logger.info(
+                    "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
                 )
-                print(
+                logger.info(
                     f"| {cfg_accumulated_cached_steps:<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
                     f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |",
-                    flush=True,
+                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |"
                 )
-                print("", flush=True)
 
             if cfg_pruned_ratio is not None:
-                print(
-                    f"CFG Dynamic Block Prune Ratio: {round(cfg_pruned_ratio * 100, 2)}% ({sum(cfg_pruned_blocks)}/{sum(cfg_actual_blocks)})\n",
-                    flush=True,
+                logger.info(
+                    f"CFG Dynamic Block Prune Ratio: {round(cfg_pruned_ratio * 100, 2)}% ({sum(cfg_pruned_blocks)}/{sum(cfg_actual_blocks)})\n"
                 )
 
             if details:
                 if cfg_pruned_ratio is not None:
-                    print(
-                        f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n", flush=True
-                    )
-                    pprint(
+                    logger.info(f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n")
+                    logger.info(
                         f"CFG Pruned Blocks: {len(cfg_pruned_blocks)}, {cfg_pruned_blocks}",
                     )
                     sys.stdout.flush()
-                    pprint(
+                    logger.info(
                         f"CFG Actual Blocks: {len(cfg_actual_blocks)}, {cfg_actual_blocks}",
                     )
                     sys.stdout.flush()
-                    pprint(
+                    logger.info(
                         f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
-                        compact=True,
                     )
                     sys.stdout.flush()
                 else:
-                    print(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
-                    pprint(
+                    logger.info(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
+                    logger.info(
                         f"CFG Cache Steps: {cfg_accumulated_cached_steps}, {cfg_cached_steps}",
                     )
                     sys.stdout.flush()
-                    pprint(
+                    logger.info(
                         f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}",
-                        compact=True,
                     )
                     sys.stdout.flush()
 
@@ -602,8 +570,8 @@ def supported_matrix() -> str | None:
 
         matrix_str = "\n".join(matrix_lines)
 
-        print("\nSupported Cache and Parallelism Matrix:\n", flush=True)
-        print(matrix_str, flush=True)
+        logger.info("\nSupported Cache and Parallelism Matrix:\n")
+        logger.info(matrix_str)
         return matrix_str
     except Exception:
         return None
