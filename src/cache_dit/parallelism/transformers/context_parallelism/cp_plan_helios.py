@@ -43,15 +43,12 @@ class HeliosContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        # Otherwise, use the custom CP plan defined here, this maybe
-        # a little different from the native diffusers implementation
-        # for some models.
-        # NOTE(DefTruth): This cp plan here will raise error due to Helios's special
-        # design of concating the history context(frames) and current context(frames)
-        # before feeding into the transformer blocks, which makes it hard to shard
-        # the input hidden states by sequence dimension correctly.
-
+        # NOTE(DefTruth): This cp plan here is ugly but it works, we  will optimize it in the future.
         num_blocks = len(transformer.blocks)
+        # NOTE: Due to the complex concat and split ops for history hidden states and current hidden
+        # states in Helios, we have to pinned the sharding strategy at 'attn' and 'ffn' level, this
+        # will lead to sub-optimal performance because of the extra all-gather and scatter communication
+        # overhead, we will optimize it in the future by supporting more flexible sharding strategy.
         _cp_plan = {
             # Input split at attn level and ffn level.
             "blocks.*.attn1": {
