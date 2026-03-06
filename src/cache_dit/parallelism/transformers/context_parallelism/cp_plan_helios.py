@@ -43,27 +43,44 @@ class HeliosContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        # Otherwise, use the custom CP plan defined here, this maybe
-        # a little different from the native diffusers implementation
-        # for some models.
-        # NOTE(DefTruth): This cp plan here will raise error due to Helios's special
-        # design of concating the history context(frames) and current context(frames)
-        # before feeding into the transformer blocks, which makes it hard to shard
-        # the input hidden states by sequence dimension correctly.
-        # TODO: Add 'history_hidden_states' param to block forward (DON't merged it with 'hidden_states'),
-        # and then we can shard the 'current_hidden_states' both 'history_hidden_states' by sequence dim.
+        # NOTE(DefTruth): This cp plan here is ugly but it works, we  will optimize it in the future.
+        num_blocks = len(transformer.blocks)
+        # NOTE: Due to the complex concat and split ops for history hidden states and current hidden
+        # states in Helios, we have to pinned the sharding strategy at 'attn' and 'ffn' level, this
+        # will lead to sub-optimal performance because of the extra all-gather and scatter communication
+        # overhead, we will optimize it in the future by supporting more flexible sharding strategy.
         _cp_plan = {
-            "blocks.0": {
+            # Input split at attn level and ffn level.
+            "blocks.*.attn1": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-            },
-            "blocks.*": {
-                "temb": ContextParallelInput(split_dim=1, expected_dims=4, split_output=False),
                 "rotary_emb": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
             },
-            "blocks.39": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            "blocks.*.attn2": {
+                "hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+            },
+            "blocks.*.ffn": {
+                "hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+            },
+            # Output gather at attn level and ffn level.
+            **{
+                f"blocks.{i}.attn1": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                for i in range(num_blocks)
+            },
+            **{
+                f"blocks.{i}.attn2": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                for i in range(num_blocks)
+            },
+            **{
+                f"blocks.{i}.ffn": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                for i in range(num_blocks)
+            },
         }
         return _cp_plan
