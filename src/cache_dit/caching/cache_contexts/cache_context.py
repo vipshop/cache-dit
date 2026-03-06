@@ -52,6 +52,10 @@ class CachedContext:
     # steps for transformer, for CFG, transformer_executed_steps will
     # be double of executed_steps.
     transformer_executed_steps: int = 0
+    # Accumulated excuted steps, this value will large than executed_steps
+    # if force_refresh_step_hint is set.
+    accumulated_executed_steps: int = 0
+    accumulated_transformer_executed_steps: int = 0
 
     # CFG & non-CFG cached/pruned steps
     cached_steps: List[int] = dataclasses.field(default_factory=list)
@@ -60,12 +64,14 @@ class CachedContext:
     )
     accumulated_residual_diff: float = 0.0
     continuous_cached_steps: int = 0
+    accumulated_cached_steps: int = 0
     cfg_cached_steps: List[int] = dataclasses.field(default_factory=list)
     cfg_residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
         default_factory=lambda: defaultdict(float),
     )
     cfg_accumulated_residual_diff: float = 0.0
     cfg_continuous_cached_steps: int = 0
+    cfg_accumulated_cached_steps: int = 0
 
     def __post_init__(self):
         if logger.isEnabledFor(logging.DEBUG):
@@ -139,18 +145,22 @@ class CachedContext:
         # incr     step: prev 0 -> 1; prev 1 -> 2
         # current  step: incr step - 1
         self.transformer_executed_steps += 1
+        self.accumulated_transformer_executed_steps += 1
         if not self.cache_config.enable_separate_cfg:
             self.executed_steps += 1
+            self.accumulated_executed_steps += 1
         else:
             # 0,1 -> 0 + 1, 2,3 -> 1 + 1, ...
             if not self.cache_config.cfg_compute_first:
                 if not self.is_separate_cfg_step():
                     # transformer step: 0,2,4,...
                     self.executed_steps += 1
+                    self.accumulated_executed_steps += 1
             else:
                 if self.is_separate_cfg_step():
                     # transformer step: 1,3,5,...
                     self.executed_steps += 1
+                    self.accumulated_executed_steps += 1
 
         # Reset the cached steps and residual diffs at the beginning
         # of each inference.
@@ -245,6 +255,7 @@ class CachedContext:
                 self.continuous_cached_steps += 1
 
             self.cached_steps.append(curr_cached_step)
+            self.accumulated_cached_steps += 1
         else:
             if self.cfg_cached_steps:
                 prev_cfg_cached_step = self.cfg_cached_steps[-1]
@@ -257,6 +268,7 @@ class CachedContext:
                 self.cfg_continuous_cached_steps += 1
 
             self.cfg_cached_steps.append(curr_cached_step)
+            self.cfg_accumulated_cached_steps += 1
 
     def get_cached_steps(self):
         return self.cached_steps.copy()
@@ -264,11 +276,23 @@ class CachedContext:
     def get_cfg_cached_steps(self):
         return self.cfg_cached_steps.copy()
 
+    def get_accumulated_cached_steps(self):
+        return self.accumulated_cached_steps
+
+    def get_cfg_accumulated_cached_steps(self):
+        return self.cfg_accumulated_cached_steps
+
     def get_current_step(self):
         return self.executed_steps - 1
 
     def get_current_transformer_step(self):
         return self.transformer_executed_steps - 1
+
+    def get_accumulated_executed_steps(self):
+        return self.accumulated_executed_steps
+
+    def get_accumulated_transformer_executed_steps(self):
+        return self.accumulated_transformer_executed_steps
 
     def get_force_refresh_step_hint(self) -> Optional[int]:
         return self.cache_config.force_refresh_step_hint

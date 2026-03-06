@@ -25,48 +25,49 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest
 ```bash
 python3 -m cache_dit.generate list  # list all available examples
 
-[generate.py:42] Available examples:
-[generate.py:48] - ✅ flux_nunchaku                  - Defalut: nunchaku-tech/nunchaku-flux.1-dev
-[generate.py:48] - ✅ flux                           - Defalut: black-forest-labs/FLUX.1-dev
-[generate.py:48] - ✅ flux_fill                      - Defalut: black-forest-labs/FLUX.1-Fill-dev
-[generate.py:48] - ✅ flux2                          - Defalut: black-forest-labs/FLUX.2-dev
-[generate.py:48] - ✅ flux2_klein_base_9b            - Defalut: black-forest-labs/FLUX.2-klein-base-9B
-[generate.py:48] - ✅ flux2_klein_base_4b            - Defalut: black-forest-labs/FLUX.2-klein-base-4B
-[generate.py:48] - ✅ flux2_klein_9b                 - Defalut: black-forest-labs/FLUX.2-klein-9B
-[generate.py:48] - ✅ flux2_klein_4b                 - Defalut: black-forest-labs/FLUX.2-klein-4B
-[generate.py:48] - ✅ flux2_klein_base_9b_edit       - Defalut: black-forest-labs/FLUX.2-klein-base-9B
-[generate.py:48] - ✅ flux2_klein_base_4b_edit       - Defalut: black-forest-labs/FLUX.2-klein-base-4B
-[generate.py:48] - ✅ flux2_klein_9b_edit            - Defalut: black-forest-labs/FLUX.2-klein-9B
-[generate.py:48] - ✅ flux2_klein_4b_edit            - Defalut: black-forest-labs/FLUX.2-klein-4B
-[generate.py:48] - ✅ qwen_image_lightning           - Defalut: lightx2v/Qwen-Image-Lightning
-[generate.py:48] - ✅ qwen_image_2512                - Defalut: Qwen/Qwen-Image-2512
-[generate.py:48] - ✅ qwen_image                     - Defalut: Qwen/Qwen-Image
-[generate.py:48] - ✅ qwen_image_edit_2511_lightning - Defalut: lightx2v/Qwen-Image-Edit-2511-Lightning
-[generate.py:48] - ✅ qwen_image_edit_2511           - Defalut: Qwen/Qwen-Image-Edit-2511
-[generate.py:48] - ✅ qwen_image_edit_lightning      - Defalut: lightx2v/Qwen-Image-Lightning
-[generate.py:48] - ✅ qwen_image_edit                - Defalut: Qwen/Qwen-Image-Edit-2509
-[generate.py:48] - ✅ qwen_image_controlnet          - Defalut: InstantX/Qwen-Image-ControlNet-Inpainting
-[generate.py:48] - ✅ qwen_image_layered             - Defalut: Qwen/Qwen-Image-Layered
-[generate.py:48] - ✅ skyreels_v2                    - Defalut: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
-[generate.py:48] - ✅ ltx2_t2v                       - Defalut: Lightricks/LTX-2
-[generate.py:48] - ✅ ltx2_i2v                       - Defalut: Lightricks/LTX-2
-[generate.py:48] - ✅ wan2.2_t2v                     - Defalut: Wan-AI/Wan2.2-T2V-A14B-Diffusers
-[generate.py:48] - ✅ wan2.1_t2v                     - Defalut: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-[generate.py:48] - ✅ wan2.2_i2v                     - Defalut: Wan-AI/Wan2.2-I2V-A14B-Diffusers
-[generate.py:48] - ✅ wan2.1_i2v                     - Defalut: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
-[generate.py:48] - ✅ wan2.2_vace                    - Defalut: linoyts/Wan2.2-VACE-Fun-14B-diffusers
-[generate.py:48] - ✅ wan2.1_vace                    - Defalut: Wan-AI/Wan2.1-VACE-1.3B-diffusers
-[generate.py:48] - ✅ ovis_image                     - Defalut: AIDC-AI/Ovis-Image-7B
-[generate.py:48] - ✅ zimage_turbo_nunchaku          - Defalut: nunchaku/nunchaku-z-image-turbo
-[generate.py:48] - ✅ zimage_turbo                   - Defalut: Tongyi-MAI/Z-Image-Turbo
-[generate.py:48] - ✅ zimage                         - Defalut: Tongyi-MAI/Z-Image
-[generate.py:48] - ✅ zimage_turbo_controlnet_2.0    - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
-[generate.py:48] - ✅ zimage_turbo_controlnet_2.1    - Defalut: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
-[generate.py:48] - ✅ longcat_image                  - Defalut: meituan-longcat/LongCat-Image
-[generate.py:48] - ✅ longcat_image_edit             - Defalut: meituan-longcat/LongCat-Image-Edit
-[generate.py:48] - ✅ glm_image                      - Defalut: zai-org/GLM-Image
-[generate.py:48] - ✅ glm_image_edit                 - Defalut: zai-org/GLM-Image
-[generate.py:48] - ✅ firered_image_edit_1.0         - Defalut: FireRedTeam/FireRed-Image-Edit-1.0
+Available examples:
+- ✅ flux_nunchaku                  - Default: nunchaku-tech/nunchaku-flux.1-dev
+- ✅ flux                           - Default: black-forest-labs/FLUX.1-dev
+- ✅ flux_fill                      - Default: black-forest-labs/FLUX.1-Fill-dev
+- ✅ flux2                          - Default: black-forest-labs/FLUX.2-dev
+- ✅ flux2_klein_base_9b            - Default: black-forest-labs/FLUX.2-klein-base-9B
+- ✅ flux2_klein_base_4b            - Default: black-forest-labs/FLUX.2-klein-base-4B
+- ✅ flux2_klein_9b                 - Default: black-forest-labs/FLUX.2-klein-9B
+- ✅ flux2_klein_4b                 - Default: black-forest-labs/FLUX.2-klein-4B
+- ✅ flux2_klein_base_9b_edit       - Default: black-forest-labs/FLUX.2-klein-base-9B
+- ✅ flux2_klein_base_4b_edit       - Default: black-forest-labs/FLUX.2-klein-base-4B
+- ✅ flux2_klein_9b_edit            - Default: black-forest-labs/FLUX.2-klein-9B
+- ✅ flux2_klein_4b_edit            - Default: black-forest-labs/FLUX.2-klein-4B
+- ✅ qwen_image_lightning           - Default: lightx2v/Qwen-Image-Lightning
+- ✅ qwen_image_2512                - Default: Qwen/Qwen-Image-2512
+- ✅ qwen_image                     - Default: Qwen/Qwen-Image
+- ✅ qwen_image_edit_2511_lightning - Default: lightx2v/Qwen-Image-Edit-2511-Lightning
+- ✅ qwen_image_edit_2511           - Default: Qwen/Qwen-Image-Edit-2511
+- ✅ qwen_image_edit_lightning      - Default: lightx2v/Qwen-Image-Lightning
+- ✅ qwen_image_edit                - Default: Qwen/Qwen-Image-Edit-2509
+- ✅ qwen_image_controlnet          - Default: InstantX/Qwen-Image-ControlNet-Inpainting
+- ✅ qwen_image_layered             - Default: Qwen/Qwen-Image-Layered
+- ✅ skyreels_v2                    - Default: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
+- ✅ ltx2_t2v                       - Default: Lightricks/LTX-2
+- ✅ ltx2_i2v                       - Default: Lightricks/LTX-2
+- ✅ wan2.2_t2v                     - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+- ✅ wan2.1_t2v                     - Default: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+- ✅ wan2.2_i2v                     - Default: Wan-AI/Wan2.2-I2V-A14B-Diffusers
+- ✅ wan2.1_i2v                     - Default: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
+- ✅ wan2.2_vace                    - Default: linoyts/Wan2.2-VACE-Fun-14B-diffusers
+- ✅ wan2.1_vace                    - Default: Wan-AI/Wan2.1-VACE-1.3B-diffusers
+- ✅ ovis_image                     - Default: AIDC-AI/Ovis-Image-7B
+- ✅ zimage_turbo_nunchaku          - Default: nunchaku/nunchaku-z-image-turbo
+- ✅ zimage_turbo                   - Default: Tongyi-MAI/Z-Image-Turbo
+- ✅ zimage                         - Default: Tongyi-MAI/Z-Image
+- ✅ zimage_turbo_controlnet_2.0    - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
+- ✅ zimage_turbo_controlnet_2.1    - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
+- ✅ longcat_image                  - Default: meituan-longcat/LongCat-Image
+- ✅ longcat_image_edit             - Default: meituan-longcat/LongCat-Image-Edit
+- ✅ glm_image                      - Default: zai-org/GLM-Image
+- ✅ glm_image_edit                 - Default: zai-org/GLM-Image
+- ✅ firered_image_edit_1.0         - Default: FireRedTeam/FireRed-Image-Edit-1.0
+- ✅ helios_t2v                     - Default: BestWishYsh/Helios-Base
 ```
 
 ## Single GPU Inference

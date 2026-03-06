@@ -24,6 +24,12 @@ def apply_stats(
     module._residual_diffs = context_manager.get_residual_diffs()
     module._cfg_cached_steps = context_manager.get_cfg_cached_steps()
     module._cfg_residual_diffs = context_manager.get_cfg_residual_diffs()
+    module._accumulated_cached_steps = context_manager.get_accumulated_cached_steps()
+    module._cfg_accumulated_cached_steps = context_manager.get_cfg_accumulated_cached_steps()
+    module._accumulated_executed_steps = context_manager.get_accumulated_executed_steps()
+    module._accumulated_transformer_executed_steps = (
+        context_manager.get_accumulated_transformer_executed_steps()
+    )
     # Pruned stats for Dynamic Block Prune
     if not isinstance(context_manager, PrunedContextManager):
         return
@@ -59,6 +65,14 @@ def remove_stats(
         del module._cfg_cached_steps
     if hasattr(module, "_cfg_residual_diffs"):
         del module._cfg_residual_diffs
+    if hasattr(module, "_accumulated_cached_steps"):
+        del module._accumulated_cached_steps
+    if hasattr(module, "_cfg_accumulated_cached_steps"):
+        del module._cfg_accumulated_cached_steps
+    if hasattr(module, "_accumulated_executed_steps"):
+        del module._accumulated_executed_steps
+    if hasattr(module, "_accumulated_transformer_executed_steps"):
+        del module._accumulated_transformer_executed_steps
 
     # Dynamic Block Prune
     if hasattr(module, "_pruned_steps"):
