@@ -266,7 +266,7 @@ class ExampleOutputData:
                     logger.info(f"Image {i} saved to {img_save_path}")
 
         if self.video is not None:
-            export_to_video(self.video, save_path, fps=8)
+            export_to_video(self.video, save_path, fps=args.saved_fps)
             logger.info(f"Video saved to {save_path}")
 
     def _default_save_path(self) -> Optional[str]:

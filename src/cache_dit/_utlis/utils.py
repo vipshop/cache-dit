@@ -621,6 +621,14 @@ def get_args(
         "If not set, use 'cpu' for better reproducibility across "
         "different hardware.",
     )
+    # Extra params 
+    parser.add_argument(
+        "--saved-fps",
+        "--fps",
+        type=int,
+        default=8,
+        help="Export generated video with specified fps",
+    )
 
     args_or_parser = parser.parse_args() if parse else parser
     if parse:
