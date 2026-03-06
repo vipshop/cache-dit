@@ -50,20 +50,40 @@ class HeliosContextParallelismPlanner(ContextParallelismPlanner):
         # design of concating the history context(frames) and current context(frames)
         # before feeding into the transformer blocks, which makes it hard to shard
         # the input hidden states by sequence dimension correctly.
-        # TODO: Add 'history_hidden_states' param to block forward (DON't merged it with 'hidden_states'),
-        # and then we can shard the 'current_hidden_states' both 'history_hidden_states' by sequence dim.
+
+        num_blocks = len(transformer.blocks)
         _cp_plan = {
-            "blocks.0": {
+            # Input split at attn level and ffn level.
+            "blocks.*.attn1": {
                 "hidden_states": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
-            },
-            "blocks.*": {
-                "temb": ContextParallelInput(split_dim=1, expected_dims=4, split_output=False),
                 "rotary_emb": ContextParallelInput(
                     split_dim=1, expected_dims=3, split_output=False
                 ),
             },
-            "blocks.39": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            "blocks.*.attn2": {
+                "hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+            },
+            "blocks.*.ffn": {
+                "hidden_states": ContextParallelInput(
+                    split_dim=1, expected_dims=3, split_output=False
+                ),
+            },
+            # Output gather at attn level and ffn level.
+            **{
+                f"blocks.{i}.attn1": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                for i in range(num_blocks)
+            },
+            **{
+                f"blocks.{i}.attn2": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                for i in range(num_blocks)
+            },
+            **{
+                f"blocks.{i}.ffn": ContextParallelOutput(gather_dim=1, expected_dims=3)
+                for i in range(num_blocks)
+            },
         }
         return _cp_plan
