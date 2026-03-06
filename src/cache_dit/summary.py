@@ -358,8 +358,8 @@ def _summary(
                 print("", flush=True)
             else:
                 print(
-                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}, "
-                    f"Executed Steps: {accumulated_executed_steps}, "
+                    f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}"
+                    f"\n⚡️Executed Steps: {accumulated_executed_steps}, "
                     f"Transformer Executed Steps: {accumulated_transformer_executed_steps}\n",
                     flush=True,
                 )
