@@ -50,6 +50,8 @@ class HeliosContextParallelismPlanner(ContextParallelismPlanner):
         # design of concating the history context(frames) and current context(frames)
         # before feeding into the transformer blocks, which makes it hard to shard
         # the input hidden states by sequence dimension correctly.
+        # TODO: Add 'history_hidden_states' param to block forward (DON't merged it with 'hidden_states'),
+        # and then we can shard the 'current_hidden_states' both 'history_hidden_states' by sequence dim.
         _cp_plan = {
             "blocks.0": {
                 "hidden_states": ContextParallelInput(
