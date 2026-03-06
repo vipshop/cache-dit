@@ -621,7 +621,7 @@ def get_args(
         "If not set, use 'cpu' for better reproducibility across "
         "different hardware.",
     )
-    # Extra params 
+    # Extra params
     parser.add_argument(
         "--saved-fps",
         "--fps",
@@ -1343,6 +1343,7 @@ def maybe_apply_optimization(
                         enable_separate_cfg=kwargs.get("enable_separate_cfg", None),
                         steps_computation_mask=steps_computation_mask,
                         force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
+                        force_refresh_step_policy=kwargs.get("force_refresh_step_policy", "once"),
                     )
                     if cache_config is None and args.cache
                     else cache_config
