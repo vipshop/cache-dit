@@ -79,6 +79,9 @@ def _activate_tp_planners():
     GlmImageTensorParallelismPlanner = _safe_import(  # noqa: F841
         ".tp_plan_glm_image", "GlmImageTensorParallelismPlanner"
     )
+    HeliosTensorParallelismPlanner = _safe_import(  # noqa: F841
+        ".tp_plan_helios", "HeliosTensorParallelismPlanner"
+    )
 
 
 __all__ = ["_activate_tp_planners"]
