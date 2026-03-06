@@ -1398,11 +1398,17 @@ def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 @ExampleRegister.register("helios_t2v", default="BestWishYsh/Helios-Base")
 def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import HeliosPipeline, AutoencoderKLWan
+    from ..platforms import current_platform
 
     model_name_or_path = _path("BestWishYsh/Helios-Base", args=args)
     vae = AutoencoderKLWan.from_pretrained(
         model_name_or_path, subfolder="vae", torch_dtype=torch.float32
     )
+
+    num_frames = 49 # < Hopper (Ada, Ampere)
+    if current_platform.device_type == "cuda":
+        if current_platform.get_device_capability() >= (9, 0):
+            num_frames = 132 # >= Hopper
 
     return Example(
         args=args,
@@ -1428,7 +1434,8 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
             ),
             height=384,
             width=640,
-            num_frames=132,
+            num_frames=num_frames,
+            num_inference_steps=50,
             guidance_scale=5.0,
         ),
     )

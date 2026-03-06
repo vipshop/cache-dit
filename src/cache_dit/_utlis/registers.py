@@ -584,7 +584,11 @@ class Example:
         else:
             warmup_time = None
         # restore num_inference_steps
-        input_kwargs["num_inference_steps"] = default_num_inference_steps
+        if default_num_inference_steps is not None:
+            input_kwargs["num_inference_steps"] = default_num_inference_steps
+        else:
+            # pop None num_inference_steps from input kwargs
+            input_kwargs.pop("num_inference_steps")
 
         start_time = time.time()
         # actual inference
