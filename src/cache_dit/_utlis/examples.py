@@ -1411,7 +1411,7 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
             num_frames = 132 # >= Hopper
     
     num_inference_steps = 50 if args.num_inference_steps is None else args.num_inference_steps
-    force_refresh_step_hint = num_inference_steps
+    force_refresh_step_hint = num_inference_steps - 1 if num_inference_steps - 1 > 0 else None
 
     return Example(
         args=args,
