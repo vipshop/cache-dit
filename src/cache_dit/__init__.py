@@ -6,7 +6,7 @@ except ImportError:
 
 from .envs import ENV
 
-if not ENV.CACHE_DIT_DISABLE_LOGGERS_SUPPRESS:
+if ENV.CACHE_DIT_ENABLE_LOGGERS_SUPPRESS:
     from .logger import globally_suppress_loggers
 
     globally_suppress_loggers()
