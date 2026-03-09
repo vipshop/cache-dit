@@ -4,9 +4,15 @@ except ImportError:
     __version__ = "unknown version"
     version_tuple = (0, 0, "unknown version")
 
+from .envs import ENV
 
-from .utils import disable_print
+if not ENV.CACHE_DIT_DISABLE_LOGGERS_SUPPRESS:
+    from .logger import globally_suppress_loggers
+
+    globally_suppress_loggers()
+
 from .logger import init_logger
+from .utils import disable_print
 from .caching import load_options  # deprecated
 from .caching import load_cache_config
 from .caching import load_parallelism_config

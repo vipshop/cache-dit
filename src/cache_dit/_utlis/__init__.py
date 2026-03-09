@@ -52,3 +52,5 @@ zimage_controlnet_example = _safe_import(".examples", "zimage_controlnet_example
 glm_image_example = _safe_import(".examples", "glm_image_example")
 glm_image_edit_example = _safe_import(".examples", "glm_image_edit_example")
 firered_image_edit_example = _safe_import(".examples", "firered_image_edit_example")
+helios_t2v_example = _safe_import(".examples", "helios_t2v_example")
+helios_t2v_distill_example = _safe_import(".examples", "helios_t2v_distill_example")

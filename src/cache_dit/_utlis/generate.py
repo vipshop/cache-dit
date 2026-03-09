@@ -27,6 +27,13 @@ def get_example_args():
         choices=[None] + ExampleRegister.list_examples(),
         help="Names of the examples to run. If not specified, skip running example.",
     )
+    parser.add_argument(
+        "--example-summary",
+        "--esummary",  # short alias for better readability when used together with --cache-summary
+        action="store_true",
+        default=False,
+        help="Enable example summary logging",
+    )
     args = parser.parse_args()
 
     if args.task in ExampleRegister.list_examples():
@@ -58,10 +65,11 @@ def entrypoint():
         if args.compile:
             suppress_torch_compile_loggers()
 
-        # logging all args with better formatting
-        logger.info("Running example with the following arguments:")
-        for arg, value in vars(args).items():
-            logger.info(f"- {arg}: {value}")
+        if args.cache_summary or args.example_summary:
+            # Only logging all args when the 'summary' flag is set for better readability.
+            logger.info("Running example with the following arguments:")
+            for arg, value in vars(args).items():
+                logger.info(f"- {arg}: {value}")
 
         example = ExampleRegister.get_example(args, args.example)
         example.run()

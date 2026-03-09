@@ -81,6 +81,7 @@ Available examples:
 - ✅ glm_image_edit                 - Default: zai-org/GLM-Image
 - ✅ firered_image_edit_1.0         - Default: FireRedTeam/FireRed-Image-Edit-1.0
 - ✅ helios_t2v                     - Default: BestWishYsh/Helios-Base
+- ✅ heliost_t2v_distill            - Default: BestWishYsh/Helios-Distilled
 ```
 
 ## Single GPU Inference

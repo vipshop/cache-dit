@@ -588,7 +588,7 @@ class Example:
             input_kwargs["num_inference_steps"] = default_num_inference_steps
         else:
             # pop None num_inference_steps from input kwargs
-            input_kwargs.pop("num_inference_steps")
+            input_kwargs.pop("num_inference_steps", None)
 
         start_time = time.time()
         # actual inference

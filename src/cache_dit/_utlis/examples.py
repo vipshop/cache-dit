@@ -46,6 +46,7 @@ __all__ = [
     "glm_image_edit_example",
     "firered_image_edit_example",
     "helios_t2v_example",
+    "helios_t2v_distill_example",
 ]
 
 
@@ -88,6 +89,7 @@ _env_path_mapping = {
     "GLM_IMAGE_DIR": "zai-org/GLM-Image",
     "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
     "HELIOS_BASE_DIR": "BestWishYsh/Helios-Base",
+    "HELIOS_DISTILLED_DIR": "BestWishYsh/Helios-Distilled",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 
@@ -1450,5 +1452,70 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
             num_frames=num_frames,
             num_inference_steps=num_inference_steps,
             guidance_scale=5.0,
+        ),
+    )
+
+
+@ExampleRegister.register("helios_t2v_distill", default="BestWishYsh/Helios-Distilled")
+def helios_t2v_distill_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import HeliosPyramidPipeline, AutoencoderKLWan
+    from ..platforms import current_platform
+
+    assert args.num_inference_steps is None, (
+        "Helios Distilled example should use the default pyramid_num_inference_steps_list "
+        "which is [2,2,2] for better performance. Please do not set num_inference_steps for "
+        "this example since it will break the step hint logic and lead to worse performance."
+    )
+
+    model_name_or_path = _path("BestWishYsh/Helios-Distilled", args=args)
+    vae = AutoencoderKLWan.from_pretrained(
+        model_name_or_path, subfolder="vae", torch_dtype=torch.float32
+    )
+
+    num_frames = 49  # < Hopper (Ada, Ampere)
+    if current_platform.device_type == "cuda":
+        if current_platform.get_device_capability() >= (9, 0):
+            num_frames = 132  # >= Hopper
+
+    force_refresh_step_hint = 2
+    # repeat the same hint for multiple passes of transformer denoise loop
+    force_refresh_step_policy = "repeat"  # 'once' or 'repeat'
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.T2V,  # Text to Video
+            model_name_or_path=model_name_or_path,
+            pipeline_class=HeliosPyramidPipeline,
+            vae=vae,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            extra_optimize_kwargs={
+                "force_refresh_step_hint": force_refresh_step_hint,
+                "force_refresh_step_policy": force_refresh_step_policy,
+                "enable_seperate_cfg": False,  # For distilled models (guidance_scale=1.0).
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt=(
+                "A cat and a dog baking a cake together in a kitchen. The cat is "
+                "carefully measuring flour, while the dog is stirring the batter with a wooden spoon. "
+                "The kitchen is cozy, with sunlight streaming through the window."
+            ),
+            negative_prompt=(
+                "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, "
+                "images, static, overall gray, worst quality, low quality, JPEG compression residue, "
+                "ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, "
+                "disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, "
+                "many people in the background, walking backwards"
+            ),
+            height=384,
+            width=640,
+            num_frames=num_frames,
+            guidance_scale=1.0,
+            gen_device="cuda",  # align with the official example.
+            extra_input_kwargs={
+                "pyramid_num_inference_steps_list": [2, 2, 2],
+                "is_amplify_first_chunk": True,
+            },
         ),
     )
