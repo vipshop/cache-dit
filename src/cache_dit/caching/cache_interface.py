@@ -238,12 +238,9 @@ def enable_cache(
             logger.info("cache_config is None, using default DBCacheConfig")
             cache_config = DBCacheConfig()
         else:
-            # Allow empty cache_config when parallelism is enabled
-            logger.warning(
-                "Parallelism is enabled and cache_config is None. Please manually "
-                "set cache_config to avoid potential compatibility issues. "
-                "Otherwise, cache will not be enabled."
-            )
+            # Allow empty cache_config when other optimization configs are provided,
+            # but log a warning to remind users to set up cache_config for better compatibility.
+            logger.warning("cache_config is None, skip cache acceleration.")
 
     # Collect cache context kwargs
     context_kwargs = {}
