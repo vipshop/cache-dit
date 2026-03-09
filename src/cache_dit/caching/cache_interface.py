@@ -13,6 +13,8 @@ from .cache_contexts import CalibratorConfig
 from .params_modifier import ParamsModifier
 from ..parallelism import ParallelismConfig
 from ..parallelism import enable_parallelism
+from ..quantize import QuantizeConfig
+from ..quantize import quantize
 
 from cache_dit.logger import init_logger
 
@@ -50,6 +52,8 @@ def enable_cache(
     parallelism_config: Optional[ParallelismConfig] = None,
     # Allow set custom attention backend for non-parallelism case
     attention_backend: Optional[str] = None,
+    # Quantize config
+    quantize_config: Optional[QuantizeConfig] = None,
     # Other cache context kwargs: Deprecated cache kwargs
     **kwargs,
 ) -> Union[
@@ -234,9 +238,9 @@ def enable_cache(
     if cache_config is None:
         # Allow empty cache_config when other optimization configs are provided, but
         # log a info to remind users to set up cache_config later for better performance.
-        # We will set default cache config only when all configs are None (e.g, all
-        # of parallelism_config, attention_backend, cache_config are None).
-        if parallelism_config is None and attention_backend is None:
+        # We will set default cache config only when all configs are None (e.g, all configs:
+        # parallelism_config, attention_backend, cache_config, quantize_config are None).
+        if parallelism_config is None and attention_backend is None and quantize_config is None:
             # Set default cache config only when parallelism is not enabled
             logger.info("cache_config is None, using default DBCacheConfig")
             cache_config = DBCacheConfig()
@@ -345,8 +349,30 @@ def enable_cache(
         else:
             set_attn_backend(pipe_or_adapter, attention_backend)
 
-    # NOTE: Users should always enable parallelism after applying
+    # NOTE: Users should always enable parallelism/quantization after applying
     # cache to avoid hooks conflict.
+    transformers = []
+    if parallelism_config is not None or quantize_config is not None:
+        if isinstance(pipe_or_adapter, DiffusionPipeline):
+            adapter = BlockAdapterRegister.get_adapter(
+                pipe_or_adapter, skip_post_init=cache_config is None
+            )
+            if adapter is None:
+                assert hasattr(pipe_or_adapter, "transformer"), (
+                    "The given DiffusionPipeline does not have "
+                    "a 'transformer' attribute, cannot enable "
+                    "parallelism."
+                )
+                transformers = [pipe_or_adapter.transformer]
+            else:
+                adapter = BlockAdapter.normalize(adapter, unique=False)
+                transformers = BlockAdapter.flatten(adapter.transformer)
+        else:
+            if not BlockAdapter.is_normalized(pipe_or_adapter):
+                pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
+            transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
+
+    # Enable parallelism if parallelism_config is provided.
     if parallelism_config is not None:
         assert isinstance(
             parallelism_config, ParallelismConfig
@@ -377,26 +403,6 @@ def enable_cache(
                 )
             )
 
-        transformers = []
-        if isinstance(pipe_or_adapter, DiffusionPipeline):
-            adapter = BlockAdapterRegister.get_adapter(
-                pipe_or_adapter, skip_post_init=cache_config is None
-            )
-            if adapter is None:
-                assert hasattr(pipe_or_adapter, "transformer"), (
-                    "The given DiffusionPipeline does not have "
-                    "a 'transformer' attribute, cannot enable "
-                    "parallelism."
-                )
-                transformers = [pipe_or_adapter.transformer]
-            else:
-                adapter = BlockAdapter.normalize(adapter, unique=False)
-                transformers = BlockAdapter.flatten(adapter.transformer)
-        else:
-            if not BlockAdapter.is_normalized(pipe_or_adapter):
-                pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
-            transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
-
         if len(transformers) == 0:
             logger.warning(
                 "No transformer is detected in the " "BlockAdapter, skip enabling parallelism."
@@ -412,6 +418,16 @@ def enable_cache(
         for i, transformer in enumerate(transformers):
             # Enable parallelism for the transformer inplace
             transformers[i] = enable_parallelism(transformer, parallelism_config)
+
+    # Enable quantization if quantize_config is provided.
+    if quantize_config is not None:
+        assert isinstance(
+            quantize_config, QuantizeConfig
+        ), "quantize_config should be of type QuantizeConfig."
+        for i, transformer in enumerate(transformers):
+            # Enable quantization for the transformer inplace
+            transformers[i] = quantize(transformer, quantize_config=quantize_config)
+
     return pipe_or_adapter
 
 

@@ -1,13 +1,17 @@
 import yaml
 import copy
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Dict
 from .cache_contexts import (
     DBCacheConfig,
     TaylorSeerCalibratorConfig,
     DBPruneConfig,
     CalibratorConfig,
 )
-from ..parallelism import ParallelismConfig, ParallelismBackend
+from ..parallelism import (
+    ParallelismConfig,
+    ParallelismBackend,
+)
+from ..quantize import QuantizeConfig
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -322,12 +326,57 @@ def load_attn_backend_config(path_or_dict: str | dict, **kwargs) -> Optional[str
     return attention_backend
 
 
+def load_quantize_config(path_or_dict: str | dict, **kwargs) -> Optional[QuantizeConfig]:
+    r"""
+    Load quantize configuration from a YAML file or a dictionary. Assumes that the yaml
+    contains a 'quantize_config' section, and returns only that section. Raise ValueError
+    if not found.
+    Args:
+        path_or_dict (`str` or `dict`):
+            The file path to the YAML configuration file or a dictionary containing the configuration.
+    Returns:
+        `QuantizeConfig`: An instance of QuantizeConfig containing the loaded quantize configuration.
+    """
+    if isinstance(path_or_dict, str):
+        try:
+            with open(path_or_dict, "r") as f:
+                quantize_kwargs: dict = yaml.safe_load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {path_or_dict}")
+        except yaml.YAMLError as e:
+            raise yaml.YAMLError(f"YAML file parsing error: {str(e)}")
+    elif isinstance(path_or_dict, dict):
+        quantize_kwargs: dict = copy.deepcopy(path_or_dict)
+    else:
+        raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
+    if "quantize_config" not in quantize_kwargs:
+        return None
+    quantize_config = QuantizeConfig().update(**quantize_kwargs["quantize_config"])
+    return quantize_config
+
+
 def load_configs(
     path_or_dict: str | dict,
     return_dict: bool = True,
     **kwargs,
 ) -> Union[
-    Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig, Optional[str]], dict
+    Tuple[
+        DBCacheConfig,
+        Optional[CalibratorConfig],
+        ParallelismConfig,
+        Optional[str],  # attention_backend
+        Optional[QuantizeConfig],
+    ],
+    Dict[
+        str,
+        Union[
+            DBCacheConfig,
+            Optional[CalibratorConfig],
+            Optional[ParallelismConfig],
+            Optional[str],  # attention_backend
+            Optional[QuantizeConfig],
+        ],
+    ],
 ]:
     r"""
     Load both cache and parallelism configurations from a YAML file or a dictionary. For example,
@@ -359,10 +408,10 @@ def load_configs(
         cache configuration, optional calibrator configuration, and parallelism configuration. If `return_dict`
         is set to `True`, returns a dictionary with keys "cache_config", "calibrator_config", and "parallelism_config".
     """
-    # TODO(DefTruth): support load quantize config from yaml in the future if needed.
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)
     attention_backend = load_attn_backend_config(path_or_dict, **kwargs)
+    quantize_config = load_quantize_config(path_or_dict, **kwargs)
     if isinstance(parallelism_config, bool):
         parallelism_config = None
     if return_dict:
@@ -371,5 +420,12 @@ def load_configs(
             "calibrator_config": calibrator_config,
             "parallelism_config": parallelism_config,
             "attention_backend": attention_backend,
+            "quantize_config": quantize_config,
         }
-    return cache_config, calibrator_config, parallelism_config, attention_backend
+    return (
+        cache_config,
+        calibrator_config,
+        parallelism_config,
+        attention_backend,
+        quantize_config,
+    )

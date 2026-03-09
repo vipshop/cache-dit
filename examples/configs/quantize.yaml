@@ -1,0 +1,6 @@
+quantize_config: # quantization configuration for transformer modules
+  quant_type: "float8"
+  per_row: true
+  exclude_layers:  # layers to exclude from quantization (transformer)
+    - "embedder"
+    - "embed"
