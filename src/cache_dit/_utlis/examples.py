@@ -1456,7 +1456,7 @@ def helios_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
     )
 
 
-@ExampleRegister.register("heliost_t2v_distill", default="BestWishYsh/Helios-Distilled")
+@ExampleRegister.register("helios_t2v_distill", default="BestWishYsh/Helios-Distilled")
 def helios_t2v_distill_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import HeliosPyramidPipeline, AutoencoderKLWan
     from ..platforms import current_platform
@@ -1492,6 +1492,7 @@ def helios_t2v_distill_example(args: argparse.Namespace, **kwargs) -> Example:
             extra_optimize_kwargs={
                 "force_refresh_step_hint": force_refresh_step_hint,
                 "force_refresh_step_policy": force_refresh_step_policy,
+                "enable_seperate_cfg": False,  # For distilled models (guidance_scale=1.0).
             },
         ),
         input_data=ExampleInputData(
