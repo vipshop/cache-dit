@@ -219,6 +219,8 @@ def strify(
         parallelism_config = stats.parallelism_config
         quantize_config = stats.quantize_config
 
+    print(quantize_config)
+
     if not cache_options and parallelism_config is None and quantize_config is None:
         return "NONE"
 

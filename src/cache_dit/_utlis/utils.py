@@ -1412,7 +1412,8 @@ def maybe_apply_optimization(
     # WARN: Must apply quantization after tensor parallelism is applied.
     # torchao is compatible with tensor parallelism but requires to be
     # applied after TP.
-    if quantize_config is not None:
+    # Avoid quantization if quant_config is already applied via config file.
+    if quantize_config is None:
         maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
     maybe_quantize_controlnet(args, pipe_or_adapter)
