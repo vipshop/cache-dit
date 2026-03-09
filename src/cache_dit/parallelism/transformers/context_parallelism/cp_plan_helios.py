@@ -82,7 +82,5 @@ class HeliosContextParallelismPlanner(ContextParallelismPlanner):
                 f"blocks.{i}.ffn": ContextParallelOutput(gather_dim=1, expected_dims=3)
                 for i in range(num_blocks)
             },
-            "norm_out": {ContextParallelInput(split_dim=1, expected_dims=3, split_output=False)},
-            "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         }
         return _cp_plan
