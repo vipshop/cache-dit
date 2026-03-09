@@ -29,3 +29,7 @@ pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 ## Installation with Ascend NPU
 
 Please refer to [Ascend NPU Support](./ASCEND_NPU.md) documentation for more details.
+
+## Installation with AMD GPU
+
+Please refer to [AMD GPU Support](./AMD_GPU.md) documentation for more details.

@@ -24,12 +24,13 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
 </div>
 
-Cache-DiT is compatible with compilation, CPU offloading, and quantization (TorchAo, nunchaku), fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), ComfyUI, and runs natively on NVIDIA GPUs and Ascend NPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)).
+Cache-DiT is compatible with compilation, CPU offloading, and quantization (TorchAo, nunchaku), fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/), ComfyUI, and runs natively on NVIDIA GPUs, Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)).
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
   <p align="center">
-    <i>(Let's go beyond Cache-DiT) 👉</i> <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a>
+    <i>(Let's go beyond Cache-DiT) 👉</i> <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a><br>
+    <a href="https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit"> Nunchaku </a> | <a href="https://github.com/Jasonzzt/ComfyUI-CacheDiT"> ComfyUI </a> | <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/"> Ascend NPUs </a> | <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/AMD_GPU/"> AMD GPUs </a> 
   </p>
 </div>
 

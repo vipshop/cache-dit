@@ -68,6 +68,7 @@ nav:
       - Attention Backends: user_guide/ATTENTION.md
       - Use Torch Compile: user_guide/COMPILE.md
       - Ascend NPU Support: user_guide/ASCEND_NPU.md
+      - AMD GPU Support: user_guide/AMD_GPU.md
       - Config with YAML: user_guide/LOAD_CONFIGS.md
       - Environment Variables: user_guide/ENV.md
       - Serving Deployment: user_guide/SERVING.md
