@@ -1259,6 +1259,7 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
+    quantize_config = None
     default_num_inference_steps = kwargs.pop("default_num_inference_steps", None)
     if args.cache or args.parallel_type is not None or args.config_path is not None:
 
@@ -1411,7 +1412,8 @@ def maybe_apply_optimization(
     # WARN: Must apply quantization after tensor parallelism is applied.
     # torchao is compatible with tensor parallelism but requires to be
     # applied after TP.
-    maybe_quantize_transformer(args, pipe_or_adapter)
+    if quantize_config is not None:
+        maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
     maybe_quantize_controlnet(args, pipe_or_adapter)
 
