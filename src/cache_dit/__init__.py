@@ -6,10 +6,15 @@ except ImportError:
 
 from .envs import ENV
 
-if ENV.CACHE_DIT_ENABLE_LOGGERS_SUPPRESS:
-    from .logger import globally_suppress_loggers
+if ENV.CACHE_DIT_ENABLE_LOGGERS_SUPPRESS:  # Default is False (0)
+    # Prefer to supppress loggers globally for better readability,
+    from .logger import (
+        globally_suppress_loggers,
+        suppress_torch_compile_loggers,
+    )
 
     globally_suppress_loggers()
+    suppress_torch_compile_loggers()
 
 from .logger import init_logger
 from .utils import disable_print
