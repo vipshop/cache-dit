@@ -24,3 +24,6 @@ class QuantizeConfig:
                 if value is not None:
                     setattr(self, key, value)
         return self
+
+    def strify(self) -> str:
+        return self.quant_type.lower()

@@ -151,9 +151,17 @@ def load_cache_config(
         raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
 
     if "cache_config" not in cache_kwargs:
-        if "parallelism_config" in cache_kwargs or "attention_backend" in cache_kwargs:
-            # Allow missing cache_config for only parallelism_config or attention_backend checking
+        if (
+            "parallelism_config" in cache_kwargs
+            or "attention_backend" in cache_kwargs
+            or "quantize_config" in cache_kwargs
+        ):
+            # Allow missing cache_config for only parallelism_config, attention_backend
+            # or quantize_config, for better flexibility and backward compatibility. This
+            # is useful for users who only want to specify parallelism_config, attention_backend
+            # or quantize_config without cache_config.
             return None, None
+
         # Try to load full cache options for backward compatibility if cache_config not found
         # and the parallelism_config is also not provided. This is to support old config files
         # and refresh_context api that only contains cache options (already used in vllm-omni).

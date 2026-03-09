@@ -38,7 +38,7 @@ def quantize(
 
     per_row = per_row and is_per_row_supported(module)
 
-    return quantize_(
+    module = quantize_(
         module,
         quant_type=quant_type,
         backend=backend,
@@ -48,6 +48,16 @@ def quantize(
         verbose=verbose,
         **kwargs,
     )
+
+    module._quantize_config = quantize_config or QuantizeConfig(
+        quant_type=quant_type,
+        per_row=per_row,
+        exclude_layers=exclude_layers,
+        filter_fn=filter_fn,
+        verbose=verbose,
+    )
+
+    return module
 
 
 def quantize_(

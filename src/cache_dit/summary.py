@@ -12,6 +12,7 @@ from .caching import BasicCacheConfig
 from .caching import CalibratorConfig
 from .caching import FakeDiffusionPipeline
 from .parallelism import ParallelismConfig
+from .quantize import QuantizeConfig
 from .caching import load_options
 from cache_dit.logger import init_logger
 
@@ -42,6 +43,8 @@ class CacheStats:
     cfg_pruned_ratio: float = None
     # Parallelism Stats
     parallelism_config: ParallelismConfig = None
+    # Quantization Stats
+    quantize_config: QuantizeConfig = None
 
 
 def summary(
@@ -124,7 +127,9 @@ def summary(
             )
 
         blocks_stats = [
-            stats for stats in blocks_stats if (stats.cache_options or stats.parallelism_config)
+            stats
+            for stats in blocks_stats
+            if (stats.cache_options or stats.parallelism_config or stats.quantize_config)
         ]
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
@@ -145,7 +150,11 @@ def summary(
             )
         )
 
-    blocks_stats = [stats for stats in blocks_stats if stats.cache_options]
+    blocks_stats = [
+        stats
+        for stats in blocks_stats
+        if (stats.cache_options or stats.parallelism_config or stats.quantize_config)
+    ]
 
     return blocks_stats if len(blocks_stats) else [CacheStats()]
 
@@ -197,6 +206,7 @@ def strify(
         accumulated_cached_steps = None
         stats = None
         parallelism_config = cache_options.get("parallelism_config", None)
+        quantize_config = cache_options.get("quantize_config", None)
     else:
         raise ValueError(
             "Please set pipe_or_stats param as one of: "
@@ -206,8 +216,9 @@ def strify(
 
     if stats is not None:
         parallelism_config = stats.parallelism_config
+        quantize_config = stats.quantize_config
 
-    if not cache_options and parallelism_config is None:
+    if not cache_options and parallelism_config is None and quantize_config is None:
         return "NONE"
 
     def cache_str():
@@ -235,10 +246,16 @@ def strify(
             return f"_{parallelism_config.strify()}"
         return ""
 
+    def quantize_str():
+        if quantize_config is not None:
+            return f"_{quantize_config.strify()}"
+        return ""
+
     cache_type_str = f"{cache_str()}"
     if cache_type_str != "NONE":
         cache_type_str += f"_{calibrator_str()}"
-    cache_type_str += f"{parallelism_str()}"
+
+    cache_type_str += f"{parallelism_str()}{quantize_str()}"
 
     if accumulated_cached_steps:
         cache_type_str += f"_S{accumulated_cached_steps}"
@@ -286,6 +303,15 @@ def _summary(
     else:
         if logging:
             logger.warning(f"Can't find Parallelism Config for: {cls_name}")
+
+    if hasattr(module, "_quantize_config"):
+        quantize_config: QuantizeConfig = module._quantize_config
+        cache_stats.quantize_config = quantize_config
+        if logging:
+            logger.info(f"\n⚡️Quantization Config: {cls_name}\n\n{quantize_config.strify()}")
+    else:
+        if logging:
+            logger.warning(f"Can't find Quantization Config for: {cls_name}")
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
