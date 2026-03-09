@@ -100,10 +100,9 @@ class ENV(object):
         int(os.environ.get("CACHE_DIT_FORCE_ONLY_RANK0_LOGGING", "1"))
     )
 
-    # Force disable loggers suppress in cache-dit by setting the environment variable to 1.
-    # By default, cache-dit suppresses some noisy loggers to reduce log clutter. Users can
-    # set this variable to 1 to disable loggers suppress and show all logs, but it is not
-    # recommended for better log readability.
-    CACHE_DIT_DISABLE_LOGGERS_SUPPRESS: bool = bool(
-        int(os.environ.get("CACHE_DIT_DISABLE_LOGGERS_SUPPRESS", "0"))
+    # Force enable loggers suppress in cache-dit by setting the environment variable to 1.
+    # By default, cache-dit DON'T suppresses some noisy loggers. Users can set this variable
+    # to 1 to suppress these loggers globally, which is recommended for better log readability.
+    CACHE_DIT_ENABLE_LOGGERS_SUPPRESS: bool = bool(
+        int(os.environ.get("CACHE_DIT_ENABLE_LOGGERS_SUPPRESS", "0"))
     )

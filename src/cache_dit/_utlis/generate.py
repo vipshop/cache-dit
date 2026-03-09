@@ -1,4 +1,22 @@
-from ..logger import init_logger, suppress_torch_compile_loggers
+import os
+from ..logger import (
+    init_logger,
+    suppress_torch_compile_loggers,
+    globally_suppress_loggers,
+)
+
+# Prefer to supppress loggers globally for better readability,
+# if the environment variable is set to enable loggers suppress.
+# Otherwise, users may see messy logs from some noisy loggers,
+# which can be confusing.
+loggers_suppress_env = os.environ.get(
+    "CACHE_DIT_ENABLE_LOGGERS_SUPPRESS",
+    None,
+)
+if loggers_suppress_env is None:
+    globally_suppress_loggers()
+    suppress_torch_compile_loggers()
+
 from .utils import get_base_args, maybe_postprocess_args
 from .registers import ExampleRegister  # noqa: F403, F401
 
@@ -61,9 +79,6 @@ def entrypoint():
                 "see all available examples."
             )
             exit(1)
-
-        if args.compile:
-            suppress_torch_compile_loggers()
 
         if args.cache_summary or args.example_summary:
             # Only logging all args when the 'summary' flag is set for better readability.
