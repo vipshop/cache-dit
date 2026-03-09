@@ -1391,7 +1391,10 @@ def maybe_apply_optimization(
             quantize_config = configs.get("quantize_config", None)
             if quantize_config is not None:
                 args.quantize = True
-                args.quantize_type = quantize_config.get("quantize_type", None)
+                args.quantize_type = quantize_config.quant_type
+                logger.info(
+                    f"Quantization config from {args.config_path}: {quantize_config.strify()}"
+                )
 
             enable_cache(
                 pipe_or_adapter,

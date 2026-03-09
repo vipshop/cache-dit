@@ -177,6 +177,7 @@ def strify(
         )
 
     parallelism_config: ParallelismConfig = None
+    quantize_config: QuantizeConfig = None
     if isinstance(adapter_or_others, BlockAdapter):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
