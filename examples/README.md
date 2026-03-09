@@ -23,11 +23,22 @@
 
 ## Installation
 
+### Install NV GPU version Torch 
 ```bash
 # recommend: install latest stable release of torch for better compile compatiblity.
 pip3 install torch==2.10.0 torchvision --index-url https://download.pytorch.org/whl/cu129 --upgrade
 # recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
 pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu129
+```
+
+### Install AMD GPU version Torch 
+```bash
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/rocm7.1 
+pip3 install --pre torchao --index-url https://download.pytorch.org/whl/rocm7.1
+```
+
+### Install cache-dit and other libraries 
+```bash
 pip3 install transformers accelerate bitsandbytes opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
