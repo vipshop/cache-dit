@@ -220,6 +220,10 @@ def enable_cache(
             "native", "_sdpa_cudnn", "sage", "flash", "flash", "_native_npu", etc. Prefer attention_backend
             in parallelism_config when both are provided.
 
+        quantize_config (`QuantizeConfig`, *optional*, defaults to None):
+            Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance.
+            Supported quantization types include: float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
+
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py
             for more details.
@@ -405,14 +409,13 @@ def enable_cache(
 
         if len(transformers) == 0:
             logger.warning(
-                "No transformer is detected in the " "BlockAdapter, skip enabling parallelism."
+                "No transformer is detected in the BlockAdapter, skip enabling parallelism."
             )
             return pipe_or_adapter
 
         if len(transformers) > 1:
             logger.warning(
-                "Multiple transformers are detected in the "
-                "BlockAdapter, all transfomers will be "
+                "Multiple transformers are detected in the BlockAdapter, all transfomers will be "
                 "enabled for parallelism."
             )
         for i, transformer in enumerate(transformers):
@@ -424,6 +427,18 @@ def enable_cache(
         assert isinstance(
             quantize_config, QuantizeConfig
         ), "quantize_config should be of type QuantizeConfig."
+
+        if len(transformers) == 0:
+            logger.warning(
+                "No transformer is detected in the BlockAdapter, skip enabling quantization."
+            )
+            return pipe_or_adapter
+        if len(transformers) > 1:
+
+            logger.warning(
+                "Multiple transformers are detected in the BlockAdapter, all transfomers will be "
+                "enabled for quantization."
+            )
         for i, transformer in enumerate(transformers):
             # Enable quantization for the transformer inplace
             transformers[i] = quantize(transformer, quantize_config=quantize_config)
