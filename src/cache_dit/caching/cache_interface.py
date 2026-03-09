@@ -322,7 +322,7 @@ def enable_cache(
             )
     else:
         logger.warning(
-            "cache_config is None, skip enabling cache for "
+            "cache_config is None, skip cache acceleration for "
             f"{pipe_or_adapter.__class__.__name__}."
         )
 
