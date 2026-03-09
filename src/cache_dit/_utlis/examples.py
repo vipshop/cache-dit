@@ -1512,6 +1512,7 @@ def helios_t2v_distill_example(args: argparse.Namespace, **kwargs) -> Example:
             width=640,
             num_frames=num_frames,
             guidance_scale=1.0,
+            gen_device="cuda",  # align with the official example.
             extra_input_kwargs={
                 "pyramid_num_inference_steps_list": [2, 2, 2],
                 "is_amplify_first_chunk": True,
