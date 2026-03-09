@@ -58,6 +58,7 @@ def entrypoint():
         if args.compile:
             suppress_torch_compile_loggers()
 
+        if args.summary:
             # Only logging all args when the 'summary' flag is set for better readability.
             logger.info("Running example with the following arguments:")
             for arg, value in vars(args).items():
