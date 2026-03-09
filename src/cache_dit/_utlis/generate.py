@@ -58,10 +58,10 @@ def entrypoint():
         if args.compile:
             suppress_torch_compile_loggers()
 
-        # logging all args with better formatting
-        logger.info("Running example with the following arguments:")
-        for arg, value in vars(args).items():
-            logger.info(f"- {arg}: {value}")
+            # Only logging all args when the 'summary' flag is set for better readability.
+            logger.info("Running example with the following arguments:")
+            for arg, value in vars(args).items():
+                logger.info(f"- {arg}: {value}")
 
         example = ExampleRegister.get_example(args, args.example)
         example.run()
