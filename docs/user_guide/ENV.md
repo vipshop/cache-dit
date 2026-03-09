@@ -16,6 +16,7 @@ This document summarizes all core configurable environment variables in cache-di
 - <span style="color:#e74c3c;">CACHE_DIT_FORCE_DISABLE_CUSTOM_COMPILE_CONFIG</span>, default `False (0)`, Forces disabling cache-dit's custom `torch.compile` configurations when set to 1 (by default, custom configs are used for better performance).
 - <span style="color:#e74c3c;">CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK</span>, default `False (0)`, Disables the check for whether the model originates from the diffusers library in patch functors when set to 1.
 - <span style="color:#e74c3c;">CACHE_DIT_FORCE_ONLY_RANK0_LOGGING</span>, default `True (1)`, Forces only rank 0 to output logs (recommended for distributed training to avoid cluttered logs). Set to 0 to allow logging from all ranks.
+- <span style="color:#e74c3c;">CACHE_DIT_DISABLE_LOGGERS_SUPPRESS</span>, default `True (1)`, Force disable loggers suppress in cache-dit by setting the environment variable to 1. By default, cache-dit suppresses some noisy loggers to reduce log clutter. Users can set this variable to 1 to disable loggers suppress and show all logs, but it is not recommended for better log readability.
 
 ## Key Notes
 
