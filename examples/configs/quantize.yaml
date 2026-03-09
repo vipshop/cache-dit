@@ -3,3 +3,4 @@ quantize_config: # quantization configuration for transformer modules
   exclude_layers:  # layers to exclude from quantization (transformer)
     - "embedder"
     - "embed"
+  verbose: false # whether to print verbose logs during quantization

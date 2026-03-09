@@ -13,6 +13,7 @@ class QuantizeConfig:
         default_factory=lambda: ["embedder", "embed"]
     )
     filter_fn: Optional[Any] = None  # type: ignore
+    verbose: bool = False
 
     def as_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

@@ -19,6 +19,7 @@ def quantize(
     ],
     filter_fn: Optional[Callable] = None,
     quantize_config: Optional[QuantizeConfig] = None,
+    verbose: bool = False,
     **kwargs,
 ) -> torch.nn.Module:
     _class_not_supported_per_row = [
@@ -44,6 +45,7 @@ def quantize(
         per_row=per_row,
         exclude_layers=exclude_layers,
         filter_fn=filter_fn,
+        verbose=verbose,
         **kwargs,
     )
 
@@ -59,6 +61,7 @@ def quantize_(
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
+    verbose: bool = False,
     **kwargs,
 ) -> torch.nn.Module:
     assert isinstance(module, torch.nn.Module)
@@ -76,6 +79,7 @@ def quantize_(
             per_row=per_row,
             exclude_layers=exclude_layers,
             filter_fn=filter_fn,
+            verbose=verbose,
             **kwargs,
         )
     else:
