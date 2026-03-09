@@ -386,6 +386,13 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    parser.add_argument(
+        "--quantize-verbose",
+        "--q-verbose",
+        action="store_true",
+        default=False,
+        help="Print the verbose logs of the quantization process",
+    )
     # Parallelism settings
     parser.add_argument(
         "--parallel-type",
@@ -1006,6 +1013,7 @@ def maybe_quantize_transformer(
                         transformer,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer),
+                        verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer", transformer)
                 else:
@@ -1030,6 +1038,7 @@ def maybe_quantize_transformer(
                         transformer_2,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer_2),
+                        verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer_2", transformer_2)
                 else:
@@ -1072,6 +1081,7 @@ def maybe_quantize_text_encoder(
                 text_encoder = quantize(
                     text_encoder,
                     quant_type=args.quantize_text_type,
+                    verbose=args.quantize_verbose,
                 )
                 setattr(pipe, name, text_encoder)
             else:
@@ -1115,6 +1125,7 @@ def maybe_quantize_controlnet(
                     controlnet = quantize(
                         controlnet,
                         quant_type=args.quantize_controlnet_type,
+                        verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "controlnet", controlnet)
                 else:
