@@ -1387,9 +1387,15 @@ def maybe_apply_optimization(
             )
         else:
             # Apply acceleration configs from config path
+            configs = load_configs(args.config_path)
+            quantize_config = configs.get("quantize_config", None)
+            if quantize_config is not None:
+                args.quantize = True
+                args.quantize_type = quantize_config.get("quantize_type", None)
+
             enable_cache(
                 pipe_or_adapter,
-                **load_configs(args.config_path),
+                **configs,
             )
             logger.info(f"Applied acceleration from {args.config_path}.")
     else:
