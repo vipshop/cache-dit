@@ -153,9 +153,12 @@ def suppress_loggers(loggers_to_suppress: list[str], level: int = logging.ERROR)
     original_levels = {}
 
     for logger_name in loggers_to_suppress:
-        logger = logging.getLogger(logger_name)
-        original_levels[logger_name] = logger.level
-        logger.setLevel(level)
+        try:
+            logger = logging.getLogger(logger_name)
+            original_levels[logger_name] = logger.level
+            logger.setLevel(level)
+        except Exception:
+            pass
 
     return original_levels
 
@@ -167,4 +170,24 @@ def suppress_torch_compile_loggers() -> dict[str, int]:
     warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._inductor.*")
     compile_loggers_names = ["torch._dynamo", "torch._inductor", "torch._functorch"]
     original_levels = suppress_loggers(compile_loggers_names, level=logging.ERROR)
+    return original_levels
+
+
+# Adapted from: https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/utils/logging_utils.py#L396
+def globally_suppress_loggers() -> dict[str, int]:
+    """Set specified loggers to ERROR level to suppress logs globally."""
+    loggers_to_suppress = [
+        "torchao",
+        "torch.distributed.run",
+        "diffusers",
+        "diffusers.models.modeling_utils",
+        "imageio",
+        "imageio_ffmpeg",
+        "PIL",
+        "PIL_Image",
+        "python_multipart.multipart",
+        "filelock",
+        "urllib3",
+    ]
+    original_levels = suppress_loggers(loggers_to_suppress, level=logging.ERROR)
     return original_levels
