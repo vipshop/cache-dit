@@ -700,24 +700,16 @@ def enable_ulysses_anything(**kwargs):
 
         ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING = True
 
-        logger.warning(
-            "Ulysses Anything Attention is enabled in cache-dit. "
-            "Please note that this is an experimental feature and "
-            "may not be fully tested."
-        )
+        logger.warning("Ulysses Anything Attention is enabled in cache-dit.")
 
         # Ensure the EquipartitionSharder uses our modified shard_anything
         # function for TemplatedUlyssesAnythingAttention.
         if EquipartitionSharder.shard != shard_anything:
             EquipartitionSharder.shard = shard_anything
             EquipartitionSharder.unshard = unshard_anything
-            logger.info(
-                "EquipartitionSharder.shard/unshard is set to shard/unshard_anything function "
-                "for Ulysses Anything Attention."
-            )
     except Exception as e:
         ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING = False
-        logger.error(f"Failed to enable Ulysses Anything Attention in cache-dit due to error: {e}")
+        logger.error(f"Failed to enable Ulysses Anything Attention: {e}")
         pass
 
 
@@ -747,26 +739,16 @@ def _enable_ulysses_anything_float8(**kwargs):
 
         ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = True
 
-        logger.warning(
-            "Ulysses Anything Attention Float8 is enabled in cache-dit. "
-            "Please note that this is an experimental feature and "
-            "may not be fully tested."
-        )
+        logger.warning("Ulysses Anything Attention Float8 is enabled in cache-dit.")
 
         # Ensure the EquipartitionSharder uses our modified shard_anything
         # function for TemplatedUlyssesAnythingAttention.
         if EquipartitionSharder.shard != shard_anything:
             EquipartitionSharder.shard = shard_anything
             EquipartitionSharder.unshard = unshard_anything
-            logger.info(
-                "EquipartitionSharder.shard/unshard is set to shard/unshard_anything function "
-                "for Ulysses Anything Attention Float8."
-            )
     except Exception as e:
         ENV.CACHE_DIT_ENABELD_ULYSSES_ANYTHING_FLOAT8 = False
-        logger.error(
-            f"Failed to enable Ulysses Anything Attention Float8 in cache-dit due to error: {e}"
-        )
+        logger.error(f"Failed to enable Ulysses Anything Attention Float8: {e}")
         pass
 
 
@@ -787,11 +769,7 @@ def enable_ulysses_float8(**kwargs):
         return
 
     ENV.CACHE_DIT_ENABELD_ULYSSES_FLOAT8 = True
-    logger.warning(
-        "Ulysses Attention Float8 is enabled in cache-dit. "
-        "Please note that this is an experimental feature and "
-        "may not be fully tested."
-    )
+    logger.warning("Ulysses Attention Float8 is enabled in cache-dit.")
 
 
 def is_ulysses_float8_enabled(**kwargs) -> bool:
