@@ -88,6 +88,7 @@ _env_path_mapping = {
     "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
     "GLM_IMAGE_DIR": "zai-org/GLM-Image",
     "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
+    "FIRERED_IMAGE_EDIT_1_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.1",
     "HELIOS_BASE_DIR": "BestWishYsh/Helios-Base",
     "HELIOS_DISTILLED_DIR": "BestWishYsh/Helios-Distilled",
 }
@@ -1362,6 +1363,7 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 
 
 @ExampleRegister.register("firered_image_edit_1.0", default="FireRedTeam/FireRed-Image-Edit-1.0")
+@ExampleRegister.register("firered_image_edit_1.1", default="FireRedTeam/FireRed-Image-Edit-1.1")
 def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     from diffusers import QwenImageEditPlusPipeline
 

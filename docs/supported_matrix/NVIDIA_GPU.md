@@ -13,6 +13,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Helios-Mid|✅|✅|✅|  
 |Helios-Distilled|✅|✅|✅|  
 |FireRed-Image-Edit-1.0|✅|✅|✅|  
+|FireRed-Image-Edit-1.1|✅|✅|✅|  
 |GLM-Image-T2I|✅|✖️|✅|
 |GLM-Image-I2I|✅|✖️|✅|
 |Z-Image|✅|✅|✅|
@@ -100,6 +101,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Helios-Mid|✅|✅|  
 |Helios-Distilled|✅|✅| 
 |FireRed-Image-Edit-1.0|✅|✅|  
+|FireRed-Image-Edit-1.1|✅|✅|  
 |GLM-Image-T2I|✖️|✅|
 |GLM-Image-I2I|✖️|✅|
 |Z-Image|✅|✅|
