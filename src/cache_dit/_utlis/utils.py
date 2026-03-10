@@ -1448,21 +1448,22 @@ def strify(args, pipe_or_stats):
     quantize_type = args.quantize_type if args.quantize else ""
     if quantize_type != "":
         quantize_type = f"_{quantize_type}"
-    base_str += (
-        f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
-        f"{summary_strify(pipe_or_stats)}"
-    )
+    base_str = summary_strify(pipe_or_stats)
+    if quantize_type not in base_str:
+        base_str = f"C{int(args.compile)}_{quantize_type}_" f"{base_str}"
+    else:
+        base_str = f"C{int(args.compile)}_{base_str}"
     if args.ulysses_anything:
-        base_str += "_ulysses_anything"
+        base_str += "_UAA"
         if args.ulysses_float8:
-            base_str += "_float8"
+            base_str += "F8"
     else:
         if args.ulysses_float8:
-            base_str += "_ulysses_float8"
+            base_str += "_UAF8"
     if args.ulysses_async:
-        base_str += "_ulysses_async"
+        base_str += "_UAS"
     if args.parallel_type == "ring" or args.parallel_type == "usp":
-        if args.ring_rotate_method is not None:
+        if args.ring_rotate_method != "p2p":
             base_str += f"_rotated_{args.ring_rotate_method}"
         if args.ring_no_convert_to_fp32:
             base_str += "_no_fp32"
