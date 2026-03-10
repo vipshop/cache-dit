@@ -66,5 +66,4 @@ cache_dit.enable_cache(
         attention_backend="sage",
     ),
 )
-# torchrun --nproc_per_node=2 parallel_sage.py
 ```

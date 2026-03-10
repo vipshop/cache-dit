@@ -75,7 +75,6 @@ cache_dit.enable_cache(
         extra_parallel_modules=[pipe.controlnet],
     ),
 )
-# torchrun --nproc_per_node=2 parallel_cache.py
 ```
 
 ## Hybrid TE-P + VAE-P + CN-P
