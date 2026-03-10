@@ -31,7 +31,7 @@ cache_dit.set_attn_backend(pipe_or_adapter, attention_backend="_sdpa_cudnn")
 
 ## Distributed inference
 
-Users also can specify Attention backend by setting the `attention_backend` parameter of `parallel_kwargs` in the cases of distributed inference:
+Users also can specify Attention backend by setting the `attention_backend` parameter of `parallelism_config` in the cases of distributed inference:
 
 ```python
 from cache_dit import ParallelismConfig
@@ -41,10 +41,8 @@ cache_dit.enable_cache(
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=2, # or, tp_size=2
-        parallel_kwargs={
-            # flash, native(sdpa), _native_cudnn, _sdpa_cudnn, sage
-            "attention_backend": "_sdpa_cudnn",
-        },
+        # flash, native(sdpa), _native_cudnn, _sdpa_cudnn, sage
+        attention_backend="_sdpa_cudnn",
     ),
 )
 ```
@@ -65,11 +63,7 @@ cache_dit.enable_cache(
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=2, # or, tp_size=2
-        parallel_kwargs={
-            # flash, native(sdpa), _native_cudnn, _sdpa_cudnn, sage
-            "attention_backend": "sage",
-        },
+        attention_backend="sage",
     ),
 )
-# torchrun --nproc_per_node=2 parallel_fp8_cache.py
 ```

@@ -83,9 +83,10 @@ cache_dit.enable_cache(
         ulysses_size=4, tp_size=2, # or, 2D Parallelsim
         # e.g, FLUX.2, we can also parallelize the Text Encoder and VAE
         # module to further reduce the memory usage on low-VRAM devices.
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder, pipe.vae], 
-        },
+        extra_parallel_modules=[
+            pipe.text_encoder, 
+            pipe.vae,
+        ],
     ),
 )
 ```
