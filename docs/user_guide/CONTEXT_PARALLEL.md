@@ -1,6 +1,6 @@
 # Context Parallelism
 
-## Hybrid Context Parallelism
+## Sequence/Context Parallelism
 
 <div id="context-parallelism"></div>
 
@@ -161,9 +161,7 @@ cache_dit.enable_cache(
     # Set `ring_rotate_method` as 'p2p' to enable the faster ring attention implementation
     parallelism_config=ParallelismConfig(
         ring_size=2,
-        parallel_kwargs={
-            "ring_rotate_method": "p2p", # default is 'p2p'
-        },
+        ring_rotate_method='p2p', # default is 'p2p'
     ),
 )
 ```
