@@ -15,6 +15,7 @@ except ImportError:
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
 
+from ...config import ParallelismConfig
 from cache_dit.logger import init_logger
 
 logger = init_logger(__name__)
@@ -33,8 +34,8 @@ class ContextParallelismPlanner:
     @abstractmethod
     def apply(
         self,
-        # NOTE: Keep this kwarg for future extensions
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
         # NOTE: This method should only return the CP plan dictionary.

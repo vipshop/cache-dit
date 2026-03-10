@@ -6,9 +6,10 @@ logger = init_logger(__name__)
 
 
 class ImportErrorAutoEncoderDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
-    def plan(
+    def apply(
         self,
         auto_encoder,
+        parallelism_config,
         **kwargs,
     ):
         raise ImportError(

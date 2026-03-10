@@ -33,6 +33,7 @@ except ImportError:
 from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 
 from cache_dit.logger import init_logger
@@ -49,6 +50,7 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 
@@ -59,8 +61,7 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
             )
             return transformer
 
-        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
-        if experimental_ulysses_async:
+        if parallelism_config.ulysses_async:
             LongCatImageAttnProcessor.__call__ = (
                 __patch_LongCatImageAttnProcessor_ulysses_async__call__
             )

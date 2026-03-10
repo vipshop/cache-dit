@@ -38,15 +38,10 @@ def maybe_enable_tensor_parallelism(
     if parallelism_config is None:
         return transformer
 
-    extra_parallel_kwargs = {}
-    if parallelism_config.parallel_kwargs is not None:
-        extra_parallel_kwargs = parallelism_config.parallel_kwargs
-
     if not parallelism_config.tp_enabled():
         return transformer
 
     return TensorParallelismPlannerRegister.get_planner(transformer)().apply(
         transformer=transformer,
         parallelism_config=parallelism_config,
-        **extra_parallel_kwargs,
     )

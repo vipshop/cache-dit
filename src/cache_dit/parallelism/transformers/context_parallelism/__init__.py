@@ -28,7 +28,7 @@ logger = init_logger(__name__)
 
 def maybe_enable_context_parallelism(
     transformer: torch.nn.Module | ModelMixin,
-    parallelism_config: Optional[ParallelismConfig],
+    parallelism_config: Optional[ParallelismConfig] = None,
 ) -> torch.nn.Module:
     assert isinstance(transformer, (torch.nn.Module, ModelMixin)), (
         "transformer must be an instance of torch.nn.Module or ModelMixin, "
@@ -47,14 +47,13 @@ def maybe_enable_context_parallelism(
     )
 
     if parallelism_config.cp_enabled():
-        parallel_kwargs = parallelism_config.parallel_kwargs or {}
         # Prepare extra context parallelism config, e.g, convert_to_fp32,
         # rotate_method for ring attention.
         cp_config = _ExtendedContextParallelConfig(
             ulysses_degree=parallelism_config.ulysses_size,
             ring_degree=parallelism_config.ring_size,
-            convert_to_fp32=parallel_kwargs.get("ring_convert_to_fp32", True),
-            rotate_method=parallel_kwargs.get("ring_rotate_method", "p2p"),
+            convert_to_fp32=parallelism_config.ring_convert_to_fp32,
+            rotate_method=parallelism_config.ring_rotate_method,
         )
         if parallelism_config.hybrid_enabled():
             # In hybrid mode, we use the _cp_mesh from ParallelismConfig for
@@ -66,25 +65,24 @@ def maybe_enable_context_parallelism(
                 mesh=parallelism_config._cp_mesh,
             )
 
-        if parallel_kwargs.get("experimental_ulysses_anything", False):
+        if parallelism_config.ulysses_anything:
             enable_ulysses_anything()
 
-        if parallel_kwargs.get("experimental_ulysses_float8", False):
+        if parallelism_config.ulysses_float8:
             enable_ulysses_float8()
 
         # Prefer custom cp_plan if provided
-        cp_plan = parallel_kwargs.get("cp_plan", None)
+        cp_plan = parallelism_config.cp_plan
         if cp_plan is not None:
             logger.info(f"Using custom context parallelism plan: {cp_plan}")
         else:
             # Try get context parallelism plan from register if not provided
-            extra_parallel_kwargs = parallel_kwargs or {}
             cp_plan = ContextParallelismPlannerRegister.get_planner(transformer)().apply(
-                transformer=transformer, **extra_parallel_kwargs
+                transformer=transformer, parallelism_config=parallelism_config
             )
 
             _enable_context_parallelism_ext(transformer, config=cp_config, cp_plan=cp_plan)
-            _maybe_patch_native_parallel_config(transformer, **extra_parallel_kwargs)
+            _maybe_patch_native_parallel_config(transformer)
 
     return transformer
 

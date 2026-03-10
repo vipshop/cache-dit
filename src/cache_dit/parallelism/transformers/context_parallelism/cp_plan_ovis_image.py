@@ -35,6 +35,7 @@ except ImportError:
 from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 
 from cache_dit.logger import init_logger
@@ -51,11 +52,11 @@ class OvisImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 
-        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
-        if experimental_ulysses_async:
+        if parallelism_config.ulysses_async:
             OvisImageAttnProcessor.__call__ = __patch_OvisImageAttnProcessor_ulysses_async__call__
             OvisImageSingleTransformerBlock.forward = (
                 __patch_OvisImageSingleTransformerBlock_ulysses_async_forward__

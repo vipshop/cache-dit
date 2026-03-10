@@ -64,9 +64,10 @@ logger = init_logger(__name__)
 
 
 class ImportErrorContextParallelismPlanner(ControlNetContextParallelismPlanner):
-    def plan(
+    def apply(
         self,
         controlnet,
+        parallelism_config,
         **kwargs,
     ):
         raise ImportError(

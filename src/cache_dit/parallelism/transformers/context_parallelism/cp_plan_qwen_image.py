@@ -27,6 +27,7 @@ except ImportError:
 from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 
 from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
@@ -43,14 +44,14 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 
         # NOTE: Set it as False to use custom CP plan defined here.
         self._cp_planner_preferred_native_diffusers = False
 
-        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
-        if experimental_ulysses_async:
+        if parallelism_config.ulysses_async:
             QwenDoubleStreamAttnProcessor2_0.__call__ = (
                 __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
             )

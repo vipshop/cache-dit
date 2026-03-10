@@ -11,7 +11,7 @@ logger = init_logger(__name__)
 
 @dataclass
 class _ExtendedContextParallelConfig(ContextParallelConfig):
-    rotate_method: Literal["allgather", "alltoall", "p2p"] = "allgather"
+    rotate_method: Literal["allgather", "alltoall", "p2p"] = "p2p"
     extra_kwargs: Dict[str, Any] = None  # For future extensions
 
     def __post_init__(self):

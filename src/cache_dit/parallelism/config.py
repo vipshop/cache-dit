@@ -1,7 +1,7 @@
 import torch
 import dataclasses
-from typing import Optional, Dict, Any
 import torch.distributed as dist
+from typing import Optional, Dict, Any, List, Union
 from .backend import ParallelismBackend
 from cache_dit.logger import init_logger
 
@@ -24,34 +24,64 @@ class ParallelismConfig:
     # tp_size (`int`, *optional*):
     #   The degree of tensor parallelism.
     tp_size: int = None
-    # parallel_kwargs (`dict`, *optional*):
-    #   Additional kwargs for parallelism backends. For example, for
-    #   NATIVE_DIFFUSER backend, it can include:
-    #   `cp_plan`: The custom context parallelism plan pass by user.
-    #   `attention_backend`: str, The attention backend for parallel attention,
-    #       e.g, 'native', 'flash', 'sage', etc.
-    #   `experimental_ulysses_anything: bool, Whether to enable the ulysses
-    #       anything attention to support arbitrary sequence length and
-    #       arbitrary number of heads.
-    #   `experimental_ulysses_async: bool, Whether to enable the ulysses async
-    #       attention to overlap communication and computation.
-    #   `experimental_ulysses_float8: bool, Whether to enable the ulysses float8
-    #       attention to use fp8 for faster communication.
-    #   `ring_rotate_method`: str, The ring rotate method, default is `p2p`:
-    #       'p2p': Use batch_isend_irecv ops to rotate the key and value tensors.
-    #            This method is more efficient due to th better overlap of communication
-    #            and computation (default)
-    #       'allgather': Use allgather to gather the key and value tensors.
-    #   `ring_convert_to_fp32`: bool, Whether to convert the value output and lse
-    #       of ring attention to fp32. Default to True to avoid numerical issues.
-    parallel_kwargs: Optional[Dict[str, Any]] = dataclasses.field(default_factory=dict)
 
-    # Flags to indicate whether the model has extra modules that need parallelism
+    # cp_plan: (`cp plan`, *optional*):
+    #   The custom context parallelism plan pass by user.
+    cp_plan: Optional[Any] = None
+    # attention_backend: (`str`, *optional*):
+    #   The attention backend for parallel attention,
+    #   e.g, 'native', 'flash', 'sage', '_flash_3', etc.
+    attention_backend: Optional[str] = None
+    # ulysses_anything: (`bool`, *optional*):
+    #   Whether to enable the ulysses anything attention (namely, UAA.)
+    #   to support arbitrary sequence length and arbitrary number of heads.
+    ulysses_anything: Optional[bool] = False
+    # ulysses_float8: (`bool`, *optional*):
+    #   Whether to enable the ulysses float8 attention to use fp8 for
+    #   faster communication.
+    ulysses_float8: Optional[bool] = False
+    # ulysses_async: (`bool`, *optional*):
+    #   Whether to enable the ulysses async attention to overlap
+    #   communication and computation.
+    ulysses_async: Optional[bool] = False
+    # ring_rotate_method: (`str`, *optional*):
+    #   The ring rotate method, default is `p2p`:
+    #   'p2p': Use batch_isend_irecv ops to rotate the key and value tensors.
+    #       This method is more efficient due to th better overlap of communication
+    #       and computation (default)
+    #   'allgather': Use allgather to gather the key and value tensors.
+    ring_rotate_method: Optional[str] = "p2p"
+    # ring_convert_to_fp32: (`bool`, *optional*):
+    #   Whether to convert the value output and lse of ring
+    #   attention to fp32. Default to True to avoid numerical issues.
+    ring_convert_to_fp32: Optional[bool] = True
+    # extra_parallel_modules: (`List[str]` or `List[torch.nn.Module]`, *optional*):
+    #   The list of extra modules that need to be parallelized, e.g.,
+    #   text encoder and VAE. The value can be a list of module names
+    #   or a list of module instances, e.g., ["text_encoder", "vae"]
+    #   or [pipe.text_encoder, pipe.vae].
+    extra_parallel_modules: Optional[List[Union[str, torch.nn.Module]]] = dataclasses.field(
+        default_factory=list
+    )
+
+    # Deprecated: Will be removed in future versions, please use the explicit fields in
+    # parallelism_config instead. This field is still kept here for backward compatibility,
+    # but it will not be used in the codebase anymore.
+    parallel_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    # Flags to indicate whether the model has extra modules that need
+    # parallelism, users should never use these flags directly.
     _has_text_encoder: bool = False
     _has_auto_encoder: bool = False
     _has_controlnet: bool = False
 
-    # Meshes for hybrid parallelism: CP/SP + TP
+    # Meshes for hybrid parallelism: CP/SP + TP (internal use only)
+    # 3D mesh dim name: [ring, ulysses, tp], the tp dim is always the
+    # last dim for better compatibility with PyTorch's 1D tensor parallelism.
+    # Namely, we firstly perform sharding at sequence dimensions (ring, ulysses)
+    # and then perform sharding at feature dimension (tp). This design can also
+    # allow better flexibility to support different parallelism combinations,
+    # e.g., only TP, or only CP/SP.
     _mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _cp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
     _tp_mesh: Optional[dist.device_mesh.DeviceMesh] = None
@@ -73,6 +103,8 @@ class ParallelismConfig:
             f"Parallel backend {self.backend} is not supported. "
             f"Please make sure the required packages are installed."
         )
+        # For backward compatibility, will be removed in future versions.
+        self._maybe_flatten_deprecated_parallel_kwargs()
         if self.backend == ParallelismBackend.AUTO:
             # Auto select the backend based on the parallelism configuration
             if self.hybrid_enabled():
@@ -143,6 +175,36 @@ class ParallelismConfig:
                         "2.10.0 or later."
                     )
                 raise RuntimeError(err_msg) from e
+
+    def _maybe_flatten_deprecated_parallel_kwargs(self):
+        # Flatten the parallel_kwargs into the top-level fields for backward compatibility.
+        # This is for backward compatibility, we will remove this in future versions and
+        # require users to use the explicit fields in ParallelismConfig.
+        if not self.parallel_kwargs:
+            return
+
+        for key, value in self.parallel_kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+                logger.warning(
+                    f"{key} in parallel_kwargs is deprecated and will be removed in future versions. "
+                    f"Please use {key} in ParallelismConfig instead."
+                )
+
+        deprecated_specified_keys = [
+            "experimental_ulysses_anything",
+            "experimental_ulysses_float8",
+            "experimental_ulysses_async",
+        ]
+        new_specified_keys = ["ulysses_anything", "ulysses_float8", "ulysses_async"]
+        for deprecated_key, new_key in zip(deprecated_specified_keys, new_specified_keys):
+            if deprecated_key in self.parallel_kwargs:
+                if hasattr(self, new_key):
+                    setattr(self, new_key, self.parallel_kwargs[deprecated_key])
+                    logger.warning(
+                        f"{deprecated_key} in parallel_kwargs is deprecated and will be removed in future versions. "
+                        f"Please use {new_key} in ParallelismConfig instead."
+                    )
 
     def _maybe_init_hybrid_meshes(self):
         if self._mesh is not None or not self.hybrid_enabled():

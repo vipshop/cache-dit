@@ -27,6 +27,7 @@ except ImportError:
 from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 
 from cache_dit.logger import init_logger
@@ -39,6 +40,7 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
         assert transformer is not None, "Transformer must be provided."

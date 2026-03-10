@@ -6,9 +6,10 @@ logger = init_logger(__name__)
 
 
 class ImportErrorTextEncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def plan(
+    def apply(
         self,
         text_encoder,
+        parallelism_config,
         **kwargs,
     ):
         raise ImportError(
