@@ -38,10 +38,11 @@ def enable_parallelism(
 
     # Check text encoder and VAE for extra parallel modules
     extra_parallel_modules: list[torch.nn.Module] = []
-    if parallelism_config.parallel_kwargs is not None:
-        extra_parallel_modules = parallelism_config.parallel_kwargs.get(
-            "extra_parallel_modules", []
-        )
+    if parallelism_config.extra_parallel_modules is not None:
+        extra_parallel_modules = parallelism_config.extra_parallel_modules
+        assert isinstance(
+            extra_parallel_modules, list
+        ), "extra_parallel_modules should be a list of module names or module instances."
 
     if extra_parallel_modules:
         for module in extra_parallel_modules:
@@ -131,7 +132,7 @@ def _maybe_set_module_attention_backend(
     # transformer is from diffusers and supports setting attention backend.
     module_cls_name = module.__class__.__name__
     if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
-        attention_backend = parallelism_config.parallel_kwargs.get("attention_backend", None)
+        attention_backend = parallelism_config.attention_backend
         # native, _native_cudnn, flash, etc.
         if attention_backend is None:
             # Default to native for context parallelism due to:
@@ -147,7 +148,7 @@ def _maybe_set_module_attention_backend(
                 module.set_attention_backend("native")
                 logger.warning(
                     "attention_backend is None, set default attention backend of "
-                    f"{module_cls_name} to native."
+                    f"{module_cls_name} to: <native>."
                 )
         else:
             # Ensure custom attention backends are registered in cache-dit.
@@ -161,7 +162,7 @@ def _maybe_set_module_attention_backend(
             module.set_attention_backend(attention_backend)
             logger.info(
                 "Found attention_backend from config, set attention backend of "
-                f"{module_cls_name} to: {attention_backend}."
+                f"{module_cls_name} to: <{attention_backend}>."
             )
 
 

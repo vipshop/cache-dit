@@ -227,7 +227,7 @@ def strify(
     elif isinstance(adapter_or_others, dict):
         if (cache_type := adapter_or_others.get("cache_type", None)) is not None:
             if cache_type in [CacheType.NONE, "NONE", "None"]:
-                return "NONE"
+                return ""
         # Assume context_kwargs
         cache_options = load_options(adapter_or_others)
         accumulated_cached_steps = None
@@ -246,13 +246,13 @@ def strify(
         quantize_config = stats.quantize_config
 
     if not cache_options and parallelism_config is None and quantize_config is None:
-        return "NONE"
+        return ""
 
     def cache_str():
         cache_config: BasicCacheConfig = cache_options.get("cache_config", None)
         if cache_config is not None:
             if cache_config.cache_type == CacheType.NONE:
-                return "NONE"
+                return ""
             elif cache_config.cache_type == CacheType.DBCache:
                 return cache_config.strify()
             elif cache_config.cache_type == CacheType.DBPrune:
@@ -260,7 +260,7 @@ def strify(
                 if pruned_ratio is not None:
                     return f"{cache_config.strify()}_P{round(pruned_ratio * 100, 2)}"
                 return cache_config.strify()
-        return "NONE"
+        return ""
 
     def calibrator_str():
         calibrator_config: CalibratorConfig = cache_options.get("calibrator_config", None)
@@ -279,15 +279,15 @@ def strify(
         return ""
 
     cache_type_str = f"{cache_str()}"
-    if cache_type_str != "NONE":
+    if cache_type_str != "":
         cache_type_str += f"_{calibrator_str()}"
 
-    cache_type_str += f"{parallelism_str()}{quantize_str()}"
+    summary_str = f"{cache_type_str}{parallelism_str()}{quantize_str()}"
 
-    if accumulated_cached_steps:
-        cache_type_str += f"_S{accumulated_cached_steps}"
+    if accumulated_cached_steps and cache_type_str != "":
+        summary_str += f"_S{accumulated_cached_steps}"
 
-    return cache_type_str
+    return summary_str.strip("_")
 
 
 def _summary(

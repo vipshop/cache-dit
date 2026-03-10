@@ -6,9 +6,10 @@ logger = init_logger(__name__)
 
 
 class ImportErrorTensorParallelismPlanner(TensorParallelismPlanner):
-    def plan(
+    def apply(
         self,
         transformer,
+        parallelism_config,
         **kwargs,
     ):
         raise ImportError(

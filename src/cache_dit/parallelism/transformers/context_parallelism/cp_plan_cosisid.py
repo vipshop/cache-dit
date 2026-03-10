@@ -23,6 +23,7 @@ except ImportError:
 from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 from .cp_plan_cogvideox import __patch_CogVideoXAttnProcessor2_0__call__
 
@@ -36,6 +37,7 @@ class CosisIDContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 

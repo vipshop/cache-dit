@@ -27,13 +27,7 @@ def maybe_enable_data_parallelism(
 
     # We don't check backend here because auto encoder may use different
     # parallelism backend with transformer.
-
-    extra_parallel_kwargs = {}
-    if parallelism_config.parallel_kwargs is not None:
-        extra_parallel_kwargs = parallelism_config.parallel_kwargs
-
     return AutoEncoderDataParallelismPlannerRegister.get_planner(auto_encoder)().apply(
         auto_encoder=auto_encoder,
         parallelism_config=parallelism_config,
-        **extra_parallel_kwargs,
     )

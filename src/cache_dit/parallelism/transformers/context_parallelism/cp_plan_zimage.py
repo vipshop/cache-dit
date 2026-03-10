@@ -25,6 +25,7 @@ except ImportError:
 from .cp_plan_registers import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
 from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
@@ -42,6 +43,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
     def apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 
@@ -56,8 +58,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
-        if experimental_ulysses_async:
+        if parallelism_config.ulysses_async:
             ZSingleStreamAttnProcessor.__call__ = (
                 __patch_ZSingleStreamAttnProcessor_ulysses_async__call__
             )
@@ -78,7 +79,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         n_layers = len(transformer.layers)  # 30
         # controlnet layer idx: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
         # num_controlnet_samples = len(transformer.layers) // 2  # 15
-        has_controlnet = kwargs.get("has_controlnet", None)
+        has_controlnet = parallelism_config._has_controlnet
         if not has_controlnet:
             # cp plan for ZImageTransformer2DModel if no controlnet
             _cp_plan = {

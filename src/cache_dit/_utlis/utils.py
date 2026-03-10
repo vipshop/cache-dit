@@ -1274,18 +1274,6 @@ def maybe_apply_optimization(
                 custom_extra_modules=kwargs.get("extra_parallel_modules", None),
             )
 
-            parallel_kwargs = {
-                "attention_backend": ("native" if not args.attn else args.attn),
-                # e.g., text_encoder_2 in FluxPipeline, text_encoder in Flux2Pipeline
-                "extra_parallel_modules": extra_parallel_modules,
-                # experimental settings for context parallelism
-                "experimental_ulysses_anything": args.ulysses_anything,
-                "experimental_ulysses_float8": args.ulysses_float8,
-                "experimental_ulysses_async": args.ulysses_async,
-                "ring_rotate_method": args.ring_rotate_method,
-                "ring_convert_to_fp32": not args.ring_no_convert_to_fp32,
-            }
-
             # Caching and Parallelism
             if args.steps_mask and args.mask_policy is not None:
                 logger.info(
@@ -1374,7 +1362,13 @@ def maybe_apply_optimization(
                         ring_size=ring_size,
                         tp_size=tp_size,
                         backend=ParallelismBackend.AUTO,
-                        parallel_kwargs=parallel_kwargs,
+                        attention_backend=("native" if not args.attn else args.attn),
+                        extra_parallel_modules=extra_parallel_modules,
+                        ulysses_anything=args.ulysses_anything,
+                        ulysses_float8=args.ulysses_float8,
+                        ulysses_async=args.ulysses_async,
+                        ring_rotate_method=args.ring_rotate_method,
+                        ring_convert_to_fp32=not args.ring_no_convert_to_fp32,
                     )
                     if parallelism_config is None and args.parallel_type is not None
                     else parallelism_config
@@ -1453,15 +1447,6 @@ def strify(args, pipe_or_stats):
         base_str = f"C{int(args.compile)}_{quantize_type}_" f"{base_str}"
     else:
         base_str = f"C{int(args.compile)}_{base_str}"
-    if args.ulysses_anything:
-        base_str += "_UAA"
-        if args.ulysses_float8:
-            base_str += "F8"
-    else:
-        if args.ulysses_float8:
-            base_str += "_UAF8"
-    if args.ulysses_async:
-        base_str += "_UAS"
     if args.parallel_type == "ring" or args.parallel_type == "usp":
         if args.ring_rotate_method != "p2p":
             base_str += f"_rotated_{args.ring_rotate_method}"

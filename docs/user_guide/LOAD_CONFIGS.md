@@ -34,9 +34,8 @@ Define a parallelism only config yaml `parallel.yaml` file that contains:
 ```yaml
 parallelism_config:
   ulysses_size: auto
-  parallel_kwargs:
-    attention_backend: native
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: native
+  extra_parallel_modules: ["text_encoder", "vae"]
 ```
 Then, apply the distributed inference acceleration config from yaml. `ulysses_size: auto` means that cache-dit will auto detect the `world_size` as the ulysses_size. Otherwise, you should manually set it as specific int number, e.g, 4.
 ```python
@@ -52,9 +51,8 @@ You can also define a 2D parallelism config yaml `parallel_2d.yaml` file that co
 parallelism_config:
   ulysses_size: auto
   tp_size: 2
-  parallel_kwargs:
-    attention_backend: native
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: native
+  extra_parallel_modules: ["text_encoder", "vae"]
 ```
 Then, apply the 2D parallelism config from yaml. Here `tp_size: 2` means using tensor parallelism with size 2. The `ulysses_size: auto` means that cache-dit will auto detect the `world_size // tp_size` as the ulysses_size.
 ```python
@@ -71,9 +69,8 @@ parallelism_config:
   ulysses_size: 2
   ring_size: 2
   tp_size: 2
-  parallel_kwargs:
-    attention_backend: native
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: native
+  extra_parallel_modules: ["text_encoder", "vae"]
 ```
 Then, apply the 3D parallelism config from yaml. Here `ulysses_size: 2`, `ring_size: 2`, `tp_size: 2` means using ulysses parallelism with size 2, ring parallelism with size 2 and tensor parallelism with size 2.
 ```python
@@ -88,10 +85,9 @@ To enable Ulysses Anything Attention, you can define a parallelism config yaml `
 ```yaml
 parallelism_config:
   ulysses_size: auto
-  parallel_kwargs:
-    attention_backend: native
-    experimental_ulysses_anything: true
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: native
+  ulysses_anything: true
+  extra_parallel_modules: ["text_encoder", "vae"]
 ```
 Then, apply the config from yaml. Here `experimental_ulysses_anything: true` means enabling Ulysses Anything Attention.
 ```python
@@ -116,9 +112,8 @@ cache_config:
   taylorseer_order: 1
 parallelism_config:
   ulysses_size: auto
-  parallel_kwargs:
-    attention_backend: native
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: native
+  extra_parallel_modules: ["text_encoder", "vae"]
 ```
 Then, apply the hybrid cache and parallel acceleration config from yaml. 
 ```python
@@ -179,9 +174,8 @@ cache_config:
   taylorseer_order: 1
 parallelism_config:
   ulysses_size: auto
-  parallel_kwargs:
-    attention_backend: native
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: native
+  extra_parallel_modules: ["text_encoder", "vae"]
 quantize_config: 
   quant_type: "float8" 
   exclude_layers: 

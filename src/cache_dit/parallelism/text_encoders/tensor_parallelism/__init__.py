@@ -36,12 +36,7 @@ def maybe_enable_tensor_parallelism(
     # We don't check backend here because text encoder may use different
     # parallelism backend with transformer.
 
-    extra_parallel_kwargs = {}
-    if parallelism_config.parallel_kwargs is not None:
-        extra_parallel_kwargs = parallelism_config.parallel_kwargs
-
     return TextEncoderTensorParallelismPlannerRegister.get_planner(text_encoder)().apply(
         text_encoder=text_encoder,
         parallelism_config=parallelism_config,
-        **extra_parallel_kwargs,
     )

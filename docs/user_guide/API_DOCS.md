@@ -114,7 +114,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 - **parallelism_config** (`ParallelismConfig`, *optional*, defaults to None):  
     Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
     parallelism for cache-dit.
-    - `backend`: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.NATIVE_DIFFUSER"):  
+    - `backend`: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.AUTO"):  
         Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
         For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
         only NATIVE_PYTORCH backend is supported.
@@ -127,18 +127,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     - `tp_size`: (`int`, *optional*, defaults to None):  
         The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
         This setting is only valid when backend is NATIVE_PYTORCH.
-    - `parallel_kwargs` (`dict`, *optional*):  
-        Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend, it can include:
-        - `cp_plan`: The custom context parallelism plan pass by user.
-        - `attention_backend`: str, The attention backend for parallel attention, e.g, 'native', 'flash', 'sage', '_sdpa_cudnn', '_flash_3', etc.
-        - `experimental_ulysses_anything`: bool, Whether to enable the ulysses anything attention to support arbitrary sequence length and arbitrary number of heads.
-        - `experimental_ulysses_async`: bool, Whether to enable the ulysses async attention to overlap communication and computation.
-        - `experimental_ulysses_float8`: bool, Whether to enable the ulysses float8 attention to use fp8 for faster communication. Recommend for devices w/o NVL.  
-        - `ring_rotate_method`: str, The ring rotate method, default is `p2p`:   
-            - `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation (default).
-            - `allgather`: Use allgather to gather the key and value tensors.
-        - `ring_convert_to_fp32`: bool, Whether to convert the value output and lse of ring attention to fp32. Default to True to avoid numerical issues.
-        
+
 - **attention_backend** (`str`, *optional*, defaults to None):  
   Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 
   not None, set the attention backend for the transformer module. Supported backends include: 

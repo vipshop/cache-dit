@@ -10,6 +10,5 @@ cache_config:
   taylorseer_order: 1
 parallelism_config:
   ulysses_size: auto
-  parallel_kwargs:
-    attention_backend: _flash_3
-    extra_parallel_modules: ["text_encoder", "vae"]
+  attention_backend: _flash_3
+  extra_parallel_modules: ["text_encoder", "vae"]

@@ -1,5 +1,4 @@
 parallelism_config:
   ulysses_size: auto
   ring_size: 2
-  parallel_kwargs:
-    attention_backend: _flash_3
+  attention_backend: _flash_3

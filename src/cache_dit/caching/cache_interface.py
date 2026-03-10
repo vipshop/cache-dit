@@ -199,20 +199,6 @@ def enable_cache(
                 tp_size: (`int`, *optional*, defaults to None):
                     The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
                     This setting is only valid when backend is NATIVE_PYTORCH.
-                parallel_kwargs: (`dict`, *optional*, defaults to {}):
-                    Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
-                    it can include `cp_plan` and `attention_backend` arguments for `Context Parallelism`.
-                    Additional kwargs for parallelism backends. For example, for NATIVE_DIFFUSER backend,
-                    it can include:
-                        cp_plan: The custom context parallelism plan pass by user.
-                        attention_backend: str, The attention backend for parallel attention, e.g, 'native', 'flash', 'sage', etc.
-                        experimental_ulysses_anything: bool, Whether to enable the ulysses anything attention to support arbitrary sequence length and arbitrary number of heads.
-                        experimental_ulysses_async: bool, Whether to enable the ulysses async attention to overlap communication and computation.
-                        experimental_ulysses_float8: bool, Whether to enable the ulysses float8 attention to use fp8 for faster communication.
-                        ring_rotate_method: str, The ring rotate method, default is `p2p`:
-                            `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors. This method is more efficient due to th better overlap of communication and computation (default).
-                            `allgather`: Use allgather to gather the key and value tensors.
-                        ring_convert_to_fp32: bool, Whether to convert the value output and lse of ring attention to fp32. Default to True to avoid numerical issues.
 
         attention_backend (`str`, *optional*, defaults to None):
             Custom attention backend in cache-dit for non-parallelism case. If attention_backend is
@@ -337,7 +323,7 @@ def enable_cache(
     # Set custom attention backend for non-parallelism case
     if attention_backend is not None:
         if parallelism_config is not None:
-            if "attention_backend" in parallelism_config.parallel_kwargs:
+            if parallelism_config.attention_backend is not None:
                 logger.warning(
                     "Both attention_backend in parallelism_config and "
                     "attention_backend param are provided, prefer using "
@@ -349,7 +335,7 @@ def enable_cache(
                     "Setting attention_backend from attention_backend "
                     "param to parallelism_config."
                 )
-                parallelism_config.parallel_kwargs["attention_backend"] = attention_backend
+                parallelism_config.attention_backend = attention_backend
         else:
             set_attn_backend(pipe_or_adapter, attention_backend)
 
@@ -397,27 +383,18 @@ def enable_cache(
 
         # Prefer custom has_controlnet flag from users if provided, otherwise,
         # we will automatically check whether the pipeline has controlnet.
-        if "has_controlnet" not in parallelism_config.parallel_kwargs:
+        if not parallelism_config._has_controlnet:
             # This flag is used to decide whether to use the special parallelism
             # plan due to the addition of ControlNet, e.g., Z-Image-ControlNet.
-            parallelism_config.parallel_kwargs["has_controlnet"] = _has_controlnet(
+            parallelism_config._has_controlnet = _has_controlnet(
                 pipe_or_adapter,
             )
-            parallelism_config._has_controlnet = parallelism_config.parallel_kwargs[
-                "has_controlnet"
-            ]
 
         # Parse extra parallel modules from names to actual modules
-        if (
-            extra_parallel_module := parallelism_config.parallel_kwargs.get(
-                "extra_parallel_modules", None
-            )
-        ) is not None:
-            parallelism_config.parallel_kwargs["extra_parallel_modules"] = (
-                _parse_extra_parallel_modules(
-                    pipe_or_adapter,
-                    extra_parallel_module,
-                )
+        if (extra_parallel_module := parallelism_config.extra_parallel_modules) is not None:
+            parallelism_config.extra_parallel_modules = _parse_extra_parallel_modules(
+                pipe_or_adapter,
+                extra_parallel_module,
             )
 
         for i, transformer in enumerate(transformers):

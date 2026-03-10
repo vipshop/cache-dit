@@ -25,6 +25,7 @@ except ImportError:
 from .cp_plan_registers import (
     ControlNetContextParallelismPlanner,
     ControlNetContextParallelismPlannerRegister,
+    ParallelismConfig,
 )
 from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
 from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
@@ -41,6 +42,7 @@ class ZImageControlNetContextParallelismPlanner(ControlNetContextParallelismPlan
     def apply(
         self,
         controlnet: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
         **kwargs,
     ) -> ContextParallelModelPlan:
 
@@ -55,8 +57,7 @@ class ZImageControlNetContextParallelismPlanner(ControlNetContextParallelismPlan
                 if controlnet._cp_plan is not None:
                     return controlnet._cp_plan
 
-        experimental_ulysses_async = kwargs.get("experimental_ulysses_async", False)
-        if experimental_ulysses_async:
+        if parallelism_config.ulysses_async:
             ZSingleStreamAttnProcessor.__call__ = (
                 __patch_ZSingleStreamAttnProcessor_ulysses_async__call__
             )
