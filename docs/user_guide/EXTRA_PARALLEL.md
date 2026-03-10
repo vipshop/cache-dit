@@ -16,9 +16,7 @@ cache_dit.enable_cache(
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         tp_size=2,
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
-        },
+        extra_parallel_modules=[pipe.text_encoder], # FLUX.2
     ),
 )
 
@@ -27,9 +25,7 @@ cache_dit.enable_cache(
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.text_encoder], # FLUX.2
-        },
+        extra_parallel_modules=[pipe.text_encoder], # FLUX.2
     ),
 )
 ```
@@ -48,9 +44,7 @@ cache_dit.enable_cache(
     cache_config=DBCacheConfig(...),
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.vae],
-        },
+        extra_parallel_modules=[pipe.vae],
     ),
 )
 ```
@@ -78,9 +72,7 @@ cache_dit.enable_cache(
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
         # case: Z-Image-Turbo-Fun-ControlNet-2.1
-        parallel_kwargs={
-            "extra_parallel_modules": [pipe.controlnet],
-        },
+        extra_parallel_modules=[pipe.controlnet],
     ),
 )
 # torchrun --nproc_per_node=2 parallel_cache.py
@@ -101,13 +93,11 @@ cache_dit.enable_cache(
         # e.g, Z-Image-Turbo with ControlNet, we can also parallelize the 
         # Text Encoder, VAE and ControlNet module to further reduce the 
         # memory usage on low-VRAM devices.
-        parallel_kwargs={
-            "extra_parallel_modules": [
-                pipe.text_encoder, 
-                pipe.vae,
-                pipe.controlnet, # only support for Z-Image-Turbo currently
-            ], 
-        },
+        extra_parallel_modules=[
+            pipe.text_encoder, 
+            pipe.vae,
+            pipe.controlnet, # only support for Z-Image-Turbo currently
+        ], 
     ),
 )
 ```
