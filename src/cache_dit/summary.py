@@ -166,7 +166,7 @@ def summary(
             )
 
     # Add the overall transformer-level stats at the end of the list.
-    for transformer in BlockAdapter.flatten([adapter.transformer]):
+    for transformer in BlockAdapter.flatten(adapter.transformer):
         blocks_stats.append(
             _summary(
                 transformer,
