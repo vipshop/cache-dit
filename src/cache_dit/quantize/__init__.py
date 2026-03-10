@@ -18,10 +18,14 @@ def quantize(
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
-    quantize_config: Optional[QuantizeConfig] = None,
     verbose: bool = False,
+    quantize_config: Optional[QuantizeConfig] = None,
     **kwargs,
 ) -> torch.nn.Module:
+
+    # Qwen-Image will generate nan after quantization with per_row quantization.
+    # So, we disable per_row quantization for all layers in Qwen-Image for better
+    # stability.
     _class_not_supported_per_row = [
         "QwenImageTransformer2DModel",
     ]
@@ -36,6 +40,7 @@ def quantize(
         per_row = quantize_config.per_row
         exclude_layers = quantize_config.exclude_layers
         filter_fn = quantize_config.filter_fn
+        verbose = quantize_config.verbose
 
     per_row = per_row and is_per_row_supported(module)
 

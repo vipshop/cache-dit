@@ -41,12 +41,14 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
 >>> cache_dit.enable_cache(pipe) # Cache Acceleration with One-line code.
 >>> from cache_dit import DBCacheConfig, ParallelismConfig
->>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + 1D Parallelism.
+>>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + Parallelism.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2))
->>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + 2D Parallelism.
+>>> from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+>>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
-...   parallelism_config=ParallelismConfig(ulysses_size=2, tp_size=2))
+...   parallelism_config=ParallelismConfig(ulysses_size=2),
+...   quantize_config=QuantizeConfig(quant_type="float8"))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
