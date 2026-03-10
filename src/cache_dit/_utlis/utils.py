@@ -1401,7 +1401,7 @@ def maybe_apply_optimization(
                 pipe_or_adapter,
                 **configs,
             )
-            logger.info(f"Applied acceleration from {args.config_path}.")
+            logger.info(f"Applied acceleration config from file: {args.config_path}.")
     else:
         logger.info("No caching or parallelism is applied.")
         if args.attn is not None:
