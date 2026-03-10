@@ -386,6 +386,13 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    parser.add_argument(
+        "--quantize-verbose",
+        "--q-verbose",
+        action="store_true",
+        default=False,
+        help="Print the verbose logs of the quantization process",
+    )
     # Parallelism settings
     parser.add_argument(
         "--parallel-type",
@@ -1006,6 +1013,7 @@ def maybe_quantize_transformer(
                         transformer,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer),
+                        verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer", transformer)
                 else:
@@ -1030,6 +1038,7 @@ def maybe_quantize_transformer(
                         transformer_2,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer_2),
+                        verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer_2", transformer_2)
                 else:
@@ -1072,6 +1081,7 @@ def maybe_quantize_text_encoder(
                 text_encoder = quantize(
                     text_encoder,
                     quant_type=args.quantize_text_type,
+                    verbose=args.quantize_verbose,
                 )
                 setattr(pipe, name, text_encoder)
             else:
@@ -1115,6 +1125,7 @@ def maybe_quantize_controlnet(
                     controlnet = quantize(
                         controlnet,
                         quant_type=args.quantize_controlnet_type,
+                        verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "controlnet", controlnet)
                 else:
@@ -1248,6 +1259,7 @@ def maybe_apply_optimization(
     pipe_or_adapter,
     **kwargs,
 ):
+    quantize_config = None
     default_num_inference_steps = kwargs.pop("default_num_inference_steps", None)
     if args.cache or args.parallel_type is not None or args.config_path is not None:
 
@@ -1376,11 +1388,20 @@ def maybe_apply_optimization(
             )
         else:
             # Apply acceleration configs from config path
+            configs = load_configs(args.config_path)
+            quantize_config = configs.get("quantize_config", None)
+            if quantize_config is not None:
+                args.quantize = True
+                args.quantize_type = quantize_config.quant_type
+                logger.info(
+                    f"Quantization config from {args.config_path}: {quantize_config.strify()}"
+                )
+
             enable_cache(
                 pipe_or_adapter,
-                **load_configs(args.config_path),
+                **configs,
             )
-            logger.info(f"Applied acceleration from {args.config_path}.")
+            logger.info(f"Applied acceleration config from file: {args.config_path}.")
     else:
         logger.info("No caching or parallelism is applied.")
         if args.attn is not None:
@@ -1391,7 +1412,9 @@ def maybe_apply_optimization(
     # WARN: Must apply quantization after tensor parallelism is applied.
     # torchao is compatible with tensor parallelism but requires to be
     # applied after TP.
-    maybe_quantize_transformer(args, pipe_or_adapter)
+    # Avoid quantization if quant_config is already applied via config file.
+    if quantize_config is None:
+        maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
     maybe_quantize_controlnet(args, pipe_or_adapter)
 
@@ -1425,21 +1448,22 @@ def strify(args, pipe_or_stats):
     quantize_type = args.quantize_type if args.quantize else ""
     if quantize_type != "":
         quantize_type = f"_{quantize_type}"
-    base_str += (
-        f"C{int(args.compile)}_Q{int(args.quantize)}{quantize_type}_"
-        f"{summary_strify(pipe_or_stats)}"
-    )
+    base_str = summary_strify(pipe_or_stats)
+    if quantize_type not in base_str:
+        base_str = f"C{int(args.compile)}_{quantize_type}_" f"{base_str}"
+    else:
+        base_str = f"C{int(args.compile)}_{base_str}"
     if args.ulysses_anything:
-        base_str += "_ulysses_anything"
+        base_str += "_UAA"
         if args.ulysses_float8:
-            base_str += "_float8"
+            base_str += "F8"
     else:
         if args.ulysses_float8:
-            base_str += "_ulysses_float8"
+            base_str += "_UAF8"
     if args.ulysses_async:
-        base_str += "_ulysses_async"
+        base_str += "_UAS"
     if args.parallel_type == "ring" or args.parallel_type == "usp":
-        if args.ring_rotate_method is not None:
+        if args.ring_rotate_method != "p2p":
             base_str += f"_rotated_{args.ring_rotate_method}"
         if args.ring_no_convert_to_fp32:
             base_str += "_no_fp32"

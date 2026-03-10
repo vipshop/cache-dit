@@ -19,8 +19,19 @@ def quantize_ao(
         "embed",
     ],
     filter_fn: Optional[Callable] = None,
+    verbose: bool = False,
     **kwargs,
 ) -> torch.nn.Module:
+    # Check if already quantized by checking the _is_quantized attribute.
+    # This is to avoid redundant quantization which may cause performance
+    # regression and other issues. If you want to quantize an already quantized.
+
+    if hasattr(module, "_is_quantized") and getattr(module, "_is_quantized"):
+        logger.warning(
+            f"Module {module.__class__.__name__} is already quantized, skipping quantization. "
+        )
+        return module
+
     # Apply FP8 DQ for module and skip any `embed` modules
     # by default to avoid non-trivial precision downgrade. Please
     # set `exclude_layers` as `[]` if you don't want this behavior.
@@ -91,15 +102,18 @@ def quantize_ao(
 
             for exclude_name in exclude_layers:
                 if exclude_name in name:
-                    logger.info(f"Skip Quantization: {name} -> " f"pattern<{exclude_name}>")
+                    if verbose:
+                        logger.info(f"Skip Quantization: {name} -> " f"pattern<{exclude_name}>")
 
                     num_skip_linear += 1
                     return False
 
             if per_row and m.weight.dtype != torch.bfloat16 and quant_type == "fp8_w8a8_dq":
-                logger.info(
-                    f"Skip Quantization: {name} -> " f"pattern<dtype({m.weight.dtype})!=bfloat16>"
-                )
+                if verbose:
+                    logger.info(
+                        f"Skip Quantization: {name} -> "
+                        f"pattern<dtype({m.weight.dtype})!=bfloat16>"
+                    )
 
                 num_skip_linear += 1
                 return False
@@ -107,9 +121,10 @@ def quantize_ao(
             # check blockwise fp8 support for linear layers, if not supported, skip quantization for that layer
             if quant_type == "fp8_blockwise" and not _check_blockwise_fp8_support(m):
                 weight_shape = tuple(m.weight.shape)
-                logger.info(
-                    f"Skip Quantization: {name} -> pattern<w{weight_shape} % block_size(128, 128) != 0>"
-                )
+                if verbose:
+                    logger.info(
+                        f"Skip Quantization: {name} -> pattern<w{weight_shape} % block_size(128, 128) != 0>"
+                    )
                 num_skip_linear += 1
                 return False
 

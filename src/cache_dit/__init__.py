@@ -54,6 +54,7 @@ from .profiler import create_profiler_context
 from .profiler import get_profiler_output_dir
 from .profiler import set_profiler_output_dir
 from .quantize import quantize
+from .quantize import QuantizeConfig
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache

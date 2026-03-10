@@ -145,5 +145,8 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   "native", "_sdpa_cudnn", "sage", "flash", "flash", "_native_npu", etc. Prefer attention_backend
   in parallelism_config when both are provided.
 
+- **quantize_config** (`QuantizeConfig`, *optional*, defaults to None):   
+  Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance. Supported quantization types include: float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
+
 - **kwargs** (`dict`, *optional*, defaults to {}):   
   Other cache context keyword arguments. Please check [cache_contexts/cache_context.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py) for more details.

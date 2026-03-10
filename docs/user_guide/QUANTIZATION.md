@@ -4,23 +4,34 @@
 
 ## TorchAo
 
-Currently, torchao has been integrated into cache-dit as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling `cache_dit.quantize(...)`. At present, cache-dit supports the `Hybrid Cache + Low-bits Quantization` scheme. For GPUs with low memory capacity, we recommend using `float8_weight_only` or `int8_weight_only`, as these two schemes cause almost no loss in precision.
+Currently, torchao has been integrated into cache-dit as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling `cache_dit.quantize(...)` or pass a `QuantizeConfig` to `cache_dit.enable_cache(...)`. At present, cache-dit supports the `Hybrid Cache + Low-bits Quantization` scheme. For GPUs with low memory capacity, we recommend using `float8`, `float8_weight_only`, `int8_weight_only`, as these schemes cause almost no loss in precision.
 
 ```python
 # pip3 install "cache-dit[quantization]"
 import cache_dit
+from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
-cache_dit.enable_cache(pipe_or_adapter)
+# quant_type: float8, float8_weight_only, int8, int8_weight_only, etc.
+# Pass a QuantizeConfig to the `enable_cache` API.
+cache_dit.enable_cache( 
+    pipe, cache_config=DBCacheConfig(), # w/ default
+    parallelism_config=ParallelismConfig(ulysses_size=2),
+    quantize_config=QuantizeConfig(quant_type="float8"),
+)
 
-# float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
-# int4_weight_only requires fbgemm-gpu-genai>=1.2.0, which only supports
-# Compute Architectures >= Hopper (and does not support Ada, ..., etc.)
-pipe.transformer = cache_dit.quantize(
-    pipe.transformer, quant_type="float8_weight_only"
+# Or, directly call the `quantize` API for more fine-grained control.
+cache_dit.quantize(
+    pipe.transformer, 
+    quantize_config=QuantizeConfig(quant_type="float8"),
 )
-pipe.text_encoder = cache_dit.quantize(
-    pipe.text_encoder, quant_type="float8_weight_only"
+cache_dit.quantize(
+    pipe.text_encoder, 
+    quantize_config=QuantizeConfig(quant_type="float8_weight_only"),
 )
+
+# Please also enable torch.compile for better performance with quantization.
+pipe.transformer = torch.compile(pipe.transformer)
+pipe.text_encoder = torch.compile(pipe.text_encoder)
 ```
 
 ## bitsandbytes  

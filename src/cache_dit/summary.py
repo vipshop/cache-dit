@@ -12,6 +12,7 @@ from .caching import BasicCacheConfig
 from .caching import CalibratorConfig
 from .caching import FakeDiffusionPipeline
 from .parallelism import ParallelismConfig
+from .quantize import QuantizeConfig
 from .caching import load_options
 from cache_dit.logger import init_logger
 
@@ -42,6 +43,8 @@ class CacheStats:
     cfg_pruned_ratio: float = None
     # Parallelism Stats
     parallelism_config: ParallelismConfig = None
+    # Quantization Stats
+    quantize_config: QuantizeConfig = None
 
 
 def summary(
@@ -64,6 +67,8 @@ def summary(
             "not FakeDiffusionPipeline."
         )
 
+    # DiffusionPipeline or transformer moudle, which may contain cached,
+    # parallelism and quantization stats.
     if not isinstance(adapter_or_others, BlockAdapter):
         if not isinstance(adapter_or_others, DiffusionPipeline):
             transformer = adapter_or_others  # transformer-only
@@ -78,11 +83,15 @@ def summary(
             (
                 not BlockAdapter.is_cached(transformer),
                 not BlockAdapter.is_parallelized(transformer),
+                not BlockAdapter.is_quantized(transformer),
             )
         ):
             return [CacheStats()]
 
         blocks_stats: List[CacheStats] = []
+        # Only cached transformers will have cache stats for sub-blocks.
+        # Parallelism and quantization stats will be collected at the
+        # transformer level.
         if BlockAdapter.is_cached(transformer):
             for blocks in BlockAdapter.find_blocks(transformer):
                 blocks_stats.append(
@@ -105,6 +114,9 @@ def summary(
                     )
                 )
 
+        # Add the overall transformer-level stats at the end of the list,
+        # which will be used for summarization and strify. Including cache
+        # options, parallelism and quantization config at transformer level.
         blocks_stats.append(
             _summary(
                 transformer,
@@ -124,11 +136,14 @@ def summary(
             )
 
         blocks_stats = [
-            stats for stats in blocks_stats if (stats.cache_options or stats.parallelism_config)
+            stats
+            for stats in blocks_stats
+            if (stats.cache_options or stats.parallelism_config or stats.quantize_config)
         ]
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
 
+    # BlockAdapter, which will have cache stats for each unique blocks and transformers.
     adapter = adapter_or_others
     if not BlockAdapter.check_block_adapter(adapter):
         return [CacheStats()]
@@ -136,16 +151,36 @@ def summary(
     blocks_stats = []
     flatten_blocks = BlockAdapter.flatten(adapter.blocks)
     for blocks in flatten_blocks:
+        # Only cached blocks will have cache stats. Parallelism and quantization
+        # stats will be collected at the transformer level, which will be added
+        # in the end of the list. So here we only check if the block is cached
+        # to decide whether to collect stats or not.
+        if BlockAdapter.is_cached(blocks):
+            blocks_stats.append(
+                _summary(
+                    blocks,
+                    details=details,
+                    logging=logging,
+                    **kwargs,
+                )
+            )
+
+    # Add the overall transformer-level stats at the end of the list.
+    for transformer in BlockAdapter.flatten(adapter.transformer):
         blocks_stats.append(
             _summary(
-                blocks,
+                transformer,
                 details=details,
                 logging=logging,
                 **kwargs,
             )
         )
 
-    blocks_stats = [stats for stats in blocks_stats if stats.cache_options]
+    blocks_stats = [
+        stats
+        for stats in blocks_stats
+        if (stats.cache_options or stats.parallelism_config or stats.quantize_config)
+    ]
 
     return blocks_stats if len(blocks_stats) else [CacheStats()]
 
@@ -168,6 +203,7 @@ def strify(
         )
 
     parallelism_config: ParallelismConfig = None
+    quantize_config: QuantizeConfig = None
     if isinstance(adapter_or_others, BlockAdapter):
         stats = summary(adapter_or_others, logging=False)[-1]
         cache_options = stats.cache_options
@@ -197,6 +233,7 @@ def strify(
         accumulated_cached_steps = None
         stats = None
         parallelism_config = cache_options.get("parallelism_config", None)
+        quantize_config = cache_options.get("quantize_config", None)
     else:
         raise ValueError(
             "Please set pipe_or_stats param as one of: "
@@ -206,8 +243,9 @@ def strify(
 
     if stats is not None:
         parallelism_config = stats.parallelism_config
+        quantize_config = stats.quantize_config
 
-    if not cache_options and parallelism_config is None:
+    if not cache_options and parallelism_config is None and quantize_config is None:
         return "NONE"
 
     def cache_str():
@@ -235,10 +273,16 @@ def strify(
             return f"_{parallelism_config.strify()}"
         return ""
 
+    def quantize_str():
+        if quantize_config is not None:
+            return f"_{quantize_config.strify()}"
+        return ""
+
     cache_type_str = f"{cache_str()}"
     if cache_type_str != "NONE":
         cache_type_str += f"_{calibrator_str()}"
-    cache_type_str += f"{parallelism_str()}"
+
+    cache_type_str += f"{parallelism_str()}{quantize_str()}"
 
     if accumulated_cached_steps:
         cache_type_str += f"_S{accumulated_cached_steps}"
@@ -286,6 +330,15 @@ def _summary(
     else:
         if logging:
             logger.warning(f"Can't find Parallelism Config for: {cls_name}")
+
+    if hasattr(module, "_quantize_config"):
+        quantize_config: QuantizeConfig = module._quantize_config
+        cache_stats.quantize_config = quantize_config
+        if logging:
+            logger.info(f"\n⚡️Quantization Config: {cls_name}\n\n{quantize_config.strify()}")
+    else:
+        if logging:
+            logger.warning(f"Can't find Quantization Config for: {cls_name}")
 
     if hasattr(module, "_cached_steps"):
         cached_steps: list[int] = module._cached_steps
