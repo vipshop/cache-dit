@@ -35,12 +35,6 @@ def enable_parallelism(
         transformer=transformer,
         parallelism_config=parallelism_config,
     )
-    # Set attention backend for both context parallelism and tensor parallelism if the
-    # transformer is from diffusers and supports setting attention backend.
-    _maybe_set_module_attention_backend(
-        module=transformer,
-        parallelism_config=parallelism_config,
-    )
 
     # Check text encoder and VAE for extra parallel modules
     extra_parallel_modules: list[torch.nn.Module] = []
@@ -85,6 +79,13 @@ def enable_parallelism(
                     auto_encoder=module,
                     parallelism_config=parallelism_config,
                 )
+
+    # Set attention backend for both context parallelism and tensor parallelism if the
+    # transformer is from diffusers and supports setting attention backend.
+    _maybe_set_module_attention_backend(
+        module=transformer,
+        parallelism_config=parallelism_config,
+    )
 
     transformer._extra_parallel_modules = extra_parallel_modules  # type: ignore[attr-defined]
     # NOTE: Workaround for potential memory peak issue after parallelism
@@ -146,8 +147,7 @@ def _maybe_set_module_attention_backend(
                 module.set_attention_backend("native")
                 logger.warning(
                     "attention_backend is None, set default attention backend of "
-                    f"{module_cls_name} to native for context parallelism or "
-                    "hybrid parallelism."
+                    f"{module_cls_name} to native."
                 )
         else:
             # Ensure custom attention backends are registered in cache-dit.
