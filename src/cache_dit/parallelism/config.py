@@ -188,8 +188,8 @@ class ParallelismConfig:
             if hasattr(self, key):
                 setattr(self, key, value)
                 logger.warning(
-                    f"{key} in parallel_kwargs is deprecated and will be removed in future versions. "
-                    f"Please use {key} in ParallelismConfig instead."
+                    f"{key} in parallel_kwargs is deprecated and will be removed "
+                    f"in future versions. Please use {key} in ParallelismConfig instead."
                 )
 
         deprecated_specified_keys = [
@@ -203,8 +203,8 @@ class ParallelismConfig:
                 if hasattr(self, new_key):
                     setattr(self, new_key, self.parallel_kwargs[deprecated_key])
                     logger.warning(
-                        f"{deprecated_key} in parallel_kwargs is deprecated and will be removed in future versions. "
-                        f"Please use {new_key} in ParallelismConfig instead."
+                        f"{deprecated_key} in parallel_kwargs is deprecated and will be removed "
+                        f"in future versions. Please use {new_key} in ParallelismConfig instead."
                     )
 
     def _maybe_init_hybrid_meshes(self):
