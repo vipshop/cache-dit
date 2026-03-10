@@ -200,4 +200,5 @@ torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml
 torchrun --nproc_per_node=8 -m cache_dit.generate flux --config parallel_3d.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_usp.yaml
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --config combined.yaml --compile
 ```
