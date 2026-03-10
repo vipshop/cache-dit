@@ -306,6 +306,12 @@ class ParallelismConfig:
             parallel_str = f"ParallelismConfig(backend={self.backend}, "
             if self.ulysses_size is not None:
                 parallel_str += f"ulysses_size={self.ulysses_size}, "
+                if self.ulysses_anything:
+                    parallel_str += f"UAA={self.ulysses_anything}, "
+                if self.ulysses_float8:
+                    parallel_str += f"float8={self.ulysses_float8}, "
+                if self.ulysses_async:
+                    parallel_str += f"async={self.ulysses_async}, "
             if self.ring_size is not None:
                 parallel_str += f"ring_size={self.ring_size}, "
             if self.tp_size is not None:
