@@ -81,6 +81,24 @@ Then, apply the 3D parallelism config from yaml. Here `ulysses_size: 2`, `ring_s
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_3d.yaml"))
 ```
 
+- Ulysses Anything Attention
+
+To enable Ulysses Anything Attention, you can define a parallelism config yaml `parallel_uaa.yaml` file that contains:
+
+```yaml
+parallelism_config:
+  ulysses_size: auto
+  parallel_kwargs:
+    attention_backend: native
+    experimental_ulysses_anything: true
+    extra_parallel_modules: ["text_encoder", "vae"]
+```
+Then, apply the config from yaml. Here `experimental_ulysses_anything: true` means enabling Ulysses Anything Attention.
+```python
+>>> import cache_dit
+>>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_uaa.yaml"))
+```
+
 ## Hybrid Cache and Parallelism
 
 Define a hybrid cache and parallel acceleration config yaml `hybrid.yaml` file that contains:
