@@ -67,6 +67,8 @@ def summary(
             "not FakeDiffusionPipeline."
         )
 
+    # DiffusionPipeline or transformer moudle, which may contain cached,
+    # parallelism and quantization stats.
     if not isinstance(adapter_or_others, BlockAdapter):
         if not isinstance(adapter_or_others, DiffusionPipeline):
             transformer = adapter_or_others  # transformer-only
@@ -81,11 +83,15 @@ def summary(
             (
                 not BlockAdapter.is_cached(transformer),
                 not BlockAdapter.is_parallelized(transformer),
+                not BlockAdapter.is_quantized(transformer),
             )
         ):
             return [CacheStats()]
 
         blocks_stats: List[CacheStats] = []
+        # Only cached transformers will have cache stats for sub-blocks.
+        # Parallelism and quantization stats will be collected at the
+        # transformer level.
         if BlockAdapter.is_cached(transformer):
             for blocks in BlockAdapter.find_blocks(transformer):
                 blocks_stats.append(
@@ -108,6 +114,9 @@ def summary(
                     )
                 )
 
+        # Add the overall transformer-level stats at the end of the list,
+        # which will be used for summarization and strify. Including cache
+        # options, parallelism and quantization config at transformer level.
         blocks_stats.append(
             _summary(
                 transformer,
@@ -134,6 +143,7 @@ def summary(
 
         return blocks_stats if len(blocks_stats) else [CacheStats()]
 
+    # BlockAdapter, which will have cache stats for each unique blocks and transformers.
     adapter = adapter_or_others
     if not BlockAdapter.check_block_adapter(adapter):
         return [CacheStats()]
@@ -141,9 +151,25 @@ def summary(
     blocks_stats = []
     flatten_blocks = BlockAdapter.flatten(adapter.blocks)
     for blocks in flatten_blocks:
+        # Only cached blocks will have cache stats. Parallelism and quantization
+        # stats will be collected at the transformer level, which will be added
+        # in the end of the list. So here we only check if the block is cached
+        # to decide whether to collect stats or not.
+        if BlockAdapter.is_cached(blocks):
+            blocks_stats.append(
+                _summary(
+                    blocks,
+                    details=details,
+                    logging=logging,
+                    **kwargs,
+                )
+            )
+
+    # Add the overall transformer-level stats at the end of the list.
+    for transformer in BlockAdapter.flatten([adapter.transformer]):
         blocks_stats.append(
             _summary(
-                blocks,
+                transformer,
                 details=details,
                 logging=logging,
                 **kwargs,
@@ -218,8 +244,6 @@ def strify(
     if stats is not None:
         parallelism_config = stats.parallelism_config
         quantize_config = stats.quantize_config
-
-    print(quantize_config)
 
     if not cache_options and parallelism_config is None and quantize_config is None:
         return "NONE"

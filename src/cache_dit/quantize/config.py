@@ -7,6 +7,9 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class QuantizeConfig:
+    # quantization backend, only "ao" (torchao) is supported
+    # for now, more backends will be supported in the future.
+    backend: str = "ao"
     quant_type: str = "float8_weight_only"
     per_row: bool = True
     exclude_layers: Optional[list] = dataclasses.field(
@@ -26,4 +29,4 @@ class QuantizeConfig:
         return self
 
     def strify(self) -> str:
-        return self.quant_type.lower()
+        return f"{self.quant_type.lower()}"

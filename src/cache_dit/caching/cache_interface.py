@@ -376,6 +376,19 @@ def enable_cache(
                 pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
             transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
+    if len(transformers) == 0:
+        logger.warning(
+            "No transformer is detected in the BlockAdapter, skip enabling "
+            "parallelism or quantization."
+        )
+        return pipe_or_adapter
+
+    if len(transformers) > 1:
+        logger.warning(
+            "Multiple transformers are detected in the BlockAdapter, all "
+            "transfomers will be enabled for parallelism or quantization."
+        )
+
     # Enable parallelism if parallelism_config is provided.
     if parallelism_config is not None:
         assert isinstance(
@@ -407,17 +420,6 @@ def enable_cache(
                 )
             )
 
-        if len(transformers) == 0:
-            logger.warning(
-                "No transformer is detected in the BlockAdapter, skip enabling parallelism."
-            )
-            return pipe_or_adapter
-
-        if len(transformers) > 1:
-            logger.warning(
-                "Multiple transformers are detected in the BlockAdapter, all transfomers will be "
-                "enabled for parallelism."
-            )
         for i, transformer in enumerate(transformers):
             # Enable parallelism for the transformer inplace
             transformers[i] = enable_parallelism(transformer, parallelism_config)
@@ -428,17 +430,6 @@ def enable_cache(
             quantize_config, QuantizeConfig
         ), "quantize_config should be of type QuantizeConfig."
 
-        if len(transformers) == 0:
-            logger.warning(
-                "No transformer is detected in the BlockAdapter, skip enabling quantization."
-            )
-            return pipe_or_adapter
-        if len(transformers) > 1:
-
-            logger.warning(
-                "Multiple transformers are detected in the BlockAdapter, all transfomers will be "
-                "enabled for quantization."
-            )
         for i, transformer in enumerate(transformers):
             # Enable quantization for the transformer inplace
             transformers[i] = quantize(transformer, quantize_config=quantize_config)

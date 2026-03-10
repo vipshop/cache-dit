@@ -31,6 +31,7 @@ def quantize(
 
     if quantize_config is not None:
         # If quantize_config is provided, it will override the individual parameters
+        backend = quantize_config.backend
         quant_type = quantize_config.quant_type
         per_row = quantize_config.per_row
         exclude_layers = quantize_config.exclude_layers
@@ -51,6 +52,7 @@ def quantize(
 
     module._quantize_config = quantize_config or QuantizeConfig(
         quant_type=quant_type,
+        backend=backend,
         per_row=per_row,
         exclude_layers=exclude_layers,
         filter_fn=filter_fn,
