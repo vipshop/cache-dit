@@ -132,7 +132,7 @@ quantize_config: # quantization configuration for transformer modules
   exclude_layers:  # layers to exclude from quantization (transformer)
     - "embedder"
     - "embed"
-  verbose: true # whether to print verbose logs during quantization
+  verbose: false # whether to print verbose logs during quantization
 ```
 Then, apply the quantization config from yaml. 
 ```python
