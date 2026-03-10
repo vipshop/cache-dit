@@ -23,8 +23,7 @@ Cache-DiT is compatible with compilation, CPU offloading, and quantization (Torc
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
   <p align="center">
-    <i>(Let's go beyond Cache-DiT) 👉</i> <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a><br>
-    <a href="https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit"> Nunchaku </a> | <a href="https://github.com/Jasonzzt/ComfyUI-CacheDiT"> ComfyUI </a> | <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/ASCEND_NPU/"> Ascend NPUs </a> | <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/AMD_GPU/"> AMD GPUs </a> 
+    <i>(Let's go beyond Cache-DiT) 👉</i> <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a>
   </p>
 </div>
 
