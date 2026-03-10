@@ -376,18 +376,18 @@ def enable_cache(
                 pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
             transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
-    if len(transformers) == 0:
-        logger.warning(
-            "No transformer is detected in the BlockAdapter, skip enabling "
-            "parallelism or quantization."
-        )
-        return pipe_or_adapter
+        if len(transformers) == 0:
+            logger.warning(
+                "No transformer is detected in the BlockAdapter, skip enabling "
+                "parallelism or quantization."
+            )
+            return pipe_or_adapter
 
-    if len(transformers) > 1:
-        logger.warning(
-            "Multiple transformers are detected in the BlockAdapter, all "
-            "transfomers will be enabled for parallelism or quantization."
-        )
+        if len(transformers) > 1:
+            logger.warning(
+                "Multiple transformers are detected in the BlockAdapter, all "
+                "transformers will be enabled for parallelism or quantization."
+            )
 
     # Enable parallelism if parallelism_config is provided.
     if parallelism_config is not None:
@@ -532,7 +532,7 @@ def set_attn_backend(
         if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
             module.set_attention_backend(attention_backend)
             logger.info(
-                f"Set attention backend to {attention_backend} for module: {module.__class__.__name__}."
+                f"Set attention backend to <{attention_backend}> for module: {module.__class__.__name__}."
             )
         else:
             logger.warning(
@@ -556,7 +556,7 @@ def set_attn_backend(
                 _set_backend(pipe)
     except Exception as e:
         raise RuntimeError(
-            f"Failed to set attention backend to {attention_backend}. "
+            f"Failed to set attention backend to <{attention_backend}>. "
             "This usually means the backend is unavailable (e.g., FlashAttention-3 not installed) "
             "or the model/shape/dtype is unsupported. "
             f"Original error: {e}"
