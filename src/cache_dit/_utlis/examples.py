@@ -1377,11 +1377,16 @@ def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     if args.input_height is not None and args.input_width is not None:
         image = image.resize((args.input_width, args.input_height))
 
+    if args.example.lower() == "firered_image_edit_1.1":
+        model_name_or_path = _path("FireRedTeam/FireRed-Image-Edit-1.1", args=args)
+    else:
+        model_name_or_path = _path("FireRedTeam/FireRed-Image-Edit-1.0", args=args)
+
     return Example(
         args=args,
         init_config=ExampleInitConfig(
             task_type=ExampleType.IE2I,  # Image Editing to Image
-            model_name_or_path=_path("FireRedTeam/FireRed-Image-Edit-1.0", args=args),
+            model_name_or_path=model_name_or_path,
             pipeline_class=QwenImageEditPlusPipeline,
             bnb_4bit_components=["text_encoder", "transformer"],
         ),
