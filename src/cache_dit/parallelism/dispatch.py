@@ -148,7 +148,7 @@ def _maybe_set_module_attention_backend(
                 module.set_attention_backend("native")
                 logger.warning(
                     "attention_backend is None, set default attention backend of "
-                    f"{module_cls_name} to native."
+                    f"{module_cls_name} to: <native>."
                 )
         else:
             # Ensure custom attention backends are registered in cache-dit.
@@ -162,7 +162,7 @@ def _maybe_set_module_attention_backend(
             module.set_attention_backend(attention_backend)
             logger.info(
                 "Found attention_backend from config, set attention backend of "
-                f"{module_cls_name} to: {attention_backend}."
+                f"{module_cls_name} to: <{attention_backend}>."
             )
 
 
