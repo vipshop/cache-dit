@@ -35,12 +35,10 @@ from cache_dit import ParallelismConfig
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
-    # Set `experimental_ulysses_anything` as True to enable UAA
+    # Set `ulysses_anything` as True to enable UAA
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
-        parallel_kwargs={
-            "experimental_ulysses_anything": True
-        },
+        ulysses_anything=True,
     ),
 )
 ```
@@ -104,12 +102,10 @@ from cache_dit import ParallelismConfig
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
-    # Set `experimental_ulysses_async` as True to enable Async Ulysses QKV Projection.
+    # Set `ulysses_async` as True to enable Async Ulysses QKV Projection.
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
-        parallel_kwargs={
-            "experimental_ulysses_async": True
-        },
+        ulysses_async=True,
     ),
 )
 ```
@@ -130,7 +126,7 @@ cache_dit.enable_cache(
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit has implemented **Async FP8 Ulysses Attention** for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `experimental_ulysses_float8=True`. To maintain higher precision during softmax computation—where `Softmax(Q@K^T)` is sensitive to numerical instability—we currently retain `K in FP16/BF16` format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
+cache-dit has implemented **Async FP8 Ulysses Attention** for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. To maintain higher precision during softmax computation—where `Softmax(Q@K^T)` is sensitive to numerical instability—we currently retain `K in FP16/BF16` format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -138,12 +134,10 @@ from cache_dit import ParallelismConfig
 cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=DBCacheConfig(...),
-    # Set `experimental_ulysses_float8` as True to enable Async FP8 Ulysses Attention
+    # Set `ulysses_float8` as True to enable Async FP8 Ulysses Attention
     parallelism_config=ParallelismConfig(
         ulysses_size=2,
-        parallel_kwargs={
-            "experimental_ulysses_float8": True
-        },
+        ulysses_float8=True,
     ),
 )
 ```

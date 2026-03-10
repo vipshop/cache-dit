@@ -1447,15 +1447,6 @@ def strify(args, pipe_or_stats):
         base_str = f"C{int(args.compile)}_{quantize_type}_" f"{base_str}"
     else:
         base_str = f"C{int(args.compile)}_{base_str}"
-    if args.ulysses_anything:
-        base_str += "_UAA"
-        if args.ulysses_float8:
-            base_str += "F8"
-    else:
-        if args.ulysses_float8:
-            base_str += "_UAF8"
-    if args.ulysses_async:
-        base_str += "_UAS"
     if args.parallel_type == "ring" or args.parallel_type == "usp":
         if args.ring_rotate_method != "p2p":
             base_str += f"_rotated_{args.ring_rotate_method}"

@@ -105,6 +105,7 @@ class ParallelismConfig:
         )
         # For backward compatibility, will be removed in future versions.
         self._maybe_flatten_deprecated_parallel_kwargs()
+
         if self.backend == ParallelismBackend.AUTO:
             # Auto select the backend based on the parallelism configuration
             if self.hybrid_enabled():
@@ -317,6 +318,15 @@ class ParallelismConfig:
                 parallel_str += f"Ulysses{self.ulysses_size}_"
             if self.ring_size is not None:
                 parallel_str += f"Ring{self.ring_size}_"
+            if self.ulysses_anything:
+                parallel_str += "_UAA"
+                if self.ulysses_float8:
+                    parallel_str += "F8"
+            else:
+                if self.ulysses_float8:
+                    parallel_str += "_UF8"
+            if self.ulysses_async:
+                parallel_str += "_US"
             if self.tp_size is not None:
                 parallel_str += f"TP{self.tp_size}_"
             if text_encoder or self._has_text_encoder:
