@@ -1,5 +1,12 @@
 # Cache-DiT Serving
 
+We highly recommend using Cache-DiT through the serving capabilities of [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html) and [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/). Cache-DiT's own serving module will no longer be maintained and will be deprecated in future releases. 
+
+- [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html)
+- [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_dit_acceleration/)
+
+## Simple HTTP Serving
+
 HTTP serving for diffusion models with cache-dit acceleration. Supports **text-to-image**, **image editing**, **multi-image editing**, **text-to-video**, and **image-to-video** generation. Adapted from [SGLang](https://github.com/sgl-project/sglang).
 
 ## Supported Tasks
