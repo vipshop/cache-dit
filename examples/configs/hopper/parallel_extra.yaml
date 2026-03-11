@@ -1,4 +1,4 @@
 parallelism_config:
   ulysses_size: auto
-  tp_size: 2
   attention_backend: _flash_3
+  extra_parallel_modules: ["text_encoder", "vae"]
