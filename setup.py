@@ -38,7 +38,7 @@ def my_local_scheme(version):
 
 setup(
     name=PACKAGE_NAME,
-    description="A PyTorch-native and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for 🤗DiTs.",
+    description="Cache-DiT: A PyTorch-native Inference Engine with Hybrid Cache Acceleration and Massive Parallelism for DiTs.",
     author="DefTruth, vipshop.com",
     use_scm_version={
         "write_to": path.join("src", "cache_dit", "_version.py"),
