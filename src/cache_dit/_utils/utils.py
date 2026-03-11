@@ -1440,11 +1440,9 @@ def strify(args, pipe_or_stats):
     if args.height is not None and args.width is not None:
         base_str += f"{args.height}x{args.width}_"
     quantize_type = args.quantize_type if args.quantize else ""
-    if quantize_type != "":
-        quantize_type = f"_{quantize_type}"
     base_str = summary_strify(pipe_or_stats)
     if quantize_type not in base_str:
-        base_str = f"C{int(args.compile)}_{quantize_type}_" f"{base_str}"
+        base_str = f"C{int(args.compile)}_{quantize_type}_{base_str}"
     else:
         base_str = f"C{int(args.compile)}_{base_str}"
     if args.parallel_type == "ring" or args.parallel_type == "usp":
@@ -1463,6 +1461,7 @@ def strify(args, pipe_or_stats):
             base_str += "_CNP"  # ControlNet Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
+    base_str = base_str.strip("_").replace("__", "_")
     return base_str
 
 
