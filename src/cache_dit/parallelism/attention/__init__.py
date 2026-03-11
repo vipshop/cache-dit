@@ -28,10 +28,10 @@ def _maybe_register_custom_attn_backends():
     if not ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
         return
 
-    if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH:
+    if ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH:
         return
 
-    ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_ALREADY_DISPATCH = True
+    ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH = True
 
     try:
         from ._attention_dispatch import (
