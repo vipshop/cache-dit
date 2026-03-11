@@ -72,4 +72,4 @@ In order to support auto encoder (VAE) data parallelism for new model, we have t
 
 ## Examples and Tests
 
-Once the acceleration support for the new model is completed, we should add the new models to the [Examples](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/_utils/examples.py) and perform the necessary tests.
+Once the acceleration support for the new model is completed, we should add the new models to the [Examples](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/_utlis/examples.py) and perform the necessary tests.
