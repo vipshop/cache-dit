@@ -4,7 +4,14 @@
 
 ## TorchAo
 
-Currently, torchao has been integrated into cache-dit as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling `cache_dit.quantize(...)` or pass a `QuantizeConfig` to `cache_dit.enable_cache(...)`. At present, cache-dit supports the `Hybrid Cache + Low-bits Quantization` scheme. For GPUs with low memory capacity, we recommend using `float8`, `float8_weight_only`, `int8_weight_only`, as these methods cause almost no loss in precision.
+Currently, torchao has been integrated into cache-dit as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling `cache_dit.quantize(...)` or pass a `QuantizeConfig` to `cache_dit.enable_cache(...)`. At present, cache-dit supports the `Hybrid Cache + Low-bits Quantization` scheme. For GPUs with low memory capacity, we recommend using `float8`, `float8_weight_only`, `int8_weight_only`, as these methods cause almost no loss in precision. Supported quantization types including:  
+  - `float8`: quantize both weights and activations to float8 (dynamic quantization).
+  - `float8_weight_only`: quantize only weights to float8, keep activations in full precision (weight-only quantization).
+  - `int8`: quantize both weights and activations to int8 (dynamic quantization).
+  - `int8_weight_only`: quantize only weights to int8, keep activations in full precision (weight-only quantization).
+  - `float8_blockwise`: block-wise quantization to float8, which can provide better performance on some hardware.
+
+Here are some examples for quick start:
 
 ```python
 # pip3 install "cache-dit[quantization]"
@@ -30,9 +37,25 @@ cache_dit.quantize(
 )
 
 # Please also enable torch.compile for better performance with quantization.
+cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
 pipe.text_encoder = torch.compile(pipe.text_encoder)
 ```
+
+Users can set `exclude_layers` in `QuantizeConfig` to exclude some sensitive layers that are not robust to quantization, e.g., embedding layers. Layers that contain any of the keywords in the `exclude_layers` list will be excluded from quantization. For example: 
+
+```python
+cache_dit.enable_cache( 
+    pipe, cache_config=DBCacheConfig(), # w/ default
+    parallelism_config=ParallelismConfig(ulysses_size=2),
+    quantize_config=QuantizeConfig(
+        quant_type="float8",
+        per_row=True, # default, True.
+        exclude_layers=["embedder", "embed"],
+    ),
+)
+```
+The `per_row` flag indicates whether to use per-row quantization (for float8 dynamic quantization), default to `True` for better precision. Users can set it to False to use per-tensor quantization for better performance on some hardware.
 
 ## bitsandbytes  
 
