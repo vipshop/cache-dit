@@ -1461,7 +1461,8 @@ def strify(args, pipe_or_stats):
             base_str += "_CNP"  # ControlNet Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
-    base_str = base_str.strip("_").replace("__", "_")
+    # __ -> _, ___ -> _, etc.
+    base_str = base_str.strip("_").replace("__", "_").replace("___", "_")
     return base_str
 
 
