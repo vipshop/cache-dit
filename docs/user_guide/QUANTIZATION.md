@@ -10,7 +10,7 @@ Currently, torchao has been integrated into cache-dit as the backend for **onlin
   - <span style="color:pink;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision (weight-only quantization).  
   - <span style="color:pink;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
   - <span style="color:pink;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision (weight-only quantization).  
-  - <span style="color:pink;">float8_blockwise</span>: block-wise quantization to float8, which can provide better performance on some hardware.  
+  - <span style="color:pink;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision but lower performance.
 
 Here are some examples for quick start:
 
