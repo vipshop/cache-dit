@@ -1,4 +1,4 @@
-from ._utlis import entrypoint
+from ._utils import entrypoint
 
 
 def main():
