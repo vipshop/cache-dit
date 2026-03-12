@@ -6,7 +6,7 @@ Cache-DiT now supported load the acceleration configs from a custom yaml file. H
 
 Define a cache only config yaml `cache.yaml` file that contains:
 
-### DBCache + TaylorSeer
+- DBCache + TaylorSeer
 
 ```yaml
 cache_config:
@@ -27,7 +27,7 @@ Then, apply the acceleration config from yaml.
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("cache.yaml"))
 ```
 
-### DBCache + TaylorSeer + SCM (Step Computation Mask)
+- DBCache + TaylorSeer + SCM (Step Computation Mask)
 
 ```yaml
 cache_config:
@@ -46,7 +46,7 @@ cache_config:
   steps_computation_mask: fast
 ```
 
-### DBCache + TaylorSeer + SCM (Step Computation Mask) + Cache CFG
+- DBCache + TaylorSeer + SCM (Step Computation Mask) + Cache CFG
 
 ```yaml
 cache_config:
@@ -66,7 +66,7 @@ cache_config:
 
 ## Distributed inference  
 
-### 1D Parallelism
+- 1D Parallelism
 
 Define a parallelism only config yaml `parallel.yaml` file that contains:
 
@@ -81,7 +81,7 @@ Then, apply the distributed inference acceleration config from yaml. `ulysses_si
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
 ```
 
-### 2D Parallelism
+- 2D Parallelism
 
 You can also define a 2D parallelism config yaml `parallel_2d.yaml` file that contains:
 
@@ -97,7 +97,7 @@ Then, apply the 2D parallelism config from yaml. Here `tp_size: 2` means using t
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_2d.yaml"))
 ```
 
-### 3D Parallelism
+- 3D Parallelism
 
 You can also define a 3D parallelism config yaml `parallel_3d.yaml` file that contains:
 
@@ -114,7 +114,7 @@ Then, apply the 3D parallelism config from yaml. Here `ulysses_size: 2`, `ring_s
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_3d.yaml"))
 ```
 
-### Ulysses Anything Attention
+- Ulysses Anything Attention
 
 To enable Ulysses Anything Attention, you can define a parallelism config yaml `parallel_uaa.yaml` file that contains:
 
@@ -130,7 +130,7 @@ Then, apply the config from yaml. Here `ulysses_anything: true` means enabling U
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_uaa.yaml"))
 ```
 
-### Ulysses FP8 Communcation
+- Ulysses FP8 Communication
 
 For device that don't have NVLink support, you can enable Ulysses FP8 Communication to further reduce the communication overhead. You can define a parallelism config yaml `parallel_fp8.yaml` file that contains:
 
@@ -141,7 +141,7 @@ parallelism_config:
   ulysses_float8: true
 ```
 
-### Async Ulysses CP 
+- Async Ulysses CP 
 
 You can also enable async ulysses CP to overlap the communication and computation. Define a parallelism config yaml `parallel_async.yaml` file that contains:
 
@@ -149,11 +149,11 @@ You can also enable async ulysses CP to overlap the communication and computatio
 parallelism_config:
   ulysses_size: auto
   attention_backend: native
-  ulysses_async: true
+  ulysses_async: true # Now, only support for FLUX.1, Qwen-Image, Ovis-Image and Z-Image.
 ```
 Then, apply the config from yaml. Here `ulysses_async: true` means enabling async ulysses CP.
 
-### TE-P and VAE-P
+- TE-P and VAE-P
 
 You can also specify the extra parallel modules in the yaml config. For example, define a parallelism config yaml `parallel_extra.yaml` file that contains:
 
@@ -192,7 +192,7 @@ Then, apply the hybrid cache and parallel acceleration config from yaml.
 
 ## Attention Backend
 
-In some cases, users may want to only specify the attention backend without any other optimazation configs. In this case, you can define a yaml file `attention.yaml` that only contains:
+In some cases, users may want to only specify the attention backend without any other optimization configs. In this case, you can define a yaml file `attention.yaml` that only contains:
 
 ```yaml
 attention_backend: "flash" # _flash_3 for Hopper
