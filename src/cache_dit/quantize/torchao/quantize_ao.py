@@ -119,11 +119,23 @@ def quantize_ao(
                 return False
 
             # check blockwise fp8 support for linear layers, if not supported, skip quantization for that layer
-            if quant_type == "fp8_blockwise" and not _check_blockwise_fp8_support(m):
+            if quant_type == "fp8_blockwise" and not _check_if_linear_fp8_blockwise_can_support(m):
                 weight_shape = tuple(m.weight.shape)
                 if verbose:
                     logger.info(
                         f"Skip Quantization: {name} -> pattern<w{weight_shape} % block_size(128, 128) != 0>"
+                    )
+                num_skip_linear += 1
+                return False
+
+            if quant_type in [
+                "fp8_w8a8_dq",
+                "fp8_blockwise",
+            ] and not _check_if_linear_with_bias_fp8_can_support(m):
+                if verbose:
+                    logger.info(
+                        f"Skip Quantization: {name} -> "
+                        f"pattern<DTensor + bias is not supported for _scaled_mm>"
                     )
                 num_skip_linear += 1
                 return False
@@ -285,7 +297,7 @@ def quantize_ao(
     return module
 
 
-def _check_blockwise_fp8_support(module: torch.nn.Linear):
+def _check_if_linear_fp8_blockwise_can_support(module: torch.nn.Linear) -> bool:
     try:
         from torchao.quantization.utils import get_block_size
         from torchao.quantization import PerBlock
@@ -313,3 +325,25 @@ def _check_blockwise_fp8_support(module: torch.nn.Linear):
     except Exception as e:
         logger.debug(f"Failed to get block size for module {module}: {e}")
         return False
+
+
+def _check_if_linear_with_bias_fp8_can_support(module: torch.nn.Linear) -> bool:
+    # Avoid: AssertionError("_scaled_mm on DTensors doesn't support bias")
+    # Check we are in distributed environment and the linear layer has bias,
+    # and if the weight is DTensor, if all conditions are met, we will skip
+    # quantization for that layer to avoid potential issues.
+    if not torch.distributed.is_initialized():
+        return True
+    # If the linear layer doesn't have bias, we can quantize it without issues.
+    if not hasattr(module, "bias") or module.bias is None:
+        return True
+    # For the case where the linear layer has bias, we need to check if the weight
+    # or bias is DTensor. We only quantize the linear layer when both weight and
+    # bias are not DTensor.
+    from torch.distributed._tensor import DTensor
+
+    weight_tensor = getattr(module, "weight", None)
+    bias_tensor = getattr(module, "bias", None)
+    if weight_tensor is None or bias_tensor is None:
+        return False
+    return not isinstance(weight_tensor, DTensor) and not isinstance(bias_tensor, DTensor)
