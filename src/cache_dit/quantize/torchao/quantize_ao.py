@@ -56,7 +56,6 @@ def quantize_ao(
         "int8_weight_only": "int8_w8a16_wo",
         "int8_wo": "int8_w8a16_wo",
         "int4": "int4_w4a8_dq",
-        "int4_w4a4": "int4_w4a4_dq",
         "int4_weight_only": "int4_w4a16_wo",
         "int4_wo": "int4_w4a16_wo",
     }
@@ -78,7 +77,6 @@ def quantize_ao(
         "int8_w8a8_dq",
         "int8_w8a16_wo",
         "int4_w4a8_dq",
-        "int4_w4a4_dq",
         "int4_w4a16_wo",
     ), f"{quant_type} is not supported for torchao backend now!"
 
@@ -119,11 +117,14 @@ def quantize_ao(
                 return False
 
             # check blockwise fp8 support for linear layers, if not supported, skip quantization for that layer
-            if quant_type == "fp8_blockwise" and not _check_if_linear_fp8_blockwise_can_support(m):
+            if quant_type in [
+                "fp8_blockwise",
+            ] and not _check_if_linear_fp8_blockwise_can_support(m):
                 weight_shape = tuple(m.weight.shape)
                 if verbose:
                     logger.info(
-                        f"Skip Quantization: {name} -> pattern<w{weight_shape} % block_size(128, 128) != 0>"
+                        f"Skip Quantization: {name} -> pattern<w{weight_shape} "
+                        "% block_size(128, 128) != 0>"
                     )
                 num_skip_linear += 1
                 return False
@@ -235,19 +236,6 @@ def quantize_ao(
                 quant_config = Int8DynamicActivationInt4WeightConfig(
                     group_size=kwargs.get("group_size", 32),
                 )
-
-            elif quant_type == "int4_w4a4_dq":
-                try:
-                    from torchao.quantization import (
-                        Int4DynamicActivationInt4WeightConfig,
-                    )
-                except ImportError:
-                    raise ImportError(
-                        "Int4 dynamic activation quantization is removed in newer versions of torchao. "
-                        "Please downgrade the torchao library to use this feature."
-                    )
-
-                quant_config = Int4DynamicActivationInt4WeightConfig()
 
             elif quant_type == "int4_w4a16_wo":
 
