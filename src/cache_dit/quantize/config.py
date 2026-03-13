@@ -20,10 +20,13 @@ class QuantizeConfig:
     # specify the components to quantize, if None, only the transformer
     # module will be quantized. e.g:
     # - List[str]: ['transformer', 'text_encoder'] quantize to 'quant_type'
-    # - Dict[str, str]: {'transformer': 'float8', 'text_encoder': 'float8_weight_only'}.
+    # - Dict[str, Dict[str, str]]: {
+    #       'transformer': {'quant_type': 'float8', 'exclude_layers': ['layer1', 'layer2']},
+    #       'text_encoder': {'quant_type': 'float8_weight_only', 'exclude_layers': ['layer3', 'layer4']}
+    #   }.
     #   The 'quant_type' will be ignored in this case, each module will quantized to
     #   it's specified quantization type.
-    components_to_quantize: Optional[Union[List[str], Dict[str, str]]] = None
+    components_to_quantize: Optional[Union[List[str], Dict[str, Dict[str, str]]]] = None
     verbose: bool = False
 
     def as_dict(self) -> Dict[str, Any]:
@@ -55,9 +58,14 @@ class QuantizeConfig:
         if isinstance(config.components_to_quantize, dict):
             return [
                 dataclasses.replace(
-                    config, components_to_quantize=[component], quant_type=quant_type
+                    config,
+                    backend=d.get("backend", config.backend),
+                    components_to_quantize=[component],
+                    quant_type=d.get("quant_type", config.quant_type),
+                    per_row=d.get("per_row", config.per_row),
+                    exclude_layers=d.get("exclude_layers", config.exclude_layers),
                 )
-                for component, quant_type in config.components_to_quantize.items()
+                for component, d in config.components_to_quantize.items()
             ]
 
         raise ValueError("components_to_quantize should be either a list or a dict.")
