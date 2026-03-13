@@ -101,7 +101,7 @@ def quantize_ao(
             for exclude_name in exclude_layers:
                 if exclude_name in name:
                     if verbose:
-                        logger.info(f"Skip Quantization: {name} -> " f"pattern<{exclude_name}>")
+                        logger.info(f"Skip Quantization: {name} -> pattern<{exclude_name}>")
 
                     num_skip_linear += 1
                     return False
