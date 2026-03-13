@@ -54,6 +54,12 @@ def enable_cache(
     attention_backend: Optional[str] = None,
     # Quantize config
     quantize_config: Optional[QuantizeConfig] = None,
+    # TODO: Try reduce memory overhead if tensor parallel and quantization
+    # are both enabled. This is an experimental feature and may cause
+    # instability, please use with caution. User who use TP and quantization
+    # together are assumed to have higher requirement for memory saving
+    # , so we will try to reduce memory overhead if this flag is set to True.
+    reduce_memory_overhead: Optional[bool] = False,
     # Other cache context kwargs: Deprecated cache kwargs
     **kwargs,
 ) -> Union[
