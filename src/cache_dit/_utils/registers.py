@@ -92,6 +92,8 @@ class ExampleInputData:
             input_data["prompt"] = args.prompt
         if args.negative_prompt is not None:
             input_data["negative_prompt"] = args.negative_prompt
+        if args.skip_negative_prompt:
+            input_data.pop("negative_prompt", None)
         if args.height is not None:
             input_data["height"] = args.height
         if args.width is not None:

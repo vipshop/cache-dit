@@ -130,6 +130,13 @@ def get_args(
         default=None,
         help="Override default negative prompt if provided",
     )
+    # Force skip negative prompt in some specific cases
+    parser.add_argument(
+        "--skip-negative_prompt",
+        "--skip-neg",
+        action="store_true",
+        help="Force skip negative prompt even if negative prompt is provided.",
+    )
     parser.add_argument(
         "--num_inference_steps",
         "--steps",
@@ -330,6 +337,28 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    # some quick start flags for transformer quantization (--float8, --float8_wo, --float8_bw)
+    parser.add_argument(
+        "--float8",
+        action="store_true",
+        default=False,
+        help="Enable float8 quantization for transformer",
+    )
+    parser.add_argument(
+        "--float8-weight-only",
+        "--float8-wo",
+        action="store_true",
+        default=False,
+        help="Enable float8 weight-only quantization for transformer",
+    )
+    parser.add_argument(
+        "--float8-blockwise",
+        "--float8-bw",
+        action="store_true",
+        default=False,
+        help="Enable float8 blockwise quantization for transformer",
+    )
+    # quantization for extra modules: text encoder, vae, controlnet, etc.
     parser.add_argument(
         "--quantize-text-encoder",
         "--q-text",
@@ -649,6 +678,13 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     # Force enable quantization if quantize_type is specified
+    if args.float8:
+        args.quantize_type = "float8"
+    elif args.float8_weight_only:
+        args.quantize_type = "float8_weight_only"
+    elif args.float8_blockwise:
+        args.quantize_type = "float8_blockwise"
+
     if args.quantize_type is not None:
         args.quantize = True
 
