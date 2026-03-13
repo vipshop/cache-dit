@@ -241,6 +241,13 @@ def enable_cache(
             logger.info("cache_config is None, using default DBCacheConfig")
             cache_config = DBCacheConfig()
 
+    # Force reduce_memory_overhead to False if tensor parallelism or quantization
+    # is not enabled.
+    if parallelism_config is None or quantize_config is None:
+        reduce_memory_overhead = False  # noqa: F841
+    if parallelism_config is not None and parallelism_config.tp_size is None:
+        reduce_memory_overhead = False  # noqa: F841
+
     # Collect cache context kwargs
     context_kwargs = {}
     if (cache_type := context_kwargs.get("cache_type", None)) is not None:
