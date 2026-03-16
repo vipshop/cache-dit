@@ -6,7 +6,7 @@ from typing import Optional
 from diffusers import AutoencoderKLLTX2Video
 from diffusers.models.autoencoders.vae import DecoderOutput
 
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 from .dp_plan_registers import (
     AutoEncoderDataParallelismPlanner,
     AutoEncoderDataParallelismPlannerRegister,

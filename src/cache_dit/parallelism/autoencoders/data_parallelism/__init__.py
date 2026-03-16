@@ -1,7 +1,7 @@
 import torch
 from typing import Optional
-from cache_dit.parallelism.config import ParallelismConfig
-from cache_dit.logger import init_logger
+from ...config import ParallelismConfig
+from ....logger import init_logger
 
 try:
     from .dp_plan_registers import AutoEncoderDataParallelismPlannerRegister

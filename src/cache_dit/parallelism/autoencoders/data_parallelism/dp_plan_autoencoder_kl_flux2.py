@@ -5,8 +5,8 @@ import torch.distributed as dist
 from diffusers import AutoencoderKLFlux2
 from diffusers.models.autoencoders.vae import DecoderOutput
 
-from cache_dit.logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
+from ....logger import init_logger
 from .dp_plan_registers import (
     AutoEncoderDataParallelismPlanner,
     AutoEncoderDataParallelismPlannerRegister,

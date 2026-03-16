@@ -10,7 +10,7 @@ import torch
 from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
 from cache_dit.parallelism.config import ParallelismConfig
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 
 try:
     from .tp_plan_registers import TensorParallelismPlannerRegister

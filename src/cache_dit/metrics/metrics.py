@@ -19,7 +19,7 @@ from .fid import compute_video_fid
 from .lpips import compute_lpips_img
 from .clip_score import compute_clip_score
 from .image_reward import compute_reward_score
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 

@@ -27,7 +27,7 @@ except ImportError:
     per_token_dequant_fp8 = _fp8_kernel_unavailable
     qkv_permute_quant_fp8 = _fp8_kernel_unavailable
     qkv_dequant_permute_fp8 = _fp8_kernel_unavailable
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

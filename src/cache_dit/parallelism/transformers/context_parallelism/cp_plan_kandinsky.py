@@ -22,7 +22,7 @@ from .cp_plan_registers import (
     ParallelismConfig,
 )
 
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 
 logger = init_logger(__name__)
 

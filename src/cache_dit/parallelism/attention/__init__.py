@@ -1,5 +1,5 @@
-from cache_dit.envs import ENV
-from cache_dit.logger import init_logger
+from ...envs import ENV
+from ...logger import init_logger
 
 from ._context_parallel_utils import (
     _ExtendedContextParallelConfig,

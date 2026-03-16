@@ -1,12 +1,12 @@
 import torch
 
 from typing import Optional
-from cache_dit.logger import init_logger
 
 from diffusers.models.modeling_utils import ModelMixin
-from cache_dit.parallelism.backend import ParallelismBackend
-from cache_dit.parallelism.config import ParallelismConfig
+from ..backend import ParallelismBackend
+from ..config import ParallelismConfig
 from .context_parallelism import maybe_enable_context_parallelism
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

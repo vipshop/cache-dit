@@ -56,7 +56,7 @@
 # ContextParallelOutput:
 #     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
 import importlib
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 from .cp_plan_registers import ContextParallelismPlanner
 
 logger = init_logger(__name__)

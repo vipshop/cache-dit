@@ -18,7 +18,7 @@ from .config import _VIDEO_EXTENSIONS
 from .config import get_metrics_verbose
 from ..platforms import current_platform
 from ..utils import disable_print
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 warnings.filterwarnings("ignore")
 

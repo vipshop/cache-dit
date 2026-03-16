@@ -46,8 +46,8 @@ except ImportError:
         "Please install latest version of diffusers from source: \n"
         "pip3 install git+https://github.com/huggingface/diffusers.git"
     )
-from cache_dit.logger import init_logger
-from cache_dit.envs import ENV
+from ...logger import init_logger
+from ...envs import ENV
 
 from ._templated_ring import UnifiedTemplatedRingAttention
 from ._templated_ulysses import UnifiedTemplatedUlyssesAttention

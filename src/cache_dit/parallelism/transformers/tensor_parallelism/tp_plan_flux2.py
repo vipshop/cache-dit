@@ -9,7 +9,7 @@ from einops import rearrange
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 from cache_dit.parallelism.config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
 from cache_dit.platforms import current_platform

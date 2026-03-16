@@ -11,7 +11,7 @@ from typing import Tuple, Union
 from .config import _IMAGE_EXTENSIONS
 from .config import get_metrics_verbose
 from ..platforms import current_platform
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 

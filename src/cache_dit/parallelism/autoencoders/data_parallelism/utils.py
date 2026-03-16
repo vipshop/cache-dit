@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 from typing import Optional, List
-from cache_dit.platforms import current_platform
+from ....platforms import current_platform
 
 
 class TileBatchedP2PComm:
