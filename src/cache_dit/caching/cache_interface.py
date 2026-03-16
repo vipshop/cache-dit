@@ -541,7 +541,7 @@ def refresh_context(
         if "cache_config" not in force_refresh_kwargs:
             # Assume force_refresh_kwargs is passed as dict, e.g.,
             # {"num_inference_steps": 50}
-            from .utils import load_cache_config
+            from .load_configs import load_cache_config
 
             cache_config, calibrator_config = load_cache_config(
                 force_refresh_kwargs,
@@ -556,7 +556,7 @@ def refresh_context(
             if not_allowed_keys:
                 logger.warning(
                     f"force_refresh_kwargs contains cache_config, please put the extra "
-                    f"kwargs: {not_allowed_keys} into cache_config directly. Ohtherwise, "
+                    f"kwargs: {not_allowed_keys} into cache_config directly. Otherwise, "
                     f"these kwargs will be ignored."
                 )
     CachedAdapter.maybe_refresh_context(
