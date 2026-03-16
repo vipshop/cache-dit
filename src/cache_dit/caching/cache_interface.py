@@ -424,10 +424,16 @@ def enable_cache(
             # configs with single component.
             expanded_quantize_configs = QuantizeConfig.expand_configs(quantize_config)
             for config in expanded_quantize_configs:
-                components = parse_extra_modules(pipe_or_adapter, config.components_to_quantize)
-                for component in components:
-                    quantized_module = quantize(component, quantize_config=config)
-                    setattr(pipe_or_adapter, component, quantized_module)
+                components_to_quantize = config.components_to_quantize
+                components = parse_extra_modules(pipe_or_adapter, components_to_quantize)
+                assert len(components) == len(components_to_quantize), (
+                    f"Some components in quantize_config.components_to_quantize: "
+                    f"{components_to_quantize} are not found in the pipeline, please check the "
+                    f"component names or directly pass the actual modules in components_to_quantize."
+                )
+                for component, component_name in zip(components, components_to_quantize):
+                    quantized_component = quantize(component, quantize_config=config)
+                    setattr(pipe_or_adapter, component_name, quantized_component)
     return pipe_or_adapter
 
 

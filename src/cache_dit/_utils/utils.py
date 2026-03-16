@@ -1422,7 +1422,19 @@ def maybe_apply_optimization(
             quantize_config = configs.get("quantize_config", None)
             if quantize_config is not None:
                 args.quantize = True
-                args.quantize_type = quantize_config.quant_type
+                if quantize_config.components_to_quantize is None or isinstance(
+                    quantize_config.components_to_quantize, list
+                ):
+                    args.quantize_type = quantize_config.quant_type  # transformer
+                else:
+                    transformer_config = quantize_config.components_to_quantize.get(
+                        "transformer", None
+                    )
+                    text_config = quantize_config.components_to_quantize.get("text_encoder", None)
+                    if transformer_config:
+                        args.quantize_type = transformer_config.get("quant_type", None)
+                    elif text_config:
+                        args.quantize_type = text_config.get("quant_type", None)
                 logger.info(
                     f"Quantization config from {args.config_path}: {quantize_config.strify()}"
                 )
