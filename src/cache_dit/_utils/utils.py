@@ -1435,9 +1435,7 @@ def maybe_apply_optimization(
                         args.quantize_type = transformer_config.get("quant_type", None)
                     elif text_config:
                         args.quantize_type = text_config.get("quant_type", None)
-                logger.info(
-                    f"Quantization config from {args.config_path}: {quantize_config.strify()}"
-                )
+                logger.info(f"Quantization config from {args.config_path}: {args.quantize_type}")
 
             enable_cache(
                 pipe_or_adapter,
