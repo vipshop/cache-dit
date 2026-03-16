@@ -172,6 +172,7 @@ def parse_text_encoder(
 def parse_extra_modules(
     pipe_or_adapter: DiffusionPipeline | Any,
     extra_modules: List[str | torch.nn.Module],
+    skip_text_encoder_override: bool = False,
 ) -> Union[List[torch.nn.Module], List]:
     """Parse extra modules according to the given names in extra_modules to
     actual modules in the pipeline. Useful for extra parallelism and extra
@@ -186,6 +187,12 @@ def parse_extra_modules(
     Args:
         pipe_or_adapter: The DiffusionPipeline or BlockAdapter to parse the extra modules from.
         extra_modules: A list of module names or actual module objects to be parsed.
+        skip_text_encoder_override: Whether to skip the text encoder override for some special
+            pipelines (e.g., FLUX). This is used in the parallelism dispatching to avoid mistakenly
+            parsing the text encoder in FLUX as 'text_encoder_2' and missing the parallelism optimization
+            for it. Generally, user should set this to True when parsing extra modules for parallelism,
+            and set it to False when parsing extra modules for quantization, since we want to apply
+            quantization to all text encoders in FLUX.
     Returns:
         A list of parsed extra modules as actual module objects. If a module name is not found
         in the pipeline, it will be skipped with a warning.
@@ -205,7 +212,7 @@ def parse_extra_modules(
             continue
 
         if hasattr(pipe, module_or_name):
-            if module_or_name.lower() == "text_encoder":
+            if module_or_name.lower() == "text_encoder" and not skip_text_encoder_override:
                 # Special handling for text encoder
                 text_encoder, text_encoder_name = parse_text_encoder(pipe)
                 if text_encoder is not None:

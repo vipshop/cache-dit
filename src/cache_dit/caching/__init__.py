@@ -36,7 +36,9 @@ from .cache_interface import get_adapter
 from .cache_interface import steps_mask
 from .cache_interface import set_attn_backend
 
-from .utils import load_options  # deprecated
-from .utils import load_cache_config
-from .utils import load_parallelism_config
-from .utils import load_configs
+from .load_configs import load_options  # deprecated
+from .load_configs import load_cache_config
+from .load_configs import load_parallelism_config
+from .load_configs import load_quantize_config
+from .load_configs import load_attn_backend_config
+from .load_configs import load_configs
