@@ -27,6 +27,25 @@ cache_dit.enable_cache(
     quantize_config=QuantizeConfig(quant_type="float8"),
 )
 
+# Users can also specify different quantization configs for different components. 
+# For example, quantize the transformer to float8 and the text encoder to float8 weight only.
+cache_dit.enable_cache( 
+    pipe, cache_config=DBCacheConfig(), # w/ default
+    parallelism_config=ParallelismConfig(ulysses_size=2),
+    quantize_config=QuantizeConfig(
+        components_to_quantize={
+            "transformer": {
+                "quant_type": "float8",
+                "exclude_layers": ["embedder", "embed"],
+            },
+            "text_encoder": {
+                "quant_type": "float8_weight_only",
+                "exclude_layers": ["lm_head"],
+            }
+        }
+    ),
+)
+
 # Or, directly call the `quantize` API for more fine-grained control.
 cache_dit.quantize(
     pipe.transformer, 

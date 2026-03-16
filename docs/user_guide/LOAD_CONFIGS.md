@@ -207,6 +207,8 @@ Then, apply the attention backend config from yaml.
 
 You can also specify the quantization config in the yaml file. For example, define a yaml file `quantize.yaml` that contains:
 
+- quantize transformer
+
 ```yaml
 quantize_config: # quantization configuration for transformer modules
   # float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
@@ -228,6 +230,31 @@ Please also enable torch.compile for better performance if you are using quantiz
 ```python
 cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
+```
+
+- fined grain quantization
+
+You can also specify the quantization config (via `components_to_quantize`) for different components in the yaml file `quantize_extra.yaml` that contains:
+
+```yaml
+quantize_config: 
+  components_to_quantize:
+    transformer:
+      quant_type: "float8"
+      per_row: true
+      exclude_layers:  
+        - "embedder"
+        - "embed"
+    # e.g, specified case for FLUX.1 w/ T5EncoderModel. Please note that we should 
+    # use 'text_encoder' instead of 'text_encoder_2' in most cases, and 'text_encoder_2' 
+    # is only used when there are two text encoders in the pipeline and we only want 
+    # to quantize the second one.
+    text_encoder_2:
+      quant_type: "float8_weight_only"
+      exclude_layers:  
+        - "shared" 
+        - "embed_tokens"
+  verbose: false
 ```
 
 ## Combined Configs: Cache + Parallelism + Quantization
