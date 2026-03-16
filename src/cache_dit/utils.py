@@ -7,9 +7,9 @@ import contextlib
 from typing import Tuple, List, Union, Optional
 from diffusers import DiffusionPipeline
 
-from cache_dit.logger import init_logger
 from .platforms import current_platform
 from .caching.block_adapters import BlockAdapter
+from .logger import init_logger
 
 
 logger = init_logger(__name__)
@@ -27,12 +27,10 @@ def disable_print():
     __builtin__.print = origin_print
 
 
-@torch.compiler.disable
 def is_diffusers_at_least_0_3_5() -> bool:
     return diffusers.__version__ >= "0.35.0"
 
 
-@torch.compiler.disable
 def maybe_empty_cache():
     try:
         time.sleep(1)
