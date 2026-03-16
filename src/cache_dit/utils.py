@@ -47,7 +47,7 @@ def maybe_empty_cache():
 def check_controlnet(pipe_or_adapter: DiffusionPipeline | Any) -> bool:
     """Check if the given pipeline has ControlNet."""
     if not isinstance(pipe_or_adapter, DiffusionPipeline):
-        pipe = getattr(pipe_or_adapter, "pipeline", None)
+        pipe = getattr(pipe_or_adapter, "pipe", None)
     else:
         pipe = pipe_or_adapter
     if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
