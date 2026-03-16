@@ -116,8 +116,9 @@ def parse_extra_modules(
         if hasattr(pipe, module_or_name):
             if module_or_name.lower() == "text_encoder":
                 # Special handling for text encoder
-                text_encoder, _ = parse_text_encoder(pipe)
+                text_encoder, text_encoder_name = parse_text_encoder(pipe)
                 if text_encoder is not None:
+                    text_encoder._actual_module_name = text_encoder_name
                     parsed_extra_modules.append(text_encoder)
                 else:
                     logger.warning("Text encoder not found in the pipeline for extra modules.")

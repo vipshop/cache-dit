@@ -40,7 +40,27 @@ class QuantizeConfig:
         return self
 
     def strify(self) -> str:
-        return f"{self.quant_type.lower()}"
+        if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):
+            return f"{self.quant_type.lower()}"
+        else:
+            quant_str = ""
+            if isinstance(self.components_to_quantize, dict):
+                for component, d in self.components_to_quantize.items():
+                    quant_str += f"<{component}:{d.get('quant_type', self.quant_type)}>"
+            return quant_str
+
+    def component_quant_types(self) -> Dict[str, str]:
+        if self.components_to_quantize is None:
+            return {"transformer": self.quant_type}
+        elif isinstance(self.components_to_quantize, list):
+            return {component: self.quant_type for component in self.components_to_quantize}
+        elif isinstance(self.components_to_quantize, dict):
+            return {
+                component: d.get("quant_type", self.quant_type)
+                for component, d in self.components_to_quantize.items()
+            }
+        else:
+            raise ValueError("components_to_quantize should be either a list or a dict.")
 
     @classmethod
     def expand_configs(cls, config: "QuantizeConfig") -> List["QuantizeConfig"]:
