@@ -188,11 +188,14 @@ def parse_extra_modules(
         pipe_or_adapter: The DiffusionPipeline or BlockAdapter to parse the extra modules from.
         extra_modules: A list of module names or actual module objects to be parsed.
         skip_text_encoder_override: Whether to skip the text encoder override for some special
-            pipelines (e.g., FLUX). This is used in the parallelism dispatching to avoid mistakenly
-            parsing the text encoder in FLUX as 'text_encoder_2' and missing the parallelism optimization
-            for it. Generally, user should set this to True when parsing extra modules for parallelism,
-            and set it to False when parsing extra modules for quantization, since we want to apply
-            quantization to all text encoders in FLUX.
+            pipelines (e.g., FLUX). By default, it's set to False, which means we will try to
+            find the text_encoder with largest parameters as the text encoder to apply parallelism
+            or quantization, instead of using the default text_encoder or text_encoder_2 attribute
+            in the pipeline. For example, in FLUX pipeline, there are two text encoders, text_encoder
+            and text_encoder_2, and text_encoder_2 has much more parameters than text_encoder.
+            So by default, we will apply parallelism or quantization to text_encoder_2.
+            But if skip_text_encoder_override is set to True, we will apply parallelism or
+            quantization to the default text_encoder attribute in the pipeline.
     Returns:
         A list of parsed extra modules as actual module objects. If a module name is not found
         in the pipeline, it will be skipped with a warning.
