@@ -1,4 +1,5 @@
 import torch
+import copy
 from typing import Callable, Optional, List
 from cache_dit.logger import init_logger
 from .utils import normalize_quantize_type
@@ -101,3 +102,32 @@ def quantize_(
         )
     else:
         raise ValueError(f"backend: {backend} is not supported now!")
+
+
+def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
+    components_to_quantize = None
+    if hasattr(module, "_quantize_config"):
+        components_to_quantize = copy.deepcopy(
+            module._quantize_config.components_to_quantize,
+        )
+
+    def _remove_quantization_stats(module: torch.nn.Module) -> None:
+        if hasattr(module, "_quantize_config"):
+            del module._quantize_config
+        if hasattr(module, "_is_quantized"):
+            del module._is_quantized
+        if hasattr(module, "_quantize_type"):
+            del module._quantize_type
+
+    _remove_quantization_stats(module)
+
+    # Only use 1 depth for the recursion of removing stats in sub modules.
+    for child in module.children():
+        _remove_quantization_stats(child)
+    if components_to_quantize is not None:
+        from ..utils import parse_extra_modules
+
+        extra_modules = parse_extra_modules(module, components_to_quantize)
+        for extra_module in extra_modules:
+            _remove_quantization_stats(extra_module)
+    return module

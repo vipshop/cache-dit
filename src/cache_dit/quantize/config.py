@@ -64,6 +64,7 @@ class QuantizeConfig:
                     quant_type=d.get("quant_type", config.quant_type),
                     per_row=d.get("per_row", config.per_row),
                     exclude_layers=d.get("exclude_layers", config.exclude_layers),
+                    filter_fn=d.get("filter_fn", config.filter_fn),
                 )
                 for component, d in config.components_to_quantize.items()
             ]

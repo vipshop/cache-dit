@@ -15,6 +15,8 @@ from ..parallelism import ParallelismConfig
 from ..parallelism import enable_parallelism
 from ..quantize import QuantizeConfig
 from ..quantize import quantize
+from ..utils import check_controlnet
+from ..utils import parse_extra_modules
 
 from cache_dit.logger import init_logger
 
@@ -54,12 +56,6 @@ def enable_cache(
     attention_backend: Optional[str] = None,
     # Quantize config
     quantize_config: Optional[QuantizeConfig] = None,
-    # TODO: Try reduce memory overhead if tensor parallel and quantization
-    # are both enabled. This is an experimental feature and may cause
-    # instability, please use with caution. User who use TP and quantization
-    # together are assumed to have higher requirement for memory saving
-    # , so we will try to reduce memory overhead if this flag is set to True.
-    reduce_memory_overhead: Optional[bool] = False,
     # Other cache context kwargs: Deprecated cache kwargs
     **kwargs,
 ) -> Union[
@@ -241,13 +237,6 @@ def enable_cache(
             logger.info("cache_config is None, using default DBCacheConfig")
             cache_config = DBCacheConfig()
 
-    # Force reduce_memory_overhead to False if tensor parallelism or quantization
-    # is not enabled.
-    if parallelism_config is None or quantize_config is None:
-        reduce_memory_overhead = False  # noqa: F841
-    if parallelism_config is not None and parallelism_config.tp_size is None:
-        reduce_memory_overhead = False  # noqa: F841
-
     # Collect cache context kwargs
     context_kwargs = {}
     if (cache_type := context_kwargs.get("cache_type", None)) is not None:
@@ -399,13 +388,13 @@ def enable_cache(
         if not parallelism_config._has_controlnet:
             # This flag is used to decide whether to use the special parallelism
             # plan due to the addition of ControlNet, e.g., Z-Image-ControlNet.
-            parallelism_config._has_controlnet = _has_controlnet(
+            parallelism_config._has_controlnet = check_controlnet(
                 pipe_or_adapter,
             )
 
         # Parse extra parallel modules from names to actual modules
         if (extra_parallel_module := parallelism_config.extra_parallel_modules) is not None:
-            parallelism_config.extra_parallel_modules = _parse_extra_parallel_modules(
+            parallelism_config.extra_parallel_modules = parse_extra_modules(
                 pipe_or_adapter,
                 extra_parallel_module,
             )
@@ -420,82 +409,26 @@ def enable_cache(
             quantize_config, QuantizeConfig
         ), "quantize_config should be of type QuantizeConfig."
 
-        for i, transformer in enumerate(transformers):
-            # Enable quantization for the transformer inplace
-            transformers[i] = quantize(transformer, quantize_config=quantize_config)
-
-    return pipe_or_adapter
-
-
-def _has_controlnet(pipe_or_adapter: DiffusionPipeline | BlockAdapter) -> bool:
-    """Check if the given pipeline has ControlNet."""
-    if isinstance(pipe_or_adapter, BlockAdapter):
-        pipe = pipe_or_adapter.pipe
-    else:
-        pipe = pipe_or_adapter
-    if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
-        return True
-    return False
-
-
-def _parse_text_encoder(
-    pipe: DiffusionPipeline,
-) -> Tuple[Optional[torch.nn.Module], Optional[str]]:
-    pipe_cls_name = pipe.__class__.__name__
-    if (
-        hasattr(pipe, "text_encoder_2")
-        and not pipe_cls_name.startswith("Hunyuan")
-        and not pipe_cls_name.startswith("Kandinsky")
-    ):
-        # Specific for FluxPipeline, FLUX.1-dev
-        return getattr(pipe, "text_encoder_2"), "text_encoder_2"
-    elif hasattr(pipe, "text_encoder_3"):  # HiDream pipeline
-        return getattr(pipe, "text_encoder_3"), "text_encoder_3"
-    elif hasattr(pipe, "vision_language_encoder") and pipe_cls_name.startswith(
-        "GlmImage"
-    ):  # GLM Image pipeline
-        return getattr(pipe, "vision_language_encoder"), "vision_language_encoder"
-    elif hasattr(pipe, "text_encoder"):  # General case
-        return getattr(pipe, "text_encoder"), "text_encoder"
-    else:
-        return None, None
-
-
-def _parse_extra_parallel_modules(
-    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
-    extra_parallel_module: List[str | torch.nn.Module],
-) -> Union[List[torch.nn.Module], List]:
-    if isinstance(pipe_or_adapter, BlockAdapter):
-        pipe = pipe_or_adapter.pipe
-    else:
-        pipe = pipe_or_adapter
-
-    if not extra_parallel_module:  # empty list
-        return []
-
-    parsed_extra_parallel_modules: List[torch.nn.Module] = []
-    for module_or_name in extra_parallel_module:
-        if isinstance(module_or_name, torch.nn.Module):
-            parsed_extra_parallel_modules.append(module_or_name)
-            continue
-
-        if hasattr(pipe, module_or_name):
-            if module_or_name == "text_encoder":
-                # Special handling for text encoder
-                text_encoder, _ = _parse_text_encoder(pipe)
-                if text_encoder is not None:
-                    parsed_extra_parallel_modules.append(text_encoder)
-                else:
-                    logger.warning(
-                        "Text encoder not found in the pipeline for extra parallel module."
-                    )
-            else:
-                parsed_extra_parallel_modules.append(getattr(pipe, module_or_name))
+        # By default, we will try to apply quantization to transformer module(s)
+        # for better performance. User can specify the quantization modules more
+        # precisely with quantize_config.components_to_quantize. For example,
+        # when quantize_config.components_to_quantize is set to ['transformer',
+        # 'text_encoder'], we will apply quantization to both transformer and
+        # text encoder modules with the specified quantization type.
+        if quantize_config.components_to_quantize is None:
+            for i, transformer in enumerate(transformers):
+                # Enable quantization for the transformer inplace
+                transformers[i] = quantize(transformer, quantize_config=quantize_config)
         else:
-            logger.warning(
-                f"Extra parallel module name {module_or_name} not found in the pipeline."
-            )
-    return parsed_extra_parallel_modules
+            # Expand the quantize_config with multiple components to multiple simple
+            # configs with single component.
+            expanded_quantize_configs = QuantizeConfig.expand_configs(quantize_config)
+            for config in expanded_quantize_configs:
+                components = parse_extra_modules(pipe_or_adapter, config.components_to_quantize)
+                for component in components:
+                    quantized_module = quantize(component, quantize_config=config)
+                    setattr(pipe_or_adapter, component, quantized_module)
+    return pipe_or_adapter
 
 
 def set_attn_backend(

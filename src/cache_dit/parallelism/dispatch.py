@@ -109,17 +109,17 @@ def remove_parallelism_stats(
         if hasattr(module, "_parallelism_config"):
             del module._parallelism_config
 
+        # Only use 1 depth for the recursion of removing parallel stats in extra sub modules,
+        # since the extra parallel modules should not have nested extra parallel modules.
+        extra_parallel_modules = getattr(module, "_extra_parallel_modules", [])
+        for extra_module in extra_parallel_modules:
+            _remove_parallel_stats(extra_module)
+
+        if hasattr(module, "_extra_parallel_modules"):
+            del module._extra_parallel_modules
+
     _remove_parallel_stats(module)
 
-    # remove parallelism stats for extra parallel modules
-    if not hasattr(module, "_extra_parallel_modules"):
-        return module
-
-    extra_parallel_modules = getattr(module, "_extra_parallel_modules", [])
-    for extra_module in extra_parallel_modules:
-        _remove_parallel_stats(extra_module)
-
-    del module._extra_parallel_modules  # type: ignore[attr-defined]
     return module
 
 
