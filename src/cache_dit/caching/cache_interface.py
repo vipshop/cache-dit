@@ -6,7 +6,6 @@ from .cache_types import CacheType
 from .block_adapters import BlockAdapter
 from .block_adapters import BlockAdapterRegister
 from .cache_adapters import CachedAdapter
-from .cache_contexts import BasicCacheConfig
 from .cache_contexts import DBCacheConfig
 from .cache_contexts import DBPruneConfig
 from .cache_contexts import CalibratorConfig
@@ -35,7 +34,6 @@ def enable_cache(
     # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
     cache_config: Optional[
         Union[
-            BasicCacheConfig,
             DBCacheConfig,
             DBPruneConfig,
         ]
@@ -261,14 +259,14 @@ def enable_cache(
 
     if deprecated_kwargs:
         logger.warning(
-            "Manually settup DBCache context without BasicCacheConfig is "
+            "Manually settup DBCache context without DBCacheConfig is "
             "deprecated and will be removed in the future, please use "
             "`cache_config` parameter instead!"
         )
         if cache_config is not None:
             cache_config.update(**deprecated_kwargs)
         else:
-            cache_config = BasicCacheConfig(**deprecated_kwargs)
+            cache_config = DBCacheConfig(**deprecated_kwargs)
 
     if cache_config is not None:
         context_kwargs["cache_config"] = cache_config
