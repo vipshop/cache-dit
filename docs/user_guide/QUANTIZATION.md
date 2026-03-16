@@ -2,7 +2,7 @@
 
 <div id="quantization"></div>
 
-## TorchAo
+## Cache-DiT w/ TorchAo backend (Recommended)
 
 Currently, torchao has been integrated into cache-dit as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling `cache_dit.quantize(...)` or pass a `QuantizeConfig` to `cache_dit.enable_cache(...)`. At present, cache-dit supports the `Hybrid Cache + Low-bits Quantization` scheme. For GPUs with low memory capacity, we recommend using `float8`, `float8_weight_only`, `int8_weight_only`, as these methods cause almost no loss in precision. Supported quantization types including:  
 
