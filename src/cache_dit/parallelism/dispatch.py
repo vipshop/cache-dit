@@ -3,6 +3,10 @@ from diffusers.models.modeling_utils import ModelMixin
 from .backend import ParallelismBackend
 from .config import ParallelismConfig
 from cache_dit.utils import maybe_empty_cache
+from cache_dit.utils import check_text_encoder
+from cache_dit.utils import check_auto_encoder
+from cache_dit.utils import check_controlnet
+from cache_dit.utils import check_parallelized
 from cache_dit.logger import init_logger
 from cache_dit.envs import ENV
 
@@ -47,7 +51,7 @@ def enable_parallelism(
     if extra_parallel_modules:
         for module in extra_parallel_modules:
             # Enable parallelism for text encoder
-            if _is_text_encoder(module) and not _is_parallelized(module):
+            if check_text_encoder(module) and not check_parallelized(module):
                 from .text_encoders import (
                     maybe_enable_parallelism_for_text_encoder,
                 )
@@ -57,7 +61,7 @@ def enable_parallelism(
                     parallelism_config=parallelism_config,
                 )
             # Enable parallelism for ControlNet
-            elif _is_controlnet(module) and not _is_parallelized(module):
+            elif check_controlnet(module) and not check_parallelized(module):
                 from .controlnets import (
                     maybe_enable_parallelism_for_controlnet,
                 )
@@ -71,7 +75,7 @@ def enable_parallelism(
                     parallelism_config=parallelism_config,
                 )
             # Enable parallelism for VAE
-            elif _is_auto_encoder(module) and not _is_parallelized(module):
+            elif check_auto_encoder(module) and not check_parallelized(module):
                 from .autoencoders import (
                     maybe_enable_parallelism_for_auto_encoder,
                 )
@@ -164,24 +168,3 @@ def _maybe_set_module_attention_backend(
                 "Found attention_backend from config, set attention backend of "
                 f"{module_cls_name} to: <{attention_backend}>."
             )
-
-
-def _is_text_encoder(module: torch.nn.Module) -> bool:
-    _import_module = module.__class__.__module__
-    # Including the cases for normal text encoder and vision-language
-    # model (e.g, GLM Image) in transformers
-    return _import_module.startswith("transformers")
-
-
-def _is_controlnet(module: torch.nn.Module) -> bool:
-    _import_module = module.__class__.__module__
-    return _import_module.startswith("diffusers.models.controlnet")
-
-
-def _is_auto_encoder(module: torch.nn.Module) -> bool:
-    _import_module = module.__class__.__module__
-    return _import_module.startswith("diffusers.models.autoencoder")
-
-
-def _is_parallelized(module: torch.nn.Module) -> bool:
-    return getattr(module, "_is_parallelized", False)

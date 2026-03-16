@@ -44,15 +44,83 @@ def maybe_empty_cache():
         pass
 
 
-def check_controlnet(pipe_or_adapter: DiffusionPipeline | Any) -> bool:
-    """Check if the given pipeline has ControlNet."""
-    if not isinstance(pipe_or_adapter, DiffusionPipeline):
-        pipe = getattr(pipe_or_adapter, "pipe", None)
+def _is_text_encoder(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    # Including the cases for normal text encoder and vision-language
+    # model (e.g, GLM Image) in transformers
+    return _import_module.startswith("transformers")
+
+
+def _is_controlnet(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("diffusers.models.controlnet")
+
+
+def _is_auto_encoder(module: torch.nn.Module) -> bool:
+    _import_module = module.__class__.__module__
+    return _import_module.startswith("diffusers.models.autoencoder")
+
+
+def check_text_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline has text encoder."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_text_encoder(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
     else:
-        pipe = pipe_or_adapter
+        pipe = module
+    if hasattr(pipe, "text_encoder") and getattr(pipe, "text_encoder") is not None:
+        return True
+    # For some pipelines (e.g., FLUX), the text encoder may have different names.
+    for attr_name in dir(pipe):
+        attr = getattr(pipe, attr_name)
+        if isinstance(attr, torch.nn.Module) and _is_text_encoder(attr):
+            return True
+    return False
+
+
+def check_controlnet(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline has ControlNet."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_controlnet(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
+    else:
+        pipe = module
     if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
         return True
     return False
+
+
+def check_auto_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline has auto encoder."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_auto_encoder(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
+    else:
+        pipe = module
+    if hasattr(pipe, "vae") and getattr(pipe, "vae") is not None:
+        return True
+    return False
+
+
+def check_parallelized(module: torch.nn.Module) -> bool:
+    """Check if the given module is already parallelized."""
+    return getattr(module, "_is_parallelized", False)
+
+
+def check_quantized(module: torch.nn.Module) -> bool:
+    """Check if the given module is already quantized."""
+    return getattr(module, "_is_quantized", False)
+
+
+def check_cached(module: torch.nn.Module) -> bool:
+    """Check if the given module is already cached."""
+    return getattr(module, "_is_cached", False)
 
 
 def parse_text_encoder(
