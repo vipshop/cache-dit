@@ -378,6 +378,12 @@ def enable_cache(
             )
 
     # Enable parallelism if parallelism_config is provided.
+    pipe = (
+        pipe_or_adapter
+        if isinstance(pipe_or_adapter, DiffusionPipeline)
+        else getattr(pipe_or_adapter, "pipe", None)
+    )
+
     if parallelism_config is not None:
         assert isinstance(
             parallelism_config, ParallelismConfig
@@ -388,15 +394,13 @@ def enable_cache(
         if not parallelism_config._has_controlnet:
             # This flag is used to decide whether to use the special parallelism
             # plan due to the addition of ControlNet, e.g., Z-Image-ControlNet.
-            parallelism_config._has_controlnet = check_controlnet(
-                pipe_or_adapter,
-            )
+            parallelism_config._has_controlnet = check_controlnet(pipe)
 
         # Parse extra parallel modules from names to actual modules
-        if (extra_parallel_module := parallelism_config.extra_parallel_modules) is not None:
+        extra_parallel_module = parallelism_config.extra_parallel_modules
+        if extra_parallel_module is not None and pipe is not None:
             parallelism_config.extra_parallel_modules = parse_extra_modules(
-                pipe_or_adapter,
-                extra_parallel_module,
+                pipe, extra_parallel_module
             )
 
         for i, transformer in enumerate(transformers):
@@ -422,18 +426,20 @@ def enable_cache(
         else:
             # Expand the quantize_config with multiple components to multiple simple
             # configs with single component.
-            expanded_quantize_configs = QuantizeConfig.expand_configs(quantize_config)
-            for config in expanded_quantize_configs:
-                components_to_quantize = config.components_to_quantize
-                components = parse_extra_modules(pipe_or_adapter, components_to_quantize)
-                assert len(components) == len(components_to_quantize), (
-                    f"Some components in quantize_config.components_to_quantize: "
-                    f"{components_to_quantize} are not found in the pipeline, please check the "
-                    f"component names or directly pass the actual modules in components_to_quantize."
-                )
-                for component, component_name in zip(components, components_to_quantize):
-                    quantized_component = quantize(component, quantize_config=config)
-                    setattr(pipe_or_adapter, component_name, quantized_component)
+            if pipe is not None:
+                expanded_quantize_configs = QuantizeConfig.expand_configs(quantize_config)
+                for config in expanded_quantize_configs:
+                    components_to_quantize = config.components_to_quantize
+                    components = parse_extra_modules(pipe, components_to_quantize)
+                    assert len(components) == len(components_to_quantize), (
+                        f"Some components in quantize_config.components_to_quantize: "
+                        f"{components_to_quantize} are not found in the pipeline, please check the "
+                        f"component names or directly pass the actual modules in components_to_quantize."
+                    )
+                    for component, component_name in zip(components, components_to_quantize):
+                        # Enable quantization for the specified component inplace
+                        quantized_component = quantize(component, quantize_config=config)
+                        setattr(pipe, component_name, quantized_component)
     return pipe_or_adapter
 
 
