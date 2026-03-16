@@ -6,9 +6,10 @@ quantize_config:
       exclude_layers:  
         - "embedder"
         - "embed"
+    # e.g, T5EncoderModel for FLUX.1
     text_encoder_2:
       quant_type: "float8_weight_only"
-      exclude_layers:  # e.g, T5EncoderModel for FLUX.1
+      exclude_layers:  
         - "shared" 
         - "embed_tokens"
   verbose: false
