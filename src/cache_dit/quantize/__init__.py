@@ -23,6 +23,11 @@ def quantize(
     quantize_config: Optional[QuantizeConfig] = None,
     **kwargs,
 ) -> torch.nn.Module:
+    if not isinstance(module, torch.nn.Module):
+        raise ValueError(
+            "Module must be an instance of torch.nn.Module, "
+            f"but got {module.__class__.__name__}:{type(module)}"
+        )
 
     # Qwen-Image will generate nan after quantization with per_row quantization.
     # So, we disable per_row quantization for all layers in Qwen-Image for better
