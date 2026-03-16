@@ -2,13 +2,13 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 from .backend import ParallelismBackend
 from .config import ParallelismConfig
-from cache_dit.utils import maybe_empty_cache
-from cache_dit.utils import check_text_encoder
-from cache_dit.utils import check_auto_encoder
-from cache_dit.utils import check_controlnet
-from cache_dit.utils import check_parallelized
-from cache_dit.logger import init_logger
-from cache_dit.envs import ENV
+from ..utils import maybe_empty_cache
+from ..utils import check_text_encoder
+from ..utils import check_auto_encoder
+from ..utils import check_controlnet
+from ..utils import check_parallelized
+from ..logger import init_logger
+from ..envs import ENV
 
 
 logger = init_logger(__name__)
