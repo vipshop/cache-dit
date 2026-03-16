@@ -377,13 +377,13 @@ def enable_cache(
                 "transformers will be enabled for parallelism or quantization."
             )
 
-    # Enable parallelism if parallelism_config is provided.
     pipe = (
         pipe_or_adapter
         if isinstance(pipe_or_adapter, DiffusionPipeline)
         else getattr(pipe_or_adapter, "pipe", None)
     )
 
+    # Enable parallelism if parallelism_config is provided.
     if parallelism_config is not None:
         assert isinstance(
             parallelism_config, ParallelismConfig
