@@ -1,7 +1,6 @@
 import gc
 import time
 import torch
-import diffusers
 import builtins as __builtin__
 import contextlib
 from typing import Tuple, List, Union, Optional, Any
@@ -14,36 +13,12 @@ from .logger import init_logger
 logger = init_logger(__name__)
 
 
-def dummy_print(*args, **kwargs):
-    pass
-
-
-@contextlib.contextmanager
-def disable_print():
-    origin_print = __builtin__.print
-    __builtin__.print = dummy_print
-    yield
-    __builtin__.print = origin_print
-
-
-def is_diffusers_at_least_0_3_5() -> bool:
-    return diffusers.__version__ >= "0.35.0"
-
-
-def maybe_empty_cache():
-    try:
-        time.sleep(1)
-        gc.collect()
-        current_platform.empty_cache()
-        current_platform.ipc_collect()
-        time.sleep(1)
-        gc.collect()
-        current_platform.empty_cache()
-        current_platform.ipc_collect()
-    except Exception:
-        pass
-
-
+# Utils for checking module types and states, e.g., whether a module
+# is text encoder, controlnet, auto encoder, or whether it's already
+# parallelized, quantized or cached. These utils are used in the
+# parallelism and quantization dispatching to determine which modules
+# to apply parallelism or quantization to, and to avoid applying parallelism
+# or quantization to modules that are already parallelized or quantized.
 def _is_text_encoder(module: torch.nn.Module) -> bool:
     _import_module = module.__class__.__module__
     # Including the cases for normal text encoder and vision-language
@@ -59,6 +34,21 @@ def _is_controlnet(module: torch.nn.Module) -> bool:
 def _is_auto_encoder(module: torch.nn.Module) -> bool:
     _import_module = module.__class__.__module__
     return _import_module.startswith("diffusers.models.autoencoder")
+
+
+def _is_parallelized(module: torch.nn.Module) -> bool:
+    """Check if the given module is already parallelized."""
+    return getattr(module, "_is_parallelized", False)
+
+
+def _is_quantized(module: torch.nn.Module) -> bool:
+    """Check if the given module is already quantized."""
+    return getattr(module, "_is_quantized", False)
+
+
+def _is_cached(module: torch.nn.Module) -> bool:
+    """Check if the given module is already cached."""
+    return getattr(module, "_is_cached", False)
 
 
 def check_text_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
@@ -108,19 +98,52 @@ def check_auto_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
     return False
 
 
-def check_parallelized(module: torch.nn.Module) -> bool:
-    """Check if the given module is already parallelized."""
-    return getattr(module, "_is_parallelized", False)
+def check_parallelized(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline is already parallelized."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_parallelized(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
+    else:
+        pipe = module
+    for attr_name in dir(pipe):
+        attr = getattr(pipe, attr_name)
+        if isinstance(attr, torch.nn.Module) and _is_parallelized(attr):
+            return True
+    return False
 
 
-def check_quantized(module: torch.nn.Module) -> bool:
-    """Check if the given module is already quantized."""
-    return getattr(module, "_is_quantized", False)
+def check_quantized(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline is already quantized."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_quantized(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
+    else:
+        pipe = module
+    for attr_name in dir(pipe):
+        attr = getattr(pipe, attr_name)
+        if isinstance(attr, torch.nn.Module) and _is_quantized(attr):
+            return True
+    return False
 
 
-def check_cached(module: torch.nn.Module) -> bool:
-    """Check if the given module is already cached."""
-    return getattr(module, "_is_cached", False)
+def check_cached(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline is already cached."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_cached(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
+    else:
+        pipe = module
+    for attr_name in dir(pipe):
+        attr = getattr(pipe, attr_name)
+        if isinstance(attr, torch.nn.Module) and _is_cached(attr):
+            return True
+    return False
 
 
 def parse_text_encoder(
@@ -195,3 +218,31 @@ def parse_extra_modules(
         else:
             logger.warning(f"Extra module name {module_or_name} not found in the pipeline.")
     return parsed_extra_modules
+
+
+# Some others trival utils for logging and cache management, e.g.,
+# disabling print for some noisy functions, maybe_empty_cache to
+# clear cache and collect garbage to free up memory.
+def dummy_print(*args, **kwargs): ...  # noqa: E704
+
+
+@contextlib.contextmanager
+def disable_print():
+    origin_print = __builtin__.print
+    __builtin__.print = dummy_print
+    yield
+    __builtin__.print = origin_print
+
+
+def maybe_empty_cache():
+    try:
+        time.sleep(1)
+        gc.collect()
+        current_platform.empty_cache()
+        current_platform.ipc_collect()
+        time.sleep(1)
+        gc.collect()
+        current_platform.empty_cache()
+        current_platform.ipc_collect()
+    except Exception:
+        pass

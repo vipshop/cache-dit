@@ -47,7 +47,6 @@ def _relaxed_assert(
 @BlockAdapterRegister.register("Flux")
 def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
-    from cache_dit.utils import is_diffusers_at_least_0_3_5
     from cache_dit.caching.patch_functors import FluxPatchFunctor
 
     supported_transformers = (FluxTransformer2DModel,)
@@ -61,10 +60,8 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     _relaxed_assert(pipe.transformer, supported_transformers)
 
     transformer_cls_name: str = pipe.transformer.__class__.__name__
-    if (
-        is_diffusers_at_least_0_3_5()
-        and not transformer_cls_name.startswith("Nunchaku")
-        and not transformer_cls_name.startswith("Flux2")
+    if not transformer_cls_name.startswith("Nunchaku") and not transformer_cls_name.startswith(
+        "Flux2"
     ):
         # NOTE(DefTruth): Users should never use this variable directly,
         # it is only for developers to control whether to enable dummy
@@ -587,39 +584,22 @@ def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
 @BlockAdapterRegister.register("VisualCloze")
 def visualcloze_adapter(pipe, **kwargs) -> BlockAdapter:
     from diffusers import FluxTransformer2DModel
-    from cache_dit.utils import is_diffusers_at_least_0_3_5
 
     _relaxed_assert(pipe.transformer, FluxTransformer2DModel)
-    if is_diffusers_at_least_0_3_5():
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_1,
-            ],
-            check_forward_pattern=True,
-            **kwargs,
-        )
-    else:
-        return BlockAdapter(
-            pipe=pipe,
-            transformer=pipe.transformer,
-            blocks=[
-                pipe.transformer.transformer_blocks,
-                pipe.transformer.single_transformer_blocks,
-            ],
-            forward_pattern=[
-                ForwardPattern.Pattern_1,
-                ForwardPattern.Pattern_3,
-            ],
-            check_forward_pattern=True,
-            **kwargs,
-        )
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.transformer_blocks,
+            pipe.transformer.single_transformer_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_1,
+            ForwardPattern.Pattern_1,
+        ],
+        check_forward_pattern=True,
+        **kwargs,
+    )
 
 
 @BlockAdapterRegister.register("AuraFlow")

@@ -16,8 +16,7 @@ from ..quantize import QuantizeConfig
 from ..quantize import quantize
 from ..utils import check_controlnet
 from ..utils import parse_extra_modules
-
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 
