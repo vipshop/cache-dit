@@ -18,9 +18,13 @@ if ENV.CACHE_DIT_ENABLE_LOGGERS_SUPPRESS:  # Default is False (0)
 
 from .logger import init_logger
 from .utils import disable_print
+from .utils import maybe_empty_cache
+from .utils import parse_extra_modules
 from .caching import load_options  # deprecated
 from .caching import load_cache_config
 from .caching import load_parallelism_config
+from .caching import load_quantize_config
+from .caching import load_attn_backend_config
 from .caching import load_configs
 from .caching import enable_cache
 from .caching import refresh_context

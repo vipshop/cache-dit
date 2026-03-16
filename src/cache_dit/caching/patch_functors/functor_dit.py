@@ -7,7 +7,7 @@ from diffusers.models.transformers.dit_transformer_2d import (
     Transformer2DModelOutput,
 )
 from .functor_base import PatchFunctor
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

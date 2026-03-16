@@ -14,7 +14,7 @@ from .model_manager import ModelManager
 from .api_server import create_app
 from .cache_alignment import align_cache_config
 
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 

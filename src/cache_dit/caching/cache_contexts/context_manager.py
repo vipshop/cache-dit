@@ -1,7 +1,7 @@
 from ..cache_types import CacheType
 from .cache_manager import CachedContextManager
 from .prune_manager import PrunedContextManager
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

@@ -16,7 +16,7 @@ from ..cache_contexts import ContextManager
 from ..cache_contexts import BasicCacheConfig
 from ..cache_contexts import CalibratorConfig
 from ..cache_blocks import UnifiedBlocks
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 try:
     from accelerate import hooks
@@ -639,12 +639,17 @@ class CachedAdapter:
             _release_pipeline_params,
         )
 
-        # release stats hooks
+        # maybe release cache stats
         from ..cache_blocks import (
             remove_stats,
         )
 
-        cls.release_hooks(pipe_or_adapter, remove_stats, remove_stats, remove_stats)
+        cls.release_hooks(
+            pipe_or_adapter,
+            remove_stats,
+            remove_stats,
+            remove_stats,
+        )
 
         # maybe release parallelism stats
         from cache_dit.parallelism import (
@@ -656,6 +661,18 @@ class CachedAdapter:
             remove_parallelism_stats,
             remove_parallelism_stats,
             remove_parallelism_stats,
+        )
+
+        # maybe release quantization stats
+        from cache_dit.quantize import (
+            remove_quantization_stats,
+        )
+
+        cls.release_hooks(
+            pipe_or_adapter,
+            remove_quantization_stats,
+            remove_quantization_stats,
+            remove_quantization_stats,
         )
 
     @classmethod

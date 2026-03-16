@@ -1,0 +1,19 @@
+quantize_config: 
+  components_to_quantize:
+    transformer:
+      quant_type: "float8"
+      per_row: true
+      exclude_layers:  
+        - "embedder"
+        - "embed"
+    # e.g, specified case for FLUX.1 w/ T5EncoderModel. Please note that we should 
+    # use 'text_encoder' instead of 'text_encoder_2' in most cases, and 'text_encoder_2' 
+    # is only used when there are two text encoders in the pipeline and we only want 
+    # to quantize the second one.
+    text_encoder_2:
+      quant_type: "float8_weight_only"
+      exclude_layers:  
+        - "shared" 
+        - "embed_tokens"
+  verbose: false
+attention_backend: _flash_3

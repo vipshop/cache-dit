@@ -7,8 +7,8 @@ from diffusers import AutoencoderKLWan
 from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.models.autoencoders.autoencoder_kl_wan import unpatchify
 
-from cache_dit.logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
+from ....logger import init_logger
 from .dp_plan_registers import (
     AutoEncoderDataParallelismPlanner,
     AutoEncoderDataParallelismPlannerRegister,

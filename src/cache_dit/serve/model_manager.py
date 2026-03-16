@@ -22,7 +22,7 @@ from diffusers.utils import export_to_video
 from diffusers.loaders.lora_base import LoraBaseMixin
 from PIL import Image
 import cache_dit
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 from diffusers import WanImageToVideoPipeline
 from ..platforms import current_platform
 from .utils import prepare_extra_parallel_modules

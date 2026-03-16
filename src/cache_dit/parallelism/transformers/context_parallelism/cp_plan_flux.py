@@ -30,7 +30,7 @@ from .cp_plan_registers import (
     ParallelismConfig,
 )
 
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 
 from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
 from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn

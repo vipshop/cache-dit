@@ -2,9 +2,13 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 from .backend import ParallelismBackend
 from .config import ParallelismConfig
-from cache_dit.utils import maybe_empty_cache
-from cache_dit.logger import init_logger
-from cache_dit.envs import ENV
+from ..utils import maybe_empty_cache
+from ..utils import check_text_encoder
+from ..utils import check_auto_encoder
+from ..utils import check_controlnet
+from ..utils import check_parallelized
+from ..logger import init_logger
+from ..envs import ENV
 
 
 logger = init_logger(__name__)
@@ -47,7 +51,7 @@ def enable_parallelism(
     if extra_parallel_modules:
         for module in extra_parallel_modules:
             # Enable parallelism for text encoder
-            if _is_text_encoder(module) and not _is_parallelized(module):
+            if check_text_encoder(module) and not check_parallelized(module):
                 from .text_encoders import (
                     maybe_enable_parallelism_for_text_encoder,
                 )
@@ -57,7 +61,7 @@ def enable_parallelism(
                     parallelism_config=parallelism_config,
                 )
             # Enable parallelism for ControlNet
-            elif _is_controlnet(module) and not _is_parallelized(module):
+            elif check_controlnet(module) and not check_parallelized(module):
                 from .controlnets import (
                     maybe_enable_parallelism_for_controlnet,
                 )
@@ -71,7 +75,7 @@ def enable_parallelism(
                     parallelism_config=parallelism_config,
                 )
             # Enable parallelism for VAE
-            elif _is_auto_encoder(module) and not _is_parallelized(module):
+            elif check_auto_encoder(module) and not check_parallelized(module):
                 from .autoencoders import (
                     maybe_enable_parallelism_for_auto_encoder,
                 )
@@ -109,17 +113,17 @@ def remove_parallelism_stats(
         if hasattr(module, "_parallelism_config"):
             del module._parallelism_config
 
+        # Only use 1 depth for the recursion of removing parallel stats in extra sub modules,
+        # since the extra parallel modules should not have nested extra parallel modules.
+        extra_parallel_modules = getattr(module, "_extra_parallel_modules", [])
+        for extra_module in extra_parallel_modules:
+            _remove_parallel_stats(extra_module)
+
+        if hasattr(module, "_extra_parallel_modules"):
+            del module._extra_parallel_modules
+
     _remove_parallel_stats(module)
 
-    # remove parallelism stats for extra parallel modules
-    if not hasattr(module, "_extra_parallel_modules"):
-        return module
-
-    extra_parallel_modules = getattr(module, "_extra_parallel_modules", [])
-    for extra_module in extra_parallel_modules:
-        _remove_parallel_stats(extra_module)
-
-    del module._extra_parallel_modules  # type: ignore[attr-defined]
     return module
 
 
@@ -164,24 +168,3 @@ def _maybe_set_module_attention_backend(
                 "Found attention_backend from config, set attention backend of "
                 f"{module_cls_name} to: <{attention_backend}>."
             )
-
-
-def _is_text_encoder(module: torch.nn.Module) -> bool:
-    _import_module = module.__class__.__module__
-    # Including the cases for normal text encoder and vision-language
-    # model (e.g, GLM Image) in transformers
-    return _import_module.startswith("transformers")
-
-
-def _is_controlnet(module: torch.nn.Module) -> bool:
-    _import_module = module.__class__.__module__
-    return _import_module.startswith("diffusers.models.controlnet")
-
-
-def _is_auto_encoder(module: torch.nn.Module) -> bool:
-    _import_module = module.__class__.__module__
-    return _import_module.startswith("diffusers.models.autoencoder")
-
-
-def _is_parallelized(module: torch.nn.Module) -> bool:
-    return getattr(module, "_is_parallelized", False)

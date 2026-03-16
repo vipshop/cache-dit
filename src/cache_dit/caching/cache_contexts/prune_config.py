@@ -3,7 +3,7 @@ from typing import List
 from ..cache_types import CacheType
 from .cache_config import BasicCacheConfig
 
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

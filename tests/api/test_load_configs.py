@@ -10,4 +10,6 @@ def test_load_configs(config):
     assert "cache_config" in configs
     assert "calibrator_config" in configs
     assert "parallelism_config" in configs
+    assert "attention_backend" in configs
+    assert "quantize_config" in configs
     print("Loaded configs:", configs, flush=True)

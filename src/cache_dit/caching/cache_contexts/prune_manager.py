@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Union
 
 from .cache_manager import CachedContextManager
 from .prune_context import PrunedContext
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

@@ -33,8 +33,8 @@ from ._distributed_primitives import (
     _prepare_ulysses_comm_metadata,
 )
 
-from cache_dit.envs import ENV
-from cache_dit.logger import init_logger
+from ...envs import ENV
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

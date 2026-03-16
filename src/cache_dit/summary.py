@@ -13,8 +13,8 @@ from .caching import CalibratorConfig
 from .caching import FakeDiffusionPipeline
 from .parallelism import ParallelismConfig
 from .quantize import QuantizeConfig
-from .caching import load_options
-from cache_dit.logger import init_logger
+from .caching import load_configs
+from .logger import init_logger
 
 
 logger = init_logger(__name__)
@@ -229,7 +229,7 @@ def strify(
             if cache_type in [CacheType.NONE, "NONE", "None"]:
                 return ""
         # Assume context_kwargs
-        cache_options = load_options(adapter_or_others)
+        cache_options = load_configs(adapter_or_others)
         accumulated_cached_steps = None
         stats = None
         parallelism_config = cache_options.get("parallelism_config", None)

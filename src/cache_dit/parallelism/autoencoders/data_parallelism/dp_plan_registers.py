@@ -3,8 +3,8 @@ import logging
 from abc import abstractmethod
 from typing import Dict
 from torch.distributed import init_device_mesh
-from cache_dit.parallelism.config import ParallelismConfig
-from cache_dit.logger import init_logger
+from ...config import ParallelismConfig
+from ....logger import init_logger
 
 logger = init_logger(__name__)
 

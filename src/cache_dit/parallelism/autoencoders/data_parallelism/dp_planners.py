@@ -1,5 +1,5 @@
 import importlib
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 from .dp_plan_registers import AutoEncoderDataParallelismPlanner
 
 logger = init_logger(__name__)

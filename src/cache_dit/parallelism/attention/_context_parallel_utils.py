@@ -4,7 +4,7 @@ from typing import Any, Dict, Literal, Optional, Union
 from diffusers import ModelMixin
 from diffusers import ContextParallelConfig, ParallelConfig
 from diffusers.models._modeling_parallel import ContextParallelModelPlan
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

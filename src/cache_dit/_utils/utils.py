@@ -1422,7 +1422,10 @@ def maybe_apply_optimization(
             quantize_config = configs.get("quantize_config", None)
             if quantize_config is not None:
                 args.quantize = True
-                args.quantize_type = quantize_config.quant_type
+                try:
+                    args.quantize_type = quantize_config.component_quant_types()["transformer"]
+                except Exception:
+                    args.quantize_type = list(quantize_config.component_quant_types().values())[0]
                 logger.info(
                     f"Quantization config from {args.config_path}: {quantize_config.strify()}"
                 )
@@ -1445,8 +1448,8 @@ def maybe_apply_optimization(
     # Avoid quantization if quant_config is already applied via config file.
     if quantize_config is None:
         maybe_quantize_transformer(args, pipe_or_adapter)
-    maybe_quantize_text_encoder(args, pipe_or_adapter)
-    maybe_quantize_controlnet(args, pipe_or_adapter)
+        maybe_quantize_text_encoder(args, pipe_or_adapter)
+        maybe_quantize_controlnet(args, pipe_or_adapter)
 
     # VAE Tiling or Slicing
     maybe_vae_tiling_or_slicing(args, pipe_or_adapter)

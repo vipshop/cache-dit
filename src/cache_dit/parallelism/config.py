@@ -3,7 +3,7 @@ import dataclasses
 import torch.distributed as dist
 from typing import Optional, Dict, Any, List, Union
 from .backend import ParallelismBackend
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 

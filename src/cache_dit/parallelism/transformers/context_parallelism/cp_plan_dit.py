@@ -32,7 +32,7 @@ from .cp_plan_pixart import (
 )
 
 
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 
 logger = init_logger(__name__)
 
