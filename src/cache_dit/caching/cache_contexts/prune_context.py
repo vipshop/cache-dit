@@ -5,8 +5,7 @@ from typing import List
 from ..cache_types import CacheType
 from .prune_config import DBPruneConfig
 from .cache_context import CachedContext
-from cache_dit.logger import init_logger
-
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

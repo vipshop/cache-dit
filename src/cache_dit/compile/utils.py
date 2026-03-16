@@ -4,7 +4,7 @@ from typing import Optional
 from ..envs import ENV
 from ..platforms import current_platform
 from ..parallelism.attention._templated_ulysses import is_ulysses_anything_enabled
-from cache_dit.logger import init_logger
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 

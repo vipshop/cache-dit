@@ -16,7 +16,7 @@ from ..cache_contexts import ContextManager
 from ..cache_contexts import BasicCacheConfig
 from ..cache_contexts import CalibratorConfig
 from ..cache_blocks import UnifiedBlocks
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 try:
     from accelerate import hooks

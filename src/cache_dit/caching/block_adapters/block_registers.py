@@ -7,7 +7,7 @@ from .block_adapters import (
     FakeDiffusionPipeline,
 )
 
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

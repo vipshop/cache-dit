@@ -1,8 +1,8 @@
 import torch
 from abc import abstractmethod
 
-from cache_dit.logger import init_logger
-from cache_dit.envs import ENV
+from ...logger import init_logger
+from ...envs import ENV
 
 logger = init_logger(__name__)
 

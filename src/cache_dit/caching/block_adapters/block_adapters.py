@@ -11,7 +11,7 @@ from ..patch_functors import PatchFunctor
 from ..forward_pattern import ForwardPattern
 from ..params_modifier import ParamsModifier
 
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

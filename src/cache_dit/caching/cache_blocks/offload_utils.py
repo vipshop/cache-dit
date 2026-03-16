@@ -4,7 +4,7 @@ import logging
 from contextlib import contextmanager
 from typing import Generator, Optional, List
 from diffusers.hooks.group_offloading import _is_group_offload_enabled
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

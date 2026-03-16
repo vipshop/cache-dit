@@ -8,7 +8,7 @@ import torch.distributed as dist
 
 from .calibrators import CalibratorBase
 from .cache_context import CachedContext
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

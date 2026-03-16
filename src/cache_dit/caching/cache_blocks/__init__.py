@@ -22,7 +22,7 @@ from .pattern_3_4_5 import (
 from .pattern_utils import apply_stats
 from .pattern_utils import remove_stats
 
-from cache_dit.logger import init_logger
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 

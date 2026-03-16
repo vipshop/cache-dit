@@ -3,8 +3,8 @@ from typing import List, Tuple, Union, Optional
 from ..forward_pattern import ForwardPattern
 from .block_adapters import BlockAdapter
 from .block_registers import BlockAdapterRegister
-from cache_dit.envs import ENV
-from cache_dit.logger import init_logger
+from ...envs import ENV
+from ...logger import init_logger
 
 logger = init_logger(__name__)
 
