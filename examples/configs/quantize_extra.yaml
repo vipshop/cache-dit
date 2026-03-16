@@ -1,0 +1,14 @@
+quantize_config: 
+  components_to_quantize:
+    transformer:
+      quant_type: "float8"
+      per_row: true
+      exclude_layers:  
+        - "embedder"
+        - "embed"
+    text_encoder:
+      quant_type: "float8_weight_only"
+      exclude_layers:  
+        - "embedder"
+        - "embed"
+  verbose: false

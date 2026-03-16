@@ -42,10 +42,10 @@ class QuantizeConfig:
     def strify(self) -> str:
         return f"{self.quant_type.lower()}"
 
-    # Transformer components_to_quantize to mutiple simple configs, each
-    # with only one component to quantize, and the same quantization type.
     @classmethod
     def expand_configs(cls, config: "QuantizeConfig") -> List["QuantizeConfig"]:
+        # Transfer components_to_quantize to mutiple simple configs, each
+        # with only 1 component to quantize, and the same quantization type.
         if config.components_to_quantize is None:
             return [config]
 

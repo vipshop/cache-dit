@@ -4,11 +4,10 @@ import torch
 import diffusers
 import builtins as __builtin__
 import contextlib
-from typing import Tuple, List, Union, Optional
+from typing import Tuple, List, Union, Optional, Any
 from diffusers import DiffusionPipeline
 
 from .platforms import current_platform
-from .caching.block_adapters import BlockAdapter
 from .logger import init_logger
 
 
@@ -45,10 +44,10 @@ def maybe_empty_cache():
         pass
 
 
-def check_controlnet(pipe_or_adapter: DiffusionPipeline | BlockAdapter) -> bool:
+def check_controlnet(pipe_or_adapter: DiffusionPipeline | Any) -> bool:
     """Check if the given pipeline has ControlNet."""
-    if isinstance(pipe_or_adapter, BlockAdapter):
-        pipe = pipe_or_adapter.pipe
+    if not isinstance(pipe_or_adapter, DiffusionPipeline):
+        pipe = getattr(pipe_or_adapter, "pipeline", None)
     else:
         pipe = pipe_or_adapter
     if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
@@ -80,7 +79,7 @@ def parse_text_encoder(
 
 
 def parse_extra_modules(
-    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+    pipe_or_adapter: DiffusionPipeline | Any,
     extra_modules: List[str | torch.nn.Module],
 ) -> Union[List[torch.nn.Module], List]:
     """Parse extra modules according to the given names in extra_modules to
@@ -100,12 +99,12 @@ def parse_extra_modules(
         A list of parsed extra modules as actual module objects. If a module name is not found
         in the pipeline, it will be skipped with a warning.
     """
-    if isinstance(pipe_or_adapter, BlockAdapter):
-        pipe = pipe_or_adapter.pipe
+    if not isinstance(pipe_or_adapter, DiffusionPipeline):
+        pipe = getattr(pipe_or_adapter, "pipe", None)
     else:
         pipe = pipe_or_adapter
 
-    if not extra_modules:  # empty list
+    if not extra_modules or pipe is None:  # empty list
         return []
 
     parsed_extra_modules: List[torch.nn.Module] = []
