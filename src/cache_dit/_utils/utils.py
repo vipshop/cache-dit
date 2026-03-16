@@ -1455,8 +1455,8 @@ def maybe_apply_optimization(
     # Avoid quantization if quant_config is already applied via config file.
     if quantize_config is None:
         maybe_quantize_transformer(args, pipe_or_adapter)
-    maybe_quantize_text_encoder(args, pipe_or_adapter)
-    maybe_quantize_controlnet(args, pipe_or_adapter)
+        maybe_quantize_text_encoder(args, pipe_or_adapter)
+        maybe_quantize_controlnet(args, pipe_or_adapter)
 
     # VAE Tiling or Slicing
     maybe_vae_tiling_or_slicing(args, pipe_or_adapter)
