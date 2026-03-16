@@ -15,7 +15,6 @@ Currently, TorchAo has been integrated into Cache-DiT as the backend for **onlin
 Here are some examples for quick start:
 
 ```python
-# pip3 install "cache-dit[quantization]"
 import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
@@ -26,12 +25,14 @@ cache_dit.enable_cache(
     parallelism_config=ParallelismConfig(ulysses_size=2),
     quantize_config=QuantizeConfig(quant_type="float8"),
 )
-
 ```
 
 Users can also specify different quantization configs for different components. For example, quantize the transformer to float8 and the text encoder to float8 weight only.
 
-```
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+
 cache_dit.enable_cache( 
     pipe, cache_config=DBCacheConfig(), # w/ default
     parallelism_config=ParallelismConfig(ulysses_size=2),
@@ -53,6 +54,9 @@ cache_dit.enable_cache(
 Or, directly call the `quantize` API for more fine-grained control.
 
 ```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
 cache_dit.quantize(
     pipe.transformer, 
     quantize_config=QuantizeConfig(quant_type="float8"),
@@ -66,6 +70,8 @@ cache_dit.quantize(
 Please also enable torch.compile for better performance with quantization.
 
 ```python
+import cache_dit
+
 cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
 pipe.text_encoder = torch.compile(pipe.text_encoder)
@@ -74,6 +80,9 @@ pipe.text_encoder = torch.compile(pipe.text_encoder)
 Users can set `exclude_layers` in `QuantizeConfig` to exclude some sensitive layers that are not robust to quantization, e.g., embedding layers. Layers that contain any of the keywords in the `exclude_layers` list will be excluded from quantization. For example: 
 
 ```python
+import cache_dit
+from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+
 cache_dit.enable_cache( 
     pipe, cache_config=DBCacheConfig(), # w/ default
     parallelism_config=ParallelismConfig(ulysses_size=2),
@@ -91,6 +100,7 @@ The `per_row` flag indicates whether to use per-row quantization (for float8 dyn
 For **4-bits W4A16 (weight only)** quantization, we recommend `nf4` from **bitsandbytes** due to its better compatibility for many devices. Users can directly use it via the `quantization_config` of diffusers. For example:
 
 ```python
+import cache_dit
 from diffusers import QwenImagePipeline
 from diffusers.quantizers import PipelineQuantizationConfig
 
@@ -119,6 +129,10 @@ cache_dit.enable_cache(pipe, cache_config=...)
 cache-dit natively supports the `Hybrid Cache + 🔥Nunchaku SVDQ INT4/FP4 + Context Parallelism` scheme. Users can leverage caching and context parallelism to speed up Nunchaku **4-bit** models. 
 
 ```python
+import cache_dit
+from diffusers import QwenImagePipeline
+from nunchaku import NunchakuQwenImageTransformer2DModel
+
 transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
     f"path-to/svdq-int4_r32-qwen-image.safetensors"
 )
