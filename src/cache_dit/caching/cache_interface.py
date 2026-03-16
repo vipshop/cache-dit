@@ -434,6 +434,9 @@ def enable_cache(
                         f"component names or directly pass the actual modules in components_to_quantize."
                     )
                     for component, name in zip(components, components_to_quantize):
+                        # The text_encoder module maybe overridden by parse_extra_modules,
+                        # so we will try to get the actual module name from the patched
+                        # _actual_module_name attribute if exists.
                         name = getattr(component, "_actual_module_name", name)
                         # Enable quantization for the specified component inplace
                         quantized_component = quantize(component, quantize_config=config)
