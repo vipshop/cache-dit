@@ -122,8 +122,6 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
     _remove_quantization_stats(module)
 
     # Only use 1 depth for the recursion of removing stats in sub modules.
-    for child in module.children():
-        _remove_quantization_stats(child)
     if components_to_quantize is not None:
         from ..utils import parse_extra_modules
 
