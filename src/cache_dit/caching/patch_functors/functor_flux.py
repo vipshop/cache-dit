@@ -28,35 +28,17 @@ class FluxPatchFunctor(PatchFunctor):
         blocks: torch.nn.ModuleList = None,
         **kwargs,
     ) -> FluxTransformer2DModel:
-
-        if hasattr(transformer, "_is_patched"):
-            return transformer
-
         if blocks is None:
             blocks = transformer.single_transformer_blocks
 
-        is_patched = False
         for block in blocks:
             if isinstance(block, FluxSingleTransformerBlock):
                 forward_parameters = inspect.signature(block.forward).parameters.keys()
                 if "encoder_hidden_states" not in forward_parameters:
                     block.forward = __patch_single_forward__.__get__(block)
-                    is_patched = True
 
-        cls_name = transformer.__class__.__name__
-
-        if is_patched:
-            logger.warning(f"Patched {cls_name} for cache-dit.")
-            assert not getattr(transformer, "_is_parallelized", False), (
-                "Please call `cache_dit.enable_cache` before Parallelize, "
-                "the __patch_transformer_forward__ will overwrite the "
-                "parallized forward and cause a downgrade of performance."
-            )
-            transformer.forward = __patch_transformer_forward__.__get__(transformer)
-
-        transformer._is_patched = is_patched  # True or False
-
-        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
+        transformer.forward = __patch_transformer_forward__.__get__(transformer)
+        transformer._is_patched = True  # True or False
 
         return transformer
 

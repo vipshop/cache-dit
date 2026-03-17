@@ -51,6 +51,11 @@ def _is_cached(module: torch.nn.Module) -> bool:
     return getattr(module, "_is_cached", False)
 
 
+def _is_patched(module: torch.nn.Module) -> bool:
+    """Check if the given module is already patched (patch functor applied)."""
+    return getattr(module, "_is_patched", False)
+
+
 def check_text_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
     """Check if the given pipeline has text encoder."""
     if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
@@ -142,6 +147,22 @@ def check_cached(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
     for attr_name in dir(pipe):
         attr = getattr(pipe, attr_name)
         if isinstance(attr, torch.nn.Module) and _is_cached(attr):
+            return True
+    return False
+
+
+def check_patched(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
+    """Check if the given pipeline is already patched (patch functor applied)."""
+    if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+        return _is_patched(module)
+
+    if not isinstance(module, DiffusionPipeline):
+        pipe = getattr(module, "pipe", None)
+    else:
+        pipe = module
+    for attr_name in dir(pipe):
+        attr = getattr(pipe, attr_name)
+        if isinstance(attr, torch.nn.Module) and _is_patched(attr):
             return True
     return False
 

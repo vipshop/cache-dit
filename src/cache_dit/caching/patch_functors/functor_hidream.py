@@ -26,10 +26,6 @@ class HiDreamPatchFunctor(PatchFunctor):
         transformer: HiDreamImageTransformer2DModel,
         **kwargs,
     ) -> HiDreamImageTransformer2DModel:
-        if hasattr(transformer, "_is_patched"):
-            return transformer
-
-        is_patched = False
 
         _block_id = 0
         for block in transformer.double_stream_blocks:
@@ -52,21 +48,8 @@ class HiDreamPatchFunctor(PatchFunctor):
             _block.forward = __patch_single_forward__.__get__(_block)
             _block_id += 1
 
-        is_patched = True
-        cls_name = transformer.__class__.__name__
-
-        if is_patched:
-            logger.warning(f"Patched {cls_name} for cache-dit.")
-            assert not getattr(transformer, "_is_parallelized", False), (
-                "Please call `cache_dit.enable_cache` before Parallelize, "
-                "the __patch_transformer_forward__ will overwrite the "
-                "parallized forward and cause a downgrade of performance."
-            )
-            transformer.forward = __patch_transformer_forward__.__get__(transformer)
-
-        transformer._is_patched = is_patched  # True or False
-
-        logger.info(f"Applied {self.__class__.__name__} for {cls_name}, " f"Patch: {is_patched}.")
+        transformer.forward = __patch_transformer_forward__.__get__(transformer)
+        transformer._is_patched = True
 
         return transformer
 
