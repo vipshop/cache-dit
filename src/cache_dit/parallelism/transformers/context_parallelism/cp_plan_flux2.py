@@ -81,7 +81,7 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-# Implements async Ulysses communication for Flux2Attention when context parallelism
+# Implements async Ulysses communication for Attention module when context parallelism
 # is enabled with Ulysses degree > 1. The async communication allows overlapping
 # communication with computation for better performance.
 def _async_ulysses_attn_flux2(

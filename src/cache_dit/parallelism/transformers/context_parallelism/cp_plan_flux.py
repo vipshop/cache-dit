@@ -102,7 +102,9 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-# Async Ulysses QKV Proj for FLUX model
+# Implements async Ulysses communication for Attention module when context parallelism
+# is enabled with Ulysses degree > 1. The async communication allows overlapping
+# communication with computation for better performance.
 # Reference:
 # - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
 # - https://github.com/huggingface/diffusers/pull/12727 by @zhangtao0408
