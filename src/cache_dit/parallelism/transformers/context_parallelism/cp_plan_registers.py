@@ -41,9 +41,13 @@ class ContextParallelismPlanner:
         # NOTE: This method should only return the CP plan dictionary.
         raise NotImplementedError("apply method must be implemented by subclasses")
 
-    def logging_async_ulysses(transformer: Optional[torch.nn.Module | ModelMixin] = None):
+    def logging_async_ulysses(
+        self,
+        transformer: Optional[torch.nn.Module | ModelMixin] = None,
+    ):
         if transformer is not None:
-            logger.info(f"Async Ulysses Attention is enabled for {transformer.__class__.__name__}.")
+            cls_name = transformer.__class__.__name__
+            logger.info(f"Async Ulysses Attention is enabled for {cls_name}.")
         else:
             logger.info("Async Ulysses Attention is enabled.")
 
