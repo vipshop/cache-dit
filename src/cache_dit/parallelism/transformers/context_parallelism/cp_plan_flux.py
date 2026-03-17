@@ -51,10 +51,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         if parallelism_config.ulysses_async:
             FluxAttnProcessor.__call__ = __patch_flux_attn_processor
             FluxSingleTransformerBlock.forward = __patch_flux_single_block
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for FluxTransformer2DModel."
-            )
+            logger.info("Async Ulysses Attention is enabled.")
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

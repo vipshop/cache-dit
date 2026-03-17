@@ -55,11 +55,7 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             QwenDoubleStreamAttnProcessor2_0.__call__ = (
                 __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
             )
-
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for QwenImageTransformer2DModel."
-            )
+            logger.info("Async Ulysses Attention is enabled.")
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
 

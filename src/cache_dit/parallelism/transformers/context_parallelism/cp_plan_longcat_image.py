@@ -68,10 +68,7 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
             LongCatImageSingleTransformerBlock.forward = (
                 __patch_LongCatImageSingleTransformerBlock_ulysses_async_forward__
             )
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for LongCatImageTransformer2DModel."
-            )
+            logger.info("Async Ulysses Attention is enabled.")
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

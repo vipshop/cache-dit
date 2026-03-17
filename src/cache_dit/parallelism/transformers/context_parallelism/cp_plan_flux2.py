@@ -54,10 +54,7 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
         if parallelism_config.ulysses_async:
             Flux2AttnProcessor.__call__ = __patch_flux2_attn_processor
             Flux2ParallelSelfAttnProcessor.__call__ = __patch_flux2_self_attn_processor
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for Flux2Transformer2DModel."
-            )
+            logger.info("Async Ulysses Attention is enabled.")
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
@@ -67,7 +64,7 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
                 if transformer._cp_plan is not None:
                     return transformer._cp_plan
 
-        # Use costom CP plan in cache-dit for better control and flexibility.
+        # Use custom CP plan in cache-dit for better control and flexibility.
         _cp_plan = {
             "": {
                 "hidden_states": ContextParallelInput(
