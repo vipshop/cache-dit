@@ -32,9 +32,9 @@ from .cp_plan_registers import (
 
 from ....logger import init_logger
 
-from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
-from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
-from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
+from ...attention import _unified_all_to_all_o_async_fn
+from ...attention import _unified_all_to_all_qkv_async_fn
+from ...attention import _prepare_ulysses_comm_metadata
 
 logger = init_logger(__name__)
 
@@ -49,10 +49,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         if parallelism_config.ulysses_async:
-            FluxAttnProcessor.__call__ = __patch_FluxAttnProcessor_ulysses_async__call__
-            FluxSingleTransformerBlock.forward = (
-                __patch_FluxSingleTransformerBlock_ulysses_async_forward__
-            )
+            FluxAttnProcessor.__call__ = __patch_flux_attn_processor
+            FluxSingleTransformerBlock.forward = __patch_flux_single_block
             logger.info(
                 "Enabled experimental Async QKV Projection with Ulysses style "
                 "Context Parallelism for FluxTransformer2DModel."
@@ -111,7 +109,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
 # Reference:
 # - https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py#L43
 # - https://github.com/huggingface/diffusers/pull/12727 by @zhangtao0408
-def _ulysses_attn_with_async_qkv_proj_flux(
+def _async_ulysses_attn_flux(
     self: FluxAttnProcessor,
     attn: FluxAttention,
     hidden_states: torch.Tensor,
@@ -207,11 +205,11 @@ def _ulysses_attn_with_async_qkv_proj_flux(
         return out_wait
 
 
-FluxAttnProcessor_original__call__ = FluxAttnProcessor.__call__
+flux_attn_processor__call__ = FluxAttnProcessor.__call__
 
 
-@functools.wraps(FluxAttnProcessor_original__call__)
-def __patch_FluxAttnProcessor_ulysses_async__call__(
+@functools.wraps(flux_attn_processor__call__)
+def __patch_flux_attn_processor(
     self: FluxAttnProcessor,
     attn: "FluxAttention",
     hidden_states: torch.Tensor,
@@ -225,7 +223,7 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_attn_with_async_qkv_proj_flux(
+        return _async_ulysses_attn_flux(
             self,
             attn,
             hidden_states,
@@ -235,7 +233,7 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
         )
 
     # Otherwise, use the original call for non-ulysses case
-    return FluxAttnProcessor_original__call__(
+    return flux_attn_processor__call__(
         self,
         attn,
         hidden_states,
@@ -246,7 +244,7 @@ def __patch_FluxAttnProcessor_ulysses_async__call__(
 
 
 @functools.wraps(FluxSingleTransformerBlock.forward)
-def __patch_FluxSingleTransformerBlock_ulysses_async_forward__(
+def __patch_flux_single_block(
     self: FluxSingleTransformerBlock,
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
