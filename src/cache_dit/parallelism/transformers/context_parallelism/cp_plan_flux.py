@@ -49,8 +49,8 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         if parallelism_config.ulysses_async:
-            FluxAttnProcessor.__call__ = __patch_flux_attn_processor
-            FluxSingleTransformerBlock.forward = __patch_flux_single_block
+            FluxAttnProcessor.__call__ = __patch_flux_attn_processor__
+            FluxSingleTransformerBlock.forward = __patch_flux_single_block__
             logger.info("Async Ulysses Attention is enabled.")
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
@@ -206,7 +206,7 @@ flux_attn_processor__call__ = FluxAttnProcessor.__call__
 
 
 @functools.wraps(flux_attn_processor__call__)
-def __patch_flux_attn_processor(
+def __patch_flux_attn_processor__(
     self: FluxAttnProcessor,
     attn: "FluxAttention",
     hidden_states: torch.Tensor,
@@ -241,7 +241,7 @@ def __patch_flux_attn_processor(
 
 
 @functools.wraps(FluxSingleTransformerBlock.forward)
-def __patch_flux_single_block(
+def __patch_flux_single_block__(
     self: FluxSingleTransformerBlock,
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,

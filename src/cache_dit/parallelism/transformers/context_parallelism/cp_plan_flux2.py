@@ -52,8 +52,8 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
         self._cp_planner_preferred_native_diffusers = False
 
         if parallelism_config.ulysses_async:
-            Flux2AttnProcessor.__call__ = __patch_flux2_attn_processor
-            Flux2ParallelSelfAttnProcessor.__call__ = __patch_flux2_self_attn_processor
+            Flux2AttnProcessor.__call__ = __patch_flux2_attn_processor__
+            Flux2ParallelSelfAttnProcessor.__call__ = __patch_flux2_self_attn_processor__
             logger.info("Async Ulysses Attention is enabled.")
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
@@ -183,7 +183,7 @@ flux2_attn_processor__call__ = Flux2AttnProcessor.__call__
 
 
 @functools.wraps(flux2_attn_processor__call__)
-def __patch_flux2_attn_processor(
+def __patch_flux2_attn_processor__(
     self: Flux2AttnProcessor,
     attn: "Flux2Attention",
     hidden_states: torch.Tensor,
@@ -293,7 +293,7 @@ flux2_self_attn_processor__call__ = Flux2ParallelSelfAttnProcessor.__call__
 
 
 @functools.wraps(flux2_self_attn_processor__call__)
-def __patch_flux2_self_attn_processor(
+def __patch_flux2_self_attn_processor__(
     self: Flux2ParallelSelfAttnProcessor,
     attn: "Flux2ParallelSelfAttention",
     hidden_states: torch.Tensor,
