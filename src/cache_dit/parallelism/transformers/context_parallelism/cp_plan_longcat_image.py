@@ -68,7 +68,7 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
             LongCatImageSingleTransformerBlock.forward = (
                 __patch_LongCatImageSingleTransformerBlock_ulysses_async_forward__
             )
-            logger.info("Async Ulysses Attention is enabled.")
+            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

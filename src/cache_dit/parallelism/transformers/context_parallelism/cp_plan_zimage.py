@@ -62,7 +62,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
             ZSingleStreamAttnProcessor.__call__ = (
                 __patch_ZSingleStreamAttnProcessor_ulysses_async__call__
             )
-            logger.info("Async Ulysses Attention is enabled.")
+            self.logging_async_ulysses(transformer)
 
         # NOTE: This only a temporary workaround for ZImage to make context parallelism
         # work compatible with DBCache FnB0. The better way is to make DBCache fully

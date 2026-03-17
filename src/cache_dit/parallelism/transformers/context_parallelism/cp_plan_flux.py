@@ -51,7 +51,7 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         if parallelism_config.ulysses_async:
             FluxAttnProcessor.__call__ = __patch_flux_attn_processor__
             FluxSingleTransformerBlock.forward = __patch_flux_single_block__
-            logger.info("Async Ulysses Attention is enabled.")
+            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

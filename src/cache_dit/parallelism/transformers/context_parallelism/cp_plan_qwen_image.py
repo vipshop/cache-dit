@@ -55,10 +55,9 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
             QwenDoubleStreamAttnProcessor2_0.__call__ = (
                 __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
             )
-            logger.info("Async Ulysses Attention is enabled.")
+            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
-
             assert isinstance(
                 transformer, QwenImageTransformer2DModel
             ), "Transformer must be an instance of QwenImageTransformer2DModel"
