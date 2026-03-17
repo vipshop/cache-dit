@@ -24,7 +24,6 @@ class GlmImagePatchFunctor(PatchFunctor):
     ) -> GlmImageTransformer2DModel:
 
         _idx = 0
-
         for block in transformer.transformer_blocks:
             assert isinstance(block, GlmImageTransformerBlock)
             block._idx = _idx

@@ -19,11 +19,8 @@ class DiTPatchFunctor(PatchFunctor):
         transformer: DiTTransformer2DModel,
         **kwargs,
     ) -> DiTTransformer2DModel:
-        if hasattr(transformer, "_is_patched"):
-            return transformer
 
         transformer._norm1_emb = transformer.transformer_blocks[0].norm1.emb
-
         transformer.forward = __patch_transformer_forward__.__get__(transformer)
         transformer._is_patched = True  # True or False
 
