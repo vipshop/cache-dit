@@ -149,7 +149,9 @@ You can also enable async ulysses CP to overlap the communication and computatio
 parallelism_config:
   ulysses_size: auto
   attention_backend: native
-  ulysses_async: true # Now, only support for FLUX.1, Qwen-Image, Ovis-Image and Z-Image.
+  # Now, only support for FLUX.1, FLUX.2, Qwen-Image, Ovis-Image, 
+  # Z-Image and LongCat-Image. More models will be added in the future.
+  ulysses_async: true 
 ```
 Then, apply the config from yaml. Here `ulysses_async: true` means enabling async ulysses CP.
 

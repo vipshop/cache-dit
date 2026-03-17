@@ -27,11 +27,11 @@ from .cp_plan_registers import (
     ContextParallelismPlannerRegister,
     ParallelismConfig,
 )
-from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
-from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
-from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
-from cache_dit.parallelism.attention import _maybe_patch_find_submodule
-from cache_dit.platforms import current_platform
+from ...attention import _unified_all_to_all_o_async_fn
+from ...attention import _unified_all_to_all_qkv_async_fn
+from ...attention import _prepare_ulysses_comm_metadata
+from ...attention import _maybe_patch_find_submodule
+from ....platforms import current_platform
 
 from ....logger import init_logger
 
@@ -59,14 +59,8 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
                     return transformer._cp_plan
 
         if parallelism_config.ulysses_async:
-            ZSingleStreamAttnProcessor.__call__ = (
-                __patch_ZSingleStreamAttnProcessor_ulysses_async__call__
-            )
-
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for ZImageTransformer2DModel."
-            )
+            ZSingleStreamAttnProcessor.__call__ = __patch_zimage_attn_processor__
+            self.logging_async_ulysses(transformer)
 
         # NOTE: This only a temporary workaround for ZImage to make context parallelism
         # work compatible with DBCache FnB0. The better way is to make DBCache fully
@@ -176,8 +170,10 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-# NOTE: Support Async Ulysses QKV projection for Z-Image
-def _ulysses_attn_with_async_qkv_proj_zimage(
+# Implements async Ulysses communication for Attention module when context parallelism
+# is enabled with Ulysses degree > 1. The async communication allows overlapping
+# communication with computation for better performance.
+def _async_ulysses_attn_zimage(
     self: ZSingleStreamAttnProcessor,
     attn: Attention,
     hidden_states: torch.Tensor,
@@ -268,11 +264,11 @@ def _ulysses_attn_with_async_qkv_proj_zimage(
     return output
 
 
-ZSingleStreamAttnProcessor_original__call__ = ZSingleStreamAttnProcessor.__call__
+zimage_attn_processor__call__ = ZSingleStreamAttnProcessor.__call__
 
 
-@functools.wraps(ZSingleStreamAttnProcessor_original__call__)
-def __patch_ZSingleStreamAttnProcessor_ulysses_async__call__(
+@functools.wraps(zimage_attn_processor__call__)
+def __patch_zimage_attn_processor__(
     self: ZSingleStreamAttnProcessor,
     attn: Attention,
     hidden_states: torch.Tensor,
@@ -286,7 +282,7 @@ def __patch_ZSingleStreamAttnProcessor_ulysses_async__call__(
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_attn_with_async_qkv_proj_zimage(
+        return _async_ulysses_attn_zimage(
             self,
             attn,
             hidden_states,
@@ -295,7 +291,7 @@ def __patch_ZSingleStreamAttnProcessor_ulysses_async__call__(
             freqs_cis,
         )
     else:
-        return ZSingleStreamAttnProcessor_original__call__(
+        return zimage_attn_processor__call__(
             self,
             attn,
             hidden_states,

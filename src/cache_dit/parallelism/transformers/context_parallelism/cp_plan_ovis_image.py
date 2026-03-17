@@ -40,9 +40,9 @@ from .cp_plan_registers import (
 
 from ....logger import init_logger
 
-from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
-from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
-from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
+from ...attention import _unified_all_to_all_o_async_fn
+from ...attention import _unified_all_to_all_qkv_async_fn
+from ...attention import _prepare_ulysses_comm_metadata
 
 logger = init_logger(__name__)
 
@@ -57,14 +57,9 @@ class OvisImageContextParallelismPlanner(ContextParallelismPlanner):
     ) -> ContextParallelModelPlan:
 
         if parallelism_config.ulysses_async:
-            OvisImageAttnProcessor.__call__ = __patch_OvisImageAttnProcessor_ulysses_async__call__
-            OvisImageSingleTransformerBlock.forward = (
-                __patch_OvisImageSingleTransformerBlock_ulysses_async_forward__
-            )
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for OvisImageTransformer2DModel."
-            )
+            OvisImageAttnProcessor.__call__ = __patch_ovis_attn_processor__
+            OvisImageSingleTransformerBlock.forward = __patch_ovis_single_block__
+            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(
@@ -115,8 +110,10 @@ class OvisImageContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-# Async Ulysses QKV Proj for OvisImage model
-def _ulysses_attn_with_async_qkv_proj_ovis_image(
+# Implements async Ulysses communication for Attention module when context parallelism
+# is enabled with Ulysses degree > 1. The async communication allows overlapping
+# communication with computation for better performance.
+def _async_ulysses_attn_ovis(
     self: OvisImageAttnProcessor,
     attn: OvisImageAttention,
     hidden_states: torch.Tensor,
@@ -212,11 +209,11 @@ def _ulysses_attn_with_async_qkv_proj_ovis_image(
         return out_wait
 
 
-OvisImageAttnProcessor_original__call__ = OvisImageAttnProcessor.__call__
+ovis_attn_processor__call__ = OvisImageAttnProcessor.__call__
 
 
-@functools.wraps(OvisImageAttnProcessor_original__call__)
-def __patch_OvisImageAttnProcessor_ulysses_async__call__(
+@functools.wraps(ovis_attn_processor__call__)
+def __patch_ovis_attn_processor__(
     self: OvisImageAttnProcessor,
     attn: "OvisImageAttention",
     hidden_states: torch.Tensor,
@@ -230,7 +227,7 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_attn_with_async_qkv_proj_ovis_image(
+        return _async_ulysses_attn_ovis(
             self,
             attn,
             hidden_states,
@@ -240,7 +237,7 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
         )
 
     # Otherwise, use the original call for non-ulysses case
-    return OvisImageAttnProcessor_original__call__(
+    return ovis_attn_processor__call__(
         self,
         attn,
         hidden_states,
@@ -251,7 +248,7 @@ def __patch_OvisImageAttnProcessor_ulysses_async__call__(
 
 
 @functools.wraps(OvisImageSingleTransformerBlock.forward)
-def __patch_OvisImageSingleTransformerBlock_ulysses_async_forward__(
+def __patch_ovis_single_block__(
     self: OvisImageSingleTransformerBlock,
     hidden_states: torch.Tensor,
     encoder_hidden_states: torch.Tensor,

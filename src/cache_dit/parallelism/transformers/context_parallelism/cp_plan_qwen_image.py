@@ -30,9 +30,9 @@ from .cp_plan_registers import (
     ParallelismConfig,
 )
 
-from cache_dit.parallelism.attention import _unified_all_to_all_o_async_fn
-from cache_dit.parallelism.attention import _unified_all_to_all_qkv_async_fn
-from cache_dit.parallelism.attention import _prepare_ulysses_comm_metadata
+from ...attention import _unified_all_to_all_o_async_fn
+from ...attention import _unified_all_to_all_qkv_async_fn
+from ...attention import _prepare_ulysses_comm_metadata
 
 from ....logger import init_logger
 
@@ -52,17 +52,10 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         self._cp_planner_preferred_native_diffusers = False
 
         if parallelism_config.ulysses_async:
-            QwenDoubleStreamAttnProcessor2_0.__call__ = (
-                __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__
-            )
-
-            logger.info(
-                "Enabled experimental Async QKV Projection with Ulysses style "
-                "Context Parallelism for QwenImageTransformer2DModel."
-            )
+            QwenDoubleStreamAttnProcessor2_0.__call__ = __patch_qwen_attn_processor__
+            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
-
             assert isinstance(
                 transformer, QwenImageTransformer2DModel
             ), "Transformer must be an instance of QwenImageTransformer2DModel"
@@ -123,8 +116,10 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
         return _cp_plan
 
 
-# NOTE: Support Async Ulysses QKV projection for Qwen-Image
-def _ulysses_attn_with_async_qkv_proj_qwen_image(
+# Implements async Ulysses communication for Attention module when context parallelism
+# is enabled with Ulysses degree > 1. The async communication allows overlapping
+# communication with computation for better performance.
+def _async_ulysses_attn_qwen(
     self: QwenDoubleStreamAttnProcessor2_0,
     attn: Attention,
     hidden_states: torch.FloatTensor,  # Image stream
@@ -240,11 +235,11 @@ def _ulysses_attn_with_async_qkv_proj_qwen_image(
     return img_attn_output, txt_attn_output
 
 
-QwenDoubleStreamAttnProcessor2_0_original__call__ = QwenDoubleStreamAttnProcessor2_0.__call__
+qwen_attn_processor__call__ = QwenDoubleStreamAttnProcessor2_0.__call__
 
 
-@functools.wraps(QwenDoubleStreamAttnProcessor2_0_original__call__)
-def __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__(
+@functools.wraps(qwen_attn_processor__call__)
+def __patch_qwen_attn_processor__(
     self: QwenDoubleStreamAttnProcessor2_0,
     attn: Attention,
     hidden_states: torch.FloatTensor,  # Image stream
@@ -259,7 +254,7 @@ def __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__(
         and self._parallel_config.context_parallel_config is not None
         and self._parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return _ulysses_attn_with_async_qkv_proj_qwen_image(
+        return _async_ulysses_attn_qwen(
             self,
             attn,
             hidden_states,
@@ -269,7 +264,7 @@ def __patch_QwenDoubleStreamAttnProcessor2_0_ulysses_async__call__(
             image_rotary_emb,
         )
     else:
-        return QwenDoubleStreamAttnProcessor2_0_original__call__(
+        return qwen_attn_processor__call__(
             self,
             attn,
             hidden_states,
