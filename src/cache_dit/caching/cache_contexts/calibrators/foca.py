@@ -1,6 +1,4 @@
-from cache_dit.caching.cache_contexts.calibrators.base import (
-    CalibratorBase,
-)
+from .base import CalibratorBase
 
 
 class FoCaCalibrator(CalibratorBase):

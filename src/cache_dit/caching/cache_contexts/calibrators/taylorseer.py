@@ -3,11 +3,9 @@
 import math
 import torch
 from typing import List, Dict
-from cache_dit.caching.cache_contexts.calibrators.base import (
-    CalibratorBase,
-)
+from .base import CalibratorBase
 
-from cache_dit.logger import init_logger
+from ....logger import init_logger
 
 logger = init_logger(__name__)
 

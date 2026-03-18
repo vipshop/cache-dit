@@ -1,12 +1,6 @@
-from cache_dit.caching.cache_contexts.calibrators.base import (
-    CalibratorBase,
-)
-from cache_dit.caching.cache_contexts.calibrators.taylorseer import (
-    TaylorSeerCalibrator,
-)
-from cache_dit.caching.cache_contexts.calibrators.foca import (
-    FoCaCalibrator,
-)
+from .base import CalibratorBase
+from .taylorseer import TaylorSeerCalibrator
+from .foca import FoCaCalibrator
 
 import dataclasses
 from typing import Any, Dict
