@@ -2,17 +2,19 @@
 
 <div id="quantization"></div>
 
-## Cache-DiT w/ TorchAo backend (Recommended)
+## Cache-DiT w/ TorchAo
 
-Currently, TorchAo has been integrated into Cache-DiT as the backend for **online** model quantization (with more backends to be supported in the future). You can implement model quantization by calling <span style="color:pink;">cache_dit.quantize(...)</span> or pass a <span style="color:pink;">QuantizeConfig</span> to <span style="color:pink;">cache_dit.enable_cache(...)</span>. For GPUs with low memory capacity, we recommend using `float8`, `float8_weight_only`, `int8_weight_only`, as these methods cause almost no loss in precision. Supported quantization types including:  
+Currently, TorchAo has been integrated into Cache-DiT as the backend for **online** model quantization (recommended). You can implement model quantization by calling **cache_dit.quantize(...)** or pass a **QuantizeConfig** to **cache_dit.enable_cache(...)**. 
 
-  - <span style="color:pink;">float8</span>: quantize both weights and activations to float8 (dynamic quantization).  
-  - <span style="color:pink;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision (weight-only quantization).  
-  - <span style="color:pink;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
-  - <span style="color:pink;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision (weight-only quantization).  
-  - <span style="color:pink;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision but lower performance.
+For GPUs with low memory capacity, we recommend using **float8**, **float8_weight_only**, **int8_weight_only**, as these methods cause almost no loss in precision. Supported quantization types including:  
 
-Here are some examples for quick start:
+  - <span style="color:hotpink;">float8</span>: quantize both weights and activations to float8 (dynamic quantization).  
+  - <span style="color:hotpink;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision.  
+  - <span style="color:hotpink;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
+  - <span style="color:hotpink;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision.  
+  - <span style="color:hotpink;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision.
+
+Here are some examples of how to use quantization with cache-dit. You can directly specify the quantization config in the `enable_cache` API.
 
 ```python
 import cache_dit

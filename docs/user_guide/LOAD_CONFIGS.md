@@ -234,7 +234,7 @@ cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
 ```
 
-- fined grain quantization
+- fine-grained quantization
 
 You can also specify the quantization config (via `components_to_quantize`) for different components in the yaml file `quantize_extra.yaml` that contains:
 
