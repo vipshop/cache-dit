@@ -1,4 +1,5 @@
 import importlib
+from typing import Callable
 from ..logger import init_logger
 
 logger = init_logger(__name__)
@@ -11,7 +12,7 @@ def import_error_metric_func(*args, **kwargs):
     )
 
 
-def _safe_import(module_name: str, func_name: str):
+def _safe_import(module_name: str, func_name: str) -> Callable:
     """Helper function to safely import a function from a module."""
     try:
         package = __package__ if __package__ is not None else ""
