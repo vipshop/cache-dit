@@ -10,16 +10,19 @@ from typing import Callable, Union, Tuple, List
 from skimage.metrics import mean_squared_error
 from skimage.metrics import peak_signal_noise_ratio
 from skimage.metrics import structural_similarity
+
+from .utils import _safe_import
 from .config import set_metrics_verbose
 from .config import get_metrics_verbose
 from .config import _IMAGE_EXTENSIONS
 from .config import _VIDEO_EXTENSIONS
-from .fid import compute_fid
-from .fid import compute_video_fid
-from .lpips import compute_lpips_img
-from .clip_score import compute_clip_score
-from .image_reward import compute_reward_score
 from ..logger import init_logger
+
+compute_fid = _safe_import(".fid", "compute_fid")
+compute_video_fid = _safe_import(".fid", "compute_video_fid")
+compute_lpips_img = _safe_import(".metrics", "compute_lpips_img")
+compute_clip_score = _safe_import(".clip_score", "compute_clip_score")
+compute_reward_score_img = _safe_import(".image_reward", "compute_reward_score_img")
 
 logger = init_logger(__name__)
 

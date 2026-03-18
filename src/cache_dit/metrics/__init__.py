@@ -1,26 +1,15 @@
-try:
-    import ImageReward
-    import lpips
-    import skimage
-    import scipy
-except ImportError:
-    raise ImportError(
-        "Metrics functionality requires the 'metrics' extra dependencies. "
-        "Install with:\npip install cache-dit[metrics]"
-    )
+from .utils import _safe_import
 
-from .metrics import compute_psnr
-from .metrics import compute_ssim
-from .metrics import compute_mse
-from .metrics import compute_video_psnr
-from .metrics import compute_video_ssim
-from .metrics import compute_video_mse
-from .fid import FrechetInceptionDistance
-from .fid import compute_fid
-from .fid import compute_video_fid
-from .config import set_metrics_verbose
-from .config import get_metrics_verbose
-from .metrics import entrypoint
+compute_psnr = _safe_import(".metrics", "compute_psnr")
+compute_ssim = _safe_import(".metrics", "compute_ssim")
+compute_mse = _safe_import(".metrics", "compute_mse")
+compute_video_psnr = _safe_import(".metrics", "compute_video_psnr")
+compute_video_ssim = _safe_import(".metrics", "compute_video_ssim")
+compute_video_mse = _safe_import(".metrics", "compute_video_mse")
+FrechetInceptionDistance = _safe_import(".fid", "FrechetInceptionDistance")
+compute_fid = _safe_import(".fid", "compute_fid")
+compute_video_fid = _safe_import(".fid", "compute_video_fid")
+entrypoint = _safe_import(".metrics", "entrypoint")
 
 
 def main():
