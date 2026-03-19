@@ -591,6 +591,7 @@ def get_args(
     )
     parser.add_argument(
         "--max-autotune",
+        "--tune",
         action="store_true",
         default=False,
         help="Enable max-autotune mode for torch.compile",
