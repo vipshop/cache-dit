@@ -356,7 +356,6 @@ class CachedBlocks_Pattern_Base(torch.nn.Module):
             )
 
         # patch cached stats for blocks or remove it.
-
         return self._process_forward_outputs(
             hidden_states,
             encoder_hidden_states,
@@ -639,7 +638,6 @@ class PrunedBlocks_Pattern_Base(CachedBlocks_Pattern_Base):
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
-
         if can_use_prune:
             self.context_manager.add_pruned_step()
             hidden_states, encoder_hidden_states = self.context_manager.apply_prune(

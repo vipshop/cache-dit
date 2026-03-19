@@ -429,7 +429,6 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
-
         if can_use_prune:
             self.context_manager.add_pruned_step()
             hidden_states, new_encoder_hidden_states = self.context_manager.apply_prune(
