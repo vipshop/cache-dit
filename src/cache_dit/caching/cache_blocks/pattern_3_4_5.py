@@ -128,7 +128,6 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
             ),
         )
 
-        torch._dynamo.graph_break()
         if can_use_cache:
             self.context_manager.add_cached_step()
             del Fn_hidden_states_residual
@@ -146,7 +145,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                     else f"{self.cache_prefix}_Bn_hidden_states"
                 ),
             )
-            torch._dynamo.graph_break()
+
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
             if self.context_manager.Bn_compute_blocks() > 0:
@@ -167,7 +166,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                     f"{self.cache_prefix}_Fn_hidden_states",
                 )
             del Fn_hidden_states_residual
-            torch._dynamo.graph_break()
+
             old_encoder_hidden_states = new_encoder_hidden_states
             (
                 hidden_states,
@@ -179,7 +178,6 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                 **kwargs,
             )
 
-            torch._dynamo.graph_break()
             if self.context_manager.is_cache_residual():
                 self.context_manager.set_Bn_buffer(
                     hidden_states_residual,
@@ -207,7 +205,7 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                         new_encoder_hidden_states_residual,
                         prefix=f"{self.cache_prefix}_Bn_hidden_states",
                     )
-            torch._dynamo.graph_break()
+
             # Call last `n` blocks to further process the hidden states
             # for higher precision.
             if self.context_manager.Bn_compute_blocks() > 0:
@@ -216,8 +214,6 @@ class CachedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_Base):
                     *args,
                     **kwargs,
                 )
-
-        torch._dynamo.graph_break()
 
         return self._process_forward_outputs(
             hidden_states,
@@ -433,7 +429,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
 
         # Prune steps: Prune current block and reuse the cached
         # residuals for hidden states approximate.
-        torch._dynamo.graph_break()
+
         if can_use_prune:
             self.context_manager.add_pruned_step()
             hidden_states, new_encoder_hidden_states = self.context_manager.apply_prune(
@@ -450,7 +446,7 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                     else f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states"
                 ),
             )
-            torch._dynamo.graph_break()
+
         else:
             # Normal steps: Compute the block and cache the residuals.
             hidden_states = block(
@@ -501,6 +497,5 @@ class PrunedBlocks_Pattern_3_4_5(CachedBlocks_Pattern_3_4_5):
                             new_encoder_hidden_states_residual,
                             prefix=f"{self.cache_prefix}_{block_id}_Bn_encoder_hidden_states",
                         )
-            torch._dynamo.graph_break()
 
         return hidden_states, new_encoder_hidden_states
