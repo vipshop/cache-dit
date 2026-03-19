@@ -176,6 +176,8 @@ def suppress_torch_compile_loggers() -> dict[str, int]:
 # Adapted from: https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/utils/logging_utils.py#L396
 def globally_suppress_loggers() -> dict[str, int]:
     """Set specified loggers to ERROR level to suppress logs globally."""
+    warnings.filterwarnings("ignore", category=UserWarning, module=r"torchao*")
+    warnings.filterwarnings("ignore", category=SyntaxWarning, module=r"torchao*")
     loggers_to_suppress = [
         "torchao",
         "torch.distributed.run",
