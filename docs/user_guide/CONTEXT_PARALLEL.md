@@ -4,7 +4,7 @@
 
 <div id="context-parallelism"></div>
 
-cache-dit is compatible with context parallelism. Currently, we support the use of `Hybrid Cache` + `Context Parallelism` scheme (via NATIVE_DIFFUSER parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples](https://github.com/vipshop/cache-dit/tree/main/examples). Currently, cache-dit supported context parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [LTXVideo](https://huggingface.co/Lightricks/LTX-Video), [Wan 2.1](https://github.com/Wan-Video/Wan2.1), [Wan 2.2](https://github.com/Wan-Video/Wan2.2), [HunyuanImage-2.1](https://huggingface.co/tencent/HunyuanImage-2.1), [HunyuanVideo](https://huggingface.co/hunyuanvideo-community/HunyuanVideo), [CogVideoX 1.0](https://github.com/zai-org/CogVideo), [CogVideoX 1.5](https://github.com/zai-org/CogVideo), [CogView 3/4](https://github.com/zai-org/CogView4) and [VisualCloze](https://github.com/lzyhha/VisualCloze), etc. cache-dit will support more models in the future.
+cache-dit is compatible with context parallelism. Currently, we support the use of <span style="color:hotpink;">Hybrid Cache</span> + <span style="color:hotpink;">Context Parallelism</span> scheme (via <span style="color:hotpink;">NATIVE_DIFFUSER</span> parallelism backend) in cache-dit. Users can use Context Parallelism to further accelerate the speed of inference! For more details, please refer to [📚examples](https://github.com/vipshop/cache-dit/tree/main/examples). Currently, cache-dit supported context parallelism for [FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev), [Qwen-Image](https://github.com/QwenLM/Qwen-Image), [Qwen-Image-Lightning](https://github.com/ModelTC/Qwen-Image-Lightning), [LTXVideo](https://huggingface.co/Lightricks/LTX-Video), [Wan 2.1](https://github.com/Wan-Video/Wan2.1), [Wan 2.2](https://github.com/Wan-Video/Wan2.2), [HunyuanImage-2.1](https://huggingface.co/tencent/HunyuanImage-2.1), [HunyuanVideo](https://huggingface.co/hunyuanvideo-community/HunyuanVideo), [CogVideoX 1.0](https://github.com/zai-org/CogVideo), [CogVideoX 1.5](https://github.com/zai-org/CogVideo), [CogView 3/4](https://github.com/zai-org/CogView4) and [VisualCloze](https://github.com/lzyhha/VisualCloze), etc. cache-dit will support more models in the future.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -26,7 +26,7 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-✅**Any Sequence Length**: We have implemented the **[📚UAA: Ulysses Anything Attention](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence len of hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+✅<span style="color:hotpink;">Any Sequence Length</span>: We have implemented the **[📚<span style="color:hotpink;">UAA: Ulysses Anything Attention</span>](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence len of hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
 
 
 ```python
@@ -48,7 +48,7 @@ For example, in the T2I and I2V tasks, the length of prompts input by users is o
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
-Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **✅gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the <span style="color:hotpink;">**✅gloo**</span> backend in `init_process_group`. This will significantly reduce communication latency.
 
 <p align="center">
     ✅<b>Any Sequence Length</b><br>
@@ -64,7 +64,7 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 |✔️U* ✔️UAA|✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA|NO CP|❌U* ✔️UAA|
 
 
-✅**Any Head Num**: By the way, Ulysses Attention and UAA in cache-dit now **support arbitrary numbers of heads** via additional padding and unpadding operations implemented before and after all-to-all. The overhead incurred by these extra padding and unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
+✅<span style="color:hotpink;">Any Head Num</span>: By the way, Ulysses Attention and UAA in cache-dit now **support arbitrary numbers of heads** via additional padding and unpadding operations implemented before and after all-to-all. The overhead incurred by these extra padding and unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
 
 
 <p align="center">
@@ -94,7 +94,7 @@ Important: Please note that **Ulysses Anything Attention (UAA)** is currently an
 
 ![async_ulysses](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses.png)
 
-Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for **Async Ulysses QKV Projection** for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image), 🔥[Ovis-Image](https://github.com/AIDC-AI/Ovis-Image), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) and 🔥[LongCat-Image](https://github.com/meituan-longcat/LongCat-Image) models are supported, and more models will be added in the future—stay tuned!
+Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for <span style="color:hotpink;">**Async Ulysses QKV Projection**</span> for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image), 🔥[Ovis-Image](https://github.com/AIDC-AI/Ovis-Image), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) and 🔥[LongCat-Image](https://github.com/meituan-longcat/LongCat-Image) models are supported, and more models will be added in the future—stay tuned!
 
 ```python
 from cache_dit import ParallelismConfig
@@ -112,7 +112,7 @@ cache_dit.enable_cache(
 
 
 <p align="center">
-    Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attenton with Async QKV Projection
+    Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attention with Async QKV Projection
 </p>
 
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
@@ -126,7 +126,7 @@ cache_dit.enable_cache(
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit has implemented **Async FP8 Ulysses Attention** for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. To maintain higher precision during softmax computation—where `Softmax(Q@K^T)` is sensitive to numerical instability—we currently retain `K in FP16/BF16` format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
+cache-dit has implemented <span style="color:hotpink;">**Async FP8 Ulysses Attention**</span> for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. To maintain higher precision during softmax computation—where <span style="color:hotpink;">Softmax(Q@K^T)</span> is sensitive to numerical instability—we currently retain <span style="color:hotpink;">K in FP16/BF16</span> format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -150,7 +150,7 @@ cache_dit.enable_cache(
 
 ## Ring Attention with Batched P2P  
 
-Currently, cache-dit support 2 ring_rotate_method, namely, `allgather` and `p2p`. `allgather`: Use allgather to gather the key and value tensors. `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors (default). This method is more efficient due to th better overlap of communication and computation.
+Currently, cache-dit support 2 ring_rotate_method, namely, <span style="color:hotpink;">allgather</span> and <span style="color:hotpink;">p2p</span>. `allgather`: Use allgather to gather the key and value tensors. `p2p`: Use batch_isend_irecv ops to rotate the key and value tensors (default). This method is more efficient due to th better overlap of communication and computation.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -175,7 +175,7 @@ The FLUX.1-dev benchmark for Ring w/ allgather (AG), Ring w/ batched p2p (p2p) a
 
 ## USP: Unified Sequence Parallelism
 
-Unified Sequence Parallelism combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses’s all-to-all communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the all-to-all to restore the original layout.   
+<span style="color:hotpink;">Unified Sequence Parallelism</span> combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses’s all-to-all communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the all-to-all to restore the original layout.   
 
 Ulysses Attention efficiently parallelizes across attention heads. Ring Attention handles very long sequences with minimal memory overhead. Together, they enable 2D parallelization across both heads and sequence dimensions
 

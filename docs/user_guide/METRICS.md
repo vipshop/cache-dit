@@ -22,7 +22,7 @@ fid,    n = compute_fid("true_dir", "test_dir")
 
 ## Metrics Command Line
 
-Or, you can use `cache-dit-metrics` tool. For examples: 
+Or, you can use <span style="color:hotpink;">cache-dit-metrics</span> tool. For examples: 
 
 ```bash
 cache-dit-metrics -h  # show usage
