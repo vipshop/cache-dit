@@ -570,6 +570,18 @@ def get_args(
         default=False,
         help="Enable compile for repeated blocks in transformer",
     )
+    # Force compile dynamic, this is useful for case PyTorch native TP + dynamic shape
+    # + compile, where the shape of some inputs to transformer may change a lot during
+    # inference, which can cause compile error if we let 'dynamic' to None (default),
+    # we need to force it to be True to avoid the compile error. Note that setting
+    # dynamic=True may cause some performance regression, so we only enable it when
+    # necessary. e.g., Qwen-Image-Edit, FLUX.2-klein-9b-kv w/ TP, etc.
+    parser.add_argument(
+        "--force-compile-dynamic",
+        action="store_true",
+        default=False,
+        help="Force set the compiled transformer to dynamic mode. ",
+    )
     parser.add_argument(
         "--compile-vae",
         action="store_true",
@@ -964,6 +976,25 @@ def maybe_compile_transformer(
         else:
             pipe = pipe_or_adapter
 
+        _class_maybe_force_compile_dynamic = [
+            "QwenImage",
+            "Flux2KleinKV",
+        ]
+
+        def _maybe_force_compile_dynamic():
+            if args.force_compile_dynamic:
+                return True
+            if args.parallel_type is None or "tp" not in args.parallel_type.lower():
+                return False
+            # For some specific pipelines with PyTorch native TP.
+            # Auto check if the pipeline class name starts with any
+            # of the specified prefixes to decide whether to force
+            # compile dynamic.
+            pipe_cls_name = pipe.__class__.__name__
+            return any(
+                [pipe_cls_name.startswith(prefix) for prefix in _class_maybe_force_compile_dynamic]
+            )
+
         def _compile_transformer_module(transformer, name):
             if transformer is not None and not isinstance(
                 transformer,
@@ -981,12 +1012,14 @@ def maybe_compile_transformer(
                         )
                         transformer.compile_repeated_blocks(
                             mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                            dynamic=_maybe_force_compile_dynamic(),
                         )
                     else:
                         logger.info(f"Compiling {name} module: {transformer_cls_name} ...")
                         transformer = torch.compile(
                             transformer,
                             mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                            dynamic=_maybe_force_compile_dynamic(),
                         )
                     setattr(pipe, name, transformer)
                 else:
