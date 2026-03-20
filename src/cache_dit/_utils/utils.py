@@ -990,9 +990,11 @@ def maybe_compile_transformer(
             # Auto check if the pipeline class name starts with any
             # of the specified prefixes to decide whether to force
             # compile dynamic.
-            pipe_cls_name = pipe.__class__.__name__
             return any(
-                [pipe_cls_name.startswith(prefix) for prefix in _class_maybe_force_compile_dynamic]
+                [
+                    pipe.__class__.__name__.startswith(prefix)
+                    for prefix in _class_maybe_force_compile_dynamic
+                ]
             )
 
         def _compile_transformer_module(transformer, name):
