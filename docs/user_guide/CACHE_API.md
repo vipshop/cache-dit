@@ -58,7 +58,7 @@ For such situations, **<span style="color:hotpink;">BlockAdapter</span>** can he
 
 ## Hybrid Forward Pattern
 
-Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different f<span style="color:hotpink;">orward patterns</span>). The **<span style="color:hotpink;">BlockAdapter</span>** can also help you solve this problem. 
+Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different **<span style="color:hotpink;">Forward Patterns</span>**). The **<span style="color:hotpink;">BlockAdapter</span>** can also help you solve this problem. 
 ```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
 # single_transformer_blocks have different forward patterns.
