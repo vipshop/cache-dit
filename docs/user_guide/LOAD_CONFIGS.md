@@ -1,12 +1,12 @@
 # Use Yaml Config File
 
-Cache-DiT now supported load the acceleration configs from a custom yaml file. Here are some examples.
+Cache-DiT now supported load the acceleration configs from a custom <span style="color:hotpink;">yaml file</span>. Here are some examples.
 
 ## Single GPU inference  
 
 Define a cache only config yaml `cache.yaml` file that contains:
 
-- DBCache + TaylorSeer
+- <span style="color:hotpink;">DBCache + TaylorSeer</span>
 
 ```yaml
 cache_config:
@@ -27,7 +27,7 @@ Then, apply the acceleration config from yaml.
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("cache.yaml"))
 ```
 
-- DBCache + TaylorSeer + SCM (Step Computation Mask)
+- <span style="color:hotpink;">DBCache + TaylorSeer + SCM (Step Computation Mask)</span>
 
 ```yaml
 cache_config:
@@ -46,7 +46,7 @@ cache_config:
   steps_computation_mask: fast
 ```
 
-- DBCache + TaylorSeer + SCM (Step Computation Mask) + Cache CFG
+- <span style="color:hotpink;">DBCache + TaylorSeer + SCM (Step Computation Mask) + Cache CFG</span>
 
 ```yaml
 cache_config:
@@ -66,7 +66,7 @@ cache_config:
 
 ## Distributed inference  
 
-- 1D Parallelism
+- <span style="color:hotpink;">1D Parallelism</span>
 
 Define a parallelism only config yaml `parallel.yaml` file that contains:
 
@@ -81,7 +81,7 @@ Then, apply the distributed inference acceleration config from yaml. `ulysses_si
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
 ```
 
-- 2D Parallelism
+- <span style="color:hotpink;">2D Parallelism</span>
 
 You can also define a 2D parallelism config yaml `parallel_2d.yaml` file that contains:
 
@@ -97,7 +97,7 @@ Then, apply the 2D parallelism config from yaml. Here `tp_size: 2` means using t
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_2d.yaml"))
 ```
 
-- 3D Parallelism
+- <span style="color:hotpink;">3D Parallelism</span>
 
 You can also define a 3D parallelism config yaml `parallel_3d.yaml` file that contains:
 
@@ -114,7 +114,7 @@ Then, apply the 3D parallelism config from yaml. Here `ulysses_size: 2`, `ring_s
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_3d.yaml"))
 ```
 
-- Ulysses Anything Attention
+- <span style="color:hotpink;">Ulysses Anything Attention</span>
 
 To enable Ulysses Anything Attention, you can define a parallelism config yaml `parallel_uaa.yaml` file that contains:
 
@@ -130,7 +130,7 @@ Then, apply the config from yaml. Here `ulysses_anything: true` means enabling U
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_uaa.yaml"))
 ```
 
-- Ulysses FP8 Communication
+- <span style="color:hotpink;">Ulysses FP8 Communication</span>
 
 For device that don't have NVLink support, you can enable Ulysses FP8 Communication to further reduce the communication overhead. You can define a parallelism config yaml `parallel_fp8.yaml` file that contains:
 
@@ -141,7 +141,7 @@ parallelism_config:
   ulysses_float8: true
 ```
 
-- Async Ulysses CP 
+- <span style="color:hotpink;">Async Ulysses CP</span>
 
 You can also enable async ulysses CP to overlap the communication and computation. Define a parallelism config yaml `parallel_async.yaml` file that contains:
 
@@ -155,7 +155,7 @@ parallelism_config:
 ```
 Then, apply the config from yaml. Here `ulysses_async: true` means enabling async ulysses CP.
 
-- TE-P and VAE-P
+- <span style="color:hotpink;">TE-P and VAE-P</span>
 
 You can also specify the extra parallel modules in the yaml config. For example, define a parallelism config yaml `parallel_extra.yaml` file that contains:
 
@@ -209,7 +209,7 @@ Then, apply the attention backend config from yaml.
 
 You can also specify the quantization config in the yaml file. For example, define a yaml file `quantize.yaml` that contains:
 
-- quantize transformer
+- <span style="color:hotpink;">quantize transformer</span>
 
 ```yaml
 quantize_config: # quantization configuration for transformer modules
@@ -234,7 +234,7 @@ cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
 ```
 
-- fine-grained quantization
+- <span style="color:hotpink;">fine-grained quantization</span>
 
 You can also specify the quantization config (via `components_to_quantize`) for different components in the yaml file `quantize_extra.yaml` that contains:
 

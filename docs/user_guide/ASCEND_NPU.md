@@ -1,16 +1,6 @@
 # Ascend NPU Support 
 
-🔥We are excited to announce that Cache-DiT now provides **native** support for **Ascend NPU**. Theoretically, **nearly all** models supported by Cache-DiT can run on Ascend NPU with most of Cache-DiT’s optimization technologies, including:
-
-- **Hybrid Cache Acceleration** ([**DBCache**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#dbcache-dual-block-cache), DBPrune, [**TaylorSeer**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#hybrid-taylorseer-calibrator), [**SCM**](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/#scm-steps-computation-masking) and more)
-- **Context Parallelism** (w/ Extended Diffusers' CP APIs, [**UAA**](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/#uaa-ulysses-anything-attention), Async Ulysses, ...)
-- **Tensor Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
-- **Text Encoder Parallelism** (w/ PyTorch native DTensor and Tensor Parallelism APIs)
-- **Auto Encoder (VAE) Parallelism** (w/ Data or Tile Parallelism, avoid OOM)
-- **ControlNet Parallelism** (w/ Context Parallelism for ControlNet module)
-- Built-in **HTTP serving** deployment support with simple REST APIs
-
-Please refer to **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
+We are excited to announce that Cache-DiT now provides **native** support for <span style="color:hotpink;">**Ascend NPU**</span>. Theoretically, **nearly all** models supported by Cache-DiT can run on Ascend NPU with most of Cache-DiT’s optimization technologies. Please refer to **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
 
 ## Features Support 
 
@@ -25,10 +15,11 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 
 |backend|details|parallelism|attn_mask|
 |:---|:---|:---|:---|    
-|native| Native SDPA Attention in PyTorch|✅|✅|  
-|_native_npu| Optimized Ascend NPU Attention|✅|✅|
+|<span style="color:hotpink;">native</span>| Native SDPA Attention in PyTorch|✅|✅|  
+|<span style="color:hotpink;">_native_npu</span>| Optimized Ascend NPU Attention|✅|✅|
+|<span style="color:hotpink;">_npu_fia</span>| NPU Attention for Ring Parallelism|✅|✅|
 
-We strongly recommend using the `_native_npu` backend to achieve better performance.
+We strongly recommend using the <span style="color:hotpink;">_native_npu</span> backend to achieve better performance.
 
 ## Environment Requirements
 
@@ -91,7 +82,7 @@ docker run --rm \
 
 ### Install PyTorch 
 
-If install failed by using pip command, you can get `torch-2.8.0*.whl` file by [Link](https://download.pytorch.org/whl/torch/) and install manually.
+If install failed by using pip command, you can get <span style="color:hotpink;">torch-2.8.0+cpu</span> whl file by [Link](https://download.pytorch.org/whl/torch/) and install manually.
 
 ```bash
 # torch: aarch64
@@ -102,7 +93,7 @@ pip3 install torch==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
 ### Install torch_npu
 
-Strongly recommend install torch_npu by acquire `torch_npu-2.8.0*.whl` file by [Link](https://gitcode.com/Ascend/pytorch/releases) and install manually. For more detail about Ascend Pytorch Adapter installation, please refer [https://gitcode.com/Ascend/pytorch](https://gitcode.com/Ascend/pytorch)
+Strongly recommend install <span style="color:hotpink;">torch_npu</span> by acquire `torch_npu-2.8.0*.whl` file by [Link](https://gitcode.com/Ascend/pytorch/releases) and install manually. For more detail about Ascend Pytorch Adapter installation, please refer [https://gitcode.com/Ascend/pytorch](https://gitcode.com/Ascend/pytorch)
 
 ### Install Extra Dependences
 
@@ -151,7 +142,7 @@ Once it is done, you can start to set up `cache-dit`.
 
 ## Install Cache-DiT Library
 
-You can install the stable release of `cache-dit` from PyPI:
+You can install the stable release of <span style="color:hotpink;">cache-dit</span> from PyPI:
 
 ```bash
 pip3 install -U cache-dit
@@ -190,7 +181,7 @@ python3 -m cache_dit.generate qwen_image --cache --attn _native_npu
 
 ### Distributed Inference 
 
-cache-dit is designed to work 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
+cache-dit is designed to work Context Parallelism, Tensor Parallelism. For examples:
 
 ```bash
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --attn _native_npu

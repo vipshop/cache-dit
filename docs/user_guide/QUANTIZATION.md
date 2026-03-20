@@ -4,7 +4,7 @@
 
 ## Cache-DiT w/ TorchAo
 
-Currently, TorchAo has been integrated into Cache-DiT as the backend for **online** model quantization (recommended). You can implement model quantization by calling **cache_dit.quantize(...)** or pass a **QuantizeConfig** to **cache_dit.enable_cache(...)**. 
+Currently, TorchAo has been integrated into Cache-DiT as the backend for **online** model quantization (recommended). You can implement model quantization by calling **quantize(...)** or pass a **QuantizeConfig** to **enable_cache(...)** API.
 
 For GPUs with low memory capacity, we recommend using **float8**, **float8_weight_only**, **int8_weight_only**, as these methods cause almost no loss in precision. Supported quantization types including:  
 

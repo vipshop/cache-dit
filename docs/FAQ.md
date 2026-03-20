@@ -4,7 +4,7 @@
 
 ### How to install Flash Attention 3 (FA3)?
 
-Flash Attention 3 provides optimized attention kernels for better performance. To install:
+<span style="color:hotpink;">Flash Attention 3</span> provides optimized attention kernels for better performance. To install:
 
 ```bash
 git clone git@github.com:Dao-AILab/flash-attention.git
@@ -18,7 +18,7 @@ After installation, you need to modify the attention dispatch file:
 vi /usr/local/lib/python3.12/dist-packages/diffusers/models/attention_dispatch.py
 ```
 
-Find `_diffusers_flash_attn_3::_flash_attn_forward` and add `return_attn_probs=True`:
+Find `_diffusers_flash_attn_3::_flash_attn_forward` and add <span style="color:hotpink;">return_attn_probs=True</span>:
 
 ```python
 return_attn_probs=True
@@ -26,13 +26,13 @@ return_attn_probs=True
 
 ### How to install Sage Attention?
 
-Sage Attention is an efficient attention implementation. To install:
+<span style="color:hotpink;">Sage Attention</span> is an efficient attention implementation. To install:
 
 ```bash
 git clone https://github.com/thu-ml/SageAttention.git
 cd SageAttention
 export EXT_PARALLEL=4 NVCC_APPEND_FLAGS="--threads 8" MAX_JOBS=32  # Optional
-export TORCH_CUDA_ARCH_LIST=9.0
+export TORCH_CUDA_ARCH_LIST=9.0 # 9.0 for Hopper, 8.9 for Ada
 python setup.py install
 ```
 
@@ -42,13 +42,13 @@ python setup.py install
 
 If you encounter errors with `torch.compile` when running cache-dit examples, try the following solutions:
 
-1. **Clear the torch inductor cache:**
+1. <span style="color:hotpink;">Clear</span> the torch inductor <span style="color:hotpink;">cache:</span>
    ```bash
    rm -rf /tmp/torchinductor_root/
    ```
    Then retry running your example.
 
-2. **Upgrade PyTorch to the latest version:**
+2. <span style="color:hotpink;">Upgrade</span> PyTorch to the latest version:
    ```bash
    pip install --upgrade torch torchvision
    ```
@@ -65,18 +65,18 @@ If you encounter errors with `torch.compile` when running cache-dit examples, tr
 
 Cache-DiT supports multiple attention backends for different use cases. For a complete overview of attention backends in diffusers, see the [Attention Backends](./user_guide/ATTENTION.md). The main attention backends supported by cache-dit are:  
 
-- **`flash`**: Flash Attention 2 - Good performance on Ampere/Ada GPUs
-- **`_flash_3`**: Flash Attention 3 - Best for Hopper architecture GPUs (H100, H200)
-- **`native`**: Native PyTorch SDPA - Default, works on all devices
-- **`_native_cudnn`**: cuDNN-based native attention
-- **`_sdpa_cudnn`**: SDPA with cuDNN (cache-dit specific, supports context parallelism with attention masks)
-- **`sage`**: Sage Attention - Good balance between performance and compatibility
+- **<span style="color:hotpink;">flash</span>**: Flash Attention 2 - Good performance on Ampere/Ada GPUs
+- **<span style="color:hotpink;">_flash_3</span>**: Flash Attention 3 - Best for Hopper architecture GPUs (H100, H200)
+- **<span style="color:hotpink;">native</span>**: Native PyTorch SDPA - Default, works on all devices
+- **<span style="color:hotpink;">_native_cudnn</span>**: cuDNN-based native attention
+- **<span style="color:hotpink;">_sdpa_cudnn</span>**: SDPA with cuDNN (cache-dit specific, supports context parallelism with attention masks)
+- **<span style="color:hotpink;">sage</span>**: Sage Attention - Good balance between performance and compatibility
 
 **Recommendation:**  
 
-- **H100/H200**: Use `_flash_3` for best performance
-- **A100/A6000**: Use `flash` or `sage`
-- **Other GPUs**: Use `native` or `sage`
+- **H100/H200**: Use <span style="color:hotpink;">_flash_3</span> for best performance
+- **A100/A6000**: Use <span style="color:hotpink;">flash</span> or <span style="color:hotpink;">sage</span>
+- **Other GPUs**: Use <span style="color:hotpink;">native</span> or <span style="color:hotpink;">sage</span>
 
 
 ## Other Questions

@@ -6,13 +6,14 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 
 |backend|details|parallelism|attn_mask|
 |:---|:---|:---|:---|    
-|native| Native SDPA Attention, w/ cache-dit optimized|✅|✅|  
-|_sdpa_cudnn| CUDNN Attention via SDPA API, w/ cache-dit optimized|✅|✅|
-|_native_cudnn| CUDNN Attention via SDPA API, w/o cache-dit optimized|✅|✖️|
-|flash| official FlashAttention-2|✅|✖️| 
-|_flash_3| official FlashAttention-3|✅|✖️|
-|sage| FP8 SageAttention|✅|✖️|
-|_native_npu| Optimized Ascend NPU Attention|✅|✅|
+|<span style="color:hotpink;">native</span>| Native SDPA Attention, w/ cache-dit optimized|✅|✅|  
+|<span style="color:hotpink;">_sdpa_cudnn</span>| CUDNN Attention via SDPA API, w/ cache-dit optimized|✅|✅|
+|<span style="color:hotpink;">_native_cudnn</span>| CUDNN Attention via SDPA API, w/o cache-dit optimized|✅|✖️|
+|<span style="color:hotpink;">flash</span>| official FlashAttention-2|✅|✖️| 
+|<span style="color:hotpink;">_flash_3</span>| official FlashAttention-3|✅|✖️|
+|<span style="color:hotpink;">sage</span>| FP8 SageAttention|✅|✖️|
+|<span style="color:hotpink;">_native_npu</span>| Optimized Ascend NPU Attention|✅|✅|
+|<span style="color:hotpink;">_npu_fia</span>| NPU Attention for Ring Parallelism|✅|✅|
 
 
 ## Single GPU Inference
