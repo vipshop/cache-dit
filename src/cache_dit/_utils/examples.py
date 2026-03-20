@@ -47,6 +47,7 @@ __all__ = [
     "firered_image_edit_example",
     "helios_t2v_example",
     "helios_t2v_distill_example",
+    "flux2_klein_kv_edit_example",
 ]
 
 
@@ -62,6 +63,7 @@ _env_path_mapping = {
     "FLUX_2_KLEIN_BASE_4B_DIR": "black-forest-labs/FLUX.2-klein-base-4B",
     "FLUX_2_KLEIN_9B_DIR": "black-forest-labs/FLUX.2-klein-9B",
     "FLUX_2_KLEIN_BASE_9B_DIR": "black-forest-labs/FLUX.2-klein-base-9B",
+    "FLUX_2_KLEIN_9B_KV_DIR": "black-forest-labs/FLUX.2-klein-9b-kv",
     "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
     "LTX2_DIR": "Lightricks/LTX-2",
     "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
@@ -355,6 +357,48 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
             width=width,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
+            image=[image1, image2],
+        ),
+    )
+
+
+@ExampleRegister.register("flux2_klein_9b_kv_edit", default="black-forest-labs/FLUX.2-klein-9b-kv")
+def flux2_klein_kv_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+    from diffusers import Flux2KleinKVPipeline
+
+    model_path = _path("black-forest-labs/FLUX.2-klein-9b-kv")
+    height = 1024 if args.height is None else args.height
+    width = 1024 if args.width is None else args.width
+    image1 = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg"
+    )  # bear
+    image2 = load_image(
+        "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg"
+    )  # cloth
+    # resize images to desired size
+    image1 = image1.resize((width, height))
+    image2 = image2.resize((width, height))
+
+    params_modifiers = _flux2_params_modifiers(args)
+
+    return Example(
+        args=args,
+        init_config=ExampleInitConfig(
+            task_type=ExampleType.IE2I,  # Image Editing to Image
+            model_name_or_path=model_path,
+            pipeline_class=Flux2KleinKVPipeline,
+            bnb_4bit_components=["text_encoder", "transformer"],
+            # Extra init args for DBCacheConfig, ParamsModifier, etc.
+            extra_optimize_kwargs={
+                "params_modifiers": params_modifiers,
+                "enable_separate_cfg": False,  # no separate cfg for klein kv model
+            },
+        ),
+        input_data=ExampleInputData(
+            prompt="A cute bear wearing this clothing, sitting on the beach, watching the sunset.",
+            height=height,
+            width=width,
+            num_inference_steps=4,
             image=[image1, image2],
         ),
     )
