@@ -561,14 +561,14 @@ def get_args(
         "--compile",
         action="store_true",
         default=False,
-        help="Enable compile for transformer",
+        help="Enable compile for transformer, only compile the repeated blocks by default.",
     )
     parser.add_argument(
-        "--compile-repeated-blocks",
-        "--compile-blocks",
+        "--disable-compile-repeated-blocks",
+        "--disable-compile-blocks",
         action="store_true",
         default=False,
-        help="Enable compile for repeated blocks in transformer",
+        help="Disable compile for repeated blocks in transformer()",
     )
     # Force compile dynamic, this is useful for case PyTorch native TP + dynamic shape
     # + compile, where the shape of some inputs to transformer may change a lot during
@@ -741,7 +741,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.mask_policy = "ultra"
 
     # Force enable compile for repeated blocks if compile_repeated_blocks is enabled
-    if args.compile_repeated_blocks:
+    if not args.disable_compile_repeated_blocks:
         args.compile = True
     return args
 
@@ -981,7 +981,7 @@ def maybe_compile_transformer(
             "Flux2KleinKV",
         ]
 
-        def _maybe_force_compile_dynamic():
+        def _maybe_force_compile_dynamic() -> bool:
             if args.force_compile_dynamic:
                 return True
             if args.parallel_type is None or "tp" not in args.parallel_type.lower():
@@ -1004,7 +1004,7 @@ def maybe_compile_transformer(
 
                 transformer_cls_name = transformer.__class__.__name__
                 if isinstance(transformer, (torch.nn.Module, ModelMixin)):
-                    if args.compile_repeated_blocks and hasattr(
+                    if not args.disable_compile_repeated_blocks and hasattr(
                         transformer, "compile_repeated_blocks"
                     ):
                         logger.info(
