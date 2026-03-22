@@ -44,7 +44,9 @@ class DynamicSPConfig:
                     f"must equal degree={degree}."
                 )
             if len(set(ranks)) != len(ranks):
-                raise ValueError(f"Invalid dynamic_sp schedule entry {entry}: ranks contains duplicates.")
+                raise ValueError(
+                    f"Invalid dynamic_sp schedule entry {entry}: ranks contains duplicates."
+                )
             for rank in ranks:
                 if rank < 0 or rank >= world:
                     raise ValueError(
@@ -332,7 +334,9 @@ class DynamicSPManager:
             spec.extend(list(tensor.shape))
         return torch.tensor(spec, dtype=torch.int64, device=device)
 
-    def _parse_spec_tensor(self, spec_tensor: torch.Tensor) -> List[Tuple[torch.dtype, Tuple[int, ...]]]:
+    def _parse_spec_tensor(
+        self, spec_tensor: torch.Tensor
+    ) -> List[Tuple[torch.dtype, Tuple[int, ...]]]:
         spec_list = spec_tensor.tolist()
         num_tensors = int(spec_list[0])
         idx = 1
@@ -358,7 +362,9 @@ class DynamicSPManager:
         # 1) Broadcast tensor spec on GPU to guarantee consistent shapes across ranks.
         if self._rank == src:
             tensors = self._flatten_output_tensors(output)
-            tensors = [tensor.contiguous() if not tensor.is_contiguous() else tensor for tensor in tensors]
+            tensors = [
+                tensor.contiguous() if not tensor.is_contiguous() else tensor for tensor in tensors
+            ]
             spec_tensor = self._build_spec_tensor(tensors=tensors, device=device)
             spec_len = torch.tensor([spec_tensor.numel()], dtype=torch.int64, device=device)
         else:
@@ -372,7 +378,9 @@ class DynamicSPManager:
 
         parsed_spec = self._parse_spec_tensor(spec_tensor)
         if self._rank != src:
-            tensors = [torch.empty(shape, dtype=dtype, device=device) for dtype, shape in parsed_spec]
+            tensors = [
+                torch.empty(shape, dtype=dtype, device=device) for dtype, shape in parsed_spec
+            ]
 
         # 2) Broadcast actual tensor payloads.
         for tensor in tensors:

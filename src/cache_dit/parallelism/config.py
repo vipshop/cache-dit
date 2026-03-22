@@ -8,6 +8,7 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
+
 @dataclasses.dataclass
 class ParallelismConfig:
     # Parallelism backend, defaults to AUTO. We will auto select the backend

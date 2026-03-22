@@ -192,4 +192,3 @@ Use this compact mental model for reviews and design discussions:
 - **State owner** = context managers with per-block-group contexts
 
 This model is accurate enough for most development, debugging, and extension tasks.
-

@@ -1,3 +1,12 @@
+"""Launch with torchrun; --nproc_per_node must match the YAML (ulysses_size / SP world).
+
+  torchrun --nproc_per_node=2 examples/api/test_dynamic_sp_2gpu_flux.py
+  torchrun --nproc_per_node=4 examples/api/test_dynamic_sp_2gpu_flux.py
+
+If --config is omitted, picks examples/configs/dynamic_sp_{N}gpu.yaml when present,
+else examples/configs/dynamic_sp.yaml for world_size==8.
+"""
+
 import argparse
 import os
 from typing import Optional
@@ -9,15 +18,7 @@ from diffusers import FluxPipeline
 
 import cache_dit
 
-"""
-Launch with torchrun; --nproc_per_node must match the YAML (ulysses_size / SP world).
 
-  torchrun --nproc_per_node=2 examples/api/test_dynamic_sp_2gpu_flux.py
-  torchrun --nproc_per_node=4 examples/api/test_dynamic_sp_2gpu_flux.py
-
-If --config is omitted, picks examples/configs/dynamic_sp_{N}gpu.yaml when present,
-else examples/configs/dynamic_sp.yaml for world_size==8.
-"""
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Distributed validation for dynamic SP with a real FLUX model (any SP degree)."
@@ -25,7 +26,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default=os.environ.get("FLUX_DIR", "/project/infattllm/huggingface/hub/models--black-forest-labs--FLUX.1-schnell/snapshots/741f7c3ce8b383c54771c7003378a50191e9efe9/"),
+        default=os.environ.get(
+            "FLUX_DIR",
+            "/project/infattllm/huggingface/hub/models--black-forest-labs--FLUX.1-schnell/snapshots/741f7c3ce8b383c54771c7003378a50191e9efe9/",
+        ),
         help="HF model id or local model path.",
     )
     parser.add_argument(
@@ -58,6 +62,7 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def _resolve_config_path(explicit: Optional[str], world_size: int) -> str:
     if explicit is not None:
         return explicit
@@ -72,6 +77,7 @@ def _resolve_config_path(explicit: Optional[str], world_size: int) -> str:
         "Pass --config to a YAML whose parallelism matches torchrun --nproc_per_node."
     )
 
+
 def _init_dist() -> tuple[int, int, int, torch.device]:
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
@@ -82,9 +88,6 @@ def _init_dist() -> tuple[int, int, int, torch.device]:
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
     return rank, local_rank, world_size, device
-
-
-
 
 
 def _attach_inactive_counter(transformer: torch.nn.Module) -> list[int]:
@@ -181,7 +184,9 @@ def main():
         print(f"model: {args.model}")
         print(f"config: {args.config}")
         print(f"steps: {args.steps}")
-        print(f"manager.step range across ranks: [{int(min_steps.item())}, {int(max_steps.item())}]")
+        print(
+            f"manager.step range across ranks: [{int(min_steps.item())}, {int(max_steps.item())}]"
+        )
         print(f"total inactive sync calls across ranks: {total_inactive_calls}")
         print(f"max output diff across ranks: {max_diff:.8f}")
         print(f"result: {'PASS' if ok else 'FAIL'}")

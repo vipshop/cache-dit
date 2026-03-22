@@ -1,3 +1,7 @@
+# Install: pip install pre-commit && pre-commit install
+# (or: bash scripts/install-git-hooks.sh)
+default_install_hook_types: [pre-commit]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.0.1
@@ -26,6 +30,5 @@ repos:
   - repo: https://github.com/psf/black
     rev: 24.10.0
     hooks:
+      # Formats Python and Jupyter; reads [tool.black] from pyproject.toml.
       - id: black-jupyter
-        args:
-          - --line-length=100

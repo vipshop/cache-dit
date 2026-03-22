@@ -7,4 +7,3 @@ parallelism_config:
       - 2
       - {degree: 1, ranks: [0]}
       - {degree: 1, ranks: [1]}
-

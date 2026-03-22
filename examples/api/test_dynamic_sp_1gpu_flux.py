@@ -1,15 +1,10 @@
+"""torchrun --nproc_per_node=1 examples/api/test_dynamic_sp_1gpu_flux.py"""
+
 import argparse
 import os
-from typing import Optional
 
-import numpy as np
 import torch
 from diffusers import FluxPipeline
-
-
-"""
-torchrun --nproc_per_node=1 examples/api/test_dynamic_sp_1gpu_flux.py
-"""
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,7 +62,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-
 def _assert_world_size(world_size: int, expected: int):
     if world_size != expected:
         raise RuntimeError(
@@ -76,15 +70,10 @@ def _assert_world_size(world_size: int, expected: int):
         )
 
 
-
-
-
-
 def main():
     args = parse_args()
 
     pipe = FluxPipeline.from_pretrained(args.model, torch_dtype=torch.bfloat16).to("cuda")
-  
 
     generator = torch.Generator(device="cpu").manual_seed(args.seed)
     output = pipe(
@@ -103,7 +92,5 @@ def main():
     print(f"saved image: {args.output}")
 
 
-
 if __name__ == "__main__":
     main()
-
