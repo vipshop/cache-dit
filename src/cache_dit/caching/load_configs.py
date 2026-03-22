@@ -11,6 +11,7 @@ from ..parallelism import (
     ParallelismConfig,
     ParallelismBackend,
 )
+from ..parallelism.dynamic_sp import DynamicSPConfig
 from ..quantize import QuantizeConfig
 from ..logger import init_logger
 
@@ -301,7 +302,49 @@ def load_parallelism_config(
 
         parallelism_config_kwargs = _maybe_auto_parallel_sizes(parallelism_config_kwargs)
 
-    parallelism_config = ParallelismConfig(**parallelism_config_kwargs)
+    dynamic_sp_config = None
+    dynamic_sp_kwargs = parallelism_config_kwargs.pop("dynamic_sp", None)
+    if dynamic_sp_kwargs is not None:
+        if not isinstance(dynamic_sp_kwargs, dict):
+            raise ValueError(
+                "parallelism_config.dynamic_sp must be a dict with fields "
+                "`enabled` and `schedule`."
+            )
+        enabled = bool(dynamic_sp_kwargs.get("enabled", False))
+        raw_schedule = dynamic_sp_kwargs.get("schedule", [])
+
+        ulysses_size = parallelism_config_kwargs.get("ulysses_size", 1) or 1
+        ring_size = parallelism_config_kwargs.get("ring_size", 1) or 1
+        default_world_size = (
+            ulysses_size * ring_size
+            if ulysses_size > 1 and ring_size > 1
+            else max(ulysses_size, ring_size, 1)
+        )
+        try:
+            import torch.distributed as dist
+
+            world_size = dist.get_world_size() if dist.is_initialized() else default_world_size
+        except Exception:
+            world_size = default_world_size
+
+        schedule = []
+        if enabled:
+            schedule = DynamicSPConfig.parse_schedule(
+                raw_schedule=raw_schedule,
+                default_ulysses=ulysses_size,
+                default_ring=ring_size,
+                world_size=world_size,
+            )
+
+        dynamic_sp_config = DynamicSPConfig(
+            enabled=enabled,
+            schedule=schedule,
+        )
+
+    parallelism_config = ParallelismConfig(
+        **parallelism_config_kwargs,
+        dynamic_sp_config=dynamic_sp_config,
+    )
     return parallelism_config
 
 

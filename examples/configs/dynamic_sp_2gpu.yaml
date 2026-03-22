@@ -1,0 +1,10 @@
+parallelism_config:
+  ulysses_size: 2
+  attention_backend: native
+  dynamic_sp:
+    enabled: true
+    schedule:
+      - 2
+      - {degree: 1, ranks: [0]}
+      - {degree: 1, ranks: [1]}
+

@@ -1,0 +1,10 @@
+parallelism_config:
+  ulysses_size: 8
+  attention_backend: native
+  dynamic_sp:
+    enabled: true
+    schedule:
+      - 8
+      - {degree: 2, ranks: [1, 3]}
+      - {degree: 4, ranks: [0, 2, 4, 6]}
+      - {ulysses: 2, ring: 2, ranks: [0, 1, 2, 3]}

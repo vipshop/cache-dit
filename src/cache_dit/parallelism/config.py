@@ -3,10 +3,10 @@ import dataclasses
 import torch.distributed as dist
 from typing import Optional, Dict, Any, List, Union
 from .backend import ParallelismBackend
+from .dynamic_sp import DynamicSPConfig
 from ..logger import init_logger
 
 logger = init_logger(__name__)
-
 
 @dataclasses.dataclass
 class ParallelismConfig:
@@ -63,6 +63,12 @@ class ParallelismConfig:
     extra_parallel_modules: Optional[List[Union[str, torch.nn.Module]]] = dataclasses.field(
         default_factory=list
     )
+
+    # dynamic_sp_config: (`DynamicSPConfig`, *optional*):
+    #   Configuration for dynamic SP degree per denoising step. When enabled,
+    #   the SP degree (ulysses/ring) can vary across steps according to the
+    #   schedule. Inactive GPUs skip computation and receive results via broadcast.
+    dynamic_sp_config: Optional[DynamicSPConfig] = None
 
     # Deprecated: Will be removed in future versions, please use the explicit fields in
     # parallelism_config instead. This field is still kept here for backward compatibility,

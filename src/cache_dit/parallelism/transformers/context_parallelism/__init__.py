@@ -1,4 +1,6 @@
 import torch
+import functools
+import torch.distributed as dist
 from typing import Optional
 
 from diffusers.models.modeling_utils import ModelMixin
@@ -65,7 +67,18 @@ def maybe_enable_context_parallelism(
                 mesh=parallelism_config._cp_mesh,
             )
 
-        if parallelism_config.ulysses_anything:
+        dynamic_sp_config = parallelism_config.dynamic_sp_config
+        dynamic_sp_enabled = dynamic_sp_config is not None and dynamic_sp_config.enabled
+
+        # Dynamic SP may switch to degrees that make CP split dimensions
+        # temporarily not divisible by mesh.size(). Ulysses-anything replaces
+        # strict equipartition with tensor_split/all-gather to support that.
+        if parallelism_config.ulysses_anything or dynamic_sp_enabled:
+            if dynamic_sp_enabled and not parallelism_config.ulysses_anything:
+                logger.warning(
+                    "dynamic_sp is enabled; auto enabling ulysses_anything to support "
+                    "non-divisible per-step sharding."
+                )
             enable_ulysses_anything()
 
         if parallelism_config.ulysses_float8:
@@ -81,9 +94,71 @@ def maybe_enable_context_parallelism(
                 transformer=transformer, parallelism_config=parallelism_config
             )
 
-            _enable_context_parallelism_ext(transformer, config=cp_config, cp_plan=cp_plan)
-            _maybe_patch_native_parallel_config(transformer)
+        _enable_context_parallelism_ext(transformer, config=cp_config, cp_plan=cp_plan)
+        _maybe_patch_native_parallel_config(transformer)
 
+        if dynamic_sp_config is not None and dynamic_sp_config.enabled:
+            from ...dynamic_sp import DynamicSPManager
+
+            rank = getattr(cp_config, "_rank", None)
+            world_size = getattr(cp_config, "_world_size", None)
+            if rank is None or world_size is None:
+                rank = dist.get_rank()
+                world_size = dist.get_world_size()
+            device_type = torch._C._get_accelerator().type
+            manager = DynamicSPManager(
+                config=dynamic_sp_config,
+                cp_config=cp_config,
+                rank=rank,
+                world_size=world_size,
+                device_type=device_type,
+            )
+            transformer._dynamic_sp_manager = manager
+            _wrap_forward_with_dynamic_sp(transformer, manager)
+
+    return transformer
+
+
+def _wrap_forward_with_dynamic_sp(transformer: torch.nn.Module, manager) -> torch.nn.Module:
+    original_forward = transformer.forward
+    _hf_hook = getattr(transformer, "_hf_hook", None)
+    # Align with cache adapter wrapping behavior:
+    # when `_hf_hook` is present, `forward` may already be a hook wrapper.
+    # Calling `_hf_hook.pre/post` around that wrapped `forward` would apply
+    # hooks twice. Prefer `_old_forward` when available.
+    if _hf_hook is not None and hasattr(transformer, "_old_forward"):
+        original_forward = transformer._old_forward
+
+    def new_forward(self, *args, **kwargs):
+        step = manager.step
+        hidden_states = kwargs.get("hidden_states")
+        if hidden_states is None and len(args) > 0:
+            hidden_states = args[0]
+
+        output = None
+        if manager.is_active(step):
+            manager.apply_config(step)
+            output = original_forward(*args, **kwargs)
+
+        output = manager.sync_output(output=output, hidden_states=hidden_states, step=step)
+        manager.advance_step()
+        return output
+
+    def new_forward_with_hf_hook(self, *args, **kwargs):
+        if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
+            args, kwargs = _hf_hook.pre_forward(self, *args, **kwargs)
+
+        outputs = new_forward(self, *args, **kwargs)
+
+        if _hf_hook is not None and hasattr(_hf_hook, "post_forward"):
+            outputs = _hf_hook.post_forward(self, outputs)
+        return outputs
+
+    transformer.forward = functools.update_wrapper(
+        functools.partial(new_forward_with_hf_hook, transformer),
+        new_forward_with_hf_hook,
+    )
+    transformer._dynamic_sp_original_forward = original_forward
     return transformer
 
 

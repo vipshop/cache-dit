@@ -1,0 +1,7 @@
+parallelism_config:
+  ulysses_size: 1
+  attention_backend: native
+  dynamic_sp:
+    enabled: true
+    schedule:
+      - 1

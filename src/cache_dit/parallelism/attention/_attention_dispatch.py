@@ -178,7 +178,20 @@ if ENV.CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH:
                 _parallel_config,
             )
         else:
-            raise ValueError("Reaching this branch of code is unexpected. Please report a bug.")
+            # Dynamic SP may temporarily reduce active degree to 1 on some steps.
+            # In this case we should fall back to local attention computation.
+            query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+            out_t = torch.nn.functional.scaled_dot_product_attention(
+                query=query_t,
+                key=key_t,
+                value=value_t,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                enable_gqa=enable_gqa,
+            )
+            return out_t.permute(0, 2, 1, 3)
 
     # NOTE: Remove NATIVE attention backend constraints and re-register it.
     # Here is a temporary workaround to enable context parallelism with
