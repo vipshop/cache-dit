@@ -94,10 +94,10 @@ This function seamlessly integrates with both standard diffusion pipelines and c
       step specified by force_refresh_step_hint and then repeat refreshing every  
       force_refresh_step_hint steps, e.g., if force_refresh_step_hint=25 and the inference  
       has 100 steps, then the cache will be refreshed at:  
-      - <span style="color:hotpink;">once</span> policy: step 25, treat the remaining steps as a new inference context,  
-        no more refresh after step 25;  
-      - <span style="color:hotpink;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new  
-        inference context.  
+        - <span style="color:hotpink;">once</span> policy: step 25, treat the remaining steps as a new inference context,  
+          no more refresh after step 25;  
+        - <span style="color:hotpink;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new  
+          inference context.  
 
 - **<span style="color:hotpink;">calibrator_config</span>** (`CalibratorConfig`, *optional*, defaults to None):  
   Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
