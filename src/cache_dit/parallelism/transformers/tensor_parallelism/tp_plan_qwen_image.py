@@ -7,12 +7,12 @@ from torch.distributed.tensor.parallel import (
 )
 from torch.distributed import DeviceMesh
 from diffusers import QwenImageTransformer2DModel
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 from ....logger import init_logger
 
@@ -44,13 +44,7 @@ class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
 
         for _, block in transformer.transformer_blocks.named_children():
             assert isinstance(block, QwenImageTransformerBlock)
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_mesh.size(),
-                what="attn",
-                context="QwenImageTensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn, "heads", tp_mesh.size())
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),

@@ -10,10 +10,10 @@ from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, 
 from diffusers.models.transformers.transformer_ltx2 import LTX2AudioVideoAttnProcessor
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -142,13 +142,7 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
         tp_rank = tp_mesh.get_group().rank()
 
         def _shard_attention(attn: nn.Module, what: str):
-            shard_divisible_attr(
-                attn,
-                "heads",
-                tp_size,
-                what=what,
-                context="LTX2VideoTensorParallelismPlanner",
-            )
+            shard_div_attr(attn, "heads", tp_size, what=what)
 
         def prepare_block(block: nn.Module):
             # Shard heads for all attention modules inside the block

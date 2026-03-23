@@ -9,13 +9,13 @@ from torch.distributed.tensor.parallel import (
 )
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -43,20 +43,8 @@ class Kandinsky5TensorParallelismPlanner(TensorParallelismPlanner):
     ):
         for _, block in transformer.visual_transformer_blocks.named_children():
             tp_size = tp_mesh.size()
-            shard_divisible_attr(
-                block.self_attention,
-                "num_heads",
-                tp_size,
-                what="self_attention",
-                context="Kandinsky5TensorParallelismPlanner",
-            )
-            shard_divisible_attr(
-                block.cross_attention,
-                "num_heads",
-                tp_size,
-                what="cross_attention",
-                context="Kandinsky5TensorParallelismPlanner",
-            )
+            shard_div_attr(block.self_attention, "num_heads", tp_size)
+            shard_div_attr(block.cross_attention, "num_heads", tp_size)
             layer_plan = {
                 "self_attention.to_query": ColwiseParallel(),
                 "self_attention.to_key": ColwiseParallel(),

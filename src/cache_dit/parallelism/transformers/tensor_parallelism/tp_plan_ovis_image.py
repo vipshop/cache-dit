@@ -15,13 +15,13 @@ from torch.distributed.tensor.parallel import (
 )
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -53,13 +53,7 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
             assert isinstance(block, OvisImageTransformerBlock)
             rearrange_ffn_0_swiglu_proj_weight(block.ff.net[0].proj, tp_mesh.size())
             rearrange_ffn_0_swiglu_proj_weight(block.ff_context.net[0].proj, tp_mesh.size())
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_mesh.size(),
-                what="attn",
-                context="OvisImageTensorParallelismPlanner(transformer_blocks)",
-            )
+            shard_div_attr(block.attn, "heads", tp_mesh.size())
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),
@@ -88,21 +82,9 @@ class OvisImageTensorParallelismPlanner(TensorParallelismPlanner):
         for _, block in transformer.single_transformer_blocks.named_children():
             assert isinstance(block, OvisImageSingleTransformerBlock)
             rearrange_proj_out_weight(block, tp_mesh.size())
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_mesh.size(),
-                what="attn",
-                context="OvisImageTensorParallelismPlanner(single_transformer_blocks)",
-            )
+            shard_div_attr(block.attn, "heads", tp_mesh.size())
             rearrange_proj_mlp_weight(block, tp_mesh.size())
-            shard_divisible_attr(
-                block,
-                "mlp_hidden_dim",
-                tp_mesh.size(),
-                what="block",
-                context="OvisImageTensorParallelismPlanner(single_transformer_blocks)",
-            )
+            shard_div_attr(block, "mlp_hidden_dim", tp_mesh.size())
             # Compute order: proj_mlp, to_q, to_k, to_v, proj_out
             # proj_mlp: dim -> self.mlp_hidden_dim * 2 -> split by mlp_hidden_dim
             layer_plan = {

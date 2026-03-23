@@ -6,12 +6,12 @@ from torch.distributed.tensor.parallel import (
 )
 from torch.distributed import DeviceMesh
 from diffusers import GlmImageTransformer2DModel
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 from ....logger import init_logger
 
@@ -43,13 +43,7 @@ class GlmImageTensorParallelismPlanner(TensorParallelismPlanner):
 
         for _, block in transformer.transformer_blocks.named_children():
             assert isinstance(block, GlmImageTransformerBlock)
-            shard_divisible_attr(
-                block.attn1,
-                "heads",
-                tp_mesh.size(),
-                what="attn1",
-                context="GlmImageTensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn1, "heads", tp_mesh.size())
             layer_plan = {
                 "attn1.to_q": ColwiseParallel(),
                 "attn1.to_k": ColwiseParallel(),

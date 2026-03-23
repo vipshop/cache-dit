@@ -7,13 +7,13 @@ from torch.distributed.tensor.parallel import (
 )
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -51,20 +51,8 @@ class PixArtTensorParallelismPlanner(TensorParallelismPlanner):
         for i, block in enumerate(transformer.transformer_blocks):
             # Split attention heads across TP devices
             tp_size = tp_mesh.size()
-            shard_divisible_attr(
-                block.attn1,
-                "heads",
-                tp_size,
-                what="attn1",
-                context="PixArtTensorParallelismPlanner",
-            )
-            shard_divisible_attr(
-                block.attn2,
-                "heads",
-                tp_size,
-                what="attn2",
-                context="PixArtTensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn1, "heads", tp_size)
+            shard_div_attr(block.attn2, "heads", tp_size)
 
             # Create layer plan for tensor parallelism
             layer_plan = {

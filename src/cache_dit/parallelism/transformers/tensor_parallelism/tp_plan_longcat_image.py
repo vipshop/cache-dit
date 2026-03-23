@@ -13,13 +13,13 @@ from torch.distributed.tensor.parallel import (
 )
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -46,13 +46,7 @@ class LongCatImageTensorParallelismPlanner(TensorParallelismPlanner):
         tp_mesh: DeviceMesh,
     ):
         for _, block in transformer.transformer_blocks.named_children():
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_mesh.size(),
-                what="attn",
-                context="LongCatImageTensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn, "heads", tp_mesh.size())
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),
@@ -99,13 +93,7 @@ class LongCatImageTensorParallelismPlanner(TensorParallelismPlanner):
 
         for _, block in transformer.single_transformer_blocks.named_children():
             rearrange_proj_out_weight(block, tp_mesh.size())
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_mesh.size(),
-                what="attn",
-                context="LongCatImageTensorParallelismPlanner(single_block)",
-            )
+            shard_div_attr(block.attn, "heads", tp_mesh.size())
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),
