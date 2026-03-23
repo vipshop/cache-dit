@@ -13,9 +13,11 @@ from ....logger import init_logger
 from ...config import ParallelismConfig
 from ....utils import maybe_empty_cache
 from ....platforms import current_platform
-
-from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 from ...utils import shard_div_attr
+from .tp_plan_registers import (
+    TensorParallelismPlanner,
+    TensorParallelismPlannerRegister,
+)
 
 logger = init_logger(__name__)
 
