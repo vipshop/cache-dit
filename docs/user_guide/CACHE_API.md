@@ -537,7 +537,7 @@ As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (
 
 ## MCC: Multiple Cache Contexts within a single Denoising Loop
 
-Users can use <span style="color:hotpink;">force_refresh_step_hint</span> param to provide a step index hint (integer number) to force refresh the cache. If provided, the cache will be refreshed at the beginning of this step. This is useful for some cases where the input condition changes significantly at a certain step. Default None means no force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25 will refresh the cache before executing step 25 and view the remaining 25 steps as a new inference context.
+Users can use <span style="color:hotpink;">force_refresh_step_hint</span> param to provide a step index hint (integer number) to force refresh the cache. If provided, the cache will be refreshed at the beginning of this step. This is useful for some cases where the input condition changes significantly at a certain step. Default None means no force refresh. For example, in a 100-step inference, setting force_refresh_step_hint=25 will refresh the cache before executing step 25 and view the remaining 75 steps as a new inference context.
 
 ![alt text](https://github.com/vipshop/cache-dit/raw/main/docs/assets/mcc.png)
 
