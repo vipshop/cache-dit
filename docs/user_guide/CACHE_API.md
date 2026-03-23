@@ -539,13 +539,14 @@ As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (
 
 Users can use <span style="color:hotpink;">force_refresh_step_hint</span> param to provide a step index hint (integer number) to force refresh the cache. If provided, the cache will be refreshed at the beginning of this step. This is useful for some cases where the input condition changes significantly at a certain step. Default None means no force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25 will refresh the cache before executing step 25 and view the remaining 25 steps as a new inference context.
 
-![alt text](../assets/mcc.png)
+![alt text](https://github.com/vipshop/cache-dit/raw/main/docs/assets/mcc.png)
 
 The <span style="color:hotpink;">force_refresh_step_policy</span> is a helper parameter for <span style="color:hotpink;">force_refresh_step_hint</span> and can be set to "always" or "once". <span style="color:hotpink;">always</span> means we will always refresh the cache at the step index hint, while <span style="color:hotpink;">once</span> means we will only refresh the cache at the first occurrence of the step index hint. This is useful for some cases where the input condition changes significantly at a certain step in each inference loop.  e.g., if force_refresh_step_hint=25 and the inference has 100 steps, then the cache will be refreshed at:  
+
 - <span style="color:hotpink;">once</span> policy: step 25, treat the remaining steps as a new inference context, no more refresh after step 25;  
 - <span style="color:hotpink;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new inference context.  
 
-These usage are useful for cases like **GLM-Image** and **Helios-14B** Video Generation models, where the input condition changes significantly at the middle step of the denoising process. For example:
+These usages are useful for cases like **GLM-Image** and **Helios-14B** Video Generation models, where the input condition changes significantly at the middle step of the denoising process. For example:
 
 ```python
 # Helios-14B
