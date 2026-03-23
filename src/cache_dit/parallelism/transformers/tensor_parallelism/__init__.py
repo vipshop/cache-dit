@@ -9,7 +9,7 @@ except ImportError:
 import torch
 from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 from ....logger import init_logger
 
 try:

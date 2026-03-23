@@ -10,9 +10,9 @@ from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
-from cache_dit.utils import maybe_empty_cache
-from cache_dit.platforms import current_platform
+from ...config import ParallelismConfig
+from ....utils import maybe_empty_cache
+from ....platforms import current_platform
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 from ...utils import shard_div_attr

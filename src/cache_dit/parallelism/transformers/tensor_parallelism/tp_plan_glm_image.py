@@ -6,7 +6,7 @@ from torch.distributed.tensor.parallel import (
 )
 from torch.distributed import DeviceMesh
 from diffusers import GlmImageTransformer2DModel
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,

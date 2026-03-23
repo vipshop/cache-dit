@@ -3,7 +3,7 @@ from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
 from ...utils import shard_div_attr

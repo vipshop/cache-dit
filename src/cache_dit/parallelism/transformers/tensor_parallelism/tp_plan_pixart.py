@@ -7,7 +7,7 @@ from torch.distributed.tensor.parallel import (
 )
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import (
     TensorParallelismPlanner,

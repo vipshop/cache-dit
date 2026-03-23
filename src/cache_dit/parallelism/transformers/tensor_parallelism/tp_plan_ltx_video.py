@@ -11,7 +11,7 @@ from torch.distributed.tensor.parallel import (
 from diffusers.models.transformers.transformer_ltx import LTXVideoAttnProcessor
 
 from ....logger import init_logger
-from cache_dit.parallelism.config import ParallelismConfig
+from ...config import ParallelismConfig
 
 from .tp_plan_registers import (
     TensorParallelismPlanner,
