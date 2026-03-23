@@ -19,7 +19,7 @@ def _divisors(n: int) -> list[int]:
     return small + list(reversed(large))
 
 
-def shard_divisible_attr(
+def shard_div_attr(
     obj: Any,
     attr: str,
     tp_size: int,
@@ -56,7 +56,7 @@ def shard_divisible_attr(
         divs = [d for d in _divisors(value) if d > 1]
         divs_str = ", ".join(map(str, divs)) if divs else "(none)"
         obj_name = what or type(obj).__name__
-        prefix = f"{context}: " if context else ""
+        prefix = f"{context}: " if context else f"{obj.__class__.__name__}.{attr}: "
         raise ValueError(
             f"[TP] {prefix}Unsupported tp_size={tp_size} for {obj_name}.{attr}={value}. "
             f"{attr} must be divisible by tp_size. Valid tp_size (>1): {divs_str}."

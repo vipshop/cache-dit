@@ -12,7 +12,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from .tp_utils import shard_div_attr
 
 from ....logger import init_logger
 
@@ -44,13 +44,7 @@ class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
 
         for _, block in transformer.transformer_blocks.named_children():
             assert isinstance(block, QwenImageTransformerBlock)
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_mesh.size(),
-                what="attn",
-                context="QwenImageTensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn, "heads", tp_mesh.size())
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),

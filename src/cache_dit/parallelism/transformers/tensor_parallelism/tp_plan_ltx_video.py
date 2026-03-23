@@ -17,7 +17,7 @@ from .tp_plan_registers import (
     TensorParallelismPlanner,
     TensorParallelismPlannerRegister,
 )
-from .tp_utils import shard_divisible_attr
+from .tp_utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -131,20 +131,8 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
         tp_rank = tp_mesh.get_group().rank()
 
         def prepare_block(block: nn.Module):
-            shard_divisible_attr(
-                block.attn1,
-                "heads",
-                tp_size,
-                what="attn1",
-                context="LTXVideoTensorParallelismPlanner",
-            )
-            shard_divisible_attr(
-                block.attn2,
-                "heads",
-                tp_size,
-                what="attn2",
-                context="LTXVideoTensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn1, "heads", tp_size)
+            shard_div_attr(block.attn2, "heads", tp_size)
             layer_plan = {
                 "attn1.to_q": ColwiseParallel(),
                 "attn1.to_k": ColwiseParallel(),

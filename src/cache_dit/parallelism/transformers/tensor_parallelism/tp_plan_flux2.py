@@ -15,7 +15,7 @@ from cache_dit.utils import maybe_empty_cache
 from cache_dit.platforms import current_platform
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
-from .tp_utils import shard_divisible_attr
+from .tp_utils import shard_div_attr
 
 logger = init_logger(__name__)
 
@@ -100,13 +100,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             block.to(current_platform.device_type)
             self.rearrange_feedforward_weight(block, tp_size)
             block.to(old_device)
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_size,
-                what="attn",
-                context="Flux2TensorParallelismPlanner",
-            )
+            shard_div_attr(block.attn, "heads", tp_size)
             layer_plan = {
                 "attn.to_q": ColwiseParallel(),
                 "attn.to_k": ColwiseParallel(),
@@ -135,27 +129,9 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
             block.to(current_platform.device_type)
             self.rearrange_singleblock_weight(block, tp_size)
             block.to(old_device)
-            shard_divisible_attr(
-                block.attn,
-                "heads",
-                tp_size,
-                what="attn",
-                context="Flux2TensorParallelismPlanner(single_block)",
-            )
-            shard_divisible_attr(
-                block.attn,
-                "inner_dim",
-                tp_size,
-                what="attn",
-                context="Flux2TensorParallelismPlanner(single_block)",
-            )
-            shard_divisible_attr(
-                block.attn,
-                "mlp_hidden_dim",
-                tp_size,
-                what="attn",
-                context="Flux2TensorParallelismPlanner(single_block)",
-            )
+            shard_div_attr(block.attn, "heads", tp_size)
+            shard_div_attr(block.attn, "inner_dim", tp_size)
+            shard_div_attr(block.attn, "mlp_hidden_dim", tp_size)
             layer_plan = {
                 "attn.to_qkv_mlp_proj": ColwiseParallel(),
                 "attn.to_out": RowwiseParallel(),
