@@ -6,7 +6,7 @@ from ....logger import init_logger
 from cache_dit.parallelism.config import ParallelismConfig
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
-from .tp_utils import shard_div_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 

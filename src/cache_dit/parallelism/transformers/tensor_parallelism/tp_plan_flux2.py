@@ -15,7 +15,7 @@ from cache_dit.utils import maybe_empty_cache
 from cache_dit.platforms import current_platform
 
 from .tp_plan_registers import TensorParallelismPlanner, TensorParallelismPlannerRegister
-from .tp_utils import shard_div_attr
+from ...utils import shard_div_attr
 
 logger = init_logger(__name__)
 
