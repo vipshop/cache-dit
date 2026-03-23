@@ -242,17 +242,6 @@ def quantize_ao(
                     # group_size is None -> per_channel, else per group
                     group_size=kwargs.get("group_size", None),
                 )
-
-            elif quant_type == "int4_w4a8_dq":
-
-                from torchao.quantization import (
-                    Int8DynamicActivationInt4WeightConfig,
-                )
-
-                quant_config = Int8DynamicActivationInt4WeightConfig(
-                    group_size=kwargs.get("group_size", 32),
-                )
-
             elif quant_type == "int4_w4a16_wo":
 
                 from torchao.quantization import Int4WeightOnlyConfig
@@ -267,7 +256,7 @@ def quantize_ao(
         except ImportError as e:
             e.msg += (
                 f"{quant_type} is not supported in torchao backend now! "
-                "Please upgrade the torchao library."
+                "Please consider to use another quantization type instead."
             )
             raise e
 
