@@ -7,7 +7,11 @@ from diffusers.models.transformers.transformer_flux2 import (
 from einops import rearrange
 
 from torch.distributed import DeviceMesh
-from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
+from torch.distributed.tensor.parallel import (
+    ColwiseParallel,
+    RowwiseParallel,
+    parallelize_module,
+)
 
 from ....logger import init_logger
 from ...config import ParallelismConfig
