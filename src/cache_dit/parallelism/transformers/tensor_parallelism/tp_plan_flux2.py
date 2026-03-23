@@ -112,12 +112,12 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 "attn.to_k": ColwiseParallel(),
                 "attn.to_v": ColwiseParallel(),
                 "attn.to_out.0": RowwiseParallel(),
-                "ff.linear_in": ColwiseParallel(),
-                "ff.linear_out": RowwiseParallel(),
                 "attn.add_q_proj": ColwiseParallel(),
                 "attn.add_k_proj": ColwiseParallel(),
                 "attn.add_v_proj": ColwiseParallel(),
                 "attn.to_add_out": RowwiseParallel(),
+                "ff.linear_in": ColwiseParallel(),
+                "ff.linear_out": RowwiseParallel(),
                 "ff_context.linear_in": ColwiseParallel(),
                 "ff_context.linear_out": RowwiseParallel(),
             }
@@ -148,5 +148,15 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
         maybe_empty_cache()
+
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn.to_out",
+                "attn.to_add_out",
+                "ff.linear_out",
+                "ff_context.linear_out",
+            ],
+        )
 
         return transformer

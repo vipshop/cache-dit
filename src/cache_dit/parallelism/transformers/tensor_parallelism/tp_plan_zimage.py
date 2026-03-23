@@ -35,9 +35,10 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
     ):
         class_name = transformer.__class__.__name__
 
+        attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
+        ff_linear_name = "w" if class_name.startswith("ZImage") else "linear_"
+
         def tp_shard_block(block, tp_size):
-            attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
-            ff_linear_name = "w" if class_name.startswith("ZImage") else "linear_"
             attn = getattr(block, attn_mod_name)
             shard_div_attr(attn, "heads", tp_size)
             layer_plan = {
@@ -65,5 +66,13 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
             tp_shard_block(block, tp_size)
         for _, block in transformer.layers.named_children():
             tp_shard_block(block, tp_size)
+
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                f"{attn_mod_name}.to_out",
+                f"feed_forward.{ff_linear_name}2",
+            ],
+        )
 
         return transformer

@@ -70,4 +70,11 @@ class CogViewTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn1.to_out",
+                "ff.net.2",
+            ],
+        )
         return transformer

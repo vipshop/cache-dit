@@ -85,6 +85,12 @@ class HunyuanDiTTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
-            logger.debug(f"Parallelized HunyuanDiT block {i} with TP size {tp_mesh.size()}")
-
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn1.to_out",
+                "attn2.to_out",
+                "ff.net.2",
+            ],
+        )
         return transformer

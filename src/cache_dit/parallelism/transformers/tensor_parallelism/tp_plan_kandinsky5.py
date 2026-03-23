@@ -63,4 +63,12 @@ class Kandinsky5TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "self_attention.out_layer",
+                "cross_attention.out_layer",
+                "feed_forward.out_layer",
+            ],
+        )
         return transformer

@@ -224,4 +224,18 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
                     )
             prepare_block(block)
 
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn1.to_out",
+                "attn2.to_out",
+                "audio_attn1.to_out",
+                "audio_attn2.to_out",
+                "audio_to_video_attn.to_out",
+                "video_to_audio_attn.to_out",
+                "ff.net.2",
+                "audio_ff.net.2",
+            ],
+        )
+
         return transformer

@@ -140,4 +140,12 @@ class WanTensorParallelismPlanner(TensorParallelismPlanner):
             for _, block in transformer.vace_blocks.named_children():
                 prepare_block(block)
 
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn1.to_out",
+                "attn2.to_out",
+                "ffn.net.2",
+            ],
+        )
         return transformer

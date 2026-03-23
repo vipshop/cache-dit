@@ -93,4 +93,11 @@ class SkyReelsV2TensorParallelismPlanner(TensorParallelismPlanner):
                     "Block structure may differ from expected pattern. Skipping this block."
                 )
 
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn.to_out",
+                "ff.net.2",
+            ],
+        )
         return transformer

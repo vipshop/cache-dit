@@ -13,7 +13,13 @@ class QuantizeConfig:
     quant_type: str = "float8_weight_only"
     per_row: bool = True
     exclude_layers: Optional[list] = dataclasses.field(
-        default_factory=lambda: ["embedder", "embed"]
+        default_factory=lambda: [
+            "embedder",
+            "embed",
+            "modulation",
+            "norm",
+            "mod",
+        ]
     )
     filter_fn: Optional[Any] = None  # type: ignore
     # components_to_quantize: (list[str] or dict[str, str], optional)
