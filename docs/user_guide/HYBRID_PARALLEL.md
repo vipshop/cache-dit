@@ -31,7 +31,7 @@ From the table below (Video Generation: LTX-2, **84 GiB**❗️❗️), it is cl
 
 Users can set both **ulysses_size/ring_size(CP, USP)** and **tp_size(TP)** to values greater than 1 to enable hybrid **2D** or **complex 3D** parallelism for the DiT transformer module. The <span style="color:hotpink;">**2D/3D**</span> hybrid parallelism for the Transformer module in cache-dit is fully compatible with Text Encoder Parallelism (<span style="color:hotpink;">**TE-P**</span>), Autoencoder Parallelism (<span style="color:hotpink;">**VAE-P**</span>) and Cache acceleration. Thus, you can combine all these parallelism mechanisms to construct a sophisticated <span style="color:hotpink;">**5D**</span> parallelism + <span style="color:hotpink;">**Cache**</span> architecture for <span style="color:hotpink;">**large-scale DiTs**</span> to achieve the best performance on low-VRAM devices.
 
-- 🎉2D Transformer Parallelism: <span style="color:hotpink;">Ulysses + TP<></span>
+- 🎉2D Transformer Parallelism: <span style="color:hotpink;">Ulysses + TP</span>
 
 ```python
 from cache_dit import ParallelismConfig
