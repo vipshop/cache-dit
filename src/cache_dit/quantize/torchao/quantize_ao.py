@@ -109,9 +109,11 @@ def quantize_ao(
 
     # Ensure bfloat16 for per_row
     def _filter_fn(m: torch.nn.Module, name: str) -> bool:
+        from torchao.float8.float8_linear import Float8Linear
+
         nonlocal num_quant_linear, num_skip_linear, num_linear_layers, num_layers
         num_layers += 1
-        if isinstance(m, torch.nn.Linear):
+        if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
             num_linear_layers += 1
 
             for exclude_name in exclude_layers:
@@ -132,7 +134,8 @@ def quantize_ao(
                 num_skip_linear += 1
                 return False
 
-            # check blockwise fp8 support for linear layers, if not supported, skip quantization for that layer
+            # check blockwise fp8 support for linear layers, if not supported,
+            # skip quantization for that layer.
             if quant_type in [
                 "fp8_blockwise",
             ] and not _check_if_linear_fp8_blockwise_can_support(m):
