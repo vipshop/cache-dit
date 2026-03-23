@@ -541,7 +541,7 @@ Users can use <span style="color:hotpink;">force_refresh_step_hint</span> param 
 
 ![alt text](https://github.com/vipshop/cache-dit/raw/main/docs/assets/mcc.png)
 
-The <span style="color:hotpink;">force_refresh_step_policy</span> is a helper parameter for <span style="color:hotpink;">force_refresh_step_hint</span> and can be set to "always" or "once". <span style="color:hotpink;">always</span> means we will always refresh the cache at the step index hint, while <span style="color:hotpink;">once</span> means we will only refresh the cache at the first occurrence of the step index hint. This is useful for some cases where the input condition changes significantly at a certain step in each inference loop.  e.g., if force_refresh_step_hint=25 and the inference has 100 steps, then the cache will be refreshed at:  
+The <span style="color:hotpink;">force_refresh_step_policy</span> is a helper parameter for <span style="color:hotpink;">force_refresh_step_hint</span> and can be set to "repeat" or "once". <span style="color:hotpink;">repeat</span> means we will refresh the cache at each time the step index hint occurs, while <span style="color:hotpink;">once</span> means we will only refresh the cache at the first occurrence of the step index hint. This is useful for some cases where the input condition changes significantly at a certain step in each inference loop.  e.g., if force_refresh_step_hint=25 and the inference has 100 steps, then the cache will be refreshed at:  
 
 - <span style="color:hotpink;">once</span> policy: step 25, treat the remaining steps as a new inference context, no more refresh after step 25;  
 - <span style="color:hotpink;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new inference context.  
@@ -561,7 +561,7 @@ cache_dit.enable_cache(
         # at the end of each loop to ensure the previous cache will never be used
         # in the next loop.
         force_refresh_step_hint=50,
-        force_refresh_step_policy="always",
+        force_refresh_step_policy="repeat",
     ),
 )
 
