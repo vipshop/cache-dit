@@ -98,7 +98,7 @@ def quantize_ao(
         if quant_type == "fp8_w8a8_dq" and per_row:
             exclude_layers = exclude_layers + module._exclude_for_quantize
             logger.info(
-                f"Found excluding layers for {module.__class__.__name__}: "
+                f"Found extra excluding layers for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
             )
 
