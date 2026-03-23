@@ -17,6 +17,9 @@ def quantize_ao(
     exclude_layers: List[str] = [
         "embedder",
         "embed",
+        "modulation",
+        "norm",
+        "mod",
     ],
     filter_fn: Optional[Callable] = None,
     verbose: bool = False,
@@ -85,6 +88,19 @@ def quantize_ao(
             8,
             9,
         ), "FP8 is not supported for current device."
+
+    if hasattr(module, "_exclude_for_quantize"):
+        # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
+        # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
+        # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
+        # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
+        # Why??? Need further investigation.
+        if quant_type == "fp8_w8a8_dq" and per_row:
+            exclude_layers = exclude_layers + module._exclude_for_quantize
+            logger.info(
+                f"Found extra excluding layers for {module.__class__.__name__}: "
+                f"{module._exclude_for_quantize}"
+            )
 
     num_quant_linear = 0
     num_skip_linear = 0
@@ -226,17 +242,6 @@ def quantize_ao(
                     # group_size is None -> per_channel, else per group
                     group_size=kwargs.get("group_size", None),
                 )
-
-            elif quant_type == "int4_w4a8_dq":
-
-                from torchao.quantization import (
-                    Int8DynamicActivationInt4WeightConfig,
-                )
-
-                quant_config = Int8DynamicActivationInt4WeightConfig(
-                    group_size=kwargs.get("group_size", 32),
-                )
-
             elif quant_type == "int4_w4a16_wo":
 
                 from torchao.quantization import Int4WeightOnlyConfig
@@ -251,7 +256,7 @@ def quantize_ao(
         except ImportError as e:
             e.msg += (
                 f"{quant_type} is not supported in torchao backend now! "
-                "Please upgrade the torchao library."
+                "Please consider to use another quantization type instead."
             )
             raise e
 
@@ -276,6 +281,7 @@ def quantize_ao(
         f"Quantized        Method: {quant_type:>5}\n"
         f"Quantized Linear Layers: {num_quant_linear:>5}\n"
         f"Skipped   Linear Layers: {num_skip_linear:>5}\n"
+        f"Skipped        Patterns: {exclude_layers}\n"
         f"Total     Linear Layers: {num_linear_layers:>5}\n"
         f"Total     (all)  Layers: {num_layers:>5}"
     )

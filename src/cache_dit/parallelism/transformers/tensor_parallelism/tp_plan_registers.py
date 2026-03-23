@@ -1,7 +1,8 @@
 import torch
 import logging
+import copy
 from abc import abstractmethod
-from typing import Dict
+from typing import Dict, List, Optional
 from torch.distributed import init_device_mesh
 from ...config import ParallelismConfig
 from ....logger import init_logger
@@ -36,6 +37,16 @@ class TensorParallelismPlanner:
             mesh_shape=[parallelism_config.tp_size],
         )
         return tp_mesh
+
+    def exclude_for_quantize(
+        self, transformer: torch.nn.Module, exclude_layers: Optional[List[str]] = None, **kwargs
+    ):
+        # Temporarily exclude some layers for quantization, e.g, layers applied RowwiseParallel.
+        # Avoid torch._scaled_mm error: "RuntimeError: Expected b.stride(0) == 1 to be true,
+        # but got false", RowwiseParallel (TP) seems will cause the layout of the linear weights
+        # changedly after '_dispatch_get_local_results_slow_path'. Why? Need further investigation.
+        if exclude_layers is not None:
+            transformer._exclude_for_quantize = copy.deepcopy(exclude_layers)
 
 
 class TensorParallelismPlannerRegister:

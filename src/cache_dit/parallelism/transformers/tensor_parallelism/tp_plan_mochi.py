@@ -126,4 +126,14 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
                 parallelize_plan=layer_plan,
             )
 
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn1.to_out",
+                "attn1.to_add_out",
+                "ff.net.2",
+                "ff_context.net.2",
+            ],
+        )
+
         return transformer

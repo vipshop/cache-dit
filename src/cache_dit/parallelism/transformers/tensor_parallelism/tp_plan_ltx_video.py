@@ -165,4 +165,13 @@ class LTXVideoTensorParallelismPlanner(TensorParallelismPlanner):
             )
             prepare_block(block)
 
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn1.to_out",
+                "attn2.to_out",
+                "ff.net.2",
+            ],
+        )
+
         return transformer

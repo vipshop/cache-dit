@@ -17,6 +17,9 @@ def quantize(
     exclude_layers: List[str] = [
         "embedder",
         "embed",
+        "modulation",
+        "norm",
+        "mod",
     ],
     filter_fn: Optional[Callable] = None,
     verbose: bool = False,
@@ -82,6 +85,9 @@ def quantize_(
     exclude_layers: List[str] = [
         "embedder",
         "embed",
+        "modulation",
+        "norm",
+        "mod",
     ],
     filter_fn: Optional[Callable] = None,
     verbose: bool = False,

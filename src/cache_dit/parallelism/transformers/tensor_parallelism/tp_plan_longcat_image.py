@@ -108,4 +108,14 @@ class LongCatImageTensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+        self.exclude_for_quantize(
+            transformer=transformer,
+            exclude_layers=[
+                "attn.to_out",
+                "attn.to_add_out",
+                "ff.net.2",
+                "ff_context.net.2",
+                "proj_out",
+            ],
+        )
         return transformer

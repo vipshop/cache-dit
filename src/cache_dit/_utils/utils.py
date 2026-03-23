@@ -315,6 +315,14 @@ def get_args(
         default=False,
         help="Enable quantization for transformer",
     )
+    # per row quantization
+    parser.add_argument(
+        "--disable-per-row",
+        "--no-per-row",
+        action="store_true",
+        default=False,
+        help="Disable per row quantization for transformer",
+    )
     # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
     parser.add_argument(
         "--quantize-type",
@@ -1069,8 +1077,20 @@ def maybe_quantize_transformer(
         ]
 
         def is_per_row_supported(transformer):
+            if args.disable_per_row:
+                return False
             transformer_cls_name = transformer.__class__.__name__
             return transformer_cls_name not in _class_not_supported_per_row
+
+        def get_exclude_layers(transformer):
+            from ..quantize import QuantizeConfig
+
+            default_config = QuantizeConfig()
+            exclude_layers = default_config.exclude_layers
+            # TODO: we can add more layers to exclude for specific models if needed,
+            # e.g., for QwenImageTransformer2DModel, we may need to exclude some
+            # specific layers to avoid out of memory issue or performance regression.
+            return exclude_layers
 
         if hasattr(pipe, "transformer"):
             transformer = getattr(pipe, "transformer", None)
@@ -1085,6 +1105,7 @@ def maybe_quantize_transformer(
                         transformer,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer),
+                        exclude_layers=get_exclude_layers(transformer),
                         verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer", transformer)
@@ -1110,6 +1131,7 @@ def maybe_quantize_transformer(
                         transformer_2,
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer_2),
+                        exclude_layers=get_exclude_layers(transformer_2),
                         verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer_2", transformer_2)
