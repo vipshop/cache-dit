@@ -9,6 +9,8 @@ from diffusers.models.transformers.transformer_flux2 import (
     Flux2Attention,
     Flux2ParallelSelfAttnProcessor,
     Flux2ParallelSelfAttention,
+    Flux2KVAttnProcessor,
+    Flux2KVParallelSelfAttnProcessor,
     apply_rotary_emb,
     dispatch_attention_fn,
 )
@@ -52,6 +54,7 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
         self._cp_planner_preferred_native_diffusers = False
 
         if parallelism_config.ulysses_async:
+            assert not _is_klein_kv(transformer), "Async Ulysses is not supported for Klein-KV now."
             Flux2AttnProcessor.__call__ = __patch_flux2_attn_processor__
             Flux2ParallelSelfAttnProcessor.__call__ = __patch_flux2_self_attn_processor__
             self.logging_async_ulysses(transformer)
@@ -65,20 +68,78 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
                     return transformer._cp_plan
 
         # Use custom CP plan in cache-dit for better control and flexibility.
-        _cp_plan = {
-            "": {
-                "hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
+        if not _is_klein_kv(transformer):
+            _cp_plan = {
+                "": {
+                    "hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "encoder_hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "img_ids": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "txt_ids": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            }
+        else:
+            num_double_blocks = len(transformer.transformer_blocks)
+            num_single_blocks = len(transformer.single_transformer_blocks)
+            _cp_plan = {
+                "pos_embed": {
+                    "ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False)
+                },
+                "transformer_blocks.0": {
+                    "hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                    "encoder_hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                "transformer_blocks.*": {
+                    # Will auto skip splitting in cached mode (the dim of temb_mod_img is 2)
+                    "temb_mod_img": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"transformer_blocks.{num_double_blocks - 1}": (
+                    ContextParallelOutput(
+                        gather_dim=1, expected_dims=3
+                    ),  # Gather encoder hidden states
+                    ContextParallelOutput(gather_dim=1, expected_dims=3),  # Gather hidden states
                 ),
-                "encoder_hidden_states": ContextParallelInput(
-                    split_dim=1, expected_dims=3, split_output=False
+                "single_transformer_blocks.0": {
+                    "hidden_states": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                "single_transformer_blocks.*": {
+                    # Will auto skip splitting in cached mode (the dim of temb_mod is 2)
+                    "temb_mod": ContextParallelInput(
+                        split_dim=1, expected_dims=3, split_output=False
+                    ),
+                },
+                f"single_transformer_blocks.{num_single_blocks - 1}": ContextParallelOutput(
+                    gather_dim=1, expected_dims=3
                 ),
-                "img_ids": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-                "txt_ids": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            },
-            "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-        }
+                "norm_out": {
+                    "x": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False)
+                },
+                "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+            }
         return _cp_plan
+
+
+def _is_klein_kv(transformer: Flux2Transformer2DModel) -> bool:
+    attn: Flux2Attention = transformer.transformer_blocks[0].attn
+    return isinstance(attn.processor, Flux2KVAttnProcessor) or isinstance(
+        attn.processor, Flux2KVParallelSelfAttnProcessor
+    )
 
 
 # Implements async Ulysses communication for Attention module when context parallelism
