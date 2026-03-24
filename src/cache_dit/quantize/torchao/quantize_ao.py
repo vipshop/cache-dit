@@ -47,8 +47,6 @@ def quantize_ao(
     )
 
     _normalize_quantize_info(module, quant_info)
-    if quant_info.per_row:  # Ensure bfloat16
-        module.to(torch.bfloat16)
 
     def _quantize_module(m: torch.nn.Module):
         quantize_(
@@ -65,13 +63,17 @@ def quantize_ao(
             device=kwargs.get("device", None),
         )
 
-    # Only quantize the _repeated_ blocks in the transformer (Diffusers).
+    # Regional quantization for transformer modules in Diffusers, users can
+    # set quantize_repeated_blocks to False to disable this behavior and quantize
+    # the whole module directly. For models outside of diffusers, users can specify
+    # the repeated blocks by setting repeated_blocks to a list of block names.
     if quant_info.quantize_repeated_blocks:
         assert (
             quant_info.repeated_blocks is not None
         ), "repeated_blocks must be specified when quantize_repeated_blocks is True."
         has_quantized_region = False
-        # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
+        # Reference: https://github.com/huggingface/diffusers/blob
+        # /main/src/diffusers/models/modeling_utils.py#L1475
         for submod in module.modules():
             if submod.__class__.__name__ in quant_info.repeated_blocks:
                 _quantize_module(submod)
@@ -224,6 +226,9 @@ def _normalize_quantize_info(
         # is not specified, we will set quantize_repeated_blocks to False to avoid
         # potential issues.
         quant_info.quantize_repeated_blocks = False
+
+    if quant_info.per_row:  # Ensure bfloat16
+        module.to(torch.bfloat16)  # inplace
 
     return quant_info
 
