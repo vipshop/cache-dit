@@ -36,7 +36,8 @@ def quantize_ao(
     if not _check_if_module_can_quantized(module):
         return module
 
-    quant_info = QuantizeInfo(
+    quant_stats = QuantizeStats(
+        module_name=module.__class__.__name__,
         quant_type=quant_type,
         per_row=per_row,
         exclude_layers=exclude_layers,
@@ -46,16 +47,16 @@ def quantize_ao(
         kwargs=kwargs,
     )
 
-    _normalize_quantize_info(module, quant_info)
+    _normalize_quantize_info(module, quant_stats)
 
     def _quantize_module(m: torch.nn.Module):
         quantize_(
             m,
-            _quant_config_impl(quant_info),
+            _quant_config_impl(quant_stats),
             filter_fn=(
                 partial(
                     _filter_fn_impl,
-                    quant_info=quant_info,
+                    quant_stats=quant_stats,
                 )
                 if filter_fn is None
                 else filter_fn
@@ -67,36 +68,37 @@ def quantize_ao(
     # set quantize_repeated_blocks to False to disable this behavior and quantize
     # the whole module directly. For models outside of diffusers, users can specify
     # the repeated blocks by setting repeated_blocks to a list of block names.
-    if quant_info.quantize_repeated_blocks:
+    if quant_stats.quantize_repeated_blocks:
         assert (
-            quant_info.repeated_blocks is not None
+            quant_stats.repeated_blocks is not None
         ), "repeated_blocks must be specified when quantize_repeated_blocks is True."
         has_quantized_region = False
         # Reference: https://github.com/huggingface/diffusers/blob
         # /main/src/diffusers/models/modeling_utils.py#L1475
         for submod in module.modules():
-            if submod.__class__.__name__ in quant_info.repeated_blocks:
+            if submod.__class__.__name__ in quant_stats.repeated_blocks:
                 _quantize_module(submod)
                 has_quantized_region = True
         if not has_quantized_region:
             raise ValueError(
-                f"Regional quantization failed because {quant_info.repeated_blocks} "
+                f"Regional quantization failed because {quant_stats.repeated_blocks} "
                 "classes are not found in the module."
             )
     else:
         _quantize_module(module)
 
     maybe_empty_cache()
-    quant_info.logging()
+    quant_stats.summary()
 
-    module._quantize_type = quant_info.quant_type
-    module._exclude_for_quantize = copy.deepcopy(quant_info.exclude_layers)
+    module._quantize_type = quant_stats.quant_type
+    module._exclude_for_quantize = copy.deepcopy(quant_stats.exclude_layers)
     module._is_quantized = True
     return module
 
 
 @dataclasses.dataclass
-class QuantizeInfo:
+class QuantizeStats:
+    module_name: str = ""
     quant_type: str = "fp8_w8a8_dq"
     quant_type_rev: str = "float8"
     per_row: bool = True
@@ -110,20 +112,24 @@ class QuantizeInfo:
     num_layers: int = 0
     kwargs: dict = dataclasses.field(default_factory=dict)
 
-    def logging(self):
-        logger.info("-" * 80)
+    def summary(self):
+        quantized_region = (
+            f"{self.repeated_blocks}"
+            if self.quantize_repeated_blocks and self.repeated_blocks is not None
+            else self.module_name if self.module_name else "Module"
+        )
+        max_len = len(f"Quantized        Region: {quantized_region}")
+        logger.info("-" * max_len)
         logger.info(
-            f"Quantized          Method: {self.quant_type_rev:>5}\n"
-            f"Quantized  Linear  Layers: {self.num_quant_linear:>5}\n"
-            f"Skipped    Linear  Layers: {self.num_skip_linear:>5}\n"
-            f"Total      Linear  Layers: {self.num_linear_layers:>5}\n"
-            f"Total      (all)   Layers: {self.num_layers:>5}"
+            f"Quantized        Method: {self.quant_type_rev}\n"
+            f"Quantized        Region: {quantized_region}\n"
+            f"Quantized Linear Layers: {self.num_quant_linear:<5}\n"
+            f"Skipped   Linear Layers: {self.num_skip_linear:<5}\n"
+            f"Total     Linear Layers: {self.num_linear_layers:<5}"
         )
         if self.verbose:
-            logger.info(f"Skipped          Patterns: {self.exclude_layers}")
-            if self.quantize_repeated_blocks:
-                logger.info(f"Quantized Repeated Blocks: {self.repeated_blocks}")
-        logger.info("-" * 80)
+            logger.info(f"Skipped        Patterns: {self.exclude_layers}")
+        logger.info("-" * max_len)
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
@@ -154,9 +160,9 @@ def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
 
 def _normalize_quantize_info(
     module: torch.nn.Module,
-    quant_info: QuantizeInfo,
+    quant_stats: QuantizeStats,
     **kwargs,
-) -> QuantizeInfo:
+) -> QuantizeStats:
 
     alias_map = {
         "float8": "fp8_w8a8_dq",
@@ -177,7 +183,7 @@ def _normalize_quantize_info(
             alias_map_rev.pop(key)
     alias_map_rev = {v: k for k, v in alias_map_rev.items()}
 
-    quant_type = quant_info.quant_type
+    quant_type = quant_stats.quant_type
     if quant_type.lower() in alias_map:
         quant_type = alias_map[quant_type.lower()]
 
@@ -198,44 +204,44 @@ def _normalize_quantize_info(
             9,
         ), "FP8 is not supported for current device."
 
-    quant_info.quant_type = quant_type
-    quant_info.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
+    quant_stats.quant_type = quant_type
+    quant_stats.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
 
-    prev_exclude_layers = copy.deepcopy(quant_info.exclude_layers)
+    prev_exclude_layers = copy.deepcopy(quant_stats.exclude_layers)
     if hasattr(module, "_exclude_for_quantize"):
         # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
         # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
         # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
         # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
         # Why??? Need further investigation.
-        if quant_info.quant_type == "fp8_w8a8_dq" and quant_info.per_row:
+        if quant_stats.quant_type == "fp8_w8a8_dq" and quant_stats.per_row:
             exclude_layers = prev_exclude_layers + module._exclude_for_quantize
-            logger.info(
+            logger.debug(
                 f"Found extra excluding layers for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
             )
-            quant_info.exclude_layers = copy.deepcopy(exclude_layers)
+            quant_stats.exclude_layers = copy.deepcopy(exclude_layers)
 
-    quant_info.repeated_blocks = getattr(
+    quant_stats.repeated_blocks = getattr(
         module,
         "_repeated_blocks",
-        quant_info.repeated_blocks if quant_info.repeated_blocks else None,
+        quant_stats.repeated_blocks if quant_stats.repeated_blocks else None,
     )
-    if quant_info.repeated_blocks is None:
+    if quant_stats.repeated_blocks is None:
         # If the module doesn't have _repeated_blocks attribute and repeated_blocks
         # is not specified, we will set quantize_repeated_blocks to False to avoid
         # potential issues.
-        quant_info.quantize_repeated_blocks = False
+        quant_stats.quantize_repeated_blocks = False
 
-    if quant_info.per_row:  # Ensure bfloat16
+    if quant_stats.per_row:  # Ensure bfloat16
         module.to(torch.bfloat16)  # inplace
 
-    return quant_info
+    return quant_stats
 
 
-def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
+def _quant_config_impl(quant_stats: QuantizeStats, **kwargs):
     try:
-        if quant_info.quant_type == "fp8_w8a8_dq":
+        if quant_stats.quant_type == "fp8_w8a8_dq":
             from torchao.quantization import (
                 Float8DynamicActivationFloat8WeightConfig,
                 PerTensor,
@@ -252,11 +258,11 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
                     torch.float8_e4m3fn,
                 ),
                 granularity=(
-                    ((PerRow(), PerRow())) if quant_info.per_row else ((PerTensor(), PerTensor()))
+                    ((PerRow(), PerRow())) if quant_stats.per_row else ((PerTensor(), PerTensor()))
                 ),
             )
 
-        elif quant_info.quant_type == "fp8_blockwise":
+        elif quant_stats.quant_type == "fp8_blockwise":
             try:
                 from torchao.quantization import (
                     Float8DynamicActivationFloat8WeightConfig,
@@ -285,7 +291,7 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
                 granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),  # hardcode
             )
 
-        elif quant_info.quant_type == "fp8_w8a16_wo":
+        elif quant_stats.quant_type == "fp8_w8a16_wo":
             from torchao.quantization import Float8WeightOnlyConfig
 
             quant_config = Float8WeightOnlyConfig(
@@ -295,14 +301,14 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
                 ),
             )
 
-        elif quant_info.quant_type == "int8_w8a8_dq":
+        elif quant_stats.quant_type == "int8_w8a8_dq":
             from torchao.quantization import (
                 Int8DynamicActivationInt8WeightConfig,
             )
 
             quant_config = Int8DynamicActivationInt8WeightConfig()
 
-        elif quant_info.quant_type == "int8_w8a16_wo":
+        elif quant_stats.quant_type == "int8_w8a16_wo":
 
             from torchao.quantization import Int8WeightOnlyConfig
 
@@ -310,7 +316,7 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
                 # group_size is None -> per_channel, else per group
                 group_size=kwargs.get("group_size", None),
             )
-        elif quant_info.quant_type == "int4_w4a16_wo":
+        elif quant_stats.quant_type == "int4_w4a16_wo":
 
             from torchao.quantization import Int4WeightOnlyConfig
 
@@ -319,11 +325,11 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
             )
 
         else:
-            raise ValueError(f"quant_type: {quant_info.quant_type} is not supported now!")
+            raise ValueError(f"quant_type: {quant_stats.quant_type} is not supported now!")
 
     except ImportError as e:
         e.msg += (
-            f"{quant_info.quant_type} is not supported in torchao backend now! "
+            f"{quant_stats.quant_type} is not supported in torchao backend now! "
             "Please consider to use another quantization type instead."
         )
         raise e
@@ -334,19 +340,19 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
 def _filter_fn_impl(
     m: torch.nn.Module,
     name: str,
-    quant_info: QuantizeInfo = QuantizeInfo(),
+    quant_stats: QuantizeStats = QuantizeStats(),
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
     msg_template = "Skip Quantization: {name} -> pattern<{pattern}>"
 
-    quant_info.num_layers += 1
+    quant_stats.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
-        quant_info.num_linear_layers += 1
+        quant_stats.num_linear_layers += 1
 
-        for exclude_name in quant_info.exclude_layers:
+        for exclude_name in quant_stats.exclude_layers:
             if exclude_name in name:
-                if quant_info.verbose:
+                if quant_stats.verbose:
                     logger.info(
                         msg_template.format(
                             name=name,
@@ -354,15 +360,15 @@ def _filter_fn_impl(
                         )
                     )
 
-                quant_info.num_skip_linear += 1
+                quant_stats.num_skip_linear += 1
                 return False
 
         if (
-            quant_info.per_row
+            quant_stats.per_row
             and m.weight.dtype != torch.bfloat16
-            and quant_info.quant_type == "fp8_w8a8_dq"
+            and quant_stats.quant_type == "fp8_w8a8_dq"
         ):
-            if quant_info.verbose:
+            if quant_stats.verbose:
                 logger.info(
                     msg_template.format(
                         name=name,
@@ -370,40 +376,40 @@ def _filter_fn_impl(
                     )
                 )
 
-            quant_info.num_skip_linear += 1
+            quant_stats.num_skip_linear += 1
             return False
 
         # check blockwise fp8 support for linear layers, if not supported,
         # skip quantization for that layer.
-        if quant_info.quant_type in [
+        if quant_stats.quant_type in [
             "fp8_blockwise",
         ] and not _check_if_linear_fp8_blockwise_can_support(m):
             weight_shape = tuple(m.weight.shape)
-            if quant_info.verbose:
+            if quant_stats.verbose:
                 logger.info(
                     msg_template.format(
                         name=name,
                         pattern=f"w{weight_shape} % block_size(128, 128) != 0",
                     )
                 )
-            quant_info.num_skip_linear += 1
+            quant_stats.num_skip_linear += 1
             return False
 
-        if quant_info.quant_type in [
+        if quant_stats.quant_type in [
             "fp8_w8a8_dq",
             "fp8_blockwise",
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
-            if quant_info.verbose:
+            if quant_stats.verbose:
                 logger.info(
                     msg_template.format(
                         name=name,
                         pattern="DTensor + bias is not supported for _scaled_mm",
                     )
                 )
-            quant_info.num_skip_linear += 1
+            quant_stats.num_skip_linear += 1
             return False
 
-        quant_info.num_quant_linear += 1
+        quant_stats.num_quant_linear += 1
         return True
 
     return False

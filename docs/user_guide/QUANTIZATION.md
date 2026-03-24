@@ -4,7 +4,7 @@
 
 ## Cache-DiT w/ TorchAo
 
-Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization (recommended). You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API.
+Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
 
 For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, <span style="color:#c77dff;">int8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
 
@@ -29,7 +29,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Users can also specify different quantization configs for different components. For example, quantize the transformer to float8 and the text encoder to float8 weight only.
+Users can also specify different quantization configs for different components. For example, quantize the transformer to float8 and the text encoder to float8_weight_only.
 
 ```python
 import cache_dit
