@@ -4,13 +4,13 @@
 
 ## Forward Pattern Matching 
 
-Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **<span style="color:hotpink;">Input/Output patterns</span>**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the <span style="color:hotpink;">cache_dit.enable_cache(...)</span> API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
+Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **<span style="color:hotpink;">Forward Patterns</span>**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the <span style="color:hotpink;">enable_cache</span> API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
 ## Cache Acceleration with One-line Code
 
-In most cases, you only need to call **one-line** of code, that is <span style="color:hotpink;">cache_dit.enable_cache(...)</span>. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/run_qwen_image.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is <span style="color:hotpink;">enable_cache</span>. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/run_qwen_image.py) as an example. 
 
 ```python
 import cache_dit
@@ -78,7 +78,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples) as an example.
+Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has <span style="color:hotpink;">more than one Transformer</span> (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, DBCacheConfig
@@ -122,7 +122,7 @@ cache_dit.enable_cache(
 
 ## Implement Patch Functor
 
-For any PATTERN not in {0...5}, we introduced the simple abstract concept of **<span style="color:hotpink;">Patch Functor</span>**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
+For any PATTERN not in <span style="color:hotpink;">{0...5}</span>, we introduced the simple abstract concept of **<span style="color:hotpink;">Patch Functor</span>**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
@@ -154,7 +154,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
 
 ## Transformer-Only Interface
 
-In some cases, users may **<span style="color:hotpink;">not use Diffusers or DiffusionPipeline</span>** at all, and may not even have the concept of a "pipeline"—for instance, **<span style="color:hotpink;">ComfyUI</span>** (which breaks down the pipeline into individual components while still retaining transformer components). cache-dit also supports such scenarios; it only needs to be configured via **<span style="color:hotpink;">BlockAdapter</span>**. The pipeline is not mandatory, and you can simply keep it at the default value of None. In this case, the <span style="color:hotpink;">num_inference_steps</span> parameter in cache_config **must be set**, as cache-dit relies on this parameter to refresh the cache context at the appropriate time. Please refer to [📚run_transformer_only.py](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_transformer_only.py) as an example.
+In some cases, users may <span style="color:hotpink;">not use Diffusers</span> or DiffusionPipeline at all, and may not even have the concept of a "pipeline"—for instance, **<span style="color:hotpink;">ComfyUI</span>** (which breaks down the pipeline into individual components while still retaining transformer components). cache-dit also supports such scenarios; it only needs to be configured via **<span style="color:hotpink;">BlockAdapter</span>**. The pipeline is not mandatory, and you can simply keep it at the default value of None. In this case, the <span style="color:hotpink;">num_inference_steps</span> parameter in cache_config **must be set**, as cache-dit relies on this parameter to refresh the cache context at the appropriate time. Please refer to [📚run_transformer_only.py](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_transformer_only.py) as an example.
 
 ```python
 cache_dit.enable_cache(
@@ -256,7 +256,7 @@ cache_dit.enable_cache(
 
 ## Cache Stats Summary
 
-After finishing each inference of `pipe(...)`, you can call the <span style="color:hotpink;">cache_dit.summary()</span> API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
+After finishing each inference of `pipe(...)`, you can call the <span style="color:hotpink;">summary</span> API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
 ```python
 stats = cache_dit.summary(pipe)
 ```
@@ -273,7 +273,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 ## Disable Cache Acceleration
 
-Users can call <span style="color:hotpink;">cache_dit.disable_cache</span> API to disable and delete the all acceleration hooks from the optimized pipeline or block adapter. 
+Users can call <span style="color:hotpink;">disable_cache</span> API to disable and delete the all acceleration hooks from the optimized pipeline or block adapter. 
 
 ```python
 import cache_dit
@@ -397,7 +397,7 @@ cache_dit.enable_cache(
 
 <div id="cfg"></div>
 
-cache-dit supports caching for **<span style="color:hotpink;">CFG (classifier-free guidance)</span>**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default, None)**. Otherwise, set it to True. For examples:
+cache-dit supports caching for **<span style="color:hotpink;">CFG (classifier-free guidance)</span>**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set <span style="color:hotpink;">enable_separate_cfg</span> param to **False (default, None)**. Otherwise, set it to True. For examples:
 
 ```python
 from cache_dit import DBCacheConfig
@@ -517,7 +517,7 @@ cache_dit.enable_cache(
 As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (please click to enlarge) has shown **obvious blurriness**. However, the **Ultra** version under **dynamic cache** (`SCM Ultra D*`) still maintains excellent clarity. Therefore, we prioritize recommending the use of dynamic cache while using `SCM: steps_computation_mask`.
 
 
-|Baseline|SCM S S*|SCM S D*|SCM F D*|SCM U D*|+TS|+compile|+FP8 +Sage|  
+|Baseline|SCM S S*|SCM S D*|SCM F D*|<span style="color:hotpink;">SCM U D*</span>|+TS|+compile|+FP8 +Sage|  
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.4s|17.1s|11.4s|8.2s|8.2s|7.1s|4.5s|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/static.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.C1_Q1_float8_DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|
