@@ -48,10 +48,10 @@ __all__ = [
     "_all_to_all_single_any_qkv_fp8_async",
     "_all_to_all_single_any_o_fp8_async",
     # Helper functions for preparing communication metadata
-    "_prepare_ulysses_comm_metadata",
+    "_init_comm_metadata",
     # Unified functions for Async Ulysses QKV/O Projection
-    "_unified_all_to_all_qkv_async_fn",
-    "_unified_all_to_all_o_async_fn",
+    "_all_to_all_qkv_async_fn",
+    "_all_to_all_o_async_fn",
 ]
 
 # NOTE: We should always use the asynchronous all to all variants to keep the unified input/output shape
@@ -226,7 +226,7 @@ def _maybe_unpad_o_head(
 
 
 # Helper functions to for all-to-all communication with Ulysses Attention
-def _prepare_ulysses_comm_metadata(
+def _init_comm_metadata(
     query: torch.Tensor,
     **kwargs,
 ) -> dict:
@@ -634,11 +634,9 @@ def _all_to_all_single_any_o_fp8_async(
 
 # Unified functions to select proper all to all implementations according to
 # Ulysses Float8 or other settings. Mainly used in Async Ulysses Attention.
-# TODO: Refactor basic any_qkvo and non-any_qkvo all2all functions to have
-# the same output shape, thus make the unified functions more general and clean.
 
 
-def _unified_all_to_all_qkv_async_fn(
+def _all_to_all_qkv_async_fn(
     fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
@@ -661,7 +659,7 @@ def _unified_all_to_all_qkv_async_fn(
         return _all_to_all_single_qkv_async
 
 
-def _unified_all_to_all_o_async_fn(
+def _all_to_all_o_async_fn(
     fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled

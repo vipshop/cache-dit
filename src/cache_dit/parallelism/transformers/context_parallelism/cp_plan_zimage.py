@@ -27,9 +27,9 @@ from .cp_plan_registers import (
     ContextParallelismPlannerRegister,
     ParallelismConfig,
 )
-from ...attention import _unified_all_to_all_o_async_fn
-from ...attention import _unified_all_to_all_qkv_async_fn
-from ...attention import _prepare_ulysses_comm_metadata
+from ...attention import _all_to_all_o_async_fn
+from ...attention import _all_to_all_qkv_async_fn
+from ...attention import _init_comm_metadata
 from ...attention import _maybe_patch_find_submodule
 from ....platforms import current_platform
 
@@ -185,9 +185,9 @@ def _async_ulysses_attn_zimage(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
-    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
-    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(fp8=False)
+    _all_to_all_o_async_func = _all_to_all_o_async_fn()
+    _all_to_all_qv_async_func = _all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _all_to_all_qkv_async_fn(fp8=False)
 
     # Apply RoPE
     def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
@@ -205,7 +205,7 @@ def _async_ulysses_attn_zimage(
     if freqs_cis is not None:  # Apply RoPE
         query = apply_rotary_emb(query, freqs_cis)
 
-    metadata = _prepare_ulysses_comm_metadata(query)
+    metadata = _init_comm_metadata(query)
 
     # Async all to all for query
     query_wait = _all_to_all_qv_async_func(query, group, **metadata)

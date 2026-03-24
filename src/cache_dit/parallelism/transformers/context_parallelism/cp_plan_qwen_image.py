@@ -30,9 +30,9 @@ from .cp_plan_registers import (
     ParallelismConfig,
 )
 
-from ...attention import _unified_all_to_all_o_async_fn
-from ...attention import _unified_all_to_all_qkv_async_fn
-from ...attention import _prepare_ulysses_comm_metadata
+from ...attention import _all_to_all_o_async_fn
+from ...attention import _all_to_all_qkv_async_fn
+from ...attention import _init_comm_metadata
 
 from ....logger import init_logger
 
@@ -136,9 +136,9 @@ def _async_ulysses_attn_qwen(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
-    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
-    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(fp8=False)
+    _all_to_all_o_async_func = _all_to_all_o_async_fn()
+    _all_to_all_qv_async_func = _all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _all_to_all_qkv_async_fn(fp8=False)
 
     seq_txt = encoder_hidden_states.shape[1]
 
@@ -148,7 +148,7 @@ def _async_ulysses_attn_qwen(
     txt_value = txt_value.unflatten(-1, (attn.heads, -1))
     joint_value = torch.cat([txt_value, img_value], dim=1)
 
-    metadata = _prepare_ulysses_comm_metadata(joint_value)
+    metadata = _init_comm_metadata(joint_value)
 
     # Async all to all for value
     joint_value_wait = _all_to_all_qv_async_func(joint_value, group, **metadata)

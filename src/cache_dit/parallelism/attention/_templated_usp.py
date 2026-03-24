@@ -5,7 +5,7 @@ from ._distributed_primitives import (
     _all_to_all_single_o_async,
     _all_to_all_single_qkv_fp8_async,
     _all_to_all_single_o_fp8_async,
-    _prepare_ulysses_comm_metadata,
+    _init_comm_metadata,
 )
 
 try:
@@ -101,7 +101,7 @@ class _TemplatedUSPAttention(torch.autograd.Function):
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         ulysses_group = ulysses_mesh.get_group()
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         query_wait = _all_to_all_single_qkv_async(query, ulysses_group, **metadata)
         key_wait = _all_to_all_single_qkv_async(key, ulysses_group, **metadata)
         value_wait = _all_to_all_single_qkv_async(value, ulysses_group, **metadata)
@@ -174,7 +174,7 @@ class _TemplatedUSPAttentionFloat8(torch.autograd.Function):
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         ulysses_group = ulysses_mesh.get_group()
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to

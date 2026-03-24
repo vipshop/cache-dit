@@ -35,9 +35,9 @@ from .cp_plan_registers import (
 
 from ....logger import init_logger
 
-from ...attention import _unified_all_to_all_o_async_fn
-from ...attention import _unified_all_to_all_qkv_async_fn
-from ...attention import _prepare_ulysses_comm_metadata
+from ...attention import _all_to_all_o_async_fn
+from ...attention import _all_to_all_qkv_async_fn
+from ...attention import _init_comm_metadata
 
 logger = init_logger(__name__)
 
@@ -157,9 +157,9 @@ def _async_ulysses_attn_flux2(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
-    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
-    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(fp8=False)
+    _all_to_all_o_async_func = _all_to_all_o_async_fn()
+    _all_to_all_qv_async_func = _all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _all_to_all_qkv_async_fn(fp8=False)
 
     value = attn.to_v(hidden_states)  # type: torch.Tensor
     value = value.unflatten(-1, (attn.heads, -1))
@@ -168,7 +168,7 @@ def _async_ulysses_attn_flux2(
         encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
         value = torch.cat([encoder_value, value], dim=1)
 
-    metadata = _prepare_ulysses_comm_metadata(value)
+    metadata = _init_comm_metadata(value)
 
     # Async all to all for value
     value_wait = _all_to_all_qv_async_func(value, group, **metadata)
@@ -287,9 +287,9 @@ def _async_ulysses_self_attn_flux2(
     ulysses_mesh: DeviceMesh = self._parallel_config.context_parallel_config._ulysses_mesh
     group = ulysses_mesh.get_group()
 
-    _all_to_all_o_async_func = _unified_all_to_all_o_async_fn()
-    _all_to_all_qv_async_func = _unified_all_to_all_qkv_async_fn()
-    _all_to_all_k_async_func = _unified_all_to_all_qkv_async_fn(fp8=False)
+    _all_to_all_o_async_func = _all_to_all_o_async_fn()
+    _all_to_all_qv_async_func = _all_to_all_qkv_async_fn()
+    _all_to_all_k_async_func = _all_to_all_qkv_async_fn(fp8=False)
 
     # Parallel in (QKV + MLP in) projection
     hidden_states = attn.to_qkv_mlp_proj(hidden_states)
@@ -301,7 +301,7 @@ def _async_ulysses_self_attn_flux2(
     query, key, value = qkv.chunk(3, dim=-1)
 
     value = value.unflatten(-1, (attn.heads, -1))
-    metadata = _prepare_ulysses_comm_metadata(value)
+    metadata = _init_comm_metadata(value)
     # Async all to all for value
     value_wait = _all_to_all_qv_async_func(value, group, **metadata)
 
