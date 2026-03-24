@@ -292,6 +292,8 @@ def _filter_fn_impl(
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
+    msg_template = "Skip Quantization: {name} -> pattern<{pattern}>"
+
     quant_info.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
         quant_info.num_linear_layers += 1
@@ -299,7 +301,12 @@ def _filter_fn_impl(
         for exclude_name in quant_info.exclude_layers:
             if exclude_name in name:
                 if quant_info.verbose:
-                    logger.info(f"Skip Quantization: {name} -> pattern<{exclude_name}>")
+                    logger.info(
+                        msg_template.format(
+                            name=name,
+                            pattern=exclude_name,
+                        )
+                    )
 
                 quant_info.num_skip_linear += 1
                 return False
@@ -311,7 +318,10 @@ def _filter_fn_impl(
         ):
             if quant_info.verbose:
                 logger.info(
-                    f"Skip Quantization: {name} -> pattern<dtype({m.weight.dtype})!=bfloat16>"
+                    msg_template.format(
+                        name=name,
+                        pattern=f"dtype({m.weight.dtype})!=bfloat16",
+                    )
                 )
 
             quant_info.num_skip_linear += 1
@@ -325,8 +335,10 @@ def _filter_fn_impl(
             weight_shape = tuple(m.weight.shape)
             if quant_info.verbose:
                 logger.info(
-                    f"Skip Quantization: {name} -> pattern<w{weight_shape} "
-                    f"% block_size(128, 128) != 0>"
+                    msg_template.format(
+                        name=name,
+                        pattern=f"w{weight_shape} % block_size(128, 128) != 0",
+                    )
                 )
             quant_info.num_skip_linear += 1
             return False
@@ -337,8 +349,10 @@ def _filter_fn_impl(
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
             if quant_info.verbose:
                 logger.info(
-                    f"Skip Quantization: {name} -> "
-                    f"pattern<DTensor + bias is not supported for _scaled_mm>"
+                    msg_template.format(
+                        name=name,
+                        pattern="DTensor + bias is not supported for _scaled_mm",
+                    )
                 )
             quant_info.num_skip_linear += 1
             return False
