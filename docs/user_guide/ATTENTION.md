@@ -6,19 +6,19 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 
 |backend|details|parallelism|attn_mask|
 |:---|:---|:---|:---|    
-|<span style="color:hotpink;">native</span>| Native SDPA Attention, w/ cache-dit optimized|✅|✅|  
-|<span style="color:hotpink;">_sdpa_cudnn</span>| CUDNN Attention via SDPA API, w/ cache-dit optimized|✅|✅|
-|<span style="color:hotpink;">_native_cudnn</span>| CUDNN Attention via SDPA API, w/o cache-dit optimized|✅|✖️|
-|<span style="color:hotpink;">flash</span>| official FlashAttention-2|✅|✖️| 
-|<span style="color:hotpink;">_flash_3</span>| official FlashAttention-3|✅|✖️|
-|<span style="color:hotpink;">sage</span>| FP8 SageAttention|✅|✖️|
-|<span style="color:hotpink;">_native_npu</span>| Optimized Ascend NPU Attention|✅|✅|
-|<span style="color:hotpink;">_npu_fia</span>| NPU Attention for Ring Parallelism|✅|✅|
+|<span style="color:#c77dff;">native</span>| Native SDPA Attention, w/ cache-dit optimized|✅|✅|  
+|<span style="color:#c77dff;">_sdpa_cudnn</span>| CUDNN Attention via SDPA API, w/ cache-dit optimized|✅|✅|
+|<span style="color:#c77dff;">_native_cudnn</span>| CUDNN Attention via SDPA API, w/o cache-dit optimized|✅|✖️|
+|<span style="color:#c77dff;">flash</span>| official FlashAttention-2|✅|✖️| 
+|<span style="color:#c77dff;">_flash_3</span>| official FlashAttention-3|✅|✖️|
+|<span style="color:#c77dff;">sage</span>| FP8 SageAttention|✅|✖️|
+|<span style="color:#c77dff;">_native_npu</span>| Optimized Ascend NPU Attention|✅|✅|
+|<span style="color:#c77dff;">_npu_fia</span>| NPU Attention for Ring Parallelism|✅|✅|
 
 
 ## Single GPU Inference
 
-Users can specify Attention backend by setting the <span style="color:hotpink;">attention_backend</span> parameter of <span style="color:hotpink;">enable_cache</span> API or use <span style="color:hotpink;">set_attn_backend</span> interface directly.  
+Users can specify Attention backend by setting the <span style="color:#c77dff;">attention_backend</span> parameter of <span style="color:#c77dff;">enable_cache</span> API or use <span style="color:#c77dff;">set_attn_backend</span> interface directly.  
 
 ```python
 import cache_dit
@@ -32,7 +32,7 @@ cache_dit.set_attn_backend(pipe_or_adapter, attention_backend="_sdpa_cudnn")
 
 ## Distributed inference
 
-Users also can specify Attention backend by setting the <span style="color:hotpink;">attention_backend</span> parameter of <span style="color:hotpink;">parallelism_config</span> in the cases of distributed inference:
+Users also can specify Attention backend by setting the <span style="color:#c77dff;">attention_backend</span> parameter of <span style="color:#c77dff;">parallelism_config</span> in the cases of distributed inference:
 
 ```python
 from cache_dit import ParallelismConfig
@@ -52,7 +52,7 @@ cache_dit.enable_cache(
 
 <div id="fp8-attention"></div>
 
-For FP8 Attention, users must install `sage-attention`. Then, pass the <span style="color:hotpink;">sage</span> attention backend to the <span style="color:hotpink;">parallelism_config</span> as an extra parameter. Please note that <span style="color:hotpink;">attention mask</span> is not currently supported for FP8 sage attention.
+For FP8 Attention, users must install `sage-attention`. Then, pass the <span style="color:#c77dff;">sage</span> attention backend to the <span style="color:#c77dff;">parallelism_config</span> as an extra parameter. Please note that <span style="color:#c77dff;">attention mask</span> is not currently supported for FP8 sage attention.
 
 ```python
 # pip3 install git+https://github.com/thu-ml/SageAttention.git 

@@ -12,11 +12,11 @@ def enable_cache(...) -> Union[DiffusionPipeline, BlockAdapter, Transformer]
 
 ## Function Description
 
-The <span style="color:hotpink;">enable_cache</span> function serves as a unified caching interface designed to optimize the performance of diffusion transformer models by implementing an intelligent caching mechanism known as <span style="color:hotpink;">DBCache</span>. This API is engineered to be compatible with nearly `all` diffusion transformer architectures that feature transformer blocks adhering to standard input-output patterns, eliminating the need for architecture-specific modifications.  
+The <span style="color:#c77dff;">enable_cache</span> function serves as a unified caching interface designed to optimize the performance of diffusion transformer models by implementing an intelligent caching mechanism known as <span style="color:#c77dff;">DBCache</span>. This API is engineered to be compatible with nearly `all` diffusion transformer architectures that feature transformer blocks adhering to standard input-output patterns, eliminating the need for architecture-specific modifications.  
 
-By strategically caching intermediate outputs of transformer blocks during the diffusion process, <span style="color:hotpink;">DBCache</span> significantly reduces redundant computations without compromising generation quality. The caching mechanism works by tracking residual differences between consecutive steps, allowing the model to reuse previously computed features when these differences fall below a configurable threshold. This approach maintains a balance between computational efficiency and output precision.  
+By strategically caching intermediate outputs of transformer blocks during the diffusion process, <span style="color:#c77dff;">DBCache</span> significantly reduces redundant computations without compromising generation quality. The caching mechanism works by tracking residual differences between consecutive steps, allowing the model to reuse previously computed features when these differences fall below a configurable threshold. This approach maintains a balance between computational efficiency and output precision.  
 
-The default configuration (<span style="color:hotpink;">F8B0, 8 warmup steps, unlimited cached steps</span>) is carefully tuned to provide an optimal tradeoff for most common use cases. The "F8B0" configuration indicates that the first 8 transformer blocks are used to compute stable feature differences, while no final blocks are employed for additional fusion. The warmup phase ensures the model establishes sufficient feature representation before caching begins, preventing potential degradation of output quality.  
+The default configuration (<span style="color:#c77dff;">F8B0, 8 warmup steps, unlimited cached steps</span>) is carefully tuned to provide an optimal tradeoff for most common use cases. The "F8B0" configuration indicates that the first 8 transformer blocks are used to compute stable feature differences, while no final blocks are employed for additional fusion. The warmup phase ensures the model establishes sufficient feature representation before caching begins, preventing potential degradation of output quality.  
 
 This function seamlessly integrates with both standard diffusion pipelines and custom block adapters, making it versatile for various deployment scenarios—from research prototyping to production environments where inference speed is critical. By abstracting the complexity of caching logic behind a simple interface, it enables developers to enhance model performance with minimal code changes.
 
@@ -34,108 +34,108 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 
 ## Parameter Description
 
-- **<span style="color:hotpink;">pipe_or_adapter</span>**(`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):  
+- **<span style="color:#c77dff;">pipe_or_adapter</span>**(`DiffusionPipeline`, `BlockAdapter` or `Transformer`, *required*):  
   The standard Diffusion Pipeline or custom BlockAdapter (from cache-dit or user-defined).
   For example: `cache_dit.enable_cache(pipe)`.
 
-- **<span style="color:hotpink;">cache_config</span>**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
+- **<span style="color:#c77dff;">cache_config</span>**(`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
   Basic DBCache config for cache context, defaults to DBCacheConfig(). The configurable parameters are listed below:
-    - <span style="color:hotpink;">Fn_compute_blocks</span>: (`int`, *required*, defaults to 8):  
+    - <span style="color:#c77dff;">Fn_compute_blocks</span>: (`int`, *required*, defaults to 8):  
       Specifies that `DBCache` uses the**first n**Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 difference and delivering more accurate information to subsequent blocks.  
-    - <span style="color:hotpink;">Bn_compute_blocks</span>: (`int`, *required*, defaults to 0):  
+    - <span style="color:#c77dff;">Bn_compute_blocks</span>: (`int`, *required*, defaults to 0):  
       Further fuses approximate information in the**last n**Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
-    - <span style="color:hotpink;">residual_diff_threshold</span>: (`float`, *required*, defaults to 0.08):  
+    - <span style="color:#c77dff;">residual_diff_threshold</span>: (`float`, *required*, defaults to 0.08):  
       The value of residual difference threshold, a higher value leads to faster performance at the cost of lower precision.
-    - <span style="color:hotpink;">max_accumulated_residual_diff_threshold</span>: (`float`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">max_accumulated_residual_diff_threshold</span>: (`float`, *optional*, defaults to None):  
       The maximum accumulated relative l1 diff threshold for Cache. If set, when the
       accumulated relative l1 diff exceeds this threshold, the caching strategy will be
       disabled for current step. This is useful for some cases where the input condition
       changes significantly in a single step. Default None means this feature is disabled.  
-    - <span style="color:hotpink;">max_warmup_steps</span>: (`int`, *required*, defaults to 8):  
+    - <span style="color:#c77dff;">max_warmup_steps</span>: (`int`, *required*, defaults to 8):  
       DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
-    - <span style="color:hotpink;">warmup_interval</span>: (`int`, *required*, defaults to 1):    
+    - <span style="color:#c77dff;">warmup_interval</span>: (`int`, *required*, defaults to 1):    
       Skip interval in warmup steps, e.g., when warmup_interval is 2, only 0, 2, 4, ... steps
       in warmup steps will be computed, others will use dynamic cache.
-    - <span style="color:hotpink;">max_cached_steps</span>: (`int`, *required*, defaults to -1):  
+    - <span style="color:#c77dff;">max_cached_steps</span>: (`int`, *required*, defaults to -1):  
       DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
-    - <span style="color:hotpink;">max_continuous_cached_steps</span>: (`int`, *required*, defaults to -1):  
+    - <span style="color:#c77dff;">max_continuous_cached_steps</span>: (`int`, *required*, defaults to -1):  
       DBCache disables the caching strategy when the previous continuous cached steps exceed this value to prevent precision degradation.
-    - <span style="color:hotpink;">enable_separate_cfg</span>: (`bool`, *required*, defaults to None):  
+    - <span style="color:#c77dff;">enable_separate_cfg</span>: (`bool`, *required*, defaults to None):  
       Whether to use separate cfg or not, such as in Wan 2.1, Qwen-Image. For models that fuse CFG and non-CFG into a single forward step, set enable_separate_cfg as False. Examples include: CogVideoX, HunyuanVideo, Mochi, etc.
-    - <span style="color:hotpink;">cfg_compute_first</span>: (`bool`, *required*, defaults to False):    
+    - <span style="color:#c77dff;">cfg_compute_first</span>: (`bool`, *required*, defaults to False):    
       Whether to compute cfg forward first, default is False, meaning:  
       0, 2, 4, ... -> non-CFG step; 1, 3, 5, ... -> CFG step.
-    - <span style="color:hotpink;">cfg_diff_compute_separate</span>: (`bool`, *required*, defaults to True):    
+    - <span style="color:#c77dff;">cfg_diff_compute_separate</span>: (`bool`, *required*, defaults to True):    
       Whether to compute separate difference values for CFG and non-CFG steps, default is True. If False, we will use the computed difference from the current non-CFG transformer step for the current CFG step.
-    - <span style="color:hotpink;">num_inference_steps</span> (`int`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">num_inference_steps</span> (`int`, *optional*, defaults to None):  
       num_inference_steps for DiffusionPipeline, used to adjust some internal settings
       for better caching performance. For example, we will refresh the cache once the
       executed steps exceed num_inference_steps if num_inference_steps is provided.
-    - <span style="color:hotpink;">steps_computation_mask</span>: (`List[int]`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">steps_computation_mask</span>: (`List[int]`, *optional*, defaults to None):  
       This param introduce LeMiCa/EasyCache style compute mask for steps. It is a list
       of length num_inference_steps indicating whether to compute each step or not.
       1 means must compute, 0 means use dynamic/static cache. If provided, will override
       other settings to decide whether to compute each step.  
-    - <span style="color:hotpink;">steps_computation_policy</span>: (`str`, *optional*, defaults to "dynamic"):  
+    - <span style="color:#c77dff;">steps_computation_policy</span>: (`str`, *optional*, defaults to "dynamic"):  
       The computation policy for steps when using steps_computation_mask. It can be
       "dynamic" or "static". "dynamic" means using dynamic cache for steps marked as 0
       in steps_computation_mask, while "static" means using static cache for those steps.
-    - <span style="color:hotpink;">force_refresh_step_hint</span>: (`int`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">force_refresh_step_hint</span>: (`int`, *optional*, defaults to None):  
       The step index hint to force refresh the cache. If provided, the cache will be
       refreshed at the beginning of this step. This is useful for some cases where the
       input condition changes significantly at a certain step. Default None means no
       force refresh. For example, in a 50-step inference, setting force_refresh_step_hint=25
       will refresh the cache before executing step 25 and view the remaining 25 steps as a
       new inference context.
-    - <span style="color:hotpink;">force_refresh_step_policy</span>: (`str`, *optional*, defaults to "once"):  
+    - <span style="color:#c77dff;">force_refresh_step_policy</span>: (`str`, *optional*, defaults to "once"):  
       The policy to apply when force refreshing the cache at the step specified by  
       force_refresh_step_hint. It can be "once" or "repeat". "once" means only refresh once  
       at the step specified by force_refresh_step_hint, while "repeat" means refresh at the  
       step specified by force_refresh_step_hint and then repeat refreshing every  
       force_refresh_step_hint steps, e.g., if force_refresh_step_hint=25 and the inference  
       has 100 steps, then the cache will be refreshed at:  
-        - <span style="color:hotpink;">once</span> policy: step 25, treat the remaining steps as a new inference context,  
+        - <span style="color:#c77dff;">once</span> policy: step 25, treat the remaining steps as a new inference context,  
           no more refresh after step 25;  
-        - <span style="color:hotpink;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new  
+        - <span style="color:#c77dff;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new  
           inference context.  
 
-- **<span style="color:hotpink;">calibrator_config</span>** (`CalibratorConfig`, *optional*, defaults to None):  
+- **<span style="color:#c77dff;">calibrator_config</span>** (`CalibratorConfig`, *optional*, defaults to None):  
   Config for calibrator. If calibrator_config is not None, it means the user wants to use DBCache with a specific calibrator, such as taylorseer, foca, and so on.
 
-- **<span style="color:hotpink;">params_modifiers</span>** ('ParamsModifier', *optional*, defaults to None):  
+- **<span style="color:#c77dff;">params_modifiers</span>** ('ParamsModifier', *optional*, defaults to None):  
   Modify cache context parameters for specific blocks. The configurable parameters are listed below:
-    - <span style="color:hotpink;">cache_config</span>: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
+    - <span style="color:#c77dff;">cache_config</span>: (`DBCacheConfig`, *required*, defaults to DBCacheConfig()):  
       The same as the 'cache_config' parameter in the cache_dit.enable_cache() interface.
-    - <span style="color:hotpink;">calibrator_config</span>: (`CalibratorConfig`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">calibrator_config</span>: (`CalibratorConfig`, *optional*, defaults to None):  
       The same as the 'calibrator_config' parameter in the cache_dit.enable_cache() interface.
-    - <span style="color:hotpink;">kwargs</span>: (`dict`, *optional*, defaults to {}):  
+    - <span style="color:#c77dff;">kwargs</span>: (`dict`, *optional*, defaults to {}):  
       The same as the 'kwargs' parameter in the cache_dit.enable_cache() interface.
 
-- **<span style="color:hotpink;">parallelism_config</span>** (`ParallelismConfig`, *optional*, defaults to None):  
+- **<span style="color:#c77dff;">parallelism_config</span>** (`ParallelismConfig`, *optional*, defaults to None):  
     Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
     parallelism for cache-dit.
-    - <span style="color:hotpink;">backend</span>: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.AUTO"):  
+    - <span style="color:#c77dff;">backend</span>: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.AUTO"):  
         Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
         For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
         only NATIVE_PYTORCH backend is supported.
-    - <span style="color:hotpink;">ulysses_size</span>: (`int`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">ulysses_size</span>: (`int`, *optional*, defaults to None):  
         The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
         This setting is only valid when backend is NATIVE_DIFFUSER.
-    - <span style="color:hotpink;">ring_size</span>: (`int`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">ring_size</span>: (`int`, *optional*, defaults to None):  
         The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
         This setting is only valid when backend is NATIVE_DIFFUSER.
-    - <span style="color:hotpink;">tp_size</span>: (`int`, *optional*, defaults to None):  
+    - <span style="color:#c77dff;">tp_size</span>: (`int`, *optional*, defaults to None):  
         The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
         This setting is only valid when backend is NATIVE_PYTORCH.
 
-- **<span style="color:hotpink;">attention_backend</span>** (`str`, *optional*, defaults to None):  
+- **<span style="color:#c77dff;">attention_backend</span>** (`str`, *optional*, defaults to None):  
   Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 
   not None, set the attention backend for the transformer module. Supported backends include: 
   "native", "_sdpa_cudnn", "sage", "flash", "flash", "_native_npu", etc. Prefer attention_backend
   in parallelism_config when both are provided.
 
-- **<span style="color:hotpink;">quantize_config</span>** (`QuantizeConfig`, *optional*, defaults to None):   
+- **<span style="color:#c77dff;">quantize_config</span>** (`QuantizeConfig`, *optional*, defaults to None):   
   Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance. Supported quantization types include: float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
 
-- **<span style="color:hotpink;">kwargs</span>** (`dict`, *optional*, defaults to {}):   
+- **<span style="color:#c77dff;">kwargs</span>** (`dict`, *optional*, defaults to {}):   
   Other cache context keyword arguments. Please check [cache_contexts/cache_context.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py) for more details.

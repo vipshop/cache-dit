@@ -1,12 +1,12 @@
 # Use Yaml Config File
 
-Cache-DiT now supported load the acceleration configs from a custom <span style="color:hotpink;">yaml file</span>. Here are some examples.
+Cache-DiT now supported load the acceleration configs from a custom <span style="color:#c77dff;">yaml file</span>. Here are some examples.
 
 ## Single GPU inference  
 
 Define a cache only config yaml `cache.yaml` file that contains:
 
-- <span style="color:hotpink;">DBCache + TaylorSeer</span>
+- <span style="color:#c77dff;">DBCache + TaylorSeer</span>
 
 ```yaml
 cache_config:
@@ -27,7 +27,7 @@ Then, apply the acceleration config from yaml.
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("cache.yaml"))
 ```
 
-- <span style="color:hotpink;">DBCache + TaylorSeer + SCM (Step Computation Mask)</span>
+- <span style="color:#c77dff;">DBCache + TaylorSeer + SCM (Step Computation Mask)</span>
 
 ```yaml
 cache_config:
@@ -46,7 +46,7 @@ cache_config:
   steps_computation_mask: fast
 ```
 
-- <span style="color:hotpink;">DBCache + TaylorSeer + SCM (Step Computation Mask) + Cache CFG</span>
+- <span style="color:#c77dff;">DBCache + TaylorSeer + SCM (Step Computation Mask) + Cache CFG</span>
 
 ```yaml
 cache_config:
@@ -66,7 +66,7 @@ cache_config:
 
 ## Distributed inference  
 
-- <span style="color:hotpink;">1D Parallelism</span>
+- <span style="color:#c77dff;">1D Parallelism</span>
 
 Define a parallelism only config yaml `parallel.yaml` file that contains:
 
@@ -81,7 +81,7 @@ Then, apply the distributed inference acceleration config from yaml. `ulysses_si
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel.yaml"))
 ```
 
-- <span style="color:hotpink;">2D Parallelism</span>
+- <span style="color:#c77dff;">2D Parallelism</span>
 
 You can also define a 2D parallelism config yaml `parallel_2d.yaml` file that contains:
 
@@ -97,7 +97,7 @@ Then, apply the 2D parallelism config from yaml. Here `tp_size: 2` means using t
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_2d.yaml"))
 ```
 
-- <span style="color:hotpink;">3D Parallelism</span>
+- <span style="color:#c77dff;">3D Parallelism</span>
 
 You can also define a 3D parallelism config yaml `parallel_3d.yaml` file that contains:
 
@@ -114,7 +114,7 @@ Then, apply the 3D parallelism config from yaml. Here `ulysses_size: 2`, `ring_s
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_3d.yaml"))
 ```
 
-- <span style="color:hotpink;">Ulysses Anything Attention</span>
+- <span style="color:#c77dff;">Ulysses Anything Attention</span>
 
 To enable Ulysses Anything Attention, you can define a parallelism config yaml `parallel_uaa.yaml` file that contains:
 
@@ -130,7 +130,7 @@ Then, apply the config from yaml. Here `ulysses_anything: true` means enabling U
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("parallel_uaa.yaml"))
 ```
 
-- <span style="color:hotpink;">Ulysses FP8 Communication</span>
+- <span style="color:#c77dff;">Ulysses FP8 Communication</span>
 
 For device that don't have NVLink support, you can enable Ulysses FP8 Communication to further reduce the communication overhead. You can define a parallelism config yaml `parallel_fp8.yaml` file that contains:
 
@@ -141,7 +141,7 @@ parallelism_config:
   ulysses_float8: true
 ```
 
-- <span style="color:hotpink;">Async Ulysses CP</span>
+- <span style="color:#c77dff;">Async Ulysses CP</span>
 
 You can also enable async ulysses CP to overlap the communication and computation. Define a parallelism config yaml `parallel_async.yaml` file that contains:
 
@@ -155,7 +155,7 @@ parallelism_config:
 ```
 Then, apply the config from yaml. Here `ulysses_async: true` means enabling async ulysses CP.
 
-- <span style="color:hotpink;">TE-P and VAE-P</span>
+- <span style="color:#c77dff;">TE-P and VAE-P</span>
 
 You can also specify the extra parallel modules in the yaml config. For example, define a parallelism config yaml `parallel_extra.yaml` file that contains:
 
@@ -209,7 +209,7 @@ Then, apply the attention backend config from yaml.
 
 You can also specify the quantization config in the yaml file. For example, define a yaml file `quantize.yaml` that contains:
 
-- <span style="color:hotpink;">quantize transformer</span>
+- <span style="color:#c77dff;">quantize transformer</span>
 
 ```yaml
 quantize_config: # quantization configuration for transformer modules
@@ -234,7 +234,7 @@ cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
 ```
 
-- <span style="color:hotpink;">fine-grained quantization</span>
+- <span style="color:#c77dff;">fine-grained quantization</span>
 
 You can also specify the quantization config (via `components_to_quantize`) for different components in the yaml file `quantize_extra.yaml` that contains:
 
@@ -298,14 +298,13 @@ pipe.transformer = torch.compile(pipe.transformer)
 ## Quick Examples 
 
 ```bash
-# recommend: install latest stable release of torch for better compile compatiblity.
-pip3 install torch==2.10.0 torchvision --index-url https://download.pytorch.org/whl/cu129 --upgrade
+# recommend: install latest pytorch for better compile compatiblity.
+pip3 install torch==2.11.0 torchvision torchaudio triton --upgrade
 # recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
-pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu129
-pip3 install transformers accelerate bitsandbytes opencv-python-headless einops imageio-ffmpeg ftfy 
+pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu130
+pip3 install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
-
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples/configs
 
 python3 -m cache_dit.generate flux --config cache.yaml

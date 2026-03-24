@@ -2,7 +2,7 @@
 
 ## 👨‍💻 Run Pre-commit
 
-Before submitting code, configure <span style="color:hotpink;">pre-commit</span>, for example:
+Before submitting code, configure <span style="color:#c77dff;">pre-commit</span>, for example:
 
 ```bash
 # fork vipshop/cache-dit to your own github page, then:
@@ -29,7 +29,7 @@ git push
 
 ## 👨‍💻 Check MKDocs
 
-Please also check the <span style="color:hotpink;">mkdocs</span> build status on your local branch.
+Please also check the <span style="color:#c77dff;">mkdocs</span> build status on your local branch.
 ```bash
 pip3 install -e ".[docs]"
 mkdocs build --strict

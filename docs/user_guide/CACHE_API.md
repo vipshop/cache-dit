@@ -4,13 +4,13 @@
 
 ## Forward Pattern Matching 
 
-Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **<span style="color:hotpink;">Forward Patterns</span>**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the <span style="color:hotpink;">enable_cache</span> API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
+Currently, for any **Diffusion** models with **Transformer Blocks** that match the specific **<span style="color:#c77dff;">Forward Patterns</span>**, we can use the **Unified Cache APIs** from **cache-dit**, namely, the <span style="color:#c77dff;">enable_cache</span> API. The **Unified Cache APIs** are currently in the experimental phase; please stay tuned for updates. The supported patterns are listed as follows:
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
 ## Cache Acceleration with One-line Code
 
-In most cases, you only need to call **one-line** of code, that is <span style="color:hotpink;">enable_cache</span>. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/run_qwen_image.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is <span style="color:#c77dff;">enable_cache</span>. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/run_qwen_image.py) as an example. 
 
 ```python
 import cache_dit
@@ -28,7 +28,7 @@ cache_dit.disable_cache(pipe)
 
 ## Automatic Block Adapter
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **<span style="color:hotpink;">BlockAdapter</span>** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_qwen_image_adapter.py) as an example.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **<span style="color:#c77dff;">BlockAdapter</span>** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_qwen_image_adapter.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
@@ -54,11 +54,11 @@ cache_dit.enable_cache(
     ), 
 )
 ```
-For such situations, **<span style="color:hotpink;">BlockAdapter</span>** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. 
+For such situations, **<span style="color:#c77dff;">BlockAdapter</span>** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. 
 
 ## Hybrid Forward Pattern
 
-Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different **<span style="color:hotpink;">Forward Patterns</span>**). The **<span style="color:hotpink;">BlockAdapter</span>** can also help you solve this problem. 
+Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different **<span style="color:#c77dff;">Forward Patterns</span>**). The **<span style="color:#c77dff;">BlockAdapter</span>** can also help you solve this problem. 
 ```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
 # single_transformer_blocks have different forward patterns.
@@ -78,7 +78,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has <span style="color:hotpink;">more than one Transformer</span> (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples) as an example.
+Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has <span style="color:#c77dff;">more than one Transformer</span> (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, DBCacheConfig
@@ -122,11 +122,11 @@ cache_dit.enable_cache(
 
 ## Implement Patch Functor
 
-For any PATTERN not in <span style="color:hotpink;">{0...5}</span>, we introduced the simple abstract concept of **<span style="color:hotpink;">Patch Functor</span>**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
+For any PATTERN not in <span style="color:#c77dff;">{0...5}</span>, we introduced the simple abstract concept of **<span style="color:#c77dff;">Patch Functor</span>**. Users can implement a subclass of Patch Functor to convert an unknown Pattern into a known PATTERN, and for some models, users may also need to fuse the operations within the blocks for loop into block forward. 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **<span style="color:hotpink;">BlockAdapter</span>**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **<span style="color:#c77dff;">BlockAdapter</span>**.
 
 ```python
 @BlockAdapterRegister.register("HiDream")
@@ -154,7 +154,7 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
 
 ## Transformer-Only Interface
 
-In some cases, users may <span style="color:hotpink;">not use Diffusers</span> or DiffusionPipeline at all, and may not even have the concept of a "pipeline"—for instance, **<span style="color:hotpink;">ComfyUI</span>** (which breaks down the pipeline into individual components while still retaining transformer components). cache-dit also supports such scenarios; it only needs to be configured via **<span style="color:hotpink;">BlockAdapter</span>**. The pipeline is not mandatory, and you can simply keep it at the default value of None. In this case, the <span style="color:hotpink;">num_inference_steps</span> parameter in cache_config **must be set**, as cache-dit relies on this parameter to refresh the cache context at the appropriate time. Please refer to [📚run_transformer_only.py](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_transformer_only.py) as an example.
+In some cases, users may <span style="color:#c77dff;">not use Diffusers</span> or DiffusionPipeline at all, and may not even have the concept of a "pipeline"—for instance, **<span style="color:#c77dff;">ComfyUI</span>** (which breaks down the pipeline into individual components while still retaining transformer components). cache-dit also supports such scenarios; it only needs to be configured via **<span style="color:#c77dff;">BlockAdapter</span>**. The pipeline is not mandatory, and you can simply keep it at the default value of None. In this case, the <span style="color:#c77dff;">num_inference_steps</span> parameter in cache_config **must be set**, as cache-dit relies on this parameter to refresh the cache context at the appropriate time. Please refer to [📚run_transformer_only.py](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_transformer_only.py) as an example.
 
 ```python
 cache_dit.enable_cache(
@@ -170,7 +170,7 @@ cache_dit.enable_cache(
 )
 ```
 
-If you need to use a **different** num_inference_steps for each user request instead of a fixed value, you should use it in conjunction with <span style="color:hotpink;">refresh_context</span> API. Before performing inference for each user request, update the cache context based on the actual number of steps. Please refer to [📚run_cache_refresh](https://github.com/vipshop/cache-dit/blob/main/examples/api) as an example.
+If you need to use a **different** num_inference_steps for each user request instead of a fixed value, you should use it in conjunction with <span style="color:#c77dff;">refresh_context</span> API. Before performing inference for each user request, update the cache context based on the actual number of steps. Please refer to [📚run_cache_refresh](https://github.com/vipshop/cache-dit/blob/main/examples/api) as an example.
 
 ```python
 import cache_dit
@@ -211,7 +211,7 @@ stats = cache_dit.summary(pipe.transformer) # Then, get the summary
 
 ## How to use ParamsModifier
 
-Sometimes you may encounter more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`), or FLUX.1, which has multiple transformer blocks (namely `single_transformer_blocks` and `transformer_blocks`). cache-dit will assign separate cache contexts for different `blocks` instances but share the same `cache_config` by default. Users who want to achieve fine-grained control over different cache contexts can consider using <span style="color:hotpink;">ParamsModifier</span>. Just pass the <span style="color:hotpink;">ParamsModifier</span> per `blocks` to the `BlockAdapter` or `enable_cache(...)` API. Then, the shared `cache_config` will be overwritten by the new configurations from the <span style="color:hotpink;">ParamsModifier</span>. For example:
+Sometimes you may encounter more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`), or FLUX.1, which has multiple transformer blocks (namely `single_transformer_blocks` and `transformer_blocks`). cache-dit will assign separate cache contexts for different `blocks` instances but share the same `cache_config` by default. Users who want to achieve fine-grained control over different cache contexts can consider using <span style="color:#c77dff;">ParamsModifier</span>. Just pass the <span style="color:#c77dff;">ParamsModifier</span> per `blocks` to the `BlockAdapter` or `enable_cache(...)` API. Then, the shared `cache_config` will be overwritten by the new configurations from the <span style="color:#c77dff;">ParamsModifier</span>. For example:
 
 ```python
 from cache_dit import ParamsModifier 
@@ -256,7 +256,7 @@ cache_dit.enable_cache(
 
 ## Cache Stats Summary
 
-After finishing each inference of `pipe(...)`, you can call the <span style="color:hotpink;">summary</span> API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
+After finishing each inference of `pipe(...)`, you can call the <span style="color:#c77dff;">summary</span> API on pipe to get the details of the **Cache Acceleration Stats** for the current inference. 
 ```python
 stats = cache_dit.summary(pipe)
 ```
@@ -273,7 +273,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 ## Disable Cache Acceleration
 
-Users can call <span style="color:hotpink;">disable_cache</span> API to disable and delete the all acceleration hooks from the optimized pipeline or block adapter. 
+Users can call <span style="color:#c77dff;">disable_cache</span> API to disable and delete the all acceleration hooks from the optimized pipeline or block adapter. 
 
 ```python
 import cache_dit
@@ -287,10 +287,10 @@ cache_dit.disable_cache(pipe_or_adapter)
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
-**<span style="color:hotpink;">DBCache: Dual Block Caching</span>** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in <span style="color:hotpink;">DBCache</span>, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache Design](./DBCACHE_DESIGN.md) docs for more design details.
+**<span style="color:#c77dff;">DBCache: Dual Block Caching</span>** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in <span style="color:#c77dff;">DBCache</span>, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache Design](./DBCACHE_DESIGN.md) docs for more design details.
 
-- **<span style="color:hotpink;">Fn</span>**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
-- **<span style="color:hotpink;">Bn</span>**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
+- **<span style="color:#c77dff;">Fn</span>**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
+- **<span style="color:#c77dff;">Bn</span>**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-fnbn-v1.png)
 
@@ -353,7 +353,7 @@ These case studies demonstrate that even with relatively high thresholds (such a
 ![](https://github.com/vipshop/cache-dit/raw/main/docs/assets/dbprune.png)
 
 
-We have further implemented a new **<span style="color:hotpink;">Dynamic Block Prune</span>** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **<span style="color:hotpink;">DBPrune</span>**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
+We have further implemented a new **<span style="color:#c77dff;">Dynamic Block Prune</span>** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **<span style="color:#c77dff;">DBPrune</span>**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
 
 ```python
 from cache_dit import DBPruneConfig
@@ -397,7 +397,7 @@ cache_dit.enable_cache(
 
 <div id="cfg"></div>
 
-cache-dit supports caching for **<span style="color:hotpink;">CFG (classifier-free guidance)</span>**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set <span style="color:hotpink;">enable_separate_cfg</span> param to **False (default, None)**. Otherwise, set it to True. For examples:
+cache-dit supports caching for **<span style="color:#c77dff;">CFG (classifier-free guidance)</span>**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set <span style="color:#c77dff;">enable_separate_cfg</span> param to **False (default, None)**. Otherwise, set it to True. For examples:
 
 ```python
 from cache_dit import DBCacheConfig
@@ -429,11 +429,11 @@ cache_dit.enable_cache(
 
 ![](https://github.com/vipshop/cache-dit/raw/main/docs/assets/taylorseer_0.png)
 
-We have supported the [TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers](https://arxiv.org/pdf/2503.06923) algorithm to further improve the precision of DBCache in cases where the cached steps are large, namely, **<span style="color:hotpink;">Hybrid TaylorSeer + DBCache</span>**. At timesteps with significant intervals, the feature similarity in diffusion models decreases substantially, significantly harming the generation quality. 
+We have supported the [TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers](https://arxiv.org/pdf/2503.06923) algorithm to further improve the precision of DBCache in cases where the cached steps are large, namely, **<span style="color:#c77dff;">Hybrid TaylorSeer + DBCache</span>**. At timesteps with significant intervals, the feature similarity in diffusion models decreases substantially, significantly harming the generation quality. 
 
 ![](https://github.com/vipshop/cache-dit/raw/main/docs/assets/taylorseer_1.png)
 
-**<span style="color:hotpink;">TaylorSeer</span>** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That F_pred can be a residual cache or a hidden-state cache.
+**<span style="color:#c77dff;">TaylorSeer</span>** employs a differential method to approximate the higher-order derivatives of features and predict features in future timesteps with Taylor series expansion. The TaylorSeer implemented in cache-dit supports both hidden states and residual cache types. That F_pred can be a residual cache or a hidden-state cache.
 
 ```python
 from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
@@ -456,7 +456,7 @@ cache_dit.enable_cache(
 )
 ``` 
 
-Please note that if you have used TaylorSeer as the calibrator for approximate hidden states, the **Bn** param of DBCache can be set to **0**. In essence, DBCache's Bn is also act as a calibrator, so you can choose either Bn > 0 or TaylorSeer. We recommend using the configuration scheme of **<span style="color:hotpink;">TaylorSeer</span>** + **<span style="color:hotpink;">DBCache FnB0</span>**.
+Please note that if you have used TaylorSeer as the calibrator for approximate hidden states, the **Bn** param of DBCache can be set to **0**. In essence, DBCache's Bn is also act as a calibrator, so you can choose either Bn > 0 or TaylorSeer. We recommend using the configuration scheme of **<span style="color:#c77dff;">TaylorSeer</span>** + **<span style="color:#c77dff;">DBCache FnB0</span>**.
 
 <div align="center">
   <p align="center">
@@ -474,13 +474,13 @@ Please note that if you have used TaylorSeer as the calibrator for approximate h
 <div id="steps-mask"></div>
 
 
-The <span style="color:hotpink;">steps_computation_mask</span> parameter adopts a step-wise computation masking approach inspired by [LeMiCa](https://github.com/UnicomAI/LeMiCa) and [EasyCache](https://github.com/H-EmbodVis/EasyCache). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. 
+The <span style="color:#c77dff;">steps_computation_mask</span> parameter adopts a step-wise computation masking approach inspired by [LeMiCa](https://github.com/UnicomAI/LeMiCa) and [EasyCache](https://github.com/H-EmbodVis/EasyCache). Its key insight is that **early caching induces amplified downstream errors, whereas later caching is less disruptive**, resulting in a **non-uniform** distribution of cached steps. 
 
 |LeMiCa: Non-Uniform Cache Steps|LeMiCa: Cache Errors|EasyCache: Transformation rate Analysis|
 |:---:|:---:|:---:|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/lemica.png" width=383px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/lemica_0.png" width=235px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/easy_cache_0.png" width=343px>|
 
-It is a list of length num_inference_steps indicating whether to compute each step or not. <span style="color:hotpink;">1 means must compute, 0 means use dynamic or static cache</span>. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_steps_mask.py) for more details.
+It is a list of length num_inference_steps indicating whether to compute each step or not. <span style="color:#c77dff;">1 means must compute, 0 means use dynamic or static cache</span>. If provided, will override other settings to decide whether to compute each step. Please check the [📚examples/steps_mask](https://github.com/vipshop/cache-dit/blob/main/examples/api/run_steps_mask.py) for more details.
 
 
 ```python
@@ -517,13 +517,13 @@ cache_dit.enable_cache(
 As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (please click to enlarge) has shown **obvious blurriness**. However, the **Ultra** version under **dynamic cache** (`SCM Ultra D*`) still maintains excellent clarity. Therefore, we prioritize recommending the use of dynamic cache while using `SCM: steps_computation_mask`.
 
 
-|Baseline|SCM S S*|SCM S D*|SCM F D*|<span style="color:hotpink;">SCM U D*</span>|+TS|+compile|+FP8 +Sage|  
+|Baseline|SCM S S*|SCM S D*|SCM F D*|<span style="color:#c77dff;">SCM U D*</span>|+TS|+compile|+FP8 +Sage|  
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |24.85s|15.4s|17.1s|11.4s|8.2s|8.2s|7.1s|4.5s|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.NONE.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/static.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.15_SCM1111111101110011100110011000_dynamic_T0O0_S8.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.2_SCM1111110100010000100000100000_dynamic_T0O0_S15.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.3_SCM111101000010000010000001000000_dynamic_T0O0_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/steps_mask/flux.C1_Q1_float8_DBCache_F1B0_W8I1M0MC0_R0.35_SCM111101000010000010000001000000_dynamic_T1O1_S19.png" width=95px>|
 
 <p align="center">
-  Scheme: <b><span style="color:hotpink;">DBCache + SCM(steps_computation_mask) + TaylorSeer</span></b>, L20x1, S*: static cache, <b>D*: dynamic cache</b>, <br><b>S</b>: Slow, <b>F</b>: Fast, <b>U</b>: Ultra Fast, <b>TS</b>: TaylorSeer, FP8: FP8 DQ, Sage: SageAttention, <b>FLUX.1-Dev</b>, <br>Steps: 28, HxW=1024x1024, Prompt: "A cat holding a sign that says hello world"
+  Scheme: <b><span style="color:#c77dff;">DBCache + SCM(steps_computation_mask) + TaylorSeer</span></b>, L20x1, S*: static cache, <b>D*: dynamic cache</b>, <br><b>S</b>: Slow, <b>F</b>: Fast, <b>U</b>: Ultra Fast, <b>TS</b>: TaylorSeer, FP8: FP8 DQ, Sage: SageAttention, <b>FLUX.1-Dev</b>, <br>Steps: 28, HxW=1024x1024, Prompt: "A cat holding a sign that says hello world"
 </p>
 
 |DBCache + SCM Slow S*|DBCache + SCM Ultra D* + TaylorSeer + compile| 
@@ -537,14 +537,14 @@ As we can observe, in the case of **static cache**, the image of `SCM Slow S*` (
 
 ## MCC: Multiple Cache Contexts within a single Denoising Loop
 
-Users can use <span style="color:hotpink;">force_refresh_step_hint</span> param to provide a step index hint (integer number) to force refresh the cache. If provided, the cache will be refreshed at the beginning of this step. This is useful for some cases where the input condition changes significantly at a certain step. Default None means no force refresh. For example, in a 100-step inference, setting force_refresh_step_hint=25 will refresh the cache before executing step 25 and view the remaining 75 steps as a new inference context.
+Users can use <span style="color:#c77dff;">force_refresh_step_hint</span> param to provide a step index hint (integer number) to force refresh the cache. If provided, the cache will be refreshed at the beginning of this step. This is useful for some cases where the input condition changes significantly at a certain step. Default None means no force refresh. For example, in a 100-step inference, setting force_refresh_step_hint=25 will refresh the cache before executing step 25 and view the remaining 75 steps as a new inference context.
 
 ![alt text](https://github.com/vipshop/cache-dit/raw/main/docs/assets/mcc.png)
 
-The <span style="color:hotpink;">force_refresh_step_policy</span> is a helper parameter for <span style="color:hotpink;">force_refresh_step_hint</span> and can be set to "repeat" or "once". <span style="color:hotpink;">repeat</span> means we will refresh the cache at each time the step index hint occurs, while <span style="color:hotpink;">once</span> means we will only refresh the cache at the first occurrence of the step index hint. This is useful for some cases where the input condition changes significantly at a certain step in each inference loop.  e.g., if force_refresh_step_hint=25 and the inference has 100 steps, then the cache will be refreshed at:  
+The <span style="color:#c77dff;">force_refresh_step_policy</span> is a helper parameter for <span style="color:#c77dff;">force_refresh_step_hint</span> and can be set to "repeat" or "once". <span style="color:#c77dff;">repeat</span> means we will refresh the cache at each time the step index hint occurs, while <span style="color:#c77dff;">once</span> means we will only refresh the cache at the first occurrence of the step index hint. This is useful for some cases where the input condition changes significantly at a certain step in each inference loop.  e.g., if force_refresh_step_hint=25 and the inference has 100 steps, then the cache will be refreshed at:  
 
-- <span style="color:hotpink;">once</span> policy: step 25, treat the remaining steps as a new inference context, no more refresh after step 25;  
-- <span style="color:hotpink;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new inference context.  
+- <span style="color:#c77dff;">once</span> policy: step 25, treat the remaining steps as a new inference context, no more refresh after step 25;  
+- <span style="color:#c77dff;">repeat</span> policy: step 25, 50, 75, treat the steps between each refresh as a new inference context.  
 
 These usages are useful for cases like **GLM-Image** and **Helios-14B** Video Generation models, where the input condition changes significantly at the middle step of the denoising process. For example:
 
