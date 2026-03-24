@@ -113,7 +113,7 @@ class QuantizeStats:
     kwargs: dict = dataclasses.field(default_factory=dict)
 
     def summary(self):
-        logger.info("-" * 80)
+        logger.info("-" * 100)
         quantized_region = (
             f"{self.repeated_blocks}"
             if self.quantize_repeated_blocks and self.repeated_blocks is not None
@@ -128,7 +128,7 @@ class QuantizeStats:
         )
         if self.verbose:
             logger.info(f"Skipped        Patterns: {self.exclude_layers}")
-        logger.info("-" * 80)
+        logger.info("-" * 100)
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
