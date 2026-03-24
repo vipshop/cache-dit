@@ -119,9 +119,6 @@ class QuantizeStats:
             else self.module_name if self.module_name else "Module"
         )
         max_len = len(f"Quantized        Region: {quantized_region}")
-        if self.verbose:
-            max_len = max(max_len, len(f"Skipped        Patterns: {self.exclude_layers}"))
-
         logger.info("-" * max_len)
         logger.info(
             f"Quantized        Method: {self.quant_type_rev}\n"
