@@ -626,6 +626,7 @@ def get_args(
     # Profiling and memory tracking settings
     parser.add_argument(
         "--track-memory",
+        "--mem",
         action="store_true",
         default=False,
         help="Track and report peak GPU memory usage",
