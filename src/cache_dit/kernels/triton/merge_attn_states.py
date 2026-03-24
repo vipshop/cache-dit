@@ -46,14 +46,16 @@ def _fused_merge_attn_states_kernel(
     )
 
     # compute: lse = prev_lse - F.logsigmoid(prev_lse - lse)
-    lse = prev_lse - tl.log(tl.sigmoid(prev_lse - suff_lse))
+    lse = prev_lse - tl.log(tl.sigmoid(prev_lse - suff_lse))  # type: tl.tensor
     lse = lse.to(lse_ptr.dtype.element_ty)
     tl.store(lse_ptr + token_idx * num_heads + head_idx, lse)
 
 
 # Note: Use torch.library.define with the format "namespace::operator_name"
 # namespace scheme: i -> cache-d[i]t, attn_ops -> the category of operators
-# for attention related operations in cache-dit
+# for attention related operations in cache-dit. Better compatibility with
+# torch.compile if we register the triton kernels as custom operators in
+# torch library.
 torch.library.define(
     "_i_attn_ops::fused_merge_attn_states",
     "(Tensor prev_out, Tensor prev_lse, Tensor suff_out, Tensor suff_lse) -> (Tensor out, Tensor lse)",
@@ -115,7 +117,12 @@ def fused_merge_attn_states(
     suff_out: torch.Tensor,
     suff_lse: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    return torch.library._i_attn_ops.fused_merge_attn_states(prev_out, prev_lse, suff_out, suff_lse)
+    return torch.library._i_attn_ops.fused_merge_attn_states(
+        prev_out,
+        prev_lse,
+        suff_out,
+        suff_lse,
+    )
 
 
 __all__ = [

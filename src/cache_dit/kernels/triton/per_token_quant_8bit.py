@@ -151,7 +151,9 @@ def _qkv_dequant_permute(
 
 # Note: Use torch.library.define with the format "namespace::operator_name"
 # namespace scheme: i -> cache-d[i]t, fp8_comm_ops -> the category of operators
-# for fp8 communication related operations in cache-dit
+# for fp8 communication related operations in cache-dit. Better compatibility with
+# torch.compile if we register the triton kernels as custom operators in
+# torch library.
 torch.library.define(
     "_i_fp8_comm_ops::per_token_quant_fp8",
     "(Tensor x) -> Tensor",
