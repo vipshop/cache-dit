@@ -220,16 +220,17 @@ def _fused_merge_attn_states_cuda(
     out = torch.empty_like(suff_out).contiguous()
     lse = torch.empty_like(suff_lse).contiguous()
 
-    _fused_merge_attn_states_kernel[(B * N, H)](
-        out,
-        lse,
-        prev_out,
-        prev_lse,
-        suff_out,
-        suff_lse,
-        D,
-        triton.next_power_of_2(D),
-    )
+    with torch.cuda.device(suff_out.device):
+        _fused_merge_attn_states_kernel[(B * N, H)](
+            out,
+            lse,
+            prev_out,
+            prev_lse,
+            suff_out,
+            suff_lse,
+            D,
+            triton.next_power_of_2(D),
+        )
 
     # Reshape back to original shape
     out = out.view(B, N, H, D)
