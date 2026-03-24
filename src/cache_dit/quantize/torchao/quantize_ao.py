@@ -37,6 +37,7 @@ def quantize_ao(
         return module
 
     quant_stats = QuantizeStats(
+        module_name=module.__class__.__name__,
         quant_type=quant_type,
         per_row=per_row,
         exclude_layers=exclude_layers,
@@ -97,6 +98,7 @@ def quantize_ao(
 
 @dataclasses.dataclass
 class QuantizeStats:
+    module_name: str = ""
     quant_type: str = "fp8_w8a8_dq"
     quant_type_rev: str = "float8"
     per_row: bool = True
@@ -112,9 +114,14 @@ class QuantizeStats:
 
     def summary(self):
         logger.info("-" * 80)
+        quantized_region = (
+            f"{self.repeated_blocks}"
+            if self.quantize_repeated_blocks and self.repeated_blocks is not None
+            else self.module_name if self.module_name else "Module"
+        )
         logger.info(
             f"Quantized        Method: {self.quant_type_rev}\n"
-            f"Quantized        Region: {self.repeated_blocks}\n"
+            f"Quantized        Region: {quantized_region}\n"
             f"Quantized Linear Layers: {self.num_quant_linear:<5}\n"
             f"Skipped   Linear Layers: {self.num_skip_linear:<5}\n"
             f"Total     Linear Layers: {self.num_linear_layers:<5}"
