@@ -215,7 +215,7 @@ def _normalize_quantize_info(
         # Why??? Need further investigation.
         if quant_stats.quant_type == "fp8_w8a8_dq" and quant_stats.per_row:
             exclude_layers = prev_exclude_layers + module._exclude_for_quantize
-            logger.info(
+            logger.debug(
                 f"Found extra excluding layers for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
             )
