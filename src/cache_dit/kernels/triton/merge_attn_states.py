@@ -103,12 +103,13 @@ def _fused_merge_attn_states_abstract(
     suff_out: torch.Tensor,
     suff_lse: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    assert prev_out.shape == suff_out.shape
-    assert prev_lse.shape == suff_lse.shape
-    return (
-        torch.empty_like(suff_out),
-        torch.empty_like(suff_lse),
-    )
+    B, N, H, D = suff_out.shape  # Batch, Seq_len, Num_heads, Head_dim
+    out = torch.empty_like(suff_out)
+    lse = torch.empty_like(suff_lse)
+    # Reshape back to original shape
+    out = out.view(B, N, H, D)
+    lse = lse.view(B, N, H, 1)
+    return out, lse
 
 
 def fused_merge_attn_states(
