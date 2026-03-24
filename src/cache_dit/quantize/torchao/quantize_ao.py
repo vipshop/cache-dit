@@ -71,6 +71,7 @@ def quantize_ao(
             quant_info.repeated_blocks is not None
         ), "repeated_blocks must be specified when quantize_repeated_blocks is True."
         has_quantized_region = False
+        # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
         for submod in module.modules():
             if submod.__class__.__name__ in quant_info.repeated_blocks:
                 _quantize_module(submod)
