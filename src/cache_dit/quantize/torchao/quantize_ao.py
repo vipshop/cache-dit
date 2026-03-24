@@ -22,6 +22,8 @@ def quantize_ao(
         "modulation",
         "mod",
     ],
+    quantize_repeated_blocks: bool = True,
+    repeated_blocks: Optional[List[str]] = None,
     filter_fn: Optional[Callable] = None,
     verbose: bool = False,
     **kwargs,
@@ -39,6 +41,8 @@ def quantize_ao(
         per_row=per_row,
         exclude_layers=exclude_layers,
         verbose=verbose,
+        quantize_repeated_blocks=quantize_repeated_blocks,
+        repeated_blocks=repeated_blocks,
         kwargs=kwargs,
     )
 
@@ -46,35 +50,43 @@ def quantize_ao(
     if quant_info.per_row:  # Ensure bfloat16
         module.to(torch.bfloat16)
 
-    quantize_(
-        module,
-        _quant_config_impl(quant_info),
-        filter_fn=(
-            partial(
-                _filter_fn_impl,
-                quant_info=quant_info,
+    def _quantize_module(m: torch.nn.Module):
+        quantize_(
+            m,
+            _quant_config_impl(quant_info),
+            filter_fn=(
+                partial(
+                    _filter_fn_impl,
+                    quant_info=quant_info,
+                )
+                if filter_fn is None
+                else filter_fn
+            ),
+            device=kwargs.get("device", None),
+        )
+
+    # Only quantize the _repeated_ blocks in the transformer (Diffusers).
+    if quant_info.quantize_repeated_blocks:
+        assert (
+            quant_info.repeated_blocks is not None
+        ), "repeated_blocks must be specified when quantize_repeated_blocks is True."
+        has_quantized_region = False
+        for submod in module.modules():
+            if submod.__class__.__name__ in quant_info.repeated_blocks:
+                _quantize_module(submod)
+                has_quantized_region = True
+        if not has_quantized_region:
+            raise ValueError(
+                f"Regional quantization failed because {quant_info.repeated_blocks} "
+                "classes are not found in the module."
             )
-            if filter_fn is None
-            else filter_fn
-        ),
-        device=kwargs.get("device", None),
-    )
+    else:
+        _quantize_module(module)
 
     maybe_empty_cache()
+    quant_info.logging()
 
-    logger.info(
-        f"Quantized        Module: {module.__class__.__name__:>5}\n"
-        f"Quantized        Method: {quant_info.quant_type_rev:>5}\n"
-        f"Quantized Linear Layers: {quant_info.num_quant_linear:>5}\n"
-        f"Skipped   Linear Layers: {quant_info.num_skip_linear:>5}\n"
-        f"Total     Linear Layers: {quant_info.num_linear_layers:>5}\n"
-        f"Total     (all)  Layers: {quant_info.num_layers:>5}"
-    )
-
-    if verbose:
-        logger.info(f"Skipped        Patterns: {quant_info.exclude_layers}")
-
-    module._quantize_type = quant_type
+    module._quantize_type = quant_info.quant_type
     module._exclude_for_quantize = copy.deepcopy(quant_info.exclude_layers)
     module._is_quantized = True
     return module
@@ -85,6 +97,8 @@ class QuantizeInfo:
     quant_type: str = "fp8_w8a8_dq"
     quant_type_rev: str = "float8"
     per_row: bool = True
+    quantize_repeated_blocks: bool = True
+    repeated_blocks: Optional[List[str]] = None
     exclude_layers: List[str] = dataclasses.field(default_factory=list)
     verbose: bool = False
     num_quant_linear: int = 0
@@ -92,6 +106,21 @@ class QuantizeInfo:
     num_linear_layers: int = 0
     num_layers: int = 0
     kwargs: dict = dataclasses.field(default_factory=dict)
+
+    def logging(self):
+        logger.info("-" * 80)
+        logger.info(
+            f"Quantized          Method: {self.quant_type_rev:>5}\n"
+            f"Quantized  Linear  Layers: {self.num_quant_linear:>5}\n"
+            f"Skipped    Linear  Layers: {self.num_skip_linear:>5}\n"
+            f"Total      Linear  Layers: {self.num_linear_layers:>5}\n"
+            f"Total      (all)   Layers: {self.num_layers:>5}"
+        )
+        if self.verbose:
+            logger.info(f"Skipped          Patterns: {self.exclude_layers}")
+            if self.quantize_repeated_blocks:
+                logger.info(f"Quantized Repeated Blocks: {self.repeated_blocks}")
+        logger.info("-" * 80)
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
@@ -183,6 +212,17 @@ def _normalize_quantize_info(
                 f"{module._exclude_for_quantize}"
             )
             quant_info.exclude_layers = copy.deepcopy(exclude_layers)
+
+    quant_info.repeated_blocks = getattr(
+        module,
+        "_repeated_blocks",
+        quant_info.repeated_blocks if quant_info.repeated_blocks else None,
+    )
+    if quant_info.repeated_blocks is None:
+        # If the module doesn't have _repeated_blocks attribute and repeated_blocks
+        # is not specified, we will set quantize_repeated_blocks to False to avoid
+        # potential issues.
+        quant_info.quantize_repeated_blocks = False
 
     return quant_info
 

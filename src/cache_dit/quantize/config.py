@@ -20,6 +20,15 @@ class QuantizeConfig:
             "mod",
         ]
     )
+    # Only quantize the _repeated_ blocks in the transformer (Diffusers).
+    quantize_repeated_blocks: bool = True
+    # For models outside of diffusers, users can specify the repeated blocks
+    # by setting this variable to a list of block names.
+    repeated_blocks: List[str] = dataclasses.field(default_factory=list)
+    # A filter function to determine whether to quantize a specific module or not,
+    # it will be called in the format of filter_fn(m: nn.Module, name: str) -> bool.
+    # It should return True if the module needs to be quantized, otherwise False.
+    # If filter_fn is specified, the exclude_layers will be ignored.
     filter_fn: Optional[Any] = None  # type: ignore
     # components_to_quantize: (list[str] or dict[str, str], optional)
     # specify the components to quantize, if None, only the transformer
@@ -27,7 +36,9 @@ class QuantizeConfig:
     # - List[str]: ['transformer', 'text_encoder'] quantize to 'quant_type'
     # - Dict[str, Dict[str, str]]: {
     #       'transformer': {'quant_type': 'float8', 'exclude_layers': ['layer1', 'layer2']},
-    #       'text_encoder': {'quant_type': 'float8_weight_only', 'exclude_layers': ['layer3', 'layer4']}
+    #       'text_encoder': {
+    #           'quant_type': 'float8_weight_only', 'exclude_layers': ['layer3', 'layer4']
+    #       }
     #   }.
     #   The 'quant_type' will be ignored in this case, each module will quantized to
     #   it's specified quantization type.
@@ -90,6 +101,10 @@ class QuantizeConfig:
                     per_row=d.get("per_row", config.per_row),
                     exclude_layers=d.get("exclude_layers", config.exclude_layers),
                     filter_fn=d.get("filter_fn", config.filter_fn),
+                    quantize_repeated_blocks=d.get(
+                        "quantize_repeated_blocks",
+                        config.quantize_repeated_blocks,
+                    ),
                 )
                 for component, d in config.components_to_quantize.items()
             ]
