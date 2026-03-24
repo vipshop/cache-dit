@@ -16,6 +16,7 @@ This document summarizes all core configurable environment variables in cache-di
 - <span style="color:hotpink;">CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK</span>, default `False (0)`, Disables the check for whether the model originates from the diffusers library in patch functors when set to 1.
 - <span style="color:hotpink;">CACHE_DIT_FORCE_ONLY_RANK0_LOGGING</span>, default `True (1)`, Forces only rank 0 to output logs (recommended for distributed training to avoid cluttered logs). Set to 0 to allow logging from all ranks.
 - <span style="color:hotpink;">CACHE_DIT_ENABLE_LOGGERS_SUPPRESS</span>, default `False (0)`, Force enable loggers suppress in cache-dit by setting the environment variable to 1. By default, cache-dit DON'T suppresses some noisy loggers. Users can set this variable to 1 to suppress these loggers globally, which is recommended for better log readability.
+- <span style="color:hotpink;">CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP</span>, default `False (0)`, For **developer use only** – controls whether to disable the temporary workaround of excluding some layers from quantization after applying tensor parallelism. Users should NOT use this variable directly.
 
 ## Key Notes
 
