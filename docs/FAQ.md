@@ -42,22 +42,33 @@ python setup.py install
 
 If you encounter errors with `torch.compile` when running cache-dit examples, try the following solutions:
 
-1. <span style="color:hotpink;">Clear</span> the torch inductor <span style="color:hotpink;">cache:</span>
-   ```bash
-   rm -rf /tmp/torchinductor_root/
-   ```
+- <span style="color:hotpink;">Clear</span> the torch inductor <span style="color:hotpink;">cache:</span>
+
+```bash
+rm -rf /tmp/torchinductor_root/
+```
    Then retry running your example.
 
-2. <span style="color:hotpink;">Upgrade</span> PyTorch to the latest version:
-   ```bash
-   pip install --upgrade torch torchvision
-   ```
+- <span style="color:hotpink;">Upgrade</span> PyTorch to the latest version:
 
-3. **If the issue persists:**  
-   Please [open an issue](https://github.com/vipshop/cache-dit/issues) with:  
+```bash
+pip install --upgrade torch torchvision
+```
+
+If the issue persists, please [open an issue](https://github.com/vipshop/cache-dit/issues) with:    
    - Your PyTorch version (`python -c "import torch; print(torch.__version__)"`)
    - The complete error traceback
    - Your system configuration (GPU model, CUDA version, etc.)
+
+
+### NCCL errors during distributed inference
+
+Please consider to upgrade to the latest PyTorch and NCCL versions, as they may contain important bug fixes and performance improvements. You can upgrade PyTorch and NCCL using the following commands:
+
+```bash
+pip install --upgrade torch torchvision torchaudio triton
+pip install --upgrade nvidia-nccl-cu12 # or, for CUDA 13: pip install --upgrade nvidia-nccl-cu13
+```
 
 ## Performance Optimization
 
