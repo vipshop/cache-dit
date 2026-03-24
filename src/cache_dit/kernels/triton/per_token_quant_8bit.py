@@ -2,19 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-# Note: Use torch.library.define with the format "namespace::operator_name"
-# namespace scheme: i -> cache-d[i]t, fp8_comm_ops -> the category of operators
-# for fp8 communication related operations in cache-dit
-torch.library.define("_i_fp8_comm_ops::per_token_quant_fp8", "(Tensor x) -> Tensor")
-torch.library.define("_i_fp8_comm_ops::per_token_dequant_fp8", "(Tensor x) -> Tensor")
-torch.library.define(
-    "_i_fp8_comm_ops::qkv_permute_quant_fp8", "(Tensor x, float eps=1e-6) -> Tensor"
-)
-torch.library.define(
-    "_i_fp8_comm_ops::qkv_dequant_permute_fp8",
-    "(Tensor quant_x, ScalarType dtype=bfloat16) -> Tensor",
-)
-
 
 @triton.jit
 def _per_token_quant_8bit(
@@ -162,6 +149,27 @@ def _qkv_dequant_permute(
     tl.store(x_blk, qx * scale, mask=mask)
 
 
+# Note: Use torch.library.define with the format "namespace::operator_name"
+# namespace scheme: i -> cache-d[i]t, fp8_comm_ops -> the category of operators
+# for fp8 communication related operations in cache-dit
+torch.library.define(
+    "_i_fp8_comm_ops::per_token_quant_fp8",
+    "(Tensor x) -> Tensor",
+)
+torch.library.define(
+    "_i_fp8_comm_ops::per_token_dequant_fp8",
+    "(Tensor x) -> Tensor",
+)
+torch.library.define(
+    "_i_fp8_comm_ops::qkv_permute_quant_fp8",
+    "(Tensor x, float eps=1e-6) -> Tensor",
+)
+torch.library.define(
+    "_i_fp8_comm_ops::qkv_dequant_permute_fp8",
+    "(Tensor quant_x, ScalarType dtype=bfloat16) -> Tensor",
+)
+
+
 @torch.library.impl("_i_fp8_comm_ops::per_token_quant_fp8", "CUDA")
 def _per_token_quant_fp8_cuda(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16, f"expected bfloat16 but got {x.dtype}"
@@ -293,8 +301,7 @@ def _qkv_permute_quant_fp8_abstract(x: torch.Tensor, eps: float = 1e-6) -> torch
 
 @torch.library.register_fake("_i_fp8_comm_ops::qkv_dequant_permute_fp8")
 def _qkv_dequant_permute_fp8_abstract(
-    quant_x: torch.Tensor,
-    dtype: torch.dtype = torch.bfloat16,
+    quant_x: torch.Tensor, dtype: torch.dtype = torch.bfloat16
 ) -> torch.Tensor:
     S, B, N, _D = quant_x.shape
     D = _D - 4
