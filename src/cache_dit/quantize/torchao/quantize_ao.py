@@ -20,7 +20,6 @@ def quantize_ao(
         "embedder",
         "embed",
         "modulation",
-        "norm",
         "mod",
     ],
     filter_fn: Optional[Callable] = None,

@@ -17,7 +17,6 @@ class QuantizeConfig:
             "embedder",
             "embed",
             "modulation",
-            "norm",
             "mod",
         ]
     )
