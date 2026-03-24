@@ -27,15 +27,81 @@ def quantize_ao(
     verbose: bool = False,
     **kwargs,
 ) -> torch.nn.Module:
+    from torchao.quantization import quantize_
+
     # Check if already quantized by checking the _is_quantized attribute.
     # This is to avoid redundant quantization which may cause performance
     # regression and other issues. If you want to quantize an already quantized.
-
-    if hasattr(module, "_is_quantized") and getattr(module, "_is_quantized"):
-        logger.warning(
-            f"Module {module.__class__.__name__} is already quantized, skipping quantization. "
-        )
+    if not _check_if_module_can_quantized(module):
         return module
+
+    quant_info = QuantizeInfo(
+        quant_type=quant_type,
+        per_row=per_row,
+        exclude_layers=exclude_layers,
+        verbose=verbose,
+        kwargs=kwargs,
+    )
+
+    _normalize_quantize_info(module, quant_info)
+    if quant_info.per_row:  # Ensure bfloat16
+        module.to(torch.bfloat16)
+
+    quantize_(
+        module,
+        _quant_config_impl(quant_info),
+        filter_fn=(
+            partial(
+                _filter_fn_impl,
+                quant_info=quant_info,
+            )
+            if filter_fn is None
+            else filter_fn
+        ),
+        device=kwargs.get("device", None),
+    )
+
+    maybe_empty_cache()
+
+    logger.info(
+        f"Quantized        Module: {module.__class__.__name__:>5}\n"
+        f"Quantized        Method: {quant_info.quant_type_rev:>5}\n"
+        f"Quantized Linear Layers: {quant_info.num_quant_linear:>5}\n"
+        f"Skipped   Linear Layers: {quant_info.num_skip_linear:>5}\n"
+        f"Total     Linear Layers: {quant_info.num_linear_layers:>5}\n"
+        f"Total     (all)  Layers: {quant_info.num_layers:>5}"
+    )
+
+    if verbose:
+        logger.info(f"Skipped        Patterns: {quant_info.exclude_layers}")
+
+    module._quantize_type = quant_type
+    module._exclude_for_quantize = copy.deepcopy(quant_info.exclude_layers)
+    module._is_quantized = True
+    return module
+
+
+@dataclasses.dataclass
+class QuantizeInfo:
+    quant_type: str = "fp8_w8a8_dq"
+    quant_type_rev: str = "float8"
+    per_row: bool = True
+    exclude_layers: List[str] = dataclasses.field(default_factory=list)
+    verbose: bool = False
+    num_quant_linear: int = 0
+    num_skip_linear: int = 0
+    num_linear_layers: int = 0
+    num_layers: int = 0
+    kwargs: dict = dataclasses.field(default_factory=dict)
+
+
+def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
+    from ...utils import check_quantized
+
+    if check_quantized(module):
+        module_cls_name = module.__class__.__name__
+        logger.warning(f"Module {module_cls_name} is already quantized, skipping. ")
+        return False
 
     # Apply FP8 DQ for module and skip any `embed` modules
     # by default to avoid non-trivial precision downgrade. Please
@@ -51,6 +117,15 @@ def quantize_ao(
             "Quantization functionality requires the 'quantization' extra dependencies. "
             "Install with: pip install cache-dit[quantization]"
         )
+
+    return True
+
+
+def _normalize_quantize_info(
+    module: torch.nn.Module,
+    quant_info: QuantizeInfo,
+    **kwargs,
+) -> QuantizeInfo:
 
     alias_map = {
         "float8": "fp8_w8a8_dq",
@@ -71,6 +146,7 @@ def quantize_ao(
             alias_map_rev.pop(key)
     alias_map_rev = {v: k for k, v in alias_map_rev.items()}
 
+    quant_type = quant_info.quant_type
     if quant_type.lower() in alias_map:
         quant_type = alias_map[quant_type.lower()]
 
@@ -91,234 +167,125 @@ def quantize_ao(
             9,
         ), "FP8 is not supported for current device."
 
+    quant_info.quant_type = quant_type
+    quant_info.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
+
     if hasattr(module, "_exclude_for_quantize"):
         # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
         # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
         # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
         # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
         # Why??? Need further investigation.
-        if quant_type == "fp8_w8a8_dq" and per_row:
+        if quant_info.quant_type == "fp8_w8a8_dq" and quant_info.per_row:
             exclude_layers = exclude_layers + module._exclude_for_quantize
             logger.info(
                 f"Found extra excluding layers (TP) for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
             )
+            quant_info.exclude_layers = copy.deepcopy(exclude_layers)
 
-    # num_quant_linear = 0
-    # num_skip_linear = 0
-    # num_linear_layers = 0
-    # num_layers = 0
+    return quant_info
 
-    # # Ensure bfloat16 for per_row
-    # def _filter_fn(m: torch.nn.Module, name: str) -> bool:
-    #     from torchao.float8.float8_linear import Float8Linear
 
-    #     nonlocal num_quant_linear, num_skip_linear, num_linear_layers, num_layers
-    #     num_layers += 1
-    #     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
-    #         num_linear_layers += 1
+def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
+    try:
+        if quant_info.quant_type == "fp8_w8a8_dq":
+            from torchao.quantization import (
+                Float8DynamicActivationFloat8WeightConfig,
+                PerTensor,
+                PerRow,
+            )
 
-    #         for exclude_name in exclude_layers:
-    #             if exclude_name in name:
-    #                 if verbose:
-    #                     logger.info(f"Skip Quantization: {name} -> pattern<{exclude_name}>")
+            # if quant_info.per_row:  # Ensure bfloat16
+            #     module.to(torch.bfloat16)
 
-    #                 num_skip_linear += 1
-    #                 return False
+            quant_config = Float8DynamicActivationFloat8WeightConfig(
+                weight_dtype=kwargs.get(
+                    "weight_dtype",
+                    torch.float8_e4m3fn,
+                ),
+                activation_dtype=kwargs.get(
+                    "activation_dtype",
+                    torch.float8_e4m3fn,
+                ),
+                granularity=(
+                    ((PerRow(), PerRow())) if quant_info.per_row else ((PerTensor(), PerTensor()))
+                ),
+            )
 
-    #         if per_row and m.weight.dtype != torch.bfloat16 and quant_type == "fp8_w8a8_dq":
-    #             if verbose:
-    #                 logger.info(
-    #                     f"Skip Quantization: {name} -> "
-    #                     f"pattern<dtype({m.weight.dtype})!=bfloat16>"
-    #                 )
-
-    #             num_skip_linear += 1
-    #             return False
-
-    #         # check blockwise fp8 support for linear layers, if not supported,
-    #         # skip quantization for that layer.
-    #         if quant_type in [
-    #             "fp8_blockwise",
-    #         ] and not _check_if_linear_fp8_blockwise_can_support(m):
-    #             weight_shape = tuple(m.weight.shape)
-    #             if verbose:
-    #                 logger.info(
-    #                     f"Skip Quantization: {name} -> pattern<w{weight_shape} "
-    #                     "% block_size(128, 128) != 0>"
-    #                 )
-    #             num_skip_linear += 1
-    #             return False
-
-    #         if quant_type in [
-    #             "fp8_w8a8_dq",
-    #             "fp8_blockwise",
-    #         ] and not _check_if_linear_with_bias_fp8_can_support(m):
-    #             if verbose:
-    #                 logger.info(
-    #                     f"Skip Quantization: {name} -> "
-    #                     f"pattern<DTensor + bias is not supported for _scaled_mm>"
-    #                 )
-    #             num_skip_linear += 1
-    #             return False
-
-    #         num_quant_linear += 1
-    #         return True
-
-    #     return False
-
-    def _quant_config():
-        try:
-            if quant_type == "fp8_w8a8_dq":
+        elif quant_info.quant_type == "fp8_blockwise":
+            try:
                 from torchao.quantization import (
                     Float8DynamicActivationFloat8WeightConfig,
-                    PerTensor,
-                    PerRow,
+                    PerBlock,
                 )
-
-                if per_row:  # Ensure bfloat16
-                    module.to(torch.bfloat16)
-
-                quant_config = Float8DynamicActivationFloat8WeightConfig(
-                    weight_dtype=kwargs.get(
-                        "weight_dtype",
-                        torch.float8_e4m3fn,
-                    ),
-                    activation_dtype=kwargs.get(
-                        "activation_dtype",
-                        torch.float8_e4m3fn,
-                    ),
-                    granularity=(
-                        ((PerRow(), PerRow())) if per_row else ((PerTensor(), PerTensor()))
-                    ),
+            except ImportError:
+                raise ImportError(
+                    "Blockwise quantization is not supported in current version of torchao. "
+                    "Please upgrade the torchao library to use this feature."
                 )
-
-            elif quant_type == "fp8_blockwise":
-                try:
-                    from torchao.quantization import (
-                        Float8DynamicActivationFloat8WeightConfig,
-                        PerBlock,
-                    )
-                except ImportError:
-                    raise ImportError(
-                        "Blockwise quantization is not supported in current version of torchao. "
-                        "Please upgrade the torchao library to use this feature."
-                    )
-                quant_config = Float8DynamicActivationFloat8WeightConfig(
-                    weight_dtype=kwargs.get(
-                        "weight_dtype",
-                        torch.float8_e4m3fn,
-                    ),
-                    activation_dtype=kwargs.get(
-                        "activation_dtype",
-                        torch.float8_e4m3fn,
-                    ),
-                    # Currently, torchao only supports blockwise FP8 quantization for linear
-                    # layers with weight tensors that are divisible by block size (128, 128).
-                    # We will check the block size of the weight tensor and skip quantization
-                    # if it's not supported. Only '_granularity_is_a_1_128_w_128_128' pattern
-                    # is supported now, we will add more patterns in the future once torchao
-                    # supports more blockwise FP8 quantization patterns.
-                    granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),  # hardcode
-                )
-
-            elif quant_type == "fp8_w8a16_wo":
-                from torchao.quantization import Float8WeightOnlyConfig
-
-                quant_config = Float8WeightOnlyConfig(
-                    weight_dtype=kwargs.get(
-                        "weight_dtype",
-                        torch.float8_e4m3fn,
-                    ),
-                )
-
-            elif quant_type == "int8_w8a8_dq":
-                from torchao.quantization import (
-                    Int8DynamicActivationInt8WeightConfig,
-                )
-
-                quant_config = Int8DynamicActivationInt8WeightConfig()
-
-            elif quant_type == "int8_w8a16_wo":
-
-                from torchao.quantization import Int8WeightOnlyConfig
-
-                quant_config = Int8WeightOnlyConfig(
-                    # group_size is None -> per_channel, else per group
-                    group_size=kwargs.get("group_size", None),
-                )
-            elif quant_type == "int4_w4a16_wo":
-
-                from torchao.quantization import Int4WeightOnlyConfig
-
-                quant_config = Int4WeightOnlyConfig(
-                    group_size=kwargs.get("group_size", 32),
-                )
-
-            else:
-                raise ValueError(f"quant_type: {quant_type} is not supported now!")
-
-        except ImportError as e:
-            e.msg += (
-                f"{quant_type} is not supported in torchao backend now! "
-                "Please consider to use another quantization type instead."
+            quant_config = Float8DynamicActivationFloat8WeightConfig(
+                weight_dtype=kwargs.get(
+                    "weight_dtype",
+                    torch.float8_e4m3fn,
+                ),
+                activation_dtype=kwargs.get(
+                    "activation_dtype",
+                    torch.float8_e4m3fn,
+                ),
+                # Currently, torchao only supports blockwise FP8 quantization for linear
+                # layers with weight tensors that are divisible by block size (128, 128).
+                # We will check the block size of the weight tensor and skip quantization
+                # if it's not supported. Only '_granularity_is_a_1_128_w_128_128' pattern
+                # is supported now, we will add more patterns in the future once torchao
+                # supports more blockwise FP8 quantization patterns.
+                granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),  # hardcode
             )
-            raise e
 
-        return quant_config
+        elif quant_info.quant_type == "fp8_w8a16_wo":
+            from torchao.quantization import Float8WeightOnlyConfig
 
-    from torchao.quantization import quantize_
+            quant_config = Float8WeightOnlyConfig(
+                weight_dtype=kwargs.get(
+                    "weight_dtype",
+                    torch.float8_e4m3fn,
+                ),
+            )
 
-    quant_info = QuantizeInfo(
-        quant_type=quant_type,
-        per_row=per_row,
-        exclude_layers=exclude_layers,
-        verbose=verbose,
-    )
+        elif quant_info.quant_type == "int8_w8a8_dq":
+            from torchao.quantization import (
+                Int8DynamicActivationInt8WeightConfig,
+            )
 
-    _filter_fn = partial(_filter_fn_impl, quant_info=quant_info)
+            quant_config = Int8DynamicActivationInt8WeightConfig()
 
-    quantize_(
-        module,
-        _quant_config(),
-        filter_fn=_filter_fn if filter_fn is None else filter_fn,
-        device=kwargs.get("device", None),
-    )
+        elif quant_info.quant_type == "int8_w8a16_wo":
 
-    maybe_empty_cache()
+            from torchao.quantization import Int8WeightOnlyConfig
 
-    if quant_type in alias_map_rev:
-        quant_type = alias_map_rev[quant_type]
+            quant_config = Int8WeightOnlyConfig(
+                # group_size is None -> per_channel, else per group
+                group_size=kwargs.get("group_size", None),
+            )
+        elif quant_info.quant_type == "int4_w4a16_wo":
 
-    logger.info(
-        f"Quantized        Module: {module.__class__.__name__:>5}\n"
-        f"Quantized        Method: {quant_info.quant_type:>5}\n"
-        f"Quantized Linear Layers: {quant_info.num_quant_linear:>5}\n"
-        f"Skipped   Linear Layers: {quant_info.num_skip_linear:>5}\n"
-        f"Total     Linear Layers: {quant_info.num_linear_layers:>5}\n"
-        f"Total     (all)  Layers: {quant_info.num_layers:>5}"
-    )
+            from torchao.quantization import Int4WeightOnlyConfig
 
-    if verbose:
-        logger.info(f"Skipped        Patterns: {quant_info.exclude_layers}")
+            quant_config = Int4WeightOnlyConfig(
+                group_size=kwargs.get("group_size", 32),
+            )
 
-    module._quantize_type = quant_type
-    module._exclude_for_quantize = copy.deepcopy(quant_info.exclude_layers)
-    module._is_quantized = True
-    return module
+        else:
+            raise ValueError(f"quant_type: {quant_info.quant_type} is not supported now!")
 
+    except ImportError as e:
+        e.msg += (
+            f"{quant_info.quant_type} is not supported in torchao backend now! "
+            "Please consider to use another quantization type instead."
+        )
+        raise e
 
-@dataclasses.dataclass
-class QuantizeInfo:
-    quant_type: str = "fp8_w8a8_dq"
-    per_row: bool = True
-    exclude_layers: List[str] = dataclasses.field(default_factory=list)
-    verbose: bool = False
-    num_quant_linear: int = 0
-    num_skip_linear: int = 0
-    num_linear_layers: int = 0
-    num_layers: int = 0
-    kwargs: dict = dataclasses.field(default_factory=dict)
+    return quant_config
 
 
 def _filter_fn_impl(
