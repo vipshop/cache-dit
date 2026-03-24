@@ -18,7 +18,7 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 
 ## Single GPU Inference
 
-Users can specify Attention backend by setting the `attention_backend` parameter of `enable_cache` API or use `set_attn_backend` interface directly.  
+Users can specify Attention backend by setting the <span style="color:hotpink;">attention_backend</span> parameter of <span style="color:hotpink;">enable_cache</span> API or use <span style="color:hotpink;">set_attn_backend</span> interface directly.  
 
 ```python
 import cache_dit
@@ -32,7 +32,7 @@ cache_dit.set_attn_backend(pipe_or_adapter, attention_backend="_sdpa_cudnn")
 
 ## Distributed inference
 
-Users also can specify Attention backend by setting the `attention_backend` parameter of `parallelism_config` in the cases of distributed inference:
+Users also can specify Attention backend by setting the <span style="color:hotpink;">attention_backend</span> parameter of <span style="color:hotpink;">parallelism_config</span> in the cases of distributed inference:
 
 ```python
 from cache_dit import ParallelismConfig
@@ -52,10 +52,9 @@ cache_dit.enable_cache(
 
 <div id="fp8-attention"></div>
 
-For FP8 Attention, users must install `sage-attention`. Then, pass the `sage` attention backend to the parallelism configuration as an extra parameter. Please note that `attention mask` is not currently supported for FP8 sage attention.
+For FP8 Attention, users must install `sage-attention`. Then, pass the <span style="color:hotpink;">sage</span> attention backend to the <span style="color:hotpink;">parallelism_config</span> as an extra parameter. Please note that <span style="color:hotpink;">attention mask</span> is not currently supported for FP8 sage attention.
 
 ```python
-# pip3 install "cache-dit[parallelism]"
 # pip3 install git+https://github.com/thu-ml/SageAttention.git 
 from cache_dit import ParallelismConfig
 

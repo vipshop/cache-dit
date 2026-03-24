@@ -5,7 +5,7 @@
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
 
-**DBCache**: **Dual Block Caching** for Diffusion Transformers. We have enhanced `FBCache` into a more general and customizable cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache. Moreover, it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision!
+<span style="color:hotpink;">**DBCache**: **Dual Block Caching**</span> for Diffusion Transformers. We have enhanced `FBCache` into a more general and customizable cache algorithm, namely `DBCache`, enabling it to achieve fully `UNet-style` cache acceleration for DiT models. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache. Moreover, it can be entirely **training**-**free**. DBCache can strike a perfect **balance** between performance and precision!
 
 <div align="center">
   <p align="center">
@@ -27,21 +27,21 @@
   </p>
 </div>
 
-These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
+These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache <span style="color:hotpink;">**F12B12**</span> or <span style="color:hotpink;">**F8B16**</span> configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
 
 
 **DBCache** provides configurable parameters for custom optimization, enabling a balanced trade-off between performance and precision:
 
-- **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
-- **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
+- <span style="color:hotpink;">**Fn**</span>: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
+- <span style="color:hotpink;">**Bn**</span>: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-fnbn-v1.png)
 
-- **max_warmup_steps**: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
-- **max_cached_steps**:  (default: -1) DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
-- **residual_diff_threshold**: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
+- <span style="color:hotpink;">**max_warmup_steps**</span>: (default: 0) DBCache does not apply the caching strategy when the number of running steps is less than or equal to this value, ensuring the model sufficiently learns basic features during warmup.
+- <span style="color:hotpink;">**max_cached_steps**</span>:  (default: -1) DBCache disables the caching strategy when the previous cached steps exceed this value to prevent precision degradation.
+- <span style="color:hotpink;">**residual_diff_threshold**</span>: The value of residual diff threshold, a higher value leads to faster performance at the cost of lower precision.
 
-For a good balance between performance and precision, DBCache is configured by default with **F8B0**, 8 warmup steps, and unlimited cached steps.
+For a good balance between performance and precision, DBCache is configured by default with <span style="color:hotpink;">**F8B0**</span>, 8 warmup steps, and unlimited cached steps.
 
 ```python
 import cache_dit
@@ -75,7 +75,7 @@ cache_dit.enable_cache(
 
 <div id="cfg"></div>
 
-cache-dit supports caching for **CFG (classifier-free guidance)**. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` param to **False (default)**. Otherwise, set it to True. For examples:
+cache-dit supports caching for <span style="color:hotpink;">**CFG (classifier-free guidance)**</span>. For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set <span style="color:hotpink;">enable_separate_cfg</span> param to **False (default)**. Otherwise, set it to True. For examples:
 
 ```python
 from cache_dit import DBCacheConfig

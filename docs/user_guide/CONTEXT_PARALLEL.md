@@ -17,7 +17,7 @@ cache_dit.enable_cache(
 )
 ```
 
-|L20x1| Ulysses-2 | Ulysses-4 | + compile |
+|L20x1| Ulysses-2 | <span style="color:hotpink;">Ulysses-4</span> | + compile |
 |:---:|:---:|:---:|:---:|  
 |FLUX, 23.56s| 13.80s | 8.28s | 7.27s |
 |<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C0_Q0_NONE_Ulysses4.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/flux.1024x1024.C1_Q0_NONE_Ulysses4.png" width=222px>|
@@ -26,7 +26,7 @@ cache_dit.enable_cache(
 
 <div id="ulysses-anything-attention"></div>
 
-✅<span style="color:hotpink;">Any Sequence Length</span>: We have implemented the **[📚<span style="color:hotpink;">UAA: Ulysses Anything Attention</span>](#uaa-ulysses-anything-attention)**: An Ulysses Attention that supports **arbitrary sequence length** with ✅**zero padding** and **nearly ✅zero theoretical communication overhead**. The default Ulysses Attention requires that the sequence len of hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
+<span style="color:hotpink;">Any Sequence Length</span>: We have implemented the [<span style="color:hotpink;">UAA: Ulysses Anything Attention</span>](#uaa-ulysses-anything-attention): An Ulysses Attention that supports <span style="color:hotpink;">arbitrary</span> sequence length with <span style="color:hotpink;">zero</span> padding and nearly <span style="color:hotpink;">zero</span> theoretical communication overhead. The default Ulysses Attention requires that the sequence len of hidden states **must be divisible by the number of devices**. This imposes **significant limitations** on the practical application of Ulysses.
 
 
 ```python
@@ -43,15 +43,15 @@ cache_dit.enable_cache(
 )
 ```
 
-For example, in the T2I and I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **✅padding-free** Ulysses Attention (UAA) for **arbitrary sequence length**, which enhances the versatility of Ulysses.
+For example, in the T2I and I2V tasks, the length of prompts input by users is often variable, and it is difficult to ensure that this length is divisible by the number of devices. To address this issue, we have developed a **padding-free** Ulysses Attention (UAA) for **arbitrary sequence length**, which enhances the versatility of Ulysses.
 
 ```python
 dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 ```
-Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the <span style="color:hotpink;">**✅gloo**</span> backend in `init_process_group`. This will significantly reduce communication latency.
+Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the <span style="color:hotpink;">gloo</span> backend in `init_process_group`. This will significantly reduce communication latency.
 
 <p align="center">
-    ✅<b>Any Sequence Length</b><br>
+    <b>Any Sequence Length</b><br>
     U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
     FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
 </p>
@@ -61,14 +61,14 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 |FLUX, 13.87s|**🎉13.88s**|14.75s|23.25s| **🎉13.75s**|Qwen, 132s|181s|**🎉133s**|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/flux.1008x1008.C0_Q0_NONE.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets//uaa/flux.1008x1008.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1312x1312.C0_Q0_NONE_Ulysses2.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE.png" width=110px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/uaa/qwen-image.1328x1328.C0_Q0_NONE_Ulysses2_ulysses_anything.png" width=110px>|
 |1024x1024|1024x1024|1024x1024|1008x1008|1008x1008|1312x1312|1328x1328|1328x1328|
-|✔️U* ✔️UAA|✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* ✔️UAA|✔️U* ✔️UAA|NO CP|❌U* ✔️UAA|
+|✔️U* ✔️UAA|✔️U* ✔️UAA|✔️U* ✔️UAA| NO CP|❌U* <span style="color:hotpink;">✔️UAA</span>|✔️U* ✔️UAA|NO CP|❌U* ✔️UAA|
 
 
-✅<span style="color:hotpink;">Any Head Num</span>: By the way, Ulysses Attention and UAA in cache-dit now **support arbitrary numbers of heads** via additional padding and unpadding operations implemented before and after all-to-all. The overhead incurred by these extra padding and unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
+<span style="color:hotpink;">Any Head Num</span>: By the way, Ulysses Attention and UAA in cache-dit now support arbitrary numbers of heads via additional padding and unpadding operations implemented before and after all-to-all. The overhead incurred by these extra padding and unpadding steps can be **partially hidden** through asynchronous communication. This support for arbitrary head counts is **automatically activated** whenever the number of heads is not divisible by the world size. For Example: 
 
 
 <p align="center">
-    ✅<b>Any Head Num</b><br>
+    <b>Any Head Num</b><br>
     Ulysses: Ulysses Attention, <b>FP8 Ulysses: Ulysses w/ FP8 All2All</b>, Device: NVIDIA L20<br>
     🔥<b>Z-Image</b> (Head=30, ❌<b>CAN NOT</b> divisible by 4), 1024x1024, 9 steps.
 </p>
@@ -79,13 +79,13 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 |<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses2_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses2_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses4_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_DBCache_F1B0_W4I1M0MC0_R0.6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0.6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn.png" />|    
 
 
-We have also implemented a ✅**padding-free** version that support any head num. Please be informed that this solution cannot be used when seq len is not divisible by world size. Users can enable this feature through environment variables:
+We have also implemented a **padding-free** version that support any head num. Please be informed that this solution cannot be used when seq len is not divisible by world size. Users can enable this feature through environment variables:
 
 ```bash
 export CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD=1 # NOT WORK if seq len is also not divisible by world size
 ```
 
-Important: Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the `cpu:gloo` commucation backend is not available.
+Important: Please note that **Ulysses Anything Attention (UAA)** is currently an **experimental** feature. It has not undergone large-scale testing, and may introduce a slight performance degradation while the <span style="color:hotpink;">cpu:gloo</span> commucation backend is not available.
 
 ## Async Ulysses QKV Projection
 
@@ -94,7 +94,7 @@ Important: Please note that **Ulysses Anything Attention (UAA)** is currently an
 
 ![async_ulysses](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses.png)
 
-Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for <span style="color:hotpink;">**Async Ulysses QKV Projection**</span> for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image), 🔥[Ovis-Image](https://github.com/AIDC-AI/Ovis-Image), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) and 🔥[LongCat-Image](https://github.com/meituan-longcat/LongCat-Image) models are supported, and more models will be added in the future—stay tuned!
+Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDance-Seed/VeOmni/blob/main/veomni/distributed/sequence_parallel/async_ulysses.py), we have also added support for <span style="color:hotpink;">Async Ulysses QKV Projection</span> for certain models in cache-dit. This enables partial overlap of communication and computation, which can further enhance the performance of Ulysses style Context Parallelism. Currently, only the 🔥[FLUX.1](https://huggingface.co/black-forest-labs/FLUX.1-dev), 🔥[Qwen-Image](https://github.com/QwenLM/Qwen-Image), 🔥[Z-Image](https://github.com/Tongyi-MAI/Z-Image), 🔥[Ovis-Image](https://github.com/AIDC-AI/Ovis-Image), 🔥[FLUX.2](https://huggingface.co/black-forest-labs/FLUX.2-dev) and 🔥[LongCat-Image](https://github.com/meituan-longcat/LongCat-Image) models are supported, and more models will be added in the future—stay tuned!
 
 ```python
 from cache_dit import ParallelismConfig
@@ -126,7 +126,7 @@ cache_dit.enable_cache(
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit has implemented <span style="color:hotpink;">**Async FP8 Ulysses Attention**</span> for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. To maintain higher precision during softmax computation—where <span style="color:hotpink;">Softmax(Q@K^T)</span> is sensitive to numerical instability—we currently retain <span style="color:hotpink;">K in FP16/BF16</span> format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
+cache-dit has implemented <span style="color:hotpink;">Async FP8 Ulysses Attention</span> for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. To maintain higher precision during softmax computation—where <span style="color:hotpink;">Softmax(Q@K^T)</span> is sensitive to numerical instability—we currently retain <span style="color:hotpink;">K</span> in <span style="color:hotpink;">FP16/BF16</span> format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -168,7 +168,7 @@ cache_dit.enable_cache(
 
 The FLUX.1-dev benchmark for Ring w/ allgather (AG), Ring w/ batched p2p (p2p) and Ulysses listed as following:
 
-|Ring-2 w/ AG| Ring-2 w/ p2p| Ulysses-2 | Ring-4 w/ AG| Ring-4 w/ p2p| Ulysses-4 |  
+|Ring-2 w/ AG| Ring-2 w/ <span style="color:hotpink;">p2p</span>| Ulysses-2 | Ring-4 w/ AG| Ring-4 w/ p2p| Ulysses-4 |  
 |:---:|:---:|:---:|:---:|:---:|:---:| 
 |14.01s|13.43s|13.87s|9.82s|9.16s|8.22s|
 
@@ -194,6 +194,6 @@ cache_dit.enable_cache(
 
 From the below table (FLUX.1-dev), it’s clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.
 
-|Ring-4 w/ allgather| Ring-4 w/ batched p2p| Ulysses-4 | USP-2-2 |
+|Ring-4 w/ allgather| Ring-4 w/ batched p2p| Ulysses-4 | <span style="color:hotpink;">USP-2-2</span> |
 |:---:|:---:|:---:|:---:|
 |9.82s|9.16s|8.22s|8.55s|
