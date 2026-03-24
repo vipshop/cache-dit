@@ -196,9 +196,6 @@ def _quant_config_impl(quant_info: QuantizeInfo, **kwargs):
                 PerRow,
             )
 
-            # if quant_info.per_row:  # Ensure bfloat16
-            #     module.to(torch.bfloat16)
-
             quant_config = Float8DynamicActivationFloat8WeightConfig(
                 weight_dtype=kwargs.get(
                     "weight_dtype",
