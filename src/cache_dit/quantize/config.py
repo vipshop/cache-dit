@@ -95,18 +95,19 @@ class QuantizeConfig:
             return [
                 dataclasses.replace(
                     config,
-                    backend=d.get("backend", config.backend),
+                    backend=cfg.get("backend", config.backend),
                     components_to_quantize=[component],
-                    quant_type=d.get("quant_type", config.quant_type),
-                    per_row=d.get("per_row", config.per_row),
-                    exclude_layers=d.get("exclude_layers", config.exclude_layers),
-                    filter_fn=d.get("filter_fn", config.filter_fn),
-                    quantize_repeated_blocks=d.get(
-                        "quantize_repeated_blocks",
-                        config.quantize_repeated_blocks,
+                    quant_type=cfg.get("quant_type", config.quant_type),
+                    per_row=cfg.get("per_row", config.per_row),
+                    exclude_layers=cfg.get("exclude_layers", config.exclude_layers),
+                    quantize_repeated_blocks=cfg.get(
+                        "quantize_repeated_blocks", config.quantize_repeated_blocks
                     ),
+                    repeated_blocks=cfg.get("repeated_blocks", config.repeated_blocks),
+                    filter_fn=cfg.get("filter_fn", config.filter_fn),
+                    verbose=cfg.get("verbose", config.verbose),
                 )
-                for component, d in config.components_to_quantize.items()
+                for component, cfg in config.components_to_quantize.items()
             ]
 
         raise ValueError("components_to_quantize should be either a list or a dict.")
