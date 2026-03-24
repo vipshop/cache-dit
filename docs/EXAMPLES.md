@@ -11,13 +11,14 @@
 ## Installation
 
 ```bash
-# recommend: install latest stable release of torch for better compile compatiblity.
-pip3 install torch==2.10.0 torchvision --index-url https://download.pytorch.org/whl/cu129 --upgrade
+# recommend: install latest pytorch for better compile compatiblity.
+pip3 install torch==2.11.0 torchvision torchaudio triton --upgrade
 # recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
-pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu129
+pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu130
 pip3 install transformers accelerate bitsandbytes opencv-python-headless einops imageio-ffmpeg ftfy 
 pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples
 ```
 
 ## Available Examples
@@ -38,6 +39,7 @@ Available examples:
 - ✅ flux2_klein_base_4b_edit       - Default: black-forest-labs/FLUX.2-klein-base-4B
 - ✅ flux2_klein_9b_edit            - Default: black-forest-labs/FLUX.2-klein-9B
 - ✅ flux2_klein_4b_edit            - Default: black-forest-labs/FLUX.2-klein-4B
+- ✅ flux2_klein_9b_kv_edit         - Default: black-forest-labs/FLUX.2-klein-9b-kv
 - ✅ qwen_image_lightning           - Default: lightx2v/Qwen-Image-Lightning
 - ✅ qwen_image_2512                - Default: Qwen/Qwen-Image-2512
 - ✅ qwen_image                     - Default: Qwen/Qwen-Image
