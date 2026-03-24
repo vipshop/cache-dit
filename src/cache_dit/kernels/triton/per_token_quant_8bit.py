@@ -2,12 +2,18 @@ import torch
 import triton
 import triton.language as tl
 
-__all__ = [
-    "per_token_quant_fp8",
-    "per_token_dequant_fp8",
-    "qkv_permute_quant_fp8",
-    "qkv_dequant_permute_fp8",
-]
+# Note: Use torch.library.define with the format "namespace::operator_name"
+# namespace scheme: i -> cache-d[i]t, fp8_comm_ops -> the category of operators
+# for fp8 communication related operations in cache-dit
+torch.library.define("_i_fp8_comm_ops::per_token_quant_fp8", "(Tensor x) -> Tensor")
+torch.library.define("_i_fp8_comm_ops::per_token_dequant_fp8", "(Tensor x) -> Tensor")
+torch.library.define(
+    "_i_fp8_comm_ops::qkv_permute_quant_fp8", "(Tensor x, float eps=1e-6) -> Tensor"
+)
+torch.library.define(
+    "_i_fp8_comm_ops::qkv_dequant_permute_fp8",
+    "(Tensor quant_x, ScalarType dtype=bfloat16) -> Tensor",
+)
 
 
 @triton.jit
@@ -69,54 +75,6 @@ def _per_token_dequant_8bit(
         x = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
         x = x * x_s
         tl.store(y_ptr + cols, x, mask=mask)
-
-
-def per_token_quant_fp8(x: torch.Tensor) -> torch.Tensor:
-    assert x.dtype == torch.bfloat16, f"expected bfloat16 but got {x.dtype}"
-    dtype = torch.float8_e4m3fn
-    finfo = torch.finfo(dtype)
-    *shape, H = x.shape
-    x = x.reshape(-1, H).contiguous()
-    M, N = x.shape
-    y = torch.empty((M, N + 2), dtype=dtype, device=x.device)
-
-    BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
-    num_warps = min(max(BLOCK // 256, 1), 8)
-
-    with torch.cuda.device(x.device):
-        _per_token_quant_8bit[(M,)](
-            y,
-            x,
-            N,
-            eps=1e-4,
-            bit8_min=finfo.min,
-            bit8_max=finfo.max,
-            BLOCK=BLOCK,
-            num_warps=num_warps,
-        )
-    return y.reshape(*shape, H + 2)
-
-
-def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
-    assert x.dtype == torch.float8_e4m3fn, f"expected float8_e4m3fn but got {x.dtype}"
-    *shape, H = x.shape
-    x = x.reshape(-1, H).contiguous()
-    M, N = x.shape
-    N -= 2
-    y = torch.empty((M, N), dtype=torch.bfloat16, device=x.device)
-
-    BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
-    num_warps = min(max(BLOCK // 256, 1), 8)
-
-    with torch.cuda.device(x.device):
-        _per_token_dequant_8bit[(M,)](
-            y,
-            x,
-            N,
-            BLOCK=BLOCK,
-            num_warps=num_warps,
-        )
-    return y.reshape(*shape, H - 2)
 
 
 @triton.jit
@@ -204,7 +162,58 @@ def _qkv_dequant_permute(
     tl.store(x_blk, qx * scale, mask=mask)
 
 
-def qkv_permute_quant_fp8(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+@torch.library.impl("_i_fp8_comm_ops::per_token_quant_fp8", "CUDA")
+def _per_token_quant_fp8_cuda(x: torch.Tensor) -> torch.Tensor:
+    assert x.dtype == torch.bfloat16, f"expected bfloat16 but got {x.dtype}"
+    dtype = torch.float8_e4m3fn
+    finfo = torch.finfo(dtype)
+    *shape, H = x.shape
+    x = x.reshape(-1, H).contiguous()
+    M, N = x.shape
+    y = torch.empty((M, N + 2), dtype=dtype, device=x.device)
+
+    BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
+    num_warps = min(max(BLOCK // 256, 1), 8)
+
+    with torch.cuda.device(x.device):
+        _per_token_quant_8bit[(M,)](
+            y,
+            x,
+            N,
+            eps=1e-4,
+            bit8_min=finfo.min,
+            bit8_max=finfo.max,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+    return y.reshape(*shape, H + 2)
+
+
+@torch.library.impl("_i_fp8_comm_ops::per_token_dequant_fp8", "CUDA")
+def _per_token_dequant_fp8_cuda(x: torch.Tensor) -> torch.Tensor:
+    assert x.dtype == torch.float8_e4m3fn, f"expected float8_e4m3fn but got {x.dtype}"
+    *shape, H = x.shape
+    x = x.reshape(-1, H).contiguous()
+    M, N = x.shape
+    N -= 2
+    y = torch.empty((M, N), dtype=torch.bfloat16, device=x.device)
+
+    BLOCK = max(min(8192, 65536 // x.element_size(), triton.next_power_of_2(N)), 128)
+    num_warps = min(max(BLOCK // 256, 1), 8)
+
+    with torch.cuda.device(x.device):
+        _per_token_dequant_8bit[(M,)](
+            y,
+            x,
+            N,
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
+    return y.reshape(*shape, H - 2)
+
+
+@torch.library.impl("_i_fp8_comm_ops::qkv_permute_quant_fp8", "CUDA")
+def _qkv_permute_quant_fp8_cuda(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     B, S, P, N, D = x.shape
 
     quant_x = torch.empty((P, S, B, N, D + 4), dtype=torch.float8_e4m3fn, device=x.device)
@@ -232,8 +241,10 @@ def qkv_permute_quant_fp8(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     return quant_x
 
 
-def qkv_dequant_permute_fp8(
-    quant_x: torch.Tensor, dtype: torch.dtype = torch.bfloat16
+@torch.library.impl("_i_fp8_comm_ops::qkv_dequant_permute_fp8", "CUDA")
+def _qkv_dequant_permute_fp8_cuda(
+    quant_x: torch.Tensor,
+    dtype: torch.dtype = torch.bfloat16,
 ) -> torch.Tensor:
     S, B, N, _D = quant_x.shape
     D = _D - 4
@@ -258,3 +269,59 @@ def qkv_dequant_permute_fp8(
         )
 
     return x
+
+
+@torch.library.register_fake("_i_fp8_comm_ops::per_token_quant_fp8")
+def _per_token_quant_fp8_abstract(x: torch.Tensor) -> torch.Tensor:
+    assert x.dtype == torch.bfloat16
+    *shape, H = x.shape
+    return x.new_empty((*shape, H + 2), dtype=torch.float8_e4m3fn)
+
+
+@torch.library.register_fake("_i_fp8_comm_ops::per_token_dequant_fp8")
+def _per_token_dequant_fp8_abstract(x: torch.Tensor) -> torch.Tensor:
+    assert x.dtype == torch.float8_e4m3fn
+    *shape, H = x.shape
+    return x.new_empty((*shape, H - 2), dtype=torch.bfloat16)
+
+
+@torch.library.register_fake("_i_fp8_comm_ops::qkv_permute_quant_fp8")
+def _qkv_permute_quant_fp8_abstract(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    B, S, P, N, D = x.shape
+    return x.new_empty((P, S, B, N, D + 4), dtype=torch.float8_e4m3fn)
+
+
+@torch.library.register_fake("_i_fp8_comm_ops::qkv_dequant_permute_fp8")
+def _qkv_dequant_permute_fp8_abstract(
+    quant_x: torch.Tensor,
+    dtype: torch.dtype = torch.bfloat16,
+) -> torch.Tensor:
+    S, B, N, _D = quant_x.shape
+    D = _D - 4
+    return quant_x.new_empty((B, S, N, D), dtype=dtype)
+
+
+def per_token_quant_fp8(x: torch.Tensor) -> torch.Tensor:
+    return torch.ops._i_fp8_comm_ops.per_token_quant_fp8(x)
+
+
+def per_token_dequant_fp8(x: torch.Tensor) -> torch.Tensor:
+    return torch.ops._i_fp8_comm_ops.per_token_dequant_fp8(x)
+
+
+def qkv_permute_quant_fp8(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    return torch.ops._i_fp8_comm_ops.qkv_permute_quant_fp8(x, eps)
+
+
+def qkv_dequant_permute_fp8(
+    quant_x: torch.Tensor, dtype: torch.dtype = torch.bfloat16
+) -> torch.Tensor:
+    return torch.ops._i_fp8_comm_ops.qkv_dequant_permute_fp8(quant_x, dtype)
+
+
+__all__ = [
+    "per_token_quant_fp8",
+    "per_token_dequant_fp8",
+    "qkv_permute_quant_fp8",
+    "qkv_dequant_permute_fp8",
+]
