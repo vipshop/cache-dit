@@ -103,12 +103,19 @@ def _fused_merge_attn_states_abstract(
     suff_out: torch.Tensor,
     suff_lse: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    B, N, H, D = suff_out.shape  # Batch, Seq_len, Num_heads, Head_dim
-    out = torch.empty_like(suff_out)
-    lse = torch.empty_like(suff_lse)
-    # Reshape back to original shape
+    B, N, H, D = suff_out.shape
+
+    # Exactly replicate the memory layout operations from the real impl
+    # to ensure the abstract function has the same behavior as the real
+    # function in terms of memory layout, which is important for torch
+    # compile to generate correct code.
+    suff_out = suff_out.flatten(0, 1).contiguous()
+    suff_lse = suff_lse.flatten(0, 1).squeeze(-1).contiguous()
+    out = suff_out.new_empty(suff_out.shape, dtype=suff_out.dtype)
+    lse = suff_lse.new_empty(suff_lse.shape, dtype=suff_lse.dtype)
     out = out.view(B, N, H, D)
     lse = lse.view(B, N, H, 1)
+
     return out, lse
 
 
