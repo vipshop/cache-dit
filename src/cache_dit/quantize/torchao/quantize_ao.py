@@ -113,12 +113,16 @@ class QuantizeStats:
     kwargs: dict = dataclasses.field(default_factory=dict)
 
     def summary(self):
-        logger.info("-" * 100)
         quantized_region = (
             f"{self.repeated_blocks}"
             if self.quantize_repeated_blocks and self.repeated_blocks is not None
             else self.module_name if self.module_name else "Module"
         )
+        max_len = len(f"Quantized        Region: {quantized_region}")
+        if self.verbose:
+            max_len = max(max_len, len(f"Skipped        Patterns: {self.exclude_layers}"))
+
+        logger.info("-" * max_len)
         logger.info(
             f"Quantized        Method: {self.quant_type_rev}\n"
             f"Quantized        Region: {quantized_region}\n"
@@ -128,7 +132,7 @@ class QuantizeStats:
         )
         if self.verbose:
             logger.info(f"Skipped        Patterns: {self.exclude_layers}")
-        logger.info("-" * 100)
+        logger.info("-" * max_len)
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
