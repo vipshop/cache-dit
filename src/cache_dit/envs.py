@@ -116,5 +116,5 @@ class ENV(object):
     # Users can set the environment variable to 1 to force disable this behavior, but it is not
     # recommended now since it may cause scaled_mm error for some models after TP.
     CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP: bool = bool(
-        int(os.environ.get("CACHE_DIT_FORCE_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP", "0"))
+        int(os.environ.get("CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP", "0"))
     )

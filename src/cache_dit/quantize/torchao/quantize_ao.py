@@ -98,7 +98,7 @@ def quantize_ao(
         if quant_type == "fp8_w8a8_dq" and per_row:
             exclude_layers = exclude_layers + module._exclude_for_quantize
             logger.info(
-                f"Found extra excluding layers for {module.__class__.__name__}: "
+                f"Found extra excluding layers (TP) for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
             )
 
@@ -284,12 +284,15 @@ def quantize_ao(
         f"Quantized        Method: {quant_type:>5}\n"
         f"Quantized Linear Layers: {num_quant_linear:>5}\n"
         f"Skipped   Linear Layers: {num_skip_linear:>5}\n"
-        f"Skipped        Patterns: {exclude_layers}\n"
         f"Total     Linear Layers: {num_linear_layers:>5}\n"
         f"Total     (all)  Layers: {num_layers:>5}"
     )
 
+    if verbose:
+        logger.info(f"Skipped        Patterns: {exclude_layers}")
+
     module._quantize_type = quant_type
+    module._exclude_for_quantize = copy.deepcopy(exclude_layers)
     module._is_quantized = True
     return module
 
