@@ -59,11 +59,6 @@ __all__ = [
 # the unified function implementation complex and ugly.
 
 
-# Reference:
-# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L827
-# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
-# - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
-# For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
 def _wait_tensor(tensor) -> torch.Tensor:
     if isinstance(tensor, fc.AsyncCollectiveTensor):
         tensor = tensor.wait()
