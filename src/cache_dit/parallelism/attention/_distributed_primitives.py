@@ -20,17 +20,17 @@ try:
     )
 except ImportError:
 
-    def _fp8_kernel_unavailable(*args, **kwargs):
+    def _fp8_comm_kernel_unavailable(*args, **kwargs):
         raise RuntimeError(
-            "FP8 kernels could not be imported (e.g., Triton may not be available on this "
+            "FP8 comm kernels could not be imported (e.g., Triton may not be available on this "
             "platform). FP8 async operations are not supported. Please install the required "
             "dependencies or disable FP8 mode."
         )
 
-    fp8_comm_per_token_quant = _fp8_kernel_unavailable
-    fp8_comm_per_token_dequant = _fp8_kernel_unavailable
-    fp8_comm_qkv_permute_quant = _fp8_kernel_unavailable
-    fp8_comm_qkv_permute_dequant = _fp8_kernel_unavailable
+    fp8_comm_per_token_quant = _fp8_comm_kernel_unavailable
+    fp8_comm_per_token_dequant = _fp8_comm_kernel_unavailable
+    fp8_comm_qkv_permute_quant = _fp8_comm_kernel_unavailable
+    fp8_comm_qkv_permute_dequant = _fp8_comm_kernel_unavailable
 
 
 # Some helper distributed primitive functions for context parallel attention.
