@@ -345,6 +345,13 @@ def get_args(
             "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
+    parser.add_argument(
+        "--disable-quantize-repeated-blocks",
+        "--disable-quantize-blocks",
+        action="store_true",
+        default=False,
+        help="Disable quantization for repeated blocks in transformer",
+    )
     # some quick start flags for transformer quantization (--float8, --float8_wo, --float8_bw)
     parser.add_argument(
         "--float8",
@@ -576,7 +583,7 @@ def get_args(
         "--disable-compile-blocks",
         action="store_true",
         default=False,
-        help="Disable compile for repeated blocks in transformer()",
+        help="Disable compile for repeated blocks in transformer",
     )
     # Force compile dynamic, this is useful for case PyTorch native TP + dynamic shape
     # + compile, where the shape of some inputs to transformer may change a lot during
@@ -1106,6 +1113,7 @@ def maybe_quantize_transformer(
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer),
                         exclude_layers=get_exclude_layers(transformer),
+                        quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
                         verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer", transformer)
@@ -1132,6 +1140,7 @@ def maybe_quantize_transformer(
                         quant_type=args.quantize_type,
                         per_row=is_per_row_supported(transformer_2),
                         exclude_layers=get_exclude_layers(transformer_2),
+                        quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
                         verbose=args.quantize_verbose,
                     )
                     setattr(pipe, "transformer_2", transformer_2)
@@ -1176,6 +1185,7 @@ def maybe_quantize_text_encoder(
                     text_encoder,
                     quant_type=args.quantize_text_type,
                     verbose=args.quantize_verbose,
+                    quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
                 )
                 setattr(pipe, name, text_encoder)
             else:
@@ -1220,6 +1230,7 @@ def maybe_quantize_controlnet(
                         controlnet,
                         quant_type=args.quantize_controlnet_type,
                         verbose=args.quantize_verbose,
+                        quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
                     )
                     setattr(pipe, "controlnet", controlnet)
                 else:
