@@ -1,5 +1,7 @@
 import torch
 import copy
+import dataclasses
+from functools import partial
 from typing import Callable, Optional, List
 from ...utils import maybe_empty_cache
 from ...platforms import current_platform
@@ -102,68 +104,68 @@ def quantize_ao(
                 f"{module._exclude_for_quantize}"
             )
 
-    num_quant_linear = 0
-    num_skip_linear = 0
-    num_linear_layers = 0
-    num_layers = 0
+    # num_quant_linear = 0
+    # num_skip_linear = 0
+    # num_linear_layers = 0
+    # num_layers = 0
 
-    # Ensure bfloat16 for per_row
-    def _filter_fn(m: torch.nn.Module, name: str) -> bool:
-        from torchao.float8.float8_linear import Float8Linear
+    # # Ensure bfloat16 for per_row
+    # def _filter_fn(m: torch.nn.Module, name: str) -> bool:
+    #     from torchao.float8.float8_linear import Float8Linear
 
-        nonlocal num_quant_linear, num_skip_linear, num_linear_layers, num_layers
-        num_layers += 1
-        if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
-            num_linear_layers += 1
+    #     nonlocal num_quant_linear, num_skip_linear, num_linear_layers, num_layers
+    #     num_layers += 1
+    #     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
+    #         num_linear_layers += 1
 
-            for exclude_name in exclude_layers:
-                if exclude_name in name:
-                    if verbose:
-                        logger.info(f"Skip Quantization: {name} -> pattern<{exclude_name}>")
+    #         for exclude_name in exclude_layers:
+    #             if exclude_name in name:
+    #                 if verbose:
+    #                     logger.info(f"Skip Quantization: {name} -> pattern<{exclude_name}>")
 
-                    num_skip_linear += 1
-                    return False
+    #                 num_skip_linear += 1
+    #                 return False
 
-            if per_row and m.weight.dtype != torch.bfloat16 and quant_type == "fp8_w8a8_dq":
-                if verbose:
-                    logger.info(
-                        f"Skip Quantization: {name} -> "
-                        f"pattern<dtype({m.weight.dtype})!=bfloat16>"
-                    )
+    #         if per_row and m.weight.dtype != torch.bfloat16 and quant_type == "fp8_w8a8_dq":
+    #             if verbose:
+    #                 logger.info(
+    #                     f"Skip Quantization: {name} -> "
+    #                     f"pattern<dtype({m.weight.dtype})!=bfloat16>"
+    #                 )
 
-                num_skip_linear += 1
-                return False
+    #             num_skip_linear += 1
+    #             return False
 
-            # check blockwise fp8 support for linear layers, if not supported,
-            # skip quantization for that layer.
-            if quant_type in [
-                "fp8_blockwise",
-            ] and not _check_if_linear_fp8_blockwise_can_support(m):
-                weight_shape = tuple(m.weight.shape)
-                if verbose:
-                    logger.info(
-                        f"Skip Quantization: {name} -> pattern<w{weight_shape} "
-                        "% block_size(128, 128) != 0>"
-                    )
-                num_skip_linear += 1
-                return False
+    #         # check blockwise fp8 support for linear layers, if not supported,
+    #         # skip quantization for that layer.
+    #         if quant_type in [
+    #             "fp8_blockwise",
+    #         ] and not _check_if_linear_fp8_blockwise_can_support(m):
+    #             weight_shape = tuple(m.weight.shape)
+    #             if verbose:
+    #                 logger.info(
+    #                     f"Skip Quantization: {name} -> pattern<w{weight_shape} "
+    #                     "% block_size(128, 128) != 0>"
+    #                 )
+    #             num_skip_linear += 1
+    #             return False
 
-            if quant_type in [
-                "fp8_w8a8_dq",
-                "fp8_blockwise",
-            ] and not _check_if_linear_with_bias_fp8_can_support(m):
-                if verbose:
-                    logger.info(
-                        f"Skip Quantization: {name} -> "
-                        f"pattern<DTensor + bias is not supported for _scaled_mm>"
-                    )
-                num_skip_linear += 1
-                return False
+    #         if quant_type in [
+    #             "fp8_w8a8_dq",
+    #             "fp8_blockwise",
+    #         ] and not _check_if_linear_with_bias_fp8_can_support(m):
+    #             if verbose:
+    #                 logger.info(
+    #                     f"Skip Quantization: {name} -> "
+    #                     f"pattern<DTensor + bias is not supported for _scaled_mm>"
+    #                 )
+    #             num_skip_linear += 1
+    #             return False
 
-            num_quant_linear += 1
-            return True
+    #         num_quant_linear += 1
+    #         return True
 
-        return False
+    #     return False
 
     def _quant_config():
         try:
@@ -267,6 +269,15 @@ def quantize_ao(
 
     from torchao.quantization import quantize_
 
+    quant_info = QuantizeInfo(
+        quant_type=quant_type,
+        per_row=per_row,
+        exclude_layers=exclude_layers,
+        verbose=verbose,
+    )
+
+    _filter_fn = partial(_filter_fn_impl, quant_info=quant_info)
+
     quantize_(
         module,
         _quant_config(),
@@ -281,20 +292,97 @@ def quantize_ao(
 
     logger.info(
         f"Quantized        Module: {module.__class__.__name__:>5}\n"
-        f"Quantized        Method: {quant_type:>5}\n"
-        f"Quantized Linear Layers: {num_quant_linear:>5}\n"
-        f"Skipped   Linear Layers: {num_skip_linear:>5}\n"
-        f"Total     Linear Layers: {num_linear_layers:>5}\n"
-        f"Total     (all)  Layers: {num_layers:>5}"
+        f"Quantized        Method: {quant_info.quant_type:>5}\n"
+        f"Quantized Linear Layers: {quant_info.num_quant_linear:>5}\n"
+        f"Skipped   Linear Layers: {quant_info.num_skip_linear:>5}\n"
+        f"Total     Linear Layers: {quant_info.num_linear_layers:>5}\n"
+        f"Total     (all)  Layers: {quant_info.num_layers:>5}"
     )
 
     if verbose:
-        logger.info(f"Skipped        Patterns: {exclude_layers}")
+        logger.info(f"Skipped        Patterns: {quant_info.exclude_layers}")
 
     module._quantize_type = quant_type
-    module._exclude_for_quantize = copy.deepcopy(exclude_layers)
+    module._exclude_for_quantize = copy.deepcopy(quant_info.exclude_layers)
     module._is_quantized = True
     return module
+
+
+@dataclasses.dataclass
+class QuantizeInfo:
+    quant_type: str = "fp8_w8a8_dq"
+    per_row: bool = True
+    exclude_layers: List[str] = dataclasses.field(default_factory=list)
+    verbose: bool = False
+    num_quant_linear: int = 0
+    num_skip_linear: int = 0
+    num_linear_layers: int = 0
+    num_layers: int = 0
+    kwargs: dict = dataclasses.field(default_factory=dict)
+
+
+def _filter_fn_impl(
+    m: torch.nn.Module,
+    name: str,
+    quant_info: QuantizeInfo = QuantizeInfo(),
+) -> bool:
+    from torchao.float8.float8_linear import Float8Linear
+
+    quant_info.num_layers += 1
+    if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
+        quant_info.num_linear_layers += 1
+
+        for exclude_name in quant_info.exclude_layers:
+            if exclude_name in name:
+                if quant_info.verbose:
+                    logger.info(f"Skip Quantization: {name} -> pattern<{exclude_name}>")
+
+                quant_info.num_skip_linear += 1
+                return False
+
+        if (
+            quant_info.per_row
+            and m.weight.dtype != torch.bfloat16
+            and quant_info.quant_type == "fp8_w8a8_dq"
+        ):
+            if quant_info.verbose:
+                logger.info(
+                    f"Skip Quantization: {name} -> pattern<dtype({m.weight.dtype})!=bfloat16>"
+                )
+
+            quant_info.num_skip_linear += 1
+            return False
+
+        # check blockwise fp8 support for linear layers, if not supported,
+        # skip quantization for that layer.
+        if quant_info.quant_type in [
+            "fp8_blockwise",
+        ] and not _check_if_linear_fp8_blockwise_can_support(m):
+            weight_shape = tuple(m.weight.shape)
+            if quant_info.verbose:
+                logger.info(
+                    f"Skip Quantization: {name} -> pattern<w{weight_shape} "
+                    f"% block_size(128, 128) != 0>"
+                )
+            quant_info.num_skip_linear += 1
+            return False
+
+        if quant_info.quant_type in [
+            "fp8_w8a8_dq",
+            "fp8_blockwise",
+        ] and not _check_if_linear_with_bias_fp8_can_support(m):
+            if quant_info.verbose:
+                logger.info(
+                    f"Skip Quantization: {name} -> "
+                    f"pattern<DTensor + bias is not supported for _scaled_mm>"
+                )
+            quant_info.num_skip_linear += 1
+            return False
+
+        quant_info.num_quant_linear += 1
+        return True
+
+    return False
 
 
 def _check_if_linear_fp8_blockwise_can_support(module: torch.nn.Linear) -> bool:
