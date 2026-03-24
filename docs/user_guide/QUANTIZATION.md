@@ -4,17 +4,17 @@
 
 ## Cache-DiT w/ TorchAo
 
-Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:hotpink;">online</span> model quantization (recommended). You can implement model quantization by calling <span style="color:hotpink;">quantize</span> or pass a <span style="color:hotpink;">QuantizeConfig</span> to <span style="color:hotpink;">enable_cache</span> API.
+Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization (recommended). You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API.
 
-For GPUs with low memory capacity, we recommend using <span style="color:hotpink;">float8</span>, <span style="color:hotpink;">float8_weight_only</span>, <span style="color:hotpink;">int8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
+For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, <span style="color:#c77dff;">int8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
 
-  - <span style="color:hotpink;">float8</span>: quantize both weights and activations to float8 (dynamic quantization).  
-  - <span style="color:hotpink;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision.  
-  - <span style="color:hotpink;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
-  - <span style="color:hotpink;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision.  
-  - <span style="color:hotpink;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision.
+  - <span style="color:#c77dff;">float8</span>: quantize both weights and activations to float8 (dynamic quantization).  
+  - <span style="color:#c77dff;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision.  
+  - <span style="color:#c77dff;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
+  - <span style="color:#c77dff;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision.  
+  - <span style="color:#c77dff;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision.
 
-Here are some examples of how to use quantization with cache-dit. You can directly specify the quantization config in the <span style="color:hotpink;">enable_cache</span> API.
+Here are some examples of how to use quantization with cache-dit. You can directly specify the quantization config in the <span style="color:#c77dff;">enable_cache</span> API.
 
 ```python
 import cache_dit
@@ -53,7 +53,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Or, directly call the <span style="color:hotpink;">quantize</span> API for more fine-grained control.
+Or, directly call the <span style="color:#c77dff;">quantize</span> API for more fine-grained control.
 
 ```python
 import cache_dit
@@ -69,7 +69,7 @@ cache_dit.quantize(
 )
 ```
 
-Please also enable <span style="color:hotpink;">torch.compile</span> for better performance with quantization.
+Please also enable <span style="color:#c77dff;">torch.compile</span> for better performance with quantization.
 
 ```python
 import cache_dit
@@ -79,7 +79,7 @@ pipe.transformer = torch.compile(pipe.transformer)
 pipe.text_encoder = torch.compile(pipe.text_encoder)
 ```
 
-Users can set <span style="color:hotpink;">exclude_layers</span> in <span style="color:hotpink;">QuantizeConfig</span> to exclude some sensitive layers that are not robust to quantization, e.g., embedding layers. Layers that contain any of the keywords in the <span style="color:hotpink;">exclude_layers</span> list will be excluded from quantization. For example: 
+Users can set <span style="color:#c77dff;">exclude_layers</span> in <span style="color:#c77dff;">QuantizeConfig</span> to exclude some sensitive layers that are not robust to quantization, e.g., embedding layers. Layers that contain any of the keywords in the <span style="color:#c77dff;">exclude_layers</span> list will be excluded from quantization. For example: 
 
 ```python
 import cache_dit
@@ -95,11 +95,11 @@ cache_dit.enable_cache(
     ),
 )
 ```
-The <span style="color:hotpink;">per_row</span> flag indicates whether to use per-row quantization (for float8 dynamic quantization), default to <span style="color:hotpink;">True</span> for better precision. Users can set it to False to use per-tensor quantization for better performance on some hardware.
+The <span style="color:#c77dff;">per_row</span> flag indicates whether to use per-row quantization (for float8 dynamic quantization), default to <span style="color:#c77dff;">True</span> for better precision. Users can set it to False to use per-tensor quantization for better performance on some hardware.
 
 ## Regional Quantization
 
-Cache-DiT also supports <span style="color:hotpink;">regional quantization</span>, which allows users to quantize only part of the transformer blocks. This can be useful for better balancing the <span style="color:hotpink;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:hotpink;">quantize_repeated_blocks</span> and <span style="color:hotpink;">repeated_blocks</span> arguments in <span style="color:hotpink;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:
+Cache-DiT also supports <span style="color:#c77dff;">regional quantization</span>, which allows users to quantize only the repeated blocks in a transformer. This can be useful for better balancing the <span style="color:#c77dff;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:#c77dff;">quantize_repeated_blocks</span> and <span style="color:#c77dff;">repeated_blocks</span> arguments in <span style="color:#c77dff;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:
 
 ```python
 import cache_dit
@@ -126,7 +126,7 @@ cache_dit.enable_cache(
 
 ## Bitsandbytes (W4A16)
 
-For <span style="color:hotpink;">4-bits W4A16</span> (weight only) quantization, we recommend `nf4` from **bitsandbytes** due to its better compatibility for many devices. Users can directly use it via the `quantization_config` of diffusers. For example:
+For <span style="color:#c77dff;">4-bits W4A16</span> (weight only) quantization, we recommend `nf4` from **bitsandbytes** due to its better compatibility for many devices. Users can directly use it via the `quantization_config` of diffusers. For example:
 
 ```python
 import cache_dit
@@ -155,7 +155,7 @@ cache_dit.enable_cache(pipe, cache_config=...)
 
 ## Nunchaku (SVDQ INT4/FP4, W4A4)
 
-cache-dit natively supports the `Hybrid Cache + 🔥Nunchaku SVDQ INT4/FP4 + Context Parallelism` scheme. Users can leverage caching and context parallelism to speed up Nunchaku <span style="color:hotpink;">4-bit</span> models. 
+cache-dit natively supports the `Hybrid Cache + 🔥Nunchaku SVDQ INT4/FP4 + Context Parallelism` scheme. Users can leverage caching and context parallelism to speed up Nunchaku <span style="color:#c77dff;">4-bit W4A4</span> models. 
 
 ```python
 import cache_dit
