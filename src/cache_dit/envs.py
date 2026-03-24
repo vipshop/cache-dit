@@ -106,3 +106,15 @@ class ENV(object):
     CACHE_DIT_ENABLE_LOGGERS_SUPPRESS: bool = bool(
         int(os.environ.get("CACHE_DIT_ENABLE_LOGGERS_SUPPRESS", "0"))
     )
+
+    # Quantization ENVs
+
+    # Temporarily exclude some layers for quantization, e.g, layers applied RowwiseParallel.
+    # Avoid torch._scaled_mm error: "RuntimeError: Expected b.stride(0) == 1 to be true,
+    # but got false", RowwiseParallel (TP) seems will cause the layout of the linear weights
+    # changedly after '_dispatch_get_local_results_slow_path'. Why? Need further investigation.
+    # Users can set the environment variable to 1 to force disable this behavior, but it is not
+    # recommended now since it may cause scaled_mm error for some models after TP.
+    CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP: bool = bool(
+        int(os.environ.get("CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP", "0"))
+    )

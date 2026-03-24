@@ -19,7 +19,7 @@ Firstly, install the required dependencies, including PyTorch, Diffusers, and To
 pip3 install torch==2.11.0 torchvision torchaudio triton --upgrade 
 # recommend: install torchao nightly due to: https://github.com/pytorch/ao/issues/3670
 pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu130
-pip3 install transformers accelerate bitsandbytes opencv-python-headless einops imageio-ffmpeg ftfy 
+pip3 install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy # optional
 ```
 
 Then, you can install the stable release of <span style="color:hotpink;">cache-dit</span> from PyPI:
