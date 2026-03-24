@@ -170,6 +170,7 @@ def _normalize_quantize_info(
     quant_info.quant_type = quant_type
     quant_info.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
 
+    prev_exclude_layers = copy.deepcopy(quant_info.exclude_layers)
     if hasattr(module, "_exclude_for_quantize"):
         # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
         # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
@@ -177,7 +178,7 @@ def _normalize_quantize_info(
         # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
         # Why??? Need further investigation.
         if quant_info.quant_type == "fp8_w8a8_dq" and quant_info.per_row:
-            exclude_layers = exclude_layers + module._exclude_for_quantize
+            exclude_layers = prev_exclude_layers + module._exclude_for_quantize
             logger.info(
                 f"Found extra excluding layers (TP) for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
