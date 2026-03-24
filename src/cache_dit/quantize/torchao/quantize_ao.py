@@ -180,7 +180,7 @@ def _normalize_quantize_info(
         if quant_info.quant_type == "fp8_w8a8_dq" and quant_info.per_row:
             exclude_layers = prev_exclude_layers + module._exclude_for_quantize
             logger.info(
-                f"Found extra excluding layers (TP) for {module.__class__.__name__}: "
+                f"Found extra excluding layers for {module.__class__.__name__}: "
                 f"{module._exclude_for_quantize}"
             )
             quant_info.exclude_layers = copy.deepcopy(exclude_layers)
