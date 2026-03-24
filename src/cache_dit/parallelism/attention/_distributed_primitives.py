@@ -5,31 +5,33 @@ import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
-from cache_dit.platforms import current_platform
+from ...platforms import current_platform
+from ...logger import init_logger
+
+logger = init_logger(__name__)
+
 
 try:
-    from cache_dit.kernels import (
-        per_token_quant_fp8,
-        per_token_dequant_fp8,
-        qkv_permute_quant_fp8,
-        qkv_dequant_permute_fp8,
+    from ...kernels import (
+        fp8_comm_per_token_quant,
+        fp8_comm_per_token_dequant,
+        fp8_comm_qkv_permute_quant,
+        fp8_comm_qkv_permute_dequant,
     )
 except ImportError:
 
-    def _fp8_kernel_unavailable(*args, **kwargs):
+    def _fp8_comm_kernel_unavailable(*args, **kwargs):
         raise RuntimeError(
-            "FP8 kernels could not be imported (e.g., Triton may not be available on this "
+            "FP8 comm kernels could not be imported (e.g., Triton may not be available on this "
             "platform). FP8 async operations are not supported. Please install the required "
             "dependencies or disable FP8 mode."
         )
 
-    per_token_quant_fp8 = _fp8_kernel_unavailable
-    per_token_dequant_fp8 = _fp8_kernel_unavailable
-    qkv_permute_quant_fp8 = _fp8_kernel_unavailable
-    qkv_dequant_permute_fp8 = _fp8_kernel_unavailable
-from ...logger import init_logger
+    fp8_comm_per_token_quant = _fp8_comm_kernel_unavailable
+    fp8_comm_per_token_dequant = _fp8_comm_kernel_unavailable
+    fp8_comm_qkv_permute_quant = _fp8_comm_kernel_unavailable
+    fp8_comm_qkv_permute_dequant = _fp8_comm_kernel_unavailable
 
-logger = init_logger(__name__)
 
 # Some helper distributed primitive functions for context parallel attention.
 __all__ = [
@@ -46,22 +48,17 @@ __all__ = [
     "_all_to_all_single_any_qkv_fp8_async",
     "_all_to_all_single_any_o_fp8_async",
     # Helper functions for preparing communication metadata
-    "_prepare_ulysses_comm_metadata",
+    "_init_comm_metadata",
     # Unified functions for Async Ulysses QKV/O Projection
-    "_unified_all_to_all_qkv_async_fn",
-    "_unified_all_to_all_o_async_fn",
+    "_all_to_all_qkv_async_fn",
+    "_all_to_all_o_async_fn",
 ]
 
-# NOTE: We should always use the asynchronous all to all variants to keep the uified input/output shape
+# NOTE: We should always use the asynchronous all to all variants to keep the unified input/output shape
 # for any_qkvo and non-any_qkvo cases, otherwise, the input/output shape will be different, which makes
 # the unified function implementation complex and ugly.
 
 
-# Reference:
-# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L827
-# - https://github.com/pytorch/pytorch/blob/f58a680d09e13658a52c6ba05c63c15759846bcc/torch/distributed/_functional_collectives.py#L246
-# - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_dispatch.py#L1012
-# For fullgraph=True tracing compatibility (since FakeTensor does not have a `wait` method):
 def _wait_tensor(tensor) -> torch.Tensor:
     if isinstance(tensor, fc.AsyncCollectiveTensor):
         tensor = tensor.wait()
@@ -224,7 +221,7 @@ def _maybe_unpad_o_head(
 
 
 # Helper functions to for all-to-all communication with Ulysses Attention
-def _prepare_ulysses_comm_metadata(
+def _init_comm_metadata(
     query: torch.Tensor,
     **kwargs,
 ) -> dict:
@@ -399,7 +396,7 @@ def _all_to_all_single_qkv_fp8_async(
     x, H_PAD = _maybe_pad_qkv_head(x, H, group)
     H_LOCAL = (H + H_PAD) // world_size
     x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D)
-    x = qkv_permute_quant_fp8(x)
+    x = fp8_comm_qkv_permute_quant(x)
     shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
@@ -408,7 +405,7 @@ def _all_to_all_single_qkv_fp8_async(
         nonlocal x, H_PAD
         x = _wait_tensor(x)
         x = x.reshape(shape_with_scale).flatten(0, 1)
-        x = qkv_dequant_permute_fp8(x)
+        x = fp8_comm_qkv_permute_dequant(x)
         x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
@@ -435,7 +432,7 @@ def _all_to_all_single_o_fp8_async(
     x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
     _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
 
-    x = per_token_quant_fp8(x)
+    x = fp8_comm_per_token_quant(x)
     shape_with_scale = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
     x = x.flatten()
     x = fc.all_to_all_single(x, None, None, group)
@@ -444,7 +441,7 @@ def _all_to_all_single_o_fp8_async(
         nonlocal x, H_PAD
         x = _wait_tensor(x)
         x = x.reshape(shape_with_scale)
-        x = per_token_dequant_fp8(x)
+        x = fp8_comm_per_token_dequant(x)
         # (world_size, H_LOCAL, B, S_LOCAL, D)
         # -> (H_GLOBAL, B, S_LOCAL, D)
         # -> (B, H_GLOBAL, S_LOCAL, D)
@@ -567,14 +564,14 @@ def _all_to_all_single_any_qkv_fp8_async(
     # NOTE: The `if` branch will introduce graph break for torch.compile,
     # so, we choose to disable the even split optimization implementation
     # _all_to_all_single for now.
-    x = qkv_permute_quant_fp8(x)
+    x = fp8_comm_qkv_permute_quant(x)
     x = x.flatten(0, 1)
     x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
         x = _wait_tensor(x)
-        x = qkv_dequant_permute_fp8(x)
+        x = fp8_comm_qkv_permute_dequant(x)
         x = _maybe_unpad_qkv_head(x, H_PAD, group)
         return x
 
@@ -597,7 +594,7 @@ def _all_to_all_single_any_o_fp8_async(
     rank, world_size = _get_rank_world_size(group)
     x, H_PAD = _maybe_pad_o_head(x, H, group)
     shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
-    x = per_token_quant_fp8(x)
+    x = fp8_comm_per_token_quant(x)
     (B, S_GLOBAL, H_LOCAL, D) = shape
     # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
     # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
@@ -620,7 +617,7 @@ def _all_to_all_single_any_o_fp8_async(
     def wait() -> torch.Tensor:
         nonlocal x, H_PAD
         x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
-        x = per_token_dequant_fp8(x)
+        x = fp8_comm_per_token_dequant(x)
         x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
         x = x.permute(2, 1, 0, 3, 4).contiguous()
         x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
@@ -632,11 +629,9 @@ def _all_to_all_single_any_o_fp8_async(
 
 # Unified functions to select proper all to all implementations according to
 # Ulysses Float8 or other settings. Mainly used in Async Ulysses Attention.
-# TODO: Refactor basic any_qkvo and non-any_qkvo all2all functions to have
-# the same output shape, thus make the unified functions more general and clean.
 
 
-def _unified_all_to_all_qkv_async_fn(
+def _all_to_all_qkv_async_fn(
     fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled
@@ -659,7 +654,7 @@ def _unified_all_to_all_qkv_async_fn(
         return _all_to_all_single_qkv_async
 
 
-def _unified_all_to_all_o_async_fn(
+def _all_to_all_o_async_fn(
     fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
     from ._templated_ulysses import is_ulysses_float8_enabled

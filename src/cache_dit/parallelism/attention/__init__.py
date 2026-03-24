@@ -6,9 +6,9 @@ from ._context_parallel_utils import (
     _enable_context_parallelism_ext,
 )
 from ._distributed_primitives import (
-    _unified_all_to_all_o_async_fn,
-    _unified_all_to_all_qkv_async_fn,
-    _prepare_ulysses_comm_metadata,
+    _all_to_all_o_async_fn,
+    _all_to_all_qkv_async_fn,
+    _init_comm_metadata,
 )
 from ._experimental_utils import (
     _is_diffusers_parallelism_available,

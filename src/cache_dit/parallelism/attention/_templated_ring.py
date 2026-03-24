@@ -3,8 +3,6 @@ from typing import Optional, Tuple
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from diffusers.utils.import_utils import is_torch_version
-
 try:
     from ...kernels import fused_merge_attn_states
 
@@ -215,8 +213,8 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
 
             # Refer to:
             # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-            if is_torch_version("<", "2.9.0") and lse.dim() == 3:
-                lse = lse.unsqueeze(-1)
+            if lse.dim() == 3:
+                lse = lse.unsqueeze(-1)  # type: torch.Tensor
 
             # Use _fused_merge_attn_states to combine the attention outputs and lses
             if prev_out is not None:

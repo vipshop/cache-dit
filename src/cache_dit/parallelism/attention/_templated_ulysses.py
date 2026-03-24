@@ -30,7 +30,7 @@ from ._distributed_primitives import (
     _all_to_all_single_any_qkv_fp8_async,
     _all_to_all_single_qkv_async,
     # Helper functions for preparing communication metadata
-    _prepare_ulysses_comm_metadata,
+    _init_comm_metadata,
 )
 
 from ...envs import ENV
@@ -179,7 +179,7 @@ class _TemplatedUlyssesAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         query_wait = _all_to_all_single_qkv_async(query, group, **metadata)
         key_wait = _all_to_all_single_qkv_async(key, group, **metadata)
         value_wait = _all_to_all_single_qkv_async(value, group, **metadata)
@@ -253,7 +253,7 @@ class _TemplatedUlyssesAttentionUnEvenHeads(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         # Async all to all for query, key, value with uneven heads communication
         query_wait = _all_to_all_single_qkv_uneven_heads_async(query, group, **metadata)
         key_wait = _all_to_all_single_qkv_uneven_heads_async(key, group, **metadata)
@@ -332,7 +332,7 @@ class _TemplatedUlyssesAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
@@ -419,7 +419,7 @@ class _TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         query_wait = _all_to_all_single_any_qkv_async(query, group, **metadata)
         key_wait = _all_to_all_single_any_qkv_async(key, group, **metadata)
         value_wait = _all_to_all_single_any_qkv_async(value, group, **metadata)
@@ -500,7 +500,7 @@ class _TemplatedUlyssesAnythingAttentionFloat8(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx._parallel_config = _parallel_config
 
-        metadata = _prepare_ulysses_comm_metadata(query)
+        metadata = _init_comm_metadata(query)
         # Use async all_to_all to overlap comm and quant/dequant computation
         # NOTE: Currently, we choose to keep K in FP16/BF16 format to keep higher
         # precision during softmax computation: Softmax(Q@K^T) which is sensitive to
