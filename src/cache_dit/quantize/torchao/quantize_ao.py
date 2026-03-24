@@ -113,11 +113,11 @@ class QuantizeStats:
     def summary(self):
         logger.info("-" * 80)
         logger.info(
-            f"Quantized        Method: {self.quant_type_rev:>5}\n"
+            f"Quantized        Method: {self.quant_type_rev}\n"
             f"Quantized        Region: {self.repeated_blocks}\n"
-            f"Quantized Linear Layers: {self.num_quant_linear:>5}\n"
-            f"Skipped   Linear Layers: {self.num_skip_linear:>5}\n"
-            f"Total     Linear Layers: {self.num_linear_layers:>5}\n"
+            f"Quantized Linear Layers: {self.num_quant_linear:<5}\n"
+            f"Skipped   Linear Layers: {self.num_skip_linear:<5}\n"
+            f"Total     Linear Layers: {self.num_linear_layers:<5}"
         )
         if self.verbose:
             logger.info(f"Skipped        Patterns: {self.exclude_layers}")
