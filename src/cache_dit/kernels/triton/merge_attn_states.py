@@ -117,7 +117,7 @@ def fused_merge_attn_states(
     suff_out: torch.Tensor,
     suff_lse: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    return torch.library._i_attn_ops.fused_merge_attn_states(
+    return torch.ops._i_attn_ops.fused_merge_attn_states(
         prev_out,
         prev_lse,
         suff_out,
