@@ -20,6 +20,8 @@ def quantize(
         "modulation",
         "mod",
     ],
+    quantize_repeated_blocks: bool = True,
+    repeated_blocks: Optional[List[str]] = None,
     filter_fn: Optional[Callable] = None,
     verbose: bool = False,
     quantize_config: Optional[QuantizeConfig] = None,
@@ -47,6 +49,8 @@ def quantize(
         quant_type = quantize_config.quant_type
         per_row = quantize_config.per_row
         exclude_layers = quantize_config.exclude_layers
+        quantize_repeated_blocks = quantize_config.quantize_repeated_blocks
+        repeated_blocks = quantize_config.repeated_blocks
         filter_fn = quantize_config.filter_fn
         verbose = quantize_config.verbose
 
@@ -58,6 +62,8 @@ def quantize(
         backend=backend,
         per_row=per_row,
         exclude_layers=exclude_layers,
+        quantize_repeated_blocks=quantize_repeated_blocks,
+        repeated_blocks=repeated_blocks,
         filter_fn=filter_fn,
         verbose=verbose,
         **kwargs,
@@ -68,6 +74,8 @@ def quantize(
         backend=backend,
         per_row=per_row,
         exclude_layers=exclude_layers,
+        quantize_repeated_blocks=quantize_repeated_blocks,
+        repeated_blocks=repeated_blocks,
         filter_fn=filter_fn,
         verbose=verbose,
     )
@@ -87,6 +95,8 @@ def quantize_(
         "modulation",
         "mod",
     ],
+    quantize_repeated_blocks: bool = True,
+    repeated_blocks: Optional[List[str]] = None,
     filter_fn: Optional[Callable] = None,
     verbose: bool = False,
     **kwargs,
@@ -105,6 +115,8 @@ def quantize_(
             quant_type=quant_type,
             per_row=per_row,
             exclude_layers=exclude_layers,
+            quantize_repeated_blocks=quantize_repeated_blocks,
+            repeated_blocks=repeated_blocks,
             filter_fn=filter_fn,
             verbose=verbose,
             **kwargs,
