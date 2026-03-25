@@ -120,9 +120,10 @@ class QuantizeAOContext:
             f"Quantized Linear Layers: {self.num_quant_linear:<5}",
             f"Skipped   Linear Layers: {self.num_skip_linear:<5}",
             f"Total     Linear Layers: {self.num_linear_layers:<5}",
+            f"Skipped        Patterns: {self.exclude_layers}",
         ]
-        if self.verbose:
-            summary_strs.append(f"Skipped        Patterns: {self.exclude_layers}")
+        if not self.verbose:
+            summary_strs.pop()  # remove skipped patterns in non-verbose mode
         max_len = max(max(len(s) for s in summary_strs), 0) + 2
         logger.info("-" * max_len)
         # extend strs with spaces for better formatting, the last char is '|'
