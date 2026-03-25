@@ -32,16 +32,17 @@ torch.library.define(
 )
 torch.library.define(
     "cache_dit::triton_fp8_comm_qkv_permute_quant",
-    "(Tensor x, float eps=1e-6) -> Tensor",
+    "(Tensor x) -> Tensor",
 )
 torch.library.define(
     "cache_dit::triton_fp8_comm_qkv_permute_dequant",
-    "(Tensor quant_x, ScalarType dtype=bfloat16) -> Tensor",
+    "(Tensor quant_x) -> Tensor",
 )
 # Attention related ops
 torch.library.define(
     "cache_dit::triton_fused_merge_attn_states",
-    "(Tensor prev_out, Tensor prev_lse, Tensor suff_out, Tensor suff_lse) -> (Tensor out, Tensor lse)",
+    "(Tensor prev_out, Tensor prev_lse, Tensor suff_out, Tensor suff_lse) "
+    "-> (Tensor out, Tensor lse)",
 )
 
 
