@@ -1,6 +1,9 @@
-# Note: Use torch.library.define with the format "namespace::operator_name"
-# Better compatibility with torch.compile if we register the triton kernels
-# as custom operators in torch library, e.g, "cache_dit::operator_name".
+# Use torch.library.define and register with the format "namespace::operator_name".
+# Reference: https://docs.pytorch.org/tutorials/advanced/custom_ops_landing_page.html
+# Reference: https://docs.pytorch.org/docs/stable/library.html#torch.library.define
+# Treating an arbitrary Python function as an opaque callable with respect to torch.compile
+# (that is, prevent torch.compile from tracing into the function). This can reduce the
+# graph breaking and improve the performance of torch.compile for custom operators.
 # Scheme: define -> implement -> register fake for shape inference
 
 import torch
