@@ -3,7 +3,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _fused_merge_attn_states_kernel(
+def _triton_fused_merge_attn_states_kernel(
     out_ptr: tl.tensor,  # [B*N, H, D],
     lse_ptr: tl.tensor,  # [B*N, H],
     prev_out_ptr: tl.tensor,  # [B*N, H, D],
