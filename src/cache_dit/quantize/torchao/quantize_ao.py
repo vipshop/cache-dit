@@ -114,17 +114,22 @@ class QuantizeAOContext:
             if self.regional_quantize and self.repeated_blocks is not None
             else self.module_ref.__class__.__name__ if self.module_ref else "Module"
         )
-        max_len = len(f"Quantized        Region: {quantized_region}")
+        summary_strs = [
+            f"Quantized        Method: {self.quant_type_rev}",
+            f"Quantized        Region: {quantized_region}",
+            f"Quantized Linear Layers: {self.num_quant_linear:<5}",
+            f"Skipped   Linear Layers: {self.num_skip_linear:<5}",
+            f"Total     Linear Layers: {self.num_linear_layers:<5}",
+            f"Skipped        Patterns: {self.exclude_layers}",
+        ]
+        if not self.verbose:
+            summary_strs.pop()  # remove skipped patterns in non-verbose mode
+        max_len = max(max(len(s) for s in summary_strs), 0) + 2
         logger.info("-" * max_len)
-        logger.info(
-            f"Quantized        Method: {self.quant_type_rev}\n"
-            f"Quantized        Region: {quantized_region}\n"
-            f"Quantized Linear Layers: {self.num_quant_linear:<5}\n"
-            f"Skipped   Linear Layers: {self.num_skip_linear:<5}\n"
-            f"Total     Linear Layers: {self.num_linear_layers:<5}"
-        )
-        if self.verbose:
-            logger.info(f"Skipped        Patterns: {self.exclude_layers}")
+        # extend strs with spaces for better formatting, the last char is '|'
+        summary_strs = [s.ljust(max_len) + "|" for s in summary_strs]
+        summary_str = "\n".join(summary_strs)
+        logger.info(summary_str)
         logger.info("-" * max_len)
 
     def normalize(self, **kwargs) -> "QuantizeAOContext":
