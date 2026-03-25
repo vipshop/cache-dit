@@ -51,7 +51,7 @@ torch.library.define(
 # as the real implementations.
 
 
-# op: cache_dit::triton_fp8_comm_per_token_quant
+# Op: cache_dit::triton_fp8_comm_per_token_quant
 @torch.library.impl("cache_dit::triton_fp8_comm_per_token_quant", "CUDA")
 def _triton_fp8_comm_per_token_quant_cuda(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16, f"expected bfloat16 but got {x.dtype}"
@@ -86,7 +86,7 @@ def _triton_fp8_comm_per_token_quant_fake(x: torch.Tensor) -> torch.Tensor:
     return x.new_empty((*shape, H + 2), dtype=torch.float8_e4m3fn)
 
 
-# op: cache_dit::triton_fp8_comm_per_token_dequant
+# Op: cache_dit::triton_fp8_comm_per_token_dequant
 @torch.library.impl("cache_dit::triton_fp8_comm_per_token_dequant", "CUDA")
 def _triton_fp8_comm_per_token_dequant_cuda(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.float8_e4m3fn, f"expected float8_e4m3fn but got {x.dtype}"
@@ -117,7 +117,7 @@ def _triton_fp8_comm_per_token_dequant_fake(x: torch.Tensor) -> torch.Tensor:
     return x.new_empty((*shape, H - 2), dtype=torch.bfloat16)
 
 
-# op: cache_dit::triton_fp8_comm_qkv_permute_quant
+# Op: cache_dit::triton_fp8_comm_qkv_permute_quant
 @torch.library.impl("cache_dit::triton_fp8_comm_qkv_permute_quant", "CUDA")
 def _triton_fp8_comm_qkv_permute_quant_cuda(x: torch.Tensor) -> torch.Tensor:
     B, S, P, N, D = x.shape
@@ -154,7 +154,7 @@ def _triton_fp8_comm_qkv_permute_quant_fake(x: torch.Tensor) -> torch.Tensor:
     return x.new_empty((P, S, B, N, D + 4), dtype=torch.float8_e4m3fn)
 
 
-# op: cache_dit::triton_fp8_comm_qkv_permute_dequant
+# Op: cache_dit::triton_fp8_comm_qkv_permute_dequant
 @torch.library.impl("cache_dit::triton_fp8_comm_qkv_permute_dequant", "CUDA")
 def _triton_fp8_comm_qkv_permute_dequant_cuda(quant_x: torch.Tensor) -> torch.Tensor:
     S, B, N, _D = quant_x.shape
@@ -190,7 +190,7 @@ def _triton_fp8_comm_qkv_permute_dequant_fake(quant_x: torch.Tensor) -> torch.Te
     return quant_x.new_empty((B, S, N, D), dtype=torch.bfloat16)
 
 
-# op: cache_dit::triton_fused_merge_attn_states
+# Op: cache_dit::triton_fused_merge_attn_states
 @torch.library.impl("cache_dit::triton_fused_merge_attn_states", "CUDA")
 def _triton_fused_merge_attn_states_cuda(
     prev_out: torch.Tensor,  # [B, N, H, D]
