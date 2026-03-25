@@ -402,11 +402,10 @@ def load_configs(
       taylorseer_order: 1
     parallelism_config:
       ulysses_size: 4
-      parallel_kwargs:
-        attention_backend: native
-        experimental_ulysses_anything: true
-        experimental_ulysses_float8: true
-        extra_parallel_modules: ["text_encoder", "vae"]
+      attention_backend: native
+      ulysses_anything: true
+      ulysses_float8: true
+      extra_parallel_modules: ["text_encoder", "vae"]
     ```
     Args:
         path_or_dict (`str` or `dict`):
@@ -414,7 +413,8 @@ def load_configs(
     Returns:
         `Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig]`: A tuple containing the loaded
         cache configuration, optional calibrator configuration, and parallelism configuration. If `return_dict`
-        is set to `True`, returns a dictionary with keys "cache_config", "calibrator_config", and "parallelism_config".
+        is set to `True`, returns a dictionary with keys "cache_config", "calibrator_config", "parallelism_config",
+        "attention_backend", and "quantize_config".
     """
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)
