@@ -22,7 +22,8 @@ def quantize_ao(
     if not _check_if_module_can_quantized(module):
         return module
 
-    quant_ctx = QuantizeAOContext.from_config(quantize_config, module, **kwargs).normalize()
+    quant_ctx = QuantizeAOContext.from_config(quantize_config, module, **kwargs)
+    quant_ctx = quant_ctx.normalize(**kwargs)
 
     def _quantize_module(m: torch.nn.Module):
         from torchao.quantization import quantize_
@@ -67,7 +68,7 @@ def quantize_ao(
     module._is_quantized = True
     module._quantize_type = quant_ctx.quant_type
     module._quantize_config = quantize_config
-    module._exclude_for_quantize = copy.deepcopy(quant_ctx.exclude_layers)
+    module._exclude_layers = copy.deepcopy(quant_ctx.exclude_layers)
 
     return module
 
@@ -201,7 +202,7 @@ class QuantizeAOContext:
             # potential issues.
             self.regional_quantize = False
 
-        if self.per_row and self.module_ref is not None:
+        if self.per_row and self.module_ref is not None and self.quant_type == "fp8_w8a8_dq":
             # assert the dtype of module's is bfloat16
             for name, submod in self.module_ref.named_modules():
                 if isinstance(submod, torch.nn.Linear):

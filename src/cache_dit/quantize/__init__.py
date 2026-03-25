@@ -59,8 +59,8 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
             del module._is_quantized
         if hasattr(module, "_quantize_type"):
             del module._quantize_type
-        if hasattr(module, "_exclude_for_quantize"):
-            del module._exclude_for_quantize
+        if hasattr(module, "_exclude_layers"):
+            del module._exclude_layers
 
     _remove_quantization_stats(module)
 
