@@ -24,20 +24,18 @@ def quantize_ao(
     if not _check_if_module_can_quantized(module):
         return module
 
-    quant_ctx = _normalize_quant_ctx(
-        module,
-        QuantizeAOContext.from_config(quantize_config, module=module, **kwargs),
-    )
+    quant_ctx = QuantizeAOContext.from_config(
+        quantize_config,
+        module=module,
+        **kwargs,
+    ).normalize(module, **kwargs)
 
     def _quantize_module(m: torch.nn.Module):
         quantize_(
             m,
             _quant_config_impl(quant_ctx),
             filter_fn=(
-                partial(
-                    _filter_fn_impl,
-                    quant_ctx=quant_ctx,
-                )
+                partial(_filter_fn_impl, quant_ctx=quant_ctx)
                 if quantize_config.filter_fn is None
                 else quantize_config.filter_fn
             ),
@@ -109,7 +107,7 @@ class QuantizeAOContext:
             repeated_blocks=quantize_config.repeated_blocks,
             exclude_layers=quantize_config.exclude_layers,
             verbose=quantize_config.verbose,
-            kwargs=kwargs,
+            kwargs=copy.deepcopy(kwargs),
         )
 
     def summary(self):
@@ -130,6 +128,92 @@ class QuantizeAOContext:
         if self.verbose:
             logger.info(f"Skipped        Patterns: {self.exclude_layers}")
         logger.info("-" * max_len)
+
+    def normalize(self, module: torch.nn.Module, **kwargs) -> "QuantizeAOContext":
+        # This function is used to normalize the quantization context, and it will be called
+        # in the _normalize_quant_ctx function. We can do some normalization work here, such as
+        # checking the quantization type and setting the quantization config for different
+        # quantization types.
+        return self._normalize_quant_ctx(module, self, **kwargs)
+
+    @staticmethod
+    def _normalize_quant_ctx(
+        module: torch.nn.Module, quant_ctx: "QuantizeAOContext", **kwargs
+    ) -> "QuantizeAOContext":
+
+        alias_map = {
+            "float8": "fp8_w8a8_dq",
+            "float8_blockwise": "fp8_blockwise",
+            "float8_weight_only": "fp8_w8a16_wo",
+            "float8_wo": "fp8_w8a16_wo",
+            "int8": "int8_w8a8_dq",
+            "int8_weight_only": "int8_w8a16_wo",
+            "int8_wo": "int8_w8a16_wo",
+            "int4": "int4_w4a8_dq",
+            "int4_weight_only": "int4_w4a16_wo",
+            "int4_wo": "int4_w4a16_wo",
+        }
+        alias_map_rev = copy.deepcopy(alias_map)
+        # remove duplicates *_wo in rev map
+        for key in list(alias_map_rev.keys()):
+            if key.endswith("_wo"):
+                alias_map_rev.pop(key)
+        alias_map_rev = {v: k for k, v in alias_map_rev.items()}
+
+        quant_type = quant_ctx.quant_type
+        if quant_type.lower() in alias_map:
+            quant_type = alias_map[quant_type.lower()]
+
+        quant_type = quant_type.lower()
+        assert quant_type in (
+            "fp8_w8a8_dq",
+            "fp8_w8a16_wo",
+            "fp8_blockwise",
+            "int8_w8a8_dq",
+            "int8_w8a16_wo",
+            "int4_w4a8_dq",
+            "int4_w4a16_wo",
+        ), f"{quant_type} is not supported for torchao backend now!"
+
+        if "fp8" in quant_type:
+            assert current_platform.get_device_capability() >= (
+                8,
+                9,
+            ), "FP8 is not supported for current device."
+
+        quant_ctx.quant_type = quant_type
+        quant_ctx.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
+
+        prev_exclude_layers = copy.deepcopy(quant_ctx.exclude_layers)
+        if hasattr(module, "_exclude_for_quantize"):
+            # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
+            # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
+            # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
+            # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
+            # Why??? Need further investigation.
+            if quant_ctx.quant_type == "fp8_w8a8_dq" and quant_ctx.per_row:
+                exclude_layers = prev_exclude_layers + module._exclude_for_quantize
+                logger.debug(
+                    f"Found extra excluding layers for {module.__class__.__name__}: "
+                    f"{module._exclude_for_quantize}"
+                )
+                quant_ctx.exclude_layers = copy.deepcopy(exclude_layers)
+
+        quant_ctx.repeated_blocks = getattr(
+            module,
+            "_repeated_blocks",
+            quant_ctx.repeated_blocks if quant_ctx.repeated_blocks else None,
+        )
+        if quant_ctx.repeated_blocks is None:
+            # If the module doesn't have _repeated_blocks attribute and repeated_blocks
+            # is not specified, we will set regional_quantize to False to avoid
+            # potential issues.
+            quant_ctx.regional_quantize = False
+
+        if quant_ctx.per_row:  # Ensure bfloat16
+            module.to(torch.bfloat16)  # inplace
+
+        return quant_ctx
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
@@ -156,87 +240,6 @@ def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
         )
 
     return True
-
-
-def _normalize_quant_ctx(
-    module: torch.nn.Module,
-    quant_ctx: QuantizeAOContext,
-    **kwargs,
-) -> QuantizeAOContext:
-
-    alias_map = {
-        "float8": "fp8_w8a8_dq",
-        "float8_blockwise": "fp8_blockwise",
-        "float8_weight_only": "fp8_w8a16_wo",
-        "float8_wo": "fp8_w8a16_wo",
-        "int8": "int8_w8a8_dq",
-        "int8_weight_only": "int8_w8a16_wo",
-        "int8_wo": "int8_w8a16_wo",
-        "int4": "int4_w4a8_dq",
-        "int4_weight_only": "int4_w4a16_wo",
-        "int4_wo": "int4_w4a16_wo",
-    }
-    alias_map_rev = copy.deepcopy(alias_map)
-    # remove duplicates *_wo in rev map
-    for key in list(alias_map_rev.keys()):
-        if key.endswith("_wo"):
-            alias_map_rev.pop(key)
-    alias_map_rev = {v: k for k, v in alias_map_rev.items()}
-
-    quant_type = quant_ctx.quant_type
-    if quant_type.lower() in alias_map:
-        quant_type = alias_map[quant_type.lower()]
-
-    quant_type = quant_type.lower()
-    assert quant_type in (
-        "fp8_w8a8_dq",
-        "fp8_w8a16_wo",
-        "fp8_blockwise",
-        "int8_w8a8_dq",
-        "int8_w8a16_wo",
-        "int4_w4a8_dq",
-        "int4_w4a16_wo",
-    ), f"{quant_type} is not supported for torchao backend now!"
-
-    if "fp8" in quant_type:
-        assert current_platform.get_device_capability() >= (
-            8,
-            9,
-        ), "FP8 is not supported for current device."
-
-    quant_ctx.quant_type = quant_type
-    quant_ctx.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
-
-    prev_exclude_layers = copy.deepcopy(quant_ctx.exclude_layers)
-    if hasattr(module, "_exclude_for_quantize"):
-        # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
-        # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-        # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
-        # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
-        # Why??? Need further investigation.
-        if quant_ctx.quant_type == "fp8_w8a8_dq" and quant_ctx.per_row:
-            exclude_layers = prev_exclude_layers + module._exclude_for_quantize
-            logger.debug(
-                f"Found extra excluding layers for {module.__class__.__name__}: "
-                f"{module._exclude_for_quantize}"
-            )
-            quant_ctx.exclude_layers = copy.deepcopy(exclude_layers)
-
-    quant_ctx.repeated_blocks = getattr(
-        module,
-        "_repeated_blocks",
-        quant_ctx.repeated_blocks if quant_ctx.repeated_blocks else None,
-    )
-    if quant_ctx.repeated_blocks is None:
-        # If the module doesn't have _repeated_blocks attribute and repeated_blocks
-        # is not specified, we will set regional_quantize to False to avoid
-        # potential issues.
-        quant_ctx.regional_quantize = False
-
-    if quant_ctx.per_row:  # Ensure bfloat16
-        module.to(torch.bfloat16)  # inplace
-
-    return quant_ctx
 
 
 def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
