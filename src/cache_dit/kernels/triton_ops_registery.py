@@ -243,7 +243,7 @@ def _triton_fused_merge_attn_states_fake(
     return out, lse
 
 
-# Expose torch.ops.cache_dit.* APIs for the registered operators.
+# Expose the torch.ops.cache_dit.* APIs for the registered operators.
 def triton_fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
     return torch.ops.cache_dit.triton_fp8_comm_per_token_quant(x)
 
