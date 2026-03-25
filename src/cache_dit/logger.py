@@ -183,6 +183,7 @@ def globally_suppress_loggers() -> dict[str, int]:
         "torch.distributed.run",
         "diffusers",
         "diffusers.models.modeling_utils",
+        "diffusers.quantizers.torchao.torchao_quantizer",
         "imageio",
         "imageio_ffmpeg",
         "PIL",
