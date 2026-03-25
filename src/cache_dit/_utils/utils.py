@@ -7,7 +7,6 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..logger import init_logger
 from ..platforms import current_platform
-from ..quantize import normalize_quantize_type, quantize
 from ..compile.utils import set_compile_configs
 from ..parallelism import ParallelismBackend, ParallelismConfig
 from ..caching import enable_cache, steps_mask, set_attn_backend
@@ -18,6 +17,12 @@ from ..caching import (
     load_configs,
     load_parallelism_config,
 )
+from ..quantize import (
+    normalize_quantize_type,
+    quantize,
+    QuantizeConfig,
+)
+
 from ..summary import strify as summary_strify
 
 logger = init_logger(__name__)
@@ -346,8 +351,8 @@ def get_args(
         ],
     )
     parser.add_argument(
-        "--disable-quantize-repeated-blocks",
-        "--disable-quantize-blocks",
+        "--disable-regional-quantize",
+        "--disable-regional",
         action="store_true",
         default=False,
         help="Disable quantization for repeated blocks in transformer",
@@ -1111,11 +1116,13 @@ def maybe_quantize_transformer(
                     )
                     transformer = quantize(
                         transformer,
-                        quant_type=args.quantize_type,
-                        per_row=is_per_row_supported(transformer),
-                        exclude_layers=get_exclude_layers(transformer),
-                        quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
-                        verbose=args.quantize_verbose,
+                        quantize_config=QuantizeConfig(
+                            quant_type=args.quantize_type,
+                            per_row=is_per_row_supported(transformer),
+                            exclude_layers=get_exclude_layers(transformer),
+                            regional_quantize=not args.disable_regional_quantize,
+                            verbose=args.quantize_verbose,
+                        ),
                     )
                     setattr(pipe, "transformer", transformer)
                 else:
@@ -1138,11 +1145,13 @@ def maybe_quantize_transformer(
                     )
                     transformer_2 = quantize(
                         transformer_2,
-                        quant_type=args.quantize_type,
-                        per_row=is_per_row_supported(transformer_2),
-                        exclude_layers=get_exclude_layers(transformer_2),
-                        quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
-                        verbose=args.quantize_verbose,
+                        quantize_config=QuantizeConfig(
+                            quant_type=args.quantize_type,
+                            per_row=is_per_row_supported(transformer_2),
+                            exclude_layers=get_exclude_layers(transformer_2),
+                            regional_quantize=not args.disable_regional_quantize,
+                            verbose=args.quantize_verbose,
+                        ),
                     )
                     setattr(pipe, "transformer_2", transformer_2)
                 else:
@@ -1184,9 +1193,11 @@ def maybe_quantize_text_encoder(
                 )
                 text_encoder = quantize(
                     text_encoder,
-                    quant_type=args.quantize_text_type,
-                    verbose=args.quantize_verbose,
-                    quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
+                    quantize_config=QuantizeConfig(
+                        quant_type=args.quantize_text_type,
+                        regional_quantize=not args.disable_regional_quantize,
+                        verbose=args.quantize_verbose,
+                    ),
                 )
                 setattr(pipe, name, text_encoder)
             else:
@@ -1229,9 +1240,11 @@ def maybe_quantize_controlnet(
                     )
                     controlnet = quantize(
                         controlnet,
-                        quant_type=args.quantize_controlnet_type,
-                        verbose=args.quantize_verbose,
-                        quantize_repeated_blocks=not args.disable_quantize_repeated_blocks,
+                        quantize_config=QuantizeConfig(
+                            quant_type=args.quantize_controlnet_type,
+                            regional_quantize=not args.disable_regional_quantize,
+                            verbose=args.quantize_verbose,
+                        ),
                     )
                     setattr(pipe, "controlnet", controlnet)
                 else:

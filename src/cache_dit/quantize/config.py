@@ -20,8 +20,8 @@ class QuantizeConfig:
             "mod",
         ]
     )
-    # Only quantize the _repeated_ blocks in the transformer (Diffusers).
-    quantize_repeated_blocks: bool = True
+    # Quantize the _repeated_ blocks in the transformer (Diffusers).
+    regional_quantize: bool = True  # name 'regional', vs regional compile.
     # For models outside of diffusers, users can specify the repeated blocks
     # by setting this variable to a list of block names.
     repeated_blocks: List[str] = dataclasses.field(default_factory=list)
@@ -29,7 +29,7 @@ class QuantizeConfig:
     # it will be called in the format of filter_fn(m: nn.Module, name: str) -> bool.
     # It should return True if the module needs to be quantized, otherwise False.
     # If filter_fn is specified, the exclude_layers will be ignored.
-    filter_fn: Optional[Any] = None  # type: ignore
+    filter_fn: Optional[Any] = None  # Usually not use.
     # components_to_quantize: (list[str] or dict[str, str], optional)
     # specify the components to quantize, if None, only the transformer
     # module will be quantized. e.g:
@@ -100,9 +100,7 @@ class QuantizeConfig:
                     quant_type=cfg.get("quant_type", config.quant_type),
                     per_row=cfg.get("per_row", config.per_row),
                     exclude_layers=cfg.get("exclude_layers", config.exclude_layers),
-                    quantize_repeated_blocks=cfg.get(
-                        "quantize_repeated_blocks", config.quantize_repeated_blocks
-                    ),
+                    regional_quantize=cfg.get("regional_quantize", config.regional_quantize),
                     repeated_blocks=cfg.get("repeated_blocks", config.repeated_blocks),
                     filter_fn=cfg.get("filter_fn", config.filter_fn),
                     verbose=cfg.get("verbose", config.verbose),
@@ -111,3 +109,11 @@ class QuantizeConfig:
             ]
 
         raise ValueError("components_to_quantize should be either a list or a dict.")
+
+    @classmethod
+    def from_kwargs(cls, **kwargs) -> "QuantizeConfig":
+        config = cls()
+        for key, value in kwargs.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        return config

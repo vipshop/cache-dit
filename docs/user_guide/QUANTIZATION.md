@@ -99,7 +99,7 @@ The <span style="color:#c77dff;">per_row</span> flag indicates whether to use pe
 
 ## Regional Quantization
 
-Cache-DiT also supports <span style="color:#c77dff;">regional quantization</span>, which allows users to quantize only the repeated blocks in a transformer. This can be useful for better balancing the <span style="color:#c77dff;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:#c77dff;">quantize_repeated_blocks</span> and <span style="color:#c77dff;">repeated_blocks</span> arguments in <span style="color:#c77dff;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:
+Cache-DiT also supports <span style="color:#c77dff;">regional quantization</span>, which allows users to quantize only the repeated blocks in a transformer. This can be useful for better balancing the <span style="color:#c77dff;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:#c77dff;">regional_quantize</span> and <span style="color:#c77dff;">repeated_blocks</span> arguments in <span style="color:#c77dff;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:
 
 ```python
 import cache_dit
@@ -112,7 +112,7 @@ cache_dit.enable_cache(
         quant_type="float8",
         # Default (True), only quantize the repeated blocks in transformer if the repeated_blocks is 
         # specified. If set to False, the whole transformer will be quantized.
-        quantize_repeated_blocks=True, 
+        regional_quantize=True, 
         # Specify the block names for the transformer, cache-dit will automatically find the repeated 
         # blocks and quantize it inplace. The block names can be found in the model architecture, e.g., 
         # for FLUX.2, the block name is "Flux2TransformerBlock" and "Flux2SingleTransformerBlock".
