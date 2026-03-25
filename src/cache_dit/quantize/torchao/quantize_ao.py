@@ -16,8 +16,6 @@ def quantize_ao(
     quantize_config: QuantizeConfig,
     **kwargs,
 ) -> torch.nn.Module:
-    from torchao.quantization import quantize_
-
     # Check if already quantized by checking the _is_quantized attribute.
     # This is to avoid redundant quantization which may cause performance
     # regression and other issues. If you want to quantize an already quantized.
@@ -31,6 +29,8 @@ def quantize_ao(
     ).normalize(module, **kwargs)
 
     def _quantize_module(m: torch.nn.Module):
+        from torchao.quantization import quantize_
+
         quantize_(
             m,
             _quant_config_impl(quant_ctx),
