@@ -1,128 +1,48 @@
 import torch
 import copy
-from typing import Callable, Optional, List
-from cache_dit.logger import init_logger
+from typing import Optional
 from .utils import normalize_quantize_type
 from .config import QuantizeConfig
+from ..logger import init_logger
 
 logger = init_logger(__name__)
 
 
 def quantize(
     module: torch.nn.Module,
-    quant_type: Optional[str] = None,
-    backend: str = "ao",
-    # Specific parameters for torchao backend
-    per_row: bool = True,
-    exclude_layers: List[str] = [
-        "embedder",
-        "embed",
-        "modulation",
-        "mod",
-    ],
-    quantize_repeated_blocks: bool = True,
-    repeated_blocks: Optional[List[str]] = None,
-    filter_fn: Optional[Callable] = None,
-    verbose: bool = False,
     quantize_config: Optional[QuantizeConfig] = None,
     **kwargs,
 ) -> torch.nn.Module:
-    if not isinstance(module, torch.nn.Module):
-        raise ValueError(
-            "Module must be an instance of torch.nn.Module, "
-            f"but got {module.__class__.__name__}:{type(module)}"
-        )
+    # For backward compatibility, we still accept the old style of quantization arguments,
+    # but they will be ignored if quantize_config is specified.
+    if quantize_config is None:
+        if kwargs:
+            logger.warning(
+                "The quantization arguments in kwargs will be deprecated, "
+                "please use QuantizeConfig to specify quantization configurations."
+            )
+            quantize_config = QuantizeConfig.from_kwargs(**kwargs)
+        else:
+            raise ValueError("quantize_config should be specified for quantization.")
+    else:
+        if kwargs:
+            logger.warning(
+                "The quantization arguments in kwargs will be ignored since "
+                "quantize_config is specified, please use QuantizeConfig to "
+                "specify quantization configurations."
+            )
 
-    # Qwen-Image will generate nan after quantization with per_row quantization.
-    # So, we disable per_row quantization for all layers in Qwen-Image for better
-    # stability.
-    _class_not_supported_per_row = [
-        "QwenImageTransformer2DModel",
-    ]
-
-    def is_per_row_supported(m: torch.nn.Module) -> bool:
-        return m.__class__.__name__ not in _class_not_supported_per_row
-
-    if quantize_config is not None:
-        # If quantize_config is provided, it will override the individual parameters
-        backend = quantize_config.backend
-        quant_type = quantize_config.quant_type
-        per_row = quantize_config.per_row
-        exclude_layers = quantize_config.exclude_layers
-        quantize_repeated_blocks = quantize_config.quantize_repeated_blocks
-        repeated_blocks = quantize_config.repeated_blocks
-        filter_fn = quantize_config.filter_fn
-        verbose = quantize_config.verbose
-
-    per_row = per_row and is_per_row_supported(module)
-
-    module = quantize_(
-        module,
-        quant_type=quant_type,
-        backend=backend,
-        per_row=per_row,
-        exclude_layers=exclude_layers,
-        quantize_repeated_blocks=quantize_repeated_blocks,
-        repeated_blocks=repeated_blocks,
-        filter_fn=filter_fn,
-        verbose=verbose,
-        **kwargs,
-    )
-
-    module._quantize_config = quantize_config or QuantizeConfig(
-        quant_type=quant_type,
-        backend=backend,
-        per_row=per_row,
-        exclude_layers=exclude_layers,
-        quantize_repeated_blocks=quantize_repeated_blocks,
-        repeated_blocks=repeated_blocks,
-        filter_fn=filter_fn,
-        verbose=verbose,
-    )
-
-    return module
-
-
-def quantize_(
-    module: torch.nn.Module,
-    quant_type: Optional[str] = None,
-    backend: str = "ao",
-    # Specific parameters for torchao backend
-    per_row: bool = True,
-    exclude_layers: List[str] = [
-        "embedder",
-        "embed",
-        "modulation",
-        "mod",
-    ],
-    quantize_repeated_blocks: bool = True,
-    repeated_blocks: Optional[List[str]] = None,
-    filter_fn: Optional[Callable] = None,
-    verbose: bool = False,
-    **kwargs,
-) -> torch.nn.Module:
-    assert isinstance(module, torch.nn.Module)
-
-    if quant_type is None:
-        quant_type = "float8_weight_only"
-        logger.warning(f"quant_type is not specified, using default: {quant_type}")
-
-    if backend.lower() in ("ao", "torchao"):
+    # Dispatch to different quantization backends according to the quantize_config.
+    # Currently we only support torchao as the quantization backend, and we may
+    # support more backends in the future.
+    if quantize_config.backend.lower() in ("ao", "torchao"):
         from .torchao import quantize_ao
 
-        return quantize_ao(
-            module,
-            quant_type=quant_type,
-            per_row=per_row,
-            exclude_layers=exclude_layers,
-            quantize_repeated_blocks=quantize_repeated_blocks,
-            repeated_blocks=repeated_blocks,
-            filter_fn=filter_fn,
-            verbose=verbose,
-            **kwargs,
-        )
+        module = quantize_ao(module, quantize_config, **kwargs)
     else:
-        raise ValueError(f"backend: {backend} is not supported now!")
+        raise ValueError(f"backend: {quantize_config.backend} is not supported now!")
+
+    return module
 
 
 def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
