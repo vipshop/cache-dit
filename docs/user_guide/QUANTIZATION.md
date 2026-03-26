@@ -154,7 +154,10 @@ cache_dit.enable_cache(
 Quick examples of fp8 per-tensor fallback in action:
 
 ```bash
-# w/o fp8 per-tensor fallback, the cache-dit will auto skip the layers that do not support float8 per-row quantization, and raise warning for those layers. The performance will be worse due to less layers being quantized. (quantize 88 layers, skip 56 layers)
+# w/o fp8 per-tensor fallback, the cache-dit will auto skip the layers 
+# that do not support float8 per-row quantization, and raise warning 
+# for those layers. The performance will be worse due to less layers 
+# being quantized. (quantize 88 layers, skip 56 layers)
 
 torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
    --parallel tp --compile --float8 --q-verbose \
@@ -179,7 +182,10 @@ Skip: ff_context.linear_out: pattern<Rowwise(Tensor Parallel)>: 8    layers  |
 Skip: attn.to_out          : pattern<Rowwise(Tensor Parallel)>: 24   layers  |
 -----------------------------------------------------------------------------
 
-# w/ fp8 per-tensor fallback enabled, those layers that do not support float8 per-row quantization will be quantized to float8 per-tensor instead, and the performance will be better due to more layers being quantized. (quantize 144 layers, skip 0 layer)
+# w/ fp8 per-tensor fallback enabled, those layers that do not support 
+# float8 per-row quantization will be quantized to float8 per-tensor 
+# instead, and the performance will be better due to more layers being 
+# quantized. (quantize 144 layers, skip 0 layer)
 
 torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
    --parallel tp --compile --float8 --q-verbose # default, enabled fp8 per-tensor fallback
