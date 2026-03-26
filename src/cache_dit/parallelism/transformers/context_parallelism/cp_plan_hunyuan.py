@@ -41,7 +41,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("HunyuanImage")
 class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -311,7 +311,7 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
 
 @ContextParallelismPlannerRegister.register("HunyuanVideo")
 class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,

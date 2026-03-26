@@ -41,7 +41,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("QwenImage")
 class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -53,7 +53,6 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
 
         if parallelism_config.ulysses_async:
             QwenDoubleStreamAttnProcessor2_0.__call__ = __patch_qwen_attn_processor__
-            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

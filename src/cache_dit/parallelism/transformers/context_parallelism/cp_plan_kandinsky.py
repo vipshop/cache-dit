@@ -30,7 +30,7 @@ logger = init_logger(__name__)
 # NOTE: NOT support sparse attention for Kandinsky5 yet.
 @ContextParallelismPlannerRegister.register("Kandinsky5")
 class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,

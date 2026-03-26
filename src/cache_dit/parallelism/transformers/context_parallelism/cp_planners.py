@@ -63,7 +63,7 @@ logger = init_logger(__name__)
 
 
 class ImportErrorContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer,
         parallelism_config,
