@@ -27,19 +27,6 @@ def quantize_ao(
 
     quant_ctx = QuantizeAOContext.from_config(quantize_config, module, **kwargs)
     quant_ctx = quant_ctx.normalize(**kwargs)
-
-    def _quantize_module(
-        m: torch.nn.Module, ao_config: AOBaseConfig, filter_fn: callable, **kwargs
-    ):
-        from torchao.quantization import quantize_
-
-        quantize_(
-            m,
-            ao_config,
-            filter_fn=filter_fn,
-            device=kwargs.get("device", None),
-        )
-
     # Regional quantization for transformer modules in Diffusers, users can
     # set regional_quantize to False to disable this behavior and quantize
     # the whole module directly. For models outside of diffusers, users can specify
@@ -91,6 +78,17 @@ def quantize_ao(
     module._exclude_layers = copy.deepcopy(quant_ctx.exclude_layers)
 
     return module
+
+
+def _quantize_module(m: torch.nn.Module, ao_config: AOBaseConfig, filter_fn: callable, **kwargs):
+    from torchao.quantization import quantize_
+
+    quantize_(
+        m,
+        ao_config,
+        filter_fn=filter_fn,
+        device=kwargs.get("device", None),
+    )
 
 
 @dataclasses.dataclass
