@@ -1,6 +1,12 @@
 import torch
+from typing import Dict, List, Tuple
 from torch.distributed import DeviceMesh
-from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
+from torch.distributed.tensor.parallel import (
+    ParallelStyle,
+    ColwiseParallel,
+    RowwiseParallel,
+    parallelize_module,
+)
 
 from ....logger import init_logger
 from ...config import ParallelismConfig
@@ -14,25 +20,25 @@ logger = init_logger(__name__)
 @TensorParallelismPlannerRegister.register("Lumina2")
 @TensorParallelismPlannerRegister.register("ZImage")
 class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     def parallelize_transformer(
         self,
         transformer: torch.nn.Module,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         class_name = transformer.__class__.__name__
 
         attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
@@ -58,21 +64,15 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            return layer_plan
 
         tp_size = tp_mesh.get_group().size()
+        layer_plans = []
         for _, block in transformer.noise_refiner.named_children():
-            tp_shard_block(block, tp_size)
+            layer_plans.append(tp_shard_block(block, tp_size))
         for _, block in transformer.context_refiner.named_children():
-            tp_shard_block(block, tp_size)
+            layer_plans.append(tp_shard_block(block, tp_size))
         for _, block in transformer.layers.named_children():
-            tp_shard_block(block, tp_size)
+            layer_plans.append(tp_shard_block(block, tp_size))
 
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                f"{attn_mod_name}.to_out",
-                f"feed_forward.{ff_linear_name}2",
-            ],
-        )
-
-        return transformer
+        return transformer, layer_plans

@@ -1,4 +1,5 @@
 import torch
+from typing import Dict, List, Tuple
 from diffusers.models.transformers.transformer_longcat_image import (
     LongCatImageSingleTransformerBlock,
 )
@@ -7,6 +8,7 @@ from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -26,25 +28,26 @@ logger = init_logger(__name__)
 
 @TensorParallelismPlannerRegister.register("LongCatImageTransformer2DModel")
 class LongCatImageTensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     def parallelize_transformer(
         self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+        layer_plans = []
         for _, block in transformer.transformer_blocks.named_children():
             shard_div_attr(block.attn, "heads", tp_mesh.size())
             layer_plan = {
@@ -71,6 +74,7 @@ class LongCatImageTensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
         # NOTE: special handling for LongCatImageSingleTransformerBlock, we have to
         # rearrange the proj_out weight because it contains both out and down
@@ -108,14 +112,5 @@ class LongCatImageTensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn.to_out",
-                "attn.to_add_out",
-                "ff.net.2",
-                "ff_context.net.2",
-                "proj_out",
-            ],
-        )
-        return transformer
+            layer_plans.append(layer_plan)
+        return transformer, layer_plans

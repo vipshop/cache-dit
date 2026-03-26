@@ -1,9 +1,10 @@
-from typing import Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -78,25 +79,25 @@ class DistributedRMSNorm(nn.Module):
 
 @TensorParallelismPlannerRegister.register("HeliosTransformer3DModel")
 class HeliosTensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     def parallelize_transformer(
         self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         def prepare_block(block: nn.Module):
             tp_size = tp_mesh.size()
             shard_div_attr(block.attn1, "heads", tp_size)
@@ -131,16 +132,9 @@ class HeliosTensorParallelismPlanner(TensorParallelismPlanner):
                 block.attn2.norm_added_k = DistributedRMSNorm.from_rmsnorm(
                     tp_mesh, block.attn2.norm_added_k
                 )
+            return layer_plan
 
+        layer_plans = []
         for _, block in transformer.blocks.named_children():
-            prepare_block(block)
-
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn1.to_out",
-                "attn2.to_out",
-                "ffn.net.2",
-            ],
-        )
-        return transformer
+            layer_plans.append(prepare_block(block))
+        return transformer, layer_plans

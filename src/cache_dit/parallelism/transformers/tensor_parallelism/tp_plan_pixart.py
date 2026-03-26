@@ -1,6 +1,9 @@
+import torch
+from typing import Dict, List, Tuple
 from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -20,25 +23,25 @@ logger = init_logger(__name__)
 
 @TensorParallelismPlannerRegister.register("PixArt")
 class PixArtTensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: nn.Module,
         parallelism_config: ParallelismConfig,
         **_kwargs,
-    ) -> nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     def parallelize_transformer(
         self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         """
         Parallelize PixArt transformer blocks.
 
@@ -48,6 +51,7 @@ class PixArtTensorParallelismPlanner(TensorParallelismPlanner):
         - Feed-forward network (ff)
         - Standard normalization layers
         """
+        layer_plans = []
         for i, block in enumerate(transformer.transformer_blocks):
             # Split attention heads across TP devices
             tp_size = tp_mesh.size()
@@ -77,14 +81,6 @@ class PixArtTensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn1.to_out",
-                "attn2.to_out",
-                "ff.net.2",
-            ],
-        )
-
-        return transformer
+        return transformer, layer_plans
