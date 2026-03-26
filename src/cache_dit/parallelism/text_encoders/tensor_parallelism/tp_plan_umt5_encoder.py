@@ -1,7 +1,9 @@
 import torch
 from transformers import UMT5EncoderModel
+from typing import Dict, List, Tuple
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -21,28 +23,28 @@ logger = init_logger(__name__)
 # Text Encoder for Wan2.1, Wan2.2, ChronoEdit, LongCat-Video, SkyReelsV2 series models.
 @TextEncoderTensorParallelismPlannerRegister.register("UMT5EncoderModel")
 class UMT5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         assert isinstance(
             text_encoder, UMT5EncoderModel
         ), "UMT5EncoderTensorParallelismPlanner can only be applied to UMT5EncoderModel"
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        text_encoder = self.parallelize_text_encoder(
+        text_encoder, layer_plans = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
         )
 
-        return text_encoder
+        return text_encoder, layer_plans
 
     def parallelize_text_encoder(
         self,
         text_encoder: UMT5EncoderModel,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         from transformers.models.umt5.modeling_umt5 import (
             UMT5Block,
             UMT5Attention,
@@ -50,6 +52,7 @@ class UMT5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             UMT5DenseGatedActDense,
         )
 
+        layer_plans = []
         for i, block in enumerate(text_encoder.encoder.block):
             assert isinstance(block, UMT5Block)
             assert isinstance(block.layer[0].SelfAttention, UMT5Attention)
@@ -87,5 +90,6 @@ class UMT5EncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
-        return text_encoder
+        return text_encoder, layer_plans

@@ -1,5 +1,5 @@
 import torch
-from typing import Union
+from typing import Dict, List, Tuple, Union
 from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 from transformers import (
     GemmaModel,
@@ -17,6 +17,7 @@ from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoderLayer
 
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -55,22 +56,22 @@ _supported_gemma_classes = (
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma3ForConditionalGeneration")
 class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         assert isinstance(
             text_encoder, _supported_gemma_classes
         ), "GemmaTensorParallelismPlanner can only be applied to Gemma Language Models."
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        text_encoder = self.parallelize_text_encoder(
+        text_encoder, layer_plans = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
         )
 
-        return text_encoder
+        return text_encoder, layer_plans
 
     def parallelize_text_encoder(
         self,
@@ -85,7 +86,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             Gemma3ForConditionalGeneration,
         ],
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
 
         # NOTE: Gemma3 can be used as a multi-modal backbone. In those cases the actual
         # language model is nested under `language_model` (and sometimes `language_model.model`).
@@ -118,6 +119,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             )
 
         assert isinstance(model, torch.nn.Module), "model must be a torch.nn.Module"
+        layer_plans = []
         for _, block in model.layers.named_children():
             assert isinstance(
                 block,
@@ -146,6 +148,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
         if isinstance(
             text_encoder,
@@ -172,4 +175,4 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
         maybe_empty_cache()
 
-        return text_encoder
+        return text_encoder, layer_plans

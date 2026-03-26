@@ -1,10 +1,12 @@
 import torch
+from typing import Dict, List, Tuple
 from transformers import GlmImageForConditionalGeneration
 
 from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor import Replicate
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -24,32 +26,33 @@ logger = init_logger(__name__)
 
 @TextEncoderTensorParallelismPlannerRegister.register("GlmImageForConditionalGeneration")
 class GlmImageTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         assert isinstance(
             text_encoder, GlmImageForConditionalGeneration
         ), "GlmImageTensorParallelismPlanner can only be applied to GlmImageForConditionalGeneration."
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        text_encoder = self.parallelize_text_encoder(
+        text_encoder, layer_plans = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
         )
 
-        return text_encoder
+        return text_encoder, layer_plans
 
     def parallelize_text_encoder(
         self,
         text_encoder: GlmImageForConditionalGeneration,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         from transformers import GlmImageTextModel
         from transformers.models.glm_image.modeling_glm_image import GlmImageTextDecoderLayer
 
         model: GlmImageTextModel = text_encoder.model.language_model
+        layer_plans = []
 
         for _, block in model.layers.named_children():
             assert isinstance(block, GlmImageTextDecoderLayer)
@@ -72,9 +75,10 @@ class GlmImageTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
         text_encoder.model.language_model = model
 
         maybe_empty_cache()
 
-        return text_encoder
+        return text_encoder, layer_plans
