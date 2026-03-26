@@ -126,6 +126,9 @@ class QuantizeConfig:
                     regional_quantize=cfg.get("regional_quantize", config.regional_quantize),
                     repeated_blocks=cfg.get("repeated_blocks", config.repeated_blocks),
                     filter_fn=cfg.get("filter_fn", config.filter_fn),
+                    float8_per_tensor_fallback=cfg.get(
+                        "float8_per_tensor_fallback", config.float8_per_tensor_fallback
+                    ),
                     verbose=cfg.get("verbose", config.verbose),
                 )
                 for component, cfg in config.components_to_quantize.items()
