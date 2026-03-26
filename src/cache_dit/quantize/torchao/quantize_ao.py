@@ -38,13 +38,12 @@ def quantize_ao(
     )
     basic_filter_fn = partial(_basic_filter_fn, quant_ctx=quant_ctx)
 
+    # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
     if quant_ctx.regional_quantize:
         assert (
             quant_ctx.repeated_blocks is not None
         ), "repeated_blocks must be specified when regional_quantize is True."
         has_quantized_region = False
-        # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
-
         # First, quantize non exclude layers with basic config, and skip layers that are
         # in fallback_layers if fallback is enabled, we will quantize those layers in
         # the second pass with fallback config.
