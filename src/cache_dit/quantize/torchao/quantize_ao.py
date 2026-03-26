@@ -137,8 +137,9 @@ class QuantizeAOContext:
             skipped_reasons_counter = {}
             for reason in self.skipped_reasons:
                 skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
-            skipped_reasons_strs = list(skipped_reasons_counter.keys())
-            max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0)
+            skipped_reasons_strs_ = list(skipped_reasons_counter.keys())
+            max_reason_len = max(max(len(s) for s in skipped_reasons_strs_), 0)
+            skipped_reasons_strs = []
             for reason, count in skipped_reasons_counter.items():
                 skipped_reasons_strs.append(f"{reason:<{max_reason_len}}: {count:<4} layers")
             # update max_reason_len for the count info
