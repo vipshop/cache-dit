@@ -80,7 +80,12 @@ def quantize_ao(
     return module
 
 
-def _quantize_module(m: torch.nn.Module, ao_config: AOBaseConfig, filter_fn: callable, **kwargs):
+def _quantize_module(
+    m: torch.nn.Module,
+    ao_config: AOBaseConfig,
+    filter_fn: callable,
+    **kwargs,
+):
     from torchao.quantization import quantize_
 
     quantize_(
