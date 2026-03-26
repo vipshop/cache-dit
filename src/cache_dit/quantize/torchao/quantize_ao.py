@@ -284,15 +284,6 @@ class QuantizeAOContext:
         self.exclude_layers = copy.deepcopy(exclude_layers)
         self.fallback_layers = copy.deepcopy(fallback_layers)
 
-    def is_float8(self) -> bool:
-        return "fp8" in self.quant_type
-
-    def is_float8_dynamic_per_row(self) -> bool:
-        return self.quant_type == "fp8_w8a8_dq" and self.per_row
-
-    def is_float8_blockwise(self) -> bool:
-        return self.quant_type == "fp8_blockwise"
-
     def is_int8(self) -> bool:
         return "int8" in self.quant_type
 
@@ -301,6 +292,15 @@ class QuantizeAOContext:
 
     def is_weight_only(self) -> bool:
         return "wo" in self.quant_type
+
+    def is_float8(self) -> bool:
+        return "fp8" in self.quant_type
+
+    def is_float8_dynamic_per_row(self) -> bool:
+        return self.quant_type == "fp8_w8a8_dq" and self.per_row
+
+    def is_float8_blockwise(self) -> bool:
+        return self.quant_type == "fp8_blockwise"
 
     def can_fallback(self) -> bool:
         # Currently, only support float8 per-tensor fallback for rowwise layers if
