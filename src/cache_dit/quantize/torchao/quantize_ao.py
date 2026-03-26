@@ -117,7 +117,6 @@ class QuantizeAOContext:
     basic_quantized_layers: List[str] = dataclasses.field(default_factory=list)
     fallback_quantized_layers: List[str] = dataclasses.field(default_factory=list)
     skipped_reasons: List[str] = dataclasses.field(default_factory=list)
-    kwargs: dict = dataclasses.field(default_factory=dict)
     alias_map: dict = dataclasses.field(
         default_factory=lambda: {
             "float8": "fp8_w8a8_dq",
@@ -145,6 +144,9 @@ class QuantizeAOContext:
     )
     # e.g, for rowwise TP -> FP8 per-row -> fallback -> FP8 per-tensor
     fallback_layers: List[str] = dataclasses.field(default_factory=list)
+    # Extra kwargs for trival usage, e.g, weight_dtype and activation_dtype
+    # for float8 quantization, etc.
+    kwargs: dict = dataclasses.field(default_factory=dict)
 
     @staticmethod
     def from_config(
@@ -335,10 +337,18 @@ class QuantizeAOContext:
                 return exclude_name
         return None
 
-    def is_quantized_layer(self, name: str) -> bool:
-        if name in self.basic_quantized_layers or name in self.fallback_quantized_layers:
+    def is_basic_quantized_layer(self, name: str) -> bool:
+        if name in self.basic_quantized_layers:
             return True
         return False
+
+    def is_fallback_quantized_layer(self, name: str) -> bool:
+        if name in self.fallback_quantized_layers:
+            return True
+        return False
+
+    def is_quantized_layer(self, name: str) -> bool:
+        return self.is_basic_quantized_layer(name) or self.is_fallback_quantized_layer(name)
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
