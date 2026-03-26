@@ -76,7 +76,7 @@ If the issue persists, please [open an issue](https://github.com/vipshop/cache-d
    - Your system configuration (GPU model, CUDA version, etc.)
 
 
-### NCCL errors during distributed inference
+### <span style="color:#c77dff;">NCCL</span> errors during distributed inference
 
 Please consider to upgrade to the latest PyTorch and NCCL versions, as they may contain important bug fixes and performance improvements. You can upgrade PyTorch and NCCL using the following commands:
 
