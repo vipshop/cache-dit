@@ -1,5 +1,6 @@
 import torch
 import copy
+import logging
 import dataclasses
 from functools import partial
 from typing import Optional, List
@@ -124,7 +125,7 @@ class QuantizeAOContext:
             f"Total     Linear Layers: {self.num_linear_layers:<5}",
             f"Skipped        Patterns: {self.exclude_layers}",
         ]
-        if not self.verbose:
+        if not self.verbose or not logger.isEnabledFor(logging.DEBUG):
             summary_strs.pop()  # remove skipped patterns in non-verbose mode
         max_len = max(max(len(s) for s in summary_strs), 0) + 2
         logger.info("-" * max_len)
@@ -383,7 +384,7 @@ def _filter_fn_impl(
             if exclude_name in name:
                 if quant_ctx.verbose:
                     skip_reason = msg_template.format(name=name, pattern=exclude_name)
-                    logger.info(skip_reason)
+                    logger.debug(skip_reason)
                     quant_ctx.skipped_reasons.append(skip_reason)
 
                 quant_ctx.num_skip_linear += 1
@@ -399,7 +400,7 @@ def _filter_fn_impl(
                     name=name,
                     pattern=f"dtype({m.weight.dtype})!=bfloat16",
                 )
-                logger.info(skip_reason)
+                logger.debug(skip_reason)
                 quant_ctx.skipped_reasons.append(skip_reason)
 
             quant_ctx.num_skip_linear += 1
@@ -416,7 +417,7 @@ def _filter_fn_impl(
                     name=name,
                     pattern=f"w{weight_shape} % block_size(128, 128) != 0",
                 )
-                logger.info(skip_reason)
+                logger.debug(skip_reason)
                 quant_ctx.skipped_reasons.append(skip_reason)
             quant_ctx.num_skip_linear += 1
             return False
@@ -430,7 +431,7 @@ def _filter_fn_impl(
                     name=name,
                     pattern="DTensor + bias is not supported for _scaled_mm",
                 )
-                logger.info(skip_reason)
+                logger.debug(skip_reason)
                 quant_ctx.skipped_reasons.append(skip_reason)
             quant_ctx.num_skip_linear += 1
             return False
