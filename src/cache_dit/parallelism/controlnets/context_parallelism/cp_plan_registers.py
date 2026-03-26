@@ -31,8 +31,44 @@ class ControlNetContextParallelismPlanner:
     # Prefer native diffusers implementation if available
     _cp_planner_preferred_native_diffusers: bool = True
 
-    @abstractmethod
     def apply(
+        self,
+        controlnet: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
+        **kwargs,
+    ) -> ContextParallelModelPlan:
+        """
+        Apply the context parallelism plan to the given controlnet.
+
+        Args:
+            controlnet: The controlnet model to which the CP plan will be applied.
+            parallelism_config: The parallelism configuration containing mesh and other settings.
+            **kwargs: Additional arguments that may be needed for specific planners.
+
+        Returns:
+            A ContextParallelModelPlan that describes how to apply context parallelism to the model.
+        """
+        assert (
+            controlnet is not None
+        ), "ControlNet model must be provided to apply context parallelism."
+        assert (
+            parallelism_config is not None
+        ), "ParallelismConfig must be provided to apply context parallelism."
+        cp_plan = self._apply(
+            controlnet=controlnet,
+            parallelism_config=parallelism_config,
+            **kwargs,
+        )
+        controlnet._cp_plan = cp_plan
+        cls_name = controlnet.__class__.__name__
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Generated CP plan: {cp_plan}")
+        if parallelism_config and getattr(parallelism_config, "ulysses_async", False):
+            logger.info(f"Async Ulysses Attention is enabled for {cls_name}.")
+        return cp_plan
+
+    @abstractmethod
+    def _apply(
         self,
         # NOTE: Keep this kwarg for future extensions
         controlnet: Optional[torch.nn.Module | ModelMixin] = None,

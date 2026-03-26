@@ -64,7 +64,7 @@ logger = init_logger(__name__)
 
 
 class ImportErrorContextParallelismPlanner(ControlNetContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         controlnet,
         parallelism_config,

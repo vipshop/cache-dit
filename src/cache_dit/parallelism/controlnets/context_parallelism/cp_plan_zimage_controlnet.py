@@ -39,7 +39,7 @@ logger = init_logger(__name__)
 
 @ControlNetContextParallelismPlannerRegister.register("ZImageControlNetModel")
 class ZImageControlNetContextParallelismPlanner(ControlNetContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         controlnet: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
