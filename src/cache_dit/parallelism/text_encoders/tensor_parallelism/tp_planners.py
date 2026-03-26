@@ -1,4 +1,7 @@
 import importlib
+import torch
+from typing import Dict, List, Tuple
+from torch.distributed.tensor.parallel import ParallelStyle
 from .tp_plan_registers import TextEncoderTensorParallelismPlanner
 from ....logger import init_logger
 
@@ -6,12 +9,12 @@ logger = init_logger(__name__)
 
 
 class ImportErrorTextEncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder,
         parallelism_config,
         **kwargs,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         raise ImportError(
             "This TextEncoderTensorParallelismPlanner requires latest diffusers to be installed. "
             "Please install diffusers from source."

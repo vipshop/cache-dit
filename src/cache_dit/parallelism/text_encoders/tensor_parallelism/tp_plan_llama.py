@@ -1,9 +1,10 @@
 import torch
-from typing import Union
+from typing import Dict, List, Tuple, Union
 from transformers import LlamaModel, LlamaForCausalLM
 from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -25,28 +26,28 @@ logger = init_logger(__name__)
 @TextEncoderTensorParallelismPlannerRegister.register("LlamaModel")
 @TextEncoderTensorParallelismPlannerRegister.register("LlamaForCausalLM")
 class LlamaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         assert isinstance(
             text_encoder, (LlamaModel, LlamaForCausalLM)
         ), "Qwen3TensorParallelismPlanner can only be applied to Llama Language Models."
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        text_encoder = self.parallelize_text_encoder(
+        text_encoder, layer_plans = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
         )
 
-        return text_encoder
+        return text_encoder, layer_plans
 
     def parallelize_text_encoder(
         self,
         text_encoder: Union[LlamaModel, LlamaForCausalLM],
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
         if isinstance(text_encoder, LlamaForCausalLM):
@@ -55,6 +56,7 @@ class LlamaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             model = text_encoder
 
         assert isinstance(model, LlamaModel), "model must be an instance of LlamaModel."
+        layer_plans = []
         for _, block in model.layers.named_children():
             assert isinstance(block, LlamaDecoderLayer)
             layer_plan = {
@@ -72,6 +74,7 @@ class LlamaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
         if isinstance(text_encoder, LlamaForCausalLM):
             text_encoder.model = model
@@ -80,4 +83,4 @@ class LlamaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
         maybe_empty_cache()
 
-        return text_encoder
+        return text_encoder, layer_plans

@@ -1,11 +1,12 @@
 import torch
-from typing import Union
+from typing import Dict, List, Tuple, Union
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLTextModel
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLDecoderLayer
 
 from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -27,12 +28,12 @@ logger = init_logger(__name__)
 @TextEncoderTensorParallelismPlannerRegister.register("Qwen2_5_VLTextModel")
 @TextEncoderTensorParallelismPlannerRegister.register("Qwen2_5_VLForConditionalGeneration")
 class Qwen2_5_VLTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         assert isinstance(
             text_encoder, (Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLTextModel)
         ), (
@@ -40,24 +41,25 @@ class Qwen2_5_VLTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             "Qwen2_5_VLForConditionalGeneration or Qwen2_5_VLTextModel"
         )
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        text_encoder = self.parallelize_text_encoder(
+        text_encoder, layer_plans = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
         )
 
-        return text_encoder
+        return text_encoder, layer_plans
 
     def parallelize_text_encoder(
         self,
         text_encoder: Union[Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLTextModel],
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
 
         if isinstance(text_encoder, Qwen2_5_VLForConditionalGeneration):
             model = text_encoder.model.language_model
         else:
             model = text_encoder
 
+        layer_plans = []
         for _, block in model.layers.named_children():
             assert isinstance(block, Qwen2_5_VLDecoderLayer)
             layer_plan = {
@@ -75,6 +77,7 @@ class Qwen2_5_VLTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
         if isinstance(text_encoder, Qwen2_5_VLForConditionalGeneration):
             text_encoder.model.language_model = model
@@ -83,4 +86,4 @@ class Qwen2_5_VLTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
         maybe_empty_cache()
 
-        return text_encoder
+        return text_encoder, layer_plans

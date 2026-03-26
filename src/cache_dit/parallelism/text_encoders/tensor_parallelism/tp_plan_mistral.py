@@ -1,5 +1,5 @@
 import torch
-from typing import Union
+from typing import Dict, List, Tuple, Union
 from transformers import (
     MistralModel,
     Mistral3Model,
@@ -10,6 +10,7 @@ from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
 from torch.distributed import DeviceMesh
 
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -41,22 +42,22 @@ _supported_mistral_classes = (
 @TextEncoderTensorParallelismPlannerRegister.register("MistralForCausalLM")
 @TextEncoderTensorParallelismPlannerRegister.register("Mistral3ForConditionalGeneration")
 class MistralTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         text_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         assert isinstance(
             text_encoder, _supported_mistral_classes
         ), "MistralTensorParallelismPlanner can only be applied to Mistral Language Models."
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        text_encoder = self.parallelize_text_encoder(
+        text_encoder, layer_plans = self.parallelize_text_encoder(
             text_encoder=text_encoder,
             tp_mesh=tp_mesh,
         )
 
-        return text_encoder
+        return text_encoder, layer_plans
 
     def parallelize_text_encoder(
         self,
@@ -67,7 +68,7 @@ class MistralTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
             Mistral3ForConditionalGeneration,
         ],
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
 
         if isinstance(
             text_encoder,
@@ -85,6 +86,7 @@ class MistralTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
         else:
             model = text_encoder
 
+        layer_plans = []
         for _, block in model.layers.named_children():
             assert isinstance(block, MistralDecoderLayer)
             layer_plan = {
@@ -102,6 +104,7 @@ class MistralTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
         if isinstance(
             text_encoder,
@@ -121,4 +124,4 @@ class MistralTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
         maybe_empty_cache()
 
-        return text_encoder
+        return text_encoder, layer_plans
