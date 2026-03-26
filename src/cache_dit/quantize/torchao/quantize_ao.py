@@ -51,6 +51,9 @@ def quantize_ao(
             if submod.__class__.__name__ in quant_ctx.repeated_blocks:
                 _quantize_module(submod, basic_ao_config, basic_filter_fn)
                 has_quantized_region = True
+        # Second, quantize the fallback layers with fallback config if fallback is enabled and
+        # the layers are not quantized in the first pass. Currently, only support float8 per-tensor
+        # fallback for rowwise layers in TP, and the fallback config is set to per-tensor quantization.
         if quant_ctx.can_fallback():
             fallback_ao_config = _get_torchao_config(
                 "fp8_w8a8_dq", per_row=False, **quant_ctx.kwargs
