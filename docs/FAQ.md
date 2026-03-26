@@ -24,6 +24,21 @@ Find `_diffusers_flash_attn_3::_flash_attn_forward` and add <span style="color:#
 return_attn_probs=True
 ```
 
+### Install Flash Attention 2 (FA2)?
+
+<span style="color:#c77dff;">Flash Attention 2</span> provides optimized attention kernels for better performance on Ampere/Ada GPUs. To install:
+
+```bash
+git clone git@github.com:Dao-AILab/flash-attention.git
+cd flash-attention
+# Defaults: "80;90;100;110;120" Adjust based on your GPU architecture
+export FLASH_ATTN_CUDA_ARCHS=80 # 80 for Ampere, 90 for Hopper, ...
+MAX_JOBS=8 pip install flash-attn --no-build-isolation
+# or, build from local source for more control:
+# export MAX_JOBS=32 for faster compilation with more CPU cores
+python setup.py install
+```
+
 ### How to install Sage Attention?
 
 <span style="color:#c77dff;">Sage Attention</span> is an efficient attention implementation. To install:
@@ -76,12 +91,12 @@ pip install --upgrade nvidia-nccl-cu12 # or, for CUDA 13: pip install --upgrade 
 
 Cache-DiT supports multiple attention backends for different use cases. For a complete overview of attention backends in diffusers, see the [Attention Backends](./user_guide/ATTENTION.md). The main attention backends supported by cache-dit are:  
 
-- **<span style="color:#c77dff;">flash</span>**: Flash Attention 2 - Good performance on Ampere/Ada GPUs
-- **<span style="color:#c77dff;">_flash_3</span>**: Flash Attention 3 - Best for Hopper architecture GPUs (H100, H200)
-- **<span style="color:#c77dff;">native</span>**: Native PyTorch SDPA - Default, works on all devices
-- **<span style="color:#c77dff;">_native_cudnn</span>**: cuDNN-based native attention
-- **<span style="color:#c77dff;">_sdpa_cudnn</span>**: SDPA with cuDNN (cache-dit specific, supports context parallelism with attention masks)
-- **<span style="color:#c77dff;">sage</span>**: Sage Attention - Good balance between performance and compatibility
+- <span style="color:#c77dff;">flash</span>: Flash Attention 2 - Good performance on Ampere/Ada GPUs
+- <span style="color:#c77dff;">_flash_3</span>: Flash Attention 3 - Best for Hopper architecture GPUs (H100, H200)
+- <span style="color:#c77dff;">native</span>: Native PyTorch SDPA - Default, works on all devices
+- <span style="color:#c77dff;">_native_cudnn</span>: cuDNN-based native attention
+- <span style="color:#c77dff;">_sdpa_cudnn</span>: SDPA with cuDNN (cache-dit specific, supports context parallelism with attention masks)
+- <span style="color:#c77dff;">sage</span>: Sage Attention - Good balance between performance and compatibility
 
 **Recommendation:**  
 
