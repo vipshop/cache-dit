@@ -194,10 +194,11 @@ class QuantizeAOContext:
                 and self.per_row
                 and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
             ):
-                exclude_layers = prev_exclude_layers + self.module_ref._rowwise_layers
-                logger.debug(
+                rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
+                exclude_layers = prev_exclude_layers + rowwise_layers
+                logger.info(
                     f"Found rowwise layers for {self.module_ref.__class__.__name__}: "
-                    f"{self.module_ref._rowwise_layers}"
+                    f"{rowwise_layers}"
                 )
                 self.exclude_layers = copy.deepcopy(exclude_layers)
 
