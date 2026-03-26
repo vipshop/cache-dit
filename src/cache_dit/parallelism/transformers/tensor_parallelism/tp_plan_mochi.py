@@ -1,4 +1,5 @@
 import torch
+from typing import Dict, List, Tuple
 from diffusers.models.attention_processor import MochiAttnProcessor2_0
 from diffusers.models.transformers.transformer_mochi import (
     MochiTransformerBlock,
@@ -8,6 +9,7 @@ from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -55,19 +57,19 @@ class SplitFreqsProcessor:
 
 @TensorParallelismPlannerRegister.register("Mochi")
 class MochiTensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     @staticmethod
     def rearrange_feedforward_weight(block: MochiTransformerBlock, tp_size):
@@ -86,10 +88,11 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
         self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
 
         tp_size = tp_mesh.get_group().size()
         tp_rank = tp_mesh.get_group().rank()
+        layer_plans = []
 
         for name, block in transformer.transformer_blocks.named_children():
             if block.context_pre_only:
@@ -125,15 +128,6 @@ class MochiTensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
 
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn1.to_out",
-                "attn1.to_add_out",
-                "ff.net.2",
-                "ff_context.net.2",
-            ],
-        )
-
-        return transformer
+        return transformer, layer_plans

@@ -1,11 +1,13 @@
 import torch
 import copy
+import logging
 import dataclasses
 from functools import partial
 from typing import Optional, List
 from ..config import QuantizeConfig
 from ...utils import maybe_empty_cache
 from ...platforms import current_platform
+from ...envs import ENV
 from ...logger import init_logger
 
 logger = init_logger(__name__)
@@ -89,6 +91,7 @@ class QuantizeAOContext:
     num_skip_linear: int = 0
     num_linear_layers: int = 0
     num_layers: int = 0
+    skipped_reasons: List[str] = dataclasses.field(default_factory=list)
     kwargs: dict = dataclasses.field(default_factory=dict)
 
     @staticmethod
@@ -122,7 +125,7 @@ class QuantizeAOContext:
             f"Total     Linear Layers: {self.num_linear_layers:<5}",
             f"Skipped        Patterns: {self.exclude_layers}",
         ]
-        if not self.verbose:
+        if not self.verbose or not logger.isEnabledFor(logging.DEBUG):
             summary_strs.pop()  # remove skipped patterns in non-verbose mode
         max_len = max(max(len(s) for s in summary_strs), 0) + 2
         logger.info("-" * max_len)
@@ -131,6 +134,23 @@ class QuantizeAOContext:
         summary_str = "\n".join(summary_strs)
         logger.info(summary_str)
         logger.info("-" * max_len)
+        if self.verbose and self.skipped_reasons:
+            skipped_reasons_counter = {}
+            for reason in self.skipped_reasons:
+                skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
+            skipped_reasons_strs_ = list(skipped_reasons_counter.keys())
+            max_reason_len = max(max(len(s) for s in skipped_reasons_strs_), 0)
+            skipped_reasons_strs = []
+            for reason, count in skipped_reasons_counter.items():
+                skipped_reasons_strs.append(f"{reason:<{max_reason_len}}: {count:<4} layers")
+            # update max_reason_len for the count info
+            max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0) + 2
+            logger.info("-" * max_reason_len)
+            # extend strs with spaces for better formatting, the last char is '|'
+            skipped_reasons_strs = [s.ljust(max_reason_len) + "|" for s in skipped_reasons_strs]
+            skipped_reasons_str = "\n".join(skipped_reasons_strs)
+            logger.info(skipped_reasons_str)
+            logger.info("-" * max_reason_len)
 
     def normalize(self, **kwargs) -> "QuantizeAOContext":
         # This function is used to normalize the quantization context, and it will be called
@@ -182,17 +202,21 @@ class QuantizeAOContext:
         self.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
 
         prev_exclude_layers = copy.deepcopy(self.exclude_layers)
-        if hasattr(self.module_ref, "_exclude_for_quantize"):
+        if self.module_ref is not None and hasattr(self.module_ref, "_rowwise_layers"):
             # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
             # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-            # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
-            # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
-            # Why??? Need further investigation.
-            if self.quant_type == "fp8_w8a8_dq" and self.per_row:
-                exclude_layers = prev_exclude_layers + self.module_ref._exclude_for_quantize
-                logger.debug(
-                    f"Found extra excluding layers for {self.module_ref.__class__.__name__}: "
-                    f"{self.module_ref._exclude_for_quantize}"
+            # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+            # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
+            if (
+                self.quant_type == "fp8_w8a8_dq"
+                and self.per_row
+                and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
+            ):
+                rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
+                exclude_layers = prev_exclude_layers + rowwise_layers
+                logger.info(
+                    f"Found rowwise layers for {self.module_ref.__class__.__name__}: "
+                    f"{rowwise_layers}"
                 )
                 self.exclude_layers = copy.deepcopy(exclude_layers)
 
@@ -350,7 +374,7 @@ def _filter_fn_impl(
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
-    msg_template = "Skip Quantization: {name} -> pattern<{pattern}>"
+    msg_template = "Skip: {name} -> pattern<{pattern}>"
 
     quant_ctx.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
@@ -359,12 +383,9 @@ def _filter_fn_impl(
         for exclude_name in quant_ctx.exclude_layers:
             if exclude_name in name:
                 if quant_ctx.verbose:
-                    logger.info(
-                        msg_template.format(
-                            name=name,
-                            pattern=exclude_name,
-                        )
-                    )
+                    skip_reason = msg_template.format(name=name, pattern=exclude_name)
+                    logger.debug(skip_reason)
+                    quant_ctx.skipped_reasons.append(skip_reason)
 
                 quant_ctx.num_skip_linear += 1
                 return False
@@ -375,12 +396,12 @@ def _filter_fn_impl(
             and quant_ctx.quant_type == "fp8_w8a8_dq"
         ):
             if quant_ctx.verbose:
-                logger.info(
-                    msg_template.format(
-                        name=name,
-                        pattern=f"dtype({m.weight.dtype})!=bfloat16",
-                    )
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern=f"dtype({m.weight.dtype})!=bfloat16",
                 )
+                logger.debug(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
 
             quant_ctx.num_skip_linear += 1
             return False
@@ -392,12 +413,12 @@ def _filter_fn_impl(
         ] and not _check_if_linear_fp8_blockwise_can_support(m):
             weight_shape = tuple(m.weight.shape)
             if quant_ctx.verbose:
-                logger.info(
-                    msg_template.format(
-                        name=name,
-                        pattern=f"w{weight_shape} % block_size(128, 128) != 0",
-                    )
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern=f"w{weight_shape} % block_size(128, 128) != 0",
                 )
+                logger.debug(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
             quant_ctx.num_skip_linear += 1
             return False
 
@@ -406,12 +427,12 @@ def _filter_fn_impl(
             "fp8_blockwise",
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
             if quant_ctx.verbose:
-                logger.info(
-                    msg_template.format(
-                        name=name,
-                        pattern="DTensor + bias is not supported for _scaled_mm",
-                    )
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern="DTensor + bias is not supported for _scaled_mm",
                 )
+                logger.debug(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
             quant_ctx.num_skip_linear += 1
             return False
 

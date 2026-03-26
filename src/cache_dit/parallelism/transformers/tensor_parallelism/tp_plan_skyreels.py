@@ -1,8 +1,10 @@
 import torch
+from typing import Dict, List, Tuple
 from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -22,27 +24,28 @@ logger = init_logger(__name__)
 
 @TensorParallelismPlannerRegister.register("SkyReelsV2")
 class SkyReelsV2TensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     def parallelize_transformer(
         self,
         transformer: nn.Module,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
 
         tp_size = tp_mesh.get_group().size()
+        layer_plans = []
 
         # SkyReelsV2 uses a similar architecture to video transformers
         # We parallelize the attention and feedforward layers across blocks
@@ -86,18 +89,11 @@ class SkyReelsV2TensorParallelismPlanner(TensorParallelismPlanner):
                     device_mesh=tp_mesh,
                     parallelize_plan=layer_plan,
                 )
+                layer_plans.append(layer_plan)
                 logger.debug(f"Successfully parallelized block: {name}")
             except Exception as e:
                 logger.debug(f"Could not parallelize block {name}: {e}")
                 logger.debug(
                     "Block structure may differ from expected pattern. Skipping this block."
                 )
-
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn.to_out",
-                "ff.net.2",
-            ],
-        )
-        return transformer
+        return transformer, layer_plans

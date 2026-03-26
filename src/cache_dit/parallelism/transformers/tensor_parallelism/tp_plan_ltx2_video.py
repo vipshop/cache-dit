@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
+from torch.distributed.tensor.parallel import ParallelStyle
 
 from diffusers.models.transformers.transformer_ltx2 import LTX2AudioVideoAttnProcessor
 
@@ -128,16 +129,23 @@ class ShardRotaryEmbProcessor:
 
 @TensorParallelismPlannerRegister.register("LTX2")
 class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        return self.parallelize_transformer(transformer=transformer, tp_mesh=tp_mesh)
+        transformer, layer_plans = self.parallelize_transformer(
+            transformer=transformer, tp_mesh=tp_mesh
+        )
+        return transformer, layer_plans
 
-    def parallelize_transformer(self, transformer: nn.Module, tp_mesh: DeviceMesh):
+    def parallelize_transformer(
+        self,
+        transformer: nn.Module,
+        tp_mesh: DeviceMesh,
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_size = tp_mesh.get_group().size()
         tp_rank = tp_mesh.get_group().rank()
 
@@ -201,9 +209,11 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
             ):
                 attn.norm_q = DistributedRMSNorm.from_rmsnorm(tp_mesh, attn.norm_q)
                 attn.norm_k = DistributedRMSNorm.from_rmsnorm(tp_mesh, attn.norm_k)
+            return layer_plan
 
         # Shard RoPE frequencies for all attention processors in every block.
         # NOTE: This assumes rotary embedding head counts align with attention heads (true for LTX-2 configs).
+        layer_plans = []
         for _, block in transformer.transformer_blocks.named_children():
             for attn_name in (
                 "attn1",
@@ -222,20 +232,6 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
                         tp_size=tp_size,
                         tp_rank=tp_rank,
                     )
-            prepare_block(block)
+            layer_plans.append(prepare_block(block))
 
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn1.to_out",
-                "attn2.to_out",
-                "audio_attn1.to_out",
-                "audio_attn2.to_out",
-                "audio_to_video_attn.to_out",
-                "video_to_audio_attn.to_out",
-                "ff.net.2",
-                "audio_ff.net.2",
-            ],
-        )
-
-        return transformer
+        return transformer, layer_plans

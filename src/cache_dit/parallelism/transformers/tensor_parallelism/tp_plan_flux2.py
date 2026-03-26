@@ -1,4 +1,5 @@
 import torch
+from typing import Dict, List, Tuple
 from diffusers.models.transformers.transformer_flux2 import (
     Flux2SingleTransformerBlock,
     Flux2TransformerBlock,
@@ -8,6 +9,7 @@ from einops import rearrange
 
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
+    ParallelStyle,
     ColwiseParallel,
     RowwiseParallel,
     parallelize_module,
@@ -28,19 +30,19 @@ logger = init_logger(__name__)
 
 @TensorParallelismPlannerRegister.register("Flux2Transformer")
 class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: torch.nn.Module,
         parallelism_config: ParallelismConfig,
         **kwargs,
-    ) -> torch.nn.Module:
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_mesh = self.mesh(parallelism_config=parallelism_config)
-        transformer = self.parallelize_transformer(
+        transformer, layer_plans = self.parallelize_transformer(
             transformer=transformer,
             tp_mesh=tp_mesh,
         )
 
-        return transformer
+        return transformer, layer_plans
 
     @classmethod
     def rerangege_swiglu_weight(cls, weight: torch.Tensor, tp_size: int):
@@ -98,8 +100,10 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
         self,
         transformer: Flux2Transformer2DModel,
         tp_mesh: DeviceMesh,
-    ):
+    ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
         tp_size = tp_mesh.get_group().size()
+        layer_plans = []
+
         for _, block in transformer.transformer_blocks.named_children():
             # moving to cuda speed up the rearrangement process significantly
             old_device = next(block.parameters()).device
@@ -127,6 +131,7 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
         maybe_empty_cache()
 
         for _, block in transformer.single_transformer_blocks.named_children():
@@ -142,21 +147,13 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
                 "attn.to_qkv_mlp_proj": ColwiseParallel(),
                 "attn.to_out": RowwiseParallel(),
             }
+
             parallelize_module(
                 module=block,
                 device_mesh=tp_mesh,
                 parallelize_plan=layer_plan,
             )
+            layer_plans.append(layer_plan)
         maybe_empty_cache()
 
-        self.exclude_for_quantize(
-            transformer=transformer,
-            exclude_layers=[
-                "attn.to_out",
-                "attn.to_add_out",
-                "ff.linear_out",
-                "ff_context.linear_out",
-            ],
-        )
-
-        return transformer
+        return transformer, layer_plans
