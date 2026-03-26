@@ -175,6 +175,7 @@ class QuantizeAOContext:
             if self.regional_quantize and self.repeated_blocks is not None
             else self.module_ref.__class__.__name__ if self.module_ref else "Module"
         )
+        # Basic summary info.
         total_quant_linear = self.num_basic_quant_linear + self.num_fallback_quant_linear
         total_skip_linear = self.num_basic_skip_linear + self.num_fallback_skip_linear
         summary_strs = [
@@ -198,26 +199,27 @@ class QuantizeAOContext:
         summary_str = "\n".join(summary_strs)
         logger.info(summary_str)
         logger.info("-" * max_len)
+
+        # Detailed summary for skipped reasons, only log when verbose is True.
         if self.verbose and self.skipped_reasons:
             skipped_reasons_counter = {}
             for reason in self.skipped_reasons:
                 skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
-            skipped_reasons_strs_ = list(skipped_reasons_counter.keys())
-            max_reason_len = max(max(len(s) for s in skipped_reasons_strs_), 0)
-            skipped_reasons_name_strs = []
-            skipped_reasons_pattern_strs = []
-            skipped_reasons_strs = []
+
+            max_name_len = 0
+            max_pattern_len = 0
             for reason, count in skipped_reasons_counter.items():
                 name, pattern = reason.split("->")
-                skipped_reasons_name_strs.append(name.strip())
-                skipped_reasons_pattern_strs.append(pattern.strip())
-            max_name_len = max(max(len(s) for s in skipped_reasons_name_strs), 0)
-            max_pattern_len = max(max(len(s) for s in skipped_reasons_pattern_strs), 0)
+                max_name_len = max(max_name_len, len(name.strip()))
+                max_pattern_len = max(max_pattern_len, len(pattern.strip()))
+
+            skipped_reasons_strs = []
             for reason, count in skipped_reasons_counter.items():
                 name, pattern = reason.split("->")
                 name_str = name.strip().ljust(max_name_len)
                 pattern_str = pattern.strip().ljust(max_pattern_len)
                 skipped_reasons_strs.append(f"{name_str}: {pattern_str}: {count:<4} layers")
+
             # update max_reason_len for the count info
             max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0) + 2
             logger.info("-" * max_reason_len)
