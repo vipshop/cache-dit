@@ -141,6 +141,9 @@ cache_dit.enable_cache(
     quantize_config=QuantizeConfig(
         quant_type="float8",
         per_row=True, # default, True.
+        # Must be True to enable fp8 per-tensor fallback.
+        regional_quantize=True, # default, True.
+        repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
         # Enable fallback to float8 per-tensor quantization, default to True
         # for better compatibility for layers that do not support float8 per-row 
         # quantization, e.g., layers with RowwiseParallel applied in tensor parallelism.
