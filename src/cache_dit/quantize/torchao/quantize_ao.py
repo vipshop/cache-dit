@@ -249,7 +249,7 @@ class QuantizeAOContext:
             # potential issues.
             self.regional_quantize = False
 
-        if self.per_row and self.module_ref is not None and self.quant_type == "fp8_w8a8_dq":
+        if self.module_ref is not None and self.is_float8_dynamic_per_row():
             # assert the dtype of module's is bfloat16
             for name, submod in self.module_ref.named_modules():
                 if isinstance(submod, torch.nn.Linear):
@@ -263,15 +263,13 @@ class QuantizeAOContext:
     def _maybe_fill_fallback_layers(self):
         exclude_layers = copy.deepcopy(self.exclude_layers)
         fallback_layers = copy.deepcopy(self.fallback_layers)
-        if self.module_ref is not None and hasattr(self.module_ref, "_rowwise_layers"):
-            # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
-            # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-            # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
-            # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
-            if (
-                self.is_float8_dynamic_per_row()
-                and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
-            ):
+        # Case 0: TP + torchao FP8 per-row quantization.
+        # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
+        # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
+        # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+        # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
+        if self.module_ref is not None and self.is_float8_dynamic_per_row():
+            if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
                 rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
                 if self.float8_per_tensor_fallback and rowwise_layers:
                     fallback_layers = fallback_layers + rowwise_layers
@@ -279,6 +277,10 @@ class QuantizeAOContext:
                 else:
                     exclude_layers = exclude_layers + rowwise_layers
                     logger.info(f"Add rowwise layers to exclude layers: {rowwise_layers}.")
+        # Case 1/2/3/...: Future cases ...
+        # We may add more cases in the future where we need to automatically fill the
+        # fallback layers based on the module's attributes or other conditions, so we
+        # put this logic in a separate function for better maintainability and readability.
         self.exclude_layers = copy.deepcopy(exclude_layers)
         self.fallback_layers = copy.deepcopy(fallback_layers)
 
@@ -287,6 +289,9 @@ class QuantizeAOContext:
 
     def is_float8_dynamic_per_row(self) -> bool:
         return self.quant_type == "fp8_w8a8_dq" and self.per_row
+
+    def is_float8_blockwise(self) -> bool:
+        return self.quant_type == "fp8_blockwise"
 
     def is_int8(self) -> bool:
         return "int8" in self.quant_type
@@ -299,11 +304,12 @@ class QuantizeAOContext:
 
     def can_fallback(self) -> bool:
         # Currently, only support float8 per-tensor fallback for rowwise layers if
-        # regional quantiztion is enabled.
+        # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
+        # quantization for now, we may add more fallback options in the future.
         return (
             self.float8_per_tensor_fallback
-            and self.is_float8()
-            and not self.is_weight_only()
+            and (self.is_float8_dynamic_per_row() or self.is_float8_blockwise())
+            and (not self.is_weight_only() and not self.is_int8() and not self.is_int4())
             and self.regional_quantize
             and bool(self.fallback_layers)
         )
