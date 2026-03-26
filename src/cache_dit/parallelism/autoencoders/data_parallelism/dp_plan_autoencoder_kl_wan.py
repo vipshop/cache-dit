@@ -20,7 +20,7 @@ logger = init_logger(__name__)
 
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLWan")
 class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         auto_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,

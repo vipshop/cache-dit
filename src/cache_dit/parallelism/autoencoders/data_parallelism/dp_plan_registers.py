@@ -11,8 +11,24 @@ logger = init_logger(__name__)
 
 class AutoEncoderDataParallelismPlanner:
 
-    @abstractmethod
     def apply(
+        self,
+        auto_encoder: torch.nn.Module,
+        parallelism_config: ParallelismConfig,
+        **kwargs,
+    ) -> torch.nn.Module:
+        # TODO: May add some common checks before or after applying the parallelism plan,
+        # e.g., check if the auto_encoder is already parallelized, check if the parallelism_config
+        # is valid, etc.
+        auto_encoder = self._apply(
+            auto_encoder=auto_encoder,
+            parallelism_config=parallelism_config,
+            **kwargs,
+        )
+        return auto_encoder
+
+    @abstractmethod
+    def _apply(
         self,
         auto_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,
