@@ -353,9 +353,18 @@ def get_args(
     parser.add_argument(
         "--disable-regional-quantize",
         "--disable-regional",
+        "--no-regional",
         action="store_true",
         default=False,
         help="Disable quantization for repeated blocks in transformer",
+    )
+    parser.add_argument(
+        "--disable-float8-per-tensor-fallback",
+        "--disable-float8-fallback",
+        "--no-fp8-fallback",
+        action="store_true",
+        default=False,
+        help="Disable float8 per-tensor fallback quantization for transformer",
     )
     # some quick start flags for transformer quantization (--float8, --float8_wo, --float8_bw)
     parser.add_argument(
@@ -1121,6 +1130,7 @@ def maybe_quantize_transformer(
                             per_row=is_per_row_supported(transformer),
                             exclude_layers=get_exclude_layers(transformer),
                             regional_quantize=not args.disable_regional_quantize,
+                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
@@ -1150,6 +1160,7 @@ def maybe_quantize_transformer(
                             per_row=is_per_row_supported(transformer_2),
                             exclude_layers=get_exclude_layers(transformer_2),
                             regional_quantize=not args.disable_regional_quantize,
+                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
@@ -1196,6 +1207,7 @@ def maybe_quantize_text_encoder(
                     quantize_config=QuantizeConfig(
                         quant_type=args.quantize_text_type,
                         regional_quantize=not args.disable_regional_quantize,
+                        float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
                         verbose=args.quantize_verbose,
                     ),
                 )
@@ -1243,6 +1255,7 @@ def maybe_quantize_controlnet(
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_controlnet_type,
                             regional_quantize=not args.disable_regional_quantize,
+                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )

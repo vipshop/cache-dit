@@ -124,6 +124,86 @@ cache_dit.enable_cache(
 )
 ```
 
+## FP8 Per-Tensor Fallback
+
+The <span style="color:#c77dff;">float8_per_tensor_fallback</span> option in Cache-DiT's quantization configuration allows users to enable a fallback mechanism for layers that do not support float8 per-row or per-block quantization. This is particularly useful in scenarios where tensor parallelism is applied, and certain layers (e.g., those applied with RowwiseParallel) may encounter memory layout mismatch errors when quantized to float8 per-row.
+
+When <span style="color:#c77dff;">float8_per_tensor_fallback</span> is set to True, if a layer cannot be quantized to float8 per-row or per-block, it will automatically fall back to float8 per-tensor quantization instead of raising an error. This ensures that the quantization process can continue smoothly without interruption, while still providing the benefits of reduced precision for supported layers.  
+
+To enable this feature, simply set the <span style="color:#c77dff;">float8_per_tensor_fallback</span> flag to <span style="color:#c77dff;">True (default)</span> in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. For example:
+
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+cache_dit.enable_cache( 
+    pipe, cache_config=DBCacheConfig(), # w/ default
+    parallelism_config=ParallelismConfig(tp_size=2),
+    quantize_config=QuantizeConfig(
+        quant_type="float8",
+        per_row=True, # default, True.
+        # Must be True to enable fp8 per-tensor fallback.
+        regional_quantize=True, # default, True.
+        repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
+        # Enable fallback to float8 per-tensor quantization, default to True
+        # for better compatibility for layers that do not support float8 per-row 
+        # quantization, e.g., layers with RowwiseParallel applied in tensor parallelism.
+        float8_per_tensor_fallback=True, 
+    ),
+)
+```
+Quick examples of fp8 per-tensor fallback in action:
+
+```bash
+# w/o fp8 per-tensor fallback, the cache-dit will auto skip the layers 
+# that do not support float8 per-row quantization, and raise warning 
+# for those layers. The performance will be worse due to less layers 
+# being quantized. (quantize 88 layers, skip 56 layers)
+
+torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
+   --parallel tp --compile --float8 --q-verbose \
+   --disable-float8-per-tensor-fallback
+
+--------------------------------------------------------------------------------------------
+Quantized                 Method: float8                                                    |
+Quantized                 Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
+Quantized    Basic Linear Layers: 88                                                        |
+Quantized Fallback Linear Layers: 0                                                         |
+Total    Quantized Linear Layers: 88                                                        |
+Skipped      Basic Linear Layers: 56                                                        |
+Skipped   Fallback Linear Layers: 0                                                         |
+Total      Skipped Linear Layers: 56                                                        |
+Total              Linear Layers: 144                                                       |
+--------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
+Skip: attn.to_out.0        : pattern<Rowwise(Tensor Parallel)>: 8    layers  |
+Skip: attn.to_add_out      : pattern<Rowwise(Tensor Parallel)>: 8    layers  |
+Skip: ff.linear_out        : pattern<Rowwise(Tensor Parallel)>: 8    layers  |
+Skip: ff_context.linear_out: pattern<Rowwise(Tensor Parallel)>: 8    layers  |
+Skip: attn.to_out          : pattern<Rowwise(Tensor Parallel)>: 24   layers  |
+-----------------------------------------------------------------------------
+
+# w/ fp8 per-tensor fallback enabled, those layers that do not support 
+# float8 per-row quantization will be quantized to float8 per-tensor 
+# instead, and the performance will be better due to more layers being 
+# quantized. (quantize 144 layers, skip 0 layer)
+
+torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
+   --parallel tp --compile --float8 --q-verbose # default, enabled fp8 per-tensor fallback
+
+--------------------------------------------------------------------------------------------
+Quantized                 Method: float8                                                    |
+Quantized                 Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
+Quantized    Basic Linear Layers: 88                                                        |
+Quantized Fallback Linear Layers: 56                                                        |
+Total    Quantized Linear Layers: 144                                                       |
+Skipped      Basic Linear Layers: 0                                                         |
+Skipped   Fallback Linear Layers: 0                                                         |
+Total      Skipped Linear Layers: 0                                                         |
+Total              Linear Layers: 144                                                       |
+--------------------------------------------------------------------------------------------
+```
+
+
 ## Bitsandbytes (W4A16)
 
 For <span style="color:#c77dff;">4-bits W4A16</span> (weight only) quantization, we recommend `nf4` from **bitsandbytes** due to its better compatibility for many devices. Users can directly use it via the `quantization_config` of diffusers. For example:
@@ -153,7 +233,7 @@ pipe = QwenImagePipeline.from_pretrained(
 cache_dit.enable_cache(pipe, cache_config=...)
 ```
 
-## Nunchaku (SVDQ INT4/FP4, W4A4)
+## Nunchaku (W4A4)
 
 cache-dit natively supports the `Hybrid Cache + 🔥Nunchaku SVDQ INT4/FP4 + Context Parallelism` scheme. Users can leverage caching and context parallelism to speed up Nunchaku <span style="color:#c77dff;">4-bit W4A4</span> models. 
 

@@ -4,6 +4,7 @@ import logging
 import dataclasses
 from functools import partial
 from typing import Optional, List
+from torchao.core.config import AOBaseConfig
 from ..config import QuantizeConfig
 from ...utils import maybe_empty_cache
 from ...platforms import current_platform
@@ -26,43 +27,49 @@ def quantize_ao(
 
     quant_ctx = QuantizeAOContext.from_config(quantize_config, module, **kwargs)
     quant_ctx = quant_ctx.normalize(**kwargs)
-
-    def _quantize_module(m: torch.nn.Module):
-        from torchao.quantization import quantize_
-
-        quantize_(
-            m,
-            _quant_config_impl(quant_ctx),
-            filter_fn=(
-                partial(_filter_fn_impl, quant_ctx=quant_ctx)
-                if quantize_config.filter_fn is None
-                else quantize_config.filter_fn
-            ),
-            device=kwargs.get("device", None),
-        )
-
     # Regional quantization for transformer modules in Diffusers, users can
     # set regional_quantize to False to disable this behavior and quantize
     # the whole module directly. For models outside of diffusers, users can specify
     # the repeated blocks by setting repeated_blocks to a list of block names.
+    basic_ao_config = _get_torchao_config(
+        quant_ctx.quant_type,
+        per_row=quant_ctx.per_row,
+        **quant_ctx.kwargs,
+    )
+    basic_filter_fn = partial(_basic_filter_fn, quant_ctx=quant_ctx)
+
+    # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
     if quant_ctx.regional_quantize:
         assert (
             quant_ctx.repeated_blocks is not None
         ), "repeated_blocks must be specified when regional_quantize is True."
         has_quantized_region = False
-        # Reference: https://github.com/huggingface/diffusers/blob
-        # /main/src/diffusers/models/modeling_utils.py#L1475
+        # First, quantize non exclude layers with basic config, and skip layers that are
+        # in fallback_layers if fallback is enabled, we will quantize those layers in
+        # the second pass with fallback config.
         for submod in module.modules():
             if submod.__class__.__name__ in quant_ctx.repeated_blocks:
-                _quantize_module(submod)
+                _quantize_module(submod, basic_ao_config, basic_filter_fn)
                 has_quantized_region = True
+        # Second, quantize the fallback layers with fallback config if fallback is enabled and
+        # the layers are not quantized in the first pass. Currently, only support float8 per-tensor
+        # fallback for rowwise layers in TP, and the fallback config is set to per-tensor quantization.
+        if quant_ctx.can_fallback():
+            fallback_ao_config = _get_torchao_config(
+                "fp8_w8a8_dq", per_row=False, **quant_ctx.kwargs
+            )  # fallback to per-tensor quantization
+            fallback_filter_fn = partial(_fallback_filter_fn, quant_ctx=quant_ctx)
+            for submod in module.modules():
+                if submod.__class__.__name__ in quant_ctx.repeated_blocks:
+                    _quantize_module(submod, fallback_ao_config, fallback_filter_fn)
+                    has_quantized_region = True
         if not has_quantized_region:
             raise ValueError(
                 f"Regional quantization failed because {quant_ctx.repeated_blocks} "
                 "classes are not found in the module."
             )
     else:
-        _quantize_module(module)
+        _quantize_module(module, basic_ao_config, basic_filter_fn)
 
     maybe_empty_cache()
     quant_ctx.summary()
@@ -75,6 +82,22 @@ def quantize_ao(
     return module
 
 
+def _quantize_module(
+    m: torch.nn.Module,
+    ao_config: AOBaseConfig,
+    filter_fn: callable,
+    **kwargs,
+):
+    from torchao.quantization import quantize_
+
+    quantize_(
+        m,
+        ao_config,
+        filter_fn=filter_fn,
+        device=kwargs.get("device", None),
+    )
+
+
 @dataclasses.dataclass
 class QuantizeAOContext:
     module_ref: torch.nn.Module = None  # ref only
@@ -84,14 +107,53 @@ class QuantizeAOContext:
     regional_quantize: bool = True
     repeated_blocks: Optional[List[str]] = None
     exclude_layers: List[str] = dataclasses.field(default_factory=list)
+    float8_per_tensor_fallback: bool = True
     verbose: bool = False
     # stats for summary
     quant_type_rev: str = "float8"
-    num_quant_linear: int = 0
-    num_skip_linear: int = 0
+    num_basic_quant_linear: int = 0
+    num_basic_skip_linear: int = 0
+    num_fallback_quant_linear: int = 0
+    num_fallback_skip_linear: int = 0
     num_linear_layers: int = 0
     num_layers: int = 0
+    # record the full name of quantized layers for better summary and analysis,
+    # the name is in the format of "module1.module2.linear"
+    basic_quantized_layers: List[str] = dataclasses.field(default_factory=list)
+    fallback_quantized_layers: List[str] = dataclasses.field(default_factory=list)
     skipped_reasons: List[str] = dataclasses.field(default_factory=list)
+    alias_map: dict = dataclasses.field(
+        default_factory=lambda: {
+            "float8": "fp8_w8a8_dq",
+            "float8_blockwise": "fp8_blockwise",
+            "float8_weight_only": "fp8_w8a16_wo",
+            "float8_wo": "fp8_w8a16_wo",
+            "int8": "int8_w8a8_dq",
+            "int8_weight_only": "int8_w8a16_wo",
+            "int8_wo": "int8_w8a16_wo",
+            "int4": "int4_w4a8_dq",
+            "int4_weight_only": "int4_w4a16_wo",
+            "int4_wo": "int4_w4a16_wo",
+        }
+    )
+    alias_map_rev: dict = dataclasses.field(
+        default_factory=lambda: {
+            "fp8_w8a8_dq": "float8",
+            "fp8_blockwise": "float8_blockwise",
+            "fp8_w8a16_wo": "float8_weight_only",
+            "int8_w8a8_dq": "int8",
+            "int8_w8a16_wo": "int8_weight_only",
+            "int4_w4a8_dq": "int4",
+            "int4_w4a16_wo": "int4_weight_only",
+        }
+    )
+    # e.g, for rowwise TP -> FP8 per-row -> fallback -> FP8 per-tensor
+    fallback_layers: List[str] = dataclasses.field(default_factory=list)  # all fallback layers
+    # rowwise layers that may cause issue with FP8 per-row quantization,
+    # recorded for better summary and analysis.
+    rowwise_layers: List[str] = dataclasses.field(default_factory=list)
+    # Extra kwargs for trival usage, e.g, weight_dtype and activation_dtype
+    # for float8 quantization, etc.
     kwargs: dict = dataclasses.field(default_factory=dict)
 
     @staticmethod
@@ -107,6 +169,7 @@ class QuantizeAOContext:
             regional_quantize=quantize_config.regional_quantize,
             repeated_blocks=quantize_config.repeated_blocks,
             exclude_layers=quantize_config.exclude_layers,
+            float8_per_tensor_fallback=quantize_config.float8_per_tensor_fallback,
             verbose=quantize_config.verbose,
             kwargs=copy.deepcopy(kwargs),
         )
@@ -117,13 +180,20 @@ class QuantizeAOContext:
             if self.regional_quantize and self.repeated_blocks is not None
             else self.module_ref.__class__.__name__ if self.module_ref else "Module"
         )
+        # Basic summary info.
+        total_quant_linear = self.num_basic_quant_linear + self.num_fallback_quant_linear
+        total_skip_linear = self.num_basic_skip_linear + self.num_fallback_skip_linear
         summary_strs = [
-            f"Quantized        Method: {self.quant_type_rev}",
-            f"Quantized        Region: {quantized_region}",
-            f"Quantized Linear Layers: {self.num_quant_linear:<5}",
-            f"Skipped   Linear Layers: {self.num_skip_linear:<5}",
-            f"Total     Linear Layers: {self.num_linear_layers:<5}",
-            f"Skipped        Patterns: {self.exclude_layers}",
+            f"Quantized                 Method: {self.quant_type_rev}",
+            f"Quantized                 Region: {quantized_region}",
+            f"Quantized    Basic Linear Layers: {self.num_basic_quant_linear:<5}",
+            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear:<5}",
+            f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
+            f"Skipped      Basic Linear Layers: {self.num_basic_skip_linear:<5}",
+            f"Skipped   Fallback Linear Layers: {self.num_fallback_skip_linear:<5}",
+            f"Total      Skipped Linear Layers: {total_skip_linear:<5}",
+            f"Total              Linear Layers: {self.num_linear_layers:<5}",
+            f"Skipped                 Patterns: {self.exclude_layers}",
         ]
         if not self.verbose or not logger.isEnabledFor(logging.DEBUG):
             summary_strs.pop()  # remove skipped patterns in non-verbose mode
@@ -134,15 +204,27 @@ class QuantizeAOContext:
         summary_str = "\n".join(summary_strs)
         logger.info(summary_str)
         logger.info("-" * max_len)
+
+        # Detailed summary for skipped reasons, only log when verbose is True.
         if self.verbose and self.skipped_reasons:
             skipped_reasons_counter = {}
             for reason in self.skipped_reasons:
                 skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
-            skipped_reasons_strs_ = list(skipped_reasons_counter.keys())
-            max_reason_len = max(max(len(s) for s in skipped_reasons_strs_), 0)
+
+            max_name_len = 0
+            max_pattern_len = 0
+            for reason, count in skipped_reasons_counter.items():
+                name, pattern = reason.split("->")
+                max_name_len = max(max_name_len, len(name.strip()))
+                max_pattern_len = max(max_pattern_len, len(pattern.strip()))
+
             skipped_reasons_strs = []
             for reason, count in skipped_reasons_counter.items():
-                skipped_reasons_strs.append(f"{reason:<{max_reason_len}}: {count:<4} layers")
+                name, pattern = reason.split("->")
+                name_str = name.strip().ljust(max_name_len)
+                pattern_str = pattern.strip().ljust(max_pattern_len)
+                skipped_reasons_strs.append(f"{name_str}: {pattern_str}: {count:<4} layers")
+
             # update max_reason_len for the count info
             max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0) + 2
             logger.info("-" * max_reason_len)
@@ -158,38 +240,13 @@ class QuantizeAOContext:
         # such as checking the quantization type and setting the quantization config for
         # different quantization types.
 
-        alias_map = {
-            "float8": "fp8_w8a8_dq",
-            "float8_blockwise": "fp8_blockwise",
-            "float8_weight_only": "fp8_w8a16_wo",
-            "float8_wo": "fp8_w8a16_wo",
-            "int8": "int8_w8a8_dq",
-            "int8_weight_only": "int8_w8a16_wo",
-            "int8_wo": "int8_w8a16_wo",
-            "int4": "int4_w4a8_dq",
-            "int4_weight_only": "int4_w4a16_wo",
-            "int4_wo": "int4_w4a16_wo",
-        }
-        alias_map_rev = copy.deepcopy(alias_map)
-        # remove duplicates *_wo in rev map
-        for key in list(alias_map_rev.keys()):
-            if key.endswith("_wo"):
-                alias_map_rev.pop(key)
-        alias_map_rev = {v: k for k, v in alias_map_rev.items()}
-
         quant_type = self.quant_type
-        if quant_type.lower() in alias_map:
-            quant_type = alias_map[quant_type.lower()]
+        if quant_type.lower() in self.alias_map:
+            quant_type = self.alias_map[quant_type.lower()]
 
         quant_type = quant_type.lower()
-        assert quant_type in (
-            "fp8_w8a8_dq",
-            "fp8_w8a16_wo",
-            "fp8_blockwise",
-            "int8_w8a8_dq",
-            "int8_w8a16_wo",
-            "int4_w4a8_dq",
-            "int4_w4a16_wo",
+        assert (
+            quant_type in self.alias_map_rev
         ), f"{quant_type} is not supported for torchao backend now!"
 
         if "fp8" in quant_type:
@@ -199,26 +256,10 @@ class QuantizeAOContext:
             ), "FP8 is not supported for current device."
 
         self.quant_type = quant_type
-        self.quant_type_rev = alias_map_rev.get(quant_type, quant_type)
+        self.quant_type_rev = self.alias_map_rev.get(quant_type, quant_type)
 
-        prev_exclude_layers = copy.deepcopy(self.exclude_layers)
-        if self.module_ref is not None and hasattr(self.module_ref, "_rowwise_layers"):
-            # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
-            # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-            # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
-            # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
-            if (
-                self.quant_type == "fp8_w8a8_dq"
-                and self.per_row
-                and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
-            ):
-                rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
-                exclude_layers = prev_exclude_layers + rowwise_layers
-                logger.info(
-                    f"Found rowwise layers for {self.module_ref.__class__.__name__}: "
-                    f"{rowwise_layers}"
-                )
-                self.exclude_layers = copy.deepcopy(exclude_layers)
+        # Preprocess exclude layers and fallback layers.
+        self._maybe_fill_fallback_layers()
 
         self.repeated_blocks = getattr(
             self.module_ref,
@@ -231,7 +272,7 @@ class QuantizeAOContext:
             # potential issues.
             self.regional_quantize = False
 
-        if self.per_row and self.module_ref is not None and self.quant_type == "fp8_w8a8_dq":
+        if self.module_ref is not None and self.is_float8_dynamic_per_row():
             # assert the dtype of module's is bfloat16
             for name, submod in self.module_ref.named_modules():
                 if isinstance(submod, torch.nn.Linear):
@@ -241,6 +282,104 @@ class QuantizeAOContext:
                         f"in layer {name}."
                     )
         return self
+
+    def _maybe_fill_fallback_layers(self):
+        exclude_layers = copy.deepcopy(self.exclude_layers)
+        fallback_layers = copy.deepcopy(self.fallback_layers)
+        # Case 0: TP + torchao FP8 per-row quantization.
+        # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
+        # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
+        # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+        # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
+        rowwise_layers = copy.deepcopy(self.rowwise_layers)
+        if self.module_ref is not None and self.is_float8_dynamic_per_row():
+            if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
+                rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
+                if self.float8_per_tensor_fallback and rowwise_layers:
+                    fallback_layers = fallback_layers + rowwise_layers
+                    logger.info(f"Set float8 per tensor fallback layers: {rowwise_layers}.")
+                else:
+                    exclude_layers = exclude_layers + rowwise_layers
+                    logger.info(f"Add rowwise layers to exclude layers: {rowwise_layers}.")
+        self.rowwise_layers = copy.deepcopy(rowwise_layers)
+        # Case 1/2/3/...: Future cases ...
+        # We may add more cases in the future where we need to automatically fill the
+        # fallback layers based on the module's attributes or other conditions, so we
+        # put this logic in a separate function for better maintainability and readability.
+        self.exclude_layers = copy.deepcopy(exclude_layers)
+        self.fallback_layers = copy.deepcopy(fallback_layers)
+
+    def is_int8(self) -> bool:
+        return "int8" in self.quant_type
+
+    def is_int4(self) -> bool:
+        return "int4" in self.quant_type
+
+    def is_weight_only(self) -> bool:
+        return "wo" in self.quant_type
+
+    def is_float8(self) -> bool:
+        return "fp8" in self.quant_type
+
+    def is_float8_dynamic_per_row(self) -> bool:
+        return self.quant_type == "fp8_w8a8_dq" and self.per_row
+
+    def is_float8_blockwise(self) -> bool:
+        return self.quant_type == "fp8_blockwise"
+
+    def can_fallback(self) -> bool:
+        # Currently, only support float8 per-tensor fallback for rowwise layers if
+        # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
+        # quantization for now, we may add more fallback options in the future.
+        return (
+            self.float8_per_tensor_fallback
+            and (self.is_float8_dynamic_per_row() or self.is_float8_blockwise())
+            and (not self.is_weight_only() and not self.is_int8() and not self.is_int4())
+            and self.regional_quantize
+            and bool(self.fallback_layers)
+        )
+
+    def is_fallback_layer(self, name: str) -> bool:
+        if not self.can_fallback():
+            return False
+        fallback_layers = self.fallback_layers if self.fallback_layers else []
+        for fallback_name in fallback_layers:
+            if fallback_name in name:
+                return True
+        return False
+
+    def is_exclude_layer(self, name: str) -> bool:
+        for exclude_name in self.exclude_layers:
+            if exclude_name in name:
+                return True
+        return False
+
+    def is_basic_quantized_layer(self, name: str) -> bool:
+        if name in self.basic_quantized_layers:
+            return True
+        return False
+
+    def is_fallback_quantized_layer(self, name: str) -> bool:
+        if name in self.fallback_quantized_layers:
+            return True
+        return False
+
+    def is_quantized_layer(self, name: str) -> bool:
+        return self.is_basic_quantized_layer(name) or self.is_fallback_quantized_layer(name)
+
+    def is_rowwise_layer(self, name: str) -> bool:
+        for rowwise_name in self.rowwise_layers:
+            if rowwise_name in name:
+                return True
+        return False
+
+    def get_exclude_name(self, name: str) -> Optional[str]:
+        if self.is_rowwise_layer(name):
+            return "Rowwise(Tensor Parallel)"
+        for exclude_name in self.exclude_layers:
+            if exclude_name in name:
+                return exclude_name
+        return None
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
@@ -269,9 +408,10 @@ def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
     return True
 
 
-def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
+def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
+    per_row = kwargs.get("per_row", True)
     try:
-        if quant_ctx.quant_type == "fp8_w8a8_dq":
+        if quant_type == "fp8_w8a8_dq":
             from torchao.quantization import (
                 Float8DynamicActivationFloat8WeightConfig,
                 PerTensor,
@@ -287,12 +427,10 @@ def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
                     "activation_dtype",
                     torch.float8_e4m3fn,
                 ),
-                granularity=(
-                    ((PerRow(), PerRow())) if quant_ctx.per_row else ((PerTensor(), PerTensor()))
-                ),
+                granularity=(((PerRow(), PerRow())) if per_row else ((PerTensor(), PerTensor()))),
             )
 
-        elif quant_ctx.quant_type == "fp8_blockwise":
+        elif quant_type == "fp8_blockwise":
             try:
                 from torchao.quantization import (
                     Float8DynamicActivationFloat8WeightConfig,
@@ -321,7 +459,7 @@ def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
                 granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),  # hardcode
             )
 
-        elif quant_ctx.quant_type == "fp8_w8a16_wo":
+        elif quant_type == "fp8_w8a16_wo":
             from torchao.quantization import Float8WeightOnlyConfig
 
             quant_config = Float8WeightOnlyConfig(
@@ -331,14 +469,14 @@ def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
                 ),
             )
 
-        elif quant_ctx.quant_type == "int8_w8a8_dq":
+        elif quant_type == "int8_w8a8_dq":
             from torchao.quantization import (
                 Int8DynamicActivationInt8WeightConfig,
             )
 
             quant_config = Int8DynamicActivationInt8WeightConfig()
 
-        elif quant_ctx.quant_type == "int8_w8a16_wo":
+        elif quant_type == "int8_w8a16_wo":
 
             from torchao.quantization import Int8WeightOnlyConfig
 
@@ -346,7 +484,7 @@ def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
                 # group_size is None -> per_channel, else per group
                 group_size=kwargs.get("group_size", None),
             )
-        elif quant_ctx.quant_type == "int4_w4a16_wo":
+        elif quant_type == "int4_w4a16_wo":
 
             from torchao.quantization import Int4WeightOnlyConfig
 
@@ -355,11 +493,11 @@ def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
             )
 
         else:
-            raise ValueError(f"quant_type: {quant_ctx.quant_type} is not supported now!")
+            raise ValueError(f"quant_type: {quant_type} is not supported now!")
 
     except ImportError as e:
         e.msg += (
-            f"{quant_ctx.quant_type} is not supported in torchao backend now! "
+            f"{quant_type} is not supported in torchao backend now! "
             "Please consider to use another quantization type instead."
         )
         raise e
@@ -367,7 +505,7 @@ def _quant_config_impl(quant_ctx: QuantizeAOContext, **kwargs):
     return quant_config
 
 
-def _filter_fn_impl(
+def _basic_filter_fn(
     m: torch.nn.Module,
     name: str,
     quant_ctx: QuantizeAOContext = QuantizeAOContext(),
@@ -380,16 +518,25 @@ def _filter_fn_impl(
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
         quant_ctx.num_linear_layers += 1
 
-        for exclude_name in quant_ctx.exclude_layers:
-            if exclude_name in name:
+        # The fallback layers should be skipped in the basic filter function,
+        # and they will be quantized in the fallback filter function.
+        if quant_ctx.is_exclude_layer(name) or quant_ctx.is_fallback_layer(name):
+            # Only record the skip reason for layers that are not in fallback layers,
+            # if fallback is enabled, because we will quantize those layers in the
+            # second pass with fallback config, and we only want to record the skip
+            # reason here for layers that are skipped in basic filter fn, not the layers
+            # that are skipped in fallback filter fn.
+            if not quant_ctx.is_fallback_layer(name):
                 if quant_ctx.verbose:
+                    exclude_name = quant_ctx.get_exclude_name(name)
                     skip_reason = msg_template.format(name=name, pattern=exclude_name)
                     logger.debug(skip_reason)
                     quant_ctx.skipped_reasons.append(skip_reason)
 
-                quant_ctx.num_skip_linear += 1
-                return False
+                quant_ctx.num_basic_skip_linear += 1
+            return False
 
+        # Check for weight dtype for float8 per-row
         if (
             quant_ctx.per_row
             and m.weight.dtype != torch.bfloat16
@@ -403,7 +550,7 @@ def _filter_fn_impl(
                 logger.debug(skip_reason)
                 quant_ctx.skipped_reasons.append(skip_reason)
 
-            quant_ctx.num_skip_linear += 1
+            quant_ctx.num_basic_skip_linear += 1
             return False
 
         # check blockwise fp8 support for linear layers, if not supported,
@@ -419,7 +566,7 @@ def _filter_fn_impl(
                 )
                 logger.debug(skip_reason)
                 quant_ctx.skipped_reasons.append(skip_reason)
-            quant_ctx.num_skip_linear += 1
+            quant_ctx.num_basic_skip_linear += 1
             return False
 
         if quant_ctx.quant_type in [
@@ -433,10 +580,54 @@ def _filter_fn_impl(
                 )
                 logger.debug(skip_reason)
                 quant_ctx.skipped_reasons.append(skip_reason)
-            quant_ctx.num_skip_linear += 1
+            quant_ctx.num_basic_skip_linear += 1
             return False
 
-        quant_ctx.num_quant_linear += 1
+        quant_ctx.num_basic_quant_linear += 1
+        quant_ctx.basic_quantized_layers.append(name)
+        return True
+
+    return False
+
+
+def _fallback_filter_fn(
+    m: torch.nn.Module,
+    name: str,
+    quant_ctx: QuantizeAOContext = QuantizeAOContext(),
+) -> bool:
+    from torchao.float8.float8_linear import Float8Linear
+
+    # Fallback to quant_type: fp8_w8a8_dq, per_row: False
+    msg_template = "Fallback: {name} -> pattern<{pattern}>"
+
+    # Some stats like num_layers and num_linear_layers will be counted in basic_filter_fn,
+    # so here we only count the number of quantized and skipped layers for fallback filter fn.
+    if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
+        if not quant_ctx.is_fallback_layer(name):
+            # Only record the skip reason for layers that are both not in fallback layers and
+            # exclude layers, because the layers in exclude layers will be skipped in basic filter
+            # fn, and we no longer want to record the skip reason for layers in exclude layers here.
+            if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_layer(name):
+                if quant_ctx.verbose:
+                    skip_reason = msg_template.format(name=name, pattern="NOT in fallback layers")
+                    logger.debug(skip_reason)
+                    quant_ctx.skipped_reasons.append(skip_reason)
+                quant_ctx.num_fallback_skip_linear += 1
+            return False
+
+        if not _check_if_linear_with_bias_fp8_can_support(m):
+            if quant_ctx.verbose:
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern="DTensor + bias is not supported for _scaled_mm",
+                )
+                logger.debug(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
+            quant_ctx.num_fallback_skip_linear += 1
+            return False
+
+        quant_ctx.num_fallback_quant_linear += 1
+        quant_ctx.fallback_quantized_layers.append(name)
         return True
 
     return False

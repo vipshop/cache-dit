@@ -10,8 +10,22 @@ class QuantizeConfig:
     # quantization backend, only "ao" (torchao) is supported
     # for now, more backends will be supported in the future.
     backend: str = "ao"
+    # quantization type, currently support "float8_weight_only" and "float8",
+    # "float8_blockwise", "int8", "int8_weight_only", "int4_weight_only", etc.
     quant_type: str = "float8_weight_only"
+    # Whether to quantize the weights in per-row or per-tensor manner when
+    # quant_type is float8, default to per-row quantization, which is more
+    # accurate but may not be supported for some layers, setting this flag
+    # to False will quantize those layers to float8 per-tensor.
     per_row: bool = True
+    # The layers specified in this variable will be excluded from quantization,
+    # even if they are in the repeated blocks or not filtered out by filter_fn.
+    # The format of the layer name should be the same as the name in the model's
+    # state_dict, e.g, "transformer.blocks.0.attn.to_k.weight". This is useful
+    # for cases when some specific layers cannot be quantized for some reasons,
+    # e.g, they are already very small and quantization may cause significant
+    # accuracy drop, or they are not supported to be quantized due to some
+    # technical reasons, etc.
     exclude_layers: Optional[list] = dataclasses.field(
         default_factory=lambda: [
             "embedder",
@@ -35,14 +49,23 @@ class QuantizeConfig:
     # module will be quantized. e.g:
     # - List[str]: ['transformer', 'text_encoder'] quantize to 'quant_type'
     # - Dict[str, Dict[str, str]]: {
-    #       'transformer': {'quant_type': 'float8', 'exclude_layers': ['layer1', 'layer2']},
-    #       'text_encoder': {
-    #           'quant_type': 'float8_weight_only', 'exclude_layers': ['layer3', 'layer4']
-    #       }
+    #     'transformer': {'quant_type': 'float8'},
+    #     'text_encoder': {'quant_type': 'float8_weight_only'}
     #   }.
-    #   The 'quant_type' will be ignored in this case, each module will quantized to
-    #   it's specified quantization type.
+    # The 'quant_type' will be ignored in this case, each module will quantized to
+    # it's specified quantization type.
     components_to_quantize: Optional[Union[List[str], Dict[str, Dict[str, str]]]] = None
+    # Whether to fallback to float8 quantization when float8 per-row or per-block
+    # quantization is not supported for some layers. This is useful for cases when
+    # tensor parallelism is applied, and some layers cannot be quantized to float8
+    # per-row or per-block, e.g, layers applied RowwiseParallel may not support
+    # float8 per-row quantization currently, _scaled_mm will raise memory layout
+    # mismatch error when quantized to float8 per-row, setting this flag to True will fallback
+    # to float8 per tensor quantization for those layers, instead of raising error.
+    float8_per_tensor_fallback: bool = True
+    # Whether to print detailed quantization information, such as the quantization
+    # type of each layer, the reason for skipping quantization, etc. This is useful
+    # for debugging and analysis.
     verbose: bool = False
 
     def as_dict(self) -> Dict[str, Any]:
