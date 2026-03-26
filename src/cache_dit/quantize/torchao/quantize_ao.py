@@ -112,6 +112,10 @@ class QuantizeAOContext:
     num_fallback_skip_linear: int = 0
     num_linear_layers: int = 0
     num_layers: int = 0
+    # record the full name of quantized layers for better summary and analysis,
+    # the name is in the format of "module1.module2.linear"
+    basic_quantized_layers: List[str] = dataclasses.field(default_factory=list)
+    fallback_quantized_layers: List[str] = dataclasses.field(default_factory=list)
     skipped_reasons: List[str] = dataclasses.field(default_factory=list)
     kwargs: dict = dataclasses.field(default_factory=dict)
     alias_map: dict = dataclasses.field(
@@ -173,9 +177,9 @@ class QuantizeAOContext:
             f"Quantized                 Region: {quantized_region}",
             f"Quantized    Basic Linear Layers: {self.num_basic_quant_linear:<5}",
             f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear:<5}",
+            f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
             f"Skipped      Basic Linear Layers: {self.num_basic_skip_linear:<5}",
             f"Skipped   Fallback Linear Layers: {self.num_fallback_skip_linear:<5}",
-            f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
             f"Total      Skipped Linear Layers: {total_skip_linear:<5}",
             f"Total              Linear Layers: {self.num_linear_layers:<5}",
             f"Skipped                 Patterns: {self.exclude_layers}",
@@ -231,25 +235,8 @@ class QuantizeAOContext:
         self.quant_type = quant_type
         self.quant_type_rev = self.alias_map_rev.get(quant_type, quant_type)
 
-        prev_exclude_layers = copy.deepcopy(self.exclude_layers)
-        if self.module_ref is not None and hasattr(self.module_ref, "_rowwise_layers"):
-            # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
-            # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-            # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
-            # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
-            if (
-                self.quant_type == "fp8_w8a8_dq"
-                and self.per_row
-                and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
-            ):
-                rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
-                if self.float8_per_tensor_fallback and rowwise_layers:
-                    self.fallback_layers = copy.deepcopy(rowwise_layers)
-                    logger.info(f"Set float8 per tensor fallback layers: {rowwise_layers}.")
-                else:
-                    exclude_layers = prev_exclude_layers + rowwise_layers
-                    self.exclude_layers = copy.deepcopy(exclude_layers)
-                    logger.info(f"Add rowwise layers to exclude layers: {rowwise_layers}.")
+        # Preprocess exclude layers and fallback layers.
+        self._maybe_fill_fallback_layers()
 
         self.repeated_blocks = getattr(
             self.module_ref,
@@ -273,8 +260,33 @@ class QuantizeAOContext:
                     )
         return self
 
+    def _maybe_fill_fallback_layers(self):
+        exclude_layers = copy.deepcopy(self.exclude_layers)
+        fallback_layers = copy.deepcopy(self.fallback_layers)
+        if self.module_ref is not None and hasattr(self.module_ref, "_rowwise_layers"):
+            # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
+            # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
+            # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+            # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
+            if (
+                self.is_float8_dynamic_per_row()
+                and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
+            ):
+                rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
+                if self.float8_per_tensor_fallback and rowwise_layers:
+                    fallback_layers = fallback_layers + rowwise_layers
+                    logger.info(f"Set float8 per tensor fallback layers: {rowwise_layers}.")
+                else:
+                    exclude_layers = exclude_layers + rowwise_layers
+                    logger.info(f"Add rowwise layers to exclude layers: {rowwise_layers}.")
+        self.exclude_layers = copy.deepcopy(exclude_layers)
+        self.fallback_layers = copy.deepcopy(fallback_layers)
+
     def is_float8(self) -> bool:
         return "fp8" in self.quant_type
+
+    def is_float8_dynamic_per_row(self) -> bool:
+        return self.quant_type == "fp8_w8a8_dq" and self.per_row
 
     def is_int8(self) -> bool:
         return "int8" in self.quant_type
@@ -316,6 +328,11 @@ class QuantizeAOContext:
             if exclude_name in name:
                 return exclude_name
         return None
+
+    def is_quantized_layer(self, name: str) -> bool:
+        if name in self.basic_quantized_layers or name in self.fallback_quantized_layers:
+            return True
+        return False
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
@@ -520,6 +537,7 @@ def _basic_filter_fn(
             return False
 
         quant_ctx.num_basic_quant_linear += 1
+        quant_ctx.basic_quantized_layers.append(name)
         return True
 
     return False
@@ -542,7 +560,7 @@ def _fallback_filter_fn(
             # Only record the skip reason for layers that are both not in fallback layers and
             # exclude layers, because the layers in exclude layers will be skipped in basic filter
             # fn, and we no longer want to record the skip reason for layers in exclude layers here.
-            if not quant_ctx.is_exclude_layer(name):
+            if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_layer(name):
                 if quant_ctx.verbose:
                     skip_reason = msg_template.format(name=name, pattern="NOT in fallback layers")
                     logger.debug(skip_reason)
@@ -562,6 +580,7 @@ def _fallback_filter_fn(
             return False
 
         quant_ctx.num_fallback_quant_linear += 1
+        quant_ctx.fallback_quantized_layers.append(name)
         return True
 
     return False
