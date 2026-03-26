@@ -137,9 +137,11 @@ class QuantizeAOContext:
             skipped_reasons_counter = {}
             for reason in self.skipped_reasons:
                 skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
-            skipped_reasons_strs = []
+            skipped_reasons_strs = list(skipped_reasons_counter.keys())
+            max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0)
             for reason, count in skipped_reasons_counter.items():
-                skipped_reasons_strs.append(f"{reason} -> {count} layers")
+                skipped_reasons_strs.append(f"{reason:<{max_reason_len}}: {count:<4} layers")
+            # update max_reason_len for the count info
             max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0) + 2
             logger.info("-" * max_reason_len)
             # extend strs with spaces for better formatting, the last char is '|'
@@ -370,7 +372,7 @@ def _filter_fn_impl(
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
-    msg_template = "Skip Quantization: {name} -> pattern<{pattern}>"
+    msg_template = "Skip: {name} -> pattern<{pattern}>"
 
     quant_ctx.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
