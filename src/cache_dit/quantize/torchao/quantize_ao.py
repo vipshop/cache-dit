@@ -90,6 +90,7 @@ class QuantizeAOContext:
     num_skip_linear: int = 0
     num_linear_layers: int = 0
     num_layers: int = 0
+    skipped_reasons: List[str] = dataclasses.field(default_factory=list)
     kwargs: dict = dataclasses.field(default_factory=dict)
 
     @staticmethod
@@ -132,6 +133,20 @@ class QuantizeAOContext:
         summary_str = "\n".join(summary_strs)
         logger.info(summary_str)
         logger.info("-" * max_len)
+        if self.verbose and self.skipped_reasons:
+            skipped_reasons_counter = {}
+            for reason in self.skipped_reasons:
+                skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
+            skipped_reasons_strs = []
+            for reason, count in skipped_reasons_counter.items():
+                skipped_reasons_strs.append(f"{reason} -> {count} layers")
+            max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0) + 2
+            logger.info("-" * max_reason_len)
+            # extend strs with spaces for better formatting, the last char is '|'
+            skipped_reasons_strs = [s.ljust(max_reason_len) + "|" for s in skipped_reasons_strs]
+            skipped_reasons_str = "\n".join(skipped_reasons_strs)
+            logger.info(skipped_reasons_str)
+            logger.info("-" * max_reason_len)
 
     def normalize(self, **kwargs) -> "QuantizeAOContext":
         # This function is used to normalize the quantization context, and it will be called
@@ -364,12 +379,9 @@ def _filter_fn_impl(
         for exclude_name in quant_ctx.exclude_layers:
             if exclude_name in name:
                 if quant_ctx.verbose:
-                    logger.info(
-                        msg_template.format(
-                            name=name,
-                            pattern=exclude_name,
-                        )
-                    )
+                    skip_reason = msg_template.format(name=name, pattern=exclude_name)
+                    logger.info(skip_reason)
+                    quant_ctx.skipped_reasons.append(skip_reason)
 
                 quant_ctx.num_skip_linear += 1
                 return False
@@ -380,12 +392,12 @@ def _filter_fn_impl(
             and quant_ctx.quant_type == "fp8_w8a8_dq"
         ):
             if quant_ctx.verbose:
-                logger.info(
-                    msg_template.format(
-                        name=name,
-                        pattern=f"dtype({m.weight.dtype})!=bfloat16",
-                    )
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern=f"dtype({m.weight.dtype})!=bfloat16",
                 )
+                logger.info(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
 
             quant_ctx.num_skip_linear += 1
             return False
@@ -397,12 +409,12 @@ def _filter_fn_impl(
         ] and not _check_if_linear_fp8_blockwise_can_support(m):
             weight_shape = tuple(m.weight.shape)
             if quant_ctx.verbose:
-                logger.info(
-                    msg_template.format(
-                        name=name,
-                        pattern=f"w{weight_shape} % block_size(128, 128) != 0",
-                    )
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern=f"w{weight_shape} % block_size(128, 128) != 0",
                 )
+                logger.info(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
             quant_ctx.num_skip_linear += 1
             return False
 
@@ -411,12 +423,12 @@ def _filter_fn_impl(
             "fp8_blockwise",
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
             if quant_ctx.verbose:
-                logger.info(
-                    msg_template.format(
-                        name=name,
-                        pattern="DTensor + bias is not supported for _scaled_mm",
-                    )
+                skip_reason = msg_template.format(
+                    name=name,
+                    pattern="DTensor + bias is not supported for _scaled_mm",
                 )
+                logger.info(skip_reason)
+                quant_ctx.skipped_reasons.append(skip_reason)
             quant_ctx.num_skip_linear += 1
             return False
 
