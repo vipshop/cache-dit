@@ -403,7 +403,7 @@ def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
     return True
 
 
-def _get_torchao_config(quant_type: str, **kwargs):
+def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
     per_row = kwargs.get("per_row", True)
     try:
         if quant_type == "fp8_w8a8_dq":
