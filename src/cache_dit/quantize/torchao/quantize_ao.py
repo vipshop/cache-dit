@@ -143,7 +143,10 @@ class QuantizeAOContext:
         }
     )
     # e.g, for rowwise TP -> FP8 per-row -> fallback -> FP8 per-tensor
-    fallback_layers: List[str] = dataclasses.field(default_factory=list)
+    fallback_layers: List[str] = dataclasses.field(default_factory=list)  # all fallback layers
+    # rowwise layers that may cause issue with FP8 per-row quantization,
+    # recorded for better summary and analysis.
+    rowwise_layers: List[str] = dataclasses.field(default_factory=list)
     # Extra kwargs for trival usage, e.g, weight_dtype and activation_dtype
     # for float8 quantization, etc.
     kwargs: dict = dataclasses.field(default_factory=dict)
@@ -201,9 +204,20 @@ class QuantizeAOContext:
                 skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
             skipped_reasons_strs_ = list(skipped_reasons_counter.keys())
             max_reason_len = max(max(len(s) for s in skipped_reasons_strs_), 0)
+            skipped_reasons_name_strs = []
+            skipped_reasons_pattern_strs = []
             skipped_reasons_strs = []
             for reason, count in skipped_reasons_counter.items():
-                skipped_reasons_strs.append(f"{reason:<{max_reason_len}}: {count:<4} layers")
+                name, pattern = reason.split("->")
+                skipped_reasons_name_strs.append(name.strip())
+                skipped_reasons_pattern_strs.append(pattern.strip())
+            max_name_len = max(max(len(s) for s in skipped_reasons_name_strs), 0)
+            max_pattern_len = max(max(len(s) for s in skipped_reasons_pattern_strs), 0)
+            for reason, count in skipped_reasons_counter.items():
+                name, pattern = reason.split("->")
+                name_str = name.strip().ljust(max_name_len)
+                pattern_str = pattern.strip().ljust(max_pattern_len)
+                skipped_reasons_strs.append(f"{name_str}: {pattern_str}: {count:<4} layers")
             # update max_reason_len for the count info
             max_reason_len = max(max(len(s) for s in skipped_reasons_strs), 0) + 2
             logger.info("-" * max_reason_len)
@@ -270,6 +284,7 @@ class QuantizeAOContext:
         # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
         # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
         # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
+        rowwise_layers = copy.deepcopy(self.rowwise_layers)
         if self.module_ref is not None and self.is_float8_dynamic_per_row():
             if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
                 rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
@@ -279,6 +294,7 @@ class QuantizeAOContext:
                 else:
                     exclude_layers = exclude_layers + rowwise_layers
                     logger.info(f"Add rowwise layers to exclude layers: {rowwise_layers}.")
+        self.rowwise_layers = copy.deepcopy(rowwise_layers)
         # Case 1/2/3/...: Future cases ...
         # We may add more cases in the future where we need to automatically fill the
         # fallback layers based on the module's attributes or other conditions, so we
@@ -331,12 +347,6 @@ class QuantizeAOContext:
                 return True
         return False
 
-    def get_exclude_name(self, name: str) -> Optional[str]:
-        for exclude_name in self.exclude_layers:
-            if exclude_name in name:
-                return exclude_name
-        return None
-
     def is_basic_quantized_layer(self, name: str) -> bool:
         if name in self.basic_quantized_layers:
             return True
@@ -349,6 +359,20 @@ class QuantizeAOContext:
 
     def is_quantized_layer(self, name: str) -> bool:
         return self.is_basic_quantized_layer(name) or self.is_fallback_quantized_layer(name)
+
+    def is_rowwise_layer(self, name: str) -> bool:
+        for rowwise_name in self.rowwise_layers:
+            if rowwise_name in name:
+                return True
+        return False
+
+    def get_exclude_name(self, name: str) -> Optional[str]:
+        if self.is_rowwise_layer(name):
+            return "Rowwise(Tensor Parallel)"
+        for exclude_name in self.exclude_layers:
+            if exclude_name in name:
+                return exclude_name
+        return None
 
 
 def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
