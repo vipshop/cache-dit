@@ -47,6 +47,10 @@ class TensorParallelismPlanner:
             **kwargs,
         )
 
+        # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
+        # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
+        # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+        # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
         self.record_plans(transformer, layer_plans)
 
         return transformer

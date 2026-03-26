@@ -186,9 +186,8 @@ class QuantizeAOContext:
         if self.module_ref is not None and hasattr(self.module_ref, "_rowwise_layers"):
             # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
             # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-            # use_local_tensor = True (default) in RowwiseParallel (TP) will cause the layout
-            # of the linear weights changedly after '_dispatch_get_local_results_slow_path',
-            # Why??? Need further investigation.
+            # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+            # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
             if (
                 self.quant_type == "fp8_w8a8_dq"
                 and self.per_row
