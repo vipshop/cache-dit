@@ -18,7 +18,7 @@ logger = init_logger(__name__)
 
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLQwenImage")
 class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         auto_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,

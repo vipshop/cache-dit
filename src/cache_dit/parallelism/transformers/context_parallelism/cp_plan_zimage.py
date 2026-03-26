@@ -40,7 +40,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("ZImageTransformer2DModel")
 class ZImageContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -60,7 +60,6 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 
         if parallelism_config.ulysses_async:
             ZSingleStreamAttnProcessor.__call__ = __patch_zimage_attn_processor__
-            self.logging_async_ulysses(transformer)
 
         # NOTE: This only a temporary workaround for ZImage to make context parallelism
         # work compatible with DBCache FnB0. The better way is to make DBCache fully

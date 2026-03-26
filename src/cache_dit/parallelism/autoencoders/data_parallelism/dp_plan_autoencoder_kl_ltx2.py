@@ -16,7 +16,7 @@ from .utils import TileBatchedP2PComm
 
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLLTX2Video")
 class AutoencoderKLLTX2VideoDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         auto_encoder: torch.nn.Module,
         parallelism_config: ParallelismConfig,

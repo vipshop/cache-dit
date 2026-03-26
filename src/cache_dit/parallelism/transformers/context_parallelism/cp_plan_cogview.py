@@ -39,7 +39,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("CogView3Plus")
 class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -108,7 +108,7 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
 
 @ContextParallelismPlannerRegister.register("CogView4")
 class CogView4ContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,

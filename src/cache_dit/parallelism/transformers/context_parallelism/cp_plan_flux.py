@@ -41,7 +41,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("FluxTransformer2DModel")
 class FluxContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -51,7 +51,6 @@ class FluxContextParallelismPlanner(ContextParallelismPlanner):
         if parallelism_config.ulysses_async:
             FluxAttnProcessor.__call__ = __patch_flux_attn_processor__
             FluxSingleTransformerBlock.forward = __patch_flux_single_block__
-            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

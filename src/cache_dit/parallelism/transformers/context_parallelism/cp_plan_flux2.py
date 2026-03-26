@@ -44,7 +44,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("Flux2Transformer2DModel")
 class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -57,7 +57,6 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
             assert not _is_klein_kv(transformer), "Async Ulysses is not supported for Klein-KV now."
             Flux2AttnProcessor.__call__ = __patch_flux2_attn_processor__
             Flux2ParallelSelfAttnProcessor.__call__ = __patch_flux2_self_attn_processor__
-            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

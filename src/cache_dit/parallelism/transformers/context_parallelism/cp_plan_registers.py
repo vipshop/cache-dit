@@ -31,8 +31,47 @@ class ContextParallelismPlanner:
     # Prefer native diffusers implementation if available
     _cp_planner_preferred_native_diffusers: bool = True
 
-    @abstractmethod
     def apply(
+        self,
+        transformer: Optional[torch.nn.Module | ModelMixin] = None,
+        parallelism_config: Optional[ParallelismConfig] = None,
+        **kwargs,
+    ) -> ContextParallelModelPlan:
+        """
+        Apply the context parallelism plan to the given transformer.
+
+        Args:
+            transformer: The transformer model to which the CP plan will be applied.
+            parallelism_config: The parallelism configuration containing mesh and other settings.
+            **kwargs: Additional arguments that may be needed for specific planners.
+
+        Returns:
+            A ContextParallelModelPlan that describes how to apply context parallelism to the model.
+        """
+        assert (
+            transformer is not None
+        ), "Transformer model must be provided to apply context parallelism."
+        assert (
+            parallelism_config is not None
+        ), "ParallelismConfig must be provided to apply context parallelism."
+        cp_plan = self._apply(
+            transformer=transformer,
+            parallelism_config=parallelism_config,
+            **kwargs,
+        )
+        transformer._cp_plan = cp_plan
+        cls_name = transformer.__class__.__name__
+        # Do some post-processing or logging if needed, e.g., log the CP plan details
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Generated CP plan: {cp_plan}")
+        # Or, some CP planners may require enabling async ulysses attention, which can
+        # be logged here.
+        if parallelism_config and getattr(parallelism_config, "ulysses_async", False):
+            logger.info(f"Async Ulysses Attention is enabled for {cls_name}.")
+        return cp_plan
+
+    @abstractmethod
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -40,16 +79,6 @@ class ContextParallelismPlanner:
     ) -> ContextParallelModelPlan:
         # NOTE: This method should only return the CP plan dictionary.
         raise NotImplementedError("apply method must be implemented by subclasses")
-
-    def logging_async_ulysses(
-        self,
-        transformer: Optional[torch.nn.Module | ModelMixin] = None,
-    ):
-        if transformer is not None:
-            cls_name = transformer.__class__.__name__
-            logger.info(f"Async Ulysses Attention is enabled for {cls_name}.")
-        else:
-            logger.info("Async Ulysses Attention is enabled.")
 
 
 class ContextParallelismPlannerRegister:

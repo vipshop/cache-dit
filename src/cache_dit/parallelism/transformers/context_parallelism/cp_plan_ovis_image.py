@@ -49,7 +49,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("OvisImageTransformer2DModel")
 class OvisImageContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -59,7 +59,6 @@ class OvisImageContextParallelismPlanner(ContextParallelismPlanner):
         if parallelism_config.ulysses_async:
             OvisImageAttnProcessor.__call__ = __patch_ovis_attn_processor__
             OvisImageSingleTransformerBlock.forward = __patch_ovis_single_block__
-            self.logging_async_ulysses(transformer)
 
         if transformer is not None and self._cp_planner_preferred_native_diffusers:
             assert isinstance(

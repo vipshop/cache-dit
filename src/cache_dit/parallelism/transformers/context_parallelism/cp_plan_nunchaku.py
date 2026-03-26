@@ -58,7 +58,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("NunchakuFlux")
 class NunchakuFluxContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -223,7 +223,7 @@ def __patch_NunchakuFluxFA2Processor__call__(
 
 @ContextParallelismPlannerRegister.register("NunchakuQwenImage")
 class NunchakuQwenImageContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,
@@ -396,7 +396,7 @@ def __patch_NunchakuQwenImageNaiveFA2Processor__call__(
 
 @ContextParallelismPlannerRegister.register("NunchakuZImageTransformer2DModel")
 class NunchakuZImageContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,

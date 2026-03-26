@@ -39,7 +39,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("ChronoEditTransformer3D")
 class ChronoEditContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,

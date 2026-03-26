@@ -37,7 +37,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("WanTransformer3D")
 class WanContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
@@ -207,7 +207,7 @@ def __patch_WanAttnProcessor__call__(
 
 @ContextParallelismPlannerRegister.register("WanVACETransformer3D")
 class WanVACEContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         **kwargs,

@@ -28,7 +28,7 @@ logger = init_logger(__name__)
 
 @ContextParallelismPlannerRegister.register("HeliosTransformer3DModel")
 class HeliosContextParallelismPlanner(ContextParallelismPlanner):
-    def apply(
+    def _apply(
         self,
         transformer: Optional[torch.nn.Module | ModelMixin] = None,
         parallelism_config: Optional[ParallelismConfig] = None,
