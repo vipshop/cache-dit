@@ -195,7 +195,7 @@ class QuantizeAOContext:
                 and not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP
             ):
                 exclude_layers = prev_exclude_layers + self.module_ref._rowwise_layers
-                logger.info(
+                logger.debug(
                     f"Found rowwise layers for {self.module_ref.__class__.__name__}: "
                     f"{self.module_ref._rowwise_layers}"
                 )
