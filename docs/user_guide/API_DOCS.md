@@ -135,7 +135,7 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   in parallelism_config when both are provided.
 
 - **<span style="color:#c77dff;">quantize_config</span>** (`QuantizeConfig`, *optional*, defaults to None):   
-  Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance. Supported quantization types include: float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
+  Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance. Supported quantization types include: float8_per_row, float8_per_tensor, float8_per_block, float8_weight_only, int8_per_row, int8_per_tensor, int8_weight_only, int4_weight_only, etc. Please check [config.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/quantize/config.py) for more details.
 
 - **<span style="color:#c77dff;">kwargs</span>** (`dict`, *optional*, defaults to {}):   
   Other cache context keyword arguments. Please check [cache_contexts/cache_context.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py) for more details.

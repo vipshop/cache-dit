@@ -172,7 +172,7 @@ For examples, without fp8 per-tensor fallback, the cache-dit will auto skip the 
 # w/o fp8 per-tensor fallback, quantize 88 layers, skip 56 layers, performance downgrade.
 torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
    --parallel tp --compile --float8-per-row --q-verbose \
-   --disable-float8-per-tensor-fallback
+   --disable-per-tensor-fallback
 
 --------------------------------------------------------------------------------------------
 Quantized                 Method: float8_per_row                                            |
@@ -202,12 +202,11 @@ torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
    --parallel tp --compile --float8-per-row --q-verbose  
 
 # default, enabled fp8 per-tensor fallback
-
 --------------------------------------------------------------------------------------------
 Quantized                 Method: float8_per_row                                            |
 Quantized                 Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
 Quantized    Basic Linear Layers: 88                                                        |
-Quantized Fallback Linear Layers: 56   (per-tensor)                                         |
+Quantized Fallback Linear Layers: 56 (per_tensor)                                           |
 Total    Quantized Linear Layers: 144                                                       |
 Skipped      Basic Linear Layers: 0                                                         |
 Skipped   Fallback Linear Layers: 0                                                         |
