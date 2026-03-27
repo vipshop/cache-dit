@@ -181,7 +181,7 @@ class QuantizeAOContext:
             f"Quantized                 Method: {self.quant_type}",
             f"Quantized                 Region: {quantized_region}",
             f"Quantized    Basic Linear Layers: {self.num_basic_quant_linear:<5}",
-            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear:<5}(per-tensor)",
+            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear}(per-tensor)",
             f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
             f"Skipped      Basic Linear Layers: {self.num_basic_skip_linear:<5}",
             f"Skipped   Fallback Linear Layers: {self.num_fallback_skip_linear:<5}",
