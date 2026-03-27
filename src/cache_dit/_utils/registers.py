@@ -651,7 +651,6 @@ class Example:
         self.output_data = output_data
 
         if self.rank == 0:
-            logger.info("-" * 100)
             self.init_config.summary(
                 self.args,
                 # path for extra model, e.g., lora weights, svdq int4 weights, etc.
@@ -662,7 +661,6 @@ class Example:
             self.input_data.summary(self.args)
             self.output_data.summary(self.args)
             self.output_data.save(self.args)
-            logger.info("-" * 100)
 
         maybe_destroy_distributed()
 
