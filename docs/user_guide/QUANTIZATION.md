@@ -44,7 +44,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Users can also specify different quantization configs for different components. For example, quantize the  <span style="color:#c77dff;">transformer</span> to  <span style="color:#c77dff;">float8_per_row</span> and the <span style="color:#c77dff;">text encoder</span> to <span style="color:#c77dff;">float8_weight_only</span>.
+Users can also specify different quantization configs for different components. For example, quantize the <span style="color:#c77dff;">transformer</span> to <span style="color:#c77dff;">float8_per_row</span> and the <span style="color:#c77dff;">text encoder</span> to <span style="color:#c77dff;">float8_weight_only</span>.
 
 ```python
 import cache_dit
