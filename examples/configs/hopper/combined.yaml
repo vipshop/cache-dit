@@ -13,7 +13,7 @@ parallelism_config:
   attention_backend: _flash_3
   extra_parallel_modules: ["text_encoder", "vae"]
 quantize_config: 
-  quant_type: "float8" 
+  quant_type: "float8_per_row" 
   exclude_layers: 
     - "embedder"
     - "embed"

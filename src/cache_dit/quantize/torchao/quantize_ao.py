@@ -31,11 +31,7 @@ def quantize_ao(
     # set regional_quantize to False to disable this behavior and quantize
     # the whole module directly. For models outside of diffusers, users can specify
     # the repeated blocks by setting repeated_blocks to a list of block names.
-    basic_ao_config = _get_torchao_config(
-        quant_ctx.quant_type,
-        per_row=quant_ctx.per_row,
-        **quant_ctx.kwargs,
-    )
+    basic_ao_config = _get_torchao_config(quant_ctx.quant_type, **quant_ctx.kwargs)
     basic_filter_fn = partial(_basic_filter_fn, quant_ctx=quant_ctx)
 
     # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
@@ -55,9 +51,7 @@ def quantize_ao(
         # the layers are not quantized in the first pass. Currently, only support float8 per-tensor
         # fallback for rowwise layers in TP, and the fallback config is set to per-tensor quantization.
         if quant_ctx.can_fallback():
-            fallback_ao_config = _get_torchao_config(
-                "fp8_w8a8_dq", per_row=False, **quant_ctx.kwargs
-            )  # fallback to per-tensor quantization
+            fallback_ao_config = _get_torchao_config("float8_per_tensor", **quant_ctx.kwargs)
             fallback_filter_fn = partial(_fallback_filter_fn, quant_ctx=quant_ctx)
             for submod in module.modules():
                 if submod.__class__.__name__ in quant_ctx.repeated_blocks:
@@ -102,15 +96,13 @@ def _quantize_module(
 class QuantizeAOContext:
     module_ref: torch.nn.Module = None  # ref only
     # quantization config
-    quant_type: str = "fp8_w8a8_dq"
-    per_row: bool = True
+    quant_type: str = "float8_per_row"
     regional_quantize: bool = True
     repeated_blocks: Optional[List[str]] = None
     exclude_layers: List[str] = dataclasses.field(default_factory=list)
     float8_per_tensor_fallback: bool = True
     verbose: bool = False
     # stats for summary
-    quant_type_rev: str = "float8"
     num_basic_quant_linear: int = 0
     num_basic_skip_linear: int = 0
     num_fallback_quant_linear: int = 0
@@ -122,31 +114,6 @@ class QuantizeAOContext:
     basic_quantized_layers: List[str] = dataclasses.field(default_factory=list)
     fallback_quantized_layers: List[str] = dataclasses.field(default_factory=list)
     skipped_reasons: List[str] = dataclasses.field(default_factory=list)
-    alias_map: dict = dataclasses.field(
-        default_factory=lambda: {
-            "float8": "fp8_w8a8_dq",
-            "float8_blockwise": "fp8_blockwise",
-            "float8_weight_only": "fp8_w8a16_wo",
-            "float8_wo": "fp8_w8a16_wo",
-            "int8": "int8_w8a8_dq",
-            "int8_weight_only": "int8_w8a16_wo",
-            "int8_wo": "int8_w8a16_wo",
-            "int4": "int4_w4a8_dq",
-            "int4_weight_only": "int4_w4a16_wo",
-            "int4_wo": "int4_w4a16_wo",
-        }
-    )
-    alias_map_rev: dict = dataclasses.field(
-        default_factory=lambda: {
-            "fp8_w8a8_dq": "float8",
-            "fp8_blockwise": "float8_blockwise",
-            "fp8_w8a16_wo": "float8_weight_only",
-            "int8_w8a8_dq": "int8",
-            "int8_w8a16_wo": "int8_weight_only",
-            "int4_w4a8_dq": "int4",
-            "int4_w4a16_wo": "int4_weight_only",
-        }
-    )
     # e.g, for rowwise TP -> FP8 per-row -> fallback -> FP8 per-tensor
     fallback_layers: List[str] = dataclasses.field(default_factory=list)  # all fallback layers
     # rowwise layers that may cause issue with FP8 per-row quantization,
@@ -155,6 +122,33 @@ class QuantizeAOContext:
     # Extra kwargs for trival usage, e.g, weight_dtype and activation_dtype
     # for float8 quantization, etc.
     kwargs: dict = dataclasses.field(default_factory=dict)
+    # Allow quantization types
+    allowed_quant_types: List[str] = dataclasses.field(
+        default_factory=lambda: [
+            "float8_per_row",  # w8a8
+            "float8_per_tensor",  # w8a8
+            "float8_per_block",  # w8a8
+            "float8_weight_only",  # w8a16_wo
+            "int8_per_row",  # w8a8
+            "int8_per_tensor",  # w8a8
+            "int8_weight_only",  # w8a16_wo
+            "int4_weight_only",  # w4a16_wo
+        ]
+    )
+
+    def __post_init__(self):
+        self.quant_type = self.quant_type.lower()
+        assert self.quant_type in self.allowed_quant_types, (
+            f"quant_type {self.quant_type} is not supported, allowed quantization "
+            f"types: {self.allowed_quant_types}."
+        )
+        if self.is_float8():
+            assert current_platform.get_device_capability() >= (
+                8,
+                9,
+            ), "FP8 requires Ada or newer GPUs (>=sm89), current device capability is " + str(
+                current_platform.get_device_capability()
+            )
 
     @staticmethod
     def from_config(
@@ -165,7 +159,6 @@ class QuantizeAOContext:
         return QuantizeAOContext(
             module_ref=module,  # ref
             quant_type=quantize_config.quant_type,
-            per_row=quantize_config.per_row,
             regional_quantize=quantize_config.regional_quantize,
             repeated_blocks=quantize_config.repeated_blocks,
             exclude_layers=quantize_config.exclude_layers,
@@ -183,11 +176,12 @@ class QuantizeAOContext:
         # Basic summary info.
         total_quant_linear = self.num_basic_quant_linear + self.num_fallback_quant_linear
         total_skip_linear = self.num_basic_skip_linear + self.num_fallback_skip_linear
+
         summary_strs = [
-            f"Quantized                 Method: {self.quant_type_rev}",
+            f"Quantized                 Method: {self.quant_type}",
             f"Quantized                 Region: {quantized_region}",
             f"Quantized    Basic Linear Layers: {self.num_basic_quant_linear:<5}",
-            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear:<5}",
+            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear:<5}(per-tensor)",
             f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
             f"Skipped      Basic Linear Layers: {self.num_basic_skip_linear:<5}",
             f"Skipped   Fallback Linear Layers: {self.num_fallback_skip_linear:<5}",
@@ -240,24 +234,6 @@ class QuantizeAOContext:
         # such as checking the quantization type and setting the quantization config for
         # different quantization types.
 
-        quant_type = self.quant_type
-        if quant_type.lower() in self.alias_map:
-            quant_type = self.alias_map[quant_type.lower()]
-
-        quant_type = quant_type.lower()
-        assert (
-            quant_type in self.alias_map_rev
-        ), f"{quant_type} is not supported for torchao backend now!"
-
-        if "fp8" in quant_type:
-            assert current_platform.get_device_capability() >= (
-                8,
-                9,
-            ), "FP8 is not supported for current device."
-
-        self.quant_type = quant_type
-        self.quant_type_rev = self.alias_map_rev.get(quant_type, quant_type)
-
         # Preprocess exclude layers and fallback layers.
         self._maybe_fill_fallback_layers()
 
@@ -272,7 +248,7 @@ class QuantizeAOContext:
             # potential issues.
             self.regional_quantize = False
 
-        if self.module_ref is not None and self.is_float8_dynamic_per_row():
+        if self.module_ref is not None and self.is_float8_per_row():
             # assert the dtype of module's is bfloat16
             for name, submod in self.module_ref.named_modules():
                 if isinstance(submod, torch.nn.Linear):
@@ -292,7 +268,7 @@ class QuantizeAOContext:
         # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
         # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
         rowwise_layers = copy.deepcopy(self.rowwise_layers)
-        if self.module_ref is not None and self.is_float8_dynamic_per_row():
+        if self.module_ref is not None and self.is_float8_per_row():
             if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
                 rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
                 if rowwise_layers:
@@ -313,20 +289,35 @@ class QuantizeAOContext:
     def is_int8(self) -> bool:
         return "int8" in self.quant_type
 
+    def is_int8_per_row(self) -> bool:
+        return self.quant_type == "int8_per_row"
+
+    def is_int8_per_tensor(self) -> bool:
+        return self.quant_type == "int8_per_tensor"
+
+    def is_int8_weight_only(self) -> bool:
+        return self.quant_type == "int8_weight_only"
+
     def is_int4(self) -> bool:
         return "int4" in self.quant_type
 
     def is_weight_only(self) -> bool:
-        return "wo" in self.quant_type
+        return "weight_only" in self.quant_type
 
     def is_float8(self) -> bool:
-        return "fp8" in self.quant_type
+        return "float8" in self.quant_type
 
-    def is_float8_dynamic_per_row(self) -> bool:
-        return self.quant_type == "fp8_w8a8_dq" and self.per_row
+    def is_float8_per_row(self) -> bool:
+        return self.quant_type == "float8_per_row"
 
-    def is_float8_blockwise(self) -> bool:
-        return self.quant_type == "fp8_blockwise"
+    def is_float8_per_tensor(self) -> bool:
+        return self.quant_type == "float8_per_tensor"
+
+    def is_float8_per_block(self) -> bool:
+        return self.quant_type == "float8_per_block"
+
+    def is_float8_weight_only(self) -> bool:
+        return self.quant_type == "float8_weight_only"
 
     def can_fallback(self) -> bool:
         # Currently, only support float8 per-tensor fallback for rowwise layers if
@@ -334,7 +325,11 @@ class QuantizeAOContext:
         # quantization for now, we may add more fallback options in the future.
         return (
             self.float8_per_tensor_fallback
-            and (self.is_float8_dynamic_per_row() or self.is_float8_blockwise())
+            and (
+                self.is_float8_per_row()
+                or self.is_float8_per_tensor()
+                or self.is_float8_per_block()
+            )
             and (not self.is_weight_only() and not self.is_int8() and not self.is_int4())
             and self.regional_quantize
             and bool(self.fallback_layers)
@@ -355,18 +350,18 @@ class QuantizeAOContext:
                 return True
         return False
 
-    def is_basic_quantized_layer(self, name: str) -> bool:
+    def is_basic_quantized(self, name: str) -> bool:
         if name in self.basic_quantized_layers:
             return True
         return False
 
-    def is_fallback_quantized_layer(self, name: str) -> bool:
+    def is_fallback_quantized(self, name: str) -> bool:
         if name in self.fallback_quantized_layers:
             return True
         return False
 
     def is_quantized_layer(self, name: str) -> bool:
-        return self.is_basic_quantized_layer(name) or self.is_fallback_quantized_layer(name)
+        return self.is_basic_quantized(name) or self.is_fallback_quantized(name)
 
     def is_rowwise_layer(self, name: str) -> bool:
         for rowwise_name in self.rowwise_layers:
@@ -410,12 +405,10 @@ def _check_if_module_can_quantized(module: torch.nn.Module) -> bool:
 
 
 def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
-    per_row = kwargs.get("per_row", True)
     try:
-        if quant_type == "fp8_w8a8_dq":
+        if quant_type == "float8_per_row":
             from torchao.quantization import (
                 Float8DynamicActivationFloat8WeightConfig,
-                PerTensor,
                 PerRow,
             )
 
@@ -428,10 +421,27 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
                     "activation_dtype",
                     torch.float8_e4m3fn,
                 ),
-                granularity=(((PerRow(), PerRow())) if per_row else ((PerTensor(), PerTensor()))),
+                granularity=(PerRow(), PerRow()),
+            )
+        elif quant_type == "float8_per_tensor":
+            from torchao.quantization import (
+                Float8DynamicActivationFloat8WeightConfig,
+                PerTensor,
             )
 
-        elif quant_type == "fp8_blockwise":
+            quant_config = Float8DynamicActivationFloat8WeightConfig(
+                weight_dtype=kwargs.get(
+                    "weight_dtype",
+                    torch.float8_e4m3fn,
+                ),
+                activation_dtype=kwargs.get(
+                    "activation_dtype",
+                    torch.float8_e4m3fn,
+                ),
+                granularity=((PerTensor(), PerTensor())),
+            )
+
+        elif quant_type == "float8_per_block":
             try:
                 from torchao.quantization import (
                     Float8DynamicActivationFloat8WeightConfig,
@@ -460,7 +470,7 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
                 granularity=((PerBlock([1, 128]), PerBlock([128, 128]))),  # hardcode
             )
 
-        elif quant_type == "fp8_w8a16_wo":
+        elif quant_type == "float8_weight_only":
             from torchao.quantization import Float8WeightOnlyConfig
 
             quant_config = Float8WeightOnlyConfig(
@@ -470,14 +480,26 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
                 ),
             )
 
-        elif quant_type == "int8_w8a8_dq":
+        elif quant_type == "int8_per_row":
             from torchao.quantization import (
                 Int8DynamicActivationInt8WeightConfig,
+                PerRow,
             )
 
-            quant_config = Int8DynamicActivationInt8WeightConfig()
+            quant_config = Int8DynamicActivationInt8WeightConfig(
+                granularity=(PerRow(), PerRow()),
+            )
+        elif quant_type == "int8_per_tensor":
+            from torchao.quantization import (
+                Int8DynamicActivationInt8WeightConfig,
+                PerTensor,
+            )
 
-        elif quant_type == "int8_w8a16_wo":
+            quant_config = Int8DynamicActivationInt8WeightConfig(
+                granularity=(PerTensor(), PerTensor()),
+            )
+
+        elif quant_type == "int8_weight_only":
 
             from torchao.quantization import Int8WeightOnlyConfig
 
@@ -485,7 +507,7 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
                 # group_size is None -> per_channel, else per group
                 group_size=kwargs.get("group_size", None),
             )
-        elif quant_type == "int4_w4a16_wo":
+        elif quant_type == "int4_weight_only":
 
             from torchao.quantization import Int4WeightOnlyConfig
 
@@ -538,11 +560,7 @@ def _basic_filter_fn(
             return False
 
         # Check for weight dtype for float8 per-row
-        if (
-            quant_ctx.per_row
-            and m.weight.dtype != torch.bfloat16
-            and quant_ctx.quant_type == "fp8_w8a8_dq"
-        ):
+        if quant_ctx.quant_type == "float8_per_row" and m.weight.dtype != torch.bfloat16:
             if quant_ctx.verbose:
                 skip_reason = msg_template.format(
                     name=name,
@@ -557,7 +575,7 @@ def _basic_filter_fn(
         # check blockwise fp8 support for linear layers, if not supported,
         # skip quantization for that layer.
         if quant_ctx.quant_type in [
-            "fp8_blockwise",
+            "float8_per_block",
         ] and not _check_if_linear_fp8_blockwise_can_support(m):
             weight_shape = tuple(m.weight.shape)
             if quant_ctx.verbose:
@@ -571,8 +589,9 @@ def _basic_filter_fn(
             return False
 
         if quant_ctx.quant_type in [
-            "fp8_w8a8_dq",
-            "fp8_blockwise",
+            "float8_per_row",
+            "float8_per_tensor",
+            "float8_per_block",
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
             if quant_ctx.verbose:
                 skip_reason = msg_template.format(
@@ -598,7 +617,7 @@ def _fallback_filter_fn(
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
-    # Fallback to quant_type: fp8_w8a8_dq, per_row: False
+    # Fallback to quant_type: float8_per_tensor.
     msg_template = "Fallback: {name} -> pattern<{pattern}>"
 
     # Some stats like num_layers and num_linear_layers will be counted in basic_filter_fn,

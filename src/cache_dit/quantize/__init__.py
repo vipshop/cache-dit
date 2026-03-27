@@ -1,7 +1,6 @@
 import torch
 import copy
 from typing import Optional
-from .utils import normalize_quantize_type
 from .config import QuantizeConfig
 from ..logger import init_logger
 

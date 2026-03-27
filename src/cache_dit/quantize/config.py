@@ -10,14 +10,9 @@ class QuantizeConfig:
     # quantization backend, only "ao" (torchao) is supported
     # for now, more backends will be supported in the future.
     backend: str = "ao"
-    # quantization type, currently support "float8_weight_only" and "float8",
-    # "float8_blockwise", "int8", "int8_weight_only", "int4_weight_only", etc.
-    quant_type: str = "float8_weight_only"
-    # Whether to quantize the weights in per-row or per-tensor manner when
-    # quant_type is float8, default to per-row quantization, which is more
-    # accurate but may not be supported for some layers, setting this flag
-    # to False will quantize those layers to float8 per-tensor.
-    per_row: bool = True
+    # quantization type, currently support "float8_weight_only" and "float8_per_row",
+    # "float8_per_tensor", "float8_per_block", "int8", "int8_weight_only", "int4_weight_only", etc.
+    quant_type: str = "float8_per_row"
     # The layers specified in this variable will be excluded from quantization,
     # even if they are in the repeated blocks or not filtered out by filter_fn.
     # The format of the layer name should be the same as the name in the model's
@@ -49,7 +44,7 @@ class QuantizeConfig:
     # module will be quantized. e.g:
     # - List[str]: ['transformer', 'text_encoder'] quantize to 'quant_type'
     # - Dict[str, Dict[str, str]]: {
-    #     'transformer': {'quant_type': 'float8'},
+    #     'transformer': {'quant_type': 'float8_per_row'},
     #     'text_encoder': {'quant_type': 'float8_weight_only'}
     #   }.
     # The 'quant_type' will be ignored in this case, each module will quantized to
@@ -121,7 +116,6 @@ class QuantizeConfig:
                     backend=cfg.get("backend", config.backend),
                     components_to_quantize=[component],
                     quant_type=cfg.get("quant_type", config.quant_type),
-                    per_row=cfg.get("per_row", config.per_row),
                     exclude_layers=cfg.get("exclude_layers", config.exclude_layers),
                     regional_quantize=cfg.get("regional_quantize", config.regional_quantize),
                     repeated_blocks=cfg.get("repeated_blocks", config.repeated_blocks),

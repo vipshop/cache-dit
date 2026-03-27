@@ -213,8 +213,8 @@ You can also specify the quantization config in the yaml file. For example, defi
 
 ```yaml
 quantize_config: # quantization configuration for transformer modules
-  # float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
-  quant_type: "float8" 
+  # float8_per_row, float8_per_tensor, float8_weight_only, float8_blockwise, int8_per_row, int8_per_tensor, int8_weight_only, int4_weight_only, etc.
+  quant_type: "float8_per_row" 
   # layers to exclude from quantization (transformer). layers that contains any of the 
   # keywords in the exclude_layers list will be excluded from quantization. This is useful 
   # for some sensitive layers that are not robust to quantization, e.g., embedding layers.
@@ -242,8 +242,7 @@ You can also specify the quantization config (via `components_to_quantize`) for 
 quantize_config: 
   components_to_quantize:
     transformer:
-      quant_type: "float8"
-      per_row: true
+      quant_type: "float8_per_row"
       exclude_layers:  
         - "embedder"
         - "embed"
@@ -279,7 +278,7 @@ parallelism_config:
   attention_backend: native
   extra_parallel_modules: ["text_encoder", "vae"]
 quantize_config: 
-  quant_type: "float8" 
+  quant_type: "float8_per_row" 
   exclude_layers: 
     - "embedder"
     - "embed"

@@ -51,7 +51,7 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2),
-...   quantize_config=QuantizeConfig(quant_type="float8"))
+...   quantize_config=QuantizeConfig(quant_type="float8_per_row"))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
@@ -81,7 +81,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting document, tes
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={cache-dit: A PyTorch-native and Flexible Inference Engine with Hybrid Cache Acceleration and Parallelism for DiTs.},
+  title={Cache-DiT: A PyTorch-native Inference Engine with Hybrid Cache Acceleration and Massive Parallelism for DiTs.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com, etc.},

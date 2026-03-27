@@ -1,8 +1,7 @@
 quantize_config: 
   components_to_quantize:
     transformer:
-      quant_type: "float8"
-      per_row: true
+      quant_type: "float8_per_row"
       exclude_layers:  
         - "embedder"
         - "embed"

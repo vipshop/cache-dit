@@ -425,7 +425,7 @@ class ModelManager:
                                 cache_dit.quantize(
                                     transformer,
                                     quant_type=self.quantize_type,
-                                    per_row=is_per_row_supported(transformer),
+                                    float8_per_row=is_per_row_supported(transformer),
                                 ),
                             )
                         elif transformer is not None:
@@ -447,7 +447,7 @@ class ModelManager:
                                 cache_dit.quantize(
                                     transformer_2,
                                     quant_type=self.quantize_type,
-                                    per_row=is_per_row_supported(transformer_2),
+                                    float8_per_row=is_per_row_supported(transformer_2),
                                 ),
                             )
                         elif transformer_2 is not None:
