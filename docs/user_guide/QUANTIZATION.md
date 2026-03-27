@@ -8,7 +8,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 
 |quantization type| description|devices|
 |:---|:---|:---| 
-|<span style="color:#c77dff;">float8_per_row</span>, |quantize weights and activations to float8 (dynamic quantization) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (dynamic quantization) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization (dynamic quantization) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">float8_weight_only</span>|quantize only weights to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|

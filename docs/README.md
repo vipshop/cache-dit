@@ -51,7 +51,7 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2),
-...   quantize_config=QuantizeConfig(quant_type="float8_per_row"))
+...   quantize_config=QuantizeConfig(quant_type="..."))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
