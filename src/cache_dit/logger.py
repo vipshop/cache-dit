@@ -191,24 +191,30 @@ def suppress_loggers(loggers_to_suppress: list[str], level: int = logging.ERROR)
 def suppress_torch_compile_loggers() -> dict[str, int]:
     """Set specified torch loggers to ERROR level to suppress warnings."""
     # Suppress specific warnings from torch._dynamo and torch._inductor when using compile
-    warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._dynamo.*")
-    warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._inductor.*")
-    warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\.compiler.*")
-    warnings.filterwarnings("ignore", category=FutureWarning, module=r"torch\._dynamo.*")
-    warnings.filterwarnings("ignore", category=FutureWarning, module=r"torch\._inductor.*")
-    warnings.filterwarnings("ignore", category=FutureWarning, module=r"torch\.compiler.*")
+    modules_to_suppress_warnings = [
+        r"torch\._dynamo.*",
+        r"torch\._inductor.*",
+        r"torch\.compiler.*",
+        r"torch\._functorch.*",
+        r"torch\._export.*",
+        r"torch\._fx.*",
+        r"torch\._meta_tracing.*",
+        r"diffusers\.*",
+    ]
+    for module in modules_to_suppress_warnings:
+        warnings.filterwarnings("ignore", category=UserWarning, module=module)
+        warnings.filterwarnings("ignore", category=FutureWarning, module=module)
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module=module)
     # diffusers emits this deprecation warning from its own modules, so module-based
     # filters for torch.* do not match. Filter by warning message to suppress it.
-    warnings.filterwarnings(
-        "ignore",
-        category=FutureWarning,
-        message=r".*torch\._dynamo\.allow_in_graph is deprecated.*",
-    )
-    warnings.filterwarnings(
-        "ignore",
-        category=UserWarning,
-        message=r".*torch\._dynamo\.allow_in_graph is deprecated.*",
-    )
+    messages_to_suppress_warnings = [
+        r".*torch\._dynamo\.allow_in_graph*",
+        r"AffineQuantizedTensor does not implement*",
+    ]
+    for message in messages_to_suppress_warnings:
+        warnings.filterwarnings("ignore", category=UserWarning, message=message)
+        warnings.filterwarnings("ignore", category=FutureWarning, message=message)
+        warnings.filterwarnings("ignore", category=DeprecationWarning, message=message)
     compile_loggers_names = [
         "torch._dynamo",
         "torch._inductor",

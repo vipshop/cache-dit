@@ -2,16 +2,28 @@
 
 <div id="quantization"></div>
 
-## Cache-DiT w/ TorchAo
+## Overview
+
+Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including FP8, INT8, and INT4 quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
+
+|quantization type| description|devices|
+|:---|:---|:---| 
+|<span style="color:#c77dff;">float8 (per-tensor, per-row)</span>, recommended|quantize weights and activations to float8 (dynamic quantization), default to per-row.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_weight_only</span>|quantize only weights to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_blockwise</span>|block-wise quantization to float8, which can provide better precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">int8</span>|quantize weights and activations to int8 (dynamic quantization)|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int8_weight_only</span>|quantize only weights to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int4_weight_only</span>|quantize only weights to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
+
+
+## FP8 Quantization
 
 Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
 
-For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, <span style="color:#c77dff;">int8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
+For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
 
-  - <span style="color:#c77dff;">float8</span>: quantize both weights and activations to float8 (dynamic quantization).  
+  - <span style="color:#c77dff;">float8 (per-tensor, per-row)</span>: quantize both weights and activations to float8 (dynamic quantization).  
   - <span style="color:#c77dff;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision.  
-  - <span style="color:#c77dff;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
-  - <span style="color:#c77dff;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision.  
   - <span style="color:#c77dff;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision.
 
 Here are some examples of how to use quantization with cache-dit. You can directly specify the quantization config in the <span style="color:#c77dff;">enable_cache</span> API.
@@ -29,7 +41,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Users can also specify different quantization configs for different components. For example, quantize the transformer to float8 and the text encoder to float8_weight_only.
+Users can also specify different quantization configs for different components. For example, quantize the  <span style="color:#c77dff;">transformer</span> to  <span style="color:#c77dff;">float8</span> and the <span style="color:#c77dff;">text encoder</span> to <span style="color:#c77dff;">float8_weight_only</span>.
 
 ```python
 import cache_dit
@@ -135,6 +147,7 @@ To enable this feature, simply set the <span style="color:#c77dff;">float8_per_t
 ```python
 import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+
 cache_dit.enable_cache( 
     pipe, cache_config=DBCacheConfig(), # w/ default
     parallelism_config=ParallelismConfig(tp_size=2),
@@ -200,35 +213,30 @@ Total              Linear Layers: 144                                           
 --------------------------------------------------------------------------------------------
 ```
 
+## INT8/INT4 Quantization
 
-## Bitsandbytes (W4A16)
-
-For <span style="color:#c77dff;">4-bits W4A16</span> (weight only) quantization, we recommend <span style="color:#c77dff;">nf4</span> from **bitsandbytes** due to its better compatibility for many devices. Users can directly use it via the `quantization_config` of diffusers. For example:
+In addition to FP8 quantization, Cache-DiT also supports INT8 and INT4 quantization for weights, which can further reduce the memory footprint of the model. Users can specify <span style="color:#c77dff;">int8</span>, <span style="color:#c77dff;">int8_weight_only</span>, or <span style="color:#c77dff;">int4_weight_only</span> as the quantization type in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. For example:
 
 ```python
 import cache_dit
-from diffusers import QwenImagePipeline
-from diffusers.quantizers import PipelineQuantizationConfig
+from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig  
 
-pipe = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image",
-    torch_dtype=torch.bfloat16,
-    quantization_config=(
-        PipelineQuantizationConfig(
-            quant_backend="bitsandbytes_4bit",
-            quant_kwargs={
-                "load_in_4bit": True,
-                "bnb_4bit_quant_type": "nf4",
-                "bnb_4bit_compute_dtype": torch.bfloat16,
-            },
-            components_to_quantize=["text_encoder", "transformer"],
-        )
-    ),
-).to("cuda")
-
-# Then, apply cache acceleration using cache-dit
-cache_dit.enable_cache(pipe, cache_config=...)
+cache_dit.enable_cache( 
+    # Or "int8_weight_only", "int4_weight_only"
+    pipe, quantize_config=QuantizeConfig(quant_type="int8"), 
+)
 ```
+INT4 quantization can provide even better memory reduction compared to FP8 or INT8, but it may cause more precision loss. We recommend users to try different quantization types and choose the one that best fits their needs in terms of the trade-off between performance and precision. In most cases, <span style="color:#c77dff;">float8 per-row</span> can be a good choice for better memory reduction while maintaining acceptable precision.
+
+Please note that users should also install <span style="color:#c77dff;">mslk</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
+
+```bash
+# stable: mslk, torch and torchao (change cu129 to cu130 if using CUDA 13.0)
+uv pip install torch==2.11.0 torchvision torchao triton mslk --index-url https://download.pytorch.org/whl/cu129
+# nightly: mslk, torch and torchao (change cu129 to cu130 if using CUDA 13.0)
+uv pip install --pre torch torchvision torchao triton mslk --index-url https://download.pytorch.org/whl/nightly/cu129 --upgrade
+```
+In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.
 
 ## Nunchaku (W4A4)
 

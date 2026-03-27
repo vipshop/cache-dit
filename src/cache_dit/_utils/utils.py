@@ -387,6 +387,26 @@ def get_args(
         default=False,
         help="Enable float8 blockwise quantization for transformer",
     )
+    parser.add_argument(
+        "--int8",
+        action="store_true",
+        default=False,
+        help="Enable int8 quantization for transformer",
+    )
+    parser.add_argument(
+        "--int8-weight-only",
+        "--int8-wo",
+        action="store_true",
+        default=False,
+        help="Enable int8 weight-only quantization for transformer",
+    )
+    parser.add_argument(
+        "--int4-weight-only",
+        "--int4-wo",
+        action="store_true",
+        default=False,
+        help="Enable int4 weight-only quantization for transformer",
+    )
     # quantization for extra modules: text encoder, vae, controlnet, etc.
     parser.add_argument(
         "--quantize-text-encoder",
@@ -727,6 +747,12 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         args.quantize_type = "float8_weight_only"
     elif args.float8_blockwise:
         args.quantize_type = "float8_blockwise"
+    elif args.int8:
+        args.quantize_type = "int8"
+    elif args.int8_weight_only:
+        args.quantize_type = "int8_weight_only"
+    elif args.int4_weight_only:
+        args.quantize_type = "int4_weight_only"
 
     if args.quantize_type is not None:
         args.quantize = True
