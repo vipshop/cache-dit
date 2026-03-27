@@ -13,7 +13,7 @@ loggers_suppress_env = os.environ.get(
     "CACHE_DIT_ENABLE_LOGGERS_SUPPRESS",
     None,
 )
-if loggers_suppress_env is None:
+if loggers_suppress_env is None or bool(int(loggers_suppress_env)):
     globally_suppress_loggers()
     suppress_torch_compile_loggers()
 
