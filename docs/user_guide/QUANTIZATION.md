@@ -147,6 +147,7 @@ To enable this feature, simply set the <span style="color:#c77dff;">float8_per_t
 ```python
 import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+
 cache_dit.enable_cache( 
     pipe, cache_config=DBCacheConfig(), # w/ default
     parallelism_config=ParallelismConfig(tp_size=2),
@@ -221,12 +222,13 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig  
 
 cache_dit.enable_cache( 
-    pipe, quantize_config=QuantizeConfig(quant_type="int8_weight_only"),
+    # Or "int8_weight_only", "int4_weight_only"
+    pipe, quantize_config=QuantizeConfig(quant_type="int8"), 
 )
 ```
 INT4 quantization can provide even better memory reduction compared to FP8 or INT8, but it may cause more precision loss. We recommend users to try different quantization types and choose the one that best fits their needs in terms of the trade-off between performance and precision. In most cases, <span style="color:#c77dff;">float8 per-row</span> can be a good choice for better memory reduction while maintaining acceptable precision.
 
-Please note that users should also install <span style="color:#c77dff;">mslk-cuda</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
+Please note that users should also install <span style="color:#c77dff;">mslk</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
 
 ```bash
 # stable: mslk, torch and torchao (change cu129 to cu130 if using CUDA 13.0)
