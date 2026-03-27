@@ -209,6 +209,7 @@ def suppress_torch_compile_loggers() -> dict[str, int]:
     # filters for torch.* do not match. Filter by warning message to suppress it.
     messages_to_suppress_warnings = [
         r".*torch\._dynamo\.allow_in_graph*",
+        r"AffineQuantizedTensor does not implement*",
     ]
     for message in messages_to_suppress_warnings:
         warnings.filterwarnings("ignore", category=UserWarning, message=message)
