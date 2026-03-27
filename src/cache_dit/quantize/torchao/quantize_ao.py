@@ -181,7 +181,7 @@ class QuantizeAOContext:
             f"Quantized                 Method: {self.quant_type}",
             f"Quantized                 Region: {quantized_region}",
             f"Quantized    Basic Linear Layers: {self.num_basic_quant_linear:<5}",
-            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear}(per-tensor)",
+            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear} (per_tensor)",
             f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
             f"Skipped      Basic Linear Layers: {self.num_basic_skip_linear:<5}",
             f"Skipped   Fallback Linear Layers: {self.num_fallback_skip_linear:<5}",
@@ -274,10 +274,10 @@ class QuantizeAOContext:
                 if rowwise_layers:
                     if self.per_tensor_fallback:
                         fallback_layers = fallback_layers + rowwise_layers
-                        logger.info(f"Add fallback layers: {rowwise_layers}.")
+                        logger.debug(f"Add fallback layers: {rowwise_layers}.")
                     else:
                         exclude_layers = exclude_layers + rowwise_layers
-                        logger.info(f"Add exclude layers: {rowwise_layers}.")
+                        logger.debug(f"Add exclude layers: {rowwise_layers}.")
         self.rowwise_layers = copy.deepcopy(rowwise_layers)
         # Case 1/2/3/...: Future cases ...
         # We may add more cases in the future where we need to automatically fill the
