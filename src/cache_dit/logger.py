@@ -152,13 +152,38 @@ def suppress_stdout():
 def suppress_loggers(loggers_to_suppress: list[str], level: int = logging.ERROR) -> dict[str, int]:
     original_levels = {}
 
-    for logger_name in loggers_to_suppress:
+    # Support prefix wildcard patterns like "diffusers*".
+    prefixes = [name[:-1] for name in loggers_to_suppress if name.endswith("*")]
+    exact_names = [name for name in loggers_to_suppress if not name.endswith("*")]
+
+    for logger_name in exact_names:
         try:
             logger = logging.getLogger(logger_name)
             original_levels[logger_name] = logger.level
             logger.setLevel(level)
         except Exception:
             pass
+
+    if prefixes:
+        for prefix in prefixes:
+            # Also set base prefix logger (e.g. "diffusers") so children inherit.
+            base_name = prefix.rstrip(".")
+            try:
+                base_logger = logging.getLogger(base_name)
+                original_levels[base_name] = base_logger.level
+                base_logger.setLevel(level)
+            except Exception:
+                pass
+
+        for logger_name, logger_obj in logging.root.manager.loggerDict.items():
+            if not isinstance(logger_obj, logging.Logger):
+                continue
+            if any(logger_name.startswith(prefix) for prefix in prefixes):
+                try:
+                    original_levels[logger_name] = logger_obj.level
+                    logger_obj.setLevel(level)
+                except Exception:
+                    pass
 
     return original_levels
 
@@ -168,7 +193,31 @@ def suppress_torch_compile_loggers() -> dict[str, int]:
     # Suppress specific warnings from torch._dynamo and torch._inductor when using compile
     warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._dynamo.*")
     warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\._inductor.*")
-    compile_loggers_names = ["torch._dynamo", "torch._inductor", "torch._functorch"]
+    warnings.filterwarnings("ignore", category=UserWarning, module=r"torch\.compiler.*")
+    warnings.filterwarnings("ignore", category=FutureWarning, module=r"torch\._dynamo.*")
+    warnings.filterwarnings("ignore", category=FutureWarning, module=r"torch\._inductor.*")
+    warnings.filterwarnings("ignore", category=FutureWarning, module=r"torch\.compiler.*")
+    # diffusers emits this deprecation warning from its own modules, so module-based
+    # filters for torch.* do not match. Filter by warning message to suppress it.
+    warnings.filterwarnings(
+        "ignore",
+        category=FutureWarning,
+        message=r".*torch\._dynamo\.allow_in_graph is deprecated.*",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        category=UserWarning,
+        message=r".*torch\._dynamo\.allow_in_graph is deprecated.*",
+    )
+    compile_loggers_names = [
+        "torch._dynamo",
+        "torch._inductor",
+        "torch._functorch",
+        "torch._export",
+        "torch._fx",
+        "torch._meta_tracing",
+        "torch.compiler",
+    ]
     original_levels = suppress_loggers(compile_loggers_names, level=logging.ERROR)
     return original_levels
 
@@ -178,12 +227,21 @@ def globally_suppress_loggers() -> dict[str, int]:
     """Set specified loggers to ERROR level to suppress logs globally."""
     warnings.filterwarnings("ignore", category=UserWarning, module=r"torchao*")
     warnings.filterwarnings("ignore", category=SyntaxWarning, module=r"torchao*")
+    # diffusers manages its own root logger and can reset level to WARNING.
+    # Force its library-wide verbosity to ERROR when available.
+    try:
+        from diffusers.utils import logging as diffusers_logging  # type: ignore
+
+        diffusers_logging.set_verbosity_error()
+    except Exception:
+        pass
     loggers_to_suppress = [
         "torchao",
         "torch.distributed.run",
-        "diffusers",
-        "diffusers.models.modeling_utils",
-        "diffusers.quantizers.torchao.torchao_quantizer",
+        # * wildcard to suppress all diffusers loggers, which can be very verbose,
+        # especially at INFO level, and are often not relevant to users of Cache-DiT.
+        # This includes loggers like "diffusers", "diffusers.quantizers", etc.
+        "diffusers*",
         "imageio",
         "imageio_ffmpeg",
         "PIL",
