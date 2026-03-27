@@ -2,16 +2,28 @@
 
 <div id="quantization"></div>
 
+## Overview
+
+Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including FP8, INT8, and INT4 quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
+
+|quantization type| description|devices|
+|:---|:---|:---| 
+|<span style="color:#c77dff;">float8 (per-tensor, per-row)</span>, recommended|quantize weights and activations to float8 (dynamic quantization), default to per-row.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_weight_only</span>|quantize only weights to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_blockwise</span>|block-wise quantization to float8, which can provide better precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">int8</span>|quantize weights and activations to int8 (dynamic quantization)|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int8_weight_only</span>|quantize only weights to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int4_weight_only</span>|quantize only weights to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
+
+
 ## FP8 Quantization
 
 Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
 
-For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, <span style="color:#c77dff;">int8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
+For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
 
-  - <span style="color:#c77dff;">float8</span>: quantize both weights and activations to float8 (dynamic quantization).  
+  - <span style="color:#c77dff;">float8 (per-tensor, per-row)</span>: quantize both weights and activations to float8 (dynamic quantization).  
   - <span style="color:#c77dff;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision.  
-  - <span style="color:#c77dff;">int8</span>: quantize both weights and activations to int8 (dynamic quantization).  
-  - <span style="color:#c77dff;">int8_weight_only</span>: quantize only weights to int8, keep activations in full precision.  
   - <span style="color:#c77dff;">float8_blockwise</span>: block-wise quantization to float8, which can provide better precision.
 
 Here are some examples of how to use quantization with cache-dit. You can directly specify the quantization config in the <span style="color:#c77dff;">enable_cache</span> API.
@@ -214,7 +226,7 @@ cache_dit.enable_cache(
 ```
 INT4 quantization can provide even better memory reduction compared to FP8 or INT8, but it may cause more precision loss. We recommend users to try different quantization types and choose the one that best fits their needs in terms of the trade-off between performance and precision. In most cases, <span style="color:#c77dff;">float8 per-row</span> can be a good choice for better memory reduction while maintaining acceptable precision.
 
-Please note that users should also install <span style="color:#c77dff;">mslk</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
+Please note that users should also install <span style="color:#c77dff;">mslk-cuda</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
 
 ```bash
 # stable: mslk, torch and torchao (change cu129 to cu130 if using CUDA 13.0)
