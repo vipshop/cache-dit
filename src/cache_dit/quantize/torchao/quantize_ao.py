@@ -100,7 +100,7 @@ class QuantizeAOContext:
     regional_quantize: bool = True
     repeated_blocks: Optional[List[str]] = None
     exclude_layers: List[str] = dataclasses.field(default_factory=list)
-    float8_per_tensor_fallback: bool = True
+    per_tensor_fallback: bool = True
     verbose: bool = False
     # stats for summary
     num_basic_quant_linear: int = 0
@@ -162,7 +162,7 @@ class QuantizeAOContext:
             regional_quantize=quantize_config.regional_quantize,
             repeated_blocks=quantize_config.repeated_blocks,
             exclude_layers=quantize_config.exclude_layers,
-            float8_per_tensor_fallback=quantize_config.float8_per_tensor_fallback,
+            per_tensor_fallback=quantize_config.per_tensor_fallback,
             verbose=quantize_config.verbose,
             kwargs=copy.deepcopy(kwargs),
         )
@@ -272,7 +272,7 @@ class QuantizeAOContext:
             if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
                 rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
                 if rowwise_layers:
-                    if self.float8_per_tensor_fallback:
+                    if self.per_tensor_fallback:
                         fallback_layers = fallback_layers + rowwise_layers
                         logger.info(f"Add fallback layers: {rowwise_layers}.")
                     else:
@@ -324,7 +324,7 @@ class QuantizeAOContext:
         # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
         # quantization for now, we may add more fallback options in the future.
         return (
-            self.float8_per_tensor_fallback
+            self.per_tensor_fallback
             and (
                 self.is_float8_per_row()
                 or self.is_float8_per_tensor()

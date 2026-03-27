@@ -1150,7 +1150,7 @@ def maybe_quantize_transformer(
                             quant_type=args.quantize_type,
                             exclude_layers=get_exclude_layers(transformer),
                             regional_quantize=not args.disable_regional_quantize,
-                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                            per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
@@ -1179,7 +1179,7 @@ def maybe_quantize_transformer(
                             quant_type=args.quantize_type,
                             exclude_layers=get_exclude_layers(transformer_2),
                             regional_quantize=not args.disable_regional_quantize,
-                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                            per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
@@ -1226,7 +1226,7 @@ def maybe_quantize_text_encoder(
                     quantize_config=QuantizeConfig(
                         quant_type=args.quantize_text_type,
                         regional_quantize=not args.disable_regional_quantize,
-                        float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                        per_tensor_fallback=not args.disable_per_tensor_fallback,
                         verbose=args.quantize_verbose,
                     ),
                 )
@@ -1274,7 +1274,7 @@ def maybe_quantize_controlnet(
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_controlnet_type,
                             regional_quantize=not args.disable_regional_quantize,
-                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                            per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )

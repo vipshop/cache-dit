@@ -140,11 +140,11 @@ cache_dit.enable_cache(
 
 ## FP8 Per-Tensor Fallback
 
-The <span style="color:#c77dff;">float8_per_tensor_fallback</span> option in Cache-DiT's quantization configuration allows users to enable a fallback mechanism for layers that do not support float8 per-row or per-block quantization. This is particularly useful in scenarios where tensor parallelism is applied, and certain layers (e.g., those applied with RowwiseParallel) may encounter memory layout mismatch errors when quantized to float8 per-row.
+The <span style="color:#c77dff;">per_tensor_fallback</span> option in Cache-DiT's quantization configuration allows users to enable a fallback mechanism for layers that do not support float8 per-row or per-block quantization. This is particularly useful in scenarios where tensor parallelism is applied, and certain layers (e.g., those applied with RowwiseParallel) may encounter memory layout mismatch errors when quantized to float8 per-row.
 
-When <span style="color:#c77dff;">float8_per_tensor_fallback</span> is set to True, if a layer cannot be quantized to float8 per-row or per-block, it will automatically fall back to float8 per-tensor quantization instead of raising an error. This ensures that the quantization process can continue smoothly without interruption, while still providing the benefits of reduced precision for supported layers.  
+When <span style="color:#c77dff;">per_tensor_fallback</span> is set to True, if a layer cannot be quantized to float8 per-row or per-block, it will automatically fall back to float8 per-tensor quantization instead of raising an error. This ensures that the quantization process can continue smoothly without interruption, while still providing the benefits of reduced precision for supported layers.  
 
-To enable this feature, simply set the <span style="color:#c77dff;">float8_per_tensor_fallback</span> flag to <span style="color:#c77dff;">True (default)</span> in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. For example:
+To enable this feature, simply set the <span style="color:#c77dff;">per_tensor_fallback</span> flag to <span style="color:#c77dff;">True (default)</span> in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. Only support for float8 quantization for now. For example:
 
 ```python
 import cache_dit
@@ -161,7 +161,7 @@ cache_dit.enable_cache(
         # Enable fallback to float8 per-tensor quantization, default to True
         # for better compatibility for layers that do not support float8 per-row 
         # quantization, e.g., layers with RowwiseParallel applied in tensor parallelism.
-        float8_per_tensor_fallback=True, 
+        per_tensor_fallback=True, 
     ),
 )
 ```
