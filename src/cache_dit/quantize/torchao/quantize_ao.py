@@ -295,12 +295,13 @@ class QuantizeAOContext:
         if self.module_ref is not None and self.is_float8_dynamic_per_row():
             if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
                 rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
-                if self.float8_per_tensor_fallback and rowwise_layers:
-                    fallback_layers = fallback_layers + rowwise_layers
-                    logger.info(f"Set float8 per tensor fallback layers: {rowwise_layers}.")
-                else:
-                    exclude_layers = exclude_layers + rowwise_layers
-                    logger.info(f"Add rowwise layers to exclude layers: {rowwise_layers}.")
+                if rowwise_layers:
+                    if self.float8_per_tensor_fallback:
+                        fallback_layers = fallback_layers + rowwise_layers
+                        logger.info(f"Add fallback layers: {rowwise_layers}.")
+                    else:
+                        exclude_layers = exclude_layers + rowwise_layers
+                        logger.info(f"Add exclude layers: {rowwise_layers}.")
         self.rowwise_layers = copy.deepcopy(rowwise_layers)
         # Case 1/2/3/...: Future cases ...
         # We may add more cases in the future where we need to automatically fill the
