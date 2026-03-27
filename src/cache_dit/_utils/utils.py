@@ -17,11 +17,7 @@ from ..caching import (
     load_configs,
     load_parallelism_config,
 )
-from ..quantize import (
-    normalize_quantize_type,
-    quantize,
-    QuantizeConfig,
-)
+from ..quantize import quantize, QuantizeConfig
 
 from ..summary import strify as summary_strify
 
@@ -336,18 +332,15 @@ def get_args(
         default=None,
         choices=[
             None,
-            "float8",
-            "float8_blockwise",
+            "float8_per_row",
+            "float8_per_tensor",
+            "float8_per_block",
             "float8_weight_only",
-            "float8_wo",  # alias for float8_weight_only
-            "int8",
+            "int8_per_row",
+            "int8_per_tensor",
             "int8_weight_only",
-            "int8_wo",  # alias for int8_weight_only
-            "int4",
             "int4_weight_only",
-            "int4_wo",  # alias for int4_weight_only
             "bitsandbytes_4bit",
-            "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
     parser.add_argument(
@@ -359,19 +352,31 @@ def get_args(
         help="Disable quantization for repeated blocks in transformer",
     )
     parser.add_argument(
-        "--disable-float8-per-tensor-fallback",
-        "--disable-float8-fallback",
-        "--no-fp8-fallback",
+        "--disable-per-tensor-fallback",
+        "--no-per-tensor-fallback",
         action="store_true",
         default=False,
-        help="Disable float8 per-tensor fallback quantization for transformer",
+        help="Disable (float8 only) per-tensor fallback quantization for transformer",
     )
-    # some quick start flags for transformer quantization (--float8, --float8_wo, --float8_bw)
+    # some quick start flags for transformer quantization.
     parser.add_argument(
+        "--float8-per-row",
         "--float8",
         action="store_true",
         default=False,
-        help="Enable float8 quantization for transformer",
+        help="Enable float8 per-row quantization for transformer",
+    )
+    parser.add_argument(
+        "--float8-per-tensor",
+        action="store_true",
+        default=False,
+        help="Enable float8 per-tensor quantization for transformer",
+    )
+    parser.add_argument(
+        "--float8-per-block",
+        action="store_true",
+        default=False,
+        help="Enable float8 per-block quantization for transformer",
     )
     parser.add_argument(
         "--float8-weight-only",
@@ -388,10 +393,17 @@ def get_args(
         help="Enable float8 blockwise quantization for transformer",
     )
     parser.add_argument(
+        "--int8-per-row",
         "--int8",
         action="store_true",
         default=False,
-        help="Enable int8 quantization for transformer",
+        help="Enable int8 per-row quantization for transformer",
+    )
+    parser.add_argument(
+        "--int8-per-tensor",
+        action="store_true",
+        default=False,
+        help="Enable int8 per-tensor quantization for transformer",
     )
     parser.add_argument(
         "--int8-weight-only",
@@ -422,18 +434,15 @@ def get_args(
         default=None,
         choices=[
             None,
-            "float8",
-            "float8_blockwise",
+            "float8_per_row",
+            "float8_per_tensor",
+            "float8_per_block",
             "float8_weight_only",
-            "float8_wo",  # alias for float8_weight_only
-            "int8",
+            "int8_per_row",
+            "int8_per_tensor",
             "int8_weight_only",
-            "int8_wo",  # alias for int8_weight_only
-            "int4",
             "int4_weight_only",
-            "int4_wo",  # alias for int4_weight_only
             "bitsandbytes_4bit",
-            "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
     parser.add_argument(
@@ -450,18 +459,15 @@ def get_args(
         default=None,
         choices=[
             None,
-            "float8",
-            "float8_blockwise",
+            "float8_per_row",
+            "float8_per_tensor",
+            "float8_per_block",
             "float8_weight_only",
-            "float8_wo",  # alias for float8_weight_only
-            "int8",
+            "int8_per_row",
+            "int8_per_tensor",
             "int8_weight_only",
-            "int8_wo",  # alias for int8_weight_only
-            "int4",
             "int4_weight_only",
-            "int4_wo",  # alias for int4_weight_only
             "bitsandbytes_4bit",
-            "bnb_4bit",  # alias for bitsandbytes_4bit
         ],
     )
     parser.add_argument(
@@ -741,14 +747,18 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     # Force enable quantization if quantize_type is specified
-    if args.float8:
-        args.quantize_type = "float8"
+    if args.float8_per_row:
+        args.quantize_type = "float8_per_row"
+    elif args.float8_per_tensor:
+        args.quantize_type = "float8_per_tensor"
+    elif args.float8_per_block:
+        args.quantize_type = "float8_per_block"
     elif args.float8_weight_only:
         args.quantize_type = "float8_weight_only"
-    elif args.float8_blockwise:
-        args.quantize_type = "float8_blockwise"
-    elif args.int8:
-        args.quantize_type = "int8"
+    elif args.int8_per_row:
+        args.quantize_type = "int8_per_row"
+    elif args.int8_per_tensor:
+        args.quantize_type = "int8_per_tensor"
     elif args.int8_weight_only:
         args.quantize_type = "int8_weight_only"
     elif args.int4_weight_only:
@@ -759,9 +769,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
 
     # Handle alias for quantize_type
     if args.quantize and args.quantize_type is None:
-        args.quantize_type = "float8_weight_only"  # default type
-
-    args.quantize_type = normalize_quantize_type(args.quantize_type)
+        args.quantize_type = "float8_per_row"  # default type
 
     # Force enable quantization for text encoder if quantize_text_type is specified
     if args.quantize_text_type is not None:
@@ -771,8 +779,6 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
         # default to same as quantize_type
         args.quantize_text_type = args.quantize_type
 
-    args.quantize_text_type = normalize_quantize_type(args.quantize_text_type)
-
     # Force enable quantization for controlnet if quantize_controlnet_type is specified
     if args.quantize_controlnet_type is not None:
         args.quantize_controlnet = True
@@ -780,8 +786,6 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.quantize_controlnet and args.quantize_controlnet_type is None:
         # default to same as quantize_type
         args.quantize_controlnet_type = args.quantize_type
-
-    args.quantize_controlnet_type = normalize_quantize_type(args.quantize_controlnet_type)
 
     if args.mask_policy is not None and not args.steps_mask:
         # Enable steps mask if mask_policy is specified
@@ -1120,16 +1124,6 @@ def maybe_quantize_transformer(
         else:
             pipe = pipe_or_adapter
 
-        _class_not_supported_per_row = [
-            "QwenImageTransformer2DModel",
-        ]
-
-        def is_per_row_supported(transformer):
-            if args.disable_per_row:
-                return False
-            transformer_cls_name = transformer.__class__.__name__
-            return transformer_cls_name not in _class_not_supported_per_row
-
         def get_exclude_layers(transformer):
             from ..quantize import QuantizeConfig
 
@@ -1153,10 +1147,9 @@ def maybe_quantize_transformer(
                         transformer,
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_type,
-                            per_row=is_per_row_supported(transformer),
                             exclude_layers=get_exclude_layers(transformer),
                             regional_quantize=not args.disable_regional_quantize,
-                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                            per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
@@ -1183,10 +1176,9 @@ def maybe_quantize_transformer(
                         transformer_2,
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_type,
-                            per_row=is_per_row_supported(transformer_2),
                             exclude_layers=get_exclude_layers(transformer_2),
                             regional_quantize=not args.disable_regional_quantize,
-                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                            per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
@@ -1233,7 +1225,7 @@ def maybe_quantize_text_encoder(
                     quantize_config=QuantizeConfig(
                         quant_type=args.quantize_text_type,
                         regional_quantize=not args.disable_regional_quantize,
-                        float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                        per_tensor_fallback=not args.disable_per_tensor_fallback,
                         verbose=args.quantize_verbose,
                     ),
                 )
@@ -1281,7 +1273,7 @@ def maybe_quantize_controlnet(
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_controlnet_type,
                             regional_quantize=not args.disable_regional_quantize,
-                            float8_per_tensor_fallback=not args.disable_float8_per_tensor_fallback,
+                            per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
                         ),
                     )
