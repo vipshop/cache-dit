@@ -352,14 +352,13 @@ def get_args(
         help="Disable quantization for repeated blocks in transformer",
     )
     parser.add_argument(
-        "--disable-float8-per-tensor-fallback",
-        "--disable-float8-fallback",
-        "--no-fp8-fallback",
+        "--disable-per-tensor-fallback",
+        "--no-per-tensor-fallback",
         action="store_true",
         default=False,
-        help="Disable float8 per-tensor fallback quantization for transformer",
+        help="Disable (float8 only) per-tensor fallback quantization for transformer",
     )
-    # some quick start flags for transformer quantization (--float8, --float8_wo, --float8_bw)
+    # some quick start flags for transformer quantization.
     parser.add_argument(
         "--float8-per-row",
         "--float8",
@@ -770,7 +769,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
 
     # Handle alias for quantize_type
     if args.quantize and args.quantize_type is None:
-        args.quantize_type = "float8_weight_only"  # default type
+        args.quantize_type = "float8_per_row"  # default type
 
     # Force enable quantization for text encoder if quantize_text_type is specified
     if args.quantize_text_type is not None:
