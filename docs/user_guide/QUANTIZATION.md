@@ -10,7 +10,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |:---|:---|:---| 
 |<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (dynamic quantization) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization (dynamic quantization) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization weights and activations (dynamic quantization) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">float8_weight_only</span>|quantize only weights to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">int8_per_row</span>|quantize weights and activations to int8 (dynamic quantization) with rowwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
@@ -22,11 +22,11 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 
 Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
 
-For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8</span>, <span style="color:#c77dff;">float8_weight_only</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
+For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8_per_row</span> or <span style="color:#c77dff;">float8_per_block</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
 
   - <span style="color:#c77dff;">float8_per_row</span>: quantize both weights and activations to float8 (dynamic quantization) with rowwise method.  
   - <span style="color:#c77dff;">float8_per_tensor</span>: quantize both weights and activations to float8 (dynamic quantization) with tensorwise method.  
-  - <span style="color:#c77dff;">float8_per_block</span>: block-wise quantization (dynamic quantization) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128).  
+  - <span style="color:#c77dff;">float8_per_block</span>: block-wise quantization weights and activations (dynamic quantization) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128). **NOT** supported for distributed inference for now.
   - <span style="color:#c77dff;">float8_weight_only</span>: quantize only weights to float8, keep activations in full precision.  
 
 Here are some examples of how to use quantization with cache-dit. You can directly specify the quantization config in the <span style="color:#c77dff;">enable_cache</span> API.
@@ -35,7 +35,8 @@ Here are some examples of how to use quantization with cache-dit. You can direct
 import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
-# quant_type: float8, float8_weight_only, int8, int8_weight_only, etc.
+# quant_type: float8_per_row, float8_per_tensor, float8_per_block, float8_weight_only, 
+# int8_per_row, int8_per_tensor, int8_weight_only, int4_weight_only, etc.
 # Pass a QuantizeConfig to the `enable_cache` API.
 cache_dit.enable_cache( 
     pipe, cache_config=DBCacheConfig(), # w/ default
