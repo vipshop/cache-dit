@@ -4,10 +4,11 @@ We are excited to announce that Cache-DiT now provides **native** support for <s
 
 ## Features Support 
 
-|Device|Hybrid Cache|Context Parallel|Tensor Parallel|Text Encoder Parallel|Auto Encoder(VAE) Parallel|
-|:---|:---:|:---:|:---:|:---:|:---:|
-|Atlas 800T A2|✅|✅|✅|✅|✅|
-|Atlas 800I A2|✅|✅|✅|✅|✅|
+|Device|Hybrid Cache|Context Parallel|Tensor Parallel|Text Encoder Parallel|Auto Encoder(VAE) Parallel|Compilation|
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+|Atlas 800T A2|✅|✅|✅|✅|✅|🟡|
+|Atlas 800I A2|✅|✅|✅|✅|✅|🟡|
+> 🟡: Experimental Feature
 
 ## Attention backend
 
@@ -191,3 +192,36 @@ torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --cach
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --cache --attn _native_npu
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel ulysses --cache --attn _native_npu
 ```
+
+## [Experimental] Speedup with MindIE-SD Compilation
+
+MindIE-SD is an open-source acceleration framework for diffusion models on Ascend NPU. By providing a custom `MindieSDBackend` for `torch.compile`, it enables automatic operator fusion and optimization for enhanced performance on Ascend hardware. For detailed documentation and examples, visit [MindIE-SD](https://gitcode.com/Ascend/MindIE-SD).
+
+
+### Install MindIE-SD
+
+```bash
+git clone --branch master --single-branch https://gitcode.com/Ascend/MindIE-SD.git
+cd MindIE-SD
+pip install wheel
+python3 setup.py bdist_wheel
+pip install ./dist/*.whl --force-reinstall
+```
+
+### Enable MindIE-SD Compilation
+
+```bash
+python3 generate.py flux --attn _native_npu --compile
+```
+
+### Performance
+
+The performance of MindIE-SD Compilation is as follows (device 910B3):
+
+|Model|Batch Size|Resolution|Compile|E2E Time(s)|
+|:---|:---:|:---:|:---:|:---:|
+|flux.1-dev|1|1024x1024|❌|14.09|
+|flux.1-dev|1|1024x1024|✅|12.85|
+
+⚠️ **Experimental Feature**: MindIE-SD Compilation is currently in the experimental stage. 
+For bug reports, feature requests, or detailed information, please visit the [MindIE-SD Compilation Documentation](https://gitcode.com/Ascend/MindIE-SD/blob/master/docs/features/compilation.md).
