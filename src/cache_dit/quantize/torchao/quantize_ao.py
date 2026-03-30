@@ -675,10 +675,9 @@ def _basic_filter_fn(
         # the precision_plan, and skip the layers that are not in the precision_plan.
         if quant_ctx.precision_plan is not None and not quant_ctx.precision_plan_pass_applied:
             if not _is_plan_allow_to_quantize(name):
-                if quant_ctx.verbose:
-                    skip_reason = _skip_reason("NOT in precision_plan")
-                    quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                    logger.debug(skip_reason)
+                skip_reason = _skip_reason("NOT in precision_plan")
+                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+                logger.debug(skip_reason)
                 return False
 
         # The fallback layers should be skipped in the basic filter function,
@@ -690,18 +689,16 @@ def _basic_filter_fn(
             # reason here for layers that are skipped in basic filter fn, not the layers
             # that are skipped in fallback filter fn.
             if not quant_ctx.is_fallback_layer(name):
-                if quant_ctx.verbose:
-                    skip_reason = _skip_reason(quant_ctx.get_exclude_name(name))
-                    quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                    logger.debug(skip_reason)
+                skip_reason = _skip_reason(quant_ctx.get_exclude_name(name))
+                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+                logger.debug(skip_reason)
             return False
 
         # Check for weight dtype for float8 per-row
         if curr_quant_type == "float8_per_row" and m.weight.dtype != torch.bfloat16:
-            if quant_ctx.verbose:
-                skip_reason = _skip_reason(f"dtype({m.weight.dtype})!=bfloat16")
-                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                logger.debug(skip_reason)
+            skip_reason = _skip_reason(f"dtype({m.weight.dtype})!=bfloat16")
+            quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+            logger.debug(skip_reason)
             return False
 
         # check blockwise fp8 support for linear layers, if not supported,
@@ -710,10 +707,9 @@ def _basic_filter_fn(
             "float8_per_block",
         ] and not _check_if_linear_fp8_blockwise_can_support(m):
             weight_shape = tuple(m.weight.shape)
-            if quant_ctx.verbose:
-                skip_reason = _skip_reason(f"w{weight_shape} % blocksize(128, 128) != 0")
-                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                logger.debug(skip_reason)
+            skip_reason = _skip_reason(f"w{weight_shape} % blocksize(128, 128) != 0")
+            quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+            logger.debug(skip_reason)
             return False
 
         if curr_quant_type in [
@@ -721,10 +717,9 @@ def _basic_filter_fn(
             "float8_per_tensor",
             "float8_per_block",
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
-            if quant_ctx.verbose:
-                skip_reason = _skip_reason("_scaled_mm: DTensor + bias NOT supported")
-                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                logger.debug(skip_reason)
+            skip_reason = _skip_reason("_scaled_mm: DTensor + bias NOT supported")
+            quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+            logger.debug(skip_reason)
             return False
 
         # Set this attribute to avoid redundant quantization, which may cause
@@ -762,17 +757,15 @@ def _fallback_filter_fn(
             # exclude layers, because the layers in exclude layers will be skipped in basic filter
             # fn, and we no longer want to record the skip reason for layers in exclude layers here.
             if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_layer(m):
-                if quant_ctx.verbose:
-                    skip_reason = _fallback_reason("NOT in fallback layers")
-                    quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
-                    logger.debug(skip_reason)
+                skip_reason = _fallback_reason("NOT in fallback layers")
+                quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
+                logger.debug(skip_reason)
             return False
 
         if not _check_if_linear_with_bias_fp8_can_support(m):
-            if quant_ctx.verbose:
-                skip_reason = _fallback_reason("_scaled_mm: DTensor + bias NOT supported")
-                quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
-                logger.debug(skip_reason)
+            skip_reason = _fallback_reason("_scaled_mm: DTensor + bias NOT supported")
+            quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
+            logger.debug(skip_reason)
             return False
 
         # Set this attribute to avoid redundant quantization, which may cause
