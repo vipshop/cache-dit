@@ -20,7 +20,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 
 ## FP8 Quantization
 
-Currently, TorchAo has been integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
+Currently, TorchAo has been fully integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
 
 For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8_per_row</span> or <span style="color:#c77dff;">float8_per_block</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
 
@@ -175,24 +175,20 @@ torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
    --parallel tp --compile --float8-per-row --q-verbose \
    --disable-per-tensor-fallback
 
---------------------------------------------------------------------------------------------
-Quantized                 Method: float8_per_row                                            |
-Quantized                 Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
-Quantized    Basic Linear Layers: 88                                                        |
-Quantized Fallback Linear Layers: 0                                                         |
-Total    Quantized Linear Layers: 88                                                        |
-Skipped      Basic Linear Layers: 56                                                        |
-Skipped   Fallback Linear Layers: 0                                                         |
-Total      Skipped Linear Layers: 56                                                        |
-Total              Linear Layers: 144                                                       |
---------------------------------------------------------------------------------------------
------------------------------------------------------------------------------
-Skip: attn.to_out.0        : pattern<Rowwise(Tensor Parallel)>: 8    layers  |
-Skip: attn.to_add_out      : pattern<Rowwise(Tensor Parallel)>: 8    layers  |
-Skip: ff.linear_out        : pattern<Rowwise(Tensor Parallel)>: 8    layers  |
-Skip: ff_context.linear_out: pattern<Rowwise(Tensor Parallel)>: 8    layers  |
-Skip: attn.to_out          : pattern<Rowwise(Tensor Parallel)>: 24   layers  |
------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------
+Quantized        Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
+Quantized Linear Layers: 88    float8_per_row     56 (skipped)                     |
+Quantized Linear Layers: 88    (total)                                             |
+Skipped   Linear Layers: 56    (total)                                             |
+Linear           Layers: 144   (total)                                             |
+-----------------------------------------------------------------------------------
+------------------------------------------------------------------------------------
+float8_per_row, skip: attn.to_out.0        : pattern<RowwiseParallel>: 8    layers  |
+float8_per_row, skip: attn.to_add_out      : pattern<RowwiseParallel>: 8    layers  |
+float8_per_row, skip: ff.linear_out        : pattern<RowwiseParallel>: 8    layers  |
+float8_per_row, skip: ff_context.linear_out: pattern<RowwiseParallel>: 8    layers  |
+float8_per_row, skip: attn.to_out          : pattern<RowwiseParallel>: 24   layers  |
+------------------------------------------------------------------------------------
 ```
 
 With fp8 per-tensor fallback enabled, those layers that do not support float8 per-row quantization will be quantized to float8 per-tensor instead, and the performance will be better due to more layers being quantized. (<span style="color:#c77dff;">quantize 144 layers, skip 0 layer</span>)
@@ -202,18 +198,49 @@ With fp8 per-tensor fallback enabled, those layers that do not support float8 pe
 torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
    --parallel tp --compile --float8-per-row --q-verbose  
 
-# default, enabled fp8 per-tensor fallback
---------------------------------------------------------------------------------------------
-Quantized                 Method: float8_per_row                                            |
-Quantized                 Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
-Quantized    Basic Linear Layers: 88                                                        |
-Quantized Fallback Linear Layers: 56 (per_tensor)                                           |
-Total    Quantized Linear Layers: 144                                                       |
-Skipped      Basic Linear Layers: 0                                                         |
-Skipped   Fallback Linear Layers: 0                                                         |
-Total      Skipped Linear Layers: 0                                                         |
-Total              Linear Layers: 144                                                       |
---------------------------------------------------------------------------------------------
+# Default, enabled fp8 per-tensor fallback
+-----------------------------------------------------------------------------------
+Quantized        Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
+Quantized Linear Layers: 88    float8_per_row     0 (skipped)                      |
+Quantized Linear Layers: 56    float8_per_tensor  0 (skipped)                      |
+Quantized Linear Layers: 144   (total)                                             |
+Skipped   Linear Layers: 0     (total)                                             |
+Linear           Layers: 144   (total)                                             |
+-----------------------------------------------------------------------------------
+```
+
+## Hybrid Precision Plan
+
+The <span style="color:#c77dff;">precision_plan</span> option in <span style="color:#c77dff;">QuantizeConfig</span> allows users to specify different quantization types for matched layer-name patterns. It is useful when you want better control of the accuracy and performance trade-off for attention sub-layers (for example, keep <span style="color:#c77dff;">to_k/to_v</span> in <span style="color:#c77dff;">float8_per_row</span> while using <span style="color:#c77dff;">float8_per_tensor</span> for <span style="color:#c77dff;">to_q/to_out</span>). Please note:
+
+- <span style="color:#c77dff;">precision_plan</span> is only valid when <span style="color:#c77dff;">regional_quantize=True</span>. If regional quantization is disabled, precision plan will be ignored.
+- <span style="color:#c77dff;">precision_plan</span> is compatible with <span style="color:#c77dff;">per_tensor_fallback</span>. If a selected plan type is not supported by a specific layer/hardware path, fallback logic still works automatically when enabled.
+- Layers not matched by <span style="color:#c77dff;">precision_plan</span> continue to use the base <span style="color:#c77dff;">quant_type</span>.
+
+For example: (FLUX.2-Klein-9b-kv)
+
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+
+cache_dit.enable_cache(
+    pipe,
+    cache_config=DBCacheConfig(),
+    parallelism_config=ParallelismConfig(tp_size=2),
+    quantize_config=QuantizeConfig(
+       # Default type for unmatched layers in transformer.
+        quant_type="float8_per_row",
+        regional_quantize=True,
+        repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
+        per_tensor_fallback=True,
+        precision_plan={
+            "attn.to_q": "float8_per_tensor",    # match: **attn.to_q**,   better performance. 
+            "attn.to_k": "float8_per_row",       # match: **attn.to_k**,   better precision.
+            "attn.to_v": "float8_per_row",       # match: **attn.to_v**,   better precision.
+            "attn.to_out": "float8_per_tensor",  # match: **attn.to_out**, better performance.
+        },
+    ),
+)
 ```
 
 ## INT8/INT4 Quantization

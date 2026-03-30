@@ -1,5 +1,5 @@
 parallelism_config:
-  tp_size: auto
+  tp_size: auto # e.g, 2
   attention_backend: native
 quantize_config: 
   components_to_quantize:

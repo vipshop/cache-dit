@@ -262,7 +262,7 @@ class QuantizeAOContext:
         skipped_reasons = []
         for quant_type, reasons in self.skipped_map.items():
             for reason in reasons:
-                skipped_reasons.append(f"{quant_type}: {reason}")
+                skipped_reasons.append(f"{quant_type}, {reason}")
 
         if self.verbose and skipped_reasons:
             skipped_reasons_counter = {}
@@ -475,7 +475,7 @@ class QuantizeAOContext:
 
     def get_exclude_name(self, name: str) -> Optional[str]:
         if self.is_rowwise_layer(name):
-            return "Rowwise(Tensor Parallel)"
+            return "RowwiseParallel"
         for exclude_name in self.exclude_layers:
             if exclude_name in name:
                 return exclude_name
@@ -641,7 +641,7 @@ def _basic_filter_fn(
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
-    msg_template = "Skip: {name} -> pattern<{pattern}>"
+    msg_template = "skip: {name} -> pattern<{pattern}>"
     curr_quant_type = (
         override_quant_type if override_quant_type is not None else quant_ctx.quant_type
     )
@@ -744,7 +744,7 @@ def _fallback_filter_fn(
     from torchao.float8.float8_linear import Float8Linear
 
     # Fallback to quant_type: float8_per_tensor.
-    msg_template = "Fallback: {name} -> pattern<{pattern}>"
+    msg_template = "fallback: {name} -> pattern<{pattern}>"
     fallback_quant_type = "float8_per_tensor"
 
     if quant_ctx.is_quantized_layer(m):
