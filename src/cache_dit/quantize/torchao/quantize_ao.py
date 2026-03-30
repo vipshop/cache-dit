@@ -26,7 +26,7 @@ _ALLOWED_QUANTIZE_TYPES = [
 ]
 
 _PREFERRED_PRECISION_PLAN_ORDER = [
-    "float8_per_tensor",  # prefer per_tensor for better compatibility.
+    "float8_per_tensor",  # prefer per_tensor for better compatibility (included fallback layers)
     "float8_per_row",
     "float8_per_block",
     "float8_weight_only",
