@@ -89,7 +89,7 @@ def quantize_ao(
             # The default pass for layers that are not specified in the precision_plan, we will quantize
             # them with the basic config. DON'T forget to reset the layers_allowed_to_quantize to None
             # for the default pass.
-            quant_ctx.precision_plan_applied = True  # IMPORTANT!
+            quant_ctx.precision_plan_pass_applied = True  # IMPORTANT!
             quant_ctx.layers_allowed_to_quantize = None
             for submod in module.modules():
                 if submod.__class__.__name__ in quant_ctx.repeated_blocks:
@@ -189,7 +189,7 @@ class QuantizeAOContext:
     # will be used to determine whether a layer is quantized or skipped, etc.
     layers_allowed_to_quantize: List[str] = dataclasses.field(default_factory=list)
     # whether the precision plan is applied, used for better summary and analysis.
-    precision_plan_applied: bool = False
+    precision_plan_pass_applied: bool = False
     # To determine whether it's the first pass of quantization or the fallback pass, etc.
     first_quantize_pass_applied: bool = False
 
@@ -645,7 +645,7 @@ def _basic_filter_fn(
 
         # If precision_plan is specified, only quantize the layers that are specified in
         # the precision_plan, and skip the layers that are not in the precision_plan.
-        if quant_ctx.precision_plan is not None and not quant_ctx.precision_plan_applied:
+        if quant_ctx.precision_plan is not None and not quant_ctx.precision_plan_pass_applied:
             if not _is_plan_allow_to_quantize(name):
                 if quant_ctx.verbose:
                     skip_reason = _skip_reason("NOT in precision_plan")
