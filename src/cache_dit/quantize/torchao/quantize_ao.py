@@ -14,6 +14,29 @@ from ...logger import init_logger
 logger = init_logger(__name__)
 
 
+_ALLOWED_QUANTIZE_TYPES = [
+    "float8_per_row",
+    "float8_per_tensor",
+    "float8_per_block",
+    "float8_weight_only",
+    "int8_per_row",
+    "int8_per_tensor",
+    "int8_weight_only",
+    "int4_weight_only",
+]
+
+_PREFERRED_PRECISION_PLAN_ORDER = [
+    "float8_per_tensor",  # prefer per_tensor for better compatibility.
+    "float8_per_row",
+    "float8_per_block",
+    "float8_weight_only",
+    "int8_per_tensor",
+    "int8_per_row",
+    "int8_weight_only",
+    "int4_weight_only",
+]
+
+
 def quantize_ao(
     module: torch.nn.Module,
     quantize_config: QuantizeConfig,
@@ -26,7 +49,6 @@ def quantize_ao(
         return module
 
     quant_ctx = QuantizeAOContext.from_config(quantize_config, module, **kwargs)
-    quant_ctx = quant_ctx.normalize(**kwargs)
     # Regional quantization for transformer modules in Diffusers, users can
     # set regional_quantize to False to disable this behavior and quantize
     # the whole module directly. For models outside of diffusers, users can specify
@@ -42,13 +64,12 @@ def quantize_ao(
         has_quantized_region = False
 
         if quant_ctx.precision_plan is not None:
-            logger.info(
-                "Precision plan is specified, the quantization type for each layer will be "
-                "determined by the precision plan, and the basic quantization type and fallback "
-                "mechanism will be ignored."
+            logger.debug(
+                f"Precision plan is enabled with the following plan: {quant_ctx.precision_plan}"
             )
             # If precision_plan is specified, we will quantize the layers according to the precision_plan.
-            for quant_type, layer_names in quant_ctx.reverse_precision_plan.items():
+            for quant_type in _PREFERRED_PRECISION_PLAN_ORDER:
+                layer_names = quant_ctx.reverse_precision_plan.get(quant_type, [])
                 if not layer_names:  # no layers for this quant_type, skip directly.
                     continue
                 # Update layers allowed to quantize for better summary and analysis.
@@ -63,8 +84,13 @@ def quantize_ao(
                     if submod.__class__.__name__ in quant_ctx.repeated_blocks:
                         _quantize_module(submod, submod_ao_config, submod_filter_fn)
                         has_quantized_region = True
+                quant_ctx.first_quantize_pass_applied = True
+
             # The default pass for layers that are not specified in the precision_plan, we will quantize
-            # them with the basic config.
+            # them with the basic config. DON'T forget to reset the layers_allowed_to_quantize to None
+            # for the default pass.
+            quant_ctx.precision_plan_applied = True  # IMPORTANT!
+            quant_ctx.layers_allowed_to_quantize = None
             for submod in module.modules():
                 if submod.__class__.__name__ in quant_ctx.repeated_blocks:
                     _quantize_module(submod, basic_ao_config, basic_filter_fn)
@@ -77,10 +103,11 @@ def quantize_ao(
                 if submod.__class__.__name__ in quant_ctx.repeated_blocks:
                     _quantize_module(submod, basic_ao_config, basic_filter_fn)
                     has_quantized_region = True
+            quant_ctx.first_quantize_pass_applied = True
             # Second, quantize the fallback layers with fallback config if fallback is enabled and
             # the layers are not quantized in the first pass. Currently, only support float8 per-tensor
             # fallback for rowwise layers in TP, and the fallback config is set to per-tensor quantization.
-            if quant_ctx.can_fallback():
+            if quant_ctx.required_fallback():
                 fallback_ao_config = _get_torchao_config("float8_per_tensor", **quant_ctx.kwargs)
                 fallback_filter_fn = partial(_fallback_filter_fn, quant_ctx=quant_ctx)
                 for submod in module.modules():
@@ -122,18 +149,6 @@ def _quantize_module(
     )
 
 
-_ALLOWED_QUANTIZE_TYPES = [
-    "float8_per_row",
-    "float8_per_tensor",
-    "float8_per_block",
-    "float8_weight_only",
-    "int8_per_row",
-    "int8_per_tensor",
-    "int8_weight_only",
-    "int4_weight_only",
-]
-
-
 @dataclasses.dataclass
 class QuantizeAOContext:
     module_ref: torch.nn.Module = None  # ref only
@@ -148,7 +163,6 @@ class QuantizeAOContext:
     verbose: bool = False
     # stats for summary
     num_linear_layers: int = 0
-    num_layers: int = 0
     # e.g, for rowwise TP -> FP8 per-row -> fallback -> FP8 per-tensor
     fallback_layers: List[str] = dataclasses.field(default_factory=list)  # all fallback layers
     # rowwise layers that may cause issue with FP8 per-row quantization,
@@ -174,6 +188,10 @@ class QuantizeAOContext:
     # This list will be dynamically updated during the quantization process, and it
     # will be used to determine whether a layer is quantized or skipped, etc.
     layers_allowed_to_quantize: List[str] = dataclasses.field(default_factory=list)
+    # whether the precision plan is applied, used for better summary and analysis.
+    precision_plan_applied: bool = False
+    # To determine whether it's the first pass of quantization or the fallback pass, etc.
+    first_quantize_pass_applied: bool = False
 
     def __post_init__(self):
         self.quant_type = self.quant_type.lower()
@@ -185,19 +203,9 @@ class QuantizeAOContext:
             assert current_platform.get_device_capability() >= (
                 8,
                 9,
-            ), "FP8 requires Ada or newer GPUs (>=sm89), current device capability is " + str(
+            ), "FP8 requires Ada or newer GPUs (>=sm89), but got " + str(
                 current_platform.get_device_capability()
             )
-        if self.precision_plan:
-            for layer_name, quant_type in self.precision_plan.items():
-                quant_type = quant_type.lower()
-                assert quant_type in _ALLOWED_QUANTIZE_TYPES, (
-                    f"quant_type {quant_type} in precision_plan is not supported, allowed "
-                    f"quantization types: {_ALLOWED_QUANTIZE_TYPES}."
-                )
-                if quant_type not in self.reverse_precision_plan:
-                    self.reverse_precision_plan[quant_type] = []
-                self.reverse_precision_plan[quant_type].append(layer_name)
 
     @staticmethod
     def from_config(
@@ -215,7 +223,7 @@ class QuantizeAOContext:
             per_tensor_fallback=quantize_config.per_tensor_fallback,
             verbose=quantize_config.verbose,
             kwargs=copy.deepcopy(kwargs),
-        )
+        ).normalize(**kwargs)
 
     def summary(self):
         quantized_region = (
@@ -289,9 +297,30 @@ class QuantizeAOContext:
         # in the _normalize (staticmethod) function. We can do some normalization work here,
         # such as checking the quantization type and setting the quantization config for
         # different quantization types.
+        if self.precision_plan:
+            for layer_name, quant_type in self.precision_plan.items():
+                quant_type = quant_type.lower()
+                assert quant_type in _ALLOWED_QUANTIZE_TYPES, (
+                    f"quant_type {quant_type} in precision_plan is not supported, allowed "
+                    f"quantization types: {_ALLOWED_QUANTIZE_TYPES}."
+                )
+                if quant_type not in self.reverse_precision_plan:
+                    self.reverse_precision_plan[quant_type] = []
+                self.reverse_precision_plan[quant_type].append(layer_name)
 
         # Preprocess exclude layers and fallback layers.
         self._maybe_fill_fallback_layers()
+
+        if self.required_fallback() and self.fallback_layers:
+            if self.precision_plan is not None:
+                # Also add the fallback layers to the reverse_precision_plan.
+                self.reverse_precision_plan["float8_per_tensor"] = (
+                    self.reverse_precision_plan.get("float8_per_tensor", []) + self.fallback_layers
+                )
+                logger.warning(
+                    "precision_plan is specified, the fallback layers will be merged "
+                    "into the float8_per_tensor plan."
+                )
 
         self.repeated_blocks = getattr(
             self.module_ref,
@@ -375,11 +404,11 @@ class QuantizeAOContext:
     def is_float8_weight_only(self) -> bool:
         return self.quant_type == "float8_weight_only"
 
-    def can_fallback(self) -> bool:
+    def required_fallback(self) -> bool:
         # Currently, only support float8 per-tensor fallback for rowwise layers if
         # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
         # quantization for now, we may add more fallback options in the future.
-        _call_fallback = (
+        _required_fallback = (
             self.per_tensor_fallback
             and (
                 self.is_float8_per_row()
@@ -390,17 +419,10 @@ class QuantizeAOContext:
             and self.regional_quantize
             and bool(self.fallback_layers)
         )
-        if _call_fallback:
-            if self.precision_plan is not None:
-                raise ValueError(
-                    "precision_plan is not compatible with fallback mechanism, please specify "
-                    "the quantization type for each layer in the precision_plan if you want "
-                    "to use precision_plan."
-                )
-        return _call_fallback
+        return _required_fallback
 
     def is_fallback_layer(self, name: str) -> bool:
-        if not self.can_fallback():
+        if not self.required_fallback():
             return False
         fallback_layers = self.fallback_layers if self.fallback_layers else []
         for fallback_name in fallback_layers:
@@ -606,25 +628,30 @@ def _basic_filter_fn(
         skip_reason = msg_template.format(name=name, pattern=pattern)
         return skip_reason
 
+    # If layers_allowed_to_quantize is not specified, it means all layers are allowed to
+    # quantize by default.
     def _is_plan_allow_to_quantize(name: str) -> bool:  # precision plan
         if quant_ctx.layers_allowed_to_quantize:
             for allow_name in quant_ctx.layers_allowed_to_quantize:
                 if allow_name in name:
                     return True
-        return False
+            return False
+        return True
 
-    quant_ctx.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
-        quant_ctx.num_linear_layers += 1
+        # NOTE: We should only record this stats in the first quantize pass.
+        if not quant_ctx.first_quantize_pass_applied:
+            quant_ctx.num_linear_layers += 1
 
         # If precision_plan is specified, only quantize the layers that are specified in
         # the precision_plan, and skip the layers that are not in the precision_plan.
-        if quant_ctx.precision_plan is not None and not _is_plan_allow_to_quantize(name):
-            if quant_ctx.verbose:
-                skip_reason = _skip_reason("NOT in precision_plan")
-                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                logger.debug(skip_reason)
-            return False
+        if quant_ctx.precision_plan is not None and not quant_ctx.precision_plan_applied:
+            if not _is_plan_allow_to_quantize(name):
+                if quant_ctx.verbose:
+                    skip_reason = _skip_reason("NOT in precision_plan")
+                    quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+                    logger.debug(skip_reason)
+                return False
 
         # The fallback layers should be skipped in the basic filter function,
         # and they will be quantized in the fallback filter function.
