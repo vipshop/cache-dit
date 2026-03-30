@@ -210,7 +210,7 @@ class QuantizeAOContext:
     @staticmethod
     def from_config(
         quantize_config: QuantizeConfig,
-        module: torch.nn.Module = None,
+        module: torch.nn.Module,
         **kwargs,
     ) -> "QuantizeAOContext":
         return QuantizeAOContext(
