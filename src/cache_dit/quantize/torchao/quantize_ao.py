@@ -307,20 +307,17 @@ class QuantizeAOContext:
                 if quant_type not in self.reverse_precision_plan:
                     self.reverse_precision_plan[quant_type] = []
                 self.reverse_precision_plan[quant_type].append(layer_name)
+            # remove emplty quant_type in reverse_precision_plan
+            self.reverse_precision_plan = {
+                k: v for k, v in self.reverse_precision_plan.items() if v
+            }
+            for quant_type in self.reverse_precision_plan:
+                self.reverse_precision_plan[quant_type] = list(
+                    set(self.reverse_precision_plan[quant_type])
+                )
 
         # Preprocess exclude layers and fallback layers.
         self._maybe_fill_fallback_layers()
-
-        if self.required_fallback() and self.fallback_layers:
-            if self.precision_plan is not None:
-                # Also add the fallback layers to the reverse_precision_plan.
-                self.reverse_precision_plan["float8_per_tensor"] = (
-                    self.reverse_precision_plan.get("float8_per_tensor", []) + self.fallback_layers
-                )
-                logger.warning(
-                    "precision_plan is specified, the fallback layers will be merged "
-                    "into the float8_per_tensor plan."
-                )
 
         self.repeated_blocks = getattr(
             self.module_ref,
@@ -342,6 +339,23 @@ class QuantizeAOContext:
                         f"weight dtype of bfloat16, but found dtype {submod.weight.dtype} "
                         f"in layer {name}."
                     )
+
+        # Merged the fallback layers into the precision plan if precision_plan is specified,
+        # to make sure those layers will be quantized with the fallback quantization type.
+        if self.required_fallback() and self.fallback_layers:
+            if self.precision_plan is not None:
+                # Also add the fallback layers to the reverse_precision_plan.
+                self.reverse_precision_plan["float8_per_tensor"] = (
+                    self.reverse_precision_plan.get("float8_per_tensor", []) + self.fallback_layers
+                )
+                self.reverse_precision_plan["float8_per_tensor"] = list(
+                    set(self.reverse_precision_plan["float8_per_tensor"])
+                )
+                logger.info(
+                    "precision_plan is specified, the fallback layers will be merged "
+                    "into the float8_per_tensor plan."
+                )
+
         return self
 
     def _maybe_fill_fallback_layers(self):
@@ -353,7 +367,13 @@ class QuantizeAOContext:
         # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
         # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
         rowwise_layers = copy.deepcopy(self.rowwise_layers)
-        if self.module_ref is not None and self.is_float8_per_row():
+        # The major quantization type may not be float8 per-row when precision_plan is specified,
+        # we also enable the fallback for rowwise layers when precision_plan is specified since
+        # some of the layers in the precision_plan may be quantized to float8 per-row, and we don't
+        # want those layers to cause error due to the layout issue,.
+        if self.module_ref is not None and (
+            self.is_float8_per_row() or self.precision_plan is not None
+        ):
             if not ENV.CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP:
                 rowwise_layers = getattr(self.module_ref, "_rowwise_layers", [])
                 if rowwise_layers:
