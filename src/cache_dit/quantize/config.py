@@ -61,6 +61,22 @@ class QuantizeConfig:
     # raising error. (Only support for float8 quantization for now, int8 fallback
     # is not supported yet.)
     per_tensor_fallback: bool = True
+    # Precision plan is a dict specifying the quantization type for each layer, it will
+    # override the quant_type and components_to_quantize. The format of the dict is
+    # {
+    #     'attn.to_q': 'float8_per_tensor',   # better performance
+    #     'attn.to_k': 'float8_per_row',      # better accuracy
+    #     'attn.to_v': 'float8_per_row',      # better accuracy
+    #     'attn.to_out': 'float8_per_tensor', # better performance
+    #     ...
+    # }
+    # The keys are the layer names, which should be the same as the name in the model's
+    # state_dict, e.g, the layers that contain "to_q", "to_k", "to_v" in their names will
+    # be quantized to different types according to the precision_plan. This is useful for
+    # cases when users want to have more control over the quantization type of each layer,
+    # and want to achieve better accuracy by using different quantization types for different
+    # layers based on their sensitivity to quantization.
+    precision_plan: Optional[Dict[str, str]] = None
     # Whether to print detailed quantization information, such as the quantization
     # type of each layer, the reason for skipping quantization, etc. This is useful
     # for debugging and analysis.
@@ -124,6 +140,7 @@ class QuantizeConfig:
                     repeated_blocks=cfg.get("repeated_blocks", config.repeated_blocks),
                     filter_fn=cfg.get("filter_fn", config.filter_fn),
                     per_tensor_fallback=cfg.get("per_tensor_fallback", config.per_tensor_fallback),
+                    precision_plan=cfg.get("precision_plan", config.precision_plan),
                     verbose=cfg.get("verbose", config.verbose),
                 )
                 for component, cfg in config.components_to_quantize.items()

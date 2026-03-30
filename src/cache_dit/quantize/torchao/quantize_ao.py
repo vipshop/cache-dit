@@ -101,6 +101,8 @@ class QuantizeAOContext:
     repeated_blocks: Optional[List[str]] = None
     exclude_layers: List[str] = dataclasses.field(default_factory=list)
     per_tensor_fallback: bool = True
+    # e.g., {"block1": "float8_per_row", "block2": "float8_per_tensor"}
+    precision_plan: Optional[dict] = None
     verbose: bool = False
     # stats for summary
     num_basic_quant_linear: int = 0
@@ -162,6 +164,7 @@ class QuantizeAOContext:
             regional_quantize=quantize_config.regional_quantize,
             repeated_blocks=quantize_config.repeated_blocks,
             exclude_layers=quantize_config.exclude_layers,
+            precision_plan=quantize_config.precision_plan,
             per_tensor_fallback=quantize_config.per_tensor_fallback,
             verbose=quantize_config.verbose,
             kwargs=copy.deepcopy(kwargs),
@@ -360,8 +363,8 @@ class QuantizeAOContext:
             return True
         return False
 
-    def is_quantized_layer(self, name: str) -> bool:
-        return self.is_basic_quantized(name) or self.is_fallback_quantized(name)
+    def is_quantized_module(self, m: torch.nn.Module) -> bool:
+        return getattr(m, "_is_inner_quantized", False)
 
     def is_rowwise_layer(self, name: str) -> bool:
         for rowwise_name in self.rowwise_layers:
@@ -537,6 +540,12 @@ def _basic_filter_fn(
 
     msg_template = "Skip: {name} -> pattern<{pattern}>"
 
+    # for better code readability, although this function is not used in basic filter fn,
+    # but it may be used in the future when we have more complex quantization logic and
+    # need to check if a layer is already quantized or not.
+    if quant_ctx.is_quantized_module(m):
+        return False
+
     quant_ctx.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
         quant_ctx.num_linear_layers += 1
@@ -605,6 +614,9 @@ def _basic_filter_fn(
 
         quant_ctx.num_basic_quant_linear += 1
         quant_ctx.basic_quantized_layers.append(name)
+        # Set this attribute to avoid redundant quantization, which may cause
+        # performance regression and other issues.
+        m._is_inner_quantized = True  # type: ignore
         return True
 
     return False
@@ -620,6 +632,9 @@ def _fallback_filter_fn(
     # Fallback to quant_type: float8_per_tensor.
     msg_template = "Fallback: {name} -> pattern<{pattern}>"
 
+    if quant_ctx.is_quantized_layer(m, name):
+        return False
+
     # Some stats like num_layers and num_linear_layers will be counted in basic_filter_fn,
     # so here we only count the number of quantized and skipped layers for fallback filter fn.
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
@@ -627,7 +642,7 @@ def _fallback_filter_fn(
             # Only record the skip reason for layers that are both not in fallback layers and
             # exclude layers, because the layers in exclude layers will be skipped in basic filter
             # fn, and we no longer want to record the skip reason for layers in exclude layers here.
-            if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_layer(name):
+            if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_module(m):
                 if quant_ctx.verbose:
                     skip_reason = msg_template.format(name=name, pattern="NOT in fallback layers")
                     logger.debug(skip_reason)
@@ -648,6 +663,9 @@ def _fallback_filter_fn(
 
         quant_ctx.num_fallback_quant_linear += 1
         quant_ctx.fallback_quantized_layers.append(name)
+        # Set this attribute to avoid redundant quantization, which may cause
+        # performance regression and other issues.
+        m._is_inner_quantized = True  # type: ignore
         return True
 
     return False
