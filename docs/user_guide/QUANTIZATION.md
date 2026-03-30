@@ -229,7 +229,6 @@ from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 cache_dit.enable_cache(
     pipe,
     cache_config=DBCacheConfig(),
-    parallelism_config=ParallelismConfig(tp_size=2),
     quantize_config=QuantizeConfig(
        # Default type for unmatched layers in transformer.
         quant_type="float8_per_row",
@@ -237,13 +236,14 @@ cache_dit.enable_cache(
         repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
         per_tensor_fallback=True,
         precision_plan={
-            "attn.to_q": "float8_per_tensor",    # match: **attn.to_q**,   better performance. 
-            "attn.to_k": "float8_per_row",       # match: **attn.to_k**,   better precision.
-            "attn.to_v": "float8_per_row",       # match: **attn.to_v**,   better precision.
-            "attn.to_out": "float8_per_tensor",  # match: **attn.to_out**, better performance.
+            "attn.to_q": "float8_per_tensor",  # match: **attn.to_q**, best performance. 
+            "attn.to_k": "float8_weight_only", # match: **attn.to_k**, best precision.
+            "attn.to_v": "float8_per_block",   # match: **attn.to_v**, better precision.
+            "attn.to_out": "float8_per_row",   # match: **attn.to_out**, better precision.
         },
     ),
 )
+# python3 -m cache_dit.generate flux2_klein_9b_kv_edit --config quantize_plan.yaml --compile
 ```
 
 ## INT8/INT4 Quantization

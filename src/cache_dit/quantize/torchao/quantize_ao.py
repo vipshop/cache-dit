@@ -240,7 +240,8 @@ class QuantizeAOContext:
         mc = max(len(str(v)) for v in self.quantized_map.values()) + 3
         quantized_map = {k: v for k, v in self.quantized_map.items() if v > 0}
         summary_strs.append(f"Quantized        Region: {quantized_region}")
-        for q_type, c in quantized_map.items():
+        for q_type in _PREFERRED_PRECISION_PLAN_ORDER:
+            c = quantized_map.get(q_type, 0)
             sk = len(self.skipped_map.get(q_type, []))
             summary_strs.append(f"Quantized Linear Layers: {c:<{mc}} {q_type:<{mk}} {sk} (skipped)")
         summary_strs.append(f"Quantized Linear Layers: {all_quant:<{mc}} (total)")
@@ -658,7 +659,7 @@ def _basic_filter_fn(
 
     # If layers_allowed_to_quantize is not specified, it means all layers are allowed to
     # quantize by default.
-    def _is_plan_allow_to_quantize(name: str) -> bool:  # precision plan
+    def _is_curr_plan_allow_to_quantize(name: str) -> bool:  # precision plan
         if quant_ctx.layers_allowed_to_quantize:
             for allow_name in quant_ctx.layers_allowed_to_quantize:
                 if allow_name in name:
@@ -674,10 +675,11 @@ def _basic_filter_fn(
         # If precision_plan is specified, only quantize the layers that are specified in
         # the precision_plan, and skip the layers that are not in the precision_plan.
         if quant_ctx.precision_plan is not None and not quant_ctx.precision_plan_pass_applied:
-            if not _is_plan_allow_to_quantize(name):
-                skip_reason = _skip_reason("NOT in precision_plan")
-                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
-                logger.debug(skip_reason)
+            if not _is_curr_plan_allow_to_quantize(name):  # skip quantization for curr plan
+                # DON'T record the skip reason for layers that are not in the current plan,
+                # since the layers that are not in any plan will be skipped in all precison
+                # plan passes, but still be quantized in the end with the basic config, and
+                # we only want to record it in the basic quantization pass just 1 time.
                 return False
 
         # The fallback layers should be skipped in the basic filter function,
