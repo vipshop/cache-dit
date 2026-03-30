@@ -126,9 +126,9 @@ def quantize_ao(
     quant_ctx.summary()
 
     module._is_quantized = True
-    module._quantize_type = quant_ctx.quant_type
     module._quantize_config = quantize_config
-    module._exclude_layers = copy.deepcopy(quant_ctx.exclude_layers)
+    module._quantize_type = quant_ctx.quant_type
+    module._exclude_layers = quant_ctx.exclude_layers
 
     return module
 
