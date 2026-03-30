@@ -19,3 +19,4 @@ quantize_config:
         - "mod"
         - "modulation"
   verbose: false
+attention_backend: _flash_3
