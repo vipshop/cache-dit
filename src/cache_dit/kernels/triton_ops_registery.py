@@ -53,7 +53,7 @@ torch.library.define(
 
 # Op: cache_dit::triton_fp8_comm_per_token_quant
 @torch.library.impl("cache_dit::triton_fp8_comm_per_token_quant", "CUDA")
-def _triton_fp8_comm_per_token_quant_cuda(x: torch.Tensor) -> torch.Tensor:
+def _triton_fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16, f"expected bfloat16 but got {x.dtype}"
     dtype = torch.float8_e4m3fn
     finfo = torch.finfo(dtype)
@@ -80,7 +80,7 @@ def _triton_fp8_comm_per_token_quant_cuda(x: torch.Tensor) -> torch.Tensor:
 
 
 @torch.library.register_fake("cache_dit::triton_fp8_comm_per_token_quant")
-def _triton_fp8_comm_per_token_quant_fake(x: torch.Tensor) -> torch.Tensor:
+def _(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.bfloat16
     *shape, H = x.shape
     return x.new_empty((*shape, H + 2), dtype=torch.float8_e4m3fn)
@@ -88,7 +88,7 @@ def _triton_fp8_comm_per_token_quant_fake(x: torch.Tensor) -> torch.Tensor:
 
 # Op: cache_dit::triton_fp8_comm_per_token_dequant
 @torch.library.impl("cache_dit::triton_fp8_comm_per_token_dequant", "CUDA")
-def _triton_fp8_comm_per_token_dequant_cuda(x: torch.Tensor) -> torch.Tensor:
+def _triton_fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.float8_e4m3fn, f"expected float8_e4m3fn but got {x.dtype}"
     *shape, H = x.shape
     x = x.reshape(-1, H).contiguous()
@@ -111,7 +111,7 @@ def _triton_fp8_comm_per_token_dequant_cuda(x: torch.Tensor) -> torch.Tensor:
 
 
 @torch.library.register_fake("cache_dit::triton_fp8_comm_per_token_dequant")
-def _triton_fp8_comm_per_token_dequant_fake(x: torch.Tensor) -> torch.Tensor:
+def _(x: torch.Tensor) -> torch.Tensor:
     assert x.dtype == torch.float8_e4m3fn
     *shape, H = x.shape
     return x.new_empty((*shape, H - 2), dtype=torch.bfloat16)
@@ -119,7 +119,7 @@ def _triton_fp8_comm_per_token_dequant_fake(x: torch.Tensor) -> torch.Tensor:
 
 # Op: cache_dit::triton_fp8_comm_qkv_permute_quant
 @torch.library.impl("cache_dit::triton_fp8_comm_qkv_permute_quant", "CUDA")
-def _triton_fp8_comm_qkv_permute_quant_cuda(x: torch.Tensor) -> torch.Tensor:
+def _triton_fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
     B, S, P, N, D = x.shape
     eps: float = 1e-6
 
@@ -149,14 +149,14 @@ def _triton_fp8_comm_qkv_permute_quant_cuda(x: torch.Tensor) -> torch.Tensor:
 
 
 @torch.library.register_fake("cache_dit::triton_fp8_comm_qkv_permute_quant")
-def _triton_fp8_comm_qkv_permute_quant_fake(x: torch.Tensor) -> torch.Tensor:
+def _(x: torch.Tensor) -> torch.Tensor:
     B, S, P, N, D = x.shape
     return x.new_empty((P, S, B, N, D + 4), dtype=torch.float8_e4m3fn)
 
 
 # Op: cache_dit::triton_fp8_comm_qkv_permute_dequant
 @torch.library.impl("cache_dit::triton_fp8_comm_qkv_permute_dequant", "CUDA")
-def _triton_fp8_comm_qkv_permute_dequant_cuda(quant_x: torch.Tensor) -> torch.Tensor:
+def _triton_fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
     S, B, N, _D = quant_x.shape
     D = _D - 4
     # Currently we only support dequant to bfloat16, which is the common use case.
@@ -184,7 +184,7 @@ def _triton_fp8_comm_qkv_permute_dequant_cuda(quant_x: torch.Tensor) -> torch.Te
 
 
 @torch.library.register_fake("cache_dit::triton_fp8_comm_qkv_permute_dequant")
-def _triton_fp8_comm_qkv_permute_dequant_fake(quant_x: torch.Tensor) -> torch.Tensor:
+def _(quant_x: torch.Tensor) -> torch.Tensor:
     S, B, N, _D = quant_x.shape
     D = _D - 4
     return quant_x.new_empty((B, S, N, D), dtype=torch.bfloat16)
@@ -192,7 +192,7 @@ def _triton_fp8_comm_qkv_permute_dequant_fake(quant_x: torch.Tensor) -> torch.Te
 
 # Op: cache_dit::triton_fused_merge_attn_states
 @torch.library.impl("cache_dit::triton_fused_merge_attn_states", "CUDA")
-def _triton_fused_merge_attn_states_cuda(
+def _triton_fused_merge_attn_states(
     prev_out: torch.Tensor,  # [B, N, H, D]
     prev_lse: torch.Tensor,  # [B, N, H, 1]
     suff_out: torch.Tensor,
@@ -227,7 +227,7 @@ def _triton_fused_merge_attn_states_cuda(
 
 
 @torch.library.register_fake("cache_dit::triton_fused_merge_attn_states")
-def _triton_fused_merge_attn_states_fake(
+def _(
     prev_out: torch.Tensor,  # [B, N, H, D]
     prev_lse: torch.Tensor,  # [B, N, H, 1]
     suff_out: torch.Tensor,
