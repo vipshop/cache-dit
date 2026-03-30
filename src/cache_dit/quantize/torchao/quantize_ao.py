@@ -317,7 +317,7 @@ class QuantizeAOContext:
                 )
 
         # Preprocess exclude layers and fallback layers.
-        self._maybe_fill_fallback_layers()
+        self._prepare_extra_layers_info()
 
         self.repeated_blocks = getattr(
             self.module_ref,
@@ -366,7 +366,7 @@ class QuantizeAOContext:
 
         return self
 
-    def _maybe_fill_fallback_layers(self):
+    def _prepare_extra_layers_info(self):
         exclude_layers = copy.deepcopy(self.exclude_layers)
         fallback_layers = copy.deepcopy(self.fallback_layers)
         # Case 0: TP + torchao FP8 per-row quantization.
