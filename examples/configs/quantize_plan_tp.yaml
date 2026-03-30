@@ -1,0 +1,22 @@
+parallelism_config:
+  tp_size: auto # e.g, 2
+  attention_backend: native
+quantize_config: 
+  components_to_quantize:
+    transformer:
+      # Default quantization type for transformer layers, it will be 
+      # overridden by the precision_plan if specified.
+      quant_type: "float8_per_row"       
+      regional_quantize: true
+      per_tensor_fallback: true
+      precision_plan:
+        "attn.to_q": "float8_per_tensor"    # match: **attn.to_q** 
+        "attn.to_k": "float8_per_row"       # match: **attn.to_k**
+        "attn.to_v": "float8_per_row"       # match: **attn.to_v**
+        "attn.to_out": "float8_per_tensor"  # match: **attn.to_out**
+      exclude_layers:  
+        - "embedder"
+        - "embed"
+        - "mod"
+        - "modulation"
+  verbose: false

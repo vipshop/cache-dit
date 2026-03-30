@@ -1,0 +1,18 @@
+quantize_config: 
+  components_to_quantize:
+    transformer:
+      # Default quantization type for transformer layers, it will be 
+      # overridden by the precision_plan if specified.
+      quant_type: "float8_per_row"       
+      regional_quantize: true
+      precision_plan:
+        "attn.to_q": "float8_per_tensor"  # match: **attn.to_q**, best performance.
+        "attn.to_k": "float8_weight_only" # match: **attn.to_k**, best precision.
+        "attn.to_v": "float8_per_block"   # match: **attn.to_v**, better precision.
+        "attn.to_out": "float8_per_row"   # match: **attn.to_out**, better precision.
+      exclude_layers:  
+        - "embedder"
+        - "embed"
+        - "mod"
+        - "modulation"
+  verbose: false
