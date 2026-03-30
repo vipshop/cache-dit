@@ -77,7 +77,8 @@ class QuantizeConfig:
     # be quantized to different types according to the precision_plan. This is useful for
     # cases when users want to have more control over the quantization type of each layer,
     # and want to achieve better accuracy by using different quantization types for different
-    # layers based on their sensitivity to quantization.
+    # layers based on their sensitivity to quantization. Only valid when the regional quantize
+    # is True, otherwise it will be ignored.
     precision_plan: Optional[Dict[str, str]] = None
     # Whether to print detailed quantization information, such as the quantization
     # type of each layer, the reason for skipping quantization, etc. This is useful

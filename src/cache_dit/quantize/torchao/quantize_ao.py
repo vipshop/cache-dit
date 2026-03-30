@@ -32,7 +32,7 @@ def quantize_ao(
     # the whole module directly. For models outside of diffusers, users can specify
     # the repeated blocks by setting repeated_blocks to a list of block names.
     basic_ao_config = _get_torchao_config(quant_ctx.quant_type, **quant_ctx.kwargs)
-    basic_filter_fn = partial(_basic_filter_fn, quant_ctx=quant_ctx)
+    basic_filter_fn = partial(_basic_filter_fn, quant_ctx=quant_ctx, override_quant_type=None)
 
     # Reference: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1475
     if quant_ctx.regional_quantize:
@@ -40,23 +40,53 @@ def quantize_ao(
             quant_ctx.repeated_blocks is not None
         ), "repeated_blocks must be specified when regional_quantize is True."
         has_quantized_region = False
-        # First, quantize non exclude layers with basic config, and skip layers that are
-        # in fallback_layers if fallback is enabled, we will quantize those layers in
-        # the second pass with fallback config.
-        for submod in module.modules():
-            if submod.__class__.__name__ in quant_ctx.repeated_blocks:
-                _quantize_module(submod, basic_ao_config, basic_filter_fn)
-                has_quantized_region = True
-        # Second, quantize the fallback layers with fallback config if fallback is enabled and
-        # the layers are not quantized in the first pass. Currently, only support float8 per-tensor
-        # fallback for rowwise layers in TP, and the fallback config is set to per-tensor quantization.
-        if quant_ctx.can_fallback():
-            fallback_ao_config = _get_torchao_config("float8_per_tensor", **quant_ctx.kwargs)
-            fallback_filter_fn = partial(_fallback_filter_fn, quant_ctx=quant_ctx)
+
+        if quant_ctx.precision_plan is not None:
+            logger.info(
+                "Precision plan is specified, the quantization type for each layer will be "
+                "determined by the precision plan, and the basic quantization type and fallback "
+                "mechanism will be ignored."
+            )
+            # If precision_plan is specified, we will quantize the layers according to the precision_plan.
+            for quant_type, layer_names in quant_ctx.reverse_precision_plan.items():
+                if not layer_names:  # no layers for this quant_type, skip directly.
+                    continue
+                # Update layers allowed to quantize for better summary and analysis.
+                quant_ctx.layers_allowed_to_quantize = layer_names
+                submod_ao_config = _get_torchao_config(quant_type, **quant_ctx.kwargs)
+                submod_filter_fn = partial(
+                    _basic_filter_fn,
+                    quant_ctx=quant_ctx,
+                    override_quant_type=quant_type,
+                )
+                for submod in module.modules():
+                    if submod.__class__.__name__ in quant_ctx.repeated_blocks:
+                        _quantize_module(submod, submod_ao_config, submod_filter_fn)
+                        has_quantized_region = True
+            # The default pass for layers that are not specified in the precision_plan, we will quantize
+            # them with the basic config.
             for submod in module.modules():
                 if submod.__class__.__name__ in quant_ctx.repeated_blocks:
-                    _quantize_module(submod, fallback_ao_config, fallback_filter_fn)
+                    _quantize_module(submod, basic_ao_config, basic_filter_fn)
                     has_quantized_region = True
+        else:
+            # First, quantize non exclude layers with basic config, and skip layers that are
+            # in fallback_layers if fallback is enabled, we will quantize those layers in
+            # the second pass with fallback config.
+            for submod in module.modules():
+                if submod.__class__.__name__ in quant_ctx.repeated_blocks:
+                    _quantize_module(submod, basic_ao_config, basic_filter_fn)
+                    has_quantized_region = True
+            # Second, quantize the fallback layers with fallback config if fallback is enabled and
+            # the layers are not quantized in the first pass. Currently, only support float8 per-tensor
+            # fallback for rowwise layers in TP, and the fallback config is set to per-tensor quantization.
+            if quant_ctx.can_fallback():
+                fallback_ao_config = _get_torchao_config("float8_per_tensor", **quant_ctx.kwargs)
+                fallback_filter_fn = partial(_fallback_filter_fn, quant_ctx=quant_ctx)
+                for submod in module.modules():
+                    if submod.__class__.__name__ in quant_ctx.repeated_blocks:
+                        _quantize_module(submod, fallback_ao_config, fallback_filter_fn)
+                        has_quantized_region = True
         if not has_quantized_region:
             raise ValueError(
                 f"Regional quantization failed because {quant_ctx.repeated_blocks} "
@@ -92,6 +122,18 @@ def _quantize_module(
     )
 
 
+_ALLOWED_QUANTIZE_TYPES = [
+    "float8_per_row",
+    "float8_per_tensor",
+    "float8_per_block",
+    "float8_weight_only",
+    "int8_per_row",
+    "int8_per_tensor",
+    "int8_weight_only",
+    "int4_weight_only",
+]
+
+
 @dataclasses.dataclass
 class QuantizeAOContext:
     module_ref: torch.nn.Module = None  # ref only
@@ -105,17 +147,8 @@ class QuantizeAOContext:
     precision_plan: Optional[dict] = None
     verbose: bool = False
     # stats for summary
-    num_basic_quant_linear: int = 0
-    num_basic_skip_linear: int = 0
-    num_fallback_quant_linear: int = 0
-    num_fallback_skip_linear: int = 0
     num_linear_layers: int = 0
     num_layers: int = 0
-    # record the full name of quantized layers for better summary and analysis,
-    # the name is in the format of "module1.module2.linear"
-    basic_quantized_layers: List[str] = dataclasses.field(default_factory=list)
-    fallback_quantized_layers: List[str] = dataclasses.field(default_factory=list)
-    skipped_reasons: List[str] = dataclasses.field(default_factory=list)
     # e.g, for rowwise TP -> FP8 per-row -> fallback -> FP8 per-tensor
     fallback_layers: List[str] = dataclasses.field(default_factory=list)  # all fallback layers
     # rowwise layers that may cause issue with FP8 per-row quantization,
@@ -124,25 +157,29 @@ class QuantizeAOContext:
     # Extra kwargs for trival usage, e.g, weight_dtype and activation_dtype
     # for float8 quantization, etc.
     kwargs: dict = dataclasses.field(default_factory=dict)
-    # Allow quantization types
-    allowed_quant_types: List[str] = dataclasses.field(
-        default_factory=lambda: [
-            "float8_per_row",  # w8a8
-            "float8_per_tensor",  # w8a8
-            "float8_per_block",  # w8a8
-            "float8_weight_only",  # w8a16_wo
-            "int8_per_row",  # w8a8
-            "int8_per_tensor",  # w8a8
-            "int8_weight_only",  # w8a16_wo
-            "int4_weight_only",  # w4a16_wo
-        ]
+    # A dict that record quantized info: precision -> quantized layers.
+    quantized_map: dict = dataclasses.field(
+        default_factory=lambda: {quant_type: 0 for quant_type in _ALLOWED_QUANTIZE_TYPES},
     )
+    # A dict that record skipped layers info: precision -> skipped layers.
+    skipped_map: dict[str, list[str]] = dataclasses.field(
+        default_factory=lambda: {k: [] for k in _ALLOWED_QUANTIZE_TYPES}
+    )
+    # Reverse precision plan to make it easier to use, the format is
+    # {quant_type: [layer_name1, layer_name2, ...], ...}
+    reverse_precision_plan: dict = dataclasses.field(default_factory=dict)
+    # A list of layers that are allowed to be quantized, used for better summary
+    # and analysis, it will be filled based on the exclude_layers and fallback_layers,
+    # etc. The format is [layer_name1, layer_name2, ...]. Helpers for precision plan.
+    # This list will be dynamically updated during the quantization process, and it
+    # will be used to determine whether a layer is quantized or skipped, etc.
+    layers_allowed_to_quantize: List[str] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         self.quant_type = self.quant_type.lower()
-        assert self.quant_type in self.allowed_quant_types, (
+        assert self.quant_type in _ALLOWED_QUANTIZE_TYPES, (
             f"quant_type {self.quant_type} is not supported, allowed quantization "
-            f"types: {self.allowed_quant_types}."
+            f"types: {_ALLOWED_QUANTIZE_TYPES}."
         )
         if self.is_float8():
             assert current_platform.get_device_capability() >= (
@@ -151,6 +188,16 @@ class QuantizeAOContext:
             ), "FP8 requires Ada or newer GPUs (>=sm89), current device capability is " + str(
                 current_platform.get_device_capability()
             )
+        if self.precision_plan:
+            for layer_name, quant_type in self.precision_plan.items():
+                quant_type = quant_type.lower()
+                assert quant_type in _ALLOWED_QUANTIZE_TYPES, (
+                    f"quant_type {quant_type} in precision_plan is not supported, allowed "
+                    f"quantization types: {_ALLOWED_QUANTIZE_TYPES}."
+                )
+                if quant_type not in self.reverse_precision_plan:
+                    self.reverse_precision_plan[quant_type] = []
+                self.reverse_precision_plan[quant_type].append(layer_name)
 
     @staticmethod
     def from_config(
@@ -177,35 +224,41 @@ class QuantizeAOContext:
             else self.module_ref.__class__.__name__ if self.module_ref else "Module"
         )
         # Basic summary info.
-        total_quant_linear = self.num_basic_quant_linear + self.num_fallback_quant_linear
-        total_skip_linear = self.num_basic_skip_linear + self.num_fallback_skip_linear
+        all_quant = sum(self.quantized_map.values())
+        all_skip = sum(len(v) for v in self.skipped_map.values())
+        all_linear = self.num_linear_layers
+        summary_strs = []
+        mk = max(len(k) for k in self.quantized_map.keys())
+        mc = max(len(str(v)) for v in self.quantized_map.values()) + 3
+        quantized_map = {k: v for k, v in self.quantized_map.items() if v > 0}
+        summary_strs.append(f"Quantized        Region: {quantized_region}")
+        for q_type, c in quantized_map.items():
+            sk = len(self.skipped_map.get(q_type, []))
+            summary_strs.append(f"Quantized Linear Layers: {c:<{mc}} {q_type:<{mk}} {sk} (skipped)")
+        summary_strs.append(f"Quantized Linear Layers: {all_quant:<{mc}} (total)")
+        summary_strs.append(f"Skipped   Linear Layers: {all_skip:<{mc}} (total)")
+        summary_strs.append(f"Linear           Layers: {all_linear:<{mc}} (total)")
+        summary_strs.append(f"Skipped        Patterns: {self.exclude_layers}")
 
-        summary_strs = [
-            f"Quantized                 Method: {self.quant_type}",
-            f"Quantized                 Region: {quantized_region}",
-            f"Quantized    Basic Linear Layers: {self.num_basic_quant_linear:<5}",
-            f"Quantized Fallback Linear Layers: {self.num_fallback_quant_linear} (per_tensor)",
-            f"Total    Quantized Linear Layers: {total_quant_linear:<5}",
-            f"Skipped      Basic Linear Layers: {self.num_basic_skip_linear:<5}",
-            f"Skipped   Fallback Linear Layers: {self.num_fallback_skip_linear:<5}",
-            f"Total      Skipped Linear Layers: {total_skip_linear:<5}",
-            f"Total              Linear Layers: {self.num_linear_layers:<5}",
-            f"Skipped                 Patterns: {self.exclude_layers}",
-        ]
         if not self.verbose or not logger.isEnabledFor(logging.DEBUG):
             summary_strs.pop()  # remove skipped patterns in non-verbose mode
-        max_len = max(max(len(s) for s in summary_strs), 0) + 2
-        logger.info("-" * max_len)
+        ml = max(max(len(s) for s in summary_strs), 0) + 2
+        logger.info("-" * ml)
         # extend strs with spaces for better formatting, the last char is '|'
-        summary_strs = [s.ljust(max_len) + "|" for s in summary_strs]
+        summary_strs = [s.ljust(ml) + "|" for s in summary_strs]
         summary_str = "\n".join(summary_strs)
         logger.info(summary_str)
-        logger.info("-" * max_len)
+        logger.info("-" * ml)
 
         # Detailed summary for skipped reasons, only log when verbose is True.
-        if self.verbose and self.skipped_reasons:
+        skipped_reasons = []
+        for quant_type, reasons in self.skipped_map.items():
+            for reason in reasons:
+                skipped_reasons.append(f"{quant_type}: {reason}")
+
+        if self.verbose and skipped_reasons:
             skipped_reasons_counter = {}
-            for reason in self.skipped_reasons:
+            for reason in skipped_reasons:
                 skipped_reasons_counter[reason] = skipped_reasons_counter.get(reason, 0) + 1
 
             max_name_len = 0
@@ -326,13 +379,7 @@ class QuantizeAOContext:
         # Currently, only support float8 per-tensor fallback for rowwise layers if
         # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
         # quantization for now, we may add more fallback options in the future.
-        if self.precision_plan is not None:
-            raise ValueError(
-                "precision_plan is not compatible with fallback mechanism, please specify "
-                "the quantization type for each layer in the precision_plan if you want "
-                "to use precision_plan."
-            )
-        return (
+        _call_fallback = (
             self.per_tensor_fallback
             and (
                 self.is_float8_per_row()
@@ -343,6 +390,14 @@ class QuantizeAOContext:
             and self.regional_quantize
             and bool(self.fallback_layers)
         )
+        if _call_fallback:
+            if self.precision_plan is not None:
+                raise ValueError(
+                    "precision_plan is not compatible with fallback mechanism, please specify "
+                    "the quantization type for each layer in the precision_plan if you want "
+                    "to use precision_plan."
+                )
+        return _call_fallback
 
     def is_fallback_layer(self, name: str) -> bool:
         if not self.can_fallback():
@@ -520,7 +575,8 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
     except ImportError as e:
         e.msg += (
             f"{quant_type} is not supported in torchao backend now! "
-            "Please consider to use another quantization type instead."
+            "Please consider to use another quantization type instead. "
+            f"Allowed quantization types: {_ALLOWED_QUANTIZE_TYPES}."
         )
         raise e
 
@@ -531,10 +587,14 @@ def _basic_filter_fn(
     m: torch.nn.Module,
     name: str,
     quant_ctx: QuantizeAOContext = QuantizeAOContext(),
+    override_quant_type: Optional[str] = None,  # For precision plan.
 ) -> bool:
     from torchao.float8.float8_linear import Float8Linear
 
     msg_template = "Skip: {name} -> pattern<{pattern}>"
+    curr_quant_type = (
+        override_quant_type if override_quant_type is not None else quant_ctx.quant_type
+    )
 
     # for better code readability, although this function is not used in basic filter fn,
     # but it may be used in the future when we have more complex quantization logic and
@@ -542,9 +602,29 @@ def _basic_filter_fn(
     if quant_ctx.is_quantized_layer(m):
         return False
 
+    def _skip_reason(pattern: str) -> str:
+        skip_reason = msg_template.format(name=name, pattern=pattern)
+        return skip_reason
+
+    def _is_plan_allow_to_quantize(name: str) -> bool:  # precision plan
+        if quant_ctx.layers_allowed_to_quantize:
+            for allow_name in quant_ctx.layers_allowed_to_quantize:
+                if allow_name in name:
+                    return True
+        return False
+
     quant_ctx.num_layers += 1
     if isinstance(m, torch.nn.Linear) and not isinstance(m, Float8Linear):
         quant_ctx.num_linear_layers += 1
+
+        # If precision_plan is specified, only quantize the layers that are specified in
+        # the precision_plan, and skip the layers that are not in the precision_plan.
+        if quant_ctx.precision_plan is not None and not _is_plan_allow_to_quantize(name):
+            if quant_ctx.verbose:
+                skip_reason = _skip_reason("NOT in precision_plan")
+                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+                logger.debug(skip_reason)
+            return False
 
         # The fallback layers should be skipped in the basic filter function,
         # and they will be quantized in the fallback filter function.
@@ -556,63 +636,46 @@ def _basic_filter_fn(
             # that are skipped in fallback filter fn.
             if not quant_ctx.is_fallback_layer(name):
                 if quant_ctx.verbose:
-                    exclude_name = quant_ctx.get_exclude_name(name)
-                    skip_reason = msg_template.format(name=name, pattern=exclude_name)
+                    skip_reason = _skip_reason(quant_ctx.get_exclude_name(name))
+                    quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
                     logger.debug(skip_reason)
-                    quant_ctx.skipped_reasons.append(skip_reason)
-
-                quant_ctx.num_basic_skip_linear += 1
             return False
 
         # Check for weight dtype for float8 per-row
-        if quant_ctx.quant_type == "float8_per_row" and m.weight.dtype != torch.bfloat16:
+        if curr_quant_type == "float8_per_row" and m.weight.dtype != torch.bfloat16:
             if quant_ctx.verbose:
-                skip_reason = msg_template.format(
-                    name=name,
-                    pattern=f"dtype({m.weight.dtype})!=bfloat16",
-                )
+                skip_reason = _skip_reason(f"dtype({m.weight.dtype})!=bfloat16")
+                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
                 logger.debug(skip_reason)
-                quant_ctx.skipped_reasons.append(skip_reason)
-
-            quant_ctx.num_basic_skip_linear += 1
             return False
 
         # check blockwise fp8 support for linear layers, if not supported,
         # skip quantization for that layer.
-        if quant_ctx.quant_type in [
+        if curr_quant_type in [
             "float8_per_block",
         ] and not _check_if_linear_fp8_blockwise_can_support(m):
             weight_shape = tuple(m.weight.shape)
             if quant_ctx.verbose:
-                skip_reason = msg_template.format(
-                    name=name,
-                    pattern=f"w{weight_shape} % block_size(128, 128) != 0",
-                )
+                skip_reason = _skip_reason(f"w{weight_shape} % blocksize(128, 128) != 0")
+                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
                 logger.debug(skip_reason)
-                quant_ctx.skipped_reasons.append(skip_reason)
-            quant_ctx.num_basic_skip_linear += 1
             return False
 
-        if quant_ctx.quant_type in [
+        if curr_quant_type in [
             "float8_per_row",
             "float8_per_tensor",
             "float8_per_block",
         ] and not _check_if_linear_with_bias_fp8_can_support(m):
             if quant_ctx.verbose:
-                skip_reason = msg_template.format(
-                    name=name,
-                    pattern="DTensor + bias is not supported for _scaled_mm",
-                )
+                skip_reason = _skip_reason("_scaled_mm: DTensor + bias NOT supported")
+                quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
                 logger.debug(skip_reason)
-                quant_ctx.skipped_reasons.append(skip_reason)
-            quant_ctx.num_basic_skip_linear += 1
             return False
 
-        quant_ctx.num_basic_quant_linear += 1
-        quant_ctx.basic_quantized_layers.append(name)
         # Set this attribute to avoid redundant quantization, which may cause
         # performance regression and other issues.
         m._is_inner_quantized = True  # type: ignore
+        quant_ctx.quantized_map[curr_quant_type] += 1
         return True
 
     return False
@@ -627,9 +690,14 @@ def _fallback_filter_fn(
 
     # Fallback to quant_type: float8_per_tensor.
     msg_template = "Fallback: {name} -> pattern<{pattern}>"
+    fallback_quant_type = "float8_per_tensor"
 
     if quant_ctx.is_quantized_layer(m):
         return False
+
+    def _fallback_reason(pattern: str) -> str:
+        fallback_reason = msg_template.format(name=name, pattern=pattern)
+        return fallback_reason
 
     # Some stats like num_layers and num_linear_layers will be counted in basic_filter_fn,
     # so here we only count the number of quantized and skipped layers for fallback filter fn.
@@ -640,28 +708,22 @@ def _fallback_filter_fn(
             # fn, and we no longer want to record the skip reason for layers in exclude layers here.
             if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_layer(m):
                 if quant_ctx.verbose:
-                    skip_reason = msg_template.format(name=name, pattern="NOT in fallback layers")
+                    skip_reason = _fallback_reason("NOT in fallback layers")
+                    quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
                     logger.debug(skip_reason)
-                    quant_ctx.skipped_reasons.append(skip_reason)
-                quant_ctx.num_fallback_skip_linear += 1
             return False
 
         if not _check_if_linear_with_bias_fp8_can_support(m):
             if quant_ctx.verbose:
-                skip_reason = msg_template.format(
-                    name=name,
-                    pattern="DTensor + bias is not supported for _scaled_mm",
-                )
+                skip_reason = _fallback_reason("_scaled_mm: DTensor + bias NOT supported")
+                quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
                 logger.debug(skip_reason)
-                quant_ctx.skipped_reasons.append(skip_reason)
-            quant_ctx.num_fallback_skip_linear += 1
             return False
 
-        quant_ctx.num_fallback_quant_linear += 1
-        quant_ctx.fallback_quantized_layers.append(name)
         # Set this attribute to avoid redundant quantization, which may cause
         # performance regression and other issues.
         m._is_inner_quantized = True  # type: ignore
+        quant_ctx.quantized_map[fallback_quant_type] += 1
         return True
 
     return False
