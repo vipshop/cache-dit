@@ -33,13 +33,6 @@ metrics = [
     "lpips==0.1.4",
 ]
 
-serving = [
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "pydantic>=2.0.0",
-    "peft",
-]
-
 dev = [
     "packaging",
     "pre-commit",
@@ -79,7 +72,6 @@ all = [
     "cache-dit[parallelism]",
     "cache-dit[quantization]",
     "cache-dit[metrics]",
-    "cache-dit[serving]",
 ]
 
 [project.urls]
