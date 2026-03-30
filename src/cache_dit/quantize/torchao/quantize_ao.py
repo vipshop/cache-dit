@@ -326,6 +326,12 @@ class QuantizeAOContext:
         # Currently, only support float8 per-tensor fallback for rowwise layers if
         # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
         # quantization for now, we may add more fallback options in the future.
+        if self.precision_plan is not None:
+            raise ValueError(
+                "precision_plan is not compatible with fallback mechanism, please specify "
+                "the quantization type for each layer in the precision_plan if you want "
+                "to use precision_plan."
+            )
         return (
             self.per_tensor_fallback
             and (
@@ -353,17 +359,7 @@ class QuantizeAOContext:
                 return True
         return False
 
-    def is_basic_quantized(self, name: str) -> bool:
-        if name in self.basic_quantized_layers:
-            return True
-        return False
-
-    def is_fallback_quantized(self, name: str) -> bool:
-        if name in self.fallback_quantized_layers:
-            return True
-        return False
-
-    def is_quantized_module(self, m: torch.nn.Module) -> bool:
+    def is_quantized_layer(self, m: torch.nn.Module) -> bool:
         return getattr(m, "_is_inner_quantized", False)
 
     def is_rowwise_layer(self, name: str) -> bool:
@@ -543,7 +539,7 @@ def _basic_filter_fn(
     # for better code readability, although this function is not used in basic filter fn,
     # but it may be used in the future when we have more complex quantization logic and
     # need to check if a layer is already quantized or not.
-    if quant_ctx.is_quantized_module(m):
+    if quant_ctx.is_quantized_layer(m):
         return False
 
     quant_ctx.num_layers += 1
@@ -632,7 +628,7 @@ def _fallback_filter_fn(
     # Fallback to quant_type: float8_per_tensor.
     msg_template = "Fallback: {name} -> pattern<{pattern}>"
 
-    if quant_ctx.is_quantized_layer(m, name):
+    if quant_ctx.is_quantized_layer(m):
         return False
 
     # Some stats like num_layers and num_linear_layers will be counted in basic_filter_fn,
@@ -642,7 +638,7 @@ def _fallback_filter_fn(
             # Only record the skip reason for layers that are both not in fallback layers and
             # exclude layers, because the layers in exclude layers will be skipped in basic filter
             # fn, and we no longer want to record the skip reason for layers in exclude layers here.
-            if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_module(m):
+            if not quant_ctx.is_exclude_layer(name) and not quant_ctx.is_quantized_layer(m):
                 if quant_ctx.verbose:
                     skip_reason = msg_template.format(name=name, pattern="NOT in fallback layers")
                     logger.debug(skip_reason)

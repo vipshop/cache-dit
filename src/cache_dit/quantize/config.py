@@ -62,7 +62,9 @@ class QuantizeConfig:
     # is not supported yet.)
     per_tensor_fallback: bool = True
     # Precision plan is a dict specifying the quantization type for each layer, it will
-    # override the quant_type and components_to_quantize. The format of the dict is
+    # override the quant_type and components_to_quantize. The layers not contained in
+    # the precision plan will be quantized according to the basic quant_type and
+    # components_to_quantize. The format of the dict is
     # {
     #     'attn.to_q': 'float8_per_tensor',   # better performance
     #     'attn.to_k': 'float8_per_row',      # better accuracy
