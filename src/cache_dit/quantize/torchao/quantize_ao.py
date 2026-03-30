@@ -240,8 +240,7 @@ class QuantizeAOContext:
         mc = max(len(str(v)) for v in self.quantized_map.values()) + 3
         quantized_map = {k: v for k, v in self.quantized_map.items() if v > 0}
         summary_strs.append(f"Quantized        Region: {quantized_region}")
-        for q_type in _PREFERRED_PRECISION_PLAN_ORDER:
-            c = quantized_map.get(q_type, 0)
+        for q_type, c in quantized_map.items():
             sk = len(self.skipped_map.get(q_type, []))
             summary_strs.append(f"Quantized Linear Layers: {c:<{mc}} {q_type:<{mk}} {sk} (skipped)")
         summary_strs.append(f"Quantized Linear Layers: {all_quant:<{mc}} (total)")

@@ -245,6 +245,20 @@ cache_dit.enable_cache(
 )
 # python3 -m cache_dit.generate flux2_klein_9b_kv_edit --config quantize_plan.yaml --compile
 ```
+Then, the output summary will show the quantization type for each layer, and users can verify the quantization plan is applied correctly.
+
+```bash
+-----------------------------------------------------------------------------------
+Quantized        Region: ['Flux2TransformerBlock', 'Flux2SingleTransformerBlock']  |
+Quantized Linear Layers: 96    float8_per_row     0 (skipped)                      |
+Quantized Linear Layers: 32    float8_per_tensor  0 (skipped)                      |
+Quantized Linear Layers: 8     float8_per_block   0 (skipped)                      |
+Quantized Linear Layers: 8     float8_weight_only 0 (skipped)                      |
+Quantized Linear Layers: 144   (total)                                             |
+Skipped   Linear Layers: 0     (total)                                             |
+Linear           Layers: 144   (total)                                             |
+-----------------------------------------------------------------------------------
+```
 
 ## INT8/INT4 Quantization
 
