@@ -212,13 +212,13 @@ Linear           Layers: 144   (total)                                          
 -----------------------------------------------------------------------------------
 ```
 
-## Hybrid Precision Plan
+## (Hybrid) Precision Plan
 
 The <span style="color:#c77dff;">precision_plan</span> option in <span style="color:#c77dff;">QuantizeConfig</span> allows users to specify different quantization types for matched layer-name patterns. It is useful when you want better control of the accuracy and performance trade-off for attention sub-layers (for example, keep <span style="color:#c77dff;">to_k/to_v</span> in <span style="color:#c77dff;">float8_per_row</span> while using <span style="color:#c77dff;">float8_per_tensor</span> for <span style="color:#c77dff;">to_q/to_out</span>). Please note:
 
-- <span style="color:#c77dff;">precision_plan</span> is only valid when <span style="color:#c77dff;">regional_quantize=True</span>. If regional quantization is disabled, precision plan will be ignored.
-- <span style="color:#c77dff;">precision_plan</span> is compatible with <span style="color:#c77dff;">per_tensor_fallback</span>. If a selected plan type is not supported by a specific layer/hardware path, fallback logic still works automatically when enabled.
 - Layers not matched by <span style="color:#c77dff;">precision_plan</span> continue to use the base <span style="color:#c77dff;">quant_type</span>.
+- <span style="color:#c77dff;">precision_plan</span> is only valid when <span style="color:#c77dff;">regional_quantize=True</span>. If regional quantization is disabled, precision plan will be ignored.
+- <span style="color:#c77dff;">precision_plan</span> is compatible with <span style="color:#c77dff;">per_tensor_fallback</span>. If a selected plan type is not supported by a specific layer/hardware path (case: rowwise tensor parallel is used and the basic quantize type is float8_per_row), fallback logic still works automatically when enabled.
 
 For example: (FLUX.2-Klein-9b-kv)
 
