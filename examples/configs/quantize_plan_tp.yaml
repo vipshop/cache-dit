@@ -6,7 +6,7 @@ quantize_config:
     transformer:
       # Default quantization type for transformer layers, it will be 
       # overridden by the precision_plan if specified.
-      quant_type: "float8_per_tensor"       
+      quant_type: "float8_per_row"       
       regional_quantize: true
       per_tensor_fallback: true
       precision_plan:

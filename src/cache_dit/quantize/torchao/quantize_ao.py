@@ -351,6 +351,14 @@ class QuantizeAOContext:
                 self.reverse_precision_plan["float8_per_tensor"] = list(
                     set(self.reverse_precision_plan["float8_per_tensor"])
                 )
+                # Fallback layers will merged into precision_plan if precision_plan is specified,
+                # otherwise they will be added to the fallback_layers list directly, and they
+                # will be quantized in the second pass with fallback config.
+                # Clear fallback layers since they are merged into precision_plan now.
+                # require_fallback() will always return False after this since fallback_layers
+                # will be empty, so it won't cause issue for the logic that checks whether to
+                # apply fallback quantization in the second pass.
+                self.fallback_layers = []  # IMPORTANT!
                 logger.info(
                     "precision_plan is specified, the fallback layers will be merged "
                     "into the float8_per_tensor plan."
