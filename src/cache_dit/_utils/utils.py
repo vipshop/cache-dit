@@ -621,6 +621,8 @@ def get_args(
     parser.add_argument(
         "--disable-compile-repeated-blocks",
         "--disable-compile-blocks",
+        "--no-regional-compile",
+        "--no-rc",
         action="store_true",
         default=False,
         help="Disable compile for repeated blocks in transformer",
