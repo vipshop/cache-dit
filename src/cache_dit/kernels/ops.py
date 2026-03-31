@@ -1,7 +1,3 @@
-# Currently we only have triton kernels for cache-dit, but we can re-implement
-# some of them in CuteDSL for better performance if needed in the future. In
-# that case, we can keep the same operator definitions in this file and just
-# change the underlying implementations.
 import torch
 from functools import partial
 from typing import Tuple, Callable
@@ -14,6 +10,7 @@ _KERNEL_BE_FN = Callable[..., KernelBackend]
 # select the kernel backend based on the hardware and software environment,
 # or provide an interface for users to specify the kernel backend.
 _DEFAULT_BE_FN = lambda: KernelBackend.TRITON
+_ERROR_TEMPLATE = "kernel backend: {} is not supported now!"
 
 
 def _fp8_comm_per_token_quant_impl(
@@ -26,7 +23,7 @@ def _fp8_comm_per_token_quant_impl(
 
         return fp8_comm_per_token_quant(x)
     else:
-        raise ValueError(f"kernel backend: {backend} is not supported now!")
+        raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fp8_comm_per_token_dequant_impl(
@@ -39,7 +36,7 @@ def _fp8_comm_per_token_dequant_impl(
 
         return fp8_comm_per_token_dequant(x)
     else:
-        raise ValueError(f"kernel backend: {backend} is not supported now!")
+        raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fp8_comm_qkv_permute_quant_impl(
@@ -52,7 +49,7 @@ def _fp8_comm_qkv_permute_quant_impl(
 
         return fp8_comm_qkv_permute_quant(x)
     else:
-        raise ValueError(f"kernel backend: {backend} is not supported now!")
+        raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fp8_comm_qkv_permute_dequant_impl(
@@ -65,7 +62,7 @@ def _fp8_comm_qkv_permute_dequant_impl(
 
         return fp8_comm_qkv_permute_dequant(quant_x)
     else:
-        raise ValueError(f"kernel backend: {backend} is not supported now!")
+        raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fused_merge_attn_states_impl(
@@ -81,7 +78,7 @@ def _fused_merge_attn_states_impl(
 
         return fused_merge_attn_states(prev_out, prev_lse, suff_out, suff_lse)
     else:
-        raise ValueError(f"kernel backend: {backend} is not supported now!")
+        raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 fp8_comm_per_token_quant = partial(
