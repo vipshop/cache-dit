@@ -3,7 +3,7 @@
 # that case, we can keep the same operator definitions in this file and just
 # change the underlying implementations.
 import torch
-from functions import partial
+from functools import partial
 from typing import Tuple, Callable
 from .backend import KernelBackend
 
