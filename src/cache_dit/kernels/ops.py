@@ -84,23 +84,23 @@ def _fused_merge_attn_states_impl(
         raise ValueError(f"kernel backend: {backend} is not supported now!")
 
 
-fp8_comm_per_token_quant: Callable[..., torch.Tensor] = partial(
+fp8_comm_per_token_quant = partial(
     _fp8_comm_per_token_quant_impl,
     backend_fn=_DEFAULT_BE_FN,
 )
-fp8_comm_per_token_dequant: Callable[..., torch.Tensor] = partial(
+fp8_comm_per_token_dequant = partial(
     _fp8_comm_per_token_dequant_impl,
     backend_fn=_DEFAULT_BE_FN,
 )
-fp8_comm_qkv_permute_quant: Callable[..., torch.Tensor] = partial(
+fp8_comm_qkv_permute_quant = partial(
     _fp8_comm_qkv_permute_quant_impl,
     backend_fn=_DEFAULT_BE_FN,
 )
-fp8_comm_qkv_permute_dequant: Callable[..., torch.Tensor] = partial(
+fp8_comm_qkv_permute_dequant = partial(
     _fp8_comm_qkv_permute_dequant_impl,
     backend_fn=_DEFAULT_BE_FN,
 )
-fused_merge_attn_states: Callable[..., Tuple[torch.Tensor, torch.Tensor]] = partial(
+fused_merge_attn_states = partial(
     _fused_merge_attn_states_impl,
     backend_fn=_DEFAULT_BE_FN,
 )
