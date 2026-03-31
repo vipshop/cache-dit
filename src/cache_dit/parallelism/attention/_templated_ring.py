@@ -6,10 +6,8 @@ import torch.nn.functional as F
 try:
     from ...kernels import fused_merge_attn_states
 
-    _is_triton_kernel_available = True
 except ImportError:
     fused_merge_attn_states = None
-    _is_triton_kernel_available = False
 
 try:
     from diffusers.models.attention_dispatch import TemplatedRingAttention
@@ -220,7 +218,7 @@ class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
             if prev_out is not None:
                 # out = prev_out - F.sigmoid(lse - prev_lse) * (prev_out - out)
                 # lse = prev_lse - F.logsigmoid(prev_lse - lse)
-                if _is_triton_kernel_available:
+                if fused_merge_attn_states is not None:
                     out, lse = fused_merge_attn_states(
                         prev_out,
                         prev_lse,

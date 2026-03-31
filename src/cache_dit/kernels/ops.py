@@ -18,6 +18,7 @@ def _fp8_comm_per_token_quant_impl(
     backend_fn: _KERNEL_BE_FN = _DEFAULT_BE_FN,
 ) -> torch.Tensor:
     backend = backend_fn()
+    assert KernelBackend.is_supported(backend)
     if backend == KernelBackend.TRITON:
         from .triton import fp8_comm_per_token_quant
 
@@ -31,6 +32,7 @@ def _fp8_comm_per_token_dequant_impl(
     backend_fn: _KERNEL_BE_FN = _DEFAULT_BE_FN,
 ) -> torch.Tensor:
     backend = backend_fn()
+    assert KernelBackend.is_supported(backend)
     if backend == KernelBackend.TRITON:
         from .triton import fp8_comm_per_token_dequant
 
@@ -44,6 +46,7 @@ def _fp8_comm_qkv_permute_quant_impl(
     backend_fn: _KERNEL_BE_FN = _DEFAULT_BE_FN,
 ) -> torch.Tensor:
     backend = backend_fn()
+    assert KernelBackend.is_supported(backend)
     if backend == KernelBackend.TRITON:
         from .triton import fp8_comm_qkv_permute_quant
 
@@ -57,6 +60,7 @@ def _fp8_comm_qkv_permute_dequant_impl(
     backend_fn: _KERNEL_BE_FN = _DEFAULT_BE_FN,
 ) -> torch.Tensor:
     backend = backend_fn()
+    assert KernelBackend.is_supported(backend)
     if backend == KernelBackend.TRITON:
         from .triton import fp8_comm_qkv_permute_dequant
 
@@ -73,10 +77,16 @@ def _fused_merge_attn_states_impl(
     backend_fn: _KERNEL_BE_FN = _DEFAULT_BE_FN,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     backend = backend_fn()
+    assert KernelBackend.is_supported(backend)
     if backend == KernelBackend.TRITON:
         from .triton import fused_merge_attn_states
 
-        return fused_merge_attn_states(prev_out, prev_lse, suff_out, suff_lse)
+        return fused_merge_attn_states(
+            prev_out,
+            prev_lse,
+            suff_out,
+            suff_lse,
+        )
     else:
         raise ValueError(_ERROR_TEMPLATE.format(backend))
 
