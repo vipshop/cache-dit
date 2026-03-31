@@ -950,11 +950,16 @@ def maybe_compile_transformer(
                     # case, compiled block outputs can be overwritten by a subsequent
                     # replay. Fall back to compiling the whole transformer when
                     # cudagraphs are enabled.
-                    if args.cuda_graph and use_regional_compile:
-                        logger.info(
-                            f"CUDA Graph is enabled, compiling full {name}: {transformer_cls_name} ..."
-                        )
-                        use_regional_compile = False
+                    if args.cuda_graph:
+                        if use_regional_compile:
+                            logger.info(
+                                f"CUDA Graph is enabled, compiling full {name}: {transformer_cls_name} ..."
+                            )
+                            use_regional_compile = False
+                        else:
+                            logger.info(
+                                f"Compiling {name}: {transformer_cls_name} with CUDA Graph enabled ..."
+                            )
 
                     if use_regional_compile:
                         logger.info(
