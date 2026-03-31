@@ -20,9 +20,16 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 
 ## FP8 Quantization
 
-Currently, TorchAo has been fully integrated into Cache-DiT as the backend for <span style="color:#c77dff;">online</span> quantization. You can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. (recommended)
+Currently, Cache-DiT supports <span style="color:#c77dff;">online</span> quantization with different quantization types via TorchAo backend (`torchao>=0.17.0` recommended). Users can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. Please make sure to install the latest version of torchao before using quantization features.
 
-For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8_per_row</span> or <span style="color:#c77dff;">float8_per_block</span>, as these methods cause almost no loss in precision. Supported quantization types including:  
+```bash
+# stable: torchao (change cu130 to cu129 if using CUDA 12.9)
+uv pip install torchao --index-url https://download.pytorch.org/whl/cu130 --upgrade
+# nightly: torchao (change cu130 to cu129 if using CUDA 12.9)
+uv pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
+```
+
+For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8_per_row</span> or <span style="color:#c77dff;">float8_per_block</span>, as these methods cause almost no loss in precision. We also recommend enabling <span style="color:#c77dff;">torch.compile</span> for better performance with quantization. Supported quantization types including:  
 
   - <span style="color:#c77dff;">float8_per_row</span>: quantize both weights and activations to float8 (dynamic quantization) with rowwise method.  
   - <span style="color:#c77dff;">float8_per_tensor</span>: quantize both weights and activations to float8 (dynamic quantization) with tensorwise method.  
@@ -278,10 +285,10 @@ INT4 quantization can provide even better memory reduction compared to FP8 or IN
 Please note that users should also install <span style="color:#c77dff;">mslk</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
 
 ```bash
-# stable: mslk, torch and torchao (change cu130 to cu129 if using CUDA 12.9)
-uv pip install torch==2.11.0 torchvision torchao triton mslk --index-url https://download.pytorch.org/whl/cu130 --upgrade
-# nightly: mslk, torch and torchao (change cu130 to cu129 if using CUDA 12.9)
-uv pip install --pre torch torchvision torchao triton mslk --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
+# stable: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.11.0
+uv pip install torch==2.11.0 mslk --index-url https://download.pytorch.org/whl/cu130 --upgrade
+# nightly: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.12.0
+uv pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
 ```
 In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.
 
