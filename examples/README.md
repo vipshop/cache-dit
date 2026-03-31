@@ -313,6 +313,8 @@ options:
   --prompt PROMPT       Override default prompt if provided
   --negative-prompt NEGATIVE_PROMPT
                         Override default negative prompt if provided
+  --skip-negative_prompt, --skip-neg
+                        Force skip negative prompt even if negative prompt is provided.
   --num_inference_steps NUM_INFERENCE_STEPS, --steps NUM_INFERENCE_STEPS
                         Number of inference steps
   --warmup WARMUP       Number of warmup steps before measuring performance
@@ -321,6 +323,10 @@ options:
   --repeat REPEAT       Number of times to repeat the inference for performance measurement
   --height HEIGHT       Height of the generated image
   --width WIDTH         Width of the generated image
+  --input-height INPUT_HEIGHT
+                        Height of the input image
+  --input-width INPUT_WIDTH
+                        Width of the input image
   --seed SEED           Random seed for reproducibility
   --num-frames NUM_FRAMES, --frames NUM_FRAMES
                         Number of frames to generate for video
@@ -350,20 +356,43 @@ options:
   --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
                         Pre-defined steps computation mask policy
   --quantize, --q       Enable quantization for transformer
-  --quantize-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
+  --disable-per-row, --no-per-row
+                        Disable per row quantization for transformer
+  --quantize-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}, --q-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}
+  --disable-regional-quantize, --disable-regional, --no-regional
+                        Disable quantization for repeated blocks in transformer
+  --disable-per-tensor-fallback, --no-per-tensor-fallback
+                        Disable (float8 only) per-tensor fallback quantization for transformer
+  --float8-per-row, --float8
+                        Enable float8 per-row quantization for transformer
+  --float8-per-tensor   Enable float8 per-tensor quantization for transformer
+  --float8-per-block    Enable float8 per-block quantization for transformer
+  --float8-weight-only, --float8-wo
+                        Enable float8 weight-only quantization for transformer
+  --float8-blockwise, --float8-bw
+                        Enable float8 blockwise quantization for transformer
+  --int8-per-row, --int8
+                        Enable int8 per-row quantization for transformer
+  --int8-per-tensor     Enable int8 per-tensor quantization for transformer
+  --int8-weight-only, --int8-wo
+                        Enable int8 weight-only quantization for transformer
+  --int4-weight-only, --int4-wo
+                        Enable int4 weight-only quantization for transformer
   --quantize-text-encoder, --q-text
                         Enable quantization for text encoder
-  --quantize-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-text-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
+  --quantize-text-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}, --q-text-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}
   --quantize-controlnet, --q-controlnet
-                        Enable quantization for text encoder
-  --quantize-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}, --q-controlnet-type {None,float8,float8_weight_only,float8_wo,int8,int8_weight_only,int8_wo,int4,int4_weight_only,int4_wo,bitsandbytes_4bit,bnb_4bit}
+                        Enable quantization for ControlNet
+  --quantize-controlnet-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}, --q-controlnet-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}
+  --quantize-verbose, --q-verbose
+                        Print the verbose logs of the quantization process
   --parallel-type {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}, --parallel {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
                         Enable text encoder parallelism if applicable.
   --parallel-controlnet
                         Enable ControlNet parallelism if applicable.
-  --attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage,_native_npu}
+  --attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage,_native_npu,_npu_fia}
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context parallelism
   --ulysses-float8, --ufp8
@@ -382,15 +411,20 @@ options:
                         Enable automatic device map balancing model if multiple GPUs are available.
   --vae-tiling          Enable VAE tiling for low memory device.
   --vae-slicing         Enable VAE slicing for low memory device.
-  --compile             Enable compile for transformer
-  --compile-repeated-blocks
-                        Enable compile for repeated blocks in transformer
+  --compile             Enable compile for transformer, only compile the repeated blocks by default.
+  --disable-compile-repeated-blocks, --disable-compile-blocks
+                        Disable compile for repeated blocks in transformer
+  --force-compile-dynamic
+                        Force set the compiled transformer to dynamic mode.
+  --cuda-graph          Enable compile with CUDA Graph for transformer if applicable.
   --compile-vae         Enable compile for VAE
   --compile-text-encoder, --compile-text
                         Enable compile for text encoder
   --compile-controlnet  Enable compile for ControlNet
-  --max-autotune        Enable max-autotune mode for torch.compile
-  --track-memory        Track and report peak GPU memory usage
+  --max-autotune, --tune
+                        Enable max-autotune mode for torch.compile
+  --track-memory, --mem
+                        Track and report peak GPU memory usage
   --profile             Enable profiling with torch.profiler
   --profile-name PROFILE_NAME
                         Name for the profiling session
@@ -405,4 +439,8 @@ options:
                         Disable fuse_lora even if lora weights are provided.
   --generator-device GENERATOR_DEVICE, --gen-device GENERATOR_DEVICE
                         Device for torch.Generator, e.g., 'cuda' or 'cpu'. If not set, use 'cpu' for better reproducibility across different hardware.
+  --saved-fps SAVED_FPS, --fps SAVED_FPS
+                        Export generated video with specified fps
+  --example-summary, --esummary
+                        Enable example summary logging
 ```
