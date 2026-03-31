@@ -1,6 +1,7 @@
 import torch
 import copy
 from typing import Optional
+from .backend import QuantizeBackend
 from .config import QuantizeConfig
 from ..logger import init_logger
 
@@ -34,7 +35,7 @@ def quantize(
     # Dispatch to different quantization backends according to the quantize_config.
     # Currently we only support torchao as the quantization backend, and we may
     # support more backends in the future.
-    if quantize_config.backend.lower() in ("ao", "torchao"):
+    if quantize_config.backend == QuantizeBackend.TORCHAO:
         from .torchao import quantize_ao
 
         module = quantize_ao(module, quantize_config, **kwargs)

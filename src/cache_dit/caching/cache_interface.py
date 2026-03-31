@@ -12,8 +12,8 @@ from .cache_contexts import CalibratorConfig
 from .params_modifier import ParamsModifier
 from ..parallelism import ParallelismConfig
 from ..parallelism import enable_parallelism
-from ..quantize import QuantizeConfig
-from ..quantize import quantize
+from ..quantization import QuantizeConfig
+from ..quantization import quantize
 from ..utils import check_controlnet
 from ..utils import parse_extra_modules
 from ..logger import init_logger

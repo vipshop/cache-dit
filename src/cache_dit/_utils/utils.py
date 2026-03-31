@@ -17,7 +17,7 @@ from ..caching import (
     load_configs,
     load_parallelism_config,
 )
-from ..quantize import quantize, QuantizeConfig
+from ..quantization import quantize, QuantizeConfig
 
 from ..summary import strify as summary_strify
 
