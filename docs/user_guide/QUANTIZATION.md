@@ -287,7 +287,7 @@ Please note that users should also install <span style="color:#c77dff;">mslk</sp
 ```bash
 # stable: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.11.0
 uv pip install torch==2.11.0 mslk --index-url https://download.pytorch.org/whl/cu130 --upgrade
-# nightly: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.12.0
+# nightly: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.11.0
 uv pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
 ```
 In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.

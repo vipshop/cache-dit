@@ -652,7 +652,7 @@ class CachedAdapter:
         )
 
         # maybe release parallelism stats
-        from cache_dit.parallelism import (
+        from ...parallelism import (
             remove_parallelism_stats,
         )
 
@@ -664,7 +664,7 @@ class CachedAdapter:
         )
 
         # maybe release quantization stats
-        from cache_dit.quantize import (
+        from ...quantization import (
             remove_quantization_stats,
         )
 

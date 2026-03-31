@@ -12,7 +12,7 @@ from .caching import BasicCacheConfig
 from .caching import CalibratorConfig
 from .caching import FakeDiffusionPipeline
 from .parallelism import ParallelismConfig
-from .quantize import QuantizeConfig
+from .quantization import QuantizeConfig
 from .caching import load_configs
 from .logger import init_logger
 

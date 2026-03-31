@@ -1,5 +1,6 @@
 import dataclasses
 from typing import Optional, Dict, Any, List, Union
+from .backend import QuantizeBackend
 from ..logger import init_logger
 
 logger = init_logger(__name__)
@@ -7,10 +8,12 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class QuantizeConfig:
-    # quantization backend, only "ao" (torchao) is supported
-    # for now, more backends will be supported in the future.
-    backend: str = "ao"
-    # quantization type, currently support "float8_weight_only" and "float8_per_row",
+    # Quantization backend, only "ao" (torchao) is supported for now, more backends
+    # will be supported in the future. The AUTO option will automatically select the
+    # backend based on the hardware and quantization type, etc. Currently it will be
+    # resolved to TORCHAO since it's the only supported backend for now.
+    backend: str | QuantizeBackend = QuantizeBackend.AUTO
+    # Quantization type, currently support "float8_weight_only" and "float8_per_row",
     # "float8_per_tensor", "float8_per_block", "int8_per_row", "int8_per_tensor",
     # "int8_weight_only", "int4_weight_only", etc.
     quant_type: str = "float8_per_row"
@@ -84,6 +87,18 @@ class QuantizeConfig:
     # type of each layer, the reason for skipping quantization, etc. This is useful
     # for debugging and analysis.
     verbose: bool = False
+
+    def __post_init__(self):
+        if isinstance(self.quant_type, str):
+            self.quant_type = self.quant_type.lower()
+        # Resolve backend if it's in string format, and validate the backend.
+        if isinstance(self.backend, str):
+            self.backend = QuantizeBackend.from_str(self.backend)
+        if self.backend == QuantizeBackend.AUTO:
+            # Currently we only support torchao as the quantization backend, so AUTO will be
+            # resolved to TORCHAO. We may automatically select different backends in the future
+            # based on the hardware and quantization type, etc.
+            self.backend = QuantizeBackend.TORCHAO
 
     def as_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)

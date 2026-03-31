@@ -11,7 +11,7 @@ from ..parallelism import (
     ParallelismConfig,
     ParallelismBackend,
 )
-from ..quantize import QuantizeConfig
+from ..quantization import QuantizeConfig
 from ..logger import init_logger
 
 logger = init_logger(__name__)

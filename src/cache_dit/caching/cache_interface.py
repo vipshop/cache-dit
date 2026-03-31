@@ -12,8 +12,8 @@ from .cache_contexts import CalibratorConfig
 from .params_modifier import ParamsModifier
 from ..parallelism import ParallelismConfig
 from ..parallelism import enable_parallelism
-from ..quantize import QuantizeConfig
-from ..quantize import quantize
+from ..quantization import QuantizeConfig
+from ..quantization import quantize
 from ..utils import check_controlnet
 from ..utils import parse_extra_modules
 from ..logger import init_logger
@@ -207,7 +207,7 @@ def enable_cache(
 
         quantize_config (`QuantizeConfig`, *optional*, defaults to None):
             Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance.
-            Supported quantization types include: float8 (DQ), float8_weight_only, float8_blockwise, int8 (DQ), int8_weight_only, etc.
+            Supported quantization types include: float8_per_row, float8_per_tensor, float8_per_block, int8_weight_only, int4_weight_only, etc.
 
         kwargs (`dict`, *optional*, defaults to {})
             Other cache context kwargs, please check https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/cache_contexts/cache_context.py
