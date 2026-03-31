@@ -10,7 +10,7 @@ logger = init_logger(__name__)
 
 
 def set_compile_configs(
-    descent_tuning: bool = False,  # more compiling times but may get better performance.
+    descent_tuning: bool = True,  # more compiling times but may get better performance.
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
     fx_graph_cache: bool = True,
