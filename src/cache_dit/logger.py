@@ -190,6 +190,20 @@ def suppress_loggers(loggers_to_suppress: list[str], level: int = logging.ERROR)
 
 def suppress_torch_compile_loggers() -> dict[str, int]:
     """Set specified torch loggers to ERROR level to suppress warnings."""
+    try:
+        import torch._inductor.config as inductor_config
+        import torch._inductor.select_algorithm as select_algorithm
+
+        select_algorithm.PRINT_AUTOTUNE = False
+        inductor_config.max_autotune_report_choices_stats = False
+
+        # select_algorithm emits many max-autotune messages through log.error/log.warning,
+        # so setting the logger level to ERROR is insufficient. Disable this logger directly.
+        select_algorithm_logger = logging.getLogger("torch._inductor.select_algorithm")
+        select_algorithm_logger.disabled = True
+    except Exception:
+        pass
+
     # Suppress specific warnings from torch._dynamo and torch._inductor when using compile
     modules_to_suppress_warnings = [
         r"torch\._dynamo.*",
