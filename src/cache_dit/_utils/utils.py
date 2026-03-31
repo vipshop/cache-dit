@@ -956,10 +956,6 @@ def maybe_compile_transformer(
                                 f"CUDA Graph is enabled, compiling full {name}: {transformer_cls_name} ..."
                             )
                             use_regional_compile = False
-                        else:
-                            logger.info(
-                                f"Compiling {name}: {transformer_cls_name} with CUDA Graph enabled ..."
-                            )
 
                     if use_regional_compile:
                         logger.info(
@@ -971,7 +967,12 @@ def maybe_compile_transformer(
                             options=_compile_options(args),
                         )
                     else:
-                        logger.info(f"Compiling {name}: {transformer_cls_name} ...")
+                        if args.cuda_graph:
+                            logger.info(
+                                f"Compiling full {name}: {transformer_cls_name} with CUDA Graph enabled ..."
+                            )
+                        else:
+                            logger.info(f"Compiling full {name}: {transformer_cls_name} ...")
                         transformer = torch.compile(
                             transformer,
                             mode=_compile_mode(args),
