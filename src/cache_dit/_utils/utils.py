@@ -889,7 +889,7 @@ def _compile_mode(args):
 
 
 def _compile_options(args) -> Optional[Dict[str, Any]]:
-    if args.cuda_graph:
+    if args.cuda_graph and not args.force_compile_dynamic and not args.max_autotune:
         return {"triton.cudagraphs": True}
     return None
 
@@ -950,14 +950,13 @@ def maybe_compile_transformer(
                     # cudagraphs are enabled.
                     if args.cuda_graph and use_regional_compile:
                         logger.info(
-                            f"CUDA Graph is enabled, compiling full {name} module instead "
-                            f"of repeated blocks: {transformer_cls_name} ..."
+                            f"CUDA Graph is enabled, compiling full {name}: {transformer_cls_name} ..."
                         )
                         use_regional_compile = False
 
                     if use_regional_compile:
                         logger.info(
-                            f"Compiling repeated blocks in {name} module: {transformer_cls_name} ..."
+                            f"Compiling repeated blocks in {name}: {transformer_cls_name} ..."
                         )
                         transformer.compile_repeated_blocks(
                             mode=_compile_mode(args),
@@ -965,10 +964,10 @@ def maybe_compile_transformer(
                             options=_compile_options(args),
                         )
                     else:
-                        logger.info(f"Compiling {name} module: {transformer_cls_name} ...")
+                        logger.info(f"Compiling {name}: {transformer_cls_name} ...")
                         transformer = torch.compile(
                             transformer,
-                            # mode=_compile_mode(args),
+                            mode=_compile_mode(args),
                             dynamic=_force_compile_dynamic(args, pipe),
                             options=_compile_options(args),
                         )
