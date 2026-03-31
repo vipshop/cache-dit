@@ -915,6 +915,86 @@ def _force_compile_dynamic(args, pipe) -> bool:
     )
 
 
+def maybe_compile_transformer(
+    args,
+    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
+) -> DiffusionPipeline | BlockAdapter:
+    if args.compile:
+        set_compile_configs(cuda_graphs=args.cuda_graph)
+        torch.set_float32_matmul_precision("high")
+
+        if isinstance(pipe_or_adapter, BlockAdapter):
+            pipe = pipe_or_adapter.pipe
+            assert pipe is not None, "Please compile transformer manually if pipe is None."
+        else:
+            pipe = pipe_or_adapter
+
+        def _compile_transformer_module(transformer, name):
+            if transformer is not None and not isinstance(
+                transformer,
+                torch._dynamo.OptimizedModule,  # already compiled
+            ):
+                from diffusers import ModelMixin
+
+                transformer_cls_name = transformer.__class__.__name__
+                if isinstance(transformer, (torch.nn.Module, ModelMixin)):
+                    use_regional_compile = not args.disable_compile_repeated_blocks and hasattr(
+                        transformer, "compile_repeated_blocks"
+                    )
+
+                    # CUDA graphs do not work reliably with regional compilation for
+                    # transformer blocks that are replayed multiple times within one
+                    # model forward (for example FluxTransformerBlock in FLUX). In that
+                    # case, compiled block outputs can be overwritten by a subsequent
+                    # replay. Fall back to compiling the whole transformer when
+                    # cudagraphs are enabled.
+                    if args.cuda_graph and use_regional_compile:
+                        logger.info(
+                            f"CUDA Graph is enabled, compiling full {name} module instead "
+                            f"of repeated blocks: {transformer_cls_name} ..."
+                        )
+                        use_regional_compile = False
+
+                    if use_regional_compile:
+                        logger.info(
+                            f"Compiling repeated blocks in {name} module: {transformer_cls_name} ..."
+                        )
+                        transformer.compile_repeated_blocks(
+                            mode=_compile_mode(args),
+                            dynamic=_force_compile_dynamic(args, pipe),
+                            options=_compile_options(args),
+                        )
+                    else:
+                        logger.info(f"Compiling {name} module: {transformer_cls_name} ...")
+                        transformer = torch.compile(
+                            transformer,
+                            # mode=_compile_mode(args),
+                            dynamic=_force_compile_dynamic(args, pipe),
+                            options=_compile_options(args),
+                        )
+
+                    setattr(pipe, name, transformer)
+                else:
+                    logger.warning(
+                        f"Cannot compile {name} module: {transformer_cls_name} Not a"
+                        " torch.nn.Module."
+                    )
+            else:
+                logger.warning(f"{name} module is already compiled or None, skipping compilation.")
+
+        if hasattr(pipe, "transformer"):
+            transformer = getattr(pipe, "transformer", None)
+            _compile_transformer_module(transformer, "transformer")
+        else:
+            logger.warning("compile is set but no transformer found in the pipeline.")
+
+        if hasattr(pipe, "transformer_2"):
+            transformer_2 = getattr(pipe, "transformer_2", None)
+            _compile_transformer_module(transformer_2, "transformer_2")
+
+    return pipe_or_adapter
+
+
 def maybe_compile_text_encoder(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
@@ -1067,71 +1147,6 @@ def maybe_compile_vae(
                 logger.warning(f"Cannot compile VAE module: {vae_cls_name} Not a torch.nn.Module.")
         else:
             logger.warning("compile-vae is set but no VAE found in the pipeline.")
-    return pipe_or_adapter
-
-
-def maybe_compile_transformer(
-    args,
-    pipe_or_adapter: DiffusionPipeline | BlockAdapter,
-) -> DiffusionPipeline | BlockAdapter:
-    if args.compile:
-        set_compile_configs(cuda_graphs=args.cuda_graph)
-        torch.set_float32_matmul_precision("high")
-
-        if isinstance(pipe_or_adapter, BlockAdapter):
-            pipe = pipe_or_adapter.pipe
-            assert pipe is not None, "Please compile transformer manually if pipe is None."
-        else:
-            pipe = pipe_or_adapter
-
-        def _compile_transformer_module(transformer, name):
-            if transformer is not None and not isinstance(
-                transformer,
-                torch._dynamo.OptimizedModule,  # already compiled
-            ):
-                from diffusers import ModelMixin
-
-                transformer_cls_name = transformer.__class__.__name__
-                if isinstance(transformer, (torch.nn.Module, ModelMixin)):
-                    if not args.disable_compile_repeated_blocks and hasattr(
-                        transformer, "compile_repeated_blocks"
-                    ):
-                        logger.info(
-                            f"Compiling repeated blocks in {name} module: {transformer_cls_name} ..."
-                        )
-                        transformer.compile_repeated_blocks(
-                            mode=_compile_mode(args),
-                            dynamic=_force_compile_dynamic(args, pipe),
-                            options=_compile_options(args),
-                        )
-                    else:
-                        logger.info(f"Compiling {name} module: {transformer_cls_name} ...")
-                        transformer = torch.compile(
-                            transformer,
-                            # mode=_compile_mode(args),
-                            dynamic=_force_compile_dynamic(args, pipe),
-                            options=_compile_options(args),
-                        )
-
-                    setattr(pipe, name, transformer)
-                else:
-                    logger.warning(
-                        f"Cannot compile {name} module: {transformer_cls_name} Not a"
-                        " torch.nn.Module."
-                    )
-            else:
-                logger.warning(f"{name} module is already compiled or None, skipping compilation.")
-
-        if hasattr(pipe, "transformer"):
-            transformer = getattr(pipe, "transformer", None)
-            _compile_transformer_module(transformer, "transformer")
-        else:
-            logger.warning("compile is set but no transformer found in the pipeline.")
-
-        if hasattr(pipe, "transformer_2"):
-            transformer_2 = getattr(pipe, "transformer_2", None)
-            _compile_transformer_module(transformer_2, "transformer_2")
-
     return pipe_or_adapter
 
 
