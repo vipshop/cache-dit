@@ -1125,7 +1125,7 @@ def maybe_quantize_transformer(
             pipe = pipe_or_adapter
 
         def get_exclude_layers(transformer):
-            from ..quantize import QuantizeConfig
+            from ..quantization import QuantizeConfig
 
             default_config = QuantizeConfig()
             exclude_layers = default_config.exclude_layers

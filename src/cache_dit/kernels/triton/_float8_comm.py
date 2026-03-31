@@ -3,7 +3,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _triton_fp8_comm_per_token_quant_kernel(
+def _fp8_comm_per_token_quant_kernel(
     y_ptr: tl.tensor,
     x_ptr: tl.tensor,
     H: int,
@@ -41,7 +41,7 @@ def _triton_fp8_comm_per_token_quant_kernel(
 
 
 @triton.jit
-def _triton_fp8_comm_per_token_dequant_kernel(
+def _fp8_comm_per_token_dequant_kernel(
     y_ptr: tl.tensor,
     x_ptr: tl.tensor,
     H: int,
@@ -64,7 +64,7 @@ def _triton_fp8_comm_per_token_dequant_kernel(
 
 
 @triton.jit
-def _triton_fp8_comm_qkv_permute_quant_kernel(
+def _fp8_comm_qkv_permute_quant_kernel(
     quant_x_ptr: tl.tensor,
     x_ptr: tl.tensor,
     qx_stride_b: int,
@@ -110,7 +110,7 @@ def _triton_fp8_comm_qkv_permute_quant_kernel(
 
 
 @triton.jit
-def _triton_fp8_comm_qkv_dequant_permute_kernel(
+def _fp8_comm_qkv_dequant_permute_kernel(
     x_ptr: tl.tensor,
     quant_x_ptr: tl.tensor,
     x_stride_s: int,
