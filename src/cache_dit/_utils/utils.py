@@ -2,7 +2,7 @@ import torch
 import argparse
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
-from typing import Optional, List, Tuple
+from typing import Any, Dict, Optional, List, Tuple
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..logger import init_logger
@@ -637,6 +637,13 @@ def get_args(
         default=False,
         help="Force set the compiled transformer to dynamic mode. ",
     )
+    # cuda graph settings
+    parser.add_argument(
+        "--cuda-graph",
+        action="store_true",
+        default=False,
+        help="Enable compile with CUDA Graph for transformer if applicable.",
+    )
     parser.add_argument(
         "--compile-vae",
         action="store_true",
@@ -871,6 +878,43 @@ def prepare_extra_parallel_modules(
     return extra_parallel_modules
 
 
+def _compile_mode(args):
+    if args.max_autotune:
+        if args.cuda_graph:
+            return "max-autotune"
+        return "max-autotune-no-cudagraphs"
+    if args.force_compile_dynamic:
+        return None  # let torch.compile to decide itself.
+    return None
+
+
+def _compile_options(args) -> Optional[Dict[str, Any]]:
+    if args.cuda_graph:
+        return {"triton.cudagraphs": True}
+    return None
+
+
+def _force_compile_dynamic(args, pipe) -> bool:
+    _class_maybe_force_compile_dynamic = [
+        "QwenImage",
+        "Flux2KleinKV",
+    ]
+    if args.force_compile_dynamic:
+        return True
+    if args.parallel_type is None or "tp" not in args.parallel_type.lower():
+        return False
+    # For some specific pipelines with PyTorch native TP.
+    # Auto check if the pipeline class name starts with any
+    # of the specified prefixes to decide whether to force
+    # compile dynamic.
+    return any(
+        [
+            pipe.__class__.__name__.startswith(prefix)
+            for prefix in _class_maybe_force_compile_dynamic
+        ]
+    )
+
+
 def maybe_compile_text_encoder(
     args,
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
@@ -909,7 +953,8 @@ def maybe_compile_text_encoder(
                 )
                 _module_to_compile = torch.compile(
                     _module_to_compile,
-                    mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                    mode=_compile_mode(args),
+                    options=_compile_options(args),
                 )
                 # Set back the compiled text encoder
                 if hasattr(text_encoder, "model"):
@@ -955,7 +1000,8 @@ def maybe_compile_controlnet(
                     logger.info(f"Compiling controlnet module: {controlnet_cls_name} ...")
                     controlnet = torch.compile(
                         controlnet,
-                        mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                        mode=_compile_mode(args),
+                        options=_compile_options(args),
                     )
                     setattr(pipe, "controlnet", controlnet)
                 else:
@@ -994,7 +1040,8 @@ def maybe_compile_vae(
                         logger.info(f"Compiling VAE encoder module: {vae_cls_name}.encoder ...")
                         vae.encoder = torch.compile(
                             _encoder_to_compile,
-                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                            mode=_compile_mode(args),
+                            options=_compile_options(args),
                         )
                     else:
                         logger.warning(
@@ -1007,7 +1054,8 @@ def maybe_compile_vae(
                         logger.info(f"Compiling VAE decoder module: {vae_cls_name}.decoder ...")
                         vae.decoder = torch.compile(
                             _decoder_to_compile,
-                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
+                            mode=_compile_mode(args),
+                            options=_compile_options(args),
                         )
                     else:
                         logger.warning(
@@ -1027,7 +1075,7 @@ def maybe_compile_transformer(
     pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
     if args.compile:
-        set_compile_configs()
+        set_compile_configs(cuda_graphs=args.cuda_graph)
         torch.set_float32_matmul_precision("high")
 
         if isinstance(pipe_or_adapter, BlockAdapter):
@@ -1035,27 +1083,6 @@ def maybe_compile_transformer(
             assert pipe is not None, "Please compile transformer manually if pipe is None."
         else:
             pipe = pipe_or_adapter
-
-        _class_maybe_force_compile_dynamic = [
-            "QwenImage",
-            "Flux2KleinKV",
-        ]
-
-        def _maybe_force_compile_dynamic() -> bool:
-            if args.force_compile_dynamic:
-                return True
-            if args.parallel_type is None or "tp" not in args.parallel_type.lower():
-                return False
-            # For some specific pipelines with PyTorch native TP.
-            # Auto check if the pipeline class name starts with any
-            # of the specified prefixes to decide whether to force
-            # compile dynamic.
-            return any(
-                [
-                    pipe.__class__.__name__.startswith(prefix)
-                    for prefix in _class_maybe_force_compile_dynamic
-                ]
-            )
 
         def _compile_transformer_module(transformer, name):
             if transformer is not None and not isinstance(
@@ -1073,16 +1100,19 @@ def maybe_compile_transformer(
                             f"Compiling repeated blocks in {name} module: {transformer_cls_name} ..."
                         )
                         transformer.compile_repeated_blocks(
-                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
-                            dynamic=_maybe_force_compile_dynamic(),
+                            mode=_compile_mode(args),
+                            dynamic=_force_compile_dynamic(args, pipe),
+                            options=_compile_options(args),
                         )
                     else:
                         logger.info(f"Compiling {name} module: {transformer_cls_name} ...")
                         transformer = torch.compile(
                             transformer,
-                            mode="max-autotune-no-cudagraphs" if args.max_autotune else "default",
-                            dynamic=_maybe_force_compile_dynamic(),
+                            # mode=_compile_mode(args),
+                            dynamic=_force_compile_dynamic(args, pipe),
+                            options=_compile_options(args),
                         )
+
                     setattr(pipe, name, transformer)
                 else:
                     logger.warning(
@@ -1124,16 +1154,6 @@ def maybe_quantize_transformer(
         else:
             pipe = pipe_or_adapter
 
-        def get_exclude_layers(transformer):
-            from ..quantization import QuantizeConfig
-
-            default_config = QuantizeConfig()
-            exclude_layers = default_config.exclude_layers
-            # TODO: we can add more layers to exclude for specific models if needed,
-            # e.g., for QwenImageTransformer2DModel, we may need to exclude some
-            # specific layers to avoid out of memory issue or performance regression.
-            return exclude_layers
-
         if hasattr(pipe, "transformer"):
             transformer = getattr(pipe, "transformer", None)
             if transformer is not None:
@@ -1147,7 +1167,6 @@ def maybe_quantize_transformer(
                         transformer,
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_type,
-                            exclude_layers=get_exclude_layers(transformer),
                             regional_quantize=not args.disable_regional_quantize,
                             per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
@@ -1176,7 +1195,6 @@ def maybe_quantize_transformer(
                         transformer_2,
                         quantize_config=QuantizeConfig(
                             quant_type=args.quantize_type,
-                            exclude_layers=get_exclude_layers(transformer_2),
                             regional_quantize=not args.disable_regional_quantize,
                             per_tensor_fallback=not args.disable_per_tensor_fallback,
                             verbose=args.quantize_verbose,
