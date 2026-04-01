@@ -8,17 +8,11 @@ CUDA Graphs capture a stable GPU execution path and replay it, which can reduce 
 import torch
 
 # Enable compile + CUDA Graph through torch.compile options
-pipe.transformer = torch.compile(
-	pipe.transformer,
-	options={"triton.cudagraphs": True},
-)
+pipe.transformer = torch.compile(pipe.transformer, options={"triton.cudagraphs": True})
 
 # Enable compile + CUDA Graph through torch.compile max-autotune mode 
 # (which will automatically enable cudagraphs if constraints are satisfied)
-pipe.transformer = torch.compile(
-  pipe.transformer,
-  mode="max-autotune",
-)
+pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune")
 ```
 
 Quick start for Cache-DiT example CLI: NVIDIA L20 x 1, FLUX.1-dev, 28 steps, 1024x1024.
