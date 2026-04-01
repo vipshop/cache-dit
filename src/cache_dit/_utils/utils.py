@@ -966,7 +966,7 @@ def maybe_compile_transformer(
                             f"Compiling repeated blocks in {name}: {transformer_cls_name} ..."
                         )
                         transformer.compile_repeated_blocks(
-                            full_graph=args.compile_full_graph,
+                            fullgraph=args.compile_full_graph,
                             mode=_compile_mode(args),
                             dynamic=_force_compile_dynamic(args, pipe),
                             options=_compile_options(args),
