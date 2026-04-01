@@ -6,12 +6,6 @@ CUDA Graph captures a stable GPU execution path and replays it, which can reduce
 
 ```python
 import torch
-from diffusers import FluxPipeline
-
-pipe = FluxPipeline.from_pretrained(
-	"black-forest-labs/FLUX.1-dev",
-	torch_dtype=torch.bfloat16,
-).to("cuda")
 
 # Enable compile + CUDA Graph through torch.compile options
 pipe.transformer = torch.compile(
@@ -42,7 +36,32 @@ First-run includes compile, warmup (2 times) and repeat (2 times); steady-state 
 |:--:|:--:|:--:|:--:|
 | 20.73s | <span style="color:green">20.70s</span> | 13.43s | <span style="color:green">13.36s</span> |
 
+Nsys profiling confirms that CUDA Graph significantly reduces the kernel launch overhead, which is consistent with the observed speedup. In the Nsight Systems timeline, we can see that with CUDA Graph enabled, the process <span style="color:#c77dff;">captured a graph once and then replayed it</span> in subsequent iterations (top figure), while without CUDA Graph, we see many individual kernel launches (bottom figure).
+
+![cuda graph](../assets/flux_fp8_cuda_graph.png)
+
+![no cuda graph](../assets/flux_fp8_no_cuda_graph.png)
+
+Command line options in Cache-DiT example CLI:
+
+```bash
+# Nsys profiling with CUDA Graph
+nsys profile --stats=true -t cuda,nvtx,osrt --cuda-graph-trace=graph \
+  --force-overwrite=true --delay 100 -o flux_cuda_graph \
+  python3 -m cache_dit.generate flux --compile \
+  --no-regional-compile --steps 28 --float8-per-tensor \
+  --cuda-graph
+# Nsys profiling without CUDA Graph
+nsys profile --stats=true -t cuda,nvtx,osrt --force-overwrite=true \
+  --delay 100 -o flux_no_cuda_graph \
+  python3 -m cache_dit.generate flux --compile \
+  --no-regional-compile --steps 28 --float8-per-tensor
+```
+
 ## Constraints & Troubleshooting
+
+<details>
+<summary>Click to expand common issues and constraints when using CUDA Graph</summary>
 
 - <span style="color:#c77dff;">Do not use regional compile with CUDA Graph</span>: When CUDA Graph is enabled, repeated-block regional compilation (`compile_repeated_blocks`) can cause replay-overwrite issues in some transformer loops (for example FLUX blocks). Use full-module compile for transformer.
 
@@ -63,3 +82,4 @@ First-run includes compile, warmup (2 times) and repeat (2 times); steady-state 
     1. Compare steady-state runs after warmup (not first-run latency).
     2. Keep benchmark setup identical (same prompt length, steps, resolution, and seed policy).
     3. Profile CPU launch overhead to confirm CUDA Graph is the right optimization target.
+</details>
