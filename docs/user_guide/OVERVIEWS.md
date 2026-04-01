@@ -37,6 +37,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 - [Low-Bits Quantization](./QUANTIZATION.md)
 - [Attention Backends](./ATTENTION.md)
 - [Use Torch Compile](./COMPILE.md)
+- [Use CUDA Graphs](./CUDA_GRAPH.md)
 - [Ascend NPU Support](./ASCEND_NPU.md)
 - [AMD GPU Support](./AMD_GPU.md)
 - [Config with YAML](./LOAD_CONFIGS.md)
