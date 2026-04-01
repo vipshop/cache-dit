@@ -54,26 +54,71 @@ nsys profile --stats=true -t cuda,nvtx,osrt --force-overwrite=true \
 
 ## Constraints & Troubleshooting
 
-<details>
+<details markdown="1">
 <summary>Click to expand common issues and constraints when using CUDA Graphs</summary>
 
-- <span style="color:#c77dff;">Do not use regional compile with CUDA Graphs</span>: When CUDA Graphs is enabled, repeated-block regional compilation (`compile_repeated_blocks`) can cause replay-overwrite issues in some transformer loops (for example FLUX blocks). Use full-module compile for transformer.
+### 1. Do not use regional compile with CUDA Graphs
 
-- <span style="color:#c77dff;">Dynamic shape is currently not recommended</span>: CUDA Graphs generally expects stable shapes and stable execution paths.(1) Do not enable `torch.compile(..., dynamic=True)` when using CUDA Graphs; (2) In Cache-DiT example CLI, avoid `--force-compile-dynamic` together with `--cuda-graph`.
+When CUDA Graphs is enabled, repeated-block regional compilation (`compile_repeated_blocks`) can cause replay-overwrite issues in transformer loops (for example FLUX blocks).
 
+Use full-module compile for transformer when enabling CUDA Graphs.
 
-- <span style="color:#c77dff;">RuntimeError: accessing tensor output of CUDAGraphs that has been overwritten</span>: Why it happens? (1) A captured graph output is referenced after a later replay has already overwritten the same output buffer. (2) This often appears when CUDA Graphs is combined with regional compile (`compile_repeated_blocks`) in transformer loops. The typical message is <span style="color:red">"RuntimeError: Error: accessing tensor output of CUDAGraphs that has been overwritten by a subsequent run"</span>. How to fix: (Quick check for Cache-DiT CLI, if you see this error in the logs, make sure to disable regional compile and use full-module compile for transformer by adding the flag: Use `--compile --cuda-graph --no-regional-compile`.)
-    1. Disable regional compile and compile the full transformer when using CUDA Graphs.
-    2. DON'T use `dynamic=True` and ensure stable input shapes.
-    3. If you invoke compiled modules manually in a loop, call <span style="color:#c77dff;">torch.compiler.cudagraph_mark_step_begin()</span> before each model invocation.
+### 2. Dynamic shape is currently not recommended
 
-- <span style="color:#c77dff;">Graph breaks or repeated recompilation</span>. Typical signals: (1) Frequent recompilation logs. (2) Throughput drops after enabling CUDA Graphs. Why it happens: (1) Dynamic shapes, changing control flow, or changing optional inputs between runs can invalidate capture assumptions. How to fix:
-    1. Keep inference settings fixed across runs (height/width/steps/batch size).
-    2. Avoid `dynamic=True` and avoid `--force-compile-dynamic` with CUDA Graphs.
-    3. Keep optional branches stable (for example, consistently enable/disable ControlNet or IP-Adapter for a run).
+CUDA Graphs generally expects stable shapes and stable execution paths.
 
-- <span style="color:#c77dff;">CUDA Graphs enabled but little/no speedup</span>. Possible reasons: (1) Workload is already kernel-bound with low CPU launch overhead. (2) First-run compile and warmup dominate short benchmark windows. (3) Extra fallback/recompile events offset replay gains. How to validate:
-    1. Compare steady-state runs after warmup (not first-run latency).
-    2. Keep benchmark setup identical (same prompt length, steps, resolution, and seed policy).
-    3. Profile CPU launch overhead to confirm CUDA Graphs is the right optimization target.
+1. Do not enable `torch.compile(..., dynamic=True)` when using CUDA Graphs.
+2. In Cache-DiT example CLI, avoid `--force-compile-dynamic` together with `--cuda-graph`.
+
+### 3. RuntimeError: accessing tensor output of CUDAGraphs that has been overwritten
+
+Why it happens:
+
+1. A captured graph output is referenced after a later replay has already overwritten the same output buffer.
+2. This often appears when CUDA Graphs is combined with regional compile (`compile_repeated_blocks`) in transformer loops.
+
+Typical message:
+
+"RuntimeError: Error: accessing tensor output of CUDAGraphs that has been overwritten by a subsequent run"
+
+How to fix:
+
+1. Disable regional compile and compile the full transformer when using CUDA Graphs.
+2. Do not use `dynamic=True`, and ensure stable input shapes.
+3. If you invoke compiled modules manually in a loop, call `torch.compiler.cudagraph_mark_step_begin()` before each model invocation.
+
+Quick CLI check:
+
+Use `--compile --cuda-graph --no-regional-compile`.
+
+### 4. Graph breaks or repeated recompilation
+
+Typical signals:
+
+1. Frequent recompilation logs.
+2. Throughput drops after enabling CUDA Graphs.
+
+Why it happens:
+
+1. Dynamic shapes, changing control flow, or changing optional inputs between runs can invalidate capture assumptions.
+
+How to fix:
+
+1. Keep inference settings fixed across runs (height/width/steps/batch size).
+2. Avoid `dynamic=True` and avoid `--force-compile-dynamic` with CUDA Graphs.
+3. Keep optional branches stable (for example, consistently enable or disable ControlNet or IP-Adapter for a run).
+
+### 5. CUDA Graphs enabled but little or no speedup
+
+Possible reasons:
+
+1. Workload is already kernel-bound with low CPU launch overhead.
+2. First-run compile and warmup dominate short benchmark windows.
+3. Extra fallback or recompile events offset replay gains.
+
+How to validate:
+
+1. Compare steady-state runs after warmup (not first-run latency).
+2. Keep benchmark setup identical (same prompt length, steps, resolution, and seed policy).
+3. Profile CPU launch overhead to confirm CUDA Graphs is the right optimization target.
 </details>
