@@ -6,7 +6,7 @@
 
 Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including FP8, INT8, and INT4 quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
 
-|quantization type| description|devices|
+|Quantization Types| Description|Devices|
 |:---|:---|:---| 
 |<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (dynamic quantization) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
