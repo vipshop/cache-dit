@@ -30,17 +30,17 @@ pipe.transformer = torch.compile(
 Quick start for Cache-DiT example CLI: NVIDIA L20 x 1, FLUX.1-dev, 28 steps, 1024x1024.
 
 ```bash
-python3 -m cache_dit.generate flux --compile --no-regional-compile # w/o CUDA Graph
-python3 -m cache_dit.generate flux --compile --cuda-graph --no-regional-compile # w/ CUDA Graph
+python3 -m cache_dit.generate flux --compile --no-regional-compile 
+python3 -m cache_dit.generate flux --compile --cuda-graph --no-regional-compile 
+python3 -m cache_dit.generate flux --compile --no-regional-compile --float8-per-tensor 
+python3 -m cache_dit.generate flux --compile --no-regional-compile --float8-per-tensor --cuda-graph 
 ```
 
 First-run includes compile and warmup; steady-state is after warmup. For FLUX.1-dev, we see a modest speedup in steady-state runs after enabling CUDA Graph, which suggests that GPU execution is already efficient and CUDA Graph is effectively reducing CPU launch overhead.
 
-| FLUX.1-dev, compile (no CUDA Graph)| FLUX.1-dev, compile + CUDA Graph |
-|:--:|:--:|
-| 20.73s | <span style="color:green">20.70s</span> |
-
-
+| FLUX.1-dev, compile (no CUDA Graph)| compile + CUDA Graph | compile (no CUDA Graph) + float8-per-tensor | compile + CUDA Graph + float8-per-tensor |
+|:--:|:--:|:--:|:--:|
+| 20.73s | <span style="color:green">20.70s</span> | 13.41s | <span style="color:green">13.36s</span> |
 
 ## Constraints & Troubleshooting
 
