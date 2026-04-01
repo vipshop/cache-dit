@@ -28,7 +28,7 @@ First-run includes compile, warmup (2 times) and repeat (2 times); steady-state 
 
 | FLUX.1-dev, compile (no CUDA Graphs)| compile + CUDA Graphs | compile (no CUDA Graphs) + float8-per-tensor | compile + CUDA Graphs + float8-per-tensor |
 |:--:|:--:|:--:|:--:|
-| 20.73s | <span style="color:green">20.70s</span> | 13.43s | <span style="color:green">13.36s</span> |
+| 20.73s | <span style="color:green">20.70s</span> | 13.46s | <span style="color:green">13.37s</span> |
 
 Nsys profiling confirms that CUDA Graphs significantly reduce the kernel launch overhead, which is consistent with the observed speedup. In the Nsight Systems timeline, we can see that with CUDA Graphs enabled, the process <span style="color:#c77dff;">captured a graph once and then replayed it</span> in subsequent iterations (top figure), while without CUDA Graphs, we see many individual kernel launches (bottom figure).
 
