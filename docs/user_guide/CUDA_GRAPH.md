@@ -1,6 +1,6 @@
 # How to use CUDA Graph
 
-## What It Is
+## CUDA Graph + torch.compile
 
 CUDA Graph captures a stable GPU execution path and replays it, which can reduce CPU launch overhead and improve execution stability in some workloads. In Cache-DiT example CLI (<span style="color:#c77dff;">cache_dit.generate</span>), CUDA Graph is enabled through <span style="color:#c77dff;">torch.compile</span> options <span style="color:green">{"triton.cudagraphs": True}</span> or <span style="color:green">max-autotune</span> mode, which automatically enables CUDA Graph when capture conditions are met. Here is an End-to-End Python Example (same style as Cache-DiT usage):
 
