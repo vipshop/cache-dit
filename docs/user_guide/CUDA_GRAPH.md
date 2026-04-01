@@ -36,11 +36,11 @@ python3 -m cache_dit.generate flux --compile --no-regional-compile --float8-per-
 python3 -m cache_dit.generate flux --compile --no-regional-compile --float8-per-tensor --cuda-graph 
 ```
 
-First-run includes compile and warmup; steady-state is after warmup. For FLUX.1-dev, we see a modest speedup in steady-state runs after enabling CUDA Graph, which suggests that GPU execution is already efficient and CUDA Graph is effectively reducing CPU launch overhead.
+First-run includes compile, warmup (2 times) and repeat (2 times); steady-state is after warmup. For FLUX.1-dev, we see a modest speedup in steady-state runs after enabling CUDA Graph, which suggests that GPU execution is already efficient and CUDA Graph is effectively reducing CPU launch overhead.
 
 | FLUX.1-dev, compile (no CUDA Graph)| compile + CUDA Graph | compile (no CUDA Graph) + float8-per-tensor | compile + CUDA Graph + float8-per-tensor |
 |:--:|:--:|:--:|:--:|
-| 20.73s | <span style="color:green">20.70s</span> | 13.41s | <span style="color:green">13.36s</span> |
+| 20.73s | <span style="color:green">20.70s</span> | 13.43s | <span style="color:green">13.36s</span> |
 
 ## Constraints & Troubleshooting
 
