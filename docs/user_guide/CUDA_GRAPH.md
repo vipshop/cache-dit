@@ -38,7 +38,7 @@ First-run includes compile and warmup; steady-state is after warmup. For FLUX.1-
 
 | FLUX.1-dev, compile (no CUDA Graph)| FLUX.1-dev, compile + CUDA Graph |
 |:--:|:--:|
-| 20.73s | <span style="color:green">20.69s</span> |
+| 20.73s | <span style="color:green">20.70s</span> |
 
 
 
