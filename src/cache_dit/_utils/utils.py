@@ -952,9 +952,6 @@ def maybe_compile_transformer(
                     # cudagraphs are enabled.
                     if args.cuda_graph:
                         if use_regional_compile:
-                            logger.info(
-                                f"CUDA Graph is enabled, compiling full {name}: {transformer_cls_name} ..."
-                            )
                             use_regional_compile = False
 
                     if use_regional_compile:
