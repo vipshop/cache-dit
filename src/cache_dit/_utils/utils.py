@@ -647,6 +647,13 @@ def get_args(
         help="Enable compile with CUDA Graph for transformer if applicable.",
     )
     parser.add_argument(
+        "--compile-full-graph",
+        "--full-graph",
+        action="store_true",
+        default=False,
+        help="Enable compile with full graph requirement for transformer.",
+    )
+    parser.add_argument(
         "--compile-vae",
         action="store_true",
         default=False,
@@ -959,6 +966,7 @@ def maybe_compile_transformer(
                             f"Compiling repeated blocks in {name}: {transformer_cls_name} ..."
                         )
                         transformer.compile_repeated_blocks(
+                            full_graph=args.compile_full_graph,
                             mode=_compile_mode(args),
                             dynamic=_force_compile_dynamic(args, pipe),
                             options=_compile_options(args),
@@ -972,6 +980,7 @@ def maybe_compile_transformer(
                             logger.info(f"Compiling full {name}: {transformer_cls_name} ...")
                         transformer = torch.compile(
                             transformer,
+                            fullgraph=args.compile_full_graph,
                             mode=_compile_mode(args),
                             dynamic=_force_compile_dynamic(args, pipe),
                             options=_compile_options(args),
