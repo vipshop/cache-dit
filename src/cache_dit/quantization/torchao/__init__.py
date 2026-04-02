@@ -1,1 +1,2 @@
 from .quantize_ao import quantize_ao
+from ._scaled_mm import enable_opaque_torchao_float8_scaled_mm
