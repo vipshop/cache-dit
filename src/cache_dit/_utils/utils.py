@@ -898,7 +898,7 @@ def _compile_mode(args):
 
 
 def _compile_options(args) -> Optional[Dict[str, Any]]:
-    if args.cuda_graph and not args.force_compile_dynamic and not args.max_autotune:
+    if args.cuda_graph and not args.max_autotune:
         return {"triton.cudagraphs": True}
     return None
 
