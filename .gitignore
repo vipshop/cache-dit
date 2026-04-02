@@ -185,3 +185,12 @@ CLAUDE.local.md
 *.nsys-rep
 *.ncu-rep
 *.sqlite
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.pdf
+*.zip
+*.tar.gz
+*.egg-info/

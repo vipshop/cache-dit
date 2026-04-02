@@ -1169,6 +1169,13 @@ def maybe_quantize_transformer(
 ) -> DiffusionPipeline | BlockAdapter:
     # Quantize transformer by default if quantization is enabled
     if args.quantize:
+        if args.compile and args.cuda_graph and args.quantize_type == "float8_per_row":
+            from ..quantization.torchao._scaled_mm import (
+                enable_opaque_torchao_float8_scaled_mm,
+            )
+
+            enable_opaque_torchao_float8_scaled_mm()
+
         if args.quantize_type in ("bitsandbytes_4bit", "bnb_4bit"):
             logger.debug(
                 "bitsandbytes_4bit quantization should be handled by"
@@ -1660,6 +1667,8 @@ def strify(args, pipe_or_stats):
             base_str += "_CNP"  # ControlNet Parallelism
     if args.attn is not None:
         base_str += f"_{args.attn.strip('_')}"
+    if args.cuda_graph:
+        base_str += "_cuda_graph"
     # __ -> _, ___ -> _, etc.
     base_str = base_str.strip("_").replace("__", "_").replace("___", "_")
     return base_str

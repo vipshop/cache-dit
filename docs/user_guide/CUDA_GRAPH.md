@@ -52,6 +52,30 @@ nsys profile --stats=true -t cuda,nvtx,osrt --force-overwrite=true \
   --no-regional-compile --steps 28 --float8-per-tensor
 ```
 
+## FP8 Rowwise and CUDA Graphs
+
+FP8 rowwise quantization can be combined with CUDA Graphs to further optimize transformer workloads. Cache-DiT provides an opaque FP8 scaled_mm path that is compatible with CUDA Graphs, ensuring stable execution and avoiding replay-overwrite and hang issues that can arise with float8 per-row quantization.
+
+```python
+import torch
+from cache_dit import QuantizeConfig
+from cache_dit.quantization.torchao._scaled_mm import (
+  enable_opaque_torchao_float8_scaled_mm,
+)
+
+# Enable opaque FP8 scaled_mm for stable CUDA Graphs execution
+enable_opaque_torchao_float8_scaled_mm()
+
+# Apply float8 per-row quantization to transformer modules
+pipe.transformer = cache_dit.quantize(
+    pipe.transformer,
+    config=QuantizeConfig(quant_type="float8_per_row"),
+)
+
+# Enable compile + CUDA Graph through torch.compile options
+pipe.transformer = torch.compile(pipe.transformer, options={"triton.cudagraphs": True})
+```
+
 ## Constraints & Troubleshooting
 
 <details markdown="1">
@@ -70,7 +94,7 @@ CUDA Graphs generally expects stable shapes and stable execution paths.
 1. Do not enable `torch.compile(..., dynamic=True)` when using CUDA Graphs.
 2. In Cache-DiT example CLI, avoid `--force-compile-dynamic` together with `--cuda-graph`.
 
-### 3. RuntimeError: accessing tensor output of CUDAGraphs that has been overwritten
+### 3. RuntimeError: accessing tensor output of CUDA Graphs that has been overwritten
 
 Why it happens:
 
