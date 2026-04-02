@@ -76,6 +76,10 @@ pipe.transformer = cache_dit.quantize(
 pipe.transformer = torch.compile(pipe.transformer, options={"triton.cudagraphs": True})
 ```
 
+Please note that this temporarily workarounds will generate <span style="color:green">multiple separate CUDA Graphs</span> due to the presence of non-CUDA-Graph-compatible kernels (for example, rowwise quantization kernels), so, it may not achieve the same level of speedup as the per-tensor quantization + CUDA Graphs path due to less stable capture assumptions and more frequent graph breaks in some cases. **Disable** CUDA Graphs for FP8 per-row quantization if you encounter performance regressions or stability issues.
+
+![flux2_fp8_per_row_cuda_graph](../assets/flux2_fp8_per_row_cuda_graph.png)
+
 ## Constraints & Troubleshooting
 
 <details markdown="1">
