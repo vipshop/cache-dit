@@ -4,7 +4,7 @@ pytest tests/kernels/test_svdquant_quantizer.py -v -s
 """
 
 from pathlib import Path
-
+import time
 import pytest
 import torch
 from torch import nn
@@ -202,9 +202,9 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
         pytest.skip("CUDA runtime validation requires the optional SVDQuant extension.")
 
     device = "cuda"
-    dtype = runtime_dtype()
-    embed_dim = 128
-    num_heads = 4
+    dtype = runtime_dtype()  # torch.bfloat16
+    num_heads = 64
+    embed_dim = 128 * num_heads  # 8192
 
     model = make_toy_model(
         embed_dim=embed_dim,
@@ -232,8 +232,22 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
     )
 
     metrics_by_rank = {}
+    # Warmup
     with torch.inference_mode():
         reference = model(eval_inputs)
+        torch.cuda.synchronize()
+    # Profile reference latency, repeats=10
+    with torch.inference_mode():
+        start_time = time.perf_counter()
+        for _ in range(10):
+            _ = model(eval_inputs)
+        torch.cuda.synchronize()
+        reference_latency = (time.perf_counter() - start_time) / 10
+        metrics_by_rank[-1] = compute_accuracy_metrics(
+            reference,
+            reference,
+            latency_ms=reference_latency * 1000,  # reference latency in milliseconds
+        )
 
     for rank in RANKS_WITH_BASELINE:
         quantized_model = quantize_toy_model(
@@ -266,13 +280,26 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
         assert incompatible.missing_keys == []
         assert incompatible.unexpected_keys == []
 
+        # Warmup
         with torch.inference_mode():
             quantized_output = quantized_model(eval_inputs)
             reloaded_output = reloaded_model(eval_inputs)
             torch.cuda.synchronize()
-
-        torch.testing.assert_close(reloaded_output, quantized_output, rtol=0.0, atol=0.0)
-        metrics_by_rank[rank] = compute_accuracy_metrics(reference, reloaded_output)
+        # Profile and validate outputs, repeats=10
+        with torch.inference_mode():
+            start_time = time.perf_counter()
+            for _ in range(10):
+                _ = reloaded_model(eval_inputs)
+            torch.cuda.synchronize()
+            reloaded_latency = (time.perf_counter() - start_time) / 10
+        # May not bitwise-deterministic due to non-determinism in CUDA.
+        # BFloat16 atol can be ranged in [4e-3, 8e-3].
+        torch.testing.assert_close(reloaded_output, quantized_output, rtol=0.0, atol=4e-3)
+        metrics_by_rank[rank] = compute_accuracy_metrics(
+            reference,
+            reloaded_output,
+            reloaded_latency * 1000,  # reloaded latency in milliseconds
+        )
 
     print(format_rank_report("SVDQ ToyModel accuracy report", metrics_by_rank))
     assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)

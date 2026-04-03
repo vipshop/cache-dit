@@ -30,6 +30,7 @@ class SVDQAccuracyMetrics:
     max_abs: float
     rel_l2: float
     cosine: float
+    latency_ms: float = 0.0
 
 
 class ToyTransformerBlock(nn.Module):
@@ -197,6 +198,7 @@ def make_rank_sensitive_linear(
 def compute_accuracy_metrics(
     reference: torch.Tensor,
     candidate: torch.Tensor,
+    latency_ms: float = 0.0,
 ) -> SVDQAccuracyMetrics:
     reference_fp32 = reference.float().reshape(-1)
     candidate_fp32 = candidate.float().reshape(-1)
@@ -210,6 +212,7 @@ def compute_accuracy_metrics(
         max_abs=diff.abs().max().item(),
         rel_l2=(diff.norm() / ref_norm).item(),
         cosine=cosine.item(),
+        latency_ms=latency_ms,
     )
 
 
@@ -219,13 +222,13 @@ def format_rank_report(
 ) -> str:
     lines = [
         title,
-        "rank |      mae |     rmse |  max_abs |   rel_l2 |   cosine",
+        "rank |      mae |     rmse |  max_abs |   rel_l2 |   cosine |  latency_ms",
     ]
     for rank in sorted(metrics_by_rank):
         metrics = metrics_by_rank[rank]
         lines.append(
             f"{rank:>4} | {metrics.mae:>8.6f} | {metrics.rmse:>8.6f} | "
-            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f}"
+            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f} | {metrics.latency_ms:>8.6f} ms"
         )
     return "\n".join(lines)
 
