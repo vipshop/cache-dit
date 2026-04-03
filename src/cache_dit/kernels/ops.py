@@ -362,6 +362,14 @@ def fused_merge_attn_states(
 
 
 # SVDQuant related ops, with CUDA implementations by default.
+# Parameters names scheme:
+#  - act = activation, wgt = weight, ascales = activation scales,
+#  - wscales = weight scales, oscales = output scales,
+#  - lora_up = LoRA up-projection weights,
+#  - lora_down = LoRA down-projection weights
+#  - ...
+
+
 def svdq_gemm_w4a4(
     act: torch.Tensor,
     wgt: torch.Tensor,
@@ -376,24 +384,30 @@ def svdq_gemm_w4a4(
     act_unsigned: bool = False,
     output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
-    """INT4/FP4 GEMM with optional fused LoRA and quantization support.
+    """Convenience wrapper for the plain linear SVDQ W4A4 CUDA GEMM path.
 
     Args:
         act: Packed activation tensor `[M, K / 2]`.
-        wgt: Packed weight tensor `[N, K / 2]`.
-        ascales: Activation scales `[K / 64, M]` for INT4 or `[K / 16, M]` for FP4.
-        wscales: Weight scales `[K / 64, N]` or `[K / 16, N]` depending on precision.
-        lora_act_in: Optional low-rank activation input `[M, R]` for fused LoRA paths.
-        lora_up: Optional low-rank up projection `[N, R]` for fused LoRA paths.
+        wgt: Packed quantized weight tensor `[N, K / 2]`.
+        ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
+        wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
+        lora_act_in: Optional LoRA activation input `[M, R]`.
+        lora_up: Optional LoRA up-projection weights `[N, R]`.
         bias: Optional dense output bias `[N]`.
-        fp4: Whether the input tensors are in FP4 (true) or INT4 (false) format.
-        alpha: Weight scaling factor used by FP4 paths, typically set to 1.0 / max(abs(weight)).
-        wcscales: Optional per-channel FP4 weight correction scales.
-        act_unsigned: Whether activations are interpreted as unsigned quantized values, which can affect quantization behavior and output ranges.
-        output_dtype: Optional dtype for the output tensor, which can be used to control the precision of the output in FP4 paths or to specify a different dtype for INT4 paths.
+        fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+        alpha: Optional per-tensor FP4 scaling factor. `None` defaults to `1.0`.
+        wcscales: Optional per-channel FP4 scales `[N]`.
+        act_unsigned: Whether INT4 activations are stored as unsigned values.
+        output_dtype: Optional dtype for the allocated dense output. If omitted, it is inferred
+            from `lora_up`, `bias`, or INT4 `wscales`.
+
     Returns:
-        The output tensor resulting from the quantized GEMM operation, with optional LoRA fusion applied. The dtype and device of the output tensor may depend on the input parameters and the specific kernel implementation
-        used by the backend.
+        A newly allocated dense output tensor `[M, N]`.
+
+    Notes:
+        This wrapper exposes only the plain linear path of the full SVDQ kernel. Use
+        `svdq_gemm_w4a4_ext` to access `qout`, next-layer quantization, attention fusion,
+        or other auxiliary outputs.
     """
 
     return _svdq_gemm_w4a4_impl(
@@ -444,40 +458,47 @@ def svdq_gemm_w4a4_ext(
     out_v: torch.Tensor | None = None,
     attn_tokens: int = 0,
 ) -> torch.Tensor:
-    """Fully-extended SVDQ GEMM with support for various fusion paths and quantization options.
+    """Full SVDQ W4A4 CUDA GEMM wrapper with optional fusion outputs.
 
     Args:
         act: Packed activation tensor `[M, K / 2]`.
-        wgt: Packed weight tensor `[N, K / 2]`.
-        out: Dense output tensor `[M, N]`.
-        qout: Optional packed output buffer `[M, N / 2]` for re-quantized activations.
-        ascales: Activation scales `[K / 64, M]` for INT4 or `[K / 16, M]` for FP4.
-        wscales: Weight scales `[K / 64, N]` or `[K / 16, N]` depending on precision.
-        oscales: Optional output activation scales for `qout`.
-        poolout: Optional pooled output buffer for fused pooling paths.
-        lora_act_in: Optional low-rank activation input `[M, R]`.
-        lora_up: Optional low-rank up projection `[N, R]`.
-        lora_down: Optional low-rank down projection used by fused LoRA-down paths.
-        lora_act_out: Optional intermediate low-rank activation output buffer.
-        norm_q: Optional RMSNorm/Q normalization tensor for fused attention paths.
-        norm_k: Optional RMSNorm/K normalization tensor for fused attention paths.
-        rotary_emb: Optional RoPE embedding tensor for fused attention paths.
+        wgt: Packed quantized weight tensor `[N, K / 2]`.
+        out: Optional dense output buffer `[M, N]`. Allocated if `None`.
+        qout: Optional packed quantized output buffer `[M, N / 2]` for the next layer.
+        ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
+        wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
+        oscales: Optional output scales `[N / G, M]` for `qout`.
+        poolout: Optional pooled output buffer used by specialized fused kernels.
+        lora_act_in: Optional LoRA activation input `[M, R]`.
+        lora_up: Optional LoRA up-projection weights `[N, R]`.
+        lora_down: Optional LoRA down-projection weights `[N, R]` for the next fused layer.
+        lora_act_out: Optional LoRA activation output buffer `[M, R]` for the next fused layer.
+        norm_q: Optional query RMSNorm tensor `[HEAD_DIM]`.
+        norm_k: Optional key RMSNorm tensor `[HEAD_DIM]`.
+        rotary_emb: Optional packed rotary embeddings `[M, HEAD_DIM / 2, 2, 2]`.
         bias: Optional dense output bias `[N]`.
-        smooth_factor: Optional next-layer smoothing factor written by fused quantization paths.
+        smooth_factor: Optional smoothing factors `[N]` written for next-layer quantization.
         out_vk: Optional linear-attention VK output buffer.
         out_linearattn: Optional linear-attention output buffer.
-        act_unsigned: Whether activations are interpreted as unsigned quantized values.
-        lora_scales: Per-16-rank LoRA scales used by the native fused LoRA implementation.
-        fuse_silu: Whether to enable fused SiLU in advanced kernel variants.
-        fp4: Whether the packed tensors use FP4 rather than INT4 layout.
-        alpha: Weight scaling factor used by FP4 paths.
-        wcscales: Optional per-channel FP4 weight correction scales.
-        out_q: Optional packed attention-Q output buffer.
-        out_k: Optional packed attention-K output buffer.
-        out_v: Optional packed attention-V output buffer.
-        attn_tokens: Token count for fused attention-style kernel variants.
+        act_unsigned: Whether INT4 activations are stored as unsigned values.
+        lora_scales: Optional per-16-rank LoRA scaling factors `[R / 16]`. Defaults to
+            `1.0` per group when `lora_up` is provided.
+        fuse_silu: Whether to fuse SiLU inside supported kernel variants.
+        fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+        alpha: Optional per-tensor FP4 scaling factor. `None` defaults to `1.0`.
+        wcscales: Optional per-channel FP4 scales `[N]`.
+        out_q: Optional packed attention-Q output buffer `[B, H, M, D]`.
+        out_k: Optional packed attention-K output buffer `[B, H, M, D]`.
+        out_v: Optional packed attention-V output buffer `[B, H, M, D]`.
+        attn_tokens: Number of attention tokens for fused attention-style kernels.
+
     Returns:
-        The output tensor, which may be the same as the `out` argument if provided.
+        Dense output tensor `[M, N]`. This is the same tensor as `out` when `out` is provided.
+
+    Notes:
+        Auxiliary outputs such as `qout`, `lora_act_out`, and attention buffers are written
+        in-place to the provided tensors. When `out` is omitted, this wrapper allocates it and
+        infers its dtype from `lora_up`, `bias`, or INT4 `wscales`.
     """
     return _svdq_gemm_w4a4_ext_impl(
         act=act,
@@ -521,17 +542,27 @@ def svdq_quantize_w4a4_act_fuse_lora(
     fp4: bool = False,
     pad_size: int = 256,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Quantize activations to INT4/FP4 format with optional fused LoRA support.
+    """Quantize activations and optionally compute fused LoRA activations.
 
     Args:
-        input: Input activation tensor `[M, K]`.
-        lora_down: Optional low-rank down projection used by fused LoRA-down paths.
-        smooth: Optional next-layer smoothing factor written by fused quantization paths.
-        fuse_glu: Whether to enable fused GLU in advanced kernel variants.
-        fp4: Whether the input tensors are in FP4 (true) or INT4 (false) format.
-        pad_size: Padding size for the input tensor.
+        input: Dense activation tensor `[M, K]`, typically `torch.float16` or `torch.bfloat16`.
+        lora_down: Optional LoRA down-projection weights `[K, R]`.
+        smooth: Optional smoothing factors used during activation quantization.
+        fuse_glu: Whether to fuse GLU inside supported kernel variants.
+        fp4: Whether to use FP4/NVFP4 quantization. INT4 is used otherwise.
+        pad_size: Pad the batch dimension to a multiple of this value before launching the
+            kernel.
+
     Returns:
-        A tuple containing the quantized activation tensor, the scale tensor, and the zero-point tensor.
+        A tuple `(output, oscales, lora_act_out)` where `output` is the packed quantized
+        activation tensor `[M_pad, K / 2]` with dtype `torch.uint8`, `oscales` is the scale
+        tensor `[K / G, M_pad]` with dtype `torch.float8_e4m3fn` for FP4 or `input.dtype` for
+        INT4, and `lora_act_out` is the LoRA activation output `[M_pad, R]` with dtype
+        `torch.float32`.
+
+    Notes:
+        `G` is 16 for FP4 and 64 for INT4. `M_pad = ceil(M / pad_size) * pad_size`.
+        When `lora_down` is `None`, `R = 0` and `lora_act_out` has shape `[M_pad, 0]`.
     """
 
     return _svdq_quantize_w4a4_act_fuse_lora_impl(
@@ -550,14 +581,25 @@ def svdq_quantize_w4a4_wgt(
     output: torch.Tensor | None = None,
     oscales: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Quantize weights to INT4/FP4 format with optional output buffer and scale tensor.
+    """Quantize dense weights to the packed W4A4 INT4 layout.
 
     Args:
-        input: Input weight tensor `[N, K]`.
-        output: Optional output tensor to store the quantized weights.
-        oscales: Optional scale tensor for the output weights.
+        input: Dense weight tensor `[N, K]`. `K` must be divisible by 64.
+        output: Optional destination tensor for the packed weights `[N, K / 2]`. When
+            provided, the computed packed weights are copied into this tensor and the same
+            tensor is returned.
+        oscales: Optional destination tensor for the weight scales `[K / 64, N]`. When
+            provided, the computed scales are copied into this tensor and the same tensor is
+            returned.
+
     Returns:
-        A tuple containing the quantized weight tensor and the scale tensor.
+        A tuple `(output, oscales)` where `output` is the packed weight tensor `[N, K / 2]`
+        with dtype `torch.int8` and `oscales` is the scale tensor `[K / 64, N]` with dtype
+        `input.dtype`.
+
+    Notes:
+        This helper currently exposes the INT4 weight quantizer. FP4 weight packing is
+        configured at GEMM call sites via `fp4`, `alpha`, and `wcscales`.
     """
     return _svdq_quantize_w4a4_wgt_impl(
         input=input,

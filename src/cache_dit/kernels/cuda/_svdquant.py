@@ -198,38 +198,41 @@ def _call_svdq_gemm_w4a4(
     out_v: torch.Tensor | None,
     attn_tokens: int,
 ) -> None:
-    """Direct binding to the full SVDQ W4A4 GEMM kernel ABI.
+    """Direct binding to the full SVDQ W4A4 CUDA GEMM ABI.
 
     Args:
         act: Packed activation tensor `[M, K / 2]`.
-        wgt: Packed weight tensor `[N, K / 2]`.
-        out: Dense output tensor `[M, N]`.
-        qout: Optional packed output buffer `[M, N / 2]` for re-quantized activations.
-        ascales: Activation scales `[K / 64, M]` for INT4 or `[K / 16, M]` for FP4.
-        wscales: Weight scales `[K / 64, N]` or `[K / 16, N]` depending on precision.
-        oscales: Optional output activation scales for `qout`.
-        poolout: Optional pooled output buffer for fused pooling paths.
-        lora_act_in: Optional low-rank activation input `[M, R]`.
-        lora_up: Optional low-rank up projection `[N, R]`.
-        lora_down: Optional low-rank down projection used by fused LoRA-down paths.
-        lora_act_out: Optional intermediate low-rank activation output buffer.
-        norm_q: Optional RMSNorm/Q normalization tensor for fused attention paths.
-        norm_k: Optional RMSNorm/K normalization tensor for fused attention paths.
-        rotary_emb: Optional RoPE embedding tensor for fused attention paths.
+        wgt: Packed quantized weight tensor `[N, K / 2]`.
+        out: Dense output buffer `[M, N]`.
+        qout: Optional packed quantized output buffer `[M, N / 2]` for the next layer.
+        ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
+        wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
+        oscales: Optional output scales `[N / G, M]` for `qout`.
+        poolout: Optional pooled output buffer used by specialized fused kernels.
+        lora_act_in: Optional LoRA activation input `[M, R]`.
+        lora_up: Optional LoRA up-projection weights `[N, R]`.
+        lora_down: Optional LoRA down-projection weights `[N, R]` for the next fused layer.
+        lora_act_out: Optional LoRA activation output buffer `[M, R]` for the next fused layer.
+        norm_q: Optional query RMSNorm tensor `[HEAD_DIM]`.
+        norm_k: Optional key RMSNorm tensor `[HEAD_DIM]`.
+        rotary_emb: Optional packed rotary embeddings `[M, HEAD_DIM / 2, 2, 2]`.
         bias: Optional dense output bias `[N]`.
-        smooth_factor: Optional next-layer smoothing factor written by fused quantization paths.
+        smooth_factor: Optional smoothing factors `[N]` written for next-layer quantization.
         out_vk: Optional linear-attention VK output buffer.
         out_linearattn: Optional linear-attention output buffer.
-        act_unsigned: Whether activations are interpreted as unsigned quantized values.
-        lora_scales: Per-16-rank LoRA scales used by the native fused LoRA implementation.
-        fuse_silu: Whether to enable fused SiLU in advanced kernel variants.
-        fp4: Whether the packed tensors use FP4 rather than INT4 layout.
-        alpha: Weight scaling factor used by FP4 paths.
-        wcscales: Optional per-channel FP4 weight correction scales.
-        out_q: Optional packed attention-Q output buffer.
-        out_k: Optional packed attention-K output buffer.
-        out_v: Optional packed attention-V output buffer.
-        attn_tokens: Token count for fused attention-style kernel variants.
+        act_unsigned: Whether INT4 activations are stored as unsigned values.
+        lora_scales: Optional per-16-rank LoRA scaling factors `[R / 16]`.
+        fuse_silu: Whether to fuse SiLU inside supported kernel variants.
+        fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+        alpha: Per-tensor FP4 scaling factor.
+        wcscales: Optional per-channel FP4 scales `[N]`.
+        out_q: Optional packed attention-Q output buffer `[B, H, M, D]`.
+        out_k: Optional packed attention-K output buffer `[B, H, M, D]`.
+        out_v: Optional packed attention-V output buffer `[B, H, M, D]`.
+        attn_tokens: Number of attention tokens for fused attention-style kernels.
+
+    Returns:
+        None. Results are written in-place to the provided output tensors.
     """
     ops_module = _get_required_ops_module()
     normalized_lora_scales = _normalize_svdq_lora_scales(lora_scales, lora_up)

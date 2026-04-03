@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import torch.linalg
 
 __all__ = ["decompose_lowrank_residual"]
 
