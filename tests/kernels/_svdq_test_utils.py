@@ -336,6 +336,7 @@ def quantize_toy_model(
     rank: int,
     device: str | torch.device,
     dtype: torch.dtype,
+    fast_svd: bool = False,
 ) -> ToyModel:
     activations_by_module = collect_module_inputs(model, calibration_samples)
     quantized_model = copy.deepcopy(model).eval()
@@ -347,6 +348,7 @@ def quantize_toy_model(
             rank=rank,
             device=device,
             torch_dtype=dtype,
+            fast_svd=fast_svd,
         )
         parent, child_name = _module_parent(quantized_model, module_name)
         setattr(parent, child_name, quantized_module)

@@ -12,6 +12,7 @@ def decompose_lowrank_residual(
     rank: int,
     *,
     output_dtype: torch.dtype | None = None,
+    fast_svd: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if weight.ndim != 2:
         raise ValueError("Weight tensor must be 2D.")
@@ -29,7 +30,8 @@ def decompose_lowrank_residual(
         up = torch.empty((out_features, 0), dtype=output_dtype, device=weight.device)
         return down, up, weight.to(dtype=output_dtype)
 
-    u, s, vh = torch.linalg.svd(weight.to(dtype=torch.float64), full_matrices=False)
+    svd_dtype = torch.float32 if fast_svd else torch.float64
+    u, s, vh = torch.linalg.svd(weight.to(dtype=svd_dtype), full_matrices=False)
     up = (u[:, :rank] * s[:rank]).to(dtype=output_dtype)
     down = vh[:rank].to(dtype=output_dtype)
     if (
@@ -40,6 +42,6 @@ def decompose_lowrank_residual(
     ):
         raise ValueError("Encountered NaN/Inf while computing the low-rank factors.")
 
-    reconstructed = up.to(dtype=torch.float64) @ down.to(dtype=torch.float64)
-    residual = (weight.to(dtype=torch.float64) - reconstructed).to(dtype=output_dtype)
+    reconstructed = up.to(dtype=svd_dtype) @ down.to(dtype=svd_dtype)
+    residual = (weight.to(dtype=svd_dtype) - reconstructed).to(dtype=output_dtype)
     return down, up, residual
