@@ -1,7 +1,8 @@
 ---
 name: operator-migration
-description: 'Use when migrating a CUDA, Triton, or custom operator into cache-dit; porting kernels from nunchaku or other repos; designing operator registration and public wrappers; wiring build and packaging for optional extensions; or reviewing an operator migration plan. Guides survey, minimal-closure migration, API design, extension loading, packaging, and layered validation. Do not use for blind copy-paste ports.'
+description: 'Use when doing operator migration or kernel migration for CUDA, Triton, or custom ops in cache-dit; porting kernels from nunchaku, deepcompressor, or other repos; designing operator registration and public wrappers; wiring build and packaging for optional extensions; or reviewing an operator migration plan. Guides survey, minimal-closure migration, API design, extension loading, packaging, and layered validation. Do not use for blind copy-paste ports.'
 argument-hint: 'Describe the operator family, source repo, target public API, required backends or dtypes, and current migration status.'
+user-invocable: true
 ---
 
 # Operator Migration for cache-dit
