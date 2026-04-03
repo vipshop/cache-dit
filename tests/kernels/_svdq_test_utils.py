@@ -232,7 +232,8 @@ def format_rank_report(
         metrics = metrics_by_rank[rank]
         lines.append(
             f"{rank:>4} | {metrics.mae:>8.6f} | {metrics.rmse:>8.6f} | "
-            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f} | {metrics.latency_ms:>8.6f} ms"
+            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f} "
+            f"| {metrics.latency_ms:>8.6f} ms"
         )
     return "\n".join(lines)
 
