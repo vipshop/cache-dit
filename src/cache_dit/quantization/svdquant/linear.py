@@ -1,3 +1,4 @@
+# Adapted from nunchaku's implementation of SVDQW4A4Linear.
 import torch
 from torch import nn
 
