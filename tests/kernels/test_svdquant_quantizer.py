@@ -134,7 +134,6 @@ def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
     dtype = runtime_dtype()
     in_features = 128
     out_features = 128
-    rank = 32
 
     linear = make_rank_sensitive_linear(
         in_features=in_features,
@@ -155,8 +154,14 @@ def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
     rank0_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(
         linear, calibration, rank=0, device=device, torch_dtype=dtype
     )
+    rank16_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(
+        linear, calibration, rank=16, device=device, torch_dtype=dtype
+    )
     rank32_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(
-        linear, calibration, rank=rank, device=device, torch_dtype=dtype
+        linear, calibration, rank=32, device=device, torch_dtype=dtype
+    )
+    rank128_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(
+        linear, calibration, rank=128, device=device, torch_dtype=dtype
     )
 
     x = make_token_batch(
@@ -170,19 +175,26 @@ def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
     with torch.inference_mode():
         reference = linear(x)
         rank0_output = rank0_module(x)
+        rank16_output = rank16_module(x)
         rank32_output = rank32_module(x)
+        rank128_output = rank128_module(x)
         torch.cuda.synchronize()
 
     metrics_by_rank = {
         0: compute_accuracy_metrics(reference, rank0_output),
+        16: compute_accuracy_metrics(reference, rank16_output),
         32: compute_accuracy_metrics(reference, rank32_output),
+        128: compute_accuracy_metrics(reference, rank128_output),
     }
     print(format_rank_report("SVDQ linear module accuracy report", metrics_by_rank))
 
     rank0_error = metrics_by_rank[0].mae
+    rank16_error = metrics_by_rank[16].mae
     rank32_error = metrics_by_rank[32].mae
-
-    assert rank32_error < rank0_error
+    rank128_error = metrics_by_rank[128].mae
+    assert rank16_error < rank0_error
+    assert rank32_error < rank16_error
+    assert rank128_error < rank32_error
 
 
 def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> None:
