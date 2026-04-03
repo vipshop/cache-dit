@@ -45,8 +45,8 @@ jobs:
       - name: Install build
         run: |
           pip install -U pip && pip install build
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install packaging wheel ninja cmake setuptools setuptools_scm
-          pip install torch
 
       - name: Check build configuration
         run: |
