@@ -310,8 +310,9 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             reloaded_output,
             reloaded_latency * 1000,  # reloaded latency in milliseconds
         )
-
-    print(f"Promble shape reference output: {reference.shape}")
+    B = eval_inputs.shape[0]
+    S = eval_inputs.shape[1]
+    print(f"H={num_heads}, D={embed_dim}, B={B}, S={S}")
     print(format_rank_report("SVDQ ToyModel accuracy report", metrics_by_rank))
     assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)
     assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
