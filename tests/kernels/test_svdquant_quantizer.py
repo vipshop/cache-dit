@@ -230,6 +230,7 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
     # goal of this test is to validate the quantizer's offline-to-runtime accuracy trend
     # and state dict integrity, rather than to benchmark on a separate evaluation set.
     eval_inputs = torch.cat(calibration_samples, dim=0)
+    H, D, B, S = num_heads, embed_dim, eval_inputs.shape[0], eval_inputs.shape[1]
 
     metrics_by_rank = {}
     # Warmup
@@ -310,9 +311,8 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             reloaded_output,
             reloaded_latency * 1000,  # reloaded latency in milliseconds
         )
-    B = eval_inputs.shape[0]
-    S = eval_inputs.shape[1]
-    print(f"H={num_heads}, D={embed_dim}, B={B}, S={S}")
+
+    print(f"Profiling config: H={H}, D={D}, B={B}, S={S}")
     print(format_rank_report("SVDQ ToyModel accuracy report", metrics_by_rank))
     assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)
     assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
