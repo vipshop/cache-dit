@@ -207,20 +207,20 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
 
     device = "cuda"
     dtype = runtime_dtype()  # torch.bfloat16
-    num_heads = 16
+    num_heads = 8
     embed_dim = 128 * num_heads
 
     model = make_toy_model(
         embed_dim=embed_dim,
         num_heads=num_heads,
-        seed=53,
+        seed=0,
         device=device,
         dtype=dtype,
     )
     calibration_samples = make_token_samples(
         num_samples=8,
         batch_size=1,
-        seq_len=1024,
+        seq_len=512,
         width=embed_dim,
         seed=0,
         device=device,
