@@ -250,6 +250,8 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
         )
 
     for rank in RANKS_WITH_BASELINE:
+        print(f"\nQuantizing with rank {rank} ...")
+        quantize_start_time = time.perf_counter()
         quantized_model = quantize_toy_model(
             model,
             calibration_samples,
@@ -257,6 +259,10 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             device=device,
             dtype=dtype,
         )
+        torch.cuda.synchronize()
+        quantize_latency = time.perf_counter() - quantize_start_time
+        print(f"Rank {rank} quantization time: {quantize_latency:.2f} seconds")
+
         checkpoint_path = tmp_path / f"svdq_toy_rank{rank}.pt"
         torch.save(
             {
@@ -285,6 +291,7 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             quantized_output = quantized_model(eval_inputs)
             reloaded_output = reloaded_model(eval_inputs)
             torch.cuda.synchronize()
+
         # Profile and validate outputs, repeats=10
         with torch.inference_mode():
             start_time = time.perf_counter()

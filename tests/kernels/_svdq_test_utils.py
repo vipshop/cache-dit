@@ -152,13 +152,17 @@ def make_spectral_decay_weight(
 ) -> torch.Tensor:
     generator = _cpu_generator(seed)
     rank = min(out_features, in_features)
-    left = torch.randn(out_features, rank, generator=generator, dtype=torch.float32)
-    right = torch.randn(in_features, rank, generator=generator, dtype=torch.float32)
+    left = torch.randn(out_features, rank, generator=generator, dtype=torch.float32).to(
+        device=device
+    )
+    right = torch.randn(in_features, rank, generator=generator, dtype=torch.float32).to(
+        device=device
+    )
     left = F.normalize(left, dim=0)
     right = F.normalize(right, dim=0)
     singular_values = torch.pow(
-        torch.full((rank,), decay, dtype=torch.float32),
-        torch.arange(rank, dtype=torch.float32),
+        torch.full((rank,), decay, dtype=torch.float32, device=device),
+        torch.arange(rank, dtype=torch.float32, device=device),
     )
     weight = (left * singular_values.unsqueeze(0)) @ right.transpose(0, 1)
     weight = 6.0 * weight + noise_scale * torch.randn(
@@ -166,7 +170,7 @@ def make_spectral_decay_weight(
         in_features,
         generator=generator,
         dtype=torch.float32,
-    )
+    ).to(device=device)
     return weight.to(device=device, dtype=dtype)
 
 
@@ -298,7 +302,11 @@ def collect_module_inputs(
         def hook(
             _module: nn.Module, args: tuple[torch.Tensor, ...], name: str = module_name
         ) -> None:
-            captured[name].append(args[0].detach().clone())
+            # Ensure the data still located on the same device and dtype as the original input,
+            # but detach and clone to avoid holding references to the original tensors.
+            captured_tensor = args[0].clone()  # clone to ensure it's a separate tensor
+            captured_tensor = captured_tensor.to(device=args[0].device, dtype=args[0].dtype)
+            captured[name].append(captured_tensor)
 
         hooks.append(module.register_forward_pre_hook(hook))
 
