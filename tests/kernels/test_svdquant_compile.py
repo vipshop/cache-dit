@@ -1,3 +1,8 @@
+"""
+cd cache-dit
+pytest tests/kernels/test_svdquant_compile.py -v -s
+"""
+
 import pytest
 import torch
 from torch import nn

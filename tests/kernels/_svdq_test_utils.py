@@ -30,6 +30,7 @@ class SVDQAccuracyMetrics:
     max_abs: float
     rel_l2: float
     cosine: float
+    latency_ms: float = 0.0
 
 
 class ToyTransformerBlock(nn.Module):
@@ -151,13 +152,17 @@ def make_spectral_decay_weight(
 ) -> torch.Tensor:
     generator = _cpu_generator(seed)
     rank = min(out_features, in_features)
-    left = torch.randn(out_features, rank, generator=generator, dtype=torch.float32)
-    right = torch.randn(in_features, rank, generator=generator, dtype=torch.float32)
+    left = torch.randn(out_features, rank, generator=generator, dtype=torch.float32).to(
+        device=device
+    )
+    right = torch.randn(in_features, rank, generator=generator, dtype=torch.float32).to(
+        device=device
+    )
     left = F.normalize(left, dim=0)
     right = F.normalize(right, dim=0)
     singular_values = torch.pow(
-        torch.full((rank,), decay, dtype=torch.float32),
-        torch.arange(rank, dtype=torch.float32),
+        torch.full((rank,), decay, dtype=torch.float32, device=device),
+        torch.arange(rank, dtype=torch.float32, device=device),
     )
     weight = (left * singular_values.unsqueeze(0)) @ right.transpose(0, 1)
     weight = 6.0 * weight + noise_scale * torch.randn(
@@ -165,7 +170,7 @@ def make_spectral_decay_weight(
         in_features,
         generator=generator,
         dtype=torch.float32,
-    )
+    ).to(device=device)
     return weight.to(device=device, dtype=dtype)
 
 
@@ -197,6 +202,7 @@ def make_rank_sensitive_linear(
 def compute_accuracy_metrics(
     reference: torch.Tensor,
     candidate: torch.Tensor,
+    latency_ms: float = 0.0,
 ) -> SVDQAccuracyMetrics:
     reference_fp32 = reference.float().reshape(-1)
     candidate_fp32 = candidate.float().reshape(-1)
@@ -210,6 +216,7 @@ def compute_accuracy_metrics(
         max_abs=diff.abs().max().item(),
         rel_l2=(diff.norm() / ref_norm).item(),
         cosine=cosine.item(),
+        latency_ms=latency_ms,
     )
 
 
@@ -219,13 +226,14 @@ def format_rank_report(
 ) -> str:
     lines = [
         title,
-        "rank |      mae |     rmse |  max_abs |   rel_l2 |   cosine",
+        "rank |      mae |     rmse |  max_abs |   rel_l2 |   cosine |  latency_ms",
     ]
     for rank in sorted(metrics_by_rank):
         metrics = metrics_by_rank[rank]
         lines.append(
             f"{rank:>4} | {metrics.mae:>8.6f} | {metrics.rmse:>8.6f} | "
-            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f}"
+            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f} "
+            f"| {metrics.latency_ms:>8.6f} ms"
         )
     return "\n".join(lines)
 
@@ -295,7 +303,11 @@ def collect_module_inputs(
         def hook(
             _module: nn.Module, args: tuple[torch.Tensor, ...], name: str = module_name
         ) -> None:
-            captured[name].append(args[0].detach().clone())
+            # Ensure the data still located on the same device and dtype as the original input,
+            # but detach and clone to avoid holding references to the original tensors.
+            captured_tensor = args[0].clone()  # clone to ensure it's a separate tensor
+            captured_tensor = captured_tensor.to(device=args[0].device, dtype=args[0].dtype)
+            captured[name].append(captured_tensor)
 
         hooks.append(module.register_forward_pre_hook(hook))
 
@@ -324,6 +336,7 @@ def quantize_toy_model(
     rank: int,
     device: str | torch.device,
     dtype: torch.dtype,
+    fast_svd: bool = False,
 ) -> ToyModel:
     activations_by_module = collect_module_inputs(model, calibration_samples)
     quantized_model = copy.deepcopy(model).eval()
@@ -335,6 +348,7 @@ def quantize_toy_model(
             rank=rank,
             device=device,
             torch_dtype=dtype,
+            fast_svd=fast_svd,
         )
         parent, child_name = _module_parent(quantized_model, module_name)
         setattr(parent, child_name, quantized_module)

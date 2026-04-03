@@ -1,3 +1,4 @@
+# Adapted from deepcompressor's implementation of SVDQW4A4Linear weight packing and related utilities.
 from __future__ import annotations
 
 import typing as tp

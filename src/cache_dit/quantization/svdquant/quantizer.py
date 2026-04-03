@@ -136,6 +136,7 @@ def quantize_linear_svdq_w4a4(
     torch_dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
     return_state_dict: bool = False,
+    fast_svd: bool = False,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
     if not isinstance(linear, nn.Linear):
         raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
@@ -165,11 +166,12 @@ def quantize_linear_svdq_w4a4(
 
     smoothed_weight = weight.to(dtype=torch.float32) * smooth_scale.to(
         dtype=torch.float32
-    ).unsqueeze(0)
+    ).unsqueeze(0).to(device=device)
     lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
         smoothed_weight,
         rank,
         output_dtype=torch_dtype,
+        fast_svd=fast_svd,
     )
     scales = _compute_group_scales(residual, group_size=64).to(device=device, dtype=torch_dtype)
 
