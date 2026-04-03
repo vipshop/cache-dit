@@ -1,3 +1,8 @@
+"""
+cd cache-dit
+pytest tests/kernels/test_svdquant_runtime.py -v -s
+"""
+
 import pytest
 import torch
 

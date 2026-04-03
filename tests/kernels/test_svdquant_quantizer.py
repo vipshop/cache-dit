@@ -1,3 +1,8 @@
+"""
+cd cache-dit
+pytest tests/kernels/test_svdquant_quantizer.py -v -s
+"""
+
 from pathlib import Path
 
 import pytest

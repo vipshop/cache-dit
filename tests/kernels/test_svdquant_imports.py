@@ -1,3 +1,8 @@
+"""
+cd cache-dit
+pytest tests/kernels/test_svdquant_imports.py -v -s
+"""
+
 import torch
 
 from cache_dit.kernels import svdq_extension_is_available
