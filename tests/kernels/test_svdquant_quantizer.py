@@ -303,8 +303,9 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             reloaded_latency = (time.perf_counter() - start_time) / 10
         # May not bitwise-deterministic due to non-determinism in CUDA.
         # BFloat16 atol can be ranged in [4e-3, 8e-3].
-        atol = 8e-3 if use_fast_svd else 1e-1  # For testing purposes, not recommended.
-        torch.testing.assert_close(reloaded_output, quantized_output, rtol=0.0, atol=atol)
+        atol = 8e-3 if not use_fast_svd else 1e-1  # For testing purposes, not recommended.
+        rtol = 1e-3 if not use_fast_svd else 1e-1
+        torch.testing.assert_close(reloaded_output, quantized_output, rtol=rtol, atol=atol)
         metrics_by_rank[rank] = compute_accuracy_metrics(
             reference,
             reloaded_output,

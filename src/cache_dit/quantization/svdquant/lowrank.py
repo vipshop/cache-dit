@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import torch
+
+# Adapted from deepcompressor's implementation of low-rank decomposition of the residual weight matrix in SVDQuant.
 import torch.linalg
 
 __all__ = ["decompose_lowrank_residual"]
