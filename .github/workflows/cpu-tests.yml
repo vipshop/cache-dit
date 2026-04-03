@@ -63,14 +63,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -U pip && pip install torch==2.9.1 torchvision --index-url https://download.pytorch.org/whl/cpu  
-          if [ -f "dist/*.whl" ]; then
-            pip install dist/*.whl
-          else
-            pip install -e .
-          fi
+          pip install -U pip 
           pip install pytest
-
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu 
+          pip install packaging wheel ninja cmake setuptools setuptools_scm 
+          if [ -f "dist/*.whl" ]; then
+            pip install dist/*.whl --no-build-isolation
+          else
+            pip install -e . --no-build-isolation
+          fi
+          
       - name: Run Forward Pattern CPU Tests (pytest)
         run: |
           cd tests

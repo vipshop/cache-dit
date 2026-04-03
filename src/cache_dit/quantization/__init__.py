@@ -2,3 +2,7 @@ from .backend import QuantizeBackend
 from .config import QuantizeConfig
 from .dispatch import quantize
 from .dispatch import remove_quantization_stats
+from .svdquant import SVDQW4A4Linear
+from .svdquant import svdq_get_load_error
+from .svdquant import svdq_is_available
+from .svdquant import quantize_linear_svdq_w4a4

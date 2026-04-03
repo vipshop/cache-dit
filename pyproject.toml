@@ -9,6 +9,7 @@ maintainers = [{name="DefTruth, vipshop.com, etc"}]
 readme = "README.md" 
 
 dependencies = [
+    "packaging",
     "pyyaml",
     "torch>=2.7.1",
     "diffusers>=0.36.0",
@@ -82,7 +83,6 @@ GitHub = "https://github.com/vipshop/cache-dit"
 
 [project.scripts]
 
-cache-dit-metrics-cli = "cache_dit.metrics:main" # deprecated
 cache-dit-metrics = "cache_dit.metrics:main" # metric entrypoint
 cache-dit-generate = "cache_dit.generate:entrypoint" # example entrypoint
 
@@ -94,6 +94,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 version_scheme = "python-simplified-semver"
 local_scheme = "no-local-version"
+
+[tool.setuptools]
+include-package-data = true
 
 [tool.black]
 

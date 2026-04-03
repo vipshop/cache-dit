@@ -1,5 +1,7 @@
 from enum import Enum
 
+import torch
+
 
 class KernelBackend(Enum):
     TRITON = "Triton"
@@ -23,7 +25,11 @@ class KernelBackend(Enum):
                 return True
             except ImportError:
                 return False
-        else:
-            # Only Triton backend is supported for now, we can add more
-            # backends in the future.
-            return False
+        if backend == cls.CUDA:
+            if not torch.cuda.is_available():
+                return False
+            # The SVDQuant CUDA extension is currently required for the CUDA backend,
+            # but we check for it at runtime in the kernels, so we return True here as
+            # long as CUDA is available.
+            return True
+        return False
