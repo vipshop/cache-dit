@@ -3,6 +3,7 @@ cd cache-dit
 pytest tests/kernels/test_svdquant_quantizer.py -v -s
 """
 
+import os
 from pathlib import Path
 import time
 import pytest
@@ -24,6 +25,9 @@ from tests.kernels._svdq_test_utils import make_token_samples
 from tests.kernels._svdq_test_utils import make_toy_model
 from tests.kernels._svdq_test_utils import quantize_toy_model
 from tests.kernels._svdq_test_utils import runtime_dtype
+
+# For testing purposes, not recommended. Set to True to speed up tests with a potential accuracy regression.
+_USE_FAST_SVD = os.getenv("CACHE_DIT_SVDQ_TEST_USE_FAST_SVD", "0").lower() == "1"
 
 
 def _make_cpu_linear(in_features: int, out_features: int, *, bias: bool = True) -> nn.Linear:
@@ -249,9 +253,8 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             latency_ms=reference_latency * 1000,  # reference latency in milliseconds
         )
 
-    use_fast_svd = True
     for rank in RANKS_WITH_BASELINE:
-        print(f"\nQuantizing with rank {rank} with fast_svd={use_fast_svd} ...")
+        print(f"\nQuantizing with rank {rank} with fast_svd={_USE_FAST_SVD} ...")
         quantize_start_time = time.perf_counter()
         quantized_model = quantize_toy_model(
             model,
@@ -259,7 +262,7 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             rank=rank,
             device=device,
             dtype=dtype,
-            fast_svd=use_fast_svd,
+            fast_svd=_USE_FAST_SVD,
         )
         torch.cuda.synchronize()
         quantize_latency = time.perf_counter() - quantize_start_time
@@ -303,8 +306,8 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
             reloaded_latency = (time.perf_counter() - start_time) / 10
         # May not bitwise-deterministic due to non-determinism in CUDA.
         # BFloat16 atol can be ranged in [4e-3, 8e-3].
-        atol = 8e-3 if not use_fast_svd else 1e-1  # For testing purposes, not recommended.
-        rtol = 1e-3 if not use_fast_svd else 1e-1
+        atol = 8e-3 if not _USE_FAST_SVD else 1e-1  # For testing purposes, not recommended.
+        rtol = 1e-3 if not _USE_FAST_SVD else 1e-1
         torch.testing.assert_close(reloaded_output, quantized_output, rtol=rtol, atol=atol)
         metrics_by_rank[rank] = compute_accuracy_metrics(
             reference,
