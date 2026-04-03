@@ -63,11 +63,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -U pip && pip install torch==2.9.1 torchvision --index-url https://download.pytorch.org/whl/cpu  
+          pip install -U pip && pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu  
           if [ -f "dist/*.whl" ]; then
-            pip install dist/*.whl
+            pip install dist/*.whl --no-build-isolation
           else
-            pip install -e .
+            pip install -e . --no-build-isolation
           fi
           pip install pytest
 
