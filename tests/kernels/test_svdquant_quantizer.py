@@ -1,0 +1,264 @@
+from pathlib import Path
+
+import pytest
+import torch
+from torch import nn
+
+from cache_dit.kernels import svdq_extension_is_available
+from cache_dit.quantization.svdquant import SVDQW4A4Linear
+from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
+from tests.kernels._svdq_test_utils import EVALUATED_RANKS
+from tests.kernels._svdq_test_utils import RANKS_WITH_BASELINE
+from tests.kernels._svdq_test_utils import assert_rank_metric_trend
+from tests.kernels._svdq_test_utils import build_empty_quantized_toy_model
+from tests.kernels._svdq_test_utils import compute_accuracy_metrics
+from tests.kernels._svdq_test_utils import format_rank_report
+from tests.kernels._svdq_test_utils import make_rank_sensitive_linear
+from tests.kernels._svdq_test_utils import make_token_batch
+from tests.kernels._svdq_test_utils import make_token_samples
+from tests.kernels._svdq_test_utils import make_toy_model
+from tests.kernels._svdq_test_utils import quantize_toy_model
+from tests.kernels._svdq_test_utils import runtime_dtype
+
+
+def _make_cpu_linear(in_features: int, out_features: int, *, bias: bool = True) -> nn.Linear:
+    torch.manual_seed(0)
+    linear = nn.Linear(in_features, out_features, bias=bias, device="cpu", dtype=torch.bfloat16)
+    return linear
+
+
+def test_svdquant_quantizer_returns_module_state_dict() -> None:
+    linear = _make_cpu_linear(128, 256)
+    representative = torch.randn(3, 5, 128, dtype=torch.float32)
+
+    state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+        linear,
+        representative,
+        rank=16,
+        device="cpu",
+        torch_dtype=torch.bfloat16,
+        return_state_dict=True,
+    )
+
+    assert set(state_dict) == {
+        "bias",
+        "proj_down",
+        "proj_up",
+        "qweight",
+        "smooth_factor",
+        "smooth_factor_orig",
+        "wscales",
+    }
+    assert state_dict["qweight"].shape == (256, 64)
+    assert state_dict["wscales"].shape == (2, 256)
+    assert state_dict["bias"].shape == (256,)
+    assert state_dict["smooth_factor"].shape == (128,)
+    assert state_dict["smooth_factor_orig"].shape == (128,)
+    assert state_dict["proj_down"].shape == (128, 16)
+    assert state_dict["proj_up"].shape == (256, 16)
+
+
+def test_svdquant_quantizer_repairs_invalid_smooth_scales() -> None:
+    linear = _make_cpu_linear(128, 128, bias=False)
+    with torch.no_grad():
+        linear.weight.zero_()
+
+    state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+        linear,
+        torch.zeros(4, 128, dtype=torch.float32),
+        rank=0,
+        device="cpu",
+        torch_dtype=torch.bfloat16,
+        return_state_dict=True,
+    )
+
+    assert torch.equal(state_dict["smooth_factor"], torch.ones_like(state_dict["smooth_factor"]))
+    assert torch.equal(
+        state_dict["smooth_factor_orig"], torch.ones_like(state_dict["smooth_factor_orig"])
+    )
+    assert state_dict["proj_down"].shape == (128, 0)
+    assert state_dict["proj_up"].shape == (128, 0)
+
+
+def test_svdquant_quantizer_rejects_unsupported_geometry() -> None:
+    linear = _make_cpu_linear(128, 96)
+
+    with pytest.raises(ValueError, match="out_features"):
+        quantize_linear_svdq_w4a4(
+            linear,
+            torch.randn(2, 128, dtype=torch.float32),
+            rank=16,
+            device="cpu",
+            torch_dtype=torch.bfloat16,
+            return_state_dict=True,
+        )
+
+
+def test_svdquant_quantizer_state_dict_loads_into_module() -> None:
+    linear = _make_cpu_linear(128, 128)
+    representative = [
+        torch.randn(4, 128, dtype=torch.float32),
+        torch.randn(2, 3, 128, dtype=torch.float32),
+    ]
+    state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+        linear,
+        representative,
+        rank=16,
+        device="cpu",
+        torch_dtype=torch.bfloat16,
+        return_state_dict=True,
+    )
+
+    module = SVDQW4A4Linear.from_linear(
+        linear,
+        rank=16,
+        precision="int4",
+        torch_dtype=torch.bfloat16,
+        device="cpu",
+    )
+    incompatible = module.load_state_dict(state_dict, strict=True)
+    assert incompatible.missing_keys == []
+    assert incompatible.unexpected_keys == []
+
+
+def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
+    if not torch.cuda.is_available() or not svdq_extension_is_available():
+        pytest.skip("CUDA runtime validation requires the optional SVDQuant extension.")
+
+    device = "cuda"
+    dtype = runtime_dtype()
+    in_features = 128
+    out_features = 128
+    rank = 32
+
+    linear = make_rank_sensitive_linear(
+        in_features=in_features,
+        out_features=out_features,
+        seed=17,
+        device=device,
+        dtype=dtype,
+    )
+    calibration = make_token_samples(
+        num_samples=4,
+        batch_size=1,
+        seq_len=16,
+        width=in_features,
+        seed=29,
+        device=device,
+        dtype=dtype,
+    )
+    rank0_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(
+        linear, calibration, rank=0, device=device, torch_dtype=dtype
+    )
+    rank32_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(
+        linear, calibration, rank=rank, device=device, torch_dtype=dtype
+    )
+
+    x = make_token_batch(
+        batch_size=2,
+        seq_len=16,
+        width=in_features,
+        seed=41,
+        device=device,
+        dtype=dtype,
+    )
+    with torch.inference_mode():
+        reference = linear(x)
+        rank0_output = rank0_module(x)
+        rank32_output = rank32_module(x)
+        torch.cuda.synchronize()
+
+    metrics_by_rank = {
+        0: compute_accuracy_metrics(reference, rank0_output),
+        32: compute_accuracy_metrics(reference, rank32_output),
+    }
+    print(format_rank_report("SVDQ linear module accuracy report", metrics_by_rank))
+
+    rank0_error = metrics_by_rank[0].mae
+    rank32_error = metrics_by_rank[32].mae
+
+    assert rank32_error < rank0_error
+
+
+def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> None:
+    if not torch.cuda.is_available() or not svdq_extension_is_available():
+        pytest.skip("CUDA runtime validation requires the optional SVDQuant extension.")
+
+    device = "cuda"
+    dtype = runtime_dtype()
+    embed_dim = 128
+    num_heads = 4
+
+    model = make_toy_model(
+        embed_dim=embed_dim,
+        num_heads=num_heads,
+        seed=53,
+        device=device,
+        dtype=dtype,
+    )
+    calibration_samples = make_token_samples(
+        num_samples=8,
+        batch_size=1,
+        seq_len=12,
+        width=embed_dim,
+        seed=71,
+        device=device,
+        dtype=dtype,
+    )
+    eval_inputs = make_token_batch(
+        batch_size=4,
+        seq_len=12,
+        width=embed_dim,
+        seed=89,
+        device=device,
+        dtype=dtype,
+    )
+
+    metrics_by_rank = {}
+    with torch.inference_mode():
+        reference = model(eval_inputs)
+
+    for rank in RANKS_WITH_BASELINE:
+        quantized_model = quantize_toy_model(
+            model,
+            calibration_samples,
+            rank=rank,
+            device=device,
+            dtype=dtype,
+        )
+        checkpoint_path = tmp_path / f"svdq_toy_rank{rank}.pt"
+        torch.save(
+            {
+                "model_config": {"embed_dim": embed_dim, "num_heads": num_heads},
+                "rank": rank,
+                "state_dict": quantized_model.state_dict(),
+            },
+            checkpoint_path,
+        )
+
+        payload = torch.load(checkpoint_path, map_location=device)
+        model_config = payload["model_config"]
+        reloaded_model = build_empty_quantized_toy_model(
+            embed_dim=model_config["embed_dim"],
+            num_heads=model_config["num_heads"],
+            rank=payload["rank"],
+            device=device,
+            dtype=dtype,
+        )
+        incompatible = reloaded_model.load_state_dict(payload["state_dict"], strict=True)
+        assert incompatible.missing_keys == []
+        assert incompatible.unexpected_keys == []
+
+        with torch.inference_mode():
+            quantized_output = quantized_model(eval_inputs)
+            reloaded_output = reloaded_model(eval_inputs)
+            torch.cuda.synchronize()
+
+        torch.testing.assert_close(reloaded_output, quantized_output, rtol=0.0, atol=0.0)
+        metrics_by_rank[rank] = compute_accuracy_metrics(reference, reloaded_output)
+
+    print(format_rank_report("SVDQ ToyModel accuracy report", metrics_by_rank))
+    assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)
+    assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
+    for rank in EVALUATED_RANKS:
+        assert metrics_by_rank[rank].mae < metrics_by_rank[0].mae
