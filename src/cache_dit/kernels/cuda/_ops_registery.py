@@ -133,8 +133,8 @@ def _svdq_gemm_w4a4(
         None,  # out_vk: not writing linear-attention VK output
         None,  # out_linearattn: not writing linear-attention output
         act_unsigned,
-        None,
-        False,
+        None,  # lora_scales: not running any LoRA fusion paths that require scale normalization
+        False,  # fuse_silu: not running SiLU fusion
         fp4,
         alpha,
         wcscales,

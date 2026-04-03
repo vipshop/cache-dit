@@ -285,18 +285,50 @@ def _svdq_set_log_level_impl(
 
 # Ulysses FP8 communication related ops
 def fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+    """Quantize a floating-point tensor to FP8 per-token format.
+
+    Args:
+        x: Input floating-point tensor to be quantized.
+    Returns:
+        Quantized tensor in FP8 format, where the quantization is performed
+        on a per-token quantization scheme suitable for communication purposes.
+    """
+
     return _fp8_comm_per_token_quant_impl(x=x, backend_fn=_TRITON_BE_FN)
 
 
 def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+    """Dequantize a FP8 tensor to floating-point format using per-token method.
+
+    Args:
+        x: Input FP8 tensor to be dequantized.
+    Returns:
+        Dequantized tensor in floating-point format, where the dequantization
+        is performed on a per-token basis suitable for communication purposes.
+    """
     return _fp8_comm_per_token_dequant_impl(x=x, backend_fn=_TRITON_BE_FN)
 
 
 def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+    """Quantize a floating-point tensor to FP8 format with QKV permutation.
+
+    Args:
+        x: Input floating-point tensor to be quantized.
+    Returns:
+        Quantized tensor in FP8 format with QKV permutation, suitable for communication purposes.
+    """
     return _fp8_comm_qkv_permute_quant_impl(x=x, backend_fn=_TRITON_BE_FN)
 
 
 def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+    """Dequantize a FP8 tensor with QKV permutation to floating-point format.
+
+    Args:
+        quant_x: Input FP8 tensor with QKV permutation to be dequantized.
+    Returns:
+        Dequantized tensor in floating-point format, where the dequantization is performed
+        on a per-token basis suitable for communication purposes.
+    """
     return _fp8_comm_qkv_permute_dequant_impl(
         quant_x=quant_x,
         backend_fn=_TRITON_BE_FN,
@@ -310,6 +342,16 @@ def fused_merge_attn_states(
     suff_out: torch.Tensor,
     suff_lse: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Fuse the attention states of two consecutive attention states, e.g., Ring Attention.
+
+    Args:
+        prev_out: Previous output tensor.
+        prev_lse: Previous log-sum-exp tensor.
+        suff_out: Sufficient output tensor.
+        suff_lse: Sufficient log-sum-exp tensor.
+    Returns:
+        Fused output and log-sum-exp tensors.
+    """
     return _fused_merge_attn_states_impl(
         prev_out=prev_out,
         prev_lse=prev_lse,
@@ -334,6 +376,26 @@ def svdq_gemm_w4a4(
     act_unsigned: bool = False,
     output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
+    """INT4/FP4 GEMM with optional fused LoRA and quantization support.
+
+    Args:
+        act: Packed activation tensor `[M, K / 2]`.
+        wgt: Packed weight tensor `[N, K / 2]`.
+        ascales: Activation scales `[K / 64, M]` for INT4 or `[K / 16, M]` for FP4.
+        wscales: Weight scales `[K / 64, N]` or `[K / 16, N]` depending on precision.
+        lora_act_in: Optional low-rank activation input `[M, R]` for fused LoRA paths.
+        lora_up: Optional low-rank up projection `[N, R]` for fused LoRA paths.
+        bias: Optional dense output bias `[N]`.
+        fp4: Whether the input tensors are in FP4 (true) or INT4 (false) format.
+        alpha: Weight scaling factor used by FP4 paths, typically set to 1.0 / max(abs(weight)).
+        wcscales: Optional per-channel FP4 weight correction scales.
+        act_unsigned: Whether activations are interpreted as unsigned quantized values, which can affect quantization behavior and output ranges.
+        output_dtype: Optional dtype for the output tensor, which can be used to control the precision of the output in FP4 paths or to specify a different dtype for INT4 paths.
+    Returns:
+        The output tensor resulting from the quantized GEMM operation, with optional LoRA fusion applied. The dtype and device of the output tensor may depend on the input parameters and the specific kernel implementation
+        used by the backend.
+    """
+
     return _svdq_gemm_w4a4_impl(
         act=act,
         wgt=wgt,
@@ -382,6 +444,41 @@ def svdq_gemm_w4a4_ext(
     out_v: torch.Tensor | None = None,
     attn_tokens: int = 0,
 ) -> torch.Tensor:
+    """Fully-extended SVDQ GEMM with support for various fusion paths and quantization options.
+
+    Args:
+        act: Packed activation tensor `[M, K / 2]`.
+        wgt: Packed weight tensor `[N, K / 2]`.
+        out: Dense output tensor `[M, N]`.
+        qout: Optional packed output buffer `[M, N / 2]` for re-quantized activations.
+        ascales: Activation scales `[K / 64, M]` for INT4 or `[K / 16, M]` for FP4.
+        wscales: Weight scales `[K / 64, N]` or `[K / 16, N]` depending on precision.
+        oscales: Optional output activation scales for `qout`.
+        poolout: Optional pooled output buffer for fused pooling paths.
+        lora_act_in: Optional low-rank activation input `[M, R]`.
+        lora_up: Optional low-rank up projection `[N, R]`.
+        lora_down: Optional low-rank down projection used by fused LoRA-down paths.
+        lora_act_out: Optional intermediate low-rank activation output buffer.
+        norm_q: Optional RMSNorm/Q normalization tensor for fused attention paths.
+        norm_k: Optional RMSNorm/K normalization tensor for fused attention paths.
+        rotary_emb: Optional RoPE embedding tensor for fused attention paths.
+        bias: Optional dense output bias `[N]`.
+        smooth_factor: Optional next-layer smoothing factor written by fused quantization paths.
+        out_vk: Optional linear-attention VK output buffer.
+        out_linearattn: Optional linear-attention output buffer.
+        act_unsigned: Whether activations are interpreted as unsigned quantized values.
+        lora_scales: Per-16-rank LoRA scales used by the native fused LoRA implementation.
+        fuse_silu: Whether to enable fused SiLU in advanced kernel variants.
+        fp4: Whether the packed tensors use FP4 rather than INT4 layout.
+        alpha: Weight scaling factor used by FP4 paths.
+        wcscales: Optional per-channel FP4 weight correction scales.
+        out_q: Optional packed attention-Q output buffer.
+        out_k: Optional packed attention-K output buffer.
+        out_v: Optional packed attention-V output buffer.
+        attn_tokens: Token count for fused attention-style kernel variants.
+    Returns:
+        The output tensor, which may be the same as the `out` argument if provided.
+    """
     return _svdq_gemm_w4a4_ext_impl(
         act=act,
         wgt=wgt,
@@ -424,6 +521,19 @@ def svdq_quantize_w4a4_act_fuse_lora(
     fp4: bool = False,
     pad_size: int = 256,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Quantize activations to INT4/FP4 format with optional fused LoRA support.
+
+    Args:
+        input: Input activation tensor `[M, K]`.
+        lora_down: Optional low-rank down projection used by fused LoRA-down paths.
+        smooth: Optional next-layer smoothing factor written by fused quantization paths.
+        fuse_glu: Whether to enable fused GLU in advanced kernel variants.
+        fp4: Whether the input tensors are in FP4 (true) or INT4 (false) format.
+        pad_size: Padding size for the input tensor.
+    Returns:
+        A tuple containing the quantized activation tensor, the scale tensor, and the zero-point tensor.
+    """
+
     return _svdq_quantize_w4a4_act_fuse_lora_impl(
         input=input,
         lora_down=lora_down,
@@ -440,6 +550,15 @@ def svdq_quantize_w4a4_wgt(
     output: torch.Tensor | None = None,
     oscales: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Quantize weights to INT4/FP4 format with optional output buffer and scale tensor.
+
+    Args:
+        input: Input weight tensor `[N, K]`.
+        output: Optional output tensor to store the quantized weights.
+        oscales: Optional scale tensor for the output weights.
+    Returns:
+        A tuple containing the quantized weight tensor and the scale tensor.
+    """
     return _svdq_quantize_w4a4_wgt_impl(
         input=input,
         output=output,
