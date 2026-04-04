@@ -49,6 +49,7 @@ from .caching import get_adapter
 from .parallelism import ParallelismBackend
 from .parallelism import ParallelismConfig
 from .compile import set_compile_configs
+from .compile import maybe_wrap_torch_compile
 from .summary import supported_matrix
 from .summary import summary
 from .summary import strify
@@ -71,3 +72,5 @@ Pattern_2 = ForwardPattern.Pattern_2
 Pattern_3 = ForwardPattern.Pattern_3
 Pattern_4 = ForwardPattern.Pattern_4
 Pattern_5 = ForwardPattern.Pattern_5
+
+maybe_wrap_torch_compile()
