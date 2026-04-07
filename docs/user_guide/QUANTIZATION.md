@@ -295,7 +295,7 @@ In the case of <span style="color:#c77dff;">distributed inference</span> (contex
 
 ## SVDQuant (W4A4) in Cache-DiT
 
-Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance W4A4 GEMM kernels and an easy-to-use PTQ interface). The public API is intentionally small: build a [QuantizeConfig](cache_dit/quantization/config.py), quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and ease of use compared to other third-party INT4 quantization libraries.   
+Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance W4A4 GEMM kernels and an easy-to-use PTQ interface). The public API is intentionally small: build a pan style="color:#c77dff;">QuantizeConfig</span> quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and ease of use compared to other third-party INT4 quantization libraries.   
 
 With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, please make sure to **build Cache-DiT from source with SVDQuant support**. We may consider releasing pre-built Cache-DiT packages with SVDQuant support in the future.
 
