@@ -423,7 +423,7 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
         )
         torch.cuda.synchronize()
         quantize_latency = time.perf_counter() - quantize_start_time
-        quantization_latency_rows.append((rank, f"{quantize_latency * 1000:.6f}"))
+        quantization_latency_rows.append((rank, f"{quantize_latency:.6f}"))
 
         checkpoint_path = tmp_path / f"svdq_toy_rank{rank}.pt"
         torch.save(
@@ -481,7 +481,7 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
     print(
         format_markdown_table(
             "SVDQ ToyModel quantization latency\n",
-            ("rank", "quantization_ms"),
+            ("rank", "quantization_s"),
             quantization_latency_rows,
         )
     )
