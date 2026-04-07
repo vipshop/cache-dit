@@ -347,7 +347,7 @@ def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
         32: compute_accuracy_metrics(reference, rank32_output),
         128: compute_accuracy_metrics(reference, rank128_output),
     }
-    print(format_rank_report("SVDQ linear module accuracy report", metrics_by_rank))
+    print(format_rank_report("SVDQ linear module accuracy report\n", metrics_by_rank))
 
     rank0_error = metrics_by_rank[0].mae
     rank16_error = metrics_by_rank[16].mae
@@ -473,19 +473,19 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
 
     print(
         format_markdown_table(
-            "SVDQ ToyModel profiling config",
+            "SVDQ ToyModel profiling config\n",
             ("num_heads", "embed_dim", "batch", "seq_len", "high_precision", "fp32_fallback"),
             [(H, D, B, S, _USE_HIGH_PRECISION, _USE_FP32_FALLBACK)],
         )
     )
     print(
         format_markdown_table(
-            "SVDQ ToyModel quantization latency",
+            "SVDQ ToyModel quantization latency\n",
             ("rank", "quantization_ms"),
             quantization_latency_rows,
         )
     )
-    print(format_rank_report("SVDQ ToyModel accuracy report", metrics_by_rank))
+    print(format_rank_report("SVDQ ToyModel accuracy report\n", metrics_by_rank))
     assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)
     assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
     for rank in EVALUATED_RANKS:
@@ -534,7 +534,7 @@ def test_svdquant_streaming_memory_peak_is_lower() -> None:
     savings_pct = 100.0 * (eager_peak - streaming_peak) / eager_peak
     print(
         format_markdown_table(
-            "SVDQ streaming memory benchmark",
+            "SVDQ streaming memory benchmark\n",
             (
                 "rank",
                 "cpu_calibration_gib",
