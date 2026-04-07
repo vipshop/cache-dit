@@ -194,3 +194,4 @@ CLAUDE.local.md
 *.zip
 *.tar.gz
 *.egg-info/
+*.plans
