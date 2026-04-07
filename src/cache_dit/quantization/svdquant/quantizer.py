@@ -67,8 +67,6 @@ def standardize_calibration_activations(
     representative_activations: CalibrationInputs,
     *,
     in_features: int,
-    device: torch.device | str,
-    dtype: torch.dtype,
 ) -> list[torch.Tensor]:
     tensors = (
         (representative_activations,)
@@ -83,17 +81,21 @@ def standardize_calibration_activations(
             raise ValueError(
                 f"Expected representative activations with last dim {in_features}, got {tensor.shape[-1]}."
             )
-        standardized.append(tensor.reshape(-1, in_features).to(device=device, dtype=dtype))
+        standardized.append(tensor.reshape(-1, in_features))
     if not standardized:
         raise ValueError("At least one representative activation tensor is required.")
     return standardized
 
 
 def _repair_invalid_scale(scale: torch.Tensor) -> torch.Tensor:
-    scale = scale.to(dtype=torch.float32)
+    scale = scale.clone()
     scale[scale == 0] = 1
     scale[~torch.isfinite(scale)] = 1
     return scale
+
+
+def _resolve_math_dtype(torch_dtype: torch.dtype, high_precision: bool) -> torch.dtype:
+    return torch.float32 if high_precision else torch_dtype
 
 
 @torch.inference_mode()
@@ -102,26 +104,40 @@ def compute_smooth_scale(
     weight_span: torch.Tensor,
     *,
     alpha: float = 0.5,
+    math_dtype: torch.dtype = torch.float32,
+    output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
     if not 0.0 <= alpha <= 1.0:
         raise ValueError(f"alpha must be in [0, 1], got {alpha}.")
     beta = 1.0 - alpha
-    smooth_scale = activation_span.to(dtype=torch.float32).pow(alpha)
+    smooth_scale = activation_span.to(dtype=math_dtype).pow(alpha)
     if beta > 0:
-        smooth_scale = smooth_scale.div_(weight_span.to(dtype=torch.float32).pow(beta))
-    return _repair_invalid_scale(smooth_scale)
+        smooth_scale = smooth_scale.div_(weight_span.to(dtype=math_dtype).pow(beta))
+    smooth_scale = _repair_invalid_scale(smooth_scale)
+    if output_dtype is not None:
+        smooth_scale = smooth_scale.to(dtype=output_dtype)
+    return smooth_scale
 
 
 @torch.inference_mode()
-def _compute_group_scales(weight: torch.Tensor, group_size: int = 64) -> torch.Tensor:
+def _compute_group_scales(
+    weight: torch.Tensor,
+    group_size: int = 64,
+    *,
+    math_dtype: torch.dtype = torch.float32,
+    output_dtype: torch.dtype | None = None,
+) -> torch.Tensor:
     out_features, in_features = weight.shape
     if in_features % group_size != 0:
         raise ValueError(f"Expected in_features divisible by {group_size}, got {in_features}.")
-    weight = weight.to(dtype=torch.float32).view(
+    weight = weight.to(dtype=math_dtype).view(
         out_features, 1, in_features // group_size, group_size
     )
     scales = weight.abs().amax(dim=-1, keepdim=True).div_(7.0)
-    return _repair_invalid_scale(scales).to(dtype=weight.dtype)
+    scales = _repair_invalid_scale(scales)
+    if output_dtype is not None:
+        scales = scales.to(dtype=output_dtype)
+    return scales
 
 
 @torch.inference_mode()
@@ -136,13 +152,16 @@ def quantize_linear_svdq_w4a4(
     torch_dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
     return_state_dict: bool = False,
-    fast_svd: bool = False,
+    high_precision: bool = False,
+    fp32_fallback: bool = False,
+    streaming: bool = True,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
     if not isinstance(linear, nn.Linear):
         raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
 
-    device = device or linear.weight.device
+    device = torch.device(device or linear.weight.device)
     torch_dtype = _normalize_dtype(torch_dtype, device)
+    math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
     validate_svdq_linear_geometry(
         linear.in_features, linear.out_features, rank=rank, precision=precision
     )
@@ -150,30 +169,52 @@ def quantize_linear_svdq_w4a4(
     standardized_acts = standardize_calibration_activations(
         representative_activations,
         in_features=linear.in_features,
-        device=device,
-        dtype=torch_dtype,
     )
 
-    activation_span = torch.stack(
-        [tensor.to(dtype=torch.float32).abs().amax(dim=0) for tensor in standardized_acts],
-        dim=0,
-    ).amax(dim=0)
+    if streaming:
+        activation_span: torch.Tensor | None = None
+        for tensor in standardized_acts:
+            device_tensor = tensor.to(device=device, dtype=torch_dtype)
+            tensor_span = device_tensor.to(dtype=math_dtype).abs().amax(dim=0)
+            if activation_span is None:
+                activation_span = tensor_span
+            else:
+                activation_span = torch.maximum(activation_span, tensor_span)
+            del device_tensor, tensor_span
+        if activation_span is None:
+            raise ValueError("At least one representative activation tensor is required.")
+    else:
+        eager_acts = [tensor.to(device=device, dtype=torch_dtype) for tensor in standardized_acts]
+        activation_span = torch.stack(
+            [tensor.to(dtype=math_dtype).abs().amax(dim=0) for tensor in eager_acts],
+            dim=0,
+        ).amax(dim=0)
+        del eager_acts
+
     weight = linear.weight.detach().to(device=device, dtype=torch_dtype)
-    weight_span = weight.to(dtype=torch.float32).abs().amax(dim=0)
-    smooth_scale = compute_smooth_scale(activation_span, weight_span, alpha=alpha).to(
-        device=device, dtype=torch_dtype
+    weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
+    smooth_scale = compute_smooth_scale(
+        activation_span,
+        weight_span,
+        alpha=alpha,
+        math_dtype=math_dtype,
+        output_dtype=torch_dtype,
     )
 
-    smoothed_weight = weight.to(dtype=torch.float32) * smooth_scale.to(
-        dtype=torch.float32
-    ).unsqueeze(0).to(device=device)
+    smoothed_weight = weight.to(dtype=math_dtype) * smooth_scale.to(dtype=math_dtype).unsqueeze(0)
     lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
         smoothed_weight,
         rank,
         output_dtype=torch_dtype,
-        fast_svd=fast_svd,
+        high_precision=high_precision,
+        fp32_fallback=fp32_fallback,
     )
-    scales = _compute_group_scales(residual, group_size=64).to(device=device, dtype=torch_dtype)
+    scales = _compute_group_scales(
+        residual,
+        group_size=64,
+        math_dtype=math_dtype,
+        output_dtype=torch_dtype,
+    )
 
     bias = (
         None if linear.bias is None else linear.bias.detach().to(device=device, dtype=torch_dtype)

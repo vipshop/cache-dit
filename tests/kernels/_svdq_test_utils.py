@@ -220,22 +220,54 @@ def compute_accuracy_metrics(
     )
 
 
+def _format_markdown_cell(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
+def format_markdown_table(
+    title: str,
+    headers: tuple[str, ...],
+    rows: list[tuple[object, ...]],
+) -> str:
+    if not headers:
+        raise ValueError("headers must not be empty.")
+
+    lines = [
+        title,
+        "",
+        f"| {' | '.join(headers)} |",
+        f"| {' | '.join('---:' for _ in headers)} |",
+    ]
+    for row in rows:
+        if len(row) != len(headers):
+            raise ValueError(f"Row has {len(row)} cells, expected {len(headers)}.")
+        lines.append(f"| {' | '.join(_format_markdown_cell(value) for value in row)} |")
+    return "\n".join(lines)
+
+
 def format_rank_report(
     title: str,
     metrics_by_rank: dict[int, SVDQAccuracyMetrics],
 ) -> str:
-    lines = [
-        title,
-        "rank |      mae |     rmse |  max_abs |   rel_l2 |   cosine |  latency_ms",
-    ]
+    rows: list[tuple[object, ...]] = []
     for rank in sorted(metrics_by_rank):
         metrics = metrics_by_rank[rank]
-        lines.append(
-            f"{rank:>4} | {metrics.mae:>8.6f} | {metrics.rmse:>8.6f} | "
-            f"{metrics.max_abs:>8.6f} | {metrics.rel_l2:>8.6f} | {metrics.cosine:>8.6f} "
-            f"| {metrics.latency_ms:>8.6f} ms"
+        rows.append(
+            (
+                rank,
+                f"{metrics.mae:.6f}",
+                f"{metrics.rmse:.6f}",
+                f"{metrics.max_abs:.6f}",
+                f"{metrics.rel_l2:.6f}",
+                f"{metrics.cosine:.6f}",
+                f"{metrics.latency_ms:.6f}",
+            )
         )
-    return "\n".join(lines)
+    return format_markdown_table(
+        title,
+        ("rank", "mae", "rmse", "max_abs", "rel_l2", "cosine", "latency_ms"),
+        rows,
+    )
 
 
 def assert_rank_metric_trend(
@@ -306,7 +338,11 @@ def collect_module_inputs(
             # Ensure the data still located on the same device and dtype as the original input,
             # but detach and clone to avoid holding references to the original tensors.
             captured_tensor = args[0].clone()  # clone to ensure it's a separate tensor
-            captured_tensor = captured_tensor.to(device=args[0].device, dtype=args[0].dtype)
+            # Keep the captured tensor on 'cpu' to avoid GPU memory issues, but convert
+            # it to the same dtype as the input. We should convert it to the same device
+            # as the weight tensors in quantizer one by one when computing activation
+            # spans to avoid unnecessary GPU memory usage.
+            captured_tensor = captured_tensor.to(device="cpu", dtype=args[0].dtype)
             captured[name].append(captured_tensor)
 
         hooks.append(module.register_forward_pre_hook(hook))
@@ -336,7 +372,9 @@ def quantize_toy_model(
     rank: int,
     device: str | torch.device,
     dtype: torch.dtype,
-    fast_svd: bool = False,
+    high_precision: bool = False,
+    fp32_fallback: bool = False,
+    streaming: bool = True,
 ) -> ToyModel:
     activations_by_module = collect_module_inputs(model, calibration_samples)
     quantized_model = copy.deepcopy(model).eval()
@@ -348,7 +386,9 @@ def quantize_toy_model(
             rank=rank,
             device=device,
             torch_dtype=dtype,
-            fast_svd=fast_svd,
+            high_precision=high_precision,
+            fp32_fallback=fp32_fallback,
+            streaming=streaming,
         )
         parent, child_name = _module_parent(quantized_model, module_name)
         setattr(parent, child_name, quantized_module)
@@ -420,6 +460,7 @@ __all__ = [
     "build_empty_quantized_toy_model",
     "collect_module_inputs",
     "compute_accuracy_metrics",
+    "format_markdown_table",
     "format_rank_report",
     "make_rank_sensitive_linear",
     "make_token_batch",

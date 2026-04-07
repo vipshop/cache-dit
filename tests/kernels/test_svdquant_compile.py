@@ -36,13 +36,16 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_smoke() -> None:
     dtype = _runtime_dtype()
 
     linear = nn.Linear(128, 128, bias=True, device=device, dtype=dtype).eval()
-    calibration = torch.randn(64, 128, device=device, dtype=dtype)
+    calibration = torch.randn(64, 128, device="cpu", dtype=dtype)
     quantized = quantize_linear_svdq_w4a4(
         linear,
         calibration,
         rank=16,
         device=device,
         torch_dtype=dtype,
+        high_precision=False,
+        fp32_fallback=True,
+        streaming=True,
     ).eval()
 
     x = torch.randn(2, 16, 128, device=device, dtype=dtype)

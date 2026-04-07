@@ -175,7 +175,7 @@ def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
         seq_len=16,
         width=in_features,
         seed=101,
-        device=device,
+        device="cpu",
         dtype=dtype,
     )
     eval_tokens = make_token_batch(
@@ -199,6 +199,9 @@ def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
                 device=device,
                 torch_dtype=dtype,
                 return_state_dict=True,
+                high_precision=False,
+                fp32_fallback=True,
+                streaming=True,
             )
             operator_output = run_svdq_operator_from_state_dict(
                 state_dict,
