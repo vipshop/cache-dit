@@ -348,9 +348,23 @@ quant_config = QuantizeConfig(
     calibrate_fn=calibrate_fn,
     serialize_to="./FLUX.2-klein-4B-svdq/",
     svdq_kwargs={
+        # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner, 
+        # which means it will quantize the model using the calibration samples one by one, and 
+        # update the quantization parameters after each sample. This can reduce the memory usage 
+        # during quantization, but it may cause longer quantization time. If set to False, we 
+        # will collect the quantization statistics for all calibration samples first, and then 
+        # compute the quantization parameters and quantize the model. The default value is True.
         "streaming": True,
+        # If high_precision is set to True, Cache-DiT will use higher precision 
+        # (e.g., float64) for SVD decomposition and compute the avtivations or 
+        # weights scales with float32 precision. This can provide better quantization 
+        # precision, but it may cause longer quantization time and higher memory usage 
+        # during quantization. If set to False, Cache-DiT will use lower precision 
+        # (e.g., float32) for SVD decomposition and compute the activations or weights 
+        # scales with bfloat16 precision. This can speed up the quantization process 
+        # and reduce memory usage, but it may cause more precision loss. The default 
+        # value is False.
         "high_precision": False,
-        "fp32_fallback": True,
     },
 )
 
