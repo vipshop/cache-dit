@@ -242,7 +242,7 @@ def format_markdown_table(
         if len(row) != len(headers):
             raise ValueError(f"Row has {len(row)} cells, expected {len(headers)}.")
         lines.append(f"| {' | '.join(_format_markdown_cell(value) for value in row)} |")
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"
 
 
 def format_rank_report(
