@@ -10,10 +10,46 @@ logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)$")
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
+    # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
+    # which means it will quantize the model using the calibration samples one by one, and
+    # update the quantization parameters after each sample. This can reduce the memory usage
+    # during quantization, but it may cause longer quantization time. If set to False, we
+    # will collect the quantization statistics for all calibration samples first, and then
+    # compute the quantization parameters and quantize the model. The default value is True.
     "streaming": True,
+    # If high_precision is set to True, Cache-DiT will use higher precision
+    # (e.g., float64) for SVD decomposition and compute the avtivations or
+    # weights scales with float32 precision. This can provide better quantization
+    # precision, but it may cause longer quantization time and higher memory usage
+    # during quantization. If set to False, Cache-DiT will use lower precision
+    # (e.g., float32) for SVD decomposition and compute the activations or weights
+    # scales with bfloat16 precision. This can speed up the quantization process
+    # and reduce memory usage, but it may cause more precision loss. The default
+    # value is False.
     "high_precision": False,
+    # Only valid when high_precision is set to False. If fp32_fallback is set to True,
+    # Cache-DiT will fallback to using float32 precision if the SVD decomposition with
+    # lower precision (e.g., float16 or bfloat16) is not supported on the current hardware
+    # or for the current input size. This can improve the compatibility of the quantization
+    # process, but it may cause longer quantization time and higher memory usage during
+    # quantization when the fallback happens. If set to False, Cache-DiT will raise an e
+    # rror if low-precision SVD decomposition is not supported, instead of falling back to
+    # float32. The default value is True.
     "fp32_fallback": True,
+    # Only valid when streaming is set to True. It specifies the number of samples after
+    # which the activation buffers will be flushed and the quantization parameters will
+    # be updated. This can help to reduce the memory usage during quantization, especially
+    # for large models, by not keeping the activation buffers for all samples in memory at
+    # the same time. The default value is 1, which means the activation buffers will be
+    # flushed and the quantization parameters will be updated after each sample.
     "activation_buffer_flush_sample_count": 1,
+    # Only valid when streaming is set to True. It specifies the total size in bytes of the
+    # activation buffers that will trigger a flush and update of the quantization parameters.
+    # This can help to reduce the memory usage during quantization by flushing the activation
+    # buffers and updating the quantization parameters when the total size of the activation
+    # buffers exceeds the specified limit. The default value is None, which means there is no
+    # limit on the total size of the activation buffers, and they will only be flushed based
+    # on the number of samples specified by activation_buffer_flush_sample_count.
     "activation_buffer_flush_cpu_bytes": None,
 }
 

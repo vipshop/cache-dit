@@ -355,6 +355,13 @@ quant_config = QuantizeConfig(
         # will collect the quantization statistics for all calibration samples first, and then 
         # compute the quantization parameters and quantize the model. The default value is True.
         "streaming": True,
+        # Only valid when streaming is set to True. It specifies the number of samples after 
+        # which the activation buffers will be flushed and the quantization parameters will 
+        # be updated. This can help to reduce the memory usage during quantization, especially 
+        # for large models, by not keeping the activation buffers for all samples in memory at 
+        # the same time. The default value is 1, which means the activation buffers will be 
+        # flushed and the quantization parameters will be updated after each sample.
+        "activation_buffer_flush_sample_count": 1, 
         # If high_precision is set to True, Cache-DiT will use higher precision 
         # (e.g., float64) for SVD decomposition and compute the avtivations or 
         # weights scales with float32 precision. This can provide better quantization 
