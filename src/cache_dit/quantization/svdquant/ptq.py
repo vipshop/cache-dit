@@ -306,18 +306,18 @@ class SVDQPTQContext:
     ) -> list[str]:
         skipped_total = max(len(self.linear_layer_names) - len(quantized_layer_names), 0)
         lines = [
-            f"SVDQ PTQ        Region: {self.quantized_region}",
-            f"SVDQ PTQ    Quant Type: {self.quantize_config.quant_type}",
-            f"SVDQ PTQ          Rank: {self.rank}",
-            f"Observed Linear Layers: {len(observed_layer_names)} / {len(self.candidate_layer_names)}",
+            f"SVDQ PTQ         Region: {self.quantized_region}",
+            f"SVDQ PTQ     Quant Type: {self.quantize_config.quant_type}",
+            f"SVDQ PTQ           Rank: {self.rank}",
+            f"Observed  Linear Layers: {len(observed_layer_names)} / {len(self.candidate_layer_names)}",
             f"Quantized Linear Layers: {len(quantized_layer_names)} / {len(self.candidate_layer_names)}",
             f"Skipped   Linear Layers: {skipped_total}",
             f"Linear           Layers: {len(self.linear_layer_names)}",
-            f"Checkpoint         Path: {serialize_to}",
         ]
         if self.verbose:
-            lines.append(f"SVDQ          Kwargs: {self.svdq_kwargs}")
+            lines.append(f"SVDQ             Kwargs: {self.svdq_kwargs}")
             lines.append(f"Skipped        Patterns: {self.exclude_layers}")
+            lines.append(f"Checkpoint         Path: {serialize_to}")
         return lines
 
 
