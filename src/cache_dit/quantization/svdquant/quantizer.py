@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import typing as tp
 
 import torch
@@ -10,7 +11,7 @@ from .lowrank import decompose_lowrank_residual
 from .packing import adapt_svdq_module_state_dict
 from .packing import export_raw_svdq_w4a4_state_dict
 
-CalibrationInputs = torch.Tensor | tp.Sequence[torch.Tensor]
+CalibrationInputs = torch.Tensor | tp.Iterable[torch.Tensor]
 
 __all__ = [
     "CalibrationInputs",
@@ -63,28 +64,42 @@ def _normalize_dtype(torch_dtype: torch.dtype | None, device: torch.device | str
 
 
 @torch.inference_mode()
-def standardize_calibration_activations(
+def _iter_standardized_calibration_activations(
     representative_activations: CalibrationInputs,
     *,
     in_features: int,
-) -> list[torch.Tensor]:
+) -> tp.Iterator[torch.Tensor]:
     tensors = (
         (representative_activations,)
         if isinstance(representative_activations, torch.Tensor)
         else representative_activations
     )
-    standardized: list[torch.Tensor] = []
+    found_tensor = False
     for tensor in tensors:
+        found_tensor = True
         if not isinstance(tensor, torch.Tensor):
             raise TypeError("representative_activations must be a tensor or a sequence of tensors.")
         if tensor.shape[-1] != in_features:
             raise ValueError(
                 f"Expected representative activations with last dim {in_features}, got {tensor.shape[-1]}."
             )
-        standardized.append(tensor.reshape(-1, in_features))
-    if not standardized:
+        yield tensor.reshape(-1, in_features)
+    if not found_tensor:
         raise ValueError("At least one representative activation tensor is required.")
-    return standardized
+
+
+@torch.inference_mode()
+def standardize_calibration_activations(
+    representative_activations: CalibrationInputs,
+    *,
+    in_features: int,
+) -> list[torch.Tensor]:
+    return list(
+        _iter_standardized_calibration_activations(
+            representative_activations,
+            in_features=in_features,
+        )
+    )
 
 
 def _repair_invalid_scale(scale: torch.Tensor) -> torch.Tensor:
@@ -141,36 +156,96 @@ def _compute_group_scales(
 
 
 @torch.inference_mode()
-def quantize_linear_svdq_w4a4(
-    linear: nn.Linear,
-    representative_activations: CalibrationInputs,
+def _compute_batch_activation_span(
+    tensor: torch.Tensor,
     *,
-    rank: int = 32,
-    alpha: float = 0.5,
-    precision: str = "int4",
-    act_unsigned: bool = False,
-    torch_dtype: torch.dtype | None = None,
-    device: torch.device | str | None = None,
-    return_state_dict: bool = False,
-    high_precision: bool = False,
-    fp32_fallback: bool = False,
-    streaming: bool = True,
-) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
-    if not isinstance(linear, nn.Linear):
-        raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
+    device: torch.device,
+    torch_dtype: torch.dtype,
+    math_dtype: torch.dtype,
+) -> torch.Tensor:
+    device_tensor = tensor.to(device=device, dtype=torch_dtype)
+    batch_span = device_tensor.to(dtype=math_dtype).abs().amax(dim=0).to(device="cpu")
+    del device_tensor
+    return batch_span
 
-    device = torch.device(device or linear.weight.device)
-    torch_dtype = _normalize_dtype(torch_dtype, device)
-    math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
-    validate_svdq_linear_geometry(
-        linear.in_features, linear.out_features, rank=rank, precision=precision
-    )
 
-    standardized_acts = standardize_calibration_activations(
-        representative_activations,
-        in_features=linear.in_features,
-    )
+@dataclasses.dataclass
+class _ActivationSpanAccumulator:
+    device: torch.device
+    torch_dtype: torch.dtype
+    math_dtype: torch.dtype
+    flush_sample_count: int | None = 1
+    flush_cpu_bytes: int | None = None
+    buffered_spans: list[torch.Tensor] = dataclasses.field(default_factory=list)
+    activation_span: torch.Tensor | None = None
+    buffered_cpu_bytes: int = 0
+    observed_samples: int = 0
 
+    def add_tensor(self, tensor: torch.Tensor) -> None:
+        self.add_span(
+            _compute_batch_activation_span(
+                tensor,
+                device=self.device,
+                torch_dtype=self.torch_dtype,
+                math_dtype=self.math_dtype,
+            )
+        )
+
+    def add_span(self, span: torch.Tensor) -> None:
+        cpu_span = span.to(device="cpu", dtype=self.math_dtype)
+        self.buffered_spans.append(cpu_span)
+        self.buffered_cpu_bytes += cpu_span.numel() * cpu_span.element_size()
+        self.observed_samples += 1
+        if self._should_flush():
+            self.flush()
+
+    def _should_flush(self) -> bool:
+        sample_limit_reached = (
+            self.flush_sample_count is not None
+            and len(self.buffered_spans) >= self.flush_sample_count
+        )
+        cpu_bytes_limit_reached = (
+            self.flush_cpu_bytes is not None and self.buffered_cpu_bytes >= self.flush_cpu_bytes
+        )
+        return sample_limit_reached or cpu_bytes_limit_reached
+
+    def flush(self) -> None:
+        if not self.buffered_spans:
+            return
+
+        if len(self.buffered_spans) == 1:
+            chunk_span = self.buffered_spans[0]
+        else:
+            chunk_span = torch.stack(self.buffered_spans, dim=0).amax(dim=0)
+
+        if self.activation_span is None:
+            self.activation_span = chunk_span
+        else:
+            self.activation_span = torch.maximum(self.activation_span, chunk_span)
+
+        self.buffered_spans.clear()
+        self.buffered_cpu_bytes = 0
+
+    def finalize(self) -> torch.Tensor:
+        self.flush()
+        if self.activation_span is None:
+            raise ValueError("At least one representative activation tensor is required.")
+        return self.activation_span
+
+    @property
+    def has_observations(self) -> bool:
+        return self.observed_samples > 0
+
+
+@torch.inference_mode()
+def _compute_activation_span(
+    standardized_acts: list[torch.Tensor],
+    *,
+    device: torch.device,
+    torch_dtype: torch.dtype,
+    math_dtype: torch.dtype,
+    streaming: bool,
+) -> torch.Tensor:
     if streaming:
         activation_span: torch.Tensor | None = None
         for tensor in standardized_acts:
@@ -183,14 +258,49 @@ def quantize_linear_svdq_w4a4(
             del device_tensor, tensor_span
         if activation_span is None:
             raise ValueError("At least one representative activation tensor is required.")
-    else:
-        eager_acts = [tensor.to(device=device, dtype=torch_dtype) for tensor in standardized_acts]
-        activation_span = torch.stack(
-            [tensor.to(dtype=math_dtype).abs().amax(dim=0) for tensor in eager_acts],
-            dim=0,
-        ).amax(dim=0)
-        del eager_acts
+        return activation_span
 
+    eager_acts = [tensor.to(device=device, dtype=torch_dtype) for tensor in standardized_acts]
+    activation_span = torch.stack(
+        [tensor.to(dtype=math_dtype).abs().amax(dim=0) for tensor in eager_acts],
+        dim=0,
+    ).amax(dim=0)
+    del eager_acts
+    return activation_span
+
+
+@torch.inference_mode()
+def _quantize_linear_svdq_w4a4_from_activation_span(
+    linear: nn.Linear,
+    activation_span: torch.Tensor,
+    *,
+    rank: int = 32,
+    alpha: float = 0.5,
+    precision: str = "int4",
+    act_unsigned: bool = False,
+    torch_dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+    return_state_dict: bool = False,
+    high_precision: bool = False,
+    fp32_fallback: bool = False,
+) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
+    if not isinstance(linear, nn.Linear):
+        raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
+
+    device = torch.device(device or linear.weight.device)
+    torch_dtype = _normalize_dtype(torch_dtype, device)
+    math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
+    validate_svdq_linear_geometry(
+        linear.in_features, linear.out_features, rank=rank, precision=precision
+    )
+
+    if activation_span.ndim != 1 or activation_span.shape[0] != linear.in_features:
+        raise ValueError(
+            "activation_span must be a 1D tensor with length equal to linear.in_features, "
+            f"got shape {tuple(activation_span.shape)} for in_features={linear.in_features}."
+        )
+
+    activation_span = activation_span.to(device=device, dtype=math_dtype)
     weight = linear.weight.detach().to(device=device, dtype=torch_dtype)
     weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
     smooth_scale = compute_smooth_scale(
@@ -255,3 +365,72 @@ def quantize_linear_svdq_w4a4(
             f"unexpected={incompatible.unexpected_keys}."
         )
     return quantized
+
+
+@torch.inference_mode()
+def quantize_linear_svdq_w4a4(
+    linear: nn.Linear,
+    representative_activations: CalibrationInputs,
+    *,
+    rank: int = 32,
+    alpha: float = 0.5,
+    precision: str = "int4",
+    act_unsigned: bool = False,
+    torch_dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+    return_state_dict: bool = False,
+    high_precision: bool = False,
+    fp32_fallback: bool = False,
+    streaming: bool = True,
+    activation_buffer_flush_sample_count: int | None = 1,
+    activation_buffer_flush_cpu_bytes: int | None = None,
+) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
+    if not isinstance(linear, nn.Linear):
+        raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
+
+    device = torch.device(device or linear.weight.device)
+    torch_dtype = _normalize_dtype(torch_dtype, device)
+    math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
+    validate_svdq_linear_geometry(
+        linear.in_features, linear.out_features, rank=rank, precision=precision
+    )
+
+    if streaming:
+        activation_span_accumulator = _ActivationSpanAccumulator(
+            device=device,
+            torch_dtype=torch_dtype,
+            math_dtype=math_dtype,
+            flush_sample_count=activation_buffer_flush_sample_count,
+            flush_cpu_bytes=activation_buffer_flush_cpu_bytes,
+        )
+        for tensor in _iter_standardized_calibration_activations(
+            representative_activations,
+            in_features=linear.in_features,
+        ):
+            activation_span_accumulator.add_tensor(tensor)
+        activation_span = activation_span_accumulator.finalize()
+    else:
+        standardized_acts = standardize_calibration_activations(
+            representative_activations,
+            in_features=linear.in_features,
+        )
+        activation_span = _compute_activation_span(
+            standardized_acts,
+            device=device,
+            torch_dtype=torch_dtype,
+            math_dtype=math_dtype,
+            streaming=False,
+        )
+    return _quantize_linear_svdq_w4a4_from_activation_span(
+        linear,
+        activation_span,
+        rank=rank,
+        alpha=alpha,
+        precision=precision,
+        act_unsigned=act_unsigned,
+        torch_dtype=torch_dtype,
+        device=device,
+        return_state_dict=return_state_dict,
+        high_precision=high_precision,
+        fp32_fallback=fp32_fallback,
+    )

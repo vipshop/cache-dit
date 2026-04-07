@@ -1,9 +1,73 @@
+import os
 import dataclasses
-from typing import Optional, Dict, Any, List, Union
+import re
+from typing import Optional, Dict, Any, List, Union, Callable
 from .backend import QuantizeBackend
 from ..logger import init_logger
 
 logger = init_logger(__name__)
+
+
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)$")
+_SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
+    "streaming": True,
+    "high_precision": False,
+    "fp32_fallback": True,
+    "activation_buffer_flush_sample_count": 1,
+    "activation_buffer_flush_cpu_bytes": None,
+}
+
+
+def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int]:
+    match = _SVDQ_QUANT_TYPE_PATTERN.fullmatch(quant_type)
+    if match is None:
+        raise ValueError(
+            "SVDQ PTQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
+            f"got {quant_type!r}."
+        )
+    return match.group(1), int(match.group(2))
+
+
+def _resolve_svdq_bool_kwarg(key: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"svdq_kwargs[{key!r}] must be a bool, got {type(value)}.")
+    return value
+
+
+def _resolve_svdq_positive_int_or_none(key: str, value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"svdq_kwargs[{key!r}] must be an int or None, got {type(value)}.")
+    if value <= 0:
+        raise ValueError(f"svdq_kwargs[{key!r}] must be a positive integer, got {value}.")
+    return value
+
+
+def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if svdq_kwargs is None:
+        return dict(_SVDQ_KWARGS_DEFAULTS)
+    if not isinstance(svdq_kwargs, dict):
+        raise TypeError(f"svdq_kwargs must be a dict, got {type(svdq_kwargs)}.")
+
+    unknown_keys = set(svdq_kwargs) - set(_SVDQ_KWARGS_DEFAULTS)
+    if unknown_keys:
+        raise ValueError(
+            "Unsupported SVDQ PTQ kwargs: "
+            f"{sorted(unknown_keys)}. Allowed keys: {sorted(_SVDQ_KWARGS_DEFAULTS)}."
+        )
+
+    resolved = dict(_SVDQ_KWARGS_DEFAULTS)
+    validators = {
+        "streaming": _resolve_svdq_bool_kwarg,
+        "high_precision": _resolve_svdq_bool_kwarg,
+        "fp32_fallback": _resolve_svdq_bool_kwarg,
+        "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
+        "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,
+    }
+    for key, value in svdq_kwargs.items():
+        resolved[key] = validators[key](key, value)
+    return resolved
 
 
 @dataclasses.dataclass
@@ -83,6 +147,36 @@ class QuantizeConfig:
     # layers based on their sensitivity to quantization. Only valid when the regional quantize
     # is True, otherwise it will be ignored.
     precision_plan: Optional[Dict[str, str]] = None
+    # Calibrate function for SVDQuant PTQ workflow, it will be called in the format of:
+    # calibrate_fn(model) -> Any, users can run their calibration data through the model
+    # in this function, and the calibration data will be collected by the observers
+    # registered in the model (outsied the calibration function), this is useful for
+    # SVDQuant PTQ workflow, where we need to collect the activation statistics to
+    # compute the smooth scale for quantization. Currently this is only used for
+    # SVDQuant PTQ workflow, and it will be ignored for other quantization workflows.
+    # For example, in SVDQuant PTQ workflow, users can specify the calibrate_fn to run
+    # the calibration dataset through the model:
+    #   calibration_dataloader = DataLoader(calibration_dataset, batch_size=1)
+    #   def calibrate_fn(**kwargs):
+    #       pipe.eval()
+    #       with torch.inference_mode():
+    #           for batch in calibration_dataloader:
+    #               pipe(batch)
+    calibrate_fn: Optional[Callable[..., Any]] = None
+    # The directory to serialize the quantization model, if needed, e.g, for SVDQuant PTQ workflow,
+    # after the quantization parameters are computed, we can serialize the quantized model to
+    # the specified path for later loading and inference. This is useful for scenarios when users
+    # want to separate the quantization process and the inference process, or when the quantization
+    # process is time-consuming and they want to save the quantized model for later use.
+    # e.g, serialize_to="./FLUX.1-dev-svdq/", quant_type="svdq_int4_r32", after the quantization is
+    # done, the quantized model will be serialized to:
+    # "./FLUX.1-dev-svdq/svdq_int4_r32.safetensors".
+    serialize_to: Optional[str] = None
+    # Backend-specific kwargs for SVDQ PTQ. These settings affect not only the
+    # calibration callback but also quantization math, serialization metadata,
+    # and load compatibility, so they are grouped under a validated backend-
+    # specific dict instead of being exposed as many top-level config fields.
+    svdq_kwargs: Optional[Dict[str, Any]] = None
     # Whether to print detailed quantization information, such as the quantization
     # type of each layer, the reason for skipping quantization, etc. This is useful
     # for debugging and analysis.
@@ -95,19 +189,70 @@ class QuantizeConfig:
         if isinstance(self.backend, str):
             self.backend = QuantizeBackend.from_str(self.backend)
         if self.backend == QuantizeBackend.AUTO:
-            # Currently we only support torchao as the quantization backend, so AUTO will be
-            # resolved to TORCHAO. We may automatically select different backends in the future
-            # based on the hardware and quantization type, etc.
-            self.backend = QuantizeBackend.TORCHAO
+            if self.quant_type.lower().startswith("svdq"):
+                self.backend = QuantizeBackend.CACHE_DIT
+            else:
+                self.backend = QuantizeBackend.TORCHAO
+        assert QuantizeBackend.is_supported(
+            self.backend
+        ), f"Quantization backend {self.backend} is not supported in this environment."
+
+        # Validate SVDQuant PTQ workflow configuration
+        if self.is_svdq():
+            _parse_svdq_quant_type(self.quant_type)
+            if self.calibrate_fn is None:
+                raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
+            if self.serialize_to is None:
+                raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
+            if self.components_to_quantize is not None:
+                raise ValueError("components_to_quantize is not supported for SVDQuant PTQ yet.")
+            if self.precision_plan is not None:
+                raise ValueError("precision_plan is not supported for SVDQuant PTQ yet.")
+            if self.per_tensor_fallback is not True:
+                raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
+            normalized_filename = f"{self.quant_type}.safetensors"
+            if self.serialize_to.endswith(".safetensors"):
+                if os.path.basename(self.serialize_to) != normalized_filename:
+                    raise ValueError(
+                        "serialize_to must be a directory path for SVDQuant PTQ, or an already "
+                        f"normalized file path ending with {normalized_filename!r}."
+                    )
+                serialize_dir = os.path.dirname(self.serialize_to)
+                if not serialize_dir:
+                    raise ValueError("serialize_to must include a parent directory.")
+                os.makedirs(serialize_dir, exist_ok=True)
+            else:
+                os.makedirs(self.serialize_to, exist_ok=True)
+                if not os.path.isdir(self.serialize_to):
+                    raise ValueError(
+                        f"serialize_to should be a directory path, got {self.serialize_to}."
+                    )
+                self.serialize_to = os.path.join(self.serialize_to, normalized_filename)
+            self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
+        elif self.svdq_kwargs is not None:
+            raise ValueError("svdq_kwargs is only valid when quant_type starts with 'svdq'.")
 
     def as_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
+
+    def is_svdq(self) -> bool:
+        return isinstance(self.quant_type, str) and self.quant_type.startswith("svdq")
+
+    def get_svdq_rank(self) -> int:
+        _, rank = _parse_svdq_quant_type(self.quant_type)
+        return rank
+
+    def get_svdq_kwargs(self) -> Dict[str, Any]:
+        if not self.is_svdq():
+            return {}
+        return dict(self.svdq_kwargs or _SVDQ_KWARGS_DEFAULTS)
 
     def update(self, **kwargs) -> "QuantizeConfig":
         for key, value in kwargs.items():
             if hasattr(self, key):
                 if value is not None:
                     setattr(self, key, value)
+        self.__post_init__()
         return self
 
     def strify(self) -> str:
@@ -159,6 +304,9 @@ class QuantizeConfig:
                     filter_fn=cfg.get("filter_fn", config.filter_fn),
                     per_tensor_fallback=cfg.get("per_tensor_fallback", config.per_tensor_fallback),
                     precision_plan=cfg.get("precision_plan", config.precision_plan),
+                    calibrate_fn=cfg.get("calibrate_fn", config.calibrate_fn),
+                    serialize_to=cfg.get("serialize_to", config.serialize_to),
+                    svdq_kwargs=cfg.get("svdq_kwargs", config.svdq_kwargs),
                     verbose=cfg.get("verbose", config.verbose),
                 )
                 for component, cfg in config.components_to_quantize.items()
@@ -168,8 +316,8 @@ class QuantizeConfig:
 
     @classmethod
     def from_kwargs(cls, **kwargs) -> "QuantizeConfig":
-        config = cls()
+        valid_kwargs = {}
         for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
-        return config
+            if key in cls.__dataclass_fields__:
+                valid_kwargs[key] = value
+        return cls(**valid_kwargs)

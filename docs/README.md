@@ -31,12 +31,13 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
   </p>
 </div>
 
-## 🚀Quick Start 
+## 🚀Quick Start: Cache, Parallelism and FP8 DQ
 
-You can install the cache-dit from PyPI or from source: 
+First, you can install the cache-dit from PyPI or from source: 
 ```bash
 pip3 install -U cache-dit # or, pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
+
 Then accelerate your DiTs with just **♥️one line♥️** of code ~  
 ```python
 >>> import cache_dit
@@ -51,11 +52,48 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
 ...   pipe, cache_config=DBCacheConfig(), # w/ default
 ...   parallelism_config=ParallelismConfig(ulysses_size=2),
-...   quantize_config=QuantizeConfig(quant_type="..."))
+...   quantize_config=QuantizeConfig(quant_type="float8_per_row"))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
+For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
-For more advanced features, please refer to our online documentation at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/).
+## 🚀Quick Start: SVDQuant (W4A4) PTQ workflow
+
+First, build Cache-DiT from source with SVDQuant support (Experimental):
+
+```bash
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
+git submodule update --init --recursive --force # init submodules 
+CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolation
+```
+
+Then, you can quantize your model with just **♥️a few lines♥️** of code. For example:
+
+```python
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> from cache_dit import QuantizeConfig
+>>> pipe = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.2-klein-4B")
+>>> calibration_prompts = [...] # Prepare your calibration dataset.
+>>> # 0. Define the calibration function for PTQ.
+>>> def calibrate_fn(**_: object) -> None:
+...     with torch.inference_mode():
+...         for prompt in calibration_prompts:
+...             _ = pipe(prompt=prompt, ...)
+>>> # 1. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
+>>> quant_config = QuantizeConfig(
+...     # e.g, svdq_int4_r32, svdq_int4_r128, ...
+...     quant_type="svdq_int4_r32",
+...     calibrate_fn=calibrate_fn,
+...     serialize_to="./FLUX.2-klein-4B-svdq/",
+... )
+>>> pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
+>>> output = pipe(...) # Use the quantized model for inference.
+>>> # Or, reload the quantized model for inference in some other where.
+>>> pipe.transformer = cache_dit.load(pipe.transformer, "./FLUX.2-klein-4B-svdq/")
+```
+
+For more advanced features, please refer to our online documentation at 📘[Low-bits Quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/).
 
 ## 🌐Community Integration
 

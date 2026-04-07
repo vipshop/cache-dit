@@ -1,5 +1,6 @@
 from .backend import QuantizeBackend
 from .config import QuantizeConfig
+from .dispatch import load
 from .dispatch import quantize
 from .dispatch import remove_quantization_stats
 from .svdquant import SVDQW4A4Linear

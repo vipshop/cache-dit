@@ -16,6 +16,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_weight_only</span>|quantize only weights to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize only weights to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
+|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|quantize weights and activations to int4 with SVDQuant (W4A4) method, which can provide better precision for INT4 quantization. The low-rank value can be 16, 32, 128, etc.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper|
 
 
 ## FP8 Quantization
@@ -292,9 +293,115 @@ uv pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nig
 ```
 In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.
 
-## Nunchaku (W4A4)
+## SVDQuant (W4A4) in Cache-DiT
 
-Cache-DiT natively supports the <span style="color:#c77dff;">Hybrid Cache + Nunchaku + Context Parallelism</span> scheme. Users can leverage caching and context parallelism to speed up Nunchaku <span style="color:#c77dff;">4-bits W4A4</span> models. 
+Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance W4A4 GEMM kernels and an easy-to-use PTQ interface). The public API is intentionally small: build a [QuantizeConfig](cache_dit/quantization/config.py), quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and ease of use compared to other third-party INT4 quantization libraries.   
+
+With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, please make sure to **build Cache-DiT from source with SVDQuant support**. We may consider releasing pre-built Cache-DiT packages with SVDQuant support in the future.
+
+```bash
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
+git submodule update --init --recursive --force # init submodules 
+CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolation
+```
+
+The only thing users need to do is to prepare the calibration function (<span style="color:#c77dff;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:
+
+```python
+import torch
+import cache_dit
+from diffusers import Flux2KleinPipeline
+from cache_dit import QuantizeConfig
+
+pipe = Flux2KleinPipeline.from_pretrained(
+    "black-forest-labs/FLUX.2-klein-4B",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+# 0. Prepare the calibration dataset for collecting quantization statistics.
+calibration_prompts = [
+    "A cute cat sitting on the beach, watching the sunset.",
+    "A cute fox sitting on the beach, watching the sunset.",
+    "A cute fox sitting on the beach, watching the sunset.",
+    "A cute rabbit sitting on the beach, watching the sunset.",
+    "A cute panda sitting on the beach, watching the sunset.",
+]
+
+# 1. Define the calibration function for PTQ. Cache-DiT will automatically collect 
+# the quantization statistics during the calibration process, and use those statistics 
+# to compute the quantization parameters for each linear layer.
+def calibrate_fn(**_: object) -> None:
+    with torch.inference_mode():
+        for prompt in calibration_prompts:
+            _ = pipe(
+                prompt=prompt,
+                height=1024,
+                width=1024,
+                num_inference_steps=4,
+                generator=torch.Generator(device="cpu").manual_seed(0),
+            )
+
+# 2. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
+quant_config = QuantizeConfig(
+    # e.g, svdq_int4_r32, svdq_int4_r128, ...
+    quant_type="svdq_int4_r32",
+    calibrate_fn=calibrate_fn,
+    serialize_to="./FLUX.2-klein-4B-svdq/",
+    svdq_kwargs={
+        "streaming": True,
+        "high_precision": False,
+        "fp32_fallback": True,
+    },
+)
+
+pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
+```
+
+The **FLUX.2-klein-4B-svdq** directory now contains: <span style="color:#c77dff;">svdq_int4_r32.safetensors</span> and <span style="color:#c77dff;">quant_config.json</span>. The quantized model can be loaded with <span style="color:#c77dff;">cache_dit.load(...)</span> for inference or further fine-tuning. For example:
+
+```python
+import torch
+import cache_dit
+from diffusers import Flux2KleinPipeline
+from cache_dit import QuantizeConfig
+
+pipe = Flux2KleinPipeline.from_pretrained(
+    "black-forest-labs/FLUX.2-klein-4B",
+    torch_dtype=torch.bfloat16,
+) # First, keep in CPU for now.
+
+pipe.transformer = cache_dit.load(
+    pipe.transformer, 
+    "./FLUX.2-klein-4B-svdq/",
+)
+
+pipe.to("cuda")
+
+image = pipe(
+    prompt="A cute cat sitting on the beach, watching the sunset.",
+    height=1024,
+    width=1024,
+    num_inference_steps=4,
+    generator=torch.Generator(device="cpu").manual_seed(0),
+).images[0]
+```
+
+For SVDQuant, <span style="color:#c77dff;">serialize_to</span> should point to a directory. Cache-DiT normalizes the checkpoint name to <span style="color:#c77dff;">{quant_type}.safetensors</span>, writes a sibling <span style="color:#c77dff;">quant_config.json</span>, and lets <span style="color:#c77dff;">cache_dit.load(...)</span> recover the real checkpoint path directly from that directory. Performance comparison between SVDQuant W4A4 and full precision BF16 for FLUX.2-klein-4B is listed below: (full_blocks: means all transformer blocks are quantized; memory_quantized: the quantized model in memory; loaded_quantized: the quantized model reloaded from disk with <span style="color:#c77dff;">cache_dit.load(...)</span>)
+
+![flux2_klein_4b_svdq](../assets/flux2_klein_4b_svdq.png)
+
+The full benchmark report for FLUX.2-klein-4B SVDQuant (W4A4) is listed below. The SVDQuant W4A4 quantized model can achieve around <span style="color:#c77dff;">2.5x</span> memory reduction for transformer weights, around <span style="color:#c77dff;">1.7x</span> speedup in latency, while maintaining good output quality (the output images are almost the same as the full precision model).
+
+| stage | resolution  | avg_latency_s | peak_memory_gb | transformer_gb |
+| :---: | :---: | :---: | :---: | :---: |
+| float_reference | 1024x1024 | 2.1302 | 17.3245 | 7.2188 |
+| memory_quantized | 1024x1024 | 1.2520 | 12.3916 | 2.2761 |
+| loaded_quantized | 1024x1024 | 1.2410  | 12.3883 | 2.2761 |
+
+
+## SVDQuant (W4A4) in Nunchaku
+
+Cache-DiT also supports the caching and context parallelism scheme for int4 models from official Nunchaku library. Users can leverage Cache-DiT to speed up Nunchaku 4-bits W4A4 models. But we recommend users to use Cache-DiT's native SVDQuant support for better compatibility and ease of use. 
 
 ```python
 import cache_dit

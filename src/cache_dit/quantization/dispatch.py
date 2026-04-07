@@ -39,10 +39,36 @@ def quantize(
         from .torchao import quantize_ao
 
         module = quantize_ao(module, quantize_config, **kwargs)
+    elif quantize_config.backend == QuantizeBackend.CACHE_DIT:
+        from .svdquant.ptq import quantize_svdq_ptq
+
+        module = quantize_svdq_ptq(module, quantize_config)
     else:
         raise ValueError(f"backend: {quantize_config.backend} is not supported now!")
 
     return module
+
+
+def load(
+    module: torch.nn.Module,
+    quantize_config_or_path: QuantizeConfig | str,
+) -> torch.nn.Module:
+    if isinstance(quantize_config_or_path, QuantizeConfig):
+        backend = quantize_config_or_path.backend
+    elif isinstance(quantize_config_or_path, str):
+        backend = QuantizeBackend.CACHE_DIT
+    else:
+        raise TypeError(
+            "quantize_config_or_path must be a QuantizeConfig or a serialized checkpoint path, "
+            f"got {type(quantize_config_or_path)}."
+        )
+
+    if backend == QuantizeBackend.CACHE_DIT:
+        from .svdquant.ptq import load_svdq
+
+        return load_svdq(module, quantize_config_or_path)
+
+    raise ValueError(f"backend: {backend} does not support module loading now.")
 
 
 def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:

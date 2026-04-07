@@ -45,6 +45,8 @@ def _quantizer_kwargs(**overrides: object) -> dict[str, object]:
         "high_precision": _USE_HIGH_PRECISION,
         "fp32_fallback": _USE_FP32_FALLBACK,
         "streaming": True,
+        "activation_buffer_flush_sample_count": 1,
+        "activation_buffer_flush_cpu_bytes": None,
     }
     kwargs.update(overrides)
     return kwargs
@@ -255,6 +257,57 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     assert set(streamed) == set(eager)
     for key in streamed:
         torch.testing.assert_close(streamed[key], eager[key], rtol=0.0, atol=0.0)
+
+
+@pytest.mark.parametrize(
+    "buffer_kwargs",
+    [
+        {"activation_buffer_flush_sample_count": 2},
+        {"activation_buffer_flush_cpu_bytes": 256},
+        {
+            "activation_buffer_flush_sample_count": 3,
+            "activation_buffer_flush_cpu_bytes": 256,
+        },
+    ],
+)
+def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
+    buffer_kwargs: dict[str, int],
+) -> None:
+    linear = _make_cpu_linear(128, 128)
+    representative = [
+        torch.randn(4, 128, dtype=torch.bfloat16),
+        torch.randn(2, 3, 128, dtype=torch.bfloat16),
+        torch.randn(1, 7, 128, dtype=torch.bfloat16),
+        torch.randn(6, 128, dtype=torch.bfloat16),
+    ]
+
+    buffered = quantize_linear_svdq_w4a4(
+        linear,
+        (tensor for tensor in representative),
+        rank=16,
+        device="cpu",
+        torch_dtype=torch.bfloat16,
+        return_state_dict=True,
+        high_precision=False,
+        fp32_fallback=True,
+        streaming=True,
+        **buffer_kwargs,
+    )
+    eager = quantize_linear_svdq_w4a4(
+        linear,
+        representative,
+        rank=16,
+        device="cpu",
+        torch_dtype=torch.bfloat16,
+        return_state_dict=True,
+        high_precision=False,
+        fp32_fallback=True,
+        streaming=False,
+    )
+
+    assert set(buffered) == set(eager)
+    for key in buffered:
+        torch.testing.assert_close(buffered[key], eager[key], rtol=0.0, atol=0.0)
 
 
 def test_svdquant_quantizer_low_precision_svd_requires_fallback_when_unsupported() -> None:

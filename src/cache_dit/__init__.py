@@ -57,6 +57,7 @@ from .profiler import profile_function
 from .profiler import create_profiler_context
 from .profiler import get_profiler_output_dir
 from .profiler import set_profiler_output_dir
+from .quantization import load
 from .quantization import quantize
 from .quantization import QuantizeConfig
 from .quantization import QuantizeBackend

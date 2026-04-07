@@ -195,3 +195,5 @@ CLAUDE.local.md
 *.tar.gz
 *.egg-info/
 *.plans
+*.tmp
+/.tmp/
