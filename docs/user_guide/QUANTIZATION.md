@@ -295,7 +295,7 @@ In the case of <span style="color:#c77dff;">distributed inference</span> (contex
 
 ## SVDQuant (W4A4) in Cache-DiT
 
-Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance W4A4 GEMM kernels and an easy-to-use PTQ interface). The public API is intentionally small: build a <span style="color:#c77dff;">QuantizeConfig</span>, quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and better usability compared to other third-party INT4 quantization libraries.   
+Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance <span style="color:green;">W4A4 GEMM kernels</span> and an <span style="color:green;">easy-to-use</span> PTQ interface). The public API is intentionally small: build a <span style="color:#c77dff;">QuantizeConfig</span>, quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and better usability compared to other third-party INT4 quantization libraries.   
 
 With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, please make sure to **build Cache-DiT from source with SVDQuant support**. We may consider releasing pre-built Cache-DiT packages with SVDQuant support in the future.
 
@@ -308,6 +308,7 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolat
 The only thing users need to do is to prepare the calibration function (<span style="color:green;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:
 
 <span style="color:green;">Step 1</span>: Load the pre-trained model in full precision and DON'T forget to move the model to "CUDA" for better calibration performance. SVDQuant quantization will be much faster on GPU than on CPU, and it may cause OOM on CPU for large models.
+
 ```python
 import torch
 import cache_dit
@@ -324,7 +325,7 @@ pipe = Flux2KleinPipeline.from_pretrained(
 <span style="color:green;">Step 2</span>: Prepare the calibration data and calibration function (<span style="color:green;">calibrate_fn</span>) for SVDQuant <span style="color:#c77dff;">QuantizeConfig</span>.  Cache-DiT will automatically collect the quantization statistics during the calibration process, and use those statistics to compute the quantization parameters for each linear layer.
 
 ```python
-# 2..1 Prepare the calibration dataset for collecting quantization statistics.
+# 2.1 Prepare the calibration dataset for collecting quantization statistics.
 calibration_prompts = [
     "A cute cat sitting on the beach, watching the sunset.",
     "A cute fox sitting on the beach, watching the sunset.",
@@ -333,9 +334,7 @@ calibration_prompts = [
     "A cute panda sitting on the beach, watching the sunset.",
 ]
 
-# 2.2 Define the calibration function for PTQ. Cache-DiT will automatically collect 
-# the quantization statistics during the calibration process, and use those statistics 
-# to compute the quantization parameters for each linear layer.
+# 2.2 Define the calibration function for SVDQuant PTQ.
 def calibrate_fn(**_: object) -> None:
     with torch.inference_mode():
         for prompt in calibration_prompts:
@@ -346,7 +345,6 @@ def calibrate_fn(**_: object) -> None:
                 num_inference_steps=4,
                 generator=torch.Generator(device="cpu").manual_seed(0),
             )
-
 ```
 
 <span style="color:green;">Step 3</span>: Build the <span style="color:#c77dff;">QuantizeConfig</span> for SVDQuant, and call <span style="color:#c77dff;">cache_dit.quantize(...)</span> to apply SVDQuant W4A4 quantization to the model. We have to wait some time for the quantization process to finish, as SVDQuant will perform SVD decomposition for each linear layer and compute the quantization parameters based on the collected quantization statistics. The quantized model will be saved to disk in the specified directory.
@@ -354,12 +352,10 @@ def calibrate_fn(**_: object) -> None:
 ```python
 # 3. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
 quant_config = QuantizeConfig(
-    # e.g, svdq_int4_r32, svdq_int4_r128, ...
-    quant_type="svdq_int4_r32",
+    quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
     calibrate_fn=calibrate_fn,
     serialize_to="./FLUX.2-klein-4B-svdq/",
 )
-
 pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 ```
 
