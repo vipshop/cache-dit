@@ -168,4 +168,4 @@ report*.html
 *.mp4
 tmp*
 *.safetensors
-FLUX.2-Klein*
+ptq/FLUX.2-klein*
