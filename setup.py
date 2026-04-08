@@ -63,9 +63,25 @@ def _ensure_spdlog_submodule() -> None:
     if SPDLOG_HEADER_PATH.exists():
         return
 
+    try:
+        subprocess.check_call(
+            ["git", "submodule", "update", "--init", "--recursive", "--force"],
+            cwd=ROOT_DIR,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError(
+            "The SVDQuant build requires the git submodule `csrc/third_party/spdlog`, "
+            "and automatic submodule initialization failed. Run "
+            "`git submodule update --init --recursive --force` manually, then rerun the install command."
+        ) from exc
+
+    if SPDLOG_HEADER_PATH.exists():
+        return
+
     raise RuntimeError(
-        "The SVDQuant build requires the git submodule `csrc/third_party/spdlog`. "
-        "Before compiling/installing from source, run `git submodule update --init --recursive --force`, "
+        "The SVDQuant build requires the git submodule `csrc/third_party/spdlog`, "
+        "but the expected header is still missing after automatic submodule initialization. "
+        "Run `git submodule update --init --recursive --force` manually and verify the submodule checkout, "
         "then rerun the install command."
     )
 
