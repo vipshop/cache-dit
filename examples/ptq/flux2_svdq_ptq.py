@@ -563,10 +563,11 @@ def compile_pipe(pipe):
   torch.set_float32_matmul_precision("high")
   # Try compile repeated blocks if avalible, otherwise compile the whole transformer.
   if hasattr(pipe.transformer, "compile_repeated_blocks"):
-    pipe.transformer.compile_repeated_blocks = torch.compile(
-      pipe.transformer.compile_repeated_blocks)
+    pipe.transformer.compile_repeated_blocks()
+    print("Compiled repeated blocks in transformer.")
   else:
     pipe.transformer = torch.compile(pipe.transformer)
+    print("Compiled the whole transformer.")
   return pipe
 
 
