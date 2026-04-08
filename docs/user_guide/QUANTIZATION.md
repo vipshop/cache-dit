@@ -4,24 +4,24 @@
 
 ## Overview
 
-Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including FP8, INT8, and INT4 quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
+Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including <span style="color:green;">FP8</span>, <span style="color:green;">INT8</span>, and <span style="color:green;">INT4</span> quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
 
 |Quantization Types| Description|Devices|
 |:---|:---|:---| 
-|<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (dynamic quantization) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization weights and activations (dynamic quantization) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">float8_weight_only</span>|quantize only weights to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">int8_per_row</span>|quantize weights and activations to int8 (dynamic quantization) with rowwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
-|<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (dynamic quantization) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
-|<span style="color:#c77dff;">int8_weight_only</span>|quantize only weights to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
-|<span style="color:#c77dff;">int4_weight_only</span>|quantize only weights to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
-|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|quantize weights and activations to int4 with SVDQuant (W4A4) method, which can provide better precision for INT4 quantization. The low-rank value can be 16, 32, 128, etc.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper|
+|<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (<span style="color:green;">dynamic quantization</span>) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization weights and activations (<span style="color:green;">dynamic quantization</span>) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_weight_only</span>|quantize <span style="color:green;">only weights</span> to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">int8_per_row</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with rowwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int8_weight_only</span>|quantize <span style="color:green;">only weights</span> to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
+|<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
+|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant (W4A4)</span> method, which can provide better precision for INT4 quantization. The low-rank value can be 16, 32, 64, 128, etc.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
 
 
 ## FP8 Quantization
 
-Currently, Cache-DiT supports <span style="color:#c77dff;">online</span> quantization with different quantization types via TorchAo backend (`torchao>=0.17.0` recommended). Users can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. Please make sure to install the latest version of torchao before using quantization features.
+Currently, Cache-DiT supports <span style="color:#c77dff;">online</span> quantization with different quantization types via TorchAo backend (<span style="color:green;">torchao>=0.17.0</span> required). Users can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. Please make sure to install the latest version of torchao before using quantization features.
 
 ```bash
 # stable: torchao (change cu130 to cu129 if using CUDA 12.9)
@@ -103,7 +103,7 @@ pipe.transformer = torch.compile(pipe.transformer)
 pipe.text_encoder = torch.compile(pipe.text_encoder)
 ```
 
-Users can set <span style="color:#c77dff;">exclude_layers</span> in <span style="color:#c77dff;">QuantizeConfig</span> to exclude some sensitive layers that are not robust to quantization, e.g., embedding layers. Layers that contain any of the keywords in the <span style="color:#c77dff;">exclude_layers</span> list will be excluded from quantization. For example: 
+Users can set <span style="color:green;">exclude_layers</span> in <span style="color:#c77dff;">QuantizeConfig</span> to exclude some sensitive layers that are not robust to quantization, e.g., embedding layers. Layers that contain any of the keywords in the<span style="color:green;">exclude_layers</span> list will be excluded from quantization. For example: 
 
 ```python
 import cache_dit
@@ -118,11 +118,11 @@ cache_dit.enable_cache(
     ),
 )
 ```
-By default, quant_type="float8_per_row" for better precision. Users can set it to "float8_per_tensor" to use per-tensor quantization for better performance on some hardware.
+By default, <span style="color:green;">quant_type="float8_per_row"</span> for better precision. Users can set it to "float8_per_tensor" to use per-tensor quantization for better performance on some hardware.
 
 ## Regional Quantization
 
-Cache-DiT also supports <span style="color:#c77dff;">regional quantization</span>, which allows users to quantize only the repeated blocks in a transformer. This can be useful for better balancing the <span style="color:#c77dff;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:#c77dff;">regional_quantize</span> and <span style="color:#c77dff;">repeated_blocks</span> arguments in <span style="color:#c77dff;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:
+Cache-DiT also supports <span style="color:green;">regional quantization</span>, which allows users to quantize only the repeated blocks in a transformer. This can be useful for better balancing the <span style="color:#c77dff;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:green;">regional_quantize</span> and <span style="color:green;">repeated_blocks</span> arguments in <span style="color:#c77dff;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:
 
 ```python
 import cache_dit
@@ -149,11 +149,11 @@ cache_dit.enable_cache(
 
 ## FP8 Per-Tensor Fallback
 
-The <span style="color:#c77dff;">per_tensor_fallback</span> option in Cache-DiT's quantization configuration allows users to enable a fallback mechanism for layers that do not support float8 per-row or per-block quantization. This is particularly useful in scenarios where tensor parallelism is applied, and certain layers (e.g., those applied with RowwiseParallel) may encounter memory layout mismatch errors when quantized to float8 per-row.
+The <span style="color:green;">per_tensor_fallback</span> option in Cache-DiT's quantization configuration allows users to enable a fallback mechanism for layers that do not support float8 per-row or per-block quantization. This is particularly useful in scenarios where tensor parallelism is applied, and certain layers (e.g., those applied with RowwiseParallel) may encounter memory layout mismatch errors when quantized to float8 per-row.
 
-When <span style="color:#c77dff;">per_tensor_fallback</span> is set to True, if a layer cannot be quantized to float8 per-row or per-block, it will automatically fall back to float8 per-tensor quantization instead of raising an error. This ensures that the quantization process can continue smoothly without interruption, while still providing the benefits of reduced precision for supported layers.  
+When <span style="color:green;">per_tensor_fallback</span> is set to True, if a layer cannot be quantized to float8 per-row or per-block, it will automatically fall back to float8 per-tensor quantization instead of raising an error. This ensures that the quantization process can continue smoothly without interruption, while still providing the benefits of reduced precision for supported layers.  
 
-To enable this feature, simply set the <span style="color:#c77dff;">per_tensor_fallback</span> flag to <span style="color:#c77dff;">True (default)</span> in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. Only support for float8 quantization for now. For example:
+To enable this feature, simply set the <span style="color:green;">per_tensor_fallback</span> flag to <span style="color:#c77dff;">True (default)</span> in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. Only support for float8 quantization for now. For example:
 
 ```python
 import cache_dit
@@ -222,11 +222,11 @@ Linear           Layers: 144   (total)                                          
 
 ## (Hybrid) Precision Plan
 
-The <span style="color:#c77dff;">precision_plan</span> option in <span style="color:#c77dff;">QuantizeConfig</span> allows users to specify different quantization types for matched layer-name patterns. It is useful when you want better control of the accuracy and performance trade-off for attention sub-layers (for example, keep <span style="color:#c77dff;">to_k/to_v</span> in <span style="color:#c77dff;">float8_per_row</span> while using <span style="color:#c77dff;">float8_per_tensor</span> for <span style="color:#c77dff;">to_q/to_out</span>). Please note:
+The <span style="color:green;">precision_plan</span> option in <span style="color:#c77dff;">QuantizeConfig</span> allows users to specify different quantization types for matched layer-name patterns. It is useful when you want better control of the accuracy and performance trade-off for attention sub-layers (for example, keep <span style="color:#c77dff;">to_k/to_v</span> in <span style="color:#c77dff;">float8_per_row</span> while using <span style="color:#c77dff;">float8_per_tensor</span> for <span style="color:#c77dff;">to_q/to_out</span>). Please note:
 
-- Layers not matched by <span style="color:#c77dff;">precision_plan</span> continue to use the base <span style="color:#c77dff;">quant_type</span>.
-- <span style="color:#c77dff;">precision_plan</span> is only valid when <span style="color:#c77dff;">regional_quantize=True</span>. If regional quantization is disabled, precision plan will be ignored.
-- <span style="color:#c77dff;">precision_plan</span> is compatible with <span style="color:#c77dff;">per_tensor_fallback</span>. If a selected plan type is not supported by a specific layer/hardware path (case: rowwise tensor parallel is used and the basic quantize type is float8_per_row), fallback logic still works automatically when enabled.
+- Layers not matched by <span style="color:green;">precision_plan</span> continue to use the base <span style="color:#c77dff;">quant_type</span>.
+- <span style="color:green;">precision_plan</span> is only valid when <span style="color:#c77dff;">regional_quantize=True</span>. If regional quantization is disabled, precision plan will be ignored.
+- <span style="color:green;">precision_plan</span> is compatible with <span style="color:#c77dff;">per_tensor_fallback</span>. If a selected plan type is not supported by a specific layer/hardware path (case: rowwise tensor parallel is used and the basic quantize type is float8_per_row), fallback logic still works automatically when enabled.
 
 For example: (FLUX.2-Klein-9b-kv)
 
@@ -295,7 +295,7 @@ In the case of <span style="color:#c77dff;">distributed inference</span> (contex
 
 ## SVDQuant (W4A4) in Cache-DiT
 
-Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance W4A4 GEMM kernels and an easy-to-use PTQ interface). The public API is intentionally small: build a pan style="color:#c77dff;">QuantizeConfig</span> quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and ease of use compared to other third-party INT4 quantization libraries.   
+Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance W4A4 GEMM kernels and an easy-to-use PTQ interface). The public API is intentionally small: build a <span style="color:#c77dff;">QuantizeConfig</span>, quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and better usability compared to other third-party INT4 quantization libraries.   
 
 With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, please make sure to **build Cache-DiT from source with SVDQuant support**. We may consider releasing pre-built Cache-DiT packages with SVDQuant support in the future.
 
@@ -305,20 +305,26 @@ git submodule update --init --recursive --force # init submodules
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolation
 ```
 
-The only thing users need to do is to prepare the calibration function (<span style="color:#c77dff;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:
+The only thing users need to do is to prepare the calibration function (<span style="color:green;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:
 
+<span style="color:green;">Step 1</span>: Load the pre-trained model in full precision and DON'T forget to move the model to "CUDA" for better calibration performance. SVDQuant quantization will be much faster on GPU than on CPU, and it may cause OOM on CPU for large models.
 ```python
 import torch
 import cache_dit
 from diffusers import Flux2KleinPipeline
 from cache_dit import QuantizeConfig
 
+# 1. Load the pre-trained model in "cuda"
 pipe = Flux2KleinPipeline.from_pretrained(
     "black-forest-labs/FLUX.2-klein-4B",
     torch_dtype=torch.bfloat16,
 ).to("cuda")
+```
 
-# 0. Prepare the calibration dataset for collecting quantization statistics.
+<span style="color:green;">Step 2</span>: Prepare the calibration data and calibration function (<span style="color:green;">calibrate_fn</span>) for SVDQuant <span style="color:#c77dff;">QuantizeConfig</span>.  Cache-DiT will automatically collect the quantization statistics during the calibration process, and use those statistics to compute the quantization parameters for each linear layer.
+
+```python
+# 2..1 Prepare the calibration dataset for collecting quantization statistics.
 calibration_prompts = [
     "A cute cat sitting on the beach, watching the sunset.",
     "A cute fox sitting on the beach, watching the sunset.",
@@ -327,7 +333,7 @@ calibration_prompts = [
     "A cute panda sitting on the beach, watching the sunset.",
 ]
 
-# 1. Define the calibration function for PTQ. Cache-DiT will automatically collect 
+# 2.2 Define the calibration function for PTQ. Cache-DiT will automatically collect 
 # the quantization statistics during the calibration process, and use those statistics 
 # to compute the quantization parameters for each linear layer.
 def calibrate_fn(**_: object) -> None:
@@ -341,77 +347,37 @@ def calibrate_fn(**_: object) -> None:
                 generator=torch.Generator(device="cpu").manual_seed(0),
             )
 
-# 2. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
+```
+
+<span style="color:green;">Step 3</span>: Build the <span style="color:#c77dff;">QuantizeConfig</span> for SVDQuant, and call <span style="color:#c77dff;">cache_dit.quantize(...)</span> to apply SVDQuant W4A4 quantization to the model. We have to wait some time for the quantization process to finish, as SVDQuant will perform SVD decomposition for each linear layer and compute the quantization parameters based on the collected quantization statistics. The quantized model will be saved to disk in the specified directory.
+
+```python
+# 3. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
 quant_config = QuantizeConfig(
     # e.g, svdq_int4_r32, svdq_int4_r128, ...
     quant_type="svdq_int4_r32",
     calibrate_fn=calibrate_fn,
     serialize_to="./FLUX.2-klein-4B-svdq/",
-    svdq_kwargs={
-        # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner, 
-        # which means it will quantize the model using the calibration samples one by one, and 
-        # update the quantization parameters after each sample. This can reduce the memory usage 
-        # during quantization, but it may cause longer quantization time. If set to False, we 
-        # will collect the quantization statistics for all calibration samples first, and then 
-        # compute the quantization parameters and quantize the model. The default value is True.
-        "streaming": True,
-        # Only valid when streaming is set to True. It specifies the number of samples after 
-        # which the activation buffers will be flushed and the quantization parameters will 
-        # be updated. This can help to reduce the memory usage during quantization, especially 
-        # for large models, by not keeping the activation buffers for all samples in memory at 
-        # the same time. The default value is 1, which means the activation buffers will be 
-        # flushed and the quantization parameters will be updated after each sample.
-        "activation_buffer_flush_sample_count": 1, 
-        # If high_precision is set to True, Cache-DiT will use higher precision 
-        # (e.g., float64) for SVD decomposition and compute the avtivations or 
-        # weights scales with float32 precision. This can provide better quantization 
-        # precision, but it may cause longer quantization time and higher memory usage 
-        # during quantization. If set to False, Cache-DiT will use lower precision 
-        # (e.g., float32) for SVD decomposition and compute the activations or weights 
-        # scales with bfloat16 precision. This can speed up the quantization process 
-        # and reduce memory usage, but it may cause more precision loss. The default 
-        # value is False.
-        "high_precision": False,
-    },
 )
 
 pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 ```
 
-The **FLUX.2-klein-4B-svdq** directory now contains: <span style="color:#c77dff;">svdq_int4_r32.safetensors</span> and <span style="color:#c77dff;">quant_config.json</span>. The quantized model can be loaded with <span style="color:#c77dff;">cache_dit.load(...)</span> for inference or further fine-tuning. For example:
+<span style="color:green;">Step 4</span>: The **FLUX.2-klein-4B-svdq** directory now contains: <span style="color:green;">svdq_int4_r32.safetensors</span> and <span style="color:green;">quant_config.json</span>. The quantized model can be loaded with <span style="color:#c77dff;">cache_dit.load(...)</span> for inference or further fine-tuning. For example:
 
 ```python
-import torch
-import cache_dit
-from diffusers import Flux2KleinPipeline
-from cache_dit import QuantizeConfig
-
-pipe = Flux2KleinPipeline.from_pretrained(
-    "black-forest-labs/FLUX.2-klein-4B",
-    torch_dtype=torch.bfloat16,
-) # First, keep in CPU for now.
-
-pipe.transformer = cache_dit.load(
-    pipe.transformer, 
-    "./FLUX.2-klein-4B-svdq/",
-)
-
-pipe.to("cuda")
-
-image = pipe(
-    prompt="A cute cat sitting on the beach, watching the sunset.",
-    height=1024,
-    width=1024,
-    num_inference_steps=4,
-    generator=torch.Generator(device="cpu").manual_seed(0),
-).images[0]
+# 4.1 First, keep in CPU for now.
+pipe = Flux2KleinPipeline.from_pretrained(...) 
+# 4.2 Load the quantized model for inference.
+pipe.transformer = cache_dit.load(pipe.transformer, "./FLUX.2-klein-4B-svdq/")
+pipe.to("cuda") # Transfer the model to GPU for inference.
 ```
 
-For SVDQuant, <span style="color:#c77dff;">serialize_to</span> should point to a directory. Cache-DiT normalizes the checkpoint name to <span style="color:#c77dff;">{quant_type}.safetensors</span>, writes a sibling <span style="color:#c77dff;">quant_config.json</span>, and lets <span style="color:#c77dff;">cache_dit.load(...)</span> recover the real checkpoint path directly from that directory. Performance comparison between SVDQuant W4A4 and full precision BF16 for FLUX.2-klein-4B is listed below: (full_blocks: means all transformer blocks are quantized; memory_quantized: the quantized model in memory; loaded_quantized: the quantized model reloaded from disk with <span style="color:#c77dff;">cache_dit.load(...)</span>)
+For SVDQuant, <span style="color:green;">serialize_to</span> should point to a directory. Cache-DiT normalizes the checkpoint name to <span style="color:green;">{quant_type}.safetensors</span>, writes a sibling <span style="color:green;">quant_config.json</span>, and lets <span style="color:#c77dff;">cache_dit.load(...)</span> recover the real checkpoint path directly from that directory. Performance comparison between SVDQuant W4A4 and full precision BF16 for FLUX.2-klein-4B is listed below: 
 
 ![flux2_klein_4b_svdq](../assets/flux2_klein_4b_svdq.png)
 
-The full benchmark report for FLUX.2-klein-4B SVDQuant (W4A4) is listed below. The SVDQuant W4A4 quantized model can achieve around <span style="color:#c77dff;">2.5x</span> memory reduction for transformer weights, around <span style="color:#c77dff;">1.7x</span> speedup in latency, while maintaining good output quality (the output images are almost the same as the full precision model).
+The full benchmark report for FLUX.2-klein-4B SVDQuant (W4A4) is listed below. The SVDQuant W4A4 quantized model can achieve around <span style="color:green;">2.5x</span> memory reduction for transformer weights, around <span style="color:green;">1.7x</span> speedup in latency, while maintaining good output quality (the output images are almost the same as the full precision model).
 
 | stage | resolution  | avg_latency_s | peak_memory_gb | transformer_gb |
 | :---: | :---: | :---: | :---: | :---: |
@@ -419,10 +385,11 @@ The full benchmark report for FLUX.2-klein-4B SVDQuant (W4A4) is listed below. T
 | memory_quantized | 1024x1024 | 1.2520 | 12.3916 | 2.2761 |
 | loaded_quantized | 1024x1024 | 1.2410  | 12.3883 | 2.2761 |
 
+Notes: **full_blocks** means all transformer blocks are quantized; **memory_quantized** means the quantized model is in memory; **loaded_quantized** means the quantized model is reloaded from disk with <span style="color:#c77dff;">cache_dit.load(...)</span>.
 
 ## SVDQuant (W4A4) in Nunchaku
 
-Cache-DiT also supports the caching and context parallelism scheme for int4 models from official Nunchaku library. Users can leverage Cache-DiT to speed up Nunchaku 4-bits W4A4 models. But we recommend users to use Cache-DiT's native SVDQuant support for better compatibility and ease of use. 
+Cache-DiT also supports the caching and context parallelism scheme for int4 models from official Nunchaku library. Users can leverage Cache-DiT to speed up Nunchaku 4-bits W4A4 models. <span style="color:green;">**But we recommend users to use Cache-DiT's native SVDQuant support for better compatibility and usability**.</span>
 
 ```python
 import cache_dit

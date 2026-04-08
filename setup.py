@@ -7,7 +7,6 @@ if importlib.util.find_spec("setuptools_scm") is None:
 
 import os
 import re
-import torch  # required for CUDA extension build
 import subprocess
 from os import path
 from pathlib import Path
@@ -38,6 +37,26 @@ def _env_flag(name: str) -> bool:
 
 def _should_build_svdquant() -> bool:
     return _env_flag(SVDQUANT_BUILD_FLAG)
+
+
+if _should_build_svdquant():
+    try:
+        import torch
+        from packaging import version as packaging_version
+        from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
+    except ImportError as exc:
+        raise RuntimeError(
+            "Building the optional SVDQuant extension requires `torch` and `packaging` "
+            "to be installed in the active environment. Run `conda activate cdit` and "
+            "initialize submodules with `git submodule update --init --recursive --force`, then install with "
+            "`CACHE_DIT_BUILD_SVDQUANT=1 python3 -m pip install -e . --no-build-isolation`."
+        ) from exc
+else:
+    torch = None
+    packaging_version = None
+    CUDA_HOME = None
+    BuildExtension = None
+    CUDAExtension = None
 
 
 def _ensure_spdlog_submodule() -> None:
@@ -87,21 +106,6 @@ def _missing_svdquant_sources() -> list[str]:
     ]
 
 
-def _import_svdquant_build_dependencies():
-    try:
-        from packaging import version as packaging_version
-        from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
-    except ImportError as exc:
-        raise RuntimeError(
-            "Building the optional SVDQuant extension requires `torch` and `packaging` "
-            "to be installed in the active environment. Run `conda activate cdit` and "
-            "initialize submodules with `git submodule update --init --recursive --force`, then install with "
-            "`CACHE_DIT_BUILD_SVDQUANT=1 python3 -m pip install -e . --no-build-isolation`."
-        ) from exc
-
-    return packaging_version, CUDA_HOME, BuildExtension, CUDAExtension
-
-
 def _get_nvcc_version(cuda_home: str | None) -> str:
     nvcc_path = path.join(cuda_home, "bin", "nvcc") if cuda_home else "nvcc"
     try:
@@ -119,12 +123,16 @@ def _get_nvcc_version(cuda_home: str | None) -> str:
     return match.group(2)
 
 
-def _get_sm_targets(packaging_version, cuda_home: str | None) -> list[str]:
+def _get_sm_targets() -> list[str]:
+    assert packaging_version is not None
+    assert CUDA_HOME is not None
+    assert torch is not None
+
     explicit_arch_list = os.getenv("CACHE_DIT_CUDA_ARCH_LIST") or os.getenv("TORCH_CUDA_ARCH_LIST")
     if explicit_arch_list:
         return _parse_arch_list(explicit_arch_list)
 
-    nvcc_version = _get_nvcc_version(cuda_home)
+    nvcc_version = _get_nvcc_version(CUDA_HOME)
     support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
     support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
@@ -174,9 +182,8 @@ def _get_svdquant_extension():
             f"Missing files under {ROOT_DIR}: {preview}"
         )
 
-    packaging_version, cuda_home, BuildExtension, CUDAExtension = (
-        _import_svdquant_build_dependencies()
-    )
+    assert BuildExtension is not None
+    assert CUDAExtension is not None
 
     class CacheDitBuildExtension(BuildExtension):
         def build_extensions(self):
@@ -190,7 +197,7 @@ def _get_svdquant_extension():
                     ext.extra_compile_args["cxx"] += ext.extra_compile_args.pop("gcc", [])
             super().build_extensions()
 
-    sm_targets = _get_sm_targets(packaging_version, cuda_home)
+    sm_targets = _get_sm_targets()
     gcc_flags = [
         "-DENABLE_BF16=1",
         "-DBUILD_CACHE_DIT_SVDQUANT=1",
