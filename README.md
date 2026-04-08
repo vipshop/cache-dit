@@ -28,6 +28,10 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 </div>
 
 <div align="center">
+  <p> <h2></h2> </p>
+</div>
+
+<div align="center">
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
 </div>
 
