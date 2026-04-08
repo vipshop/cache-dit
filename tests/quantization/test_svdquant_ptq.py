@@ -19,12 +19,12 @@ import cache_dit
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.quantization import QuantizeConfig
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
-from tests.kernels._svdq_test_utils import compute_accuracy_metrics
-from tests.kernels._svdq_test_utils import format_markdown_table
-from tests.kernels._svdq_test_utils import make_token_batch
-from tests.kernels._svdq_test_utils import make_token_samples
-from tests.kernels._svdq_test_utils import make_toy_model
-from tests.kernels._svdq_test_utils import runtime_dtype
+from tests.quantization._svdq_test_utils import compute_accuracy_metrics
+from tests.quantization._svdq_test_utils import format_markdown_table
+from tests.quantization._svdq_test_utils import make_token_batch
+from tests.quantization._svdq_test_utils import make_token_samples
+from tests.quantization._svdq_test_utils import make_toy_model
+from tests.quantization._svdq_test_utils import runtime_dtype
 
 _ENABLE_FLUX2_SLOW_TEST = os.getenv("CACHE_DIT_SVDQ_TEST_FLUX2", "0").lower() == "1"
 _ENABLE_FLUX2_COMPILE_TEST = os.getenv("CACHE_DIT_SVDQ_TEST_FLUX2_COMPILE", "0").lower() == "1"
@@ -86,6 +86,17 @@ class Flux2StageBenchmark:
     transformer_weight_cuda_gb: float
 
 
+@dataclass(frozen=True)
+class Flux2LatencyBenchmark:
+    stage: str
+    resolution: str
+    offload_mode: str
+    run_count: int
+    avg_latency_s: float
+    total_latency_s: float
+    peak_memory_gb: float
+
+
 def _make_flux2_cpu_generator() -> torch.Generator:
     return torch.Generator(device="cpu").manual_seed(_FLUX2_CPU_SEED)
 
@@ -96,6 +107,23 @@ def _resolve_flux2_model_source() -> str:
     if candidate.exists():
         return str(candidate.resolve())
     return source
+
+
+def _resolve_positive_int_envvar(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None or raw_value == "":
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer, got {raw_value!r}.") from exc
+    if value < 1:
+        raise ValueError(f"{name} must be a positive integer, got {value}.")
+    return value
+
+
+def _resolve_flux2_compile_bench_runs() -> int:
+    return _resolve_positive_int_envvar("CACHE_DIT_SVDQ_TEST_FLUX2_COMPILE_BENCH_RUNS", 5)
 
 
 def _resolve_flux2_case_dir(case_name: str, plan: Flux2ExecutionPlan) -> Path:
@@ -279,11 +307,26 @@ def _run_flux2_single_inference_and_peak_memory_gib(
     prompt: str,
     plan: Flux2ExecutionPlan,
 ) -> tuple[object, float]:
+    image, peak_memory_gib, _ = _run_flux2_single_inference_profile(
+        pipe,
+        prompt=prompt,
+        plan=plan,
+    )
+    return image, peak_memory_gib
+
+
+def _run_flux2_single_inference_profile(
+    pipe,
+    *,
+    prompt: str,
+    plan: Flux2ExecutionPlan,
+) -> tuple[object, float, float]:
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
 
+    start_time = time.perf_counter()
     with torch.inference_mode():
         image = pipe(
             prompt=prompt,
@@ -298,7 +341,44 @@ def _run_flux2_single_inference_and_peak_memory_gib(
         peak_memory_gib = torch.cuda.max_memory_allocated() / (1024**3)
     else:
         peak_memory_gib = 0.0
-    return image, peak_memory_gib
+    latency_s = time.perf_counter() - start_time
+    return image, peak_memory_gib, latency_s
+
+
+def _measure_flux2_latency_benchmark(
+    pipe,
+    *,
+    prompt: str,
+    plan: Flux2ExecutionPlan,
+    stage: str,
+    run_count: int,
+) -> tuple[object, Flux2LatencyBenchmark]:
+    if run_count < 1:
+        raise ValueError(f"run_count must be positive, got {run_count}.")
+
+    latencies: list[float] = []
+    peak_memory_gb = 0.0
+    image = None
+    for _ in range(run_count):
+        image, run_peak_memory_gb, latency_s = _run_flux2_single_inference_profile(
+            pipe,
+            prompt=prompt,
+            plan=plan,
+        )
+        latencies.append(latency_s)
+        peak_memory_gb = max(peak_memory_gb, run_peak_memory_gb)
+
+    assert image is not None
+    total_latency_s = sum(latencies)
+    return image, Flux2LatencyBenchmark(
+        stage=stage,
+        resolution=plan.resolution,
+        offload_mode=plan.offload_mode,
+        run_count=run_count,
+        avg_latency_s=total_latency_s / run_count,
+        total_latency_s=total_latency_s,
+        peak_memory_gb=peak_memory_gb,
+    )
 
 
 def _run_flux2_generation_stage(
@@ -668,6 +748,42 @@ def _benchmark_rows_to_table_rows(rows: list[Flux2StageBenchmark]) -> list[tuple
         )
         for row in rows
     ]
+
+
+def _format_speedup(speedup: float) -> str:
+    return "infx" if not math.isfinite(speedup) else f"{speedup:.4f}x"
+
+
+def _compile_benchmark_rows_to_table_rows(
+    eager_benchmark: Flux2LatencyBenchmark,
+    rows: list[Flux2LatencyBenchmark],
+) -> list[tuple[object, ...]]:
+    table_rows: list[tuple[object, ...]] = []
+    for row in rows:
+        if row.stage == eager_benchmark.stage:
+            delta_vs_eager_s = 0.0
+            speedup_vs_eager = 1.0
+        else:
+            delta_vs_eager_s = row.avg_latency_s - eager_benchmark.avg_latency_s
+            speedup_vs_eager = (
+                eager_benchmark.avg_latency_s / row.avg_latency_s
+                if row.avg_latency_s > 0.0
+                else float("inf")
+            )
+        table_rows.append(
+            (
+                row.stage,
+                row.resolution,
+                row.offload_mode,
+                row.run_count,
+                f"{row.avg_latency_s:.4f}",
+                f"{row.total_latency_s:.4f}",
+                f"{row.peak_memory_gb:.4f}",
+                f"{delta_vs_eager_s:.4f}",
+                _format_speedup(speedup_vs_eager),
+            )
+        )
+    return table_rows
 
 
 def _persist_flux2_report(report_dir: Path, filename: str, content: str) -> Path:
@@ -1519,10 +1635,14 @@ def test_svdq_ptq_flux2_klein_loaded_quantized_transformer_supports_torch_compil
     if not hasattr(torch, "compile"):
         pytest.skip("torch.compile is unavailable in this PyTorch build.")
 
+    if hasattr(torch, "compiler"):
+        torch.compiler.reset()
+
     model_source = _resolve_flux2_model_source()
     prompt = _FLUX2_PROMPTS[0]
     plan = Flux2ExecutionPlan(height=1024, width=1024, offload_mode="cuda")
     checkpoint_dir = _resolve_saved_flux2_checkpoint_dir("full_blocks", plan)
+    benchmark_runs = _resolve_flux2_compile_bench_runs()
 
     loaded_pipe = None
     try:
@@ -1534,32 +1654,84 @@ def test_svdq_ptq_flux2_klein_loaded_quantized_transformer_supports_torch_compil
         assert getattr(loaded_pipe.transformer, "_is_quantized", False)
 
         loaded_pipe.to("cuda")
+
+        eager_image, eager_benchmark = _measure_flux2_latency_benchmark(
+            loaded_pipe,
+            prompt=prompt,
+            plan=plan,
+            stage="eager",
+            run_count=benchmark_runs,
+        )
+        assert eager_image.size == (plan.width, plan.height)
+        assert eager_benchmark.peak_memory_gb > 0.0
+
         cache_dit.set_compile_configs()
         loaded_pipe.transformer = torch.compile(loaded_pipe.transformer)
 
-        warmup_image, warmup_peak_memory_gib = _run_flux2_single_inference_and_peak_memory_gib(
+        warmup_image, warmup_benchmark = _measure_flux2_latency_benchmark(
             loaded_pipe,
             prompt=prompt,
             plan=plan,
+            stage="compiled_warmup",
+            run_count=1,
         )
         assert warmup_image.size == (plan.width, plan.height)
-        assert warmup_peak_memory_gib > 0.0
+        assert warmup_benchmark.peak_memory_gb > 0.0
 
-        image, inference_peak_memory_gib = _run_flux2_single_inference_and_peak_memory_gib(
+        image, compiled_benchmark = _measure_flux2_latency_benchmark(
             loaded_pipe,
             prompt=prompt,
             plan=plan,
+            stage="compiled_steady_state",
+            run_count=benchmark_runs,
         )
+
+        report_path = _emit_flux2_report(
+            report_dir=checkpoint_dir.parent / "reports",
+            filename="compile_latency.md",
+            title=f"SVDQ PTQ FLUX2 compile latency benchmark ({plan.resolution}, {plan.offload_mode})",
+            headers=(
+                "stage",
+                "resolution",
+                "offload",
+                "run_count",
+                "avg_latency_s",
+                "total_latency_s",
+                "peak_memory_gb",
+                "latency_delta_vs_eager_s",
+                "speedup_vs_eager",
+            ),
+            rows=_compile_benchmark_rows_to_table_rows(
+                eager_benchmark,
+                [eager_benchmark, warmup_benchmark, compiled_benchmark],
+            ),
+        )
+
+        compiled_speedup = (
+            eager_benchmark.avg_latency_s / compiled_benchmark.avg_latency_s
+            if compiled_benchmark.avg_latency_s > 0.0
+            else float("inf")
+        )
+        compiled_delta_s = compiled_benchmark.avg_latency_s - eager_benchmark.avg_latency_s
 
         print(
             "[SVDQ FLUX2 compile] "
             f"checkpoint_dir={checkpoint_dir}, "
-            f"warmup_peak_memory_gib={warmup_peak_memory_gib:.4f}, "
-            f"inference_peak_memory_gib={inference_peak_memory_gib:.4f}",
+            f"benchmark_runs={benchmark_runs}, "
+            f"eager_avg_latency_s={eager_benchmark.avg_latency_s:.4f}, "
+            f"compiled_warmup_latency_s={warmup_benchmark.avg_latency_s:.4f}, "
+            f"compiled_avg_latency_s={compiled_benchmark.avg_latency_s:.4f}, "
+            f"compiled_latency_delta_vs_eager_s={compiled_delta_s:.4f}, "
+            f"compiled_speedup_vs_eager={_format_speedup(compiled_speedup)}, "
+            f"eager_peak_memory_gib={eager_benchmark.peak_memory_gb:.4f}, "
+            f"warmup_peak_memory_gib={warmup_benchmark.peak_memory_gb:.4f}, "
+            f"inference_peak_memory_gib={compiled_benchmark.peak_memory_gb:.4f}, "
+            f"report_path={report_path}",
             flush=True,
         )
 
-        assert inference_peak_memory_gib > 0.0
+        assert compiled_benchmark.peak_memory_gb > 0.0
+        assert report_path.is_file()
         assert image.size == (plan.width, plan.height)
     finally:
         _cleanup_flux2_pipe(loaded_pipe)

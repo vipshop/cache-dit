@@ -66,7 +66,7 @@ Use repo-relative references only.
 
 - For cache-dit files, use paths like `src/cache_dit/quantization/config.py`.
 - For docs, use paths like `docs/user_guide/QUANTIZATION.md`.
-- For tests, use paths like `tests/kernels/test_svdquant_ptq.py`.
+- For tests, use paths like `tests/quantization/test_svdquant_ptq.py`.
 - Do not write machine-local absolute paths into the skill.
 
 ## Design Principles to Keep
@@ -168,7 +168,7 @@ This is the right layer for backend save/load orchestration.
 
 ### Public docs and tests layer
 
-`docs/user_guide/QUANTIZATION.md` and `tests/kernels/test_svdquant_ptq.py` demonstrate the preferred user story:
+`docs/user_guide/QUANTIZATION.md` and `tests/quantization/test_svdquant_ptq.py` demonstrate the preferred user story:
 
 - user interacts with `QuantizeConfig`
 - user calls `cache_dit.quantize`
@@ -286,8 +286,8 @@ These are the main SVDQ PTQ reference files for style and coverage shape:
 
 - `src/cache_dit/quantization/config.py`
 - `src/cache_dit/quantization/svdquant/ptq.py`
-- `tests/kernels/test_svdquant_ptq.py`
-- `tests/kernels/test_svdquant_quantizer.py`
+- `tests/quantization/test_svdquant_ptq.py`
+- `tests/quantization/test_svdquant_quantizer.py`
 - `docs/user_guide/QUANTIZATION.md`
 
 Use them to understand cache-dit conventions.

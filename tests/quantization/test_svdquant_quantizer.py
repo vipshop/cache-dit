@@ -1,6 +1,6 @@
 """
 cd cache-dit
-pytest tests/kernels/test_svdquant_quantizer.py -v -s
+pytest tests/quantization/test_svdquant_quantizer.py -v -s
 """
 
 import os
@@ -14,19 +14,19 @@ from torch import nn
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
-from tests.kernels._svdq_test_utils import EVALUATED_RANKS
-from tests.kernels._svdq_test_utils import RANKS_WITH_BASELINE
-from tests.kernels._svdq_test_utils import assert_rank_metric_trend
-from tests.kernels._svdq_test_utils import build_empty_quantized_toy_model
-from tests.kernels._svdq_test_utils import compute_accuracy_metrics
-from tests.kernels._svdq_test_utils import format_markdown_table
-from tests.kernels._svdq_test_utils import format_rank_report
-from tests.kernels._svdq_test_utils import make_rank_sensitive_linear
-from tests.kernels._svdq_test_utils import make_token_batch
-from tests.kernels._svdq_test_utils import make_token_samples
-from tests.kernels._svdq_test_utils import make_toy_model
-from tests.kernels._svdq_test_utils import quantize_toy_model
-from tests.kernels._svdq_test_utils import runtime_dtype
+from tests.quantization._svdq_test_utils import EVALUATED_RANKS
+from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
+from tests.quantization._svdq_test_utils import assert_rank_metric_trend
+from tests.quantization._svdq_test_utils import build_empty_quantized_toy_model
+from tests.quantization._svdq_test_utils import compute_accuracy_metrics
+from tests.quantization._svdq_test_utils import format_markdown_table
+from tests.quantization._svdq_test_utils import format_rank_report
+from tests.quantization._svdq_test_utils import make_rank_sensitive_linear
+from tests.quantization._svdq_test_utils import make_token_batch
+from tests.quantization._svdq_test_utils import make_token_samples
+from tests.quantization._svdq_test_utils import make_toy_model
+from tests.quantization._svdq_test_utils import quantize_toy_model
+from tests.quantization._svdq_test_utils import runtime_dtype
 
 _USE_HIGH_PRECISION = os.getenv("CACHE_DIT_SVDQ_TEST_HIGH_PRECISION", "0").lower() == "1"
 _USE_FP32_FALLBACK = os.getenv("CACHE_DIT_SVDQ_TEST_FP32_FALLBACK", "1").lower() == "1"

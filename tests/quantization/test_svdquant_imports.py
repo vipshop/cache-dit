@@ -1,6 +1,6 @@
 """
 cd cache-dit
-pytest tests/kernels/test_svdquant_imports.py -v -s
+pytest tests/quantization/test_svdquant_imports.py -v -s
 """
 
 import torch

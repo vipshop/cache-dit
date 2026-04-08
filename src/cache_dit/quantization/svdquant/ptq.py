@@ -176,6 +176,14 @@ def _attach_quantization_metadata(
 
 @dataclasses.dataclass
 class SVDQPTQContext:
+    """Resolved plan for a module-level SVDQ PTQ run.
+
+    The context snapshots the quantization scope, discovered candidate
+    `nn.Linear` layers, skip reasons, and resolved SVDQ kwargs derived from the
+    `QuantizeConfig`. It is shared between calibration, replacement,
+    serialization, and summary logging.
+    """
+
     root_module: nn.Module
     quantize_config: QuantizeConfig
     rank: int
@@ -200,6 +208,13 @@ class SVDQPTQContext:
     def from_config(
         cls, root_module: nn.Module, quantize_config: QuantizeConfig
     ) -> "SVDQPTQContext":
+        """Resolve a PTQ execution context from a root module and config.
+
+        This gathers the repeated-block scope, exclusion rules, resolved SVDQ
+        kwargs, and the final list of candidate linear layers that satisfy the
+        migrated W4A4 geometry constraints.
+        """
+
         repeated_blocks = getattr(
             root_module,
             "_repeated_blocks",
@@ -322,6 +337,13 @@ class SVDQPTQContext:
 
 
 class SVDQPTQCalibrator:
+    """Collect per-layer activation spans for module-level SVDQ PTQ.
+
+    The calibrator registers forward-pre-hooks on candidate float `nn.Linear`
+    layers, reduces each observed activation batch to a per-channel span vector,
+    and exposes the finalized spans to `quantize_svdq_ptq`.
+    """
+
     def __init__(self, context: SVDQPTQContext) -> None:
         self.context = context
         self.activation_spans: dict[str, torch.Tensor] = {}
@@ -351,6 +373,8 @@ class SVDQPTQCalibrator:
         return hook
 
     def register(self) -> None:
+        """Register calibration hooks on all candidate float linear layers."""
+
         high_precision = self.context.svdq_kwargs["high_precision"]
         flush_sample_count = self.context.svdq_kwargs["activation_buffer_flush_sample_count"]
         flush_cpu_bytes = self.context.svdq_kwargs["activation_buffer_flush_cpu_bytes"]
@@ -373,12 +397,16 @@ class SVDQPTQCalibrator:
             self._handles.append(submodule.register_forward_pre_hook(self._make_hook(layer_name)))
 
     def remove(self) -> None:
+        """Remove calibration hooks and finalize any buffered activation spans."""
+
         for handle in self._handles:
             handle.remove()
         self._handles.clear()
         self.finalize()
 
     def finalize(self) -> None:
+        """Materialize finalized activation spans for all observed layers."""
+
         for layer_name, accumulator in self._accumulators.items():
             if accumulator.has_observations:
                 self.activation_spans[layer_name] = accumulator.finalize()
@@ -682,6 +710,25 @@ def _log_load_summary(
 
 
 def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
+    """Run post-training SVDQ quantization over a module in place.
+
+    Args:
+        module: Root module containing the float `nn.Linear` layers to quantize.
+        quantize_config: SVDQ `QuantizeConfig` describing calibration, scope
+            filters, serialization target, and SVDQ-specific kwargs.
+
+    Returns:
+        The input module with eligible `nn.Linear` submodules replaced by
+        `SVDQW4A4Linear` instances. The return value may be a new module only when
+        the root module itself is quantized.
+
+    Notes:
+        This function runs the user-provided calibration callback under inference
+        mode, quantizes each observed candidate layer via the lower-level SVDQ
+        linear quantizer path, attaches quantization metadata, and writes both the
+        serialized checkpoint and `quant_config.json` snapshot.
+    """
+
     if not isinstance(module, nn.Module):
         raise TypeError(f"Expected nn.Module, got {type(module)}.")
     if not quantize_config.is_svdq():
@@ -797,6 +844,26 @@ def load_svdq(
     module: nn.Module,
     quantize_config_or_path: QuantizeConfig | str,
 ) -> nn.Module:
+    """Load a serialized SVDQ PTQ checkpoint into a float module in place.
+
+    Args:
+        module: Root module containing float `nn.Linear` layers that match the
+            serialized checkpoint layout.
+        quantize_config_or_path: Either a `QuantizeConfig` whose `serialize_to`
+            points at an SVDQ checkpoint or a direct checkpoint path.
+
+    Returns:
+        The module with serialized layers replaced by `SVDQW4A4Linear` instances.
+        The return value may be a new module if the root layer itself was
+        serialized and loaded.
+
+    Notes:
+        The loader validates checkpoint metadata against `quant_config.json` when
+        present and against the provided `QuantizeConfig` when one is supplied.
+        State-dict loading is strict so missing or unexpected packed tensors fail
+        fast.
+    """
+
     if not isinstance(module, nn.Module):
         raise TypeError(f"Expected nn.Module, got {type(module)}.")
 

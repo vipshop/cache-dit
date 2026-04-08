@@ -5,7 +5,7 @@ Call chain overview
 
 Offline quantization path used by tests and model conversion:
 
-    tests.kernels._svdq_test_utils.quantize_toy_model(...)
+    tests.quantization._svdq_test_utils.quantize_toy_model(...)
         -> quantize_linear_svdq_w4a4(...)
             -> standardize_calibration_activations(...)
             -> compute_smooth_scale(...)
@@ -15,8 +15,8 @@ Offline quantization path used by tests and model conversion:
                 -> pack_svdq_w4a4_linear_tensors(...)
                     -> residual / scale
                     -> round to INT4 in [-8, 7]
-                    -> NunchakuWeightPacker.pack_weight(...)
-                    -> NunchakuWeightPacker.pack_scale(...)
+                    -> SVDQWeightPacker.pack_weight(...)
+                    -> SVDQWeightPacker.pack_scale(...)
             -> adapt_svdq_module_state_dict(...)
             -> SVDQW4A4Linear.from_linear(...)
             -> load_state_dict(...)
@@ -30,10 +30,12 @@ Runtime path after the packed tensors have been loaded:
             -> svdq_gemm_w4a4(...)
 
 Notes:
-    - The main flow quantizes weights offline in Python and stores packed
-      qweight/wscales tensors in the module state dict.
-    - svdq_quantize_w4a4_wgt is a low-level CUDA helper used by runtime tests,
-      but it is not part of quantize_linear_svdq_w4a4's main call chain.
+- The main flow quantizes weights offline in Python and stores packed
+    qweight/wscales tensors in the module state dict.
+- SVDQWeightPacker exists to serialize tensors into the warp-oriented W4A4
+    kernel layout, not to define an arbitrary checkpoint packing format.
+- svdq_quantize_w4a4_wgt is a low-level CUDA helper used by runtime tests,
+    but it is not part of quantize_linear_svdq_w4a4's main call chain.
 """
 
 from ...kernels import svdq_extension_is_available as svdq_is_available

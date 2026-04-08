@@ -15,6 +15,25 @@ def decompose_lowrank_residual(
     high_precision: bool = False,
     fp32_fallback: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Factor a smoothed weight matrix into low-rank correction and residual.
+
+    Args:
+        weight: Smoothed weight matrix with shape `[out_features, in_features]`.
+        rank: Target rank for the low-rank approximation.
+        output_dtype: Output dtype for the returned tensors. Defaults to the input
+            `weight.dtype`.
+        high_precision: Whether to run the SVD in float64 for improved numerical
+            stability.
+        fp32_fallback: Whether to fall back to float32 SVD when the backend does not
+            support low-precision decomposition.
+
+    Returns:
+        A tuple `(down, up, residual)` where `up @ down` is the rank-`rank`
+        approximation of `weight`, `down` has shape `[rank, in_features]`, `up` has
+        shape `[out_features, rank]`, and `residual` is the remaining matrix to be
+        quantized into the W4A4 path.
+    """
+
     if weight.ndim != 2:
         raise ValueError("Weight tensor must be 2D.")
     if rank < 0:

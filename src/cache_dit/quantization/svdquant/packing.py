@@ -1,4 +1,5 @@
-# Adapted from deepcompressor's implementation of SVDQW4A4Linear weight packing and related utilities.
+# Cache-DiT's SVDQ packing helpers are adapted from deepcompressor/nunchaku.
+# The layout logic below is the Python-side half of the W4A4 kernel contract.
 from __future__ import annotations
 
 import typing as tp
@@ -6,8 +7,8 @@ import typing as tp
 import torch
 
 __all__ = [
-    "MmaWeightPackerBase",
-    "NunchakuWeightPacker",
+    "MmaWeightPacker",
+    "SVDQWeightPacker",
     "adapt_svdq_module_state_dict",
     "ceil_divide",
     "export_raw_svdq_w4a4_state_dict",
@@ -76,10 +77,37 @@ def fp_quantize(x: torch.Tensor, codebook: torch.Tensor | None = None) -> torch.
     return (x.unsqueeze(-1) - codebook.unsqueeze(0)).abs().argmin(dim=-1)
 
 
-class MmaWeightPackerBase:
+class MmaWeightPacker:
+    """Describe the warp-level packing contract for the SVDQ weight-side MMA operand.
+
+    This helper does not quantize anything by itself. It computes how Python should tile
+    and distribute packed values across a 32-lane warp so the exported tensors line up with
+    the CUDA zgemm kernels in `csrc/kernels/svdq/zgemm`. For the INT4 path it defaults to
+    `comp_n = 16` and `comp_k = 256 / bits = 64`, then splits the tile across `8` N-side
+    lanes and `4` K-side lanes.
+
+    Those values mirror the kernel-side contract in `gemm_base.cuh`: the W4A4 path exposes
+    `INSN_K = 64` and `WARP_N = 128` at the GEMM layer, while the low-level wrappers in
+    `mma_earlycuda.cuh` ultimately issue `mma.sync.aligned.m16n8k64` PTX fragments. The
+    `insn_n = 8` bookkeeping here intentionally follows that lower-level fragment width; the
+    surrounding kernel composes two `m16n8k64` fragments to reach the higher-level
+    `INSN_N = 16` tile.
+    """
+
     def __init__(
         self, bits: int, warp_n: int, comp_n: int | None = None, comp_k: int | None = None
     ) -> None:
+        """Initialize the MMA-side packing geometry.
+
+        Args:
+            bits: Bit-width of each packed weight element.
+            warp_n: Output-channel span covered by one warp tile.
+            comp_n: Optional fragment width along the N dimension. Defaults to the
+                W4A4-friendly value `16`.
+            comp_k: Optional fragment width along the K dimension. Defaults to
+                `256 // bits`, which becomes `64` for INT4.
+        """
+
         self.bits = bits
         if self.bits not in (1, 4, 8, 16, 32):
             raise ValueError(f"Unsupported weight bit-width: {bits}.")
@@ -114,12 +142,50 @@ class MmaWeightPackerBase:
         self.num_n_packs = self.mem_n // (self.n_pack_size * self.num_n_lanes * self.reg_n)
 
 
-class NunchakuWeightPacker(MmaWeightPackerBase):
+class SVDQWeightPacker(MmaWeightPacker):
+    """Pack SVDQ tensors into the exact layout consumed by the W4A4 CUDA kernels.
+
+    `MmaWeightPacker` defines the lane/register geometry; this class applies that geometry to
+    cache-dit's concrete artifacts: signed INT4 weights, grouped scales or FP4 micro-scales,
+    biases and smooth factors, plus optional low-rank residual matrices. The output is not an
+    arbitrary checkpoint layout. It mirrors the weight-side operand and scale ordering that
+    `csrc/kernels/svdq/zgemm/gemm_base.cuh` and `gemm_w4a4.cuh` expect to load.
+
+    On the kernel side, those packed tiles are consumed by `mma_m16n8kx_s32common` in
+    `mma_earlycuda.cuh`, which lowers to `mma.sync.aligned.m16n8k64.row.col.s32.u4.s4.s32`
+    or `mma.sync.aligned.m16n8k64.row.col.s32.s4.s4.s32` depending on activation signedness.
+    In PTX terms `.row.col` means row-major A and column-major B, `.u4`/`.s4` select
+    unsigned or signed 4-bit multiplicands, and `.s32` is the accumulator/result type. For the
+    `m16n8k64` fragment shape each thread contributes four `.b32` registers for operand A and
+    two `.b32` registers for operand B, which is why the padding, permutation and bit-packing
+    logic here is warp-shaped instead of being a simple flatten-and-save step.
+    """
+
     def __init__(self, bits: int, warp_n: int = 128) -> None:
+        """Initialize the SVDQ-specific packer defaults.
+
+        Args:
+            bits: Bit-width of the packed weight operand. The current SVDQ runtime
+                uses `4` for the W4A4 path.
+            warp_n: Output-channel width covered by one packed warp tile. Defaults
+                to `128`, matching the migrated W4A4 kernel contract.
+        """
+
         super().__init__(bits=bits, warp_n=warp_n)
         self.num_k_unrolls = 2
 
     def pack_weight(self, weight: torch.Tensor) -> torch.Tensor:
+        """Pack an integer weight matrix into the kernel-facing byte layout.
+
+        Args:
+            weight: Quantized weight matrix with shape `[out_features, in_features]`
+                and dtype `torch.int32`.
+
+        Returns:
+            A packed `torch.int8` tensor whose byte order matches the W4A4 kernel's
+            warp-level operand loading pattern.
+        """
+
         if weight.dtype != torch.int32:
             raise ValueError(f"Quantized weight must be torch.int32, got {weight.dtype}.")
         out_features, in_features = weight.shape
@@ -154,17 +220,32 @@ class NunchakuWeightPacker(MmaWeightPackerBase):
             weight = weight.bitwise_and_(0xFF)
             shift = torch.arange(0, 32, 8, dtype=torch.int32, device=weight.device)
         else:
-            raise NotImplementedError(
-                f"Weight bits {self.bits} are not supported in the minimal packer."
-            )
+            raise NotImplementedError(f"SVDQWeightPacker does not support {self.bits}-bit weights.")
         weight = weight.bitwise_left_shift_(shift)
         weight = weight.sum(dim=-1, dtype=torch.int32)
         return weight.view(dtype=torch.int8).view(out_features, -1)
 
     def check_if_micro_scale(self, group_size: int) -> bool:
+        """Return whether a scale tensor should use the FP4 micro-scale layout.
+
+        Micro-scale packing is selected when one scale value covers exactly four
+        K-lane elements of the current instruction tile.
+        """
+
         return group_size > 0 and self.insn_k == group_size * 4
 
     def pack_scale(self, scale: torch.Tensor, group_size: int) -> torch.Tensor:
+        """Pack standard scale, bias, or smooth tensors for the runtime layout.
+
+        Args:
+            scale: Scale-like tensor after any required padding.
+            group_size: Logical number of input channels represented by one scale
+                value, or `-1` for vectors such as bias and smooth factors.
+
+        Returns:
+            A packed scale tensor laid out for warp-level scale loading.
+        """
+
         if self.check_if_micro_scale(group_size=group_size):
             return self.pack_micro_scale(scale, group_size=group_size)
 
@@ -186,12 +267,22 @@ class NunchakuWeightPacker(MmaWeightPackerBase):
         return scale.view(-1) if group_size == -1 else scale.view(-1, out_features)
 
     def pack_micro_scale(self, scale: torch.Tensor, group_size: int) -> torch.Tensor:
+        """Pack FP4 micro-scales into the tensor layout consumed by the kernel.
+
+        Args:
+            scale: Floating-point scale tensor after padding.
+            group_size: Input channels represented by one micro-scale value. The
+                current implementation requires `16`.
+
+        Returns:
+            A packed micro-scale tensor with the lane/interleave order expected by
+            the FP4 kernel path.
+        """
+
         if scale.dtype not in (torch.float16, torch.bfloat16):
             raise ValueError(f"Scale dtype must be fp16/bf16, got {scale.dtype}.")
         if group_size != 16:
-            raise ValueError(
-                "The minimal packer only supports FP4 micro-scales with group_size=16."
-            )
+            raise ValueError("SVDQWeightPacker only supports FP4 micro-scales with group_size=16.")
         scale = scale.to(dtype=torch.float8_e4m3fn)
         out_features = scale.shape[0]
 
@@ -209,6 +300,19 @@ class NunchakuWeightPacker(MmaWeightPackerBase):
         return scale.view(-1, out_features)
 
     def pack_lowrank_weight(self, weight: torch.Tensor, down: bool) -> torch.Tensor:
+        """Pack a low-rank residual factor into the runtime tensor layout.
+
+        Args:
+            weight: Floating-point low-rank matrix. `down=True` expects the down
+                projection shape `[rank, channels]`, while `down=False` expects the
+                up projection shape `[channels, rank]`.
+            down: Whether the tensor belongs to the down-projection branch.
+
+        Returns:
+            A packed low-rank tensor reshaped to the layout expected by the fused
+            runtime path.
+        """
+
         if weight.dtype not in (torch.float16, torch.bfloat16):
             raise ValueError(f"Low-rank weight dtype must be fp16/bf16, got {weight.dtype}.")
 
@@ -239,12 +343,25 @@ class NunchakuWeightPacker(MmaWeightPackerBase):
         return weight.view(channels, rank)
 
     def pad_weight(self, weight: torch.Tensor) -> torch.Tensor:
+        """Pad a quantized weight matrix to the packer's warp tile multiples."""
+
         return tp.cast(
             torch.Tensor,
             pad(weight, divisor=(self.mem_n, self.mem_k * self.num_k_unrolls), dim=(0, 1)),
         )
 
     def pad_scale(self, scale: torch.Tensor, group_size: int) -> torch.Tensor:
+        """Pad scale-like tensors so `pack_scale` can reshape them safely.
+
+        Args:
+            scale: Scale, bias, or smooth tensor before packing.
+            group_size: Logical channels represented by each scale value, or `-1`
+                for channel-wise vectors.
+
+        Returns:
+            The padded tensor with fill value `1` in newly created scale slots.
+        """
+
         if group_size > 0 and scale.numel() > scale.shape[0]:
             scale = scale.view(scale.shape[0], 1, -1, 1)
             if self.check_if_micro_scale(group_size=group_size):
@@ -263,6 +380,8 @@ class NunchakuWeightPacker(MmaWeightPackerBase):
         return tp.cast(torch.Tensor, scale)
 
     def pad_lowrank_weight(self, weight: torch.Tensor, down: bool) -> torch.Tensor:
+        """Pad a low-rank factor so its packing axes align with `warp_n`."""
+
         return tp.cast(torch.Tensor, pad(weight, divisor=self.warp_n, dim=1 if down else 0))
 
 
@@ -304,6 +423,27 @@ def pack_svdq_w4a4_linear_tensors(
     tuple[torch.Tensor, torch.Tensor] | None,
     torch.Tensor | None,
 ]:
+    """Pack floating-point SVDQ tensors into the W4A4 kernel layout.
+
+    Args:
+        weight: Floating-point residual weight matrix with shape
+            `[out_features, in_features]`.
+        scale: Per-group weight scales. May be a scalar tensor or a 4D tensor with
+            shape `[out_features, 1, num_groups, 1]`.
+        bias: Optional bias vector for the linear layer.
+        smooth: Optional per-input-channel smoothing vector.
+        lora: Optional tuple `(lora_down, lora_up)` containing the low-rank residual
+            factors before packing.
+        float_point: Whether to pack FP4-style unsigned nibble values instead of
+            signed INT4 values.
+        subscale: Optional finer-grained 4D scale tensor used by formats that carry
+            an additional subscale hierarchy.
+
+    Returns:
+        A tuple `(qweight, wscales, bias, smooth, lora, subscale)` where every tensor
+        is rearranged into the layout expected by the SVDQ W4A4 runtime kernels.
+    """
+
     if weight.ndim != 2:
         raise ValueError("Weight tensor must be 2D.")
     if weight.dtype not in (torch.float16, torch.bfloat16):
@@ -359,7 +499,7 @@ def pack_svdq_w4a4_linear_tensors(
         else smooth.view(-1, 1)
     )
 
-    packer = NunchakuWeightPacker(bits=4)
+    packer = SVDQWeightPacker(bits=4)
     weight = packer.pack_weight(packer.pad_weight(weight.to(dtype=torch.int32)))
     scale = packer.pack_scale(
         packer.pad_scale(scale.to(dtype=dtype), group_size=group_size),
@@ -399,6 +539,29 @@ def export_raw_svdq_w4a4_state_dict(
     float_point: bool = False,
     subscale: torch.Tensor | None = None,
 ) -> dict[str, torch.Tensor]:
+    """Export floating-point SVDQ tensors into the raw packed checkpoint schema.
+
+    Args:
+        weight: Floating-point residual weight matrix to quantize and pack.
+        scale: Per-group weight scales.
+        bias: Optional bias vector.
+        smooth: Optional per-input-channel smoothing vector.
+        lora: Optional tuple `(lora_down, lora_up)` containing the low-rank residual
+            factors.
+        float_point: Whether to use the FP4 packing path instead of INT4.
+        subscale: Optional subscale hierarchy for formats that require it.
+
+    Returns:
+        A raw packed state dict keyed by serialized tensor roles such as `qweight`,
+        `wscales`, `smooth`, `smooth_orig`, and optional `lora_*` / `wcscales`
+        entries.
+
+    Notes:
+        When both `lora` and `smooth` are present, the low-rank down matrix is
+        divided by `smooth` before packing so the runtime smoothing path is applied
+        exactly once.
+    """
+
     if lora is not None and smooth is not None:
         lora_down, lora_up = lora
         lora_down = lora_down.to(dtype=torch.float64)
@@ -445,6 +608,21 @@ def adapt_svdq_module_state_dict(
     device: torch.device | str,
     has_bias: bool,
 ) -> dict[str, torch.Tensor]:
+    """Map raw packed tensors onto the parameter names used by `SVDQW4A4Linear`.
+
+    Args:
+        raw_state_dict: Raw packed schema produced by `export_raw_svdq_w4a4_state_dict`.
+        in_features: Logical input width of the target runtime module.
+        out_features: Logical output width of the target runtime module.
+        rank: Low-rank residual rank expected by the runtime module.
+        torch_dtype: Floating-point dtype for synthesized empty low-rank tensors.
+        device: Device for synthesized tensors that are absent from the raw state.
+        has_bias: Whether the target runtime module expects a bias parameter.
+
+    Returns:
+        A module state dict ready for `SVDQW4A4Linear.load_state_dict`.
+    """
+
     module_state_dict = {
         "qweight": raw_state_dict["qweight"],
         "smooth_factor": raw_state_dict["smooth"],

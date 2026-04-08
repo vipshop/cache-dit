@@ -353,7 +353,7 @@ Use this as an example of the workflow, not as a recipe to replay line by line.
 - `src/cache_dit/kernels/cuda/_svdquant.py`
 - `src/cache_dit/quantization/svdquant/linear.py`
 - `tests/kernels/test_svdquant_runtime.py`
-- `tests/kernels/test_svdquant_quantizer.py`
+- `tests/quantization/test_svdquant_quantizer.py`
 - `setup.py`
 
 ### Useful external reference cases

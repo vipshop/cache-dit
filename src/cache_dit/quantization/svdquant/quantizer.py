@@ -29,6 +29,21 @@ def validate_svdq_linear_geometry(
     rank: int,
     precision: str = "int4",
 ) -> None:
+    """Validate that a linear layer fits the migrated SVDQ W4A4 runtime.
+
+    Args:
+        in_features: Logical input width of the candidate linear layer.
+        out_features: Logical output width of the candidate linear layer.
+        rank: Requested low-rank residual rank.
+        precision: Weight format requested by the quantizer.
+
+    Raises:
+        NotImplementedError: If `precision` is not supported by the minimal SVDQ
+            quantizer.
+        ValueError: If the geometry or low-rank rank is incompatible with the W4A4
+            packer/runtime contract.
+    """
+
     if precision != "int4":
         raise NotImplementedError("The minimal SVDQuant quantizer currently supports INT4 only.")
     if in_features % 64 != 0:
@@ -94,6 +109,17 @@ def standardize_calibration_activations(
     *,
     in_features: int,
 ) -> list[torch.Tensor]:
+    """Normalize representative activations into `[tokens, in_features]` tensors.
+
+    Args:
+        representative_activations: A tensor or iterable of tensors whose last
+            dimension matches `in_features`.
+        in_features: Expected activation channel dimension.
+
+    Returns:
+        A list of 2D tensors reshaped to `[tokens, in_features]` for calibration.
+    """
+
     return list(
         _iter_standardized_calibration_activations(
             representative_activations,
@@ -122,6 +148,23 @@ def compute_smooth_scale(
     math_dtype: torch.dtype = torch.float32,
     output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
+    """Compute the per-input-channel smoothing factor used by SVDQ.
+
+    Args:
+        activation_span: Per-channel activation maxima for the representative data.
+        weight_span: Per-channel weight maxima for the source linear layer.
+        alpha: SmoothQuant interpolation factor in `[0, 1]`.
+        math_dtype: Intermediate dtype used for the scale computation.
+        output_dtype: Optional dtype for the returned scale tensor.
+
+    Returns:
+        A 1D tensor of per-input-channel smoothing factors.
+
+    Notes:
+        Zero and non-finite scales are repaired to 1 so downstream low-rank
+        decomposition and packing keep a valid runtime contract.
+    """
+
     if not 0.0 <= alpha <= 1.0:
         raise ValueError(f"alpha must be in [0, 1], got {alpha}.")
     beta = 1.0 - alpha
@@ -142,6 +185,19 @@ def _compute_group_scales(
     math_dtype: torch.dtype = torch.float32,
     output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
+    """Compute per-group INT4 scales from the residual weight matrix.
+
+    Args:
+        weight: Residual weight matrix with shape `[out_features, in_features]`.
+        group_size: Number of input channels covered by each scale value.
+        math_dtype: Intermediate dtype used during the reduction.
+        output_dtype: Optional dtype for the returned scale tensor.
+
+    Returns:
+        A scale tensor with shape `[out_features, 1, num_groups, 1]` compatible
+        with the packing/export path.
+    """
+
     out_features, in_features = weight.shape
     if in_features % group_size != 0:
         raise ValueError(f"Expected in_features divisible by {group_size}, got {in_features}.")
@@ -171,6 +227,13 @@ def _compute_batch_activation_span(
 
 @dataclasses.dataclass
 class _ActivationSpanAccumulator:
+    """Streaming accumulator for per-channel activation spans.
+
+    The accumulator keeps calibration memory bounded by reducing each observed batch
+    to a single `[in_features]` span vector and periodically merging buffered spans
+    on CPU.
+    """
+
     device: torch.device
     torch_dtype: torch.dtype
     math_dtype: torch.dtype
@@ -284,6 +347,34 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
     high_precision: bool = False,
     fp32_fallback: bool = False,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
+    """Quantize a linear layer when the activation span has already been computed.
+
+    This is the lower-level worker behind `quantize_linear_svdq_w4a4`. It assumes
+    calibration has already been reduced to a single per-channel activation span,
+    then applies smoothing, low-rank decomposition, residual scale computation,
+    packing, and optional module instantiation.
+
+    Args:
+        linear: Source floating-point linear layer.
+        activation_span: Per-input-channel calibration maxima with length
+            `linear.in_features`.
+        rank: Rank of the low-rank residual correction.
+        alpha: SmoothQuant interpolation factor.
+        precision: Target weight format.
+        act_unsigned: Whether the runtime activation path should use unsigned INT4.
+        torch_dtype: Floating-point dtype for scales and residual tensors.
+        device: Device where quantization intermediates and outputs are placed.
+        return_state_dict: Whether to return the module `state_dict` instead of an
+            instantiated `SVDQW4A4Linear`.
+        high_precision: Whether to use higher-precision intermediate math.
+        fp32_fallback: Whether to retry SVD in float32 if low-precision SVD is
+            unsupported on the current backend.
+
+    Returns:
+        Either a ready-to-load SVDQ module state dict or an instantiated
+        `SVDQW4A4Linear`.
+    """
+
     if not isinstance(linear, nn.Linear):
         raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
 
@@ -385,6 +476,43 @@ def quantize_linear_svdq_w4a4(
     activation_buffer_flush_sample_count: int | None = 1,
     activation_buffer_flush_cpu_bytes: int | None = None,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
+    """Quantize a float `nn.Linear` into the cache-dit SVDQ W4A4 format.
+
+    Args:
+        linear: Source floating-point linear layer.
+        representative_activations: Tensor or iterable of tensors whose last
+            dimension matches `linear.in_features`.
+        rank: Rank of the low-rank residual correction.
+        alpha: SmoothQuant interpolation factor used to derive `smooth_factor`.
+        precision: Weight format requested by the quantizer. The current minimal
+            implementation supports `int4` only.
+        act_unsigned: Whether the runtime activation quantizer should emit unsigned
+            4-bit activations.
+        torch_dtype: Floating-point dtype used for the packed runtime tensors.
+        device: Device on which quantization intermediates and the returned module
+            should be materialized.
+        return_state_dict: When `True`, return the packed module `state_dict`
+            instead of instantiating `SVDQW4A4Linear`.
+        high_precision: Enable higher-precision intermediate math and float64 SVD
+            during low-rank decomposition.
+        fp32_fallback: Allow the low-rank decomposition to retry in float32 when a
+            low-precision SVD kernel is unavailable.
+        streaming: Whether to accumulate activation spans incrementally instead of
+            materializing all standardized activations at once.
+        activation_buffer_flush_sample_count: Number of buffered span samples to keep
+            before merging them when `streaming=True`.
+        activation_buffer_flush_cpu_bytes: CPU buffer limit that also triggers a
+            merge when `streaming=True`.
+
+    Returns:
+        Either a quantized `SVDQW4A4Linear` module or the corresponding module
+        `state_dict`, depending on `return_state_dict`.
+
+    Notes:
+        The streaming path is the default because representative activations can be
+        much larger than the final `[in_features]` span summary needed for SVDQ.
+    """
+
     if not isinstance(linear, nn.Linear):
         raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
 

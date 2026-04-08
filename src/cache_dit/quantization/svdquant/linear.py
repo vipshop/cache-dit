@@ -7,6 +7,17 @@ from ...kernels import svdq_quantize_w4a4_act_fuse_lora
 
 
 class SVDQW4A4Linear(nn.Module):
+    """Runtime module for packed SVDQ W4A4 linear layers.
+
+    `SVDQW4A4Linear` is the module shape produced by the offline SVDQ quantizer.
+    It stores the packed 4-bit weights consumed by `svdq_gemm_w4a4`, the per-group
+    scales and activation smoothing factors needed to quantize activations at runtime,
+    and the optional low-rank residual factors fused around the packed GEMM path.
+    `qweight` stores two 4-bit weights per `int8` lane, `wscales` stores the packed
+    weight-scale hierarchy, and `proj_down` / `proj_up` carry the low-rank correction
+    when `rank > 0`.
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -18,6 +29,28 @@ class SVDQW4A4Linear(nn.Module):
         torch_dtype: torch.dtype = torch.bfloat16,
         device: str | torch.device | None = None,
     ) -> None:
+        """Initialize the packed runtime module.
+
+        Args:
+            in_features: Logical input width of the original floating-point linear
+                layer. Must be divisible by 2 so two 4-bit weights can be packed
+                into one byte. INT4 checkpoints produced by the SVDQ quantizer also
+                use 64-element scale groups.
+            out_features: Logical output width of the original linear layer.
+            rank: Rank of the low-rank residual correction. Use 0 to disable the
+                LoRA-style correction path.
+            bias: Whether to allocate a bias parameter for the packed layer.
+            precision: Packed weight format. `int4` uses signed INT4 weights with
+                64-element groups, while `nvfp4` uses the NVFP4 path with 16-element
+                groups and an additional coarse scale hierarchy.
+            act_unsigned: Whether the runtime activation quantizer should emit
+                unsigned 4-bit activations for the kernel path.
+            torch_dtype: Floating-point dtype used for scales, smoothing factors,
+                bias, and low-rank tensors.
+            device: Device where the packed parameters are allocated. Defaults to CPU
+                when omitted.
+        """
+
         super().__init__()
         if device is None:
             device = torch.device("cpu")
@@ -92,6 +125,14 @@ class SVDQW4A4Linear(nn.Module):
 
     @classmethod
     def from_linear(cls, linear: nn.Linear, **kwargs) -> "SVDQW4A4Linear":
+        """Allocate an `SVDQW4A4Linear` shell from a float `nn.Linear`.
+
+        The returned module matches the source layer's logical geometry, bias
+        presence, dtype, and device unless explicitly overridden via `kwargs`.
+        This helper only allocates the target module shape; it does not quantize or
+        copy the source weights by itself.
+        """
+
         in_features = kwargs.pop("in_features", linear.in_features)
         torch_dtype = kwargs.pop("torch_dtype", linear.weight.dtype)
         device = kwargs.pop("device", linear.weight.device)
@@ -105,6 +146,18 @@ class SVDQW4A4Linear(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, output: torch.Tensor | None = None) -> torch.Tensor:
+        """Quantize activations, run the packed W4A4 GEMM, and restore `[B, T, C]`.
+
+        Args:
+            x: Input activations with shape `[batch, seq, in_features]`.
+            output: Optional destination buffer. The method accepts either the
+                logical `[batch * seq, out_features]` shape or the padded 2D shape
+                produced by the fused activation quantizer.
+
+        Returns:
+            The output activations with shape `[batch, seq, out_features]`.
+        """
+
         batch_size, seq_len, channels = x.shape
         token_count = batch_size * seq_len
         x = x.reshape(token_count, channels)
@@ -135,6 +188,18 @@ class SVDQW4A4Linear(nn.Module):
     def quantize(
         self, x: torch.Tensor, pad_size: int = 256
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Quantize activations and compute the low-rank down-projection input.
+
+        Args:
+            x: Flattened activations with shape `[tokens, in_features]`.
+            pad_size: Token padding multiple required by the fused activation
+                quantizer.
+
+        Returns:
+            A tuple `(quantized_x, ascales, lora_act_out)` ready for
+            `forward_quant`.
+        """
+
         return svdq_quantize_w4a4_act_fuse_lora(
             input=x,
             lora_down=self.proj_down,
@@ -150,6 +215,19 @@ class SVDQW4A4Linear(nn.Module):
         lora_act: torch.Tensor,
         output: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        """Run the packed SVDQ GEMM from pre-quantized activation tensors.
+
+        Args:
+            quantized_x: Packed activation tensor returned by `quantize`.
+            ascales: Per-token activation scales returned by `quantize`.
+            lora_act: Low-rank activation factors returned by `quantize`.
+            output: Optional destination buffer. When provided, the result is copied
+                into this tensor and returned.
+
+        Returns:
+            The padded 2D output tensor produced by `svdq_gemm_w4a4`.
+        """
+
         gemm_kwargs = dict(
             act=quantized_x,
             wgt=self.qweight,

@@ -12,15 +12,15 @@ from cache_dit.kernels import svdq_gemm_w4a4_ext
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.kernels import svdq_quantize_w4a4_wgt
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
-from tests.kernels._svdq_test_utils import RANKS_WITH_BASELINE
-from tests.kernels._svdq_test_utils import assert_rank_metric_trend
-from tests.kernels._svdq_test_utils import compute_accuracy_metrics
-from tests.kernels._svdq_test_utils import format_rank_report
-from tests.kernels._svdq_test_utils import make_rank_sensitive_linear
-from tests.kernels._svdq_test_utils import make_token_batch
-from tests.kernels._svdq_test_utils import make_token_samples
-from tests.kernels._svdq_test_utils import run_svdq_operator_from_state_dict
-from tests.kernels._svdq_test_utils import runtime_dtype
+from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
+from tests.quantization._svdq_test_utils import assert_rank_metric_trend
+from tests.quantization._svdq_test_utils import compute_accuracy_metrics
+from tests.quantization._svdq_test_utils import format_rank_report
+from tests.quantization._svdq_test_utils import make_rank_sensitive_linear
+from tests.quantization._svdq_test_utils import make_token_batch
+from tests.quantization._svdq_test_utils import make_token_samples
+from tests.quantization._svdq_test_utils import run_svdq_operator_from_state_dict
+from tests.quantization._svdq_test_utils import runtime_dtype
 
 
 def _require_svdquant_runtime() -> None:
