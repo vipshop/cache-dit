@@ -28,8 +28,8 @@ DEFAULT_MODEL_SOURCE = os.getenv("FLUX_2_KLEIN_4B_DIR", "black-forest-labs/FLUX.
 DEFAULT_PROMPTS_PATH = Path(__file__).resolve().parents[1] / "data" / "prompts" / "DrawBench200.txt"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "FLUX.2-klein-4B-svdq"
 DEFAULT_BENCHMARK_RUNS = 5
-DEFAULT_HEIGHT = 512
-DEFAULT_WIDTH = 512
+DEFAULT_HEIGHT = 1024
+DEFAULT_WIDTH = 1024
 DEFAULT_INFERENCE_STEPS = 4
 DEFAULT_SEED = 0
 DEFAULT_SVDQ_KWARGS = {
@@ -809,3 +809,6 @@ def main() -> None:
 
 if __name__ == "__main__":
   main()
+  # Command line examples:
+  # python3 flux2_svdq_ptq.py --calibration-limit 100 --benchmark-runs 2
+  # python3 flux2_svdq_ptq.py --calibration-limit 200 --benchmark-runs 2
