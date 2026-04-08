@@ -552,6 +552,24 @@ def load_flux2_pipe(model_source: str, torch_dtype: torch.dtype):
   return pipe
 
 
+def compile_pipe(pipe):
+  """Compile the pipeline's transformer with torch.compile when available."""
+
+  if not hasattr(torch, "compile"):
+    raise RuntimeError("torch.compile is unavailable on this PyTorch version.")
+  if hasattr(torch, "compiler"):
+    torch.compiler.reset()
+  cache_dit.set_compile_configs()
+  torch.set_float32_matmul_precision("high")
+  # Try compile repeated blocks if avalible, otherwise compile the whole transformer.
+  if hasattr(pipe.transformer, "compile_repeated_blocks"):
+    pipe.transformer.compile_repeated_blocks = torch.compile(
+      pipe.transformer.compile_repeated_blocks)
+  else:
+    pipe.transformer = torch.compile(pipe.transformer)
+  return pipe
+
+
 def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
   """Execute the full baseline -> PTQ -> load -> compile comparison workflow."""
 
@@ -660,10 +678,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       )
     else:
       try:
-        if hasattr(torch, "compiler"):
-          torch.compiler.reset()
-        cache_dit.set_compile_configs()
-        loaded_pipe.transformer = torch.compile(loaded_pipe.transformer)
+        loaded_pipe = compile_pipe(loaded_pipe)
         _compiled_warmup_image, warmup_latency_s, _warmup_peak_memory_gb = run_single_inference(
           loaded_pipe,
           prompt=validation_prompt,
