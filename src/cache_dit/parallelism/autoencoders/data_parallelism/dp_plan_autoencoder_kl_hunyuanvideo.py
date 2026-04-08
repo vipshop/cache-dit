@@ -9,8 +9,8 @@ from diffusers.models.autoencoders.vae import DecoderOutput
 from ...config import ParallelismConfig
 from ....logger import init_logger
 from .dp_plan_registers import (
-    AutoEncoderDataParallelismPlanner,
-    AutoEncoderDataParallelismPlannerRegister,
+  AutoEncoderDataParallelismPlanner,
+  AutoEncoderDataParallelismPlannerRegister,
 )
 from .utils import TileBatchedP2PComm
 
@@ -19,226 +19,213 @@ logger = init_logger(__name__)
 
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLHunyuanVideo")
 class AutoencoderKLHunyuanVideoDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
-    def _apply(
-        self,
-        auto_encoder: torch.nn.Module,
-        parallelism_config: ParallelismConfig,
-        **kwargs,
-    ) -> torch.nn.Module:
-        assert isinstance(
-            auto_encoder, AutoencoderKLHunyuanVideo
-        ), "AutoencoderKLHunyuanVideoDataParallelismPlanner can only be applied to AutoencoderKLHunyuanVideo"
-        dp_mesh = self.mesh(parallelism_config=parallelism_config)
-        auto_encoder = self.parallelize_tiling(
-            auto_encoder=auto_encoder,
-            dp_mesh=dp_mesh,
-        )
 
-        return auto_encoder
+  def _apply(
+    self,
+    auto_encoder: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+    **kwargs,
+  ) -> torch.nn.Module:
+    assert isinstance(
+      auto_encoder, AutoencoderKLHunyuanVideo
+    ), "AutoencoderKLHunyuanVideoDataParallelismPlanner can only be applied to AutoencoderKLHunyuanVideo"
+    dp_mesh = self.mesh(parallelism_config=parallelism_config)
+    auto_encoder = self.parallelize_tiling(
+      auto_encoder=auto_encoder,
+      dp_mesh=dp_mesh,
+    )
 
-    def parallelize_tiling(
-        self,
-        auto_encoder: AutoencoderKLHunyuanVideo,
-        dp_mesh: dist.DeviceMesh,
+    return auto_encoder
+
+  def parallelize_tiling(
+    self,
+    auto_encoder: AutoencoderKLHunyuanVideo,
+    dp_mesh: dist.DeviceMesh,
+  ):
+    group = dp_mesh.get_group()
+    world_size = dist.get_world_size(group)
+    rank = dist.get_rank(group)
+
+    auto_encoder.enable_tiling()
+
+    comm = TileBatchedP2PComm()
+    comm.set_dims(5)  # [1, 3, T, H, W]
+
+    @functools.wraps(auto_encoder.__class__.tiled_encode)
+    def new_tiled_encode(
+      self: AutoencoderKLHunyuanVideo,
+      x: torch.Tensor,
+      *args,
+      **kwargs,
     ):
-        group = dp_mesh.get_group()
-        world_size = dist.get_world_size(group)
-        rank = dist.get_rank(group)
+      batch_size, num_channels, num_frames, height, width = x.shape
+      latent_height = height // self.spatial_compression_ratio
+      latent_width = width // self.spatial_compression_ratio
 
-        auto_encoder.enable_tiling()
+      tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+      tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+      tile_latent_stride_height = (self.tile_sample_stride_height // self.spatial_compression_ratio)
+      tile_latent_stride_width = (self.tile_sample_stride_width // self.spatial_compression_ratio)
 
-        comm = TileBatchedP2PComm()
-        comm.set_dims(5)  # [1, 3, T, H, W]
+      blend_height = tile_latent_min_height - tile_latent_stride_height
+      blend_width = tile_latent_min_width - tile_latent_stride_width
 
-        @functools.wraps(auto_encoder.__class__.tiled_encode)
-        def new_tiled_encode(
-            self: AutoencoderKLHunyuanVideo,
-            x: torch.Tensor,
-            *args,
-            **kwargs,
-        ):
-            batch_size, num_channels, num_frames, height, width = x.shape
-            latent_height = height // self.spatial_compression_ratio
-            latent_width = width // self.spatial_compression_ratio
+      if hasattr(self, "tile_sample_min_height"):
+        tile_sample_min_height = self.tile_sample_min_height
+      else:
+        tile_sample_min_height = self.tile_sample_min_size
 
-            tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-            tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-            tile_latent_stride_height = (
-                self.tile_sample_stride_height // self.spatial_compression_ratio
-            )
-            tile_latent_stride_width = (
-                self.tile_sample_stride_width // self.spatial_compression_ratio
-            )
+      if hasattr(self, "tile_sample_min_width"):
+        tile_sample_min_width = self.tile_sample_min_width
+      else:
+        tile_sample_min_width = self.tile_sample_min_size
 
-            blend_height = tile_latent_min_height - tile_latent_stride_height
-            blend_width = tile_latent_min_width - tile_latent_stride_width
+      # Split x into overlapping tiles and encode them separately.
+      # The tiles have an overlap to avoid seams between tiles.
+      count = 0
+      rows = []
+      for i in range(0, height, self.tile_sample_stride_height):
+        row = []
+        for j in range(0, width, self.tile_sample_stride_width):
+          if count % world_size == rank:
+            tile = x[:, :, :, i:i + tile_sample_min_height, j:j + tile_sample_min_width]
+            tile = self.encoder(tile)
+            tile = self.quant_conv(tile)
+          else:
+            tile = None
+          row.append(tile)
+          count += 1
+        rows.append(row)
 
-            if hasattr(self, "tile_sample_min_height"):
-                tile_sample_min_height = self.tile_sample_min_height
-            else:
-                tile_sample_min_height = self.tile_sample_min_size
+      if rank == 0:
+        count = 0
+        for i in range(len(rows)):
+          for j in range(len(rows[i])):
+            if count % world_size != rank:
+              rows[i][j] = comm.recv_tensor(count % world_size,
+                                            group,
+                                            device=x.device,
+                                            dtype=x.dtype)
+            count += 1
+      else:
+        for i in range(len(rows)):
+          for j in range(len(rows[i])):
+            tile = rows[i][j]
+            if tile is not None:
+              comm.send_tensor(tile, 0, group)
 
-            if hasattr(self, "tile_sample_min_width"):
-                tile_sample_min_width = self.tile_sample_min_width
-            else:
-                tile_sample_min_width = self.tile_sample_min_size
+      comm.sync()
+      if rank == 0:
+        result_rows = []
+        for i, row in enumerate(rows):
+          result_row = []
+          for j, tile in enumerate(row):
+            # blend the above tile and the left tile
+            # to the current tile and add the current tile to the result row
+            if i > 0:
+              tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+            if j > 0:
+              tile = self.blend_h(row[j - 1], tile, blend_width)
+            result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
+          result_rows.append(torch.cat(result_row, dim=-1))
 
-            # Split x into overlapping tiles and encode them separately.
-            # The tiles have an overlap to avoid seams between tiles.
-            count = 0
-            rows = []
-            for i in range(0, height, self.tile_sample_stride_height):
-                row = []
-                for j in range(0, width, self.tile_sample_stride_width):
-                    if count % world_size == rank:
-                        tile = x[
-                            :, :, :, i : i + tile_sample_min_height, j : j + tile_sample_min_width
-                        ]
-                        tile = self.encoder(tile)
-                        tile = self.quant_conv(tile)
-                    else:
-                        tile = None
-                    row.append(tile)
-                    count += 1
-                rows.append(row)
+        enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
+      else:
+        enc = comm.recv_tensor(rank - 1, group, device=x.device, dtype=x.dtype)
+      if rank < world_size - 1:
+        comm.send_tensor(enc, rank + 1, group)
 
-            if rank == 0:
-                count = 0
-                for i in range(len(rows)):
-                    for j in range(len(rows[i])):
-                        if count % world_size != rank:
-                            rows[i][j] = comm.recv_tensor(
-                                count % world_size, group, device=x.device, dtype=x.dtype
-                            )
-                        count += 1
-            else:
-                for i in range(len(rows)):
-                    for j in range(len(rows[i])):
-                        tile = rows[i][j]
-                        if tile is not None:
-                            comm.send_tensor(tile, 0, group)
+      comm.sync()
+      return enc
 
-            comm.sync()
-            if rank == 0:
-                result_rows = []
-                for i, row in enumerate(rows):
-                    result_row = []
-                    for j, tile in enumerate(row):
-                        # blend the above tile and the left tile
-                        # to the current tile and add the current tile to the result row
-                        if i > 0:
-                            tile = self.blend_v(rows[i - 1][j], tile, blend_height)
-                        if j > 0:
-                            tile = self.blend_h(row[j - 1], tile, blend_width)
-                        result_row.append(
-                            tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width]
-                        )
-                    result_rows.append(torch.cat(result_row, dim=-1))
+    auto_encoder.tiled_encode = new_tiled_encode.__get__(auto_encoder)
 
-                enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
-            else:
-                enc = comm.recv_tensor(rank - 1, group, device=x.device, dtype=x.dtype)
-            if rank < world_size - 1:
-                comm.send_tensor(enc, rank + 1, group)
+    @functools.wraps(auto_encoder.__class__.tiled_decode)
+    def new_tiled_decode(
+      self: AutoencoderKLHunyuanVideo,
+      z: torch.Tensor,
+      *args,
+      return_dict: bool = False,
+      **kwargs,
+    ):
+      batch_size, num_channels, num_frames, height, width = z.shape
+      sample_height = height * self.spatial_compression_ratio
+      sample_width = width * self.spatial_compression_ratio
 
-            comm.sync()
-            return enc
+      tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
+      tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+      tile_latent_stride_height = (self.tile_sample_stride_height // self.spatial_compression_ratio)
+      tile_latent_stride_width = (self.tile_sample_stride_width // self.spatial_compression_ratio)
 
-        auto_encoder.tiled_encode = new_tiled_encode.__get__(auto_encoder)
+      blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
+      blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
 
-        @functools.wraps(auto_encoder.__class__.tiled_decode)
-        def new_tiled_decode(
-            self: AutoencoderKLHunyuanVideo,
-            z: torch.Tensor,
-            *args,
-            return_dict: bool = False,
-            **kwargs,
-        ):
-            batch_size, num_channels, num_frames, height, width = z.shape
-            sample_height = height * self.spatial_compression_ratio
-            sample_width = width * self.spatial_compression_ratio
+      # Split z into overlapping tiles and decode them separately.
+      # The tiles have an overlap to avoid seams between tiles.
+      count = 0
+      rows = []
+      for i in range(0, height, tile_latent_stride_height):
+        row = []
+        for j in range(0, width, tile_latent_stride_width):
+          if count % world_size == rank:
+            tile = z[:, :, :, i:i + tile_latent_min_height, j:j + tile_latent_min_width]
+            tile = self.post_quant_conv(tile)
+            decoded = self.decoder(tile)
+          else:
+            decoded = None
+          row.append(decoded)
+          count += 1
+        rows.append(row)
 
-            tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-            tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-            tile_latent_stride_height = (
-                self.tile_sample_stride_height // self.spatial_compression_ratio
-            )
-            tile_latent_stride_width = (
-                self.tile_sample_stride_width // self.spatial_compression_ratio
-            )
+      if rank == 0:
+        count = 0
+        for i in range(len(rows)):
+          for j in range(len(rows[i])):
+            if count % world_size != rank:
+              rows[i][j] = comm.recv_tensor(count % world_size,
+                                            group,
+                                            device=z.device,
+                                            dtype=z.dtype)
+            count += 1
+      else:
+        for i in range(len(rows)):
+          for j in range(len(rows[i])):
+            decoded = rows[i][j]
+            if decoded is not None:
+              comm.send_tensor(decoded, 0, group)
 
-            blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
-            blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
+      comm.sync()
+      if rank == 0:
+        result_rows = []
+        for i, row in enumerate(rows):
+          result_row = []
+          for j, tile in enumerate(row):
+            # blend the above tile and the left tile
+            # to the current tile and add the current tile to the result row
+            if i > 0:
+              tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+            if j > 0:
+              tile = self.blend_h(row[j - 1], tile, blend_width)
+            result_row.append(tile[
+              :,
+              :,
+              :,
+              :self.tile_sample_stride_height,
+              :self.tile_sample_stride_width,
+            ])
+          result_rows.append(torch.cat(result_row, dim=-1))
 
-            # Split z into overlapping tiles and decode them separately.
-            # The tiles have an overlap to avoid seams between tiles.
-            count = 0
-            rows = []
-            for i in range(0, height, tile_latent_stride_height):
-                row = []
-                for j in range(0, width, tile_latent_stride_width):
-                    if count % world_size == rank:
-                        tile = z[
-                            :, :, :, i : i + tile_latent_min_height, j : j + tile_latent_min_width
-                        ]
-                        tile = self.post_quant_conv(tile)
-                        decoded = self.decoder(tile)
-                    else:
-                        decoded = None
-                    row.append(decoded)
-                    count += 1
-                rows.append(row)
+        dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
+      else:
+        dec = comm.recv_tensor(rank - 1, group, device=z.device, dtype=z.dtype)
+      if rank < world_size - 1:
+        comm.send_tensor(dec, rank + 1, group)
 
-            if rank == 0:
-                count = 0
-                for i in range(len(rows)):
-                    for j in range(len(rows[i])):
-                        if count % world_size != rank:
-                            rows[i][j] = comm.recv_tensor(
-                                count % world_size, group, device=z.device, dtype=z.dtype
-                            )
-                        count += 1
-            else:
-                for i in range(len(rows)):
-                    for j in range(len(rows[i])):
-                        decoded = rows[i][j]
-                        if decoded is not None:
-                            comm.send_tensor(decoded, 0, group)
+      comm.sync()
+      if not return_dict:
+        return (dec, )
+      return DecoderOutput(dec, dec)
 
-            comm.sync()
-            if rank == 0:
-                result_rows = []
-                for i, row in enumerate(rows):
-                    result_row = []
-                    for j, tile in enumerate(row):
-                        # blend the above tile and the left tile
-                        # to the current tile and add the current tile to the result row
-                        if i > 0:
-                            tile = self.blend_v(rows[i - 1][j], tile, blend_height)
-                        if j > 0:
-                            tile = self.blend_h(row[j - 1], tile, blend_width)
-                        result_row.append(
-                            tile[
-                                :,
-                                :,
-                                :,
-                                : self.tile_sample_stride_height,
-                                : self.tile_sample_stride_width,
-                            ]
-                        )
-                    result_rows.append(torch.cat(result_row, dim=-1))
+    auto_encoder.tiled_decode = new_tiled_decode.__get__(auto_encoder)
 
-                dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
-            else:
-                dec = comm.recv_tensor(rank - 1, group, device=z.device, dtype=z.dtype)
-            if rank < world_size - 1:
-                comm.send_tensor(dec, rank + 1, group)
-
-            comm.sync()
-            if not return_dict:
-                return (dec,)
-            return DecoderOutput(dec, dec)
-
-        auto_encoder.tiled_decode = new_tiled_decode.__get__(auto_encoder)
-
-        return auto_encoder
+    return auto_encoder

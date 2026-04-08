@@ -10,75 +10,41 @@
 namespace svdq::ops {
 
 inline Tensor get_tensor(std::optional<torch::Tensor> &tensor) {
-    Tensor result = tensor.has_value() ? from_torch(tensor.value()) : Tensor{};
-    if (result.valid()) {
-        spdlog::trace("  {}", result.shape.str());
-    } else {
-        spdlog::trace("  <invalid>");
-    }
-    return result;
+  Tensor result = tensor.has_value() ? from_torch(tensor.value()) : Tensor{};
+  if (result.valid()) {
+    spdlog::trace("  {}", result.shape.str());
+  } else {
+    spdlog::trace("  <invalid>");
+  }
+  return result;
 }
 
-inline void gemm_w4a4(std::optional<torch::Tensor> act,
-                      std::optional<torch::Tensor> wgt,
-                      std::optional<torch::Tensor> out,
-                      std::optional<torch::Tensor> qout,
-                      std::optional<torch::Tensor> ascales,
-                      std::optional<torch::Tensor> wscales,
-                      std::optional<torch::Tensor> oscales,
-                      std::optional<torch::Tensor> poolout,
+inline void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+                      std::optional<torch::Tensor> out, std::optional<torch::Tensor> qout,
+                      std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> wscales,
+                      std::optional<torch::Tensor> oscales, std::optional<torch::Tensor> poolout,
                       std::optional<torch::Tensor> lora_act_in,
-                      std::optional<torch::Tensor> lora_up,
-                      std::optional<torch::Tensor> lora_down,
+                      std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> lora_down,
                       std::optional<torch::Tensor> lora_act_out,
-                      std::optional<torch::Tensor> norm_q,
-                      std::optional<torch::Tensor> norm_k,
-                      std::optional<torch::Tensor> rotary_emb,
-                      std::optional<torch::Tensor> bias,
+                      std::optional<torch::Tensor> norm_q, std::optional<torch::Tensor> norm_k,
+                      std::optional<torch::Tensor> rotary_emb, std::optional<torch::Tensor> bias,
                       std::optional<torch::Tensor> smooth_factor,
                       std::optional<torch::Tensor> out_vk,
-                      std::optional<torch::Tensor> out_linearattn,
-                      bool act_unsigned,
-                      std::vector<float> lora_scales,
-                      bool fuse_silu,
-                      bool fp4,
-                      float alpha,
-                      std::optional<torch::Tensor> wcscales,
-                      std::optional<torch::Tensor> out_q,
-                      std::optional<torch::Tensor> out_k,
-                      std::optional<torch::Tensor> out_v,
+                      std::optional<torch::Tensor> out_linearattn, bool act_unsigned,
+                      std::vector<float> lora_scales, bool fuse_silu, bool fp4, float alpha,
+                      std::optional<torch::Tensor> wcscales, std::optional<torch::Tensor> out_q,
+                      std::optional<torch::Tensor> out_k, std::optional<torch::Tensor> out_v,
                       int attn_tokens) {
-    TorchOpContext ctx;
-    spdlog::trace("running gemm_w4a4:");
-    svdq::kernels::gemm_w4a4(get_tensor(act),
-                                  get_tensor(wgt),
-                                  get_tensor(out),
-                                  get_tensor(qout),
-                                  get_tensor(ascales),
-                                  get_tensor(wscales),
-                                  get_tensor(oscales),
-                                  get_tensor(poolout),
-                                  get_tensor(lora_act_in),
-                                  get_tensor(lora_up),
-                                  get_tensor(lora_down),
-                                  get_tensor(lora_act_out),
-                                  get_tensor(norm_q),
-                                  get_tensor(norm_k),
-                                  get_tensor(rotary_emb),
-                                  get_tensor(bias),
-                                  get_tensor(smooth_factor),
-                                  get_tensor(out_vk),
-                                  get_tensor(out_linearattn),
-                                  act_unsigned,
-                                  lora_scales,
-                                  fuse_silu,
-                                  fp4,
-                                  alpha,
-                                  get_tensor(wcscales),
-                                  get_tensor(out_q),
-                                  get_tensor(out_k),
-                                  get_tensor(out_v),
-                                  attn_tokens);
+  TorchOpContext ctx;
+  spdlog::trace("running gemm_w4a4:");
+  svdq::kernels::gemm_w4a4(
+    get_tensor(act), get_tensor(wgt), get_tensor(out), get_tensor(qout), get_tensor(ascales),
+    get_tensor(wscales), get_tensor(oscales), get_tensor(poolout), get_tensor(lora_act_in),
+    get_tensor(lora_up), get_tensor(lora_down), get_tensor(lora_act_out), get_tensor(norm_q),
+    get_tensor(norm_k), get_tensor(rotary_emb), get_tensor(bias), get_tensor(smooth_factor),
+    get_tensor(out_vk), get_tensor(out_linearattn), act_unsigned, lora_scales, fuse_silu, fp4,
+    alpha, get_tensor(wcscales), get_tensor(out_q), get_tensor(out_k), get_tensor(out_v),
+    attn_tokens);
 }
 
 inline void quantize_w4a4_act_fuse_lora(std::optional<torch::Tensor> input,
@@ -86,31 +52,23 @@ inline void quantize_w4a4_act_fuse_lora(std::optional<torch::Tensor> input,
                                         std::optional<torch::Tensor> oscales,
                                         std::optional<torch::Tensor> lora_down,
                                         std::optional<torch::Tensor> lora_act_out,
-                                        std::optional<torch::Tensor> smooth,
-                                        bool fuse_glu,
+                                        std::optional<torch::Tensor> smooth, bool fuse_glu,
                                         bool fp4) {
-    TorchOpContext ctx;
-    spdlog::trace("running quantize_w4a4_act_fuse_lora:");
-    svdq::kernels::quantize_w4a4_act_fuse_lora(get_tensor(input),
-                                                    get_tensor(output),
-                                                    get_tensor(oscales),
-                                                    get_tensor(lora_down),
-                                                    get_tensor(lora_act_out),
-                                                    get_tensor(smooth),
-                                                    fuse_glu,
-                                                    fp4);
+  TorchOpContext ctx;
+  spdlog::trace("running quantize_w4a4_act_fuse_lora:");
+  svdq::kernels::quantize_w4a4_act_fuse_lora(
+    get_tensor(input), get_tensor(output), get_tensor(oscales), get_tensor(lora_down),
+    get_tensor(lora_act_out), get_tensor(smooth), fuse_glu, fp4);
 }
 
-inline void quantize_w4a4_wgt(torch::Tensor input,
-                              torch::Tensor output,
-                              torch::Tensor oscales) {
-    TorchOpContext ctx;
-    spdlog::trace("running quantize_w4a4_wgt:");
-    svdq::kernels::quantize_w4a4_wgt(from_torch(input), from_torch(output), from_torch(oscales));
+inline void quantize_w4a4_wgt(torch::Tensor input, torch::Tensor output, torch::Tensor oscales) {
+  TorchOpContext ctx;
+  spdlog::trace("running quantize_w4a4_wgt:");
+  svdq::kernels::quantize_w4a4_wgt(from_torch(input), from_torch(output), from_torch(oscales));
 }
 
 inline void set_faster_i2f_mode(const std::string &mode) {
-    svdq::kernels::set_faster_i2f_mode(mode);
+  svdq::kernels::set_faster_i2f_mode(mode);
 }
 
-} // namespace svdq::ops
+}  // namespace svdq::ops

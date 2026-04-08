@@ -167,3 +167,5 @@ report*.html
 *.png
 *.mp4
 tmp*
+*.safetensors
+FLUX.2-Klein*

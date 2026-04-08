@@ -10,25 +10,23 @@ logger = init_logger(__name__)
 
 
 def import_error_adapter(
-    *args,
-    **kwargs,
+  *args,
+  **kwargs,
 ) -> BlockAdapter:
-    raise ImportError(
-        "This BlockAdapter requires latest diffusers to be installed. "
-        "Please install diffusers from source."
-    )
+  raise ImportError("This BlockAdapter requires latest diffusers to be installed. "
+                    "Please install diffusers from source.")
 
 
 def _safe_import(module_name: str, func_name: str) -> Callable[..., BlockAdapter]:
-    try:
-        # e.g., module_name = ".adapters", func_name = "flux_adapter"
-        package = __package__ if __package__ is not None else ""
-        module = importlib.import_module(module_name, package=package)
-        target_func = getattr(module, func_name)
-        return target_func
-    except (ImportError, AttributeError) as e:
-        logger.debug(f"Failed to import {func_name} from {module_name}: {e}")
-        return import_error_adapter
+  try:
+    # e.g., module_name = ".adapters", func_name = "flux_adapter"
+    package = __package__ if __package__ is not None else ""
+    module = importlib.import_module(module_name, package=package)
+    target_func = getattr(module, func_name)
+    return target_func
+  except (ImportError, AttributeError) as e:
+    logger.debug(f"Failed to import {func_name} from {module_name}: {e}")
+    return import_error_adapter
 
 
 flux_adapter = _safe_import(".adapters", "flux_adapter")

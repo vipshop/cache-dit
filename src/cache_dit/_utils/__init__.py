@@ -8,25 +8,23 @@ logger = init_logger(__name__)
 
 
 def import_error_example(
-    *args,
-    **kwargs,
+  *args,
+  **kwargs,
 ) -> Example:
-    raise ImportError(
-        "This Example requires latest diffusers to be installed. "
-        "Please install diffusers from source."
-    )
+  raise ImportError("This Example requires latest diffusers to be installed. "
+                    "Please install diffusers from source.")
 
 
 def _safe_import(module_name: str, func_name: str) -> Callable[..., Example]:
-    try:
-        # e.g., module_name = ".examples", func_name = "flux_example"
-        package = __package__ if __package__ is not None else ""
-        module = importlib.import_module(module_name, package=package)
-        target_func = getattr(module, func_name)
-        return target_func
-    except (ImportError, AttributeError) as e:
-        logger.debug(f"Failed to import {func_name} from {module_name}: {e}")
-        return import_error_example
+  try:
+    # e.g., module_name = ".examples", func_name = "flux_example"
+    package = __package__ if __package__ is not None else ""
+    module = importlib.import_module(module_name, package=package)
+    target_func = getattr(module, func_name)
+    return target_func
+  except (ImportError, AttributeError) as e:
+    logger.debug(f"Failed to import {func_name} from {module_name}: {e}")
+    return import_error_example
 
 
 flux_example = _safe_import(".examples", "flux_example")

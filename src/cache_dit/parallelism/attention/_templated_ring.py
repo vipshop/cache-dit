@@ -4,252 +4,250 @@ import torch.distributed as dist
 import torch.nn.functional as F
 
 try:
-    from ...kernels import fused_merge_attn_states
+  from ...kernels import fused_merge_attn_states
 
 except ImportError:
-    fused_merge_attn_states = None
+  fused_merge_attn_states = None
 
 try:
-    from diffusers.models.attention_dispatch import TemplatedRingAttention
-    from diffusers.models._modeling_parallel import ParallelConfig
+  from diffusers.models.attention_dispatch import TemplatedRingAttention
+  from diffusers.models._modeling_parallel import ParallelConfig
 except ImportError:
-    raise ImportError(
-        "Context parallelism requires the 'diffusers>=0.36.dev0'."
-        "Please install latest version of diffusers from source: \n"
-        "pip3 install git+https://github.com/huggingface/diffusers.git"
-    )
-
+  raise ImportError("Context parallelism requires the 'diffusers>=0.36.dev0'."
+                    "Please install latest version of diffusers from source: \n"
+                    "pip3 install git+https://github.com/huggingface/diffusers.git")
 
 __all__ = ["UnifiedTemplatedRingAttention"]
 
 
 class UnifiedTemplatedRingAttention(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask: Optional[torch.Tensor],
-        dropout_p: float,
-        is_causal: bool,
-        scale: Optional[float],
-        enable_gqa: bool,
-        return_lse: bool,
+
+  @staticmethod
+  def forward(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor],
+    dropout_p: float,
+    is_causal: bool,
+    scale: Optional[float],
+    enable_gqa: bool,
+    return_lse: bool,
+    forward_op,
+    backward_op,
+    _parallel_config: Optional["ParallelConfig"] = None,
+  ):
+    if _parallel_config.context_parallel_config.rotate_method == "allgather":
+      return _TemplatedRingAllGatherAttention.apply(
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        enable_gqa,
+        return_lse,
         forward_op,
         backward_op,
-        _parallel_config: Optional["ParallelConfig"] = None,
-    ):
-        if _parallel_config.context_parallel_config.rotate_method == "allgather":
-            return _TemplatedRingAllGatherAttention.apply(
-                query,
-                key,
-                value,
-                attn_mask,
-                dropout_p,
-                is_causal,
-                scale,
-                enable_gqa,
-                return_lse,
-                forward_op,
-                backward_op,
-                _parallel_config,
-            )
-        elif _parallel_config.context_parallel_config.rotate_method == "p2p":
-            return _TemplatedRingBatchedP2PAttention.apply(
-                query,
-                key,
-                value,
-                attn_mask,
-                dropout_p,
-                is_causal,
-                scale,
-                enable_gqa,
-                return_lse,
-                forward_op,
-                backward_op,
-                _parallel_config,
-            )
-        else:
-            raise ValueError(
-                f"Unsupported rotate_method: {_parallel_config.context_parallel_config.rotate_method}"
-            )
+        _parallel_config,
+      )
+    elif _parallel_config.context_parallel_config.rotate_method == "p2p":
+      return _TemplatedRingBatchedP2PAttention.apply(
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        enable_gqa,
+        return_lse,
+        forward_op,
+        backward_op,
+        _parallel_config,
+      )
+    else:
+      raise ValueError(
+        f"Unsupported rotate_method: {_parallel_config.context_parallel_config.rotate_method}")
 
 
 class _TemplatedRingAllGatherAttention(TemplatedRingAttention):
-    """A wrapper of diffusers' TemplatedRingAttention to avoid name conflict."""
+  """A wrapper of diffusers' TemplatedRingAttention to avoid name conflict."""
 
-    pass
+  pass
 
 
 # Adapted from: https://github.com/zhuzilin/ring-flash-attention/blob/main/ring_flash_attn/utils.py#L98
 class _RingBatchedP2PComm:
-    def __init__(self, process_group: dist.ProcessGroup):
-        self._process_group = process_group
-        self._ops = []
-        self.rank = dist.get_rank(self._process_group)
-        self.world_size = dist.get_world_size(self._process_group)
-        self._reqs = None
 
-        self.send_rank = (self.rank + 1) % self.world_size
-        self.recv_rank = (self.rank - 1) % self.world_size
+  def __init__(self, process_group: dist.ProcessGroup):
+    self._process_group = process_group
+    self._ops = []
+    self.rank = dist.get_rank(self._process_group)
+    self.world_size = dist.get_world_size(self._process_group)
+    self._reqs = None
 
-        if process_group is not None:
-            self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
-            self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
+    self.send_rank = (self.rank + 1) % self.world_size
+    self.recv_rank = (self.rank - 1) % self.world_size
 
-    def send_recv(
-        self, to_send: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        to_send = to_send.contiguous()
-        if recv_tensor is None:
-            res = torch.empty_like(to_send).contiguous()
-        else:
-            res = recv_tensor
+    if process_group is not None:
+      self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
+      self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
 
-        send_op = dist.P2POp(dist.isend, to_send, self.send_rank, group=self._process_group)
-        recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
-        self._ops.append(send_op)
-        self._ops.append(recv_op)
-        return res
+  def send_recv(self,
+                to_send: torch.Tensor,
+                recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
+    to_send = to_send.contiguous()
+    if recv_tensor is None:
+      res = torch.empty_like(to_send).contiguous()
+    else:
+      res = recv_tensor
 
-    def commit(self):
-        if self._reqs is not None:
-            raise RuntimeError("commit called twice")
-        self._reqs = dist.batch_isend_irecv(self._ops)
+    send_op = dist.P2POp(dist.isend, to_send, self.send_rank, group=self._process_group)
+    recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
+    self._ops.append(send_op)
+    self._ops.append(recv_op)
+    return res
 
-    def wait(self):
-        if self._reqs is None:
-            raise RuntimeError("wait called before commit")
-        for req in self._reqs:
-            req.wait()
-        self._reqs = None
-        self._ops = []
+  def commit(self):
+    if self._reqs is not None:
+      raise RuntimeError("commit called twice")
+    self._reqs = dist.batch_isend_irecv(self._ops)
 
-    def send_recv_kv(
-        self,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        k_buffer: Optional[torch.Tensor] = None,
-        v_buffer: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        next_k, next_v = self.send_recv(k, k_buffer), self.send_recv(v, v_buffer)
-        self.commit()
-        return next_k, next_v
+  def wait(self):
+    if self._reqs is None:
+      raise RuntimeError("wait called before commit")
+    for req in self._reqs:
+      req.wait()
+    self._reqs = None
+    self._ops = []
 
-    def batch_send_recv_kv(
-        self,
-        k: torch.Tensor,  # (B, S_LOCAL, H, D)
-        v: torch.Tensor,  # (B, S_LOCAL, H, D)
-        kv_buffer: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Step 1: Concatenate k and v along the last dimension
-        kv_concat = torch.cat([k, v], dim=0)
-        # Step 2: Perform send_recv on the concatenated tensor
-        kv_recv = self.send_recv(kv_concat, kv_buffer)
-        self.commit()
-        # Step 3: Split the received tensor back into k and v
-        S = k.size(0)
-        # Just views of kv_recv, no copy. DON'T use contiguous here.
-        # contiguous() will create a copy of empty tensor, which
-        # causes wrong results.
-        next_k, next_v = torch.split(kv_recv, [S, S], dim=0)
-        return next_k, next_v
+  def send_recv_kv(
+    self,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    k_buffer: Optional[torch.Tensor] = None,
+    v_buffer: Optional[torch.Tensor] = None,
+  ) -> Tuple[torch.Tensor, torch.Tensor]:
+    next_k, next_v = self.send_recv(k, k_buffer), self.send_recv(v, v_buffer)
+    self.commit()
+    return next_k, next_v
+
+  def batch_send_recv_kv(
+    self,
+    k: torch.Tensor,  # (B, S_LOCAL, H, D)
+    v: torch.Tensor,  # (B, S_LOCAL, H, D)
+    kv_buffer: Optional[torch.Tensor] = None,
+  ) -> Tuple[torch.Tensor, torch.Tensor]:
+    # Step 1: Concatenate k and v along the last dimension
+    kv_concat = torch.cat([k, v], dim=0)
+    # Step 2: Perform send_recv on the concatenated tensor
+    kv_recv = self.send_recv(kv_concat, kv_buffer)
+    self.commit()
+    # Step 3: Split the received tensor back into k and v
+    S = k.size(0)
+    # Just views of kv_recv, no copy. DON'T use contiguous here.
+    # contiguous() will create a copy of empty tensor, which
+    # causes wrong results.
+    next_k, next_v = torch.split(kv_recv, [S, S], dim=0)
+    return next_k, next_v
 
 
 class _TemplatedRingBatchedP2PAttention(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,  # (B, S_LOCAL, H, D)
-        key: torch.Tensor,  # (B, S_LOCAL, H, D)
-        value: torch.Tensor,  # (B, S_LOCAL, H, D)
-        attn_mask: Optional[torch.Tensor],
-        dropout_p: float,
-        is_causal: bool,
-        scale: Optional[float],
-        enable_gqa: bool,
-        return_lse: bool,
-        forward_op,
-        backward_op,
-        _parallel_config: Optional["ParallelConfig"] = None,
-    ):
-        ring_mesh = _parallel_config.context_parallel_config._ring_mesh
-        ring_group = ring_mesh.get_group()
 
-        comm = _RingBatchedP2PComm(ring_group)
+  @staticmethod
+  def forward(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,  # (B, S_LOCAL, H, D)
+    key: torch.Tensor,  # (B, S_LOCAL, H, D)
+    value: torch.Tensor,  # (B, S_LOCAL, H, D)
+    attn_mask: Optional[torch.Tensor],
+    dropout_p: float,
+    is_causal: bool,
+    scale: Optional[float],
+    enable_gqa: bool,
+    return_lse: bool,
+    forward_op,
+    backward_op,
+    _parallel_config: Optional["ParallelConfig"] = None,
+  ):
+    ring_mesh = _parallel_config.context_parallel_config._ring_mesh
+    ring_group = ring_mesh.get_group()
 
-        prev_out = prev_lse = None
+    comm = _RingBatchedP2PComm(ring_group)
 
-        ctx.forward_op = forward_op
-        ctx.backward_op = backward_op
-        ctx.q_shape = query.shape
-        ctx.kv_shape = key.shape
-        ctx._parallel_config = _parallel_config
+    prev_out = prev_lse = None
 
-        next_k, next_v = None, None
+    ctx.forward_op = forward_op
+    ctx.backward_op = backward_op
+    ctx.q_shape = query.shape
+    ctx.kv_shape = key.shape
+    ctx._parallel_config = _parallel_config
 
-        for step in range(comm.world_size):
-            if step + 1 != comm.world_size:
-                next_k, next_v = comm.send_recv_kv(key, value)
+    next_k, next_v = None, None
 
-            # [B, N, H, D], [B, N, H, 1]
-            out, lse = forward_op(
-                ctx,
-                query,
-                key,
-                value,
-                attn_mask,
-                dropout_p,
-                is_causal,
-                scale,
-                enable_gqa,
-                True,  # return_lse
-                _save_ctx=False,  # Only support forward pass here, no need to save ctx
-                _parallel_config=_parallel_config,
-            )
+    for step in range(comm.world_size):
+      if step + 1 != comm.world_size:
+        next_k, next_v = comm.send_recv_kv(key, value)
 
-            # Refer to:
-            # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
-            if lse.dim() == 3:
-                lse = lse.unsqueeze(-1)  # type: torch.Tensor
+      # [B, N, H, D], [B, N, H, 1]
+      out, lse = forward_op(
+        ctx,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        enable_gqa,
+        True,  # return_lse
+        _save_ctx=False,  # Only support forward pass here, no need to save ctx
+        _parallel_config=_parallel_config,
+      )
 
-            # Use _fused_merge_attn_states to combine the attention outputs and lses
-            if prev_out is not None:
-                # out = prev_out - F.sigmoid(lse - prev_lse) * (prev_out - out)
-                # lse = prev_lse - F.logsigmoid(prev_lse - lse)
-                if fused_merge_attn_states is not None:
-                    out, lse = fused_merge_attn_states(
-                        prev_out,
-                        prev_lse,
-                        out,
-                        lse,
-                    )
-                else:
-                    if _parallel_config.context_parallel_config.convert_to_fp32:
-                        out = out.to(torch.float32)
-                        lse = lse.to(torch.float32)
+      # Refer to:
+      # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+      if lse.dim() == 3:
+        lse = lse.unsqueeze(-1)  # type: torch.Tensor
 
-                    out = prev_out - F.sigmoid(lse - prev_lse) * (prev_out - out)
-                    lse = prev_lse - F.logsigmoid(prev_lse - lse)
+      # Use _fused_merge_attn_states to combine the attention outputs and lses
+      if prev_out is not None:
+        # out = prev_out - F.sigmoid(lse - prev_lse) * (prev_out - out)
+        # lse = prev_lse - F.logsigmoid(prev_lse - lse)
+        if fused_merge_attn_states is not None:
+          out, lse = fused_merge_attn_states(
+            prev_out,
+            prev_lse,
+            out,
+            lse,
+          )
+        else:
+          if _parallel_config.context_parallel_config.convert_to_fp32:
+            out = out.to(torch.float32)
+            lse = lse.to(torch.float32)
 
-            prev_out, prev_lse = out, lse
+          out = prev_out - F.sigmoid(lse - prev_lse) * (prev_out - out)
+          lse = prev_lse - F.logsigmoid(prev_lse - lse)
 
-            if step + 1 != comm.world_size:
-                comm.wait()
-                key, value = next_k, next_v
+      prev_out, prev_lse = out, lse
 
-        out = out.to(query.dtype)
-        lse = lse.squeeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL)
+      if step + 1 != comm.world_size:
+        comm.wait()
+        key, value = next_k, next_v
 
-        return (out, lse) if return_lse else out
+    out = out.to(query.dtype)
+    lse = lse.squeeze(-1)  # (B, S_Q_GLOBAL, H_LOCAL)
 
-    @staticmethod
-    def backward(
-        ctx: torch.autograd.function.FunctionCtx,
-        grad_out: torch.Tensor,
-        *args,
-    ):
-        raise NotImplementedError(
-            "Backward pass is not implemented for _TemplatedRingBatchedP2PAttention."
-        )
+    return (out, lse) if return_lse else out
+
+  @staticmethod
+  def backward(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+  ):
+    raise NotImplementedError(
+      "Backward pass is not implemented for _TemplatedRingBatchedP2PAttention.")

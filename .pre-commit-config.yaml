@@ -23,9 +23,27 @@ repos:
     hooks:
       - id: pydocstyle
 
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  - repo: local
     hooks:
-      - id: black-jupyter
+      - id: yapf
+        name: yapf
+        entry: yapf
+        language: python
+        types: [python]
+        exclude: ^(build/|site/|csrc/third_party/|src/cache_dit\.egg-info/)
+        additional_dependencies:
+          - yapf==0.40.2
         args:
-          - --line-length=100
+          - --in-place
+          - --parallel
+
+  - repo: https://github.com/PyCQA/docformatter
+    rev: v1.7.7
+    hooks:
+      - id: docformatter
+        exclude: ^(build/|site/|csrc/third_party/|src/cache_dit\.egg-info/)
+        args:
+          - --in-place
+          - --tab-width=2
+          - --wrap-summaries=100
+          - --wrap-descriptions=100

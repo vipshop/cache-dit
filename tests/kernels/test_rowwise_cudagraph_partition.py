@@ -1,5 +1,4 @@
-"""
-Regression coverage for the rowwise FP8 quantize -> scaled_mm CUDA Graph replay hang.
+"""Regression coverage for the rowwise FP8 quantize -> scaled_mm CUDA Graph replay hang.
 
 The tests cover two cases:
 - raw torchao rowwise quantize + scaled_mm replay still reproduces the hang,
@@ -19,17 +18,15 @@ from pathlib import Path
 import torch
 
 try:
-    import pytest
+  import pytest
 except ModuleNotFoundError:
-    pytest = None
-
+  pytest = None
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RAW_REPRO_TIMEOUT_SECONDS = 20
 PATCHED_REPRO_TIMEOUT_SECONDS = 180
 
-RAW_ROW_REPRO = textwrap.dedent(
-    """
+RAW_ROW_REPRO = textwrap.dedent("""
     import torch
     from torchao.float8.inference import Float8MMConfig, addmm_float8_unwrapped_inference
     from torchao.quantization.granularity import PerRow
@@ -71,12 +68,9 @@ RAW_ROW_REPRO = textwrap.dedent(
     graph.replay()
     torch.cuda.synchronize()
     print("replay_done", flush=True)
-    """
-)
+    """)
 
-
-PATCHED_MERGED_STREAM_REPRO = textwrap.dedent(
-    """
+PATCHED_MERGED_STREAM_REPRO = textwrap.dedent("""
     import time
     import torch
     import torch.nn.functional as F
@@ -134,62 +128,58 @@ PATCHED_MERGED_STREAM_REPRO = textwrap.dedent(
     t2 = time.time()
     print("ok", tuple(out1.shape), round(t1 - t0, 3), round(t2 - t1, 3), flush=True)
     assert out2.shape == out1.shape
-    """
-)
+    """)
 
 
 def _unsupported_reason() -> str | None:
-    if not torch.cuda.is_available():
-        return "CUDA is not available"
-    capability = torch.cuda.get_device_capability()
-    if capability < (8, 9):
-        return (
-            "The selected CUDA device does not support float8 rowwise quantization: "
-            f"capability={capability}"
-        )
-    return None
+  if not torch.cuda.is_available():
+    return "CUDA is not available"
+  capability = torch.cuda.get_device_capability()
+  if capability < (8, 9):
+    return ("The selected CUDA device does not support float8 rowwise quantization: "
+            f"capability={capability}")
+  return None
 
 
 def _maybe_skip() -> None:
-    reason = _unsupported_reason()
-    if reason is not None:
-        if pytest is not None:
-            pytest.skip(reason)
-        raise RuntimeError(reason)
+  reason = _unsupported_reason()
+  if reason is not None:
+    if pytest is not None:
+      pytest.skip(reason)
+    raise RuntimeError(reason)
 
 
 def _run_python_snippet(code: str, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    return subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=REPO_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
+  env = os.environ.copy()
+  env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+  return subprocess.run(
+    [sys.executable, "-c", code],
+    cwd=REPO_ROOT,
+    env=env,
+    text=True,
+    capture_output=True,
+    timeout=timeout_seconds,
+    check=False,
+  )
 
 
 def test_raw_rowwise_quant_scaled_mm_cudagraph_replay_repro() -> None:
-    _maybe_skip()
+  _maybe_skip()
 
-    with pytest.raises(subprocess.TimeoutExpired):
-        _run_python_snippet(RAW_ROW_REPRO, timeout_seconds=RAW_REPRO_TIMEOUT_SECONDS)
+  with pytest.raises(subprocess.TimeoutExpired):
+    _run_python_snippet(RAW_ROW_REPRO, timeout_seconds=RAW_REPRO_TIMEOUT_SECONDS)
 
 
 def test_cudagraph_partitioned_rowwise_merged_stream_repro() -> None:
-    _maybe_skip()
+  _maybe_skip()
 
-    result = _run_python_snippet(
-        PATCHED_MERGED_STREAM_REPRO,
-        timeout_seconds=PATCHED_REPRO_TIMEOUT_SECONDS,
-    )
+  result = _run_python_snippet(
+    PATCHED_MERGED_STREAM_REPRO,
+    timeout_seconds=PATCHED_REPRO_TIMEOUT_SECONDS,
+  )
 
-    assert result.returncode == 0, (
-        "Expected the cudagraph-partitioned merged-stream repro to complete.\n"
-        f"stdout:\n{result.stdout}\n"
-        f"stderr:\n{result.stderr}"
-    )
-    assert "ok" in result.stdout
+  assert result.returncode == 0, (
+    "Expected the cudagraph-partitioned merged-stream repro to complete.\n"
+    f"stdout:\n{result.stdout}\n"
+    f"stderr:\n{result.stderr}")
+  assert "ok" in result.stdout

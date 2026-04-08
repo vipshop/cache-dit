@@ -1,0 +1,16 @@
+root = true
+
+[*.py]
+indent_style = space
+indent_size = 2
+tab_width = 2
+
+[*.pyi]
+indent_style = space
+indent_size = 2
+tab_width = 2
+
+[*.{c,cc,cpp,cxx,cu,cuh,h,hh,hpp,hxx}]
+indent_style = space
+indent_size = 2
+tab_width = 2

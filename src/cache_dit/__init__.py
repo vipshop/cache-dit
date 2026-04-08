@@ -1,20 +1,20 @@
 try:
-    from ._version import version as __version__, version_tuple
+  from ._version import version as __version__, version_tuple
 except ImportError:
-    __version__ = "unknown version"
-    version_tuple = (0, 0, "unknown version")
+  __version__ = "unknown version"
+  version_tuple = (0, 0, "unknown version")
 
 from .envs import ENV
 
 if ENV.CACHE_DIT_ENABLE_LOGGERS_SUPPRESS:  # Default is False (0)
-    # Prefer to supppress loggers globally for better readability,
-    from .logger import (
-        globally_suppress_loggers,
-        suppress_torch_compile_loggers,
-    )
+  # Prefer to supppress loggers globally for better readability,
+  from .logger import (
+    globally_suppress_loggers,
+    suppress_torch_compile_loggers,
+  )
 
-    globally_suppress_loggers()
-    suppress_torch_compile_loggers()
+  globally_suppress_loggers()
+  suppress_torch_compile_loggers()
 
 from .logger import init_logger
 from .utils import disable_print

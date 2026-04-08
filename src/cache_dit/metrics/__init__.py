@@ -13,4 +13,4 @@ entrypoint = _safe_import(".metrics", "entrypoint")
 
 
 def main():
-    entrypoint()
+  entrypoint()

@@ -107,8 +107,3 @@ filterwarnings = [
     "ignore:`torch.jit.script_method` is deprecated.",
     "ignore:Dynamo detected a call to a `functools\\.lru_cache`-wrapped function:UserWarning:torch\\._dynamo\\.variables\\.functions",
 ]
-
-[tool.black]
-
-line-length = 80
-target-version = ["py312"]
