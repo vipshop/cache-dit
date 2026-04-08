@@ -122,7 +122,12 @@ def parse_args() -> argparse.Namespace:
     default=DEFAULT_BENCHMARK_RUNS,
     help="Repeated runs used to average latency per stage.",
   )
-  parser.add_argument("--rank", type=int, default=32, help="Low-rank SVDQ rank.")
+  parser.add_argument(
+    "--rank",
+    type=int,
+    default=128,
+    help="Low-rank SVDQ rank. Higher ranks for distillation models.",
+  )
   parser.add_argument("--seed",
                       type=int,
                       default=DEFAULT_SEED,
