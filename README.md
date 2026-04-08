@@ -21,14 +21,10 @@
 Cache-DiT is compatible with compilation, CPU Offloading, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), ComfyUI, and runs natively on NVIDIA GPUs, Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[readthedocs.io](https://cache-dit.readthedocs.io/en/latest/)).
 
 <div align="center">
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
   <p align="center">
     <i>(Let's go beyond Cache-DiT) 👉</i> <a href="https://docs.sglang.io/diffusion/performance/cache/cache_dit.html"> SGLang Diffusion </a> | <a href="https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/"> vLLM-Omni </a> | <a href="https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit"> Diffusers </a>
   </p>
-</div>
-
-<div align="center">
-  <p> <h2></h2> </p>
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
 <div align="center">
