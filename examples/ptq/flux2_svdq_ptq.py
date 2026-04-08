@@ -192,23 +192,9 @@ def load_calibration_prompts(prompts_path: Path, limit: Optional[int]) -> list[s
   return prompts
 
 
-def build_random_short_prompt(seed: int) -> str:
+def build_random_short_prompt() -> str:
   """Construct one deterministic short prompt for validation and visualization."""
-
-  rng = random.Random(seed)
-  colors = ["red", "blue", "green", "orange", "yellow", "black", "white", "pink"]
-  animals = ["cat", "dog", "fox", "otter", "panda", "koala", "rabbit", "deer"]
-  scenes = [
-    "on the beach",
-    "in a city park",
-    "under moonlight",
-    "in the snow",
-    "beside a lake",
-    "in a flower field",
-  ]
-  styles = ["soft lighting", "cinematic", "minimalist illustration", "photorealistic"]
-  return (f"A {rng.choice(colors)} {rng.choice(animals)} {rng.choice(scenes)}, "
-          f"{rng.choice(styles)}.")
+  return "A cat sitting on a bench, digital art, by Cache-DiT x SVDQuant"
 
 
 def cleanup_pipe(pipe) -> None:
@@ -586,7 +572,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
 
   prompts_path = Path(args.prompts_path).expanduser().resolve()
   calibration_prompts = load_calibration_prompts(prompts_path, args.calibration_limit)
-  validation_prompt = build_random_short_prompt(args.seed)
+  validation_prompt = build_random_short_prompt()
 
   calibration_height = args.calibration_height or args.height
   calibration_width = args.calibration_width or args.width
@@ -679,6 +665,9 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       )
     else:
       try:
+        # TODO: We should also compile the baseline model before apply quantization to get
+        # a more apples-to-apples comparison in the future (to get more accurate quantized
+        # model with compilation-aware optimizations)
         loaded_pipe = compile_pipe(loaded_pipe)
         _compiled_warmup_image, warmup_latency_s, _warmup_peak_memory_gb = run_single_inference(
           loaded_pipe,
