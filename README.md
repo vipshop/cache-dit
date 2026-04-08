@@ -29,12 +29,14 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 
 ## 🚀Quick Start: Cache, Parallelism, Quantization
 
-First, you can install the cache-dit from PyPI or from source: 
+First, you can install the cache-dit from PyPI or install from source: 
+
 ```bash
-pip3 install -U cache-dit # or, pip3 install git+https://github.com/vipshop/cache-dit.git
+uv pip install -U cache-dit # or, uv pip install git+https://github.com/vipshop/cache-dit.git
 ```
 
-Then accelerate your DiTs with just **♥️one line♥️** of code ~  
+Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~  
+
 ```python
 >>> import cache_dit
 >>> from diffusers import DiffusionPipeline
@@ -51,6 +53,7 @@ Then accelerate your DiTs with just **♥️one line♥️** of code ~
 ...   quantize_config=QuantizeConfig(quant_type="float8_per_row"))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
+
 For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
 ## 🚀Quick Start: SVDQuant (W4A4) PTQ workflow
@@ -62,7 +65,7 @@ git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolation
 ```
 
-Then, you can quantize your model with just **♥️a few lines♥️** of code ~
+Then, try to quantize your model with just **♥️a few lines♥️** of code ~
 
 ```python
 >>> from cache_dit import QuantizeConfig
