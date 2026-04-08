@@ -27,7 +27,11 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
   </p>
 </div>
 
-## 🚀Quick Start: Cache, Parallelism, Quantization
+---
+
+<div align="center">
+  <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
+</div>
 
 First, you can install the cache-dit from PyPI or install from source: 
 
@@ -56,7 +60,9 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
 
 For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
-## 🚀Quick Start: SVDQuant (W4A4) PTQ workflow
+<div align="center">
+  <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ workflow</h2> </p>
+</div>
 
 First, build Cache-DiT from source with SVDQuant support (Experimental):
 
