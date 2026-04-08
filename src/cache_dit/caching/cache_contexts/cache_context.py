@@ -24,6 +24,13 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class CachedContext:
+    """Runtime state container for one cache-enabled inference context.
+
+    A `CachedContext` owns the mutable buffers, per-step counters, cached-step
+    history, residual-diff statistics, and optional calibrators used while one
+    pipeline or transformer executes under DBCache.
+    """
+
     name: str = "default"
     # Buffer for storing the residuals and other tensors
     buffers: Dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -119,6 +126,8 @@ class CachedContext:
         return False
 
     def get_residual_diff_threshold(self):
+        """Return the active residual threshold after extra overrides are applied."""
+
         residual_diff_threshold = self.cache_config.residual_diff_threshold
         if self.extra_cache_config.l1_hidden_states_diff_threshold is not None:
             # Use the L1 hidden states diff threshold if set
@@ -141,6 +150,8 @@ class CachedContext:
         self.buffers.clear()
 
     def mark_step_begin(self):
+        """Advance step counters and reset per-inference state when needed."""
+
         # Always increase transformer executed steps
         # incr     step: prev 0 -> 1; prev 1 -> 2
         # current  step: incr step - 1
@@ -298,6 +309,8 @@ class CachedContext:
         return self.cache_config.force_refresh_step_hint
 
     def is_separate_cfg_step(self):
+        """Return whether the current transformer call belongs to the CFG branch."""
+
         if not self.cache_config.enable_separate_cfg:
             return False
         if self.cache_config.cfg_compute_first:

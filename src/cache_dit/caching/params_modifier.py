@@ -9,6 +9,13 @@ logger = init_logger(__name__)
 
 
 class ParamsModifier:
+    """Per-block override bundle for cache context settings.
+
+    `ParamsModifier` lets advanced users override the shared cache or calibrator
+    configuration for specific blocks without rebuilding the entire pipeline-level
+    configuration.
+    """
+
     def __init__(
         self,
         # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
@@ -18,6 +25,16 @@ class ParamsModifier:
         # Other cache context kwargs: Deprecated cache kwargs
         **kwargs,
     ):
+        """Create a block-level override package.
+
+        Args:
+            cache_config: Replacement cache configuration for the matched block(s).
+            calibrator_config: Replacement calibrator configuration for the matched
+                block(s).
+            **kwargs: Deprecated cache or calibrator options kept for backward
+                compatibility with older call sites.
+        """
+
         self._context_kwargs = {}
 
         # WARNING: Deprecated cache config params. These parameters are now retained

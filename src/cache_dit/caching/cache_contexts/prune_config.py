@@ -10,6 +10,13 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class DBPruneConfig(BasicCacheConfig):
+    """Configuration for Dynamic Block Prune on top of the base cache settings.
+
+    `DBPruneConfig` reuses the same warmup, CFG, and step-accounting semantics as
+    `BasicCacheConfig`, then adds the controls needed to compute per-step prune
+    thresholds and to keep selected blocks out of the pruning candidate set.
+    """
+
     # Dyanamic Block Prune specific configurations
     cache_type: CacheType = CacheType.DBPrune  # DBPrune
 
@@ -49,6 +56,8 @@ class DBPruneConfig(BasicCacheConfig):
     force_reduce_calibrator_vram: bool = False
 
     def strify(self) -> str:
+        """Build a compact pruning configuration summary string."""
+
         return (
             f"{self.cache_type}_"
             f"F{self.Fn_compute_blocks}"

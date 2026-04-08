@@ -12,6 +12,8 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class PrunedContext(CachedContext):
+    """`CachedContext` variant that tracks Dynamic Block Prune decisions."""
+
     # Overwrite the cache_config type for PrunedContext
     cache_config: DBPruneConfig = dataclasses.field(
         default_factory=DBPruneConfig,
@@ -38,6 +40,8 @@ class PrunedContext(CachedContext):
                 )
 
     def get_residual_diff_threshold(self):
+        """Return the prune threshold, optionally relaxed from recent block diffs."""
+
         # Overwite this func for Dynamic Block Prune
         residual_diff_threshold = self.cache_config.residual_diff_threshold
         if isinstance(residual_diff_threshold, torch.Tensor):
@@ -75,6 +79,8 @@ class PrunedContext(CachedContext):
         return residual_diff_threshold
 
     def mark_step_begin(self):
+        """Advance counters and clear per-step prune statistics when needed."""
+
         # Overwite this func for Dynamic Block Prune
         super().mark_step_begin()
         # Reset pruned_blocks and actual_blocks at the beginning
@@ -101,6 +107,8 @@ class PrunedContext(CachedContext):
             self.cfg_residual_diffs[step].append(diff)
 
     def add_pruned_step(self):
+        """Record that the current diffusion step used pruning logic."""
+
         curr_cached_step = self.get_current_step()
         # Avoid adding the same step multiple times
         if not self.is_separate_cfg_step():
@@ -111,12 +119,16 @@ class PrunedContext(CachedContext):
                 self.add_cached_step()
 
     def add_pruned_block(self, num_blocks):
+        """Record how many blocks were skipped for the active CFG branch."""
+
         if not self.is_separate_cfg_step():
             self.pruned_blocks.append(num_blocks)
         else:
             self.cfg_pruned_blocks.append(num_blocks)
 
     def add_actual_block(self, num_blocks):
+        """Record how many blocks were actually executed for the active branch."""
+
         if not self.is_separate_cfg_step():
             self.actual_blocks.append(num_blocks)
         else:

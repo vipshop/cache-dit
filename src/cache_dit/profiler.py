@@ -21,6 +21,12 @@ PROFILER_DIR = os.getenv("CACHE_DIT_TORCH_PROFILER_DIR", "/tmp/cache_dit_profile
 
 
 class ProfilerContext:
+    """Context manager wrapper around `torch.profiler` for cache-dit runs.
+
+    It centralizes trace-file naming, optional CUDA memory-history capture, and
+    multi-rank output layout so profiling can be enabled consistently from scripts
+    or helper decorators.
+    """
 
     def __init__(
         self,
@@ -31,6 +37,17 @@ class ProfilerContext:
         with_stack: bool = True,
         record_shapes: bool = True,
     ):
+        """Configure a profiler session.
+
+        Args:
+            enabled: Whether profiling should actually be activated.
+            activities: Activity names such as `CPU`, `GPU`, or `MEM`.
+            output_dir: Directory where traces and memory snapshots are written.
+            profile_name: Base name used for profiler output files.
+            with_stack: Whether to capture Python stacks for profiled ops.
+            record_shapes: Whether to record tensor shapes in the profiler trace.
+        """
+
         assert (
             current_platform.is_accelerator_available() and current_platform.device_type == "cuda"
         ), "Torch ProfilerContext currently only supports CUDA devices."
@@ -133,6 +150,8 @@ def profile_function(
     with_stack: bool = False,
     record_shapes: bool = True,
 ):
+    """Decorator factory that profiles one function call with `ProfilerContext`."""
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             name = profile_name or func.__name__
@@ -158,6 +177,8 @@ def create_profiler_context(
     profile_name: Optional[str] = None,
     **kwargs,
 ) -> ProfilerContext:
+    """Convenience helper to build a `ProfilerContext` instance."""
+
     return ProfilerContext(
         enabled=enabled,
         activities=activities,
@@ -168,8 +189,12 @@ def create_profiler_context(
 
 
 def get_profiler_output_dir() -> str:
+    """Return the default profiler output directory from the environment."""
+
     return os.environ.get("CACHE_DIT_TORCH_PROFILER_DIR", PROFILER_DIR)
 
 
 def set_profiler_output_dir(path: str):
+    """Override the default profiler output directory for future sessions."""
+
     os.environ["CACHE_DIT_TORCH_PROFILER_DIR"] = path

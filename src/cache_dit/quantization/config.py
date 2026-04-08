@@ -108,6 +108,15 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
 
 @dataclasses.dataclass
 class QuantizeConfig:
+    """Unified quantization configuration for cache-dit workflows.
+
+    `QuantizeConfig` is the user-facing control surface for both TorchAO-backed
+    online quantization flows and cache-dit's native SVDQ PTQ workflow. The top-
+    level fields describe what to quantize, which backend to use, and how to scope
+    quantization across components or repeated transformer blocks, while
+    `svdq_kwargs` contains backend-specific controls for the SVDQ PTQ path.
+    """
+
     # Quantization backend, only "ao" (torchao) is supported for now, more backends
     # will be supported in the future. The AUTO option will automatically select the
     # backend based on the hardware and quantization type, etc. Currently it will be
@@ -269,21 +278,31 @@ class QuantizeConfig:
             raise ValueError("svdq_kwargs is only valid when quant_type starts with 'svdq'.")
 
     def as_dict(self) -> Dict[str, Any]:
+        """Return the configuration as a plain dictionary."""
+
         return dataclasses.asdict(self)
 
     def is_svdq(self) -> bool:
+        """Return whether this config targets cache-dit's SVDQ PTQ workflow."""
+
         return isinstance(self.quant_type, str) and self.quant_type.startswith("svdq")
 
     def get_svdq_rank(self) -> int:
+        """Extract the low-rank value encoded in an `svdq_int4_r{rank}` quant type."""
+
         _, rank = _parse_svdq_quant_type(self.quant_type)
         return rank
 
     def get_svdq_kwargs(self) -> Dict[str, Any]:
+        """Return validated SVDQ-specific kwargs or an empty dict for non-SVDQ configs."""
+
         if not self.is_svdq():
             return {}
         return dict(self.svdq_kwargs or _SVDQ_KWARGS_DEFAULTS)
 
     def update(self, **kwargs) -> "QuantizeConfig":
+        """Update non-`None` fields in place and re-run configuration validation."""
+
         for key, value in kwargs.items():
             if hasattr(self, key):
                 if value is not None:
@@ -292,6 +311,8 @@ class QuantizeConfig:
         return self
 
     def strify(self) -> str:
+        """Build a compact human-readable summary of the quantization selection."""
+
         if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):
             return f"{self.quant_type.lower()}"
         else:
@@ -302,6 +323,8 @@ class QuantizeConfig:
             return quant_str
 
     def component_quant_types(self) -> Dict[str, str]:
+        """Resolve the effective quantization type for each target component."""
+
         if self.components_to_quantize is None:
             return {"transformer": self.quant_type}
         elif isinstance(self.components_to_quantize, list):
@@ -316,6 +339,8 @@ class QuantizeConfig:
 
     @classmethod
     def expand_configs(cls, config: "QuantizeConfig") -> List["QuantizeConfig"]:
+        """Expand a multi-component config into one config per target component."""
+
         # Transfer components_to_quantize to mutiple simple configs, each
         # with only 1 component to quantize, and the same quantization type.
         if config.components_to_quantize is None:
@@ -352,6 +377,8 @@ class QuantizeConfig:
 
     @classmethod
     def from_kwargs(cls, **kwargs) -> "QuantizeConfig":
+        """Build a config from legacy keyword arguments by dropping unknown keys."""
+
         valid_kwargs = {}
         for key, value in kwargs.items():
             if key in cls.__dataclass_fields__:

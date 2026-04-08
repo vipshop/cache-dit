@@ -18,6 +18,7 @@ class ContextNotExistError(Exception):
 
 
 class CachedContextManager:
+    """Manage creation, refresh, and lookup of `CachedContext` instances."""
 
     def __init__(self, name: str = None, persistent_context: bool = False):
         self.name = name
@@ -60,6 +61,8 @@ class CachedContextManager:
 
     @torch.compiler.disable
     def new_context(self, *args, **kwargs) -> CachedContext:
+        """Create and register a new cache context with remembered init args."""
+
         _context = CachedContext(*args, **kwargs)
         # NOTE: Patch args and kwargs for implicit refresh.
         _context._init_args = args  # maybe empty tuple: ()
@@ -72,6 +75,8 @@ class CachedContextManager:
         self,
         cached_context: Optional[CachedContext | str] = None,
     ) -> Tuple[bool, str]:  # bool, reason
+        """Decide whether the current context should be recreated before reuse."""
+
         if cached_context is None:
             _context = self._current_context
             assert _context is not None, "Current context is not set!"
@@ -118,6 +123,8 @@ class CachedContextManager:
         *args,
         **kwargs,
     ) -> CachedContext:
+        """Activate an existing context or create one on demand when allowed."""
+
         if isinstance(cached_context, CachedContext):
             self._current_context = cached_context
         else:
@@ -203,6 +210,8 @@ class CachedContextManager:
         *args,
         **kwargs,
     ) -> CachedContext:
+        """Recreate one named context while preserving its logical identity."""
+
         if isinstance(cached_context, CachedContext):
             old_context_name = cached_context.name
             if cached_context.name in self._cached_context_manager:
@@ -232,6 +241,8 @@ class CachedContextManager:
                 del self._cached_context_manager[cached_context]
 
     def clear_contexts(self):
+        """Remove every cached context and release their stored buffers."""
+
         for context_name in list(self._cached_context_manager.keys()):
             self.remove_context(context_name)
 

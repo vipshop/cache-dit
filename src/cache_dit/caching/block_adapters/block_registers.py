@@ -13,6 +13,13 @@ logger = init_logger(__name__)
 
 
 class BlockAdapterRegister:
+    """Registry for predefined `BlockAdapter` builders.
+
+    The registry maps pipeline or transformer class-name prefixes to functions that
+    construct compatible `BlockAdapter` instances, enabling `enable_cache` to auto-
+    detect supported models.
+    """
+
     _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
     _predefined_adapters_has_separate_cfg: List[str] = [
         "QwenImage",
@@ -30,6 +37,8 @@ class BlockAdapterRegister:
 
     @classmethod
     def register(cls, name: str, supported: bool = True):
+        """Register an adapter factory under a class-name prefix."""
+
         def decorator(func: Callable[..., BlockAdapter]) -> Callable[..., BlockAdapter]:
             if supported:
                 cls._adapters[name] = func
@@ -43,6 +52,8 @@ class BlockAdapterRegister:
         pipe_or_module: DiffusionPipeline | torch.nn.Module | str | Any,
         **kwargs,
     ) -> BlockAdapter | None:
+        """Return a predefined adapter for a pipeline, transformer, or class name."""
+
         if not isinstance(pipe_or_module, str):
             cls_name: str = pipe_or_module.__class__.__name__
         else:
@@ -75,6 +86,7 @@ class BlockAdapterRegister:
             torch.nn.Module,  # e.g., transformer-only case
         ],
     ) -> bool:
+        """Infer whether a model executes CFG and non-CFG in separate forwards."""
 
         # 0. Prefer custom setting from block adapter.
         if isinstance(pipe_or_adapter_or_module, BlockAdapter):
@@ -104,6 +116,8 @@ class BlockAdapterRegister:
 
     @classmethod
     def is_supported(cls, pipe_or_module) -> bool:
+        """Return whether a pipeline or transformer has a registered adapter."""
+
         cls_name: str = pipe_or_module.__class__.__name__
 
         for name in cls._adapters:
@@ -113,5 +127,7 @@ class BlockAdapterRegister:
 
     @classmethod
     def supported_pipelines(cls, **kwargs) -> Tuple[int, List[str]]:
+        """Return the number and names of registered predefined pipelines."""
+
         val_pipelines = cls._adapters.keys()
         return len(val_pipelines), [p for p in val_pipelines]

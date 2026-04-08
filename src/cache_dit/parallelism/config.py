@@ -10,6 +10,14 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class ParallelismConfig:
+    """Describe how cache-dit should shard work across multiple processes.
+
+    This configuration unifies context parallelism, tensor parallelism, and hybrid
+    parallel execution for cache-dit transformers and selected extra modules such as
+    text encoders, VAEs, or ControlNets. It also owns the derived device-mesh state
+    that backend dispatchers use after validation.
+    """
+
     # Parallelism backend, defaults to AUTO. We will auto select the backend
     # based on the parallelism configuration.
     backend: ParallelismBackend = ParallelismBackend.AUTO
@@ -254,6 +262,8 @@ class ParallelismConfig:
         self._tp_world_size = self._flat_tp_mesh.size()
 
     def enabled(self) -> bool:
+        """Return whether any form of parallelism is enabled."""
+
         return (
             (self.ulysses_size is not None and self.ulysses_size > 1)
             or (self.ring_size is not None and self.ring_size > 1)
@@ -261,14 +271,20 @@ class ParallelismConfig:
         )
 
     def cp_enabled(self) -> bool:
+        """Return whether context parallelism is enabled."""
+
         return (self.ulysses_size is not None and self.ulysses_size > 1) or (
             self.ring_size is not None and self.ring_size > 1
         )
 
     def tp_enabled(self) -> bool:
+        """Return whether tensor parallelism is enabled."""
+
         return self.tp_size is not None and self.tp_size > 1
 
     def usp_enabled(self) -> bool:
+        """Return whether Ulysses and Ring are both enabled together."""
+
         return (
             self.ulysses_size is not None
             and self.ulysses_size > 1
@@ -277,6 +293,8 @@ class ParallelismConfig:
         )
 
     def hybrid_enabled(self) -> bool:
+        """Return whether context parallelism and tensor parallelism are both enabled."""
+
         return self.cp_enabled() and self.tp_enabled()
 
     def strify(
@@ -286,6 +304,8 @@ class ParallelismConfig:
         vae: bool = False,
         controlnet: bool = False,
     ) -> str:
+        """Build a concise string summary of the current parallelism selection."""
+
         if details:
             if text_encoder or vae:
                 extra_module_world_size = self._get_world_size()

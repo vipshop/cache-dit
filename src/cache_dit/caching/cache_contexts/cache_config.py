@@ -9,6 +9,14 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class BasicCacheConfig:
+    """Base runtime configuration for cache-dit's Dual Block Cache workflows.
+
+    This dataclass groups the knobs that control when cache-dit computes fresh
+    transformer blocks, when it reuses cached results, how warmup is handled, and
+    how CFG-aware step accounting is performed. `DBCacheConfig` reuses this schema
+    directly, while `DBPruneConfig` extends it with pruning-specific controls.
+    """
+
     # Default: Dual Block Cache with Flexible FnBn configuration.
     cache_type: CacheType = CacheType.DBCache  # DBCache, DBPrune, NONE
 
@@ -100,6 +108,8 @@ class BasicCacheConfig:
     force_refresh_step_policy: str = "once"  # "once" or "repeat"
 
     def update(self, **kwargs) -> "BasicCacheConfig":
+        """Update non-`None` fields in place."""
+
         for key, value in kwargs.items():
             if hasattr(self, key):
                 if value is not None:
@@ -107,6 +117,8 @@ class BasicCacheConfig:
         return self
 
     def empty(self, **kwargs) -> "BasicCacheConfig":
+        """Reset all fields to `None` before optionally applying overrides."""
+
         # Set all fields to None
         for field in dataclasses.fields(self):
             if hasattr(self, field.name):
@@ -116,12 +128,18 @@ class BasicCacheConfig:
         return self
 
     def reset(self, **kwargs) -> "BasicCacheConfig":
+        """Alias for `empty` kept for backward compatibility."""
+
         return self.empty(**kwargs)
 
     def as_dict(self) -> dict:
+        """Return the configuration as a plain dictionary."""
+
         return dataclasses.asdict(self)
 
     def strify(self) -> str:
+        """Build a compact cache configuration summary string for logs and filenames."""
+
         base_str = (
             f"{self.cache_type}_"
             f"F{self.Fn_compute_blocks}"
@@ -152,6 +170,8 @@ class BasicCacheConfig:
 
 @dataclasses.dataclass
 class ExtraCacheConfig:
+    """Internal extra cache controls that are rarely needed in user code."""
+
     # Some other not very important settings for Dual Block Cache.
     # NOTE: These flags maybe deprecated in the future and users
     # should never use these extra configurations in their cases.
@@ -170,4 +190,6 @@ class ExtraCacheConfig:
 
 @dataclasses.dataclass
 class DBCacheConfig(BasicCacheConfig):
-    pass  # Just an alias for BasicCacheConfig
+    """Named alias of `BasicCacheConfig` for the DBCache runtime."""
+
+    pass

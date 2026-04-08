@@ -23,6 +23,35 @@ def set_compile_configs(
     cutedsl_enable_autotuning: Optional[bool] = None,  # >= PyTorch 2.11
     **kwargs,  # other kwargs
 ):
+    """Apply cache-dit's recommended global `torch.compile` configuration tweaks.
+
+    Args:
+        descent_tuning: Whether to enable the more aggressive inductor tuning set
+            used by cache-dit for generative workloads.
+        cuda_graphs: Whether to enable CUDA graphs inside triton-generated kernels.
+        force_disable_compile_caches: Whether to force-disable inductor compile
+            caches for debugging or reproducibility.
+        fx_graph_cache: Whether to enable the local FX graph cache.
+        fx_graph_remote_cache: Whether to enable the remote FX graph cache.
+        autotune_local_cache: Whether to enable the local autotune cache.
+        use_fast_math: Whether to enable fast-math flags when supported by the
+            current compiler backend.
+        compute_comm_overlap: Whether to enable compile-time compute/communication
+            overlap reordering when distributed execution is initialized.
+        capture_scalar_outputs: Optional override for
+            `torch._dynamo.config.capture_scalar_outputs`.
+        capture_dynamic_output_shape_ops: Optional override for
+            `torch._dynamo.config.capture_dynamic_output_shape_ops`.
+        cutedsl_enable_autotuning: Optional override for CUTE DSL autotuning on
+            newer PyTorch releases.
+        **kwargs: Extra compile-related toggles reserved for forward compatibility.
+
+    Notes:
+        This function mutates global dynamo/inductor configuration and is meant to
+        be called before compiling cache-dit modules. It is intentionally tolerant of
+        missing compiler internals so it can run across multiple PyTorch versions.
+    """
+
     # Dynamo Configs
 
     try:

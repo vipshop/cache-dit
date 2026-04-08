@@ -13,6 +13,14 @@ logger = init_logger(__name__)
 
 @dataclasses.dataclass
 class CalibratorConfig:
+    """Base config for optional calibrators used by cache contexts.
+
+    Calibrators refine hidden-state reuse by forecasting either residuals or
+    full hidden states for selected branches. This base config stores the
+    generic enable flags, the selected calibrator type, and backend-specific
+    kwargs.
+    """
+
     # enable_calibrator (`bool`, *required*,  defaults to False):
     #     Whether to enable calibrator, if True. means that user want to use DBCache
     #     with specific calibrator for hidden_states (or hidden_states redisual),
@@ -34,15 +42,21 @@ class CalibratorConfig:
     calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
     def strify(self, **kwargs) -> str:
+        """Return a short human-readable tag for logging and summaries."""
+
         return "CalibratorBase"
 
     def to_kwargs(self) -> Dict:
+        """Return implementation kwargs used by the calibrator factory."""
+
         return self.calibrator_kwargs.copy()
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
 
     def update(self, **kwargs) -> "CalibratorConfig":
+        """Update known fields in place while ignoring unknown keys."""
+
         for key, value in kwargs.items():
             if hasattr(self, key):
                 if value is not None:
@@ -50,6 +64,8 @@ class CalibratorConfig:
         return self
 
     def empty(self, **kwargs) -> "CalibratorConfig":
+        """Clear non-constant fields so callers can rebuild a config from scratch."""
+
         # Set all fields to None
         skip_constants = {"calibrator_type"}
         for field in dataclasses.fields(self):
@@ -61,11 +77,15 @@ class CalibratorConfig:
         return self
 
     def reset(self, **kwargs) -> "CalibratorConfig":
+        """Reset this config to an empty state, then apply optional overrides."""
+
         return self.empty(**kwargs)
 
 
 @dataclasses.dataclass
 class TaylorSeerCalibratorConfig(CalibratorConfig):
+    """Config for the TaylorSeer forecasting calibrator."""
+
     # TaylorSeers: From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
     # link: https://arxiv.org/pdf/2503.06923
 
@@ -90,6 +110,8 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
     taylorseer_order: int = 1
 
     def strify(self, **kwargs) -> str:
+        """Return a compact tag that includes the selected Taylor order."""
+
         if kwargs.get("details", False):
             if self.taylorseer_order:
                 return f"TaylorSeer_O({self.taylorseer_order})"
@@ -100,6 +122,8 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
         return "NONE"
 
     def to_kwargs(self) -> Dict:
+        """Translate config fields into `TaylorSeerCalibrator` init kwargs."""
+
         kwargs = self.calibrator_kwargs.copy()
         kwargs["n_derivatives"] = self.taylorseer_order
         return kwargs
@@ -107,6 +131,8 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
 
 @dataclasses.dataclass
 class FoCaCalibratorConfig(CalibratorConfig):
+    """Config placeholder for the future FoCa calibrator backend."""
+
     # FoCa: Forecast then Calibrate: Feature Caching as ODE for Efficient Diffusion Transformers
     # link: https://arxiv.org/pdf/2508.16211
 
@@ -129,6 +155,8 @@ class FoCaCalibratorConfig(CalibratorConfig):
 
 
 class Calibrator:
+    """Factory that instantiates supported calibrator implementations."""
+
     _supported_calibrators = [
         "taylorseer",
         # TODO: FoCa
@@ -138,6 +166,8 @@ class Calibrator:
         cls,
         calibrator_config: CalibratorConfig,
     ) -> CalibratorBase:
+        """Construct the calibrator implementation described by `calibrator_config`."""
+
         assert (
             calibrator_config.calibrator_type in cls._supported_calibrators
         ), f"Calibrator {calibrator_config.calibrator_type} is not supported now!"

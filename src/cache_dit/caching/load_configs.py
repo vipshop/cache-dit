@@ -82,6 +82,12 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
 
 
 def load_cache_options_from_yaml(yaml_file_path: str, reset: bool = False) -> dict:
+    r"""Load legacy cache options from a YAML file.
+
+    This helper preserves the old flat cache-options format and forwards the
+    parsed dictionary to `load_cache_options_from_dict`.
+    """
+
     try:
         with open(yaml_file_path, "r") as f:
             kwargs: dict = yaml.safe_load(f)
@@ -123,9 +129,13 @@ def load_cache_config(
     path_or_dict: str | dict, **kwargs
 ) -> Tuple[DBCacheConfig, Optional[CalibratorConfig]]:
     r"""
-    New APU that only load cache configuration from a YAML file or a dictionary. Assumes
-    that the yaml contains a 'cache_config' section, and returns only that section.
-    Raise ValueError if not found.
+    Load cache and calibrator configuration from structured or legacy input.
+
+    This is the main cache-config parser used by `enable_cache` and
+    `refresh_context`. It supports both the newer nested format with a
+    top-level `cache_config` section and the older flat cache-options format for
+    backward compatibility.
+
     Args:
         path_or_dict (`str` or `dict`):
             The file path to the YAML configuration file or a dictionary containing the configuration.
@@ -135,7 +145,8 @@ def load_cache_config(
             are applied, without retaining any previous configurations (e.g., when using ParaModifier to modify
             existing configurations).
     Returns:
-        `dict`: A dictionary containing the loaded cache configuration.
+        `Tuple[DBCacheConfig, Optional[CalibratorConfig]]`: The parsed cache
+        config and optional calibrator config.
     """
     if isinstance(path_or_dict, str):
         try:
@@ -203,14 +214,19 @@ def load_parallelism_config(
     path_or_dict: str | dict, **kwargs
 ) -> Optional[ParallelismConfig] | bool:
     r"""
-    Load parallelism configuration from a YAML file or a dictionary. Assumes that the yaml
-    contains a 'parallelism_config' section, and returns only that section. Raise ValueError
-    if not found.
+    Load the `parallelism_config` section from a YAML file or dictionary.
+
+    The loader also resolves `backend` strings into `ParallelismBackend` values
+    and can expand one parallel size from `"auto"` based on the distributed
+    world size.
+
     Args:
         path_or_dict (`str` or `dict`):
             The file path to the YAML configuration file or a dictionary containing the configuration.
     Returns:
-        `ParallelismConfig`: An instance of ParallelismConfig containing the loaded parallelism configuration.
+        `ParallelismConfig`: An instance containing the parsed parallelism
+        configuration. When `check_only=True`, returns a bool indicating
+        whether the section exists.
     """
     if isinstance(path_or_dict, str):
         try:
@@ -307,9 +323,8 @@ def load_parallelism_config(
 
 def load_attn_backend_config(path_or_dict: str | dict, **kwargs) -> Optional[str]:
     r"""
-    Load attention backend configuration from a YAML file or a dictionary. Assumes that the yaml
-    contains an 'attention_backend' field, and returns only that field. Raise ValueError
-    if not found.
+    Load only the `attention_backend` field from a config source.
+
     Args:
         path_or_dict (`str` or `dict`):
             The file path to the YAML configuration file or a dictionary containing the configuration.
@@ -336,9 +351,8 @@ def load_attn_backend_config(path_or_dict: str | dict, **kwargs) -> Optional[str
 
 def load_quantize_config(path_or_dict: str | dict, **kwargs) -> Optional[QuantizeConfig]:
     r"""
-    Load quantize configuration from a YAML file or a dictionary. Assumes that the yaml
-    contains a 'quantize_config' section, and returns only that section. Raise ValueError
-    if not found.
+    Load only the `quantize_config` section from a config source.
+
     Args:
         path_or_dict (`str` or `dict`):
             The file path to the YAML configuration file or a dictionary containing the configuration.
@@ -387,8 +401,12 @@ def load_configs(
     ],
 ]:
     r"""
-    Load both cache and parallelism configurations from a YAML file or a dictionary. For example,
-    the YAML file can be structured as follows:
+    Load all cache-dit runtime configs from one YAML file or dictionary.
+
+    This convenience loader aggregates cache, calibrator, parallelism,
+    attention-backend, and quantization parsing so one config blob can drive a
+    full `enable_cache` setup. For example, the YAML file can be structured as
+    follows:
     ```yaml
     cache_config:
       max_warmup_steps: 8
@@ -410,11 +428,11 @@ def load_configs(
     Args:
         path_or_dict (`str` or `dict`):
             The file path to the YAML configuration file or a dictionary containing the configuration.
+        return_dict (`bool`, *optional*, defaults to `True`):
+            Whether to return a named dictionary instead of a positional tuple.
     Returns:
-        `Tuple[DBCacheConfig, Optional[CalibratorConfig], ParallelismConfig]`: A tuple containing the loaded
-        cache configuration, optional calibrator configuration, and parallelism configuration. If `return_dict`
-        is set to `True`, returns a dictionary with keys "cache_config", "calibrator_config", "parallelism_config",
-        "attention_backend", and "quantize_config".
+        Either a tuple or dictionary containing the parsed cache, calibrator,
+        parallelism, attention-backend, and quantization settings.
     """
     cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
     parallelism_config = load_parallelism_config(path_or_dict, **kwargs)

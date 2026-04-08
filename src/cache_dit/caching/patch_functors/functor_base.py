@@ -10,6 +10,12 @@ logger = init_logger(__name__)
 
 
 class PatchFunctor:
+    """Base class for model-specific transformer patching before caching.
+
+    Concrete patch functors adapt model implementations whose block structure or
+    forward behavior needs a small preprocessing step before cache-dit can attach
+    generic caching hooks.
+    """
 
     def apply(
         self,
@@ -17,6 +23,8 @@ class PatchFunctor:
         *args,
         **kwargs,
     ) -> torch.nn.Module:
+        """Apply the functor if the transformer is eligible for patching."""
+
         if check_patched(transformer):
             logger.warning(
                 "Transformer is already patched. Skipping patch functor. "
@@ -46,10 +54,14 @@ class PatchFunctor:
         *args,
         **kwargs,
     ) -> torch.nn.Module:
+        """Subclass hook that performs the actual transformer patching."""
+
         raise NotImplementedError("_apply method is not implemented.")
 
     @classmethod
     def is_from_diffusers(cls, transformer: torch.nn.Module) -> bool:
+        """Return whether diffusers-module checks allow this transformer."""
+
         if ENV.CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK:
             return True
         if transformer.__module__.startswith("diffusers"):
@@ -58,6 +70,8 @@ class PatchFunctor:
         return False
 
     def logging_patched(self, transformer: torch.nn.Module):
+        """Emit a standard log line after patching completes."""
+
         is_patched = getattr(transformer, "_is_patched", False)
         logger.info(
             f"Applied patch functor {self.__class__.__name__} for "

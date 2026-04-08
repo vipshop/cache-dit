@@ -10,6 +10,8 @@ logger = init_logger(__name__)
 
 
 class PrunedContextManager(CachedContextManager):
+    """Context manager specialization for Dynamic Block Prune runtime state."""
+
     # Reuse CachedContextManager for Dynamic Block Prune
 
     def __init__(self, name: str = None, **kwargs):
@@ -20,6 +22,8 @@ class PrunedContextManager(CachedContextManager):
 
     # Overwrite for Dynamic Block Prune
     def new_context(self, *args, **kwargs) -> PrunedContext:
+        """Create and register a `PrunedContext` instead of a plain context."""
+
         _context = PrunedContext(*args, **kwargs)
         # NOTE: Patch args and kwargs for implicit refresh.
         _context._init_args = args  # maybe empty tuple: ()
@@ -102,6 +106,8 @@ class PrunedContextManager(CachedContextManager):
     @torch.compiler.disable
     @functools.lru_cache(maxsize=8)
     def get_non_prune_blocks_ids(self, num_blocks: int) -> List[int]:
+        """Return block indices that must never be pruned for this context."""
+
         assert num_blocks is not None, "num_blocks must be provided"
         assert num_blocks > 0, "num_blocks must be greater than 0"
         # Get the non-prune block ids for current context

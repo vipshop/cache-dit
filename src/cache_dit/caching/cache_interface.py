@@ -538,6 +538,12 @@ def refresh_context(
     >>> output = pipe(...) # Just call the pipe as normal.
     >>> stats = cache_dit.summary(pipe.transformer) # Then, get the summary
     ```
+
+    Args:
+        transformer: Transformer module previously passed to `enable_cache`.
+        **force_refresh_kwargs: Either a full `cache_config`/
+            `calibrator_config` pair, or shorthand cache-config fields such as
+            `num_inference_steps` that will be reloaded into a fresh context.
     """
     if force_refresh_kwargs:
         if "cache_config" not in force_refresh_kwargs:
@@ -574,6 +580,8 @@ def disable_cache(
         torch.nn.Module,  # Transformer-only
     ],
 ):
+    """Release cache hooks and restore the original uncached forward path."""
+
     cls_name = pipe_or_adapter.__class__.__name__
     CachedAdapter.maybe_release_hooks(pipe_or_adapter)
     logger.warning(f"Acceleration hooks is disabled for: {cls_name}.")
@@ -582,12 +590,16 @@ def disable_cache(
 def supported_pipelines(
     **kwargs,
 ) -> Tuple[int, List[str]]:
+    """Return the number and names of pipelines with registered adapters."""
+
     return BlockAdapterRegister.supported_pipelines(**kwargs)
 
 
 def get_adapter(
     pipe: DiffusionPipeline | str | Any,
 ) -> BlockAdapter:
+    """Resolve a registered `BlockAdapter` for a pipeline instance or name."""
+
     return BlockAdapterRegister.get_adapter(pipe)
 
 

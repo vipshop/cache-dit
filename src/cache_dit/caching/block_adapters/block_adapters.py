@@ -27,6 +27,14 @@ class FakeDiffusionPipeline:
 
 @dataclasses.dataclass
 class BlockAdapter:
+    """Describe how cache-dit should discover and patch transformer blocks.
+
+    `BlockAdapter` is the main advanced integration surface for unsupported or
+    custom models. It can wrap a full pipeline or a transformer-only module,
+    point cache-dit at one or more `ModuleList` block collections, declare the
+    block forward I/O contract via `ForwardPattern`, and optionally apply a
+    model-specific `PatchFunctor` before caching hooks are installed.
+    """
 
     # Transformer configurations.
     pipe: Union[
@@ -247,6 +255,13 @@ class BlockAdapter:
     def auto_block_adapter(
         adapter: "BlockAdapter",
     ) -> "BlockAdapter":
+        """Auto-populate block metadata from a pipeline transformer.
+
+        This helper is intended for models whose block lists follow common
+        naming conventions so users do not need to manually specify `blocks`
+        and `blocks_name`.
+        """
+
         assert adapter.auto, (
             "Please manually set `auto` to True, or, manually "
             "set all the transformer blocks configuration."
@@ -285,6 +300,7 @@ class BlockAdapter:
     def check_block_adapter(
         adapter: "BlockAdapter",
     ) -> bool:
+        """Validate that the adapter has the minimum fields required for caching."""
 
         if getattr(adapter, "_is_normlized", False):
             return True
@@ -339,6 +355,26 @@ class BlockAdapter:
         check_suffixes: bool = False,
         **kwargs,
     ) -> Tuple[torch.nn.ModuleList, str]:
+        """Find the most likely transformer block list for a module.
+
+        Args:
+            transformer: Transformer module being inspected.
+            allow_prefixes: Attribute prefixes considered likely block-list
+                names.
+            allow_suffixes: Block class-name suffixes used as an optional
+                filter.
+            check_prefixes: Whether to restrict the search to
+                `allow_prefixes`.
+            check_suffixes: Whether to restrict candidate blocks to
+                `allow_suffixes`.
+            **kwargs: Additional pattern-matching options such as
+                `forward_pattern`, `check_forward_pattern`, and
+                `blocks_policy`.
+
+        Returns:
+            A tuple `(blocks, blocks_name)` for the selected `ModuleList`.
+        """
+
         # Check prefixes
         if check_prefixes:
             blocks_names = []
@@ -433,6 +469,7 @@ class BlockAdapter:
         forward_pattern: ForwardPattern,
         **kwargs,
     ) -> bool:
+        """Check whether one block satisfies a declared `ForwardPattern`."""
 
         if not kwargs.get("check_forward_pattern", True):
             return True
@@ -473,6 +510,7 @@ class BlockAdapter:
         logging: bool = True,
         **kwargs,
     ) -> bool:
+        """Check whether every block in a block list satisfies one pattern."""
 
         if not kwargs.get("check_forward_pattern", True):
             if logging:
@@ -513,6 +551,7 @@ class BlockAdapter:
         adapter: "BlockAdapter",
         unique: bool = True,
     ) -> "BlockAdapter":
+        """Normalize nested adapter fields into a predictable internal layout."""
 
         if getattr(adapter, "_is_normalized", False):
             return adapter

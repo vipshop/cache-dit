@@ -2,6 +2,13 @@ from enum import Enum
 
 
 class ForwardPattern(Enum):
+    """Enumerate supported transformer block input/output contracts.
+
+    Each pattern captures the hidden-state ordering and forward-signature shape used
+    by a family of transformer blocks. `BlockAdapter` uses these patterns to verify
+    that a candidate block list can be patched safely without model-specific logic.
+    """
+
     def __init__(
         self,
         Return_H_First,
@@ -74,6 +81,8 @@ class ForwardPattern(Enum):
 
     @staticmethod
     def supported_patterns():
+        """Return the set of forward patterns currently supported by cache-dit."""
+
         return [
             ForwardPattern.Pattern_0,
             ForwardPattern.Pattern_1,
