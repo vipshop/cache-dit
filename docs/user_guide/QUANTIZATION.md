@@ -385,6 +385,13 @@ The full benchmark report for FLUX.2-klein-4B SVDQuant (W4A4) is listed below. T
 
 Notes: **full_blocks** means all transformer blocks are quantized; **memory_quantized** means the quantized model is in memory; **loaded_quantized** means the quantized model is reloaded from disk with <span style="color:#c77dff;">cache_dit.load(...)</span>.
 
+SVDQuant in Cache-DiT is compatible with <span style="color:#c77dff;">torch.compile</span>, and users can further speed up the quantized model with compilation. The performance comparison between eager and compiled mode for SVDQuant W4A4 is listed below:
+
+| stage | resolution | avg_latency_s | latency_delta | speedup_vs_eager |
+| :---: | :---: | :---: | :---: | :---: |
+| quantized + eager | 1024x1024 | 1.2689 | 0.0000 | 1.0000x |
+| quantized + compile | 1024x1024 | 1.0161 | -0.2528 | <span style="color:green;">1.2488x</span> |
+
 ### SVDQ in Nunchaku
 
 Cache-DiT also supports the caching and context parallelism scheme for int4 models from official Nunchaku library. Users can leverage Cache-DiT to speed up Nunchaku 4-bits W4A4 models. <span style="color:green;">**But we recommend users to use Cache-DiT's native SVDQuant support for better compatibility and usability**.</span>

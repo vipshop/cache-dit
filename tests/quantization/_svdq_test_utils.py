@@ -236,7 +236,7 @@ def format_markdown_table(
         title,
         "",
         f"| {' | '.join(headers)} |",
-        f"| {' | '.join('---:' for _ in headers)} |",
+        f"| {' | '.join(':---:' for _ in headers)} |",
     ]
     for row in rows:
         if len(row) != len(headers):
