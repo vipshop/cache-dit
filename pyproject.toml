@@ -105,6 +105,7 @@ filterwarnings = [
     "ignore:builtin type SwigPyObject has no __module__ attribute:DeprecationWarning",
     "ignore:builtin type swigvarlink has no __module__ attribute:DeprecationWarning",
     "ignore:`torch.jit.script_method` is deprecated.",
+    "ignore:Dynamo detected a call to a `functools\\.lru_cache`-wrapped function:UserWarning:torch\\._dynamo\\.variables\\.functions",
 ]
 
 [tool.black]
