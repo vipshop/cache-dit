@@ -1,0 +1,6 @@
+# 7.19. CUDA_CONDITIONAL_NODE_PARAMS
+
+**Source:** structCUDA__CONDITIONAL__NODE__PARAMS.html#structCUDA__CONDITIONAL__NODE__PARAMS
+
+
+### Public Variables

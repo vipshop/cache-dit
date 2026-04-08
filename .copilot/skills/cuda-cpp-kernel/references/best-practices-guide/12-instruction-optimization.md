@@ -1,0 +1,334 @@
+# 12. Instruction Optimization
+
+
+Awareness of how instructions are executed often permits low-level optimizations that can be useful, especially in code that is run frequently (the so-called hot spot in a program). Best practices suggest that this optimization be performed after all higher-level optimizations have been completed.
+
+
+##  12.1. Arithmetic Instructions 
+
+To maximize instruction throughput the application should:
+
+  * Minimize the use of arithmetic instructions with low throughput; this includes trading precision for speed when it does not affect the end result, such as using intrinsic instead of regular functions (intrinsic functions are listed in the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#mathematical-functions-appendix-intrinsic-functions)), single-precision instead of double-precision, or flushing denormalized numbers to zero;
+
+  * Minimize divergent warps caused by control flow instructions as detailed in [Control Flow Instructions](#control-flow-instructions)
+
+  * Reduce the number of instructions, for example, by optimizing out synchronization points whenever possible as described in [Synchronization Instruction](#synchronization-instruction) or by using restricted pointers as described in the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#restrict).
+
+
+In this section, throughputs are given in number of operations per clock cycle per multiprocessor. For a warp size of 32, one instruction corresponds to 32 operations, so if N is the number of operations per clock cycle, the instruction throughput is N/32 instructions per clock cycle.
+
+All throughputs are for one multiprocessor. They must be multiplied by the number of multiprocessors in the device to get throughput for the whole device.
+
+###  12.1.1. Throughput of Native Arithmetic Instructions 
+
+The following table gives the throughputs of the arithmetic instructions that are natively supported in hardware for devices of various compute capabilities.
+
+Note
+
+This table reflects the max theoretical throughput of the mentioned operations.
+
+In some cases, these throughputs may only be achieved via specific sequences of instructions that require special care when using a compiler.
+
+Most rows provide a [PTX instruction](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html) as an example of lower-level instruction expected to achieve the listed throughput. This PTX instruction may not be the only instructions able to perform the described operation(s).
+
+Table 5 Throughput of Native Arithmetic Instructions. (Number of Results per Clock Cycle per Multiprocessor) Compute Capability | 7.5 | 8.0 | 8.6 | 8.9 | 9.0 | 10.0 | 12.0  
+---|---|---|---|---|---|---|---  
+16-bit floating-point add, multiply, multiply-add (2-way SIMD): `add.f16x2` | 64 [3](#fn3) | 128 [4](#fn4) | 64 | 128 | 64  
+32-bit floating-point add, multiply, multiply-add: `add.f32` | 64 | 128  
+64-bit floating-point add, multiply, multiply-add: `add.f64` | 2 | 32 | 2 | 64 | 64 | 2  
+32-bit approximate floating-point reciprocal, reciprocal square root, base-2 logarithm, base 2 exponential, sine, cosine: `lg2.approx.f32` | 16[5](#fn5)  
+32-bit integer add, subtract: `add.s32` | 128  
+32-bit integer extended-precision add, extended-precision subtract, 3-operand addition: multiple PTX instructions | 64  
+32-bit integer multiply, multiply-add, extended-precision multiply-add: `mad.lo.s32` | 64[6](#fn6)  
+32-bit integer shift: `shl.b32` | 64  
+64-bit integer add: `add.s64` | 32 | 64  
+32-bit integer compare, minimum, maximum: `min.s32` | 64 | 128  
+32-bit integer bit reverse: `not.b32` | 64  
+32-bit bitwise AND, OR, XOR: `xor.b32` | 64  
+count of leading zeros, most significant non-sign bit: `clz.b32` | 16  
+population count: `popc.b32` | 16  
+warp shuffle [7](#fn7): `shfl.sync.idx.b32` | 16 | 32  
+warp vote [8](#fn8): `vote.sync.ballot.b32` | 64 | 128  
+sum of absolute difference: `sad.s32` | 64 | 32  
+2-way SIMD absolute difference: multiple PTX instructions | Multiple instruct.  
+4-way SIMD absolute difference: `vabsdiff4.u32.u32.u32` | 64 [9](#fn9) | 32 [9](#fn9)  
+Type conversions from 8-bit and 16-bit integer to 32-bit integer types: `cvt.u32.u16` | 64  
+Type conversions from and to 64-bit floating-point types: `cvt.f64.f32` | 2 | 16 | 2 | 2 | 16 | 2  
+Type conversion between 16-bit and 32-bit floating-point types: `cvt.f32.f16` | 64 [10](#fn10)  
+Type conversion between 32-bit integer and 32-bit floating-point types: `cvt.rn.f32.s32` | 16 | 64 [11](#fn11)  
+DPX (32-bit and 2-way SIMD 16-bit): multiple PTX instructions | Multiple instruct. | 64 [12](#fn12) | 64 [13](#fn13)  
+  
+[3](#id58)
+    
+
+multiple instructions for __nv_bfloat16
+
+[4](#id59)
+    
+
+64 for __nv_bfloat16
+
+[5](#id60)
+    
+
+for reciprocal: approximate using `__fdividef(1.F, x)`
+
+[6](#id61)
+    
+
+32 for extended-precision
+
+[7](#id62)
+    
+
+assuming converged threads
+
+[8](#id63)
+    
+
+assuming converged threads
+
+9([1](#id64),[2](#id65))
+    
+
+22 for signed version
+
+[10](#id66)
+    
+
+32 for __nv_bfloat16->float, 16 for float->__half, 16 for float->__nv_bfloat16 (SM > 7.5), multiple instructions for float->__nv_bfloat16 (SM 7.5)
+
+[11](#id67)
+    
+
+16 for float->32-bit integer type
+
+[12](#id68)
+    
+
+multiple instructions for intrinsics with boolean predicate outputs
+
+[13](#id69)
+    
+
+128 for intrinsics with 2 operands, multiple instructions for intrinsics with boolean predicate outputs
+
+Other instructions and functions are implemented on top of the native instructions. The implementation may be different for devices of different compute capabilities, and the number of native instructions after compilation may fluctuate with every compiler version. For complicated functions, there can be multiple code paths depending on input. `cuobjdump` can be used to inspect a particular implementation in a `cubin` object.
+
+The implementation of some functions are readily available on the CUDA header files (`math_functions.h`, `device_functions.h`, …).
+
+In general, code compiled with `-ftz=true` (denormalized numbers are flushed to zero) tends to have higher performance than code compiled with `-ftz=false`. Similarly, code compiled with `-prec-div=false` (less precise division) tends to have higher performance code than code compiled with `-prec-div=true`, and code compiled with `-prec-sqrt=false` (less precise square root) tends to have higher performance than code compiled with `-prec-sqrt=true`. The nvcc user manual describes these compilation flags in more details.
+
+**Single-Precision Floating-Point Division**
+
+`__fdividef(x, y)` (see the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#mathematical-functions-appendix-intrinsic-functions)) provides faster single-precision floating-point division than the division operator.
+
+**Single-Precision Floating-Point Reciprocal Square Root**
+
+To preserve IEEE-754 semantics the compiler can optimize `1.0/sqrtf()` into `rsqrtf()` only when both reciprocal and square root are approximate, (i.e., with `-prec-div=false` and `-prec-sqrt=false`). It is therefore recommended to invoke `rsqrtf()` directly where desired.
+
+**Single-Precision Floating-Point Square Root**
+
+Single-precision floating-point square root is implemented as a reciprocal square root followed by a reciprocal instead of a reciprocal square root followed by a multiplication so that it gives correct results for 0 and infinity.
+
+**Sine and Cosine**
+
+`sinf(x)`, `cosf(x)`, `tanf(x)`, `sincosf(x)`, and corresponding double-precision instructions are much more expensive and even more so if the argument x is large in magnitude.
+
+More precisely, the argument reduction code (see the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#mathematical-functions-appendix) for implementation) comprises two code paths referred to as the fast path and the slow path, respectively.
+
+The fast path is used for arguments sufficiently small in magnitude and essentially consists of a few multiply-add operations. The slow path is used for arguments large in magnitude and consists of lengthy computations required to achieve correct results over the entire argument range.
+
+At present, the argument reduction code for the trigonometric functions selects the fast path for arguments whose magnitude is less than `105615.0f` for the single-precision functions, and less than `2147483648.0` for the double-precision functions.
+
+As the slow path requires more registers than the fast path, an attempt has been made to reduce register pressure in the slow path by storing some intermediate variables in local memory, which may affect performance because of local memory high latency and bandwidth (see the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#device-memory-accesses)). At present, 28 bytes of local memory are used by single-precision functions, and 44 bytes are used by double-precision functions. However, the exact amount is subject to change.
+
+Due to the lengthy computations and use of local memory in the slow path, the throughput of these trigonometric functions is lower by one order of magnitude when the slow path reduction is required as opposed to the fast path reduction.
+
+**Integer Arithmetic**
+
+Integer division and modulo operation are costly as they compile to up to 20 instructions. They can be replaced with bitwise operations in some cases: If `n` is a power of 2, (`i/n`) is equivalent to `(i>>log2(n))` and `(i%n)` is equivalent to (`i&(n-1)`); the compiler will perform these conversions if `n` is literal.
+
+`__brev` and `__popc` map to a single instruction and `__brevll` and `__popcll` to a few instructions.
+
+`__[u]mul24` are legacy intrinsic functions that no longer have any reason to be used.
+
+**Half Precision Arithmetic**
+
+In order to achieve good performance for 16-bit precision floating-point add, multiply or multiply-add, it is recommended that the `half2` datatype is used for `half` precision and `__nv_bfloat162` be used for `__nv_bfloat16` precision. Vector intrinsics (for example, `__hadd2`, `__hsub2`, `__hmul2`, `__hfma2`) can then be used to do two operations in a single instruction. Using `half2` or `__nv_bfloat162` in place of two calls using `half` or `__nv_bfloat16` may also help performance of other intrinsics, such as warp shuffles.
+
+The intrinsic `__halves2half2` is provided to convert two `half` precision values to the `half2` datatype.
+
+The intrinsic `__halves2bfloat162` is provided to convert two `__nv_bfloat` precision values to the `__nv_bfloat162` datatype.
+
+**Type Conversion**
+
+Sometimes, the compiler must insert conversion instructions, introducing additional execution cycles. This is the case for:
+
+  * Functions operating on variables of type `char` or `short` whose operands generally need to be converted to `int`,
+
+  * Double-precision floating-point constants (i.e., those constants defined without any type suffix) used as input to single-precision floating-point computations (as mandated by C/C++ standards).
+
+
+This last case can be avoided by using single-precision floating-point constants, defined with an `f` suffix such as `3.141592653589793f`, `1.0f`, `0.5f`.
+
+###  12.1.2. Control Flow Instructions 
+
+Any flow control instruction (`if`, `switch`, `do`, `for`, `while`) can significantly impact the effective instruction throughput by causing threads of the same warp to diverge (i.e., to follow different execution paths). If this happens, the different executions paths have to be serialized, increasing the total number of instructions executed for this warp.
+
+To obtain best performance in cases where the control flow depends on the thread ID, the controlling condition should be written so as to minimize the number of divergent warps. This is possible because the distribution of the warps across the block is deterministic as mentioned in the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#simt-architecture). A trivial example is when the controlling condition only depends on (`threadIdx / warpSize`) where `warpSize` is the warp size. In this case, no warp diverges since the controlling condition is perfectly aligned with the warps.
+
+Sometimes, the compiler may unroll loops or it may optimize out short `if` or `switch` blocks by using branch predication instead, as detailed below. In these cases, no warp can ever diverge. The programmer can also control loop unrolling using the `#pragma unroll` directive (see the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#pragma-unroll)).
+
+When using branch predication none of the instructions whose execution depends on the controlling condition gets skipped. Instead, each of them is associated with a per-thread condition code or predicate that is set to true or false based on the controlling condition and although each of these instructions gets scheduled for execution, only the instructions with a true predicate are actually executed. Instructions with a false predicate do not write results, and also do not evaluate addresses or read operands.
+
+###  12.1.3. Synchronization Instruction 
+
+Throughput for `__syncthreads()` is 32 operations per clock cycle for devices of compute capability 6.0, 16 operations per clock cycle for devices of compute capability 7.x as well as 8.x and 64 operations per clock cycle for devices of compute capability 5.x, 6.1 and 6.2.
+
+Note that `__syncthreads()` can impact performance by forcing the multiprocessor to idle as detailed in the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#device-memory-accesses).
+
+###  12.1.4. Division Modulo Operations 
+
+Note
+
+**Low Priority:** Use shift operations to avoid expensive division and modulo calculations.
+
+Integer division and modulo operations are particularly costly and should be avoided or replaced with bitwise operations whenever possible: If \\(n\\) is a power of 2, ( \\(i/n\\) ) is equivalent to ( \\(i \gg {log2}(n)\\) ) and ( \\(i\% n\\) ) is equivalent to ( \\(i\&\left( {n - 1} \right)\\) ).
+
+The compiler will perform these conversions if n is literal. (For further information, refer to Performance Guidelines in the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#performance-guidelines)).
+
+###  12.1.5. Loop Counters Signed vs. Unsigned 
+
+Note
+
+**Low Medium Priority:** Use signed integers rather than unsigned integers as loop counters.
+
+In the C language standard, unsigned integer overflow semantics are well defined, whereas signed integer overflow causes undefined results. Therefore, the compiler can optimize more aggressively with signed arithmetic than it can with unsigned arithmetic. This is of particular note with loop counters: since it is common for loop counters to have values that are always positive, it may be tempting to declare the counters as unsigned. For slightly better performance, however, they should instead be declared as signed.
+
+For example, consider the following code:
+    
+    
+    for (i = 0; i < n; i++) {
+        out[i] = in[offset + stride*i];
+    }
+    
+
+Here, the sub-expression `stride*i` could overflow a 32-bit integer, so if `i` is declared as unsigned, the overflow semantics prevent the compiler from using some optimizations that might otherwise have applied, such as strength reduction. If instead `i` is declared as signed, where the overflow semantics are undefined, the compiler has more leeway to use these optimizations.
+
+###  12.1.6. Reciprocal Square Root 
+
+The reciprocal square root should always be invoked explicitly as `rsqrtf()` for single precision and `rsqrt()` for double precision. The compiler optimizes `1.0f/sqrtf(x)` into `rsqrtf()` only when this does not violate IEEE-754 semantics.
+
+###  12.1.7. Other Arithmetic Instructions 
+
+Note
+
+**Low Priority:** Avoid automatic conversion of doubles to floats.
+
+The compiler must on occasion insert conversion instructions, introducing additional execution cycles. This is the case for:
+
+  * Functions operating on `char` or `short` whose operands generally need to be converted to an `int`
+
+  * Double-precision floating-point constants (defined without any type suffix) used as input to single-precision floating-point computations
+
+
+The latter case can be avoided by using single-precision floating-point constants, defined with an `f` suffix such as `3.141592653589793f`, `1.0f`, `0.5f`.
+
+For single-precision code, use of the float type and the single-precision math functions are highly recommended.
+
+It should also be noted that the CUDA math library’s complementary error function, `erfcf()`, is particularly fast with full single-precision accuracy.
+
+###  12.1.8. Exponentiation With Small Fractional Arguments 
+
+For some fractional exponents, exponentiation can be accelerated significantly compared to the use of `pow()` by using square roots, cube roots, and their inverses. For those exponentiations where the exponent is not exactly representable as a floating-point number, such as 1/3, this can also provide much more accurate results, as use of `pow()` magnifies the initial representational error.
+
+The formulas in the table below are valid for `x >= 0, x != -0`, that is, `signbit(x) == 0`.
+
+Table 6 Formulae for exponentiation by small fractions Computation | Formula  
+---|---  
+x1/9 | `r = rcbrt(rcbrt(x))`  
+x-1/9 | `r = cbrt(rcbrt(x))`  
+x1/6 | `r = rcbrt(rsqrt(x))`  
+x-1/6 | `r = rcbrt(sqrt(x))`  
+x1/4 | `r = rsqrt(rsqrt(x))`  
+x-1/4 | `r = sqrt(rsqrt(x))`  
+x1/3 | `r = cbrt(x)`  
+x-1/3 | `r = rcbrt(x)`  
+x1/2 | `r = sqrt(x)`  
+x-1/2 | `r = rsqrt(x)`  
+x2/3 | `r = cbrt(x); r = r*r`  
+x-2/3 | `r = rcbrt(x); r = r*r`  
+x3/4 | `r = sqrt(x); r = r*sqrt(r)`  
+x-3/4 | `r = rsqrt(x); r = r*sqrt(r)`  
+x7/6 | `r = x*rcbrt(rsqrt(x))`  
+x-7/6 | `r = (1/x) * rcbrt(sqrt(x))`  
+x5/4 | `r = x*rsqrt(rsqrt(x))`  
+x-5/4 | `r = (1/x)*sqrt(rsqrt(x))`  
+x4/3 | `r = x*cbrt(x)`  
+x-4/3 | `r = (1/x)*rcbrt(x)`  
+x3/2 | `r = x*sqrt(x)`  
+x-3/2 | `r = (1/x)*rsqrt(x)`  
+  
+###  12.1.9. Math Libraries 
+
+Note
+
+**Medium Priority:** Use the fast math library whenever speed trumps precision.
+
+Two types of runtime math operations are supported. They can be distinguished by their names: some have names with prepended underscores, whereas others do not (e.g., `__functionName()` versus `functionName()`). Functions following the `__functionName()` naming convention map directly to the hardware level. They are faster but provide somewhat lower accuracy (e.g., `__sinf(x)` and `__expf(x)`). Functions following `functionName()` naming convention are slower but have higher accuracy (e.g., `sinf(x)` and `expf(x)`). The throughput of `__sinf(x)`, `__cosf(x)`, and`__expf(x)` is much greater than that of `sinf(x)`, `cosf(x)`, and `expf(x)`. The latter become even more expensive (about an order of magnitude slower) if the magnitude of the argument `x` needs to be reduced. Moreover, in such cases, the argument-reduction code uses local memory, which can affect performance even more because of the high latency of local memory. More details are available in the _CUDA C++ Programming Guide_.
+
+Note also that whenever sine and cosine of the same argument are computed, the `sincos` family of instructions should be used to optimize performance:
+
+  * `__sincosf()` for single-precision fast math (see next paragraph)
+
+  * `sincosf()` for regular single-precision
+
+  * `sincos()` for double precision
+
+
+The `-use_fast_math` compiler option of `nvcc` coerces every `functionName()` call to the equivalent `__functionName()` call. It also disables single-precision denormal support and lowers the precision of single-precision division in general. This is an aggressive optimization that can both reduce numerical accuracy and alter special case handling. A more robust approach is to selectively introduce calls to fast intrinsic functions only if merited by performance gains and where altered behavior can be tolerated. Note this switch is effective only on single-precision floating point.
+
+Note
+
+**Medium Priority:** Prefer faster, more specialized math functions over slower, more general ones when possible.
+
+For small integer powers (e.g., _x2_ or _x3_), explicit multiplication is almost certainly faster than the use of general exponentiation routines such as `pow()`. While compiler optimization improvements continually seek to narrow this gap, explicit multiplication (or the use of an equivalent purpose-built inline function or macro) can have a significant advantage. This advantage is increased when several powers of the same base are needed (e.g., where both _x2_ and _x5_ are calculated in close proximity), as this aids the compiler in its common sub-expression elimination (CSE) optimization.
+
+For exponentiation using base 2 or 10, use the functions `exp2()` or `expf2()` and `exp10()` or `expf10()` rather than the functions `pow()` or `powf()`. Both `pow()` and `powf()` are heavy-weight functions in terms of register pressure and instruction count due to the numerous special cases arising in general exponentiation and the difficulty of achieving good accuracy across the entire ranges of the base and the exponent. The functions `exp2()`, `exp2f()`, `exp10()`, and `exp10f()`, on the other hand, are similar to `exp()` and `expf()` in terms of performance, and can be as much as ten times faster than their `pow()`/`powf()` equivalents.
+
+For exponentiation with an exponent of 1/3, use the `cbrt()` or `cbrtf()` function rather than the generic exponentiation functions `pow()` or `powf()`, as the former are significantly faster than the latter. Likewise, for exponentation with an exponent of -1/3, use `rcbrt()` or `rcbrtf()`.
+
+Replace `sin(π*<expr>)` with `sinpi(<expr>)`, `cos(π*<expr>)` with `cospi(<expr>)`, and `sincos(π*<expr>)` with `sincospi(<expr>)`. This is advantageous with regard to both accuracy and performance. As a particular example, to evaluate the sine function in degrees instead of radians, use `sinpi(x/180.0)`. Similarly, the single-precision functions `sinpif()`, `cospif()`, and `sincospif()` should replace calls to `sinf()`, `cosf()`, and `sincosf()` when the function argument is of the form `π*<expr>`. (The performance advantage `sinpi()` has over `sin()` is due to simplified argument reduction; the accuracy advantage is because `sinpi()` multiplies by `π` only implicitly, effectively using an infinitely precise mathematical `π` rather than a single- or double-precision approximation thereof.)
+
+###  12.1.10. Precision-related Compiler Flags 
+
+By default, the `nvcc` compiler generates IEEE-compliant code, but it also provides options to generate code that somewhat less accurate but faster:
+
+  * `-ftz=true` (denormalized numbers are flushed to zero)
+
+  * `-prec-div=false` (less precise division)
+
+  * `-prec-sqrt=false` (less precise square root)
+
+
+Another, more aggressive, option is `-use_fast_math`, which coerces every `functionName()` call to the equivalent `__functionName()` call. This makes the code run faster at the cost of diminished precision and accuracy. See [Math Libraries](#math-libraries).
+
+
+##  12.2. Memory Instructions 
+
+Note
+
+**High Priority:** Minimize the use of global memory. Prefer shared memory access where possible.
+
+Memory instructions include any instruction that reads from or writes to shared, local, or global memory. When accessing uncached local or global memory, there are hundreds of clock cycles of memory latency.
+
+As an example, the assignment operator in the following sample code has a high throughput, but, crucially, there is a latency of hundreds of clock cycles to read data from global memory:
+    
+    
+    __shared__ float shared[32];
+    __device__ float device[32];
+    shared[threadIdx.x] = device[threadIdx.x];
+    
+
+Much of this global memory latency can be hidden by the thread scheduler if there are sufficient independent arithmetic instructions that can be issued while waiting for the global memory access to complete. However, it is best to avoid accessing global memory whenever possible.
