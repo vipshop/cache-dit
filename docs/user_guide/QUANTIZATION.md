@@ -309,7 +309,7 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolat
 
 The only thing users need to do is to prepare the calibration function (<span style="color:green;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:
 
-<span style="color:green;">Step 1</span>: Load the pre-trained model in full precision and DON'T forget to move the model to "CUDA" for better calibration performance. SVDQuant quantization will be much faster on GPU than on CPU, and it may cause OOM on CPU for large models.
+<span style="color:green;">Step 1</span>: Load the pre-trained model in full precision and DON'T forget to move the model to "CUDA" for better calibration performance. 
 
 ```python
 import torch
@@ -328,13 +328,7 @@ pipe = Flux2KleinPipeline.from_pretrained(
 
 ```python
 # 2.1 Prepare the calibration dataset for collecting quantization statistics.
-calibration_prompts = [
-    "A cute cat sitting on the beach, watching the sunset.",
-    "A cute fox sitting on the beach, watching the sunset.",
-    "A cute fox sitting on the beach, watching the sunset.",
-    "A cute rabbit sitting on the beach, watching the sunset.",
-    "A cute panda sitting on the beach, watching the sunset.",
-]
+calibration_prompts = ["A cute cat sitting on the beach.", ...]
 
 # 2.2 Define the calibration function for SVDQuant PTQ.
 def calibrate_fn(**_: object) -> None:
