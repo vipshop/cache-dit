@@ -29,11 +29,10 @@ class FakeDiffusionPipeline:
 class BlockAdapter:
   """Describe how cache-dit should discover and patch transformer blocks.
 
-  `BlockAdapter` is the main advanced integration surface for unsupported or
-  custom models. It can wrap a full pipeline or a transformer-only module,
-  point cache-dit at one or more `ModuleList` block collections, declare the
-  block forward I/O contract via `ForwardPattern`, and optionally apply a
-  model-specific `PatchFunctor` before caching hooks are installed.
+  `BlockAdapter` is the main advanced integration surface for unsupported or custom models. It can
+  wrap a full pipeline or a transformer-only module, point cache-dit at one or more `ModuleList`
+  block collections, declare the block forward I/O contract via `ForwardPattern`, and optionally
+  apply a model-specific `PatchFunctor` before caching hooks are installed.
   """
 
   # Transformer configurations.
@@ -232,9 +231,11 @@ class BlockAdapter:
   def auto_block_adapter(adapter: "BlockAdapter", ) -> "BlockAdapter":
     """Auto-populate block metadata from a pipeline transformer.
 
-    This helper is intended for models whose block lists follow common
-    naming conventions so users do not need to manually specify `blocks`
-    and `blocks_name`.
+    This helper is intended for models whose block lists follow common naming conventions so users
+    do not need to manually specify `blocks` and `blocks_name`.
+
+    :param adapter: Partially configured adapter whose pipeline and forward pattern are already set.
+    :returns: A new adapter with inferred transformer block metadata.
     """
 
     assert adapter.auto, ("Please manually set `auto` to True, or, manually "
@@ -271,7 +272,11 @@ class BlockAdapter:
 
   @staticmethod
   def check_block_adapter(adapter: "BlockAdapter", ) -> bool:
-    """Validate that the adapter has the minimum fields required for caching."""
+    """Validate that the adapter has the minimum fields required for caching.
+
+    :param adapter: Adapter instance to validate.
+    :returns: `True` when the adapter contains enough information for cache installation.
+    """
 
     if getattr(adapter, "_is_normlized", False):
       return True
@@ -328,22 +333,15 @@ class BlockAdapter:
   ) -> Tuple[torch.nn.ModuleList, str]:
     """Find the most likely transformer block list for a module.
 
-    Args:
-        transformer: Transformer module being inspected.
-        allow_prefixes: Attribute prefixes considered likely block-list
-            names.
-        allow_suffixes: Block class-name suffixes used as an optional
-            filter.
-        check_prefixes: Whether to restrict the search to
-            `allow_prefixes`.
-        check_suffixes: Whether to restrict candidate blocks to
-            `allow_suffixes`.
-        **kwargs: Additional pattern-matching options such as
-            `forward_pattern`, `check_forward_pattern`, and
-            `blocks_policy`.
+    :param transformer: Transformer module being inspected.
+    :param allow_prefixes: Attribute prefixes considered likely block-list names.
+    :param allow_suffixes: Block class-name suffixes used as an optional filter.
+    :param check_prefixes: Whether to restrict the search to `allow_prefixes`.
+    :param check_suffixes: Whether to restrict candidate blocks to `allow_suffixes`.
+    :param kwargs: Additional pattern-matching options such as `forward_pattern`,
+      `check_forward_pattern`, and `blocks_policy`.
 
-    Returns:
-        A tuple `(blocks, blocks_name)` for the selected `ModuleList`.
+    :returns: A tuple `(blocks, blocks_name)` for the selected `ModuleList`.
     """
 
     # Check prefixes
@@ -428,7 +426,13 @@ class BlockAdapter:
     forward_pattern: ForwardPattern,
     **kwargs,
   ) -> bool:
-    """Check whether one block satisfies a declared `ForwardPattern`."""
+    """Check whether one block satisfies a declared `ForwardPattern`.
+
+    :param block: Transformer block instance to inspect.
+    :param forward_pattern: Expected block I/O signature pattern.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: `True` when the block matches the requested forward pattern.
+    """
 
     if not kwargs.get("check_forward_pattern", True):
       return True
@@ -466,7 +470,14 @@ class BlockAdapter:
     logging: bool = True,
     **kwargs,
   ) -> bool:
-    """Check whether every block in a block list satisfies one pattern."""
+    """Check whether every block in a block list satisfies one pattern.
+
+    :param transformer_blocks: Transformer blocks to use for the operation.
+    :param forward_pattern: Expected block I/O signature pattern.
+    :param logging: Whether to emit informational logs about successful matching.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: `True` when all blocks satisfy the declared pattern.
+    """
 
     if not kwargs.get("check_forward_pattern", True):
       if logging:
@@ -503,7 +514,12 @@ class BlockAdapter:
     adapter: "BlockAdapter",
     unique: bool = True,
   ) -> "BlockAdapter":
-    """Normalize nested adapter fields into a predictable internal layout."""
+    """Normalize nested adapter fields into a predictable internal layout.
+
+    :param adapter: Adapter to normalize.
+    :param unique: Whether duplicated nested entries should be deduplicated.
+    :returns: The normalized adapter.
+    """
 
     if getattr(adapter, "_is_normalized", False):
       return adapter

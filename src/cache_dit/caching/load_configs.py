@@ -18,19 +18,16 @@ logger = init_logger(__name__)
 
 
 def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dict:
-  r"""Load cache options from a dictionary.
+  """Load cache options from a dictionary.
 
   We keep this function for backward compatibility.
-  Args:
-      cache_kwargs (`dict`):
-          A dictionary containing the cache configuration.
-      reset (`bool`, *optional*, defaults to `False`):
-          Whether to reset the configuration to default values to None before applying the loaded settings.
-          This is useful when you want to ensure that only the settings specified in the dictionary
-          are applied, without retaining any previous configurations (e.g., when using ParaModifier to modify
-          existing configurations).
-  Returns:
-      `dict`: A dictionary containing the loaded cache options.
+
+  :param cache_kwargs: A dictionary containing the cache configuration.
+  :param reset: Whether to reset the configuration to default values to None before applying the
+    loaded settings. This is useful when you want to ensure that only the settings specified in the
+    dictionary are applied, without retaining any previous configurations (e.g., when using
+    ParaModifier to modify existing configurations).
+  :returns: A dictionary containing the loaded cache options.
   """
   try:
     # deep copy to avoid modifying original kwargs
@@ -76,10 +73,14 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
 
 
 def load_cache_options_from_yaml(yaml_file_path: str, reset: bool = False) -> dict:
-  r"""Load legacy cache options from a YAML file.
+  """Load legacy cache options from a YAML file.
 
-  This helper preserves the old flat cache-options format and forwards the
-  parsed dictionary to `load_cache_options_from_dict`.
+  This helper preserves the old flat cache-options format and forwards the parsed dictionary to
+  `load_cache_options_from_dict`.
+
+  :param yaml_file_path: Path to the YAML configuration file.
+  :param reset: Whether to reset existing state before applying new values.
+  :returns: Parsed legacy cache options in the structured loader format.
   """
 
   try:
@@ -93,18 +94,15 @@ def load_cache_options_from_yaml(yaml_file_path: str, reset: bool = False) -> di
 
 
 def load_options(path_or_dict: str | dict, reset: bool = False) -> dict:
-  r"""Load cache options from a YAML file or a dictionary.
+  """Load cache options from a YAML file or a dictionary.
 
-  Args:
-      path_or_dict (`str` or `dict`):
-          The file path to the YAML configuration file or a dictionary containing the configuration.
-      reset (`bool`, *optional*, defaults to `False`):
-          Whether to reset the configuration to default values to None before applying the loaded settings.
-          This is useful when you want to ensure that only the settings specified in the file or dictionary
-          are applied, without retaining any previous configurations (e.g., when using ParaModifier to modify
-          existing configurations).
-  Returns:
-      `dict`: A dictionary containing the loaded cache options.
+  :param path_or_dict: The file path to the YAML configuration file or a dictionary containing the
+    configuration.
+  :param reset: Whether to reset the configuration to default values to None before applying the
+    loaded settings. This is useful when you want to ensure that only the settings specified in the
+    file or dictionary are applied, without retaining any previous configurations (e.g., when using
+    ParaModifier to modify existing configurations).
+  :returns: A dictionary containing the loaded cache options.
   """
   # Deprecated function warning
   logger.warning("`load_options` is deprecated and will be removed in future versions. "
@@ -119,24 +117,16 @@ def load_options(path_or_dict: str | dict, reset: bool = False) -> dict:
 
 def load_cache_config(path_or_dict: str | dict,
                       **kwargs) -> Tuple[DBCacheConfig, Optional[CalibratorConfig]]:
-  r"""Load cache and calibrator configuration from structured or legacy input.
+  """Load cache and calibrator configuration from structured or legacy input.
 
-  This is the main cache-config parser used by `enable_cache` and
-  `refresh_context`. It supports both the newer nested format with a
-  top-level `cache_config` section and the older flat cache-options format for
-  backward compatibility.
+  This is the main cache-config parser used by `enable_cache` and `refresh_context`. It supports
+  both the newer nested format with a top-level `cache_config` section and the older flat
+  cache-options format for backward compatibility.
 
-  Args:
-      path_or_dict (`str` or `dict`):
-          The file path to the YAML configuration file or a dictionary containing the configuration.
-      reset (`bool`, *optional*, defaults to `False`):
-          Whether to reset the configuration to default values to None before applying the loaded settings.
-          This is useful when you want to ensure that only the settings specified in the file or dictionary
-          are applied, without retaining any previous configurations (e.g., when using ParaModifier to modify
-          existing configurations).
-  Returns:
-      `Tuple[DBCacheConfig, Optional[CalibratorConfig]]`: The parsed cache
-      config and optional calibrator config.
+  :param path_or_dict: YAML path or dictionary containing cache-dit runtime settings.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :param reset: Whether to clear existing config fields before applying loaded values.
+  :returns: A tuple `(cache_config, calibrator_config)` parsed from the input source.
   """
   if isinstance(path_or_dict, str):
     try:
@@ -195,19 +185,14 @@ def load_cache_config(path_or_dict: str | dict,
 
 def load_parallelism_config(path_or_dict: str | dict,
                             **kwargs) -> Optional[ParallelismConfig] | bool:
-  r"""Load the `parallelism_config` section from a YAML file or dictionary.
+  """Load the `parallelism_config` section from a YAML file or dictionary.
 
-  The loader also resolves `backend` strings into `ParallelismBackend` values
-  and can expand one parallel size from `"auto"` based on the distributed
-  world size.
+  The loader also resolves `backend` strings into `ParallelismBackend` values and can expand one
+  parallel size from `"auto"` based on the distributed world size.
 
-  Args:
-      path_or_dict (`str` or `dict`):
-          The file path to the YAML configuration file or a dictionary containing the configuration.
-  Returns:
-      `ParallelismConfig`: An instance containing the parsed parallelism
-      configuration. When `check_only=True`, returns a bool indicating
-      whether the section exists.
+  :param path_or_dict: YAML path or dictionary containing cache-dit runtime settings.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: The parsed `ParallelismConfig`, or a boolean existence check when `check_only=True`.
   """
   if isinstance(path_or_dict, str):
     try:
@@ -298,13 +283,12 @@ def load_parallelism_config(path_or_dict: str | dict,
 
 
 def load_attn_backend_config(path_or_dict: str | dict, **kwargs) -> Optional[str]:
-  r"""Load only the `attention_backend` field from a config source.
+  """Load only the `attention_backend` field from a config source.
 
-  Args:
-      path_or_dict (`str` or `dict`):
-          The file path to the YAML configuration file or a dictionary containing the configuration.
-  Returns:
-      `str`: A string containing the loaded attention backend configuration.
+  :param path_or_dict: The file path to the YAML configuration file or a dictionary containing the
+    configuration.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A string containing the loaded attention backend configuration.
   """
   if isinstance(path_or_dict, str):
     try:
@@ -325,13 +309,12 @@ def load_attn_backend_config(path_or_dict: str | dict, **kwargs) -> Optional[str
 
 
 def load_quantize_config(path_or_dict: str | dict, **kwargs) -> Optional[QuantizeConfig]:
-  r"""Load only the `quantize_config` section from a config source.
+  """Load only the `quantize_config` section from a config source.
 
-  Args:
-      path_or_dict (`str` or `dict`):
-          The file path to the YAML configuration file or a dictionary containing the configuration.
-  Returns:
-      `QuantizeConfig`: An instance of QuantizeConfig containing the loaded quantize configuration.
+  :param path_or_dict: The file path to the YAML configuration file or a dictionary containing the
+    configuration.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: An instance of QuantizeConfig containing the loaded quantize configuration.
   """
   if isinstance(path_or_dict, str):
     try:
@@ -374,38 +357,37 @@ def load_configs(
       ],
     ],
 ]:
-  r"""Load all cache-dit runtime configs from one YAML file or dictionary.
+  """Load all cache-dit runtime configs from one YAML file or dictionary.
 
-  This convenience loader aggregates cache, calibrator, parallelism,
-  attention-backend, and quantization parsing so one config blob can drive a
-  full `enable_cache` setup. For example, the YAML file can be structured as
-  follows:
-  ```yaml
-  cache_config:
-    max_warmup_steps: 8
-    warmup_interval: 2
-    max_cached_steps: -1
-    max_continuous_cached_steps: 2
-    Fn_compute_blocks: 1
-    Bn_compute_blocks: 0
-    residual_diff_threshold: 0.12
-    enable_taylorseer: true
-    taylorseer_order: 1
-  parallelism_config:
-    ulysses_size: 4
-    attention_backend: native
-    ulysses_anything: true
-    ulysses_float8: true
-    extra_parallel_modules: ["text_encoder", "vae"]
-  ```
-  Args:
-      path_or_dict (`str` or `dict`):
-          The file path to the YAML configuration file or a dictionary containing the configuration.
-      return_dict (`bool`, *optional*, defaults to `True`):
-          Whether to return a named dictionary instead of a positional tuple.
-  Returns:
-      Either a tuple or dictionary containing the parsed cache, calibrator,
-      parallelism, attention-backend, and quantization settings.
+  This convenience loader aggregates cache, calibrator, parallelism, attention-backend, and
+  quantization parsing so one config blob can drive a full `enable_cache` setup.
+
+  Example YAML structure::
+
+    cache_config:
+      max_warmup_steps: 8
+      warmup_interval: 2
+      max_cached_steps: -1
+      max_continuous_cached_steps: 2
+      Fn_compute_blocks: 1
+      Bn_compute_blocks: 0
+      residual_diff_threshold: 0.12
+      enable_taylorseer: true
+      taylorseer_order: 1
+    parallelism_config:
+      ulysses_size: 4
+      attention_backend: native
+      ulysses_anything: true
+      ulysses_float8: true
+      extra_parallel_modules: ["text_encoder", "vae"]
+
+  :param path_or_dict: The file path to the YAML configuration file or a dictionary containing the
+    configuration.
+  :param return_dict: Whether to return a named dictionary instead of a positional tuple.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+
+  :returns: Either a tuple or dictionary containing the parsed cache, calibrator,
+    parallelism, attention-backend, and quantization settings.
   """
   cache_config, calibrator_config = load_cache_config(path_or_dict, **kwargs)
   parallelism_config = load_parallelism_config(path_or_dict, **kwargs)

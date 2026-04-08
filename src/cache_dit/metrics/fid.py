@@ -61,24 +61,16 @@ def get_activations(
   num_workers=1,
   disable_tqdm=True,
 ):
-  """Calculates the activations of the pool_3 layer for all images.
+  """Run the Inception backbone and collect one feature vector per image.
 
-  Params:
-  -- files_or_imgs : List of image files paths or OpenCV image
-  -- model         : Instance of inception model
-  -- batch_size    : Batch size of images for the model to process at once.
-                     Make sure that the number of samples is a multiple of
-                     the batch size, otherwise some samples are ignored. This
-                     behavior is retained to match the original FID score
-                     implementation.
-  -- dims          : Dimensionality of features returned by Inception
-  -- device        : Device to run calculations
-  -- num_workers   : Number of parallel dataloader workers
-
-  Returns:
-  -- A numpy array of dimension (num images, dims) that contains the
-     activations of the given tensor when feeding inception with the
-     query tensor.
+  :param files_or_imgs: Image paths or already loaded image arrays.
+  :param model: Inception feature extractor used for FID statistics.
+  :param batch_size: Batch size used when iterating through the dataset.
+  :param dims: Expected feature width returned by the selected Inception block.
+  :param device: Device on which the feature extractor should run.
+  :param num_workers: Number of dataloader worker processes.
+  :param disable_tqdm: Whether to disable the progress bar.
+  :returns: A NumPy array with shape `(num_images, dims)` containing one feature vector per image.
   """
   model.eval()
 
@@ -127,26 +119,17 @@ def calculate_frechet_distance(
   sigma2,
   eps=1e-6,
 ):
-  """Numpy implementation of the Frechet Distance. The Frechet distance between two multivariate
-  Gaussians X_1 ~ N(mu_1, C_1)
+  """Compute the Frechet distance between two Gaussian feature distributions.
 
-  and X_2 ~ N(mu_2, C_2) is
-          d^2 = ||mu_1 - mu_2||^2 + Tr(C_1 + C_2 - 2*sqrt(C_1*C_2)).
+  This follows the standard FID formulation over feature means and covariance matrices, with the
+  same numerical-stability fallback used by the reference PyTorch FID implementation.
 
-  Stable version by Dougal J. Sutherland.
-
-  Params:
-  -- mu1   : Numpy array containing the activations of a layer of the
-             inception net (like returned by the function 'get_predictions')
-             for generated samples.
-  -- mu2   : The sample mean over activations, precalculated on an
-             representative data set.
-  -- sigma1: The covariance matrix over activations for generated samples.
-  -- sigma2: The covariance matrix over activations, precalculated on an
-             representative data set.
-
-  Returns:
-  --   : The Frechet Distance.
+  :param mu1: Mean vector for the first feature distribution.
+  :param sigma1: Covariance matrix for the first feature distribution.
+  :param mu2: Mean vector for the second feature distribution.
+  :param sigma2: Covariance matrix for the second feature distribution.
+  :param eps: Small diagonal offset used when the covariance product becomes numerically singular.
+  :returns: The scalar Frechet distance.
   """
 
   mu1 = np.atleast_1d(mu1)
@@ -190,25 +173,16 @@ def calculate_activation_statistics(
   num_workers=1,
   disable_tqdm=True,
 ):
-  """Calculation of the statistics used by the FID.
+  """Compute the mean and covariance used by FID for one image set.
 
-  Params:
-  -- files_or_imgs : List of image files paths or OpenCV image
-  -- model         : Instance of inception model
-  -- batch_size    : Batch size of images for the model to process at once.
-                     Make sure that the number of samples is a multiple of
-                     the batch size, otherwise some samples are ignored. This
-                     behavior is retained to match the original FID score
-                     implementation.
-  -- dims          : Dimensionality of features returned by Inception
-  -- device        : Device to run calculations
-  -- num_workers   : Number of parallel dataloader workers
-
-  Returns:
-  -- mu    : The mean over samples of the activations of the pool_3 layer of
-             the inception model.
-  -- sigma : The covariance matrix of the activations of the pool_3 layer of
-             the inception model.
+  :param files_or_imgs: Image paths or already loaded image arrays.
+  :param model: Inception feature extractor used for FID statistics.
+  :param batch_size: Batch size used when iterating through the dataset.
+  :param dims: Expected feature width returned by the selected Inception block.
+  :param device: Device on which the feature extractor should run.
+  :param num_workers: Number of dataloader worker processes.
+  :param disable_tqdm: Whether to disable the progress bar.
+  :returns: A tuple `(mu, sigma)` containing the feature mean and covariance.
   """
   act = get_activations(
     files_or_imgs,
@@ -225,6 +199,7 @@ def calculate_activation_statistics(
 
 
 class FrechetInceptionDistance:
+  """Compute image or video FID scores with a cached Inception backbone."""
 
   def __init__(
     self,
@@ -249,9 +224,12 @@ class FrechetInceptionDistance:
     image_true: np.ndarray | str,
     image_test: np.ndarray | str,
   ):
-    """Calculates the FID of two file paths FID = FrechetInceptionDistance() img_fid =
-    FID.compute_fid("img_true.png", "img_test.png") img_dir_fid = FID.compute_fid("img_true_dir",
-    "img_test_dir")"""
+    """Compute FID for two images or two matched image directories.
+
+    :param image_true: Reference image path, reference directory, or preloaded image array.
+    :param image_test: Test image path, test directory, or preloaded image array.
+    :returns: A tuple `(fid_value, valid_count)` for the matched image pairs.
+    """
     if isinstance(image_true, str) or isinstance(image_test, str):
       if os.path.isfile(image_true) or os.path.isfile(image_test):
         assert os.path.exists(image_true)
@@ -331,6 +309,13 @@ class FrechetInceptionDistance:
     video_true: str,
     video_test: str,
   ):
+    """Compute FID over frames extracted from one video pair or two video directories.
+
+    :param video_true: Reference video path or directory.
+    :param video_test: Test video path or directory.
+    :returns: A tuple `(fid_value, valid_frame_count)` for the matched frames.
+    """
+
     if os.path.isfile(video_true) and os.path.isfile(video_test):
       video_true_frames, video_test_frames, valid_frames = self._fetch_video_frames(
         video_true=video_true,

@@ -11,7 +11,12 @@ def import_error_metric_func(*args, **kwargs):
 
 
 def _safe_import(module_name: str, func_name: str) -> Callable:
-  """Helper function to safely import a function from a module."""
+  """Helper function to safely import a function from a module.
+
+  :param module_name: Module path to import from.
+  :param func_name: Attribute name expected inside the imported module.
+  :returns: The resolved callable, or `import_error_metric_func` when import fails.
+  """
   try:
     package = __package__ if __package__ is not None else ""
     module = importlib.import_module(module_name, package=package)

@@ -37,13 +37,12 @@ class ProfilerContext:
   ):
     """Configure a profiler session.
 
-    Args:
-        enabled: Whether profiling should actually be activated.
-        activities: Activity names such as `CPU`, `GPU`, or `MEM`.
-        output_dir: Directory where traces and memory snapshots are written.
-        profile_name: Base name used for profiler output files.
-        with_stack: Whether to capture Python stacks for profiled ops.
-        record_shapes: Whether to record tensor shapes in the profiler trace.
+    :param enabled: Whether profiling should actually be activated.
+    :param activities: Activity names such as `CPU`, `GPU`, or `MEM`.
+    :param output_dir: Directory where traces and memory snapshots are written.
+    :param profile_name: Base name used for profiler output files.
+    :param with_stack: Whether to capture Python stacks for profiled ops.
+    :param record_shapes: Whether to record tensor shapes in the profiler trace.
     """
 
     assert (current_platform.is_accelerator_available() and current_platform.device_type
@@ -142,7 +141,15 @@ def profile_function(
   with_stack: bool = False,
   record_shapes: bool = True,
 ):
-  """Decorator factory that profiles one function call with `ProfilerContext`."""
+  """Decorator factory that profiles one function call with `ProfilerContext`.
+
+  :param enabled: Whether the feature is enabled.
+  :param activities: Profiler activities to capture.
+  :param output_dir: Directory for generated outputs.
+  :param profile_name: Base name for the profiler output.
+  :param with_stack: Whether to capture Python stack traces.
+  :param record_shapes: Whether to record tensor shapes.
+  """
 
   def decorator(func):
 
@@ -170,7 +177,15 @@ def create_profiler_context(
   profile_name: Optional[str] = None,
   **kwargs,
 ) -> ProfilerContext:
-  """Convenience helper to build a `ProfilerContext` instance."""
+  """Convenience helper to build a `ProfilerContext` instance.
+
+  :param enabled: Whether the feature is enabled.
+  :param activities: Profiler activities to capture.
+  :param output_dir: Directory for generated outputs.
+  :param profile_name: Base name for the profiler output.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A configured `ProfilerContext` instance.
+  """
 
   return ProfilerContext(
     enabled=enabled,
@@ -182,12 +197,18 @@ def create_profiler_context(
 
 
 def get_profiler_output_dir() -> str:
-  """Return the default profiler output directory from the environment."""
+  """Return the default profiler output directory from the environment.
+
+  :returns: The resolved profiler output dir.
+  """
 
   return os.environ.get("CACHE_DIT_TORCH_PROFILER_DIR", PROFILER_DIR)
 
 
 def set_profiler_output_dir(path: str):
-  """Override the default profiler output directory for future sessions."""
+  """Override the default profiler output directory for future sessions.
+
+  :param path: Path to the input resource.
+  """
 
   os.environ["CACHE_DIT_TORCH_PROFILER_DIR"] = path

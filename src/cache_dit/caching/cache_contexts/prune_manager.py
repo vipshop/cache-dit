@@ -22,7 +22,12 @@ class PrunedContextManager(CachedContextManager):
 
   # Overwrite for Dynamic Block Prune
   def new_context(self, *args, **kwargs) -> PrunedContext:
-    """Create and register a `PrunedContext` instead of a plain context."""
+    """Create and register a `PrunedContext` instead of a plain context.
+
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The newly created `PrunedContext`.
+    """
 
     _context = PrunedContext(*args, **kwargs)
     # NOTE: Patch args and kwargs for implicit refresh.
@@ -106,7 +111,11 @@ class PrunedContextManager(CachedContextManager):
   @torch.compiler.disable
   @functools.lru_cache(maxsize=8)
   def get_non_prune_blocks_ids(self, num_blocks: int) -> List[int]:
-    """Return block indices that must never be pruned for this context."""
+    """Return block indices that must never be pruned for this context.
+
+    :param num_blocks: Total number of blocks in the current transformer stack.
+    :returns: Block indices that should always stay on the compute path.
+    """
 
     assert num_blocks is not None, "num_blocks must be provided"
     assert num_blocks > 0, "num_blocks must be greater than 0"

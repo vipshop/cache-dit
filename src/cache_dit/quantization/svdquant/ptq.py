@@ -111,7 +111,6 @@ def _log_boxed_summary(lines: list[str]) -> None:
   if not lines:
     return
   max_length = max(len(line) for line in lines) + 2
-  logger.info("\n")
   logger.info("-" * max_length)
   logger.info("\n".join(line.ljust(max_length) + "|" for line in lines))
   logger.info("-" * max_length)
@@ -173,10 +172,9 @@ def _attach_quantization_metadata(
 class SVDQPTQContext:
   """Resolved plan for a module-level SVDQ PTQ run.
 
-  The context snapshots the quantization scope, discovered candidate
-  `nn.Linear` layers, skip reasons, and resolved SVDQ kwargs derived from the
-  `QuantizeConfig`. It is shared between calibration, replacement,
-  serialization, and summary logging.
+  The context snapshots the quantization scope, discovered candidate `nn.Linear` layers, skip
+  reasons, and resolved SVDQ kwargs derived from the `QuantizeConfig`. It is shared between
+  calibration, replacement, serialization, and summary logging.
   """
 
   root_module: nn.Module
@@ -205,6 +203,10 @@ class SVDQPTQContext:
 
     This gathers the repeated-block scope, exclusion rules, resolved SVDQ kwargs, and the final list
     of candidate linear layers that satisfy the migrated W4A4 geometry constraints.
+
+    :param root_module: Root module that will be searched for quantizable linear layers.
+    :param quantize_config: Structured quantization configuration.
+    :returns: A resolved PTQ context describing scope, candidates, and SVDQ settings.
     """
 
     repeated_blocks = getattr(
@@ -677,21 +679,13 @@ def _log_load_summary(
 def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
   """Run post-training SVDQ quantization over a module in place.
 
-  Args:
-      module: Root module containing the float `nn.Linear` layers to quantize.
-      quantize_config: SVDQ `QuantizeConfig` describing calibration, scope
-          filters, serialization target, and SVDQ-specific kwargs.
+  :param module: Root module containing the float `nn.Linear` layers to quantize.
+  :param quantize_config: SVDQ `QuantizeConfig` describing calibration, scope
+  filters, serialization target, and SVDQ-specific kwargs.
 
-  Returns:
-      The input module with eligible `nn.Linear` submodules replaced by
-      `SVDQW4A4Linear` instances. The return value may be a new module only when
-      the root module itself is quantized.
-
-  Notes:
-      This function runs the user-provided calibration callback under inference
-      mode, quantizes each observed candidate layer via the lower-level SVDQ
-      linear quantizer path, attaches quantization metadata, and writes both the
-      serialized checkpoint and `quant_config.json` snapshot.
+  :returns: The input module with eligible `nn.Linear` submodules replaced by
+  `SVDQW4A4Linear` instances. The return value may be a new module only when
+  the root module itself is quantized.
   """
 
   if not isinstance(module, nn.Module):
@@ -805,22 +799,14 @@ def load_svdq(
 ) -> nn.Module:
   """Load a serialized SVDQ PTQ checkpoint into a float module in place.
 
-  Args:
-      module: Root module containing float `nn.Linear` layers that match the
-          serialized checkpoint layout.
-      quantize_config_or_path: Either a `QuantizeConfig` whose `serialize_to`
-          points at an SVDQ checkpoint or a direct checkpoint path.
+  :param module: Root module containing float `nn.Linear` layers that match the
+  serialized checkpoint layout.
+  :param quantize_config_or_path: Either a `QuantizeConfig` whose `serialize_to`
+  points at an SVDQ checkpoint or a direct checkpoint path.
 
-  Returns:
-      The module with serialized layers replaced by `SVDQW4A4Linear` instances.
-      The return value may be a new module if the root layer itself was
-      serialized and loaded.
-
-  Notes:
-      The loader validates checkpoint metadata against `quant_config.json` when
-      present and against the provided `QuantizeConfig` when one is supplied.
-      State-dict loading is strict so missing or unexpected packed tensors fail
-      fast.
+  :returns: The module with serialized layers replaced by `SVDQW4A4Linear` instances.
+  The return value may be a new module if the root layer itself was
+  serialized and loaded.
   """
 
   if not isinstance(module, nn.Module):

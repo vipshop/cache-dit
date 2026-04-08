@@ -22,7 +22,13 @@ class PatchFunctor:
     *args,
     **kwargs,
   ) -> torch.nn.Module:
-    """Apply the functor if the transformer is eligible for patching."""
+    """Apply the functor if the transformer is eligible for patching.
+
+    :param transformer: Transformer module to process.
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The patched transformer, or the original module when patching is skipped.
+    """
 
     if check_patched(transformer):
       logger.warning("Transformer is already patched. Skipping patch functor. "
@@ -49,13 +55,23 @@ class PatchFunctor:
     *args,
     **kwargs,
   ) -> torch.nn.Module:
-    """Subclass hook that performs the actual transformer patching."""
+    """Subclass hook that performs the actual transformer patching.
+
+    :param transformer: Transformer module to process.
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The patched transformer module.
+    """
 
     raise NotImplementedError("_apply method is not implemented.")
 
   @classmethod
   def is_from_diffusers(cls, transformer: torch.nn.Module) -> bool:
-    """Return whether diffusers-module checks allow this transformer."""
+    """Return whether diffusers-module checks allow this transformer.
+
+    :param transformer: Transformer module to process.
+    :returns: `True` when the transformer is treated as a supported diffusers module.
+    """
 
     if ENV.CACHE_DIT_PATCH_FUNCTOR_DISABLE_DIFFUSERS_CHECK:
       return True
@@ -65,7 +81,10 @@ class PatchFunctor:
     return False
 
   def logging_patched(self, transformer: torch.nn.Module):
-    """Emit a standard log line after patching completes."""
+    """Emit a standard log line after patching completes.
+
+    :param transformer: Transformer module to process.
+    """
 
     is_patched = getattr(transformer, "_is_patched", False)
     logger.info(f"Applied patch functor {self.__class__.__name__} for "

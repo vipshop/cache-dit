@@ -40,12 +40,19 @@ class CalibratorConfig:
   calibrator_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
   def strify(self, **kwargs) -> str:
-    """Return a short human-readable tag for logging and summaries."""
+    """Return a short human-readable tag for logging and summaries.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A short summary string describing the calibrator selection.
+    """
 
     return "CalibratorBase"
 
   def to_kwargs(self) -> Dict:
-    """Return implementation kwargs used by the calibrator factory."""
+    """Return implementation kwargs used by the calibrator factory.
+
+    :returns: A shallow copy of the calibrator-specific initialization kwargs.
+    """
 
     return self.calibrator_kwargs.copy()
 
@@ -53,7 +60,11 @@ class CalibratorConfig:
     return dataclasses.asdict(self)
 
   def update(self, **kwargs) -> "CalibratorConfig":
-    """Update known fields in place while ignoring unknown keys."""
+    """Update known fields in place while ignoring unknown keys.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: `self` after applying the known non-`None` fields.
+    """
 
     for key, value in kwargs.items():
       if hasattr(self, key):
@@ -62,7 +73,11 @@ class CalibratorConfig:
     return self
 
   def empty(self, **kwargs) -> "CalibratorConfig":
-    """Clear non-constant fields so callers can rebuild a config from scratch."""
+    """Clear non-constant fields so callers can rebuild a config from scratch.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: `self` after clearing mutable fields and applying optional overrides.
+    """
 
     # Set all fields to None
     skip_constants = {"calibrator_type"}
@@ -75,7 +90,11 @@ class CalibratorConfig:
     return self
 
   def reset(self, **kwargs) -> "CalibratorConfig":
-    """Reset this config to an empty state, then apply optional overrides."""
+    """Reset this config to an empty state, then apply optional overrides.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: `self` after resetting the config.
+    """
 
     return self.empty(**kwargs)
 
@@ -108,7 +127,11 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
   taylorseer_order: int = 1
 
   def strify(self, **kwargs) -> str:
-    """Return a compact tag that includes the selected Taylor order."""
+    """Return a compact tag that includes the selected Taylor order.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A compact TaylorSeer tag for logs, summaries, or filenames.
+    """
 
     if kwargs.get("details", False):
       if self.taylorseer_order:
@@ -120,7 +143,10 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
     return "NONE"
 
   def to_kwargs(self) -> Dict:
-    """Translate config fields into `TaylorSeerCalibrator` init kwargs."""
+    """Translate config fields into `TaylorSeerCalibrator` init kwargs.
+
+    :returns: Keyword arguments expected by `TaylorSeerCalibrator`.
+    """
 
     kwargs = self.calibrator_kwargs.copy()
     kwargs["n_derivatives"] = self.taylorseer_order
@@ -164,7 +190,11 @@ class Calibrator:
     cls,
     calibrator_config: CalibratorConfig,
   ) -> CalibratorBase:
-    """Construct the calibrator implementation described by `calibrator_config`."""
+    """Construct the calibrator implementation described by `calibrator_config`.
+
+    :param calibrator_config: Structured calibrator configuration to instantiate.
+    :returns: The concrete calibrator implementation.
+    """
 
     assert (calibrator_config.calibrator_type in cls._supported_calibrators
             ), f"Calibrator {calibrator_config.calibrator_type} is not supported now!"

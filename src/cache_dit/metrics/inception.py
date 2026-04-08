@@ -42,33 +42,14 @@ class InceptionV3(nn.Module):
   ):
     """Build pretrained InceptionV3.
 
-    Parameters
-    ----------
-    output_blocks : list of int
-        Indices of blocks to return features of. Possible values are:
-            - 0: corresponds to output of first max pooling
-            - 1: corresponds to output of second max pooling
-            - 2: corresponds to output which is fed to aux classifier
-            - 3: corresponds to output of final average pooling
-    resize_input : bool
-        If true, bilinearly resizes input to width and height 299 before
-        feeding input to model. As the network without fully connected
-        layers is fully convolutional, it should be able to handle inputs
-        of arbitrary size, so resizing might not be strictly needed
-    normalize_input : bool
-        If true, scales the input from range (0, 1) to the range the
-        pretrained Inception network expects, namely (-1, 1)
-    requires_grad : bool
-        If true, parameters of the model require gradients. Possibly useful
-        for finetuning the network
-    use_fid_inception : bool
-        If true, uses the pretrained Inception model used in Tensorflow's
-        FID implementation. If false, uses the pretrained Inception model
-        available in torchvision. The FID Inception model has different
-        weights and a slightly different structure from torchvision's
-        Inception model. If you want to compute FID scores, you are
-        strongly advised to set this parameter to true to get comparable
-        results.
+    :param output_blocks: Block indices whose feature maps should be returned. `0` maps to the
+      first max-pool output and `3` maps to the final pooled feature used by FID.
+    :param resize_input: Whether to resize the input image tensor to `299 x 299` before running the
+      network.
+    :param normalize_input: Whether to remap input values from `[0, 1]` to `[-1, 1]`.
+    :param requires_grad: Whether the backbone parameters should require gradients.
+    :param use_fid_inception: Whether to use the TensorFlow-compatible FID weights instead of the
+      torchvision checkpoint.
     """
     super(InceptionV3, self).__init__()
 
@@ -134,16 +115,8 @@ class InceptionV3(nn.Module):
   def forward(self, inp):
     """Get Inception feature maps.
 
-    Parameters
-    ----------
-    inp : torch.autograd.Variable
-        Input tensor of shape Bx3xHxW. Values are expected to be in
-        range (0, 1)
-
-    Returns
-    -------
-    List of torch.autograd.Variable, corresponding to the selected output
-    block, sorted ascending by index
+    :param inp: Input tensor with shape `(batch, 3, height, width)` and values in `[0, 1]`.
+    :returns: A list of feature tensors ordered by the requested output blocks.
     """
     outp = []
     x = inp
@@ -166,7 +139,12 @@ class InceptionV3(nn.Module):
 
 
 def _inception_v3(*args, **kwargs):
-  """Wraps `torchvision.models.inception_v3`"""
+  """Wrap `torchvision.models.inception_v3` with version-compatible defaults.
+
+  :param args: Positional arguments forwarded to torchvision.
+  :param kwargs: Keyword arguments forwarded to torchvision.
+  :returns: The constructed torchvision InceptionV3 model.
+  """
   try:
     version = tuple(map(int, torchvision.__version__.split(".")[:2]))
   except ValueError:
@@ -201,6 +179,8 @@ def fid_inception_v3():
 
   This method first constructs torchvision's Inception and then patches the necessary parts that are
   different in the FID Inception model.
+
+  :returns: An InceptionV3 model loaded with FID-compatible weights.
   """
   inception = _inception_v3(num_classes=1008, aux_logits=False, weights=None)
   inception.Mixed_5b = FIDInceptionA(192, pool_features=32)

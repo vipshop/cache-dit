@@ -85,7 +85,11 @@ _setup_logger()
 
 
 def init_logger(name: str):
-  """Initialize a logger with the given name."""
+  """Initialize a logger with the given name.
+
+  :param name: Logger name, usually `__name__` from the caller module.
+  :returns: The configured logger instance.
+  """
   logger = logging.getLogger(name)
   logger.setLevel(_LOG_LEVEL)
   logger.propagate = False
@@ -122,10 +126,12 @@ def suppress_stdout():
   """Suppress stdout from C libraries at the file descriptor level.
 
   Only suppresses stdout, not stderr, to preserve error messages.
-  Example:
-      with suppress_stdout():
-          # C library calls that would normally print to stdout
-          torch.distributed.new_group(ranks, backend="gloo")
+
+  Example::
+
+    with suppress_stdout():
+      # C library calls that would normally print to stdout
+      torch.distributed.new_group(ranks, backend="gloo")
   """
   # Don't suppress if logging level is DEBUG
   if _LOG_LEVEL == logging.DEBUG:
@@ -188,7 +194,10 @@ def suppress_loggers(loggers_to_suppress: list[str], level: int = logging.ERROR)
 
 
 def suppress_torch_compile_loggers() -> dict[str, int]:
-  """Set specified torch loggers to ERROR level to suppress warnings."""
+  """Set specified torch loggers to ERROR level to suppress warnings.
+
+  :returns: A mapping from logger names to their original levels before suppression.
+  """
   try:
     import torch._inductor.config as inductor_config
     import torch._inductor.select_algorithm as select_algorithm
@@ -243,7 +252,10 @@ def suppress_torch_compile_loggers() -> dict[str, int]:
 
 # Adapted from: https://github.com/sgl-project/sglang/blob/main/python/sglang/multimodal_gen/runtime/utils/logging_utils.py#L396
 def globally_suppress_loggers() -> dict[str, int]:
-  """Set specified loggers to ERROR level to suppress logs globally."""
+  """Set specified loggers to ERROR level to suppress logs globally.
+
+  :returns: A mapping from logger names to their original levels before suppression.
+  """
   warnings.filterwarnings("ignore", category=UserWarning, module=r"torchao*")
   warnings.filterwarnings("ignore", category=SyntaxWarning, module=r"torchao*")
   # diffusers manages its own root logger and can reset level to WARNING.

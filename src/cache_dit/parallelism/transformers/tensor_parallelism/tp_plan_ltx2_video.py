@@ -76,8 +76,8 @@ class DistributedRMSNorm(nn.Module):
 class ShardRotaryEmbProcessor:
   """Shard query/key rotary embeddings to match TP-sharded heads/channels.
 
-  - interleaved RoPE: cos/sin are (B, T, D) -> shard along last dim
-  - split RoPE: cos/sin are (B, H, T, D/2) -> shard along head dim
+  - interleaved RoPE: `cos`/`sin` are shaped `(B, T, D)` and shard along the last dimension.
+  - split RoPE: `cos`/`sin` are shaped `(B, H, T, D/2)` and shard along the head dimension.
   """
 
   def __init__(self, processor: LTX2AudioVideoAttnProcessor, tp_size: int, tp_rank: int):

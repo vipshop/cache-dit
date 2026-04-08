@@ -44,7 +44,10 @@ class MemoryTracker:
       self.peak_memory = current_platform.max_memory_allocated(self.device)
 
   def get_peak_memory_gb(self):
-    """Get peak memory in GB."""
+    """Get peak memory in GB.
+
+    :returns: The resolved peak memory gb.
+    """
     return self.peak_memory / (1024 ** 3)
 
   def report(self):

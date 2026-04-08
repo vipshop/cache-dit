@@ -26,9 +26,9 @@ logger = init_logger(__name__)
 class CachedContext:
   """Runtime state container for one cache-enabled inference context.
 
-  A `CachedContext` owns the mutable buffers, per-step counters, cached-step
-  history, residual-diff statistics, and optional calibrators used while one
-  pipeline or transformer executes under DBCache.
+  A `CachedContext` owns the mutable buffers, per-step counters, cached-step history,
+  residual-diff statistics, and optional calibrators used while one pipeline or transformer
+  executes under DBCache.
   """
 
   name: str = "default"
@@ -117,7 +117,10 @@ class CachedContext:
     return False
 
   def get_residual_diff_threshold(self):
-    """Return the active residual threshold after extra overrides are applied."""
+    """Return the active residual threshold after extra overrides are applied.
+
+    :returns: The resolved residual diff threshold.
+    """
 
     residual_diff_threshold = self.cache_config.residual_diff_threshold
     if self.extra_cache_config.l1_hidden_states_diff_threshold is not None:
@@ -300,7 +303,10 @@ class CachedContext:
     return self.cache_config.force_refresh_step_hint
 
   def is_separate_cfg_step(self):
-    """Return whether the current transformer call belongs to the CFG branch."""
+    """Return whether the current transformer call belongs to the CFG branch.
+
+    :returns: Whether the requested condition is satisfied.
+    """
 
     if not self.cache_config.enable_separate_cfg:
       return False

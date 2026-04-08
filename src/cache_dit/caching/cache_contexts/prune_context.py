@@ -34,7 +34,10 @@ class PrunedContext(CachedContext):
                                                         self.extra_cache_config.downsample_factor)
 
   def get_residual_diff_threshold(self):
-    """Return the prune threshold, optionally relaxed from recent block diffs."""
+    """Return the prune threshold, optionally relaxed from recent block diffs.
+
+    :returns: The resolved residual diff threshold.
+    """
 
     # Overwite this func for Dynamic Block Prune
     residual_diff_threshold = self.cache_config.residual_diff_threshold
@@ -108,7 +111,10 @@ class PrunedContext(CachedContext):
         self.add_cached_step()
 
   def add_pruned_block(self, num_blocks):
-    """Record how many blocks were skipped for the active CFG branch."""
+    """Record how many blocks were skipped for the active CFG branch.
+
+    :param num_blocks: Num blocks to use for the operation.
+    """
 
     if not self.is_separate_cfg_step():
       self.pruned_blocks.append(num_blocks)
@@ -116,7 +122,10 @@ class PrunedContext(CachedContext):
       self.cfg_pruned_blocks.append(num_blocks)
 
   def add_actual_block(self, num_blocks):
-    """Record how many blocks were actually executed for the active branch."""
+    """Record how many blocks were actually executed for the active branch.
+
+    :param num_blocks: Num blocks to use for the operation.
+    """
 
     if not self.is_separate_cfg_step():
       self.actual_blocks.append(num_blocks)

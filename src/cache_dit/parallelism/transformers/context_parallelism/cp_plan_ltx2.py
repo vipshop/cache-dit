@@ -1,4 +1,9 @@
-# Mostly copy from https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/context_parallelism/cp_plan_ltxvideo.py
+"""Context-parallel plan for LTX-2 video transformers.
+
+This planner reuses the LTXVideo implementation pattern, but adjusts the plan and patched helper
+logic for LTX-2-specific timestep and mask behavior.
+"""
+
 import functools
 from typing import Optional
 
@@ -48,15 +53,15 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
       transformer,
       LTX2VideoTransformer3DModel), "Transformer must be an instance of LTX2VideoTransformer3DModel"
 
-    # NOTE:
-    # - LTX2ImageToVideoPipeline passes `timestep` as a 2D tensor (B, seq_len) named `video_timestep`.
-    # - diffusers native LTX2 `_cp_plan` does NOT shard `timestep`, causing shape mismatch under CP:
-    #     hidden_states: (B, seq_len/world, C) but temb built from timestep.flatten(): (B, seq_len, ...)
-    #   leading to: RuntimeError size mismatch (1536 vs 6144).
-    # So we must use a custom plan for correctness under Ulysses/Ring CP.
+    # LTX2ImageToVideoPipeline passes `timestep` as a 2D `(B, seq_len)` tensor named
+    # `video_timestep`. Diffusers' native LTX2 `_cp_plan` does not shard that tensor, which causes
+    # CP shape mismatches: `hidden_states` becomes `(B, seq_len / world, C)` while the timestep
+    # embedding path still sees `(B, seq_len, ...)`. We therefore force a custom plan for Ulysses /
+    # Ring CP correctness.
     self._cp_planner_preferred_native_diffusers = False
 
-    # Patch attention_mask preparation for CP head sharding + global seq padding
+    # Patch attention-mask preparation so head sharding and global-sequence padding stay aligned
+    # under CP.
     LTX2Attention.prepare_attention_mask = __patch__LTX2Attention_prepare_attention_mask__  # type: ignore[assignment]
     LTX2AudioVideoAttnProcessor.__call__ = __patch__LTX2AudioVideoAttnProcessor__call__  # type: ignore[assignment]
 
@@ -136,7 +141,7 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
     return _cp_plan
 
 
-# Upstream links (for cross-checking when updating diffusers):
+# Upstream references for future syncs:
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_ltx2.py
 # - https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention.py
 
@@ -151,11 +156,9 @@ def __patch__LTX2Attention_prepare_attention_mask__(
   # NOTE: Allow specifying head_size for CP
   head_size: Optional[int] = None,
 ) -> torch.Tensor:
-  # Differences vs diffusers:
-  # - diffusers signature does not accept `head_size` and always uses `self.heads`.
-  # - under Context Parallelism, each rank only owns `attn.heads // world_size` heads.
-  #   If we keep repeating the mask with the full `self.heads`, the mask shape will not
-  #   match the sharded attention computation.
+  # Relative to upstream diffusers, this helper accepts an explicit `head_size`. Under Context
+  # Parallelism each rank owns only `attn.heads // world_size` heads, so repeating the mask with the
+  # full `self.heads` would break the sharded attention shape contract.
   if head_size is None:
     head_size = self.heads
   if attention_mask is None:
@@ -190,16 +193,11 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
   query_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
   key_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
 ) -> torch.Tensor:
-  # Differences vs diffusers (transformer_ltx2.py):
-  # - diffusers always prepares attention_mask using the *local* `sequence_length` and
-  #   reshapes it with `attn.heads`.
-  # - when Context Parallelism is enabled, `hidden_states` is sharded on seq dim, so
-  #   `sequence_length` here is per-rank. However attention_mask typically corresponds
-  #   to the *global* sequence length (before sharding), and each rank only uses a shard
-  #   of heads (`attn.heads // world_size`).
-  # - this patch therefore:
-  #   1) uses `target_length = sequence_length * world_size` when CP is active
-  #   2) repeats/reshapes the mask using `head_size = attn.heads // world_size`
+  # Diffusers prepares the attention mask from the local `sequence_length` and reshapes it with the
+  # full `attn.heads`. Under Context Parallelism the sequence is sharded across ranks, while the
+  # mask usually still represents the global sequence. This patch therefore expands
+  # `target_length` back to the global sequence length and repeats the mask with
+  # `attn.heads // world_size`.
   batch_size, sequence_length, _ = (hidden_states.shape if encoder_hidden_states is None else
                                     encoder_hidden_states.shape)
 

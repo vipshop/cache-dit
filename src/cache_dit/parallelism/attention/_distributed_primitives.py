@@ -70,10 +70,11 @@ def _get_rank_world_size(group: dist.ProcessGroup, ) -> Tuple[int, int]:
 
 
 def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
-  r"""Gather the local size from all ranks.
+  """Gather the local size from all ranks.
 
-  size: int, local size
-  return: List[int], list of size from all ranks
+  :param size: Local integer extent contributed by the current rank.
+  :param group: Process group participating in the collective.
+  :returns: Per-rank local sizes gathered across the process group.
   """
   # NOTE(Serving/CP Safety):
   # Do NOT cache this collective result.
@@ -112,10 +113,11 @@ def _split_head_sizes(
   H: int,
   group: dist.ProcessGroup,
 ) -> List[int]:
-  r"""Split the head dimension size by world_size.
+  """Split the head dimension size by world_size.
 
-  H: int, global head num
-  return: List[int], list of local head num for each rank
+  :param H: Total number of attention heads before sharding.
+  :param group: Process group used for tensor partitioning.
+  :returns: Per-rank head counts after splitting `H` across the group.
   """
   assert H is not None, "Global head num H must be provided."
   rank, world_size = _get_rank_world_size(group)
@@ -137,11 +139,12 @@ def _maybe_pad_qkv_head(
   H: int,
   group: dist.ProcessGroup,
 ) -> Tuple[torch.Tensor, int]:
-  r"""Maybe pad the head dimension to be divisible by world_size.
+  """Maybe pad the head dimension to be divisible by world_size.
 
-  x: torch.Tensor, shape (B, S_LOCAL, H, D)
-  H: int, original global head num
-  return: Tuple[torch.Tensor, int], padded tensor (B, S_LOCAL, H + H_PAD, D) and H_PAD
+  :param x: Input tensor for the operation.
+  :param H: Original global head count before padding.
+  :param group: Process group used for sharding.
+  :returns: A tuple `(x_padded, H_PAD)` where `H_PAD` is the number of added heads.
   """
   _, world_size = _get_rank_world_size(group)
   H_PAD = 0
@@ -161,11 +164,12 @@ def _maybe_unpad_qkv_head(
   H_PAD: int,
   group: dist.ProcessGroup,
 ) -> torch.Tensor:
-  r"""Maybe unpad the head dimension.
+  """Maybe unpad the head dimension.
 
-  x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL + H_PAD, D)
-  H_PAD: int, head padding num
-  return: torch.Tensor, unpadded tensor (B, S_GLOBAL, H_LOCAL, D)
+  :param x: Input tensor for the operation.
+  :param H_PAD: Number of padded head slots that may need to be removed.
+  :param group: Process group used for sharding.
+  :returns: The tensor with any trailing padded heads removed on the last rank.
   """
   rank, world_size = _get_rank_world_size(group)
   # Only the last rank may have padding
@@ -179,11 +183,12 @@ def _maybe_pad_o_head(
   H: int,
   group: dist.ProcessGroup,
 ) -> Tuple[torch.Tensor, int]:
-  r"""Maybe pad the head dimension to be divisible by world_size.
+  """Maybe pad the head dimension to be divisible by world_size.
 
-  x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
-  H: int, original global head num
-  return: Tuple[torch.Tensor, int], padded tensor (B, S_GLOBAL, H_LOCAL + H_PAD, D) and H_PAD
+  :param x: Input tensor for the operation.
+  :param H: Original global head count before padding.
+  :param group: Process group used for sharding.
+  :returns: A tuple `(x_padded, H_PAD)` where `H_PAD` is the number of padded output heads.
   """
   if H is None:
     return x, 0
@@ -208,11 +213,12 @@ def _maybe_unpad_o_head(
   H_PAD: int,
   group: dist.ProcessGroup,
 ) -> torch.Tensor:
-  r"""Maybe unpad the head dimension.
+  """Maybe unpad the head dimension.
 
-  x: torch.Tensor, shape (B, S_LOCAL, H_GLOBAL + H_PAD, D)
-  H_PAD: int, head padding num
-  return: torch.Tensor, unpadded tensor (B, S_LOCAL, H_GLOBAL, D)
+  :param x: Input tensor for the operation.
+  :param H_PAD: Number of padded output-head slots to remove.
+  :param group: Process group used for sharding.
+  :returns: The tensor with padded output-head slots removed.
   """
   if H_PAD > 0:
     x = x[:, :, :-H_PAD, :]
@@ -239,10 +245,13 @@ def _all_to_all_single_qkv_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> torch.Tensor:
-  r"""
-    x: torch.Tensor, shape (B, S_LOCAL, H, D)
-    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
-    """
+  """Launch async all-to-all for QKV tensors with evenly split heads.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a tensor shaped `(B, S_GLOBAL, H_LOCAL, D)`.
+  """
   _, world_size = _get_rank_world_size(group)
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
@@ -271,10 +280,13 @@ def _all_to_all_single_o_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> torch.Tensor:
-  r"""
-    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
-    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
-    """
+  """Launch async all-to-all for output tensors with evenly split heads.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
+  """
   # Assume H is provided in kwargs, since we can't infer H from x's shape.
   # The padding logic needs H to determine if padding is necessary.
   H = kwargs.get("NUM_QO_HEAD", None)
@@ -307,10 +319,12 @@ def _all_to_all_single_qkv_uneven_heads_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> torch.Tensor:
-  r"""Another variant for uneven head splits without padding.
+  """Another variant for uneven head splits without padding.
 
-  x: torch.Tensor, shape (B, S_LOCAL, H_GLOBAL, D)
-  return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a tensor shaped `(B, S_GLOBAL, H_LOCAL, D)`.
   """
   rank, world_size = _get_rank_world_size(group)
   B, S_LOCAL, H_GLOBAL, D = x.shape
@@ -345,10 +359,12 @@ def _all_to_all_single_o_uneven_heads_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> torch.Tensor:
-  r"""Another variant for uneven head splits without padding.
+  """Another variant for uneven head splits without padding.
 
-  x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
-  return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
   """
   # Assume H is provided in kwargs, since we can't infer H from x's shape.
   # The padding logic needs H to determine if padding is necessary.
@@ -387,10 +403,13 @@ def _all_to_all_single_qkv_fp8_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  r"""
-    x: torch.Tensor, shape (B, S_LOCAL, H, D)
-    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
-    """
+  """Launch async FP8 all-to-all for QKV tensors with evenly split heads.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a dequantized tensor shaped `(B, S_GLOBAL, H_LOCAL, D)`.
+  """
   _, world_size = _get_rank_world_size(group)
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
@@ -417,10 +436,13 @@ def _all_to_all_single_o_fp8_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  r"""
-    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
-    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
-    """
+  """Launch async FP8 all-to-all for output tensors with evenly split heads.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a dequantized tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
+  """
   # Assume H is provided in kwargs, since we can't infer H from x's shape.
   # The padding logic needs H to determine if padding is necessary.
   H = kwargs.get("NUM_QO_HEAD", None)
@@ -458,10 +480,13 @@ def _all_to_all_single_any_qkv_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  r"""
-    x: torch.Tensor, shape (B, S_LOCAL, H, D)
-    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
-    """
+  """Launch async all-to-all for QKV tensors with potentially uneven local sequence lengths.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a tensor shaped `(B, S_GLOBAL, H_LOCAL, D)`.
+  """
   _, world_size = _get_rank_world_size(group)
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
@@ -498,10 +523,13 @@ def _all_to_all_single_any_o_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  r"""
-    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
-    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
-    """
+  """Launch async all-to-all for output tensors with potentially uneven local sequence lengths.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
+  """
   # Assume H is provided in kwargs, since we can't infer H from x's shape.
   # The padding logic needs H to determine if padding is necessary.
   H = kwargs.get("NUM_QO_HEAD", None)
@@ -545,10 +573,13 @@ def _all_to_all_single_any_qkv_fp8_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  r"""
-    x: torch.Tensor, shape (B, S_LOCAL, H, D)
-    return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
-    """
+  """Launch async FP8 all-to-all for QKV tensors with uneven local sequence lengths.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a dequantized tensor shaped `(B, S_GLOBAL, H_LOCAL, D)`.
+  """
   _, world_size = _get_rank_world_size(group)
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
@@ -584,10 +615,13 @@ def _all_to_all_single_any_o_fp8_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  r"""
-    x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D)
-    return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
-    """
+  """Launch async FP8 all-to-all for output tensors with uneven local sequence lengths.
+
+  :param x: Input tensor for the operation.
+  :param group: Process group used for communication.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+  :returns: A wait callable that yields a dequantized tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
+  """
   # Assume H is provided in kwargs, since we can't infer H from x's shape.
   # The padding logic needs H to determine if padding is necessary.
   H = kwargs.get("NUM_QO_HEAD", None)

@@ -43,7 +43,8 @@ class FluxPatchFunctor(PatchFunctor):
     return transformer
 
 
-# copy from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
+# Adapted from diffusers' Flux transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L380
 def __patch_single_forward__(
   self: FluxSingleTransformerBlock,
   hidden_states: torch.Tensor,
@@ -79,7 +80,8 @@ def __patch_single_forward__(
   return encoder_hidden_states, hidden_states
 
 
-# copy from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L631
+# Adapted from diffusers' Flux transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py#L631
 def __patch_transformer_forward__(
   self: FluxTransformer2DModel,
   hidden_states: torch.Tensor,
@@ -108,8 +110,8 @@ def __patch_transformer_forward__(
     if (joint_attention_kwargs is not None
         and joint_attention_kwargs.get("scale", None) is not None):
       logger.warning(
-        "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-      )
+        "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is "
+        "ineffective.")
 
   hidden_states = self.x_embedder(hidden_states)
 

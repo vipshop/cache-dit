@@ -1,5 +1,7 @@
-# Adapted from deepcompressor's implementation of low-rank decomposition of the residual weight matrix in SVDQuant.
+# Adapted from deepcompressor's implementation of low-rank decomposition
+# for the residual weight matrix in SVDQuant.
 from __future__ import annotations
+
 import torch
 import torch.linalg
 
@@ -17,21 +19,19 @@ def decompose_lowrank_residual(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   """Factor a smoothed weight matrix into low-rank correction and residual.
 
-  Args:
-      weight: Smoothed weight matrix with shape `[out_features, in_features]`.
-      rank: Target rank for the low-rank approximation.
-      output_dtype: Output dtype for the returned tensors. Defaults to the input
-          `weight.dtype`.
-      high_precision: Whether to run the SVD in float64 for improved numerical
-          stability.
-      fp32_fallback: Whether to fall back to float32 SVD when the backend does not
-          support low-precision decomposition.
+  :param weight: Smoothed weight matrix with shape `[out_features, in_features]`.
+  :param rank: Target rank for the low-rank approximation.
+  :param output_dtype: Output dtype for the returned tensors. Defaults to the
+    input `weight.dtype`.
+  :param high_precision: Whether to run the SVD in float64 for improved
+    numerical stability.
+  :param fp32_fallback: Whether to fall back to float32 SVD when the backend
+    does not support low-precision decomposition.
 
-  Returns:
-      A tuple `(down, up, residual)` where `up @ down` is the rank-`rank`
-      approximation of `weight`, `down` has shape `[rank, in_features]`, `up` has
-      shape `[out_features, rank]`, and `residual` is the remaining matrix to be
-      quantized into the W4A4 path.
+  :returns: A tuple `(down, up, residual)` where `up @ down` is the rank-`rank`
+  approximation of `weight`, `down` has shape `[rank, in_features]`, `up` has
+  shape `[out_features, rank]`, and `residual` is the remaining matrix to be
+  quantized into the W4A4 path.
   """
 
   if weight.ndim != 2:
@@ -61,8 +61,8 @@ def decompose_lowrank_residual(
     u, s, vh = torch.linalg.svd(weight.to(dtype=svd_dtype), full_matrices=False)
   except NotImplementedError as exc:
     if (not high_precision and not fp32_fallback and svd_dtype in (torch.float16, torch.bfloat16)):
-      raise RuntimeError("Low-precision SVD is not supported on this backend. "
-                         "Re-run with fp32_fallback=True or high_precision=True.") from exc
+      raise RuntimeError("Low-precision SVD is not supported on this backend. Re-run with "
+                         "fp32_fallback=True or high_precision=True.") from exc
     raise
   up = (u[:, :rank] * s[:rank]).to(dtype=output_dtype)
   down = vh[:rank].to(dtype=output_dtype)

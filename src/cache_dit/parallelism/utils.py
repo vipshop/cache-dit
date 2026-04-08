@@ -29,9 +29,16 @@ def shard_div_attr(
 ) -> int:
   """Shard (divide) an integer attribute by tp_size, with a fail-fast divisibility check.
 
-  This is primarily used for sharding attention `heads` / `num_heads` in tensor parallelism
-  planners. If the value is not divisible by tp_size, we raise a clear ValueError during
-  model initialization (before serving / inference).
+  This helper is primarily used for attributes such as attention head counts. It validates that the
+  requested tensor-parallel size divides the original value exactly before mutating the attribute in
+  place.
+
+  :param obj: Object carrying the integer attribute to shard.
+  :param attr: Attribute name to divide by `tp_size`.
+  :param tp_size: Requested tensor-parallel size.
+  :param what: Optional human-readable object label used in error messages.
+  :param context: Optional context prefix used in error messages.
+  :returns: The updated attribute value after sharding.
   """
   tp_size = int(tp_size)
   if tp_size <= 0:

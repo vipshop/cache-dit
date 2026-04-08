@@ -13,8 +13,8 @@ class DBPruneConfig(BasicCacheConfig):
   """Configuration for Dynamic Block Prune on top of the base cache settings.
 
   `DBPruneConfig` reuses the same warmup, CFG, and step-accounting semantics as
-  `BasicCacheConfig`, then adds the controls needed to compute per-step prune
-  thresholds and to keep selected blocks out of the pruning candidate set.
+  `BasicCacheConfig`, then adds the controls needed to compute per-step prune thresholds and to
+  keep selected blocks out of the pruning candidate set.
   """
 
   # Dyanamic Block Prune specific configurations
@@ -56,7 +56,10 @@ class DBPruneConfig(BasicCacheConfig):
   force_reduce_calibrator_vram: bool = False
 
   def strify(self) -> str:
-    """Build a compact pruning configuration summary string."""
+    """Build a compact pruning configuration summary string.
+
+    :returns: A compact summary string describing the active prune settings.
+    """
 
     return (f"{self.cache_type}_"
             f"F{self.Fn_compute_blocks}"

@@ -35,13 +35,11 @@ class ControlNetContextParallelismPlanner:
   ) -> ContextParallelModelPlan:
     """Apply the context parallelism plan to the given controlnet.
 
-    Args:
-        controlnet: The controlnet model to which the CP plan will be applied.
-        parallelism_config: The parallelism configuration containing mesh and other settings.
-        **kwargs: Additional arguments that may be needed for specific planners.
-
-    Returns:
-        A ContextParallelModelPlan that describes how to apply context parallelism to the model.
+    :param controlnet: The controlnet model to which the CP plan will be applied.
+    :param parallelism_config: The parallelism configuration containing mesh and other settings.
+    :param kwargs: Additional arguments that may be needed for specific planners.
+    :returns: A ContextParallelModelPlan that describes how to apply context parallelism to the
+        model.
     """
     assert (controlnet
             is not None), "ControlNet model must be provided to apply context parallelism."

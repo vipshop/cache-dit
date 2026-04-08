@@ -36,27 +36,47 @@ def _is_auto_encoder(module: torch.nn.Module) -> bool:
 
 
 def _is_parallelized(module: torch.nn.Module) -> bool:
-  """Check if the given module is already parallelized."""
+  """Check if the given module is already parallelized.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   return getattr(module, "_is_parallelized", False)
 
 
 def _is_quantized(module: torch.nn.Module) -> bool:
-  """Check if the given module is already quantized."""
+  """Check if the given module is already quantized.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   return getattr(module, "_is_quantized", False)
 
 
 def _is_cached(module: torch.nn.Module) -> bool:
-  """Check if the given module is already cached."""
+  """Check if the given module is already cached.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   return getattr(module, "_is_cached", False)
 
 
 def _is_patched(module: torch.nn.Module) -> bool:
-  """Check if the given module is already patched (patch functor applied)."""
+  """Check if the given module is already patched (patch functor applied).
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   return getattr(module, "_is_patched", False)
 
 
 def check_text_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline has text encoder."""
+  """Check if the given pipeline has text encoder.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_text_encoder(module)
 
@@ -75,7 +95,11 @@ def check_text_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
 
 
 def check_controlnet(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline has ControlNet."""
+  """Check if the given pipeline has ControlNet.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_controlnet(module)
 
@@ -89,7 +113,11 @@ def check_controlnet(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
 
 
 def check_auto_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline has auto encoder."""
+  """Check if the given pipeline has auto encoder.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_auto_encoder(module)
 
@@ -103,7 +131,11 @@ def check_auto_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
 
 
 def check_parallelized(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline is already parallelized."""
+  """Check if the given pipeline is already parallelized.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_parallelized(module)
 
@@ -119,7 +151,11 @@ def check_parallelized(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
 
 
 def check_quantized(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline is already quantized."""
+  """Check if the given pipeline is already quantized.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_quantized(module)
 
@@ -135,7 +171,11 @@ def check_quantized(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
 
 
 def check_cached(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline is already cached."""
+  """Check if the given pipeline is already cached.
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_cached(module)
 
@@ -151,7 +191,11 @@ def check_cached(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
 
 
 def check_patched(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
-  """Check if the given pipeline is already patched (patch functor applied)."""
+  """Check if the given pipeline is already patched (patch functor applied).
+
+  :param module: Module to process.
+  :returns: Whether the requested condition is satisfied.
+  """
   if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
     return _is_patched(module)
 
@@ -190,33 +234,30 @@ def parse_extra_modules(
   extra_modules: List[str | torch.nn.Module],
   skip_text_encoder_override: bool = False,
 ) -> Union[List[torch.nn.Module], List]:
-  """Parse extra modules according to the given names in extra_modules to actual modules in the
+  """Parse extra modules according to the given names in extra_modules to actual modules in the.
+
   pipeline.
 
-  Useful for extra parallelism and extra
-  quantization outside of the transformer module, e.g., applying parallelism
-  or quantization to text encoder and vae at the same time. For example,
-  when extra_modules is set to ['text_encoder', 'vae'], we will try to find
-  the text encoder and vae modules in the pipeline and apply parallelism or
-  quantization to these modules as well. Note that the supported extra module
-  names may vary for different pipelines, but generally include common components
-  such as 'text_encoder', 'vae', 'unet', etc. User can also directly pass the
-  actual module objects in extra_modules for more precise control.
-  Args:
-      pipe_or_adapter: The DiffusionPipeline or BlockAdapter to parse the extra modules from.
-      extra_modules: A list of module names or actual module objects to be parsed.
-      skip_text_encoder_override: Whether to skip the text encoder override for some special
-          pipelines (e.g., FLUX). By default, it's set to False, which means we will try to
-          find the text_encoder with largest parameters as the text encoder to apply parallelism
-          or quantization, instead of using the default text_encoder or text_encoder_2 attribute
-          in the pipeline. For example, in FLUX pipeline, there are two text encoders, text_encoder
-          and text_encoder_2, and text_encoder_2 has much more parameters than text_encoder.
-          So by default, we will apply parallelism or quantization to text_encoder_2.
-          But if skip_text_encoder_override is set to True, we will apply parallelism or
-          quantization to the default text_encoder attribute in the pipeline.
-  Returns:
-      A list of parsed extra modules as actual module objects. If a module name is not found
-      in the pipeline, it will be skipped with a warning.
+  Useful for extra parallelism and extra quantization outside of the transformer module, e.g.,
+  applying parallelism or quantization to text encoder and vae at the same time. For example, when
+  extra_modules is set to ['text_encoder', 'vae'], we will try to find the text encoder and vae
+  modules in the pipeline and apply parallelism or quantization to these modules as well. Note that
+  the supported extra module names may vary for different pipelines, but generally include common
+  components such as 'text_encoder', 'vae', 'unet', etc. User can also directly pass the actual
+  module objects in extra_modules for more precise control.
+
+  :param pipe_or_adapter: The DiffusionPipeline or BlockAdapter to parse the extra modules from.
+  :param extra_modules: A list of module names or actual module objects to be parsed.
+  :param skip_text_encoder_override: Whether to skip the text encoder override for some special
+    pipelines (e.g., FLUX). By default, it's set to False, which means we will try to find the
+    text_encoder with largest parameters as the text encoder to apply parallelism or quantization,
+    instead of using the default text_encoder or text_encoder_2 attribute in the pipeline. For
+    example, in FLUX pipeline, there are two text encoders, text_encoder and text_encoder_2, and
+    text_encoder_2 has much more parameters than text_encoder. So by default, we will apply
+    parallelism or quantization to text_encoder_2. But if skip_text_encoder_override is set to True,
+    we will apply parallelism or quantization to the default text_encoder attribute in the pipeline.
+  :returns: A list of parsed extra modules as actual module objects. If a module name is not found
+    in the pipeline, it will be skipped with a warning.
   """
   if not isinstance(pipe_or_adapter, DiffusionPipeline):
     pipe = getattr(pipe_or_adapter, "pipe", None)

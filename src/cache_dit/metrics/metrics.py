@@ -78,9 +78,8 @@ def calculate_psnr(
 
   Ref: https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
 
-  Args:
-      image_true (ndarray): Images with range [0, 255].
-      image_test (ndarray): Images with range [0, 255].
+  :param image_true: Images with range [0, 255].
+  :param image_test: Images with range [0, 255].
   """
   mse = np.mean((image_true - image_test) ** 2)
   if mse == 0:
@@ -92,8 +91,12 @@ def compute_psnr_file(
   image_true: np.ndarray | str,
   image_test: np.ndarray | str,
 ) -> float:
-  """img_true = cv2.imread(img_true_file) img_test = cv2.imread(img_test_file) PSNR =
-  compute_psnr(img_true, img_test)"""
+  """Load two images when needed and compute their PSNR.
+
+  :param image_true: Reference image array or reference image path.
+  :param image_test: Test image array or test image path.
+  :returns: The PSNR value for the image pair.
+  """
   if isinstance(image_true, str):
     image_true = cv2.imread(image_true)
   if isinstance(image_test, str):
@@ -111,8 +114,12 @@ def compute_mse_file(
   image_true: np.ndarray | str,
   image_test: np.ndarray | str,
 ) -> float:
-  """img_true = cv2.imread(img_true_file) img_test = cv2.imread(img_test_file) MSE =
-  compute_mse(img_true, img_test)"""
+  """Load two images when needed and compute their mean squared error.
+
+  :param image_true: Reference image array or reference image path.
+  :param image_test: Test image array or test image path.
+  :returns: The MSE value for the image pair.
+  """
   if isinstance(image_true, str):
     image_true = cv2.imread(image_true)
   if isinstance(image_test, str):
@@ -127,8 +134,12 @@ def compute_ssim_file(
   image_true: np.ndarray | str,
   image_test: np.ndarray | str,
 ) -> float:
-  """img_true = cv2.imread(img_true_file) img_test = cv2.imread(img_test_file) SSIM =
-  compute_ssim(img_true, img_test)"""
+  """Load two images when needed and compute their SSIM.
+
+  :param image_true: Reference image array or reference image path.
+  :param image_test: Test image array or test image path.
+  :returns: The SSIM value for the image pair.
+  """
   if isinstance(image_true, str):
     image_true = cv2.imread(image_true)
   if isinstance(image_test, str):
@@ -265,8 +276,14 @@ def compute_video_metric(
   video_test: str,
   compute_frame_func: callable = compute_psnr_file,
 ) -> Union[Tuple[float, int], Tuple[None, None]]:
-  """video_true = "video_true.mp4" video_test = "video_test.mp4" PSNR =
-  compute_video_psnr(video_true, video_test)"""
+  """Compute one frame-wise metric across a matched video pair or video directories.
+
+  :param video_true: Reference video path or directory.
+  :param video_test: Test video path or directory.
+  :param compute_frame_func: Callable used to score each matched frame pair.
+  :returns: A tuple `(metric_value, valid_frame_count)`, or `(None, None)` when no valid pair is
+    found.
+  """
   if os.path.isfile(video_true) and os.path.isfile(video_test):
     video_true_frames, video_test_frames, valid_frames = _fetch_video_frames(
       video_true=video_true,

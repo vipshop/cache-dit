@@ -51,7 +51,8 @@ class ChromaPatchFunctor(PatchFunctor):
     return transformer
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
+# Adapted from diffusers' Chroma transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
 def __patch_double_forward__(
   self: ChromaTransformerBlock,
   hidden_states: torch.Tensor,
@@ -132,7 +133,8 @@ def __patch_double_forward__(
   return encoder_hidden_states, hidden_states
 
 
-# adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
+# Adapted from diffusers' Chroma transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
 def __patch_single_forward__(
   self: ChromaSingleTransformerBlock,  # Almost same as FluxSingleTransformerBlock
   hidden_states: torch.Tensor,
@@ -170,7 +172,8 @@ def __patch_single_forward__(
   return hidden_states
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
+# Adapted from diffusers' Chroma transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_chroma.py
 def __patch_transformer_forward__(
   self: ChromaTransformer2DModel,
   hidden_states: torch.Tensor,
@@ -198,8 +201,8 @@ def __patch_transformer_forward__(
     if (joint_attention_kwargs is not None
         and joint_attention_kwargs.get("scale", None) is not None):
       logger.warning(
-        "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
-      )
+        "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is "
+        "ineffective.")
 
   hidden_states = self.x_embedder(hidden_states)
 

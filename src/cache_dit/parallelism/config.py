@@ -244,31 +244,46 @@ class ParallelismConfig:
     self._tp_world_size = self._flat_tp_mesh.size()
 
   def enabled(self) -> bool:
-    """Return whether any form of parallelism is enabled."""
+    """Return whether any parallel execution mode is enabled.
+
+    :returns: `True` when any context, ring, or tensor parallel setting is active.
+    """
 
     return ((self.ulysses_size is not None and self.ulysses_size > 1)
             or (self.ring_size is not None and self.ring_size > 1)
             or (self.tp_size is not None and self.tp_size > 1))
 
   def cp_enabled(self) -> bool:
-    """Return whether context parallelism is enabled."""
+    """Return whether context parallelism is enabled.
+
+    :returns: `True` when Ulysses or Ring parallelism is enabled.
+    """
 
     return (self.ulysses_size is not None and self.ulysses_size > 1) or (self.ring_size is not None
                                                                          and self.ring_size > 1)
 
   def tp_enabled(self) -> bool:
-    """Return whether tensor parallelism is enabled."""
+    """Return whether tensor parallelism is enabled.
+
+    :returns: `True` when `tp_size` is greater than one.
+    """
 
     return self.tp_size is not None and self.tp_size > 1
 
   def usp_enabled(self) -> bool:
-    """Return whether Ulysses and Ring are both enabled together."""
+    """Return whether Ulysses and Ring parallelism are enabled together.
+
+    :returns: `True` when both `ulysses_size` and `ring_size` are greater than one.
+    """
 
     return (self.ulysses_size is not None and self.ulysses_size > 1 and self.ring_size is not None
             and self.ring_size > 1)
 
   def hybrid_enabled(self) -> bool:
-    """Return whether context parallelism and tensor parallelism are both enabled."""
+    """Return whether context parallelism and tensor parallelism are both enabled.
+
+    :returns: `True` when cache-dit should build a hybrid CP/SP + TP layout.
+    """
 
     return self.cp_enabled() and self.tp_enabled()
 
@@ -279,7 +294,14 @@ class ParallelismConfig:
     vae: bool = False,
     controlnet: bool = False,
   ) -> str:
-    """Build a concise string summary of the current parallelism selection."""
+    """Build a compact human-readable summary of the current parallelism selection.
+
+    :param details: Whether to emit the verbose config-style summary instead of the short tag.
+    :param text_encoder: Whether to build the summary for text-encoder parallelism.
+    :param vae: Whether to build the summary for VAE parallelism.
+    :param controlnet: Whether to build the summary for ControlNet parallelism.
+    :returns: A short tag or verbose config string describing the active parallel layout.
+    """
 
     if details:
       if text_encoder or vae:
@@ -340,7 +362,10 @@ class ParallelismConfig:
       return parallel_str
 
   def _get_world_size(self) -> Optional[int]:
-    """Get the world size for extra parallel modules, e.g., text encoder and VAE."""
+    """Resolve the effective world size for extra parallelized modules.
+
+    :returns: The largest world size implied by the currently enabled parallel mode.
+    """
     # Maximize the parallel size for extra modules
     sizes = []
     ring_size = self.ring_size if self.ring_size is not None else 1
@@ -362,14 +387,20 @@ class ParallelismConfig:
 
   @property
   def text_encoder_world_size(self) -> int:
-    """Get the world size for text encoder parallelism."""
+    """Return the world size used for text-encoder parallelism.
+
+    :returns: The effective world size for text-encoder sharding.
+    """
     world_size = self._get_world_size()
     self._has_text_encoder = True
     return world_size
 
   @property
   def auto_encoder_world_size(self) -> int:
-    """Get the world size for VAE parallelism."""
+    """Return the world size used for VAE parallelism.
+
+    :returns: The effective world size for VAE sharding.
+    """
     world_size = self._get_world_size()
     self._has_auto_encoder = True
     return world_size
@@ -380,7 +411,10 @@ class ParallelismConfig:
 
   @property
   def controlnet_world_size(self) -> int:
-    """Get the world size for ControlNet parallelism."""
+    """Return the world size used for ControlNet parallelism.
+
+    :returns: The effective world size for ControlNet sharding.
+    """
     world_size = self._get_world_size()
     self._has_controlnet = True
     return world_size

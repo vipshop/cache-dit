@@ -19,7 +19,12 @@ class TaylorSeerState:
     max_warmup_steps=1,
     skip_interval_steps=1,
   ):
-    """Initialize derivative buffers and warmup/skip scheduling state."""
+    """Initialize derivative buffers and warmup/skip scheduling state.
+
+    :param n_derivatives: Number of Taylor-derivative orders to retain.
+    :param max_warmup_steps: Number of initial full-compute warmup steps.
+    :param skip_interval_steps: Interval between later full-compute refresh steps.
+    """
 
     self.n_derivatives = n_derivatives
     self.order = n_derivatives + 1
@@ -48,7 +53,11 @@ class TaylorSeerState:
     self.current_step += 1
 
   def should_compute(self, step=None):
-    """Return whether this step should run full compute instead of approximation."""
+    """Return whether this step should run full compute instead of approximation.
+
+    :param step: Optional explicit step index. When omitted, `current_step` is used.
+    :returns: `True` when the state should run a real compute step instead of approximation.
+    """
 
     step = self.current_step if step is None else step
     if (step < self.max_warmup_steps
@@ -57,7 +66,11 @@ class TaylorSeerState:
     return False
 
   def derivative(self, Y: torch.Tensor) -> List[torch.Tensor]:
-    """Update the current Taylor derivative ladder from a fully computed tensor."""
+    """Update the current Taylor derivative ladder from a fully computed tensor.
+
+    :param Y: Fully computed tensor for the current step.
+    :returns: The updated derivative ladder for the current step.
+    """
 
     # Y(t) = Y(0) + dY(0)/dt * t + d^2Y(0)/dt^2 * t^2 / 2!
     #        + ... + d^nY(0)/dt^n * t^n / n!
@@ -76,7 +89,10 @@ class TaylorSeerState:
     return dY_current
 
   def approximate(self) -> torch.Tensor:  # NEED
-    """Evaluate the Taylor expansion at the current elapsed step."""
+    """Evaluate the Taylor expansion at the current elapsed step.
+
+    :returns: The approximated tensor value for the current logical step.
+    """
 
     elapsed = self.current_step - self.last_non_approximated_step
     output = 0
@@ -88,7 +104,10 @@ class TaylorSeerState:
     return output
 
   def update(self, Y: torch.Tensor):  # NEED
-    """Commit a full-compute tensor as the latest non-approximated state."""
+    """Commit a full-compute tensor as the latest non-approximated state.
+
+    :param Y: Fully computed tensor to record as the new Taylor expansion anchor.
+    """
 
     # Directly call this method will ingnore the warmup
     # policy and force full computation.
@@ -108,7 +127,11 @@ class TaylorSeerState:
     self.last_non_approximated_step = self.current_step
 
   def step(self, Y: torch.Tensor):
-    """Advance one step and return either the true tensor or its approximation."""
+    """Advance one step and return either the true tensor or its approximation.
+
+    :param Y: Fully computed tensor for the current step when compute is required.
+    :returns: The exact tensor or the Taylor-approximated tensor for this step.
+    """
 
     self.mark_step_begin()
     if self.should_compute():
@@ -128,7 +151,13 @@ class TaylorSeerCalibrator(CalibratorBase):
     skip_interval_steps=1,
     **kwargs,
   ):
-    """Create a calibrator whose states are keyed by logical tensor names."""
+    """Create a calibrator whose states are keyed by logical tensor names.
+
+    :param n_derivatives: Number of Taylor-derivative orders to retain per stream.
+    :param max_warmup_steps: Number of initial full-compute warmup steps.
+    :param skip_interval_steps: Interval between later full-compute refresh steps.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    """
 
     self.n_derivatives = n_derivatives
     self.max_warmup_steps = max_warmup_steps
@@ -147,7 +176,10 @@ class TaylorSeerCalibrator(CalibratorBase):
     self,
     name: str = "default",
   ):
-    """Lazily create one Taylor state for a named tensor stream."""
+    """Lazily create one Taylor state for a named tensor stream.
+
+    :param name: Logical tensor-stream name.
+    """
 
     if name not in self.states:
       self.states[name] = TaylorSeerState(
@@ -157,7 +189,11 @@ class TaylorSeerCalibrator(CalibratorBase):
       )
 
   def mark_step_begin(self, *args, **kwargs):
-    """Advance every tracked state's step counter."""
+    """Advance every tracked state's step counter.
+
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    """
 
     if self.states:
       for state in self.states.values():
@@ -168,7 +204,12 @@ class TaylorSeerCalibrator(CalibratorBase):
     Y: torch.Tensor,
     name: str = "default",
   ) -> List[torch.Tensor]:
-    """Return the current derivative ladder for one named tensor stream."""
+    """Return the current derivative ladder for one named tensor stream.
+
+    :param Y: Fully computed tensor for the named stream.
+    :param name: Logical tensor-stream name.
+    :returns: The derivative ladder tracked for the named stream.
+    """
 
     self.maybe_init_state(name)
     state = self.states[name]
@@ -179,7 +220,11 @@ class TaylorSeerCalibrator(CalibratorBase):
     self,
     name: str = "default",
   ) -> torch.Tensor:  # NEED
-    """Approximate the next tensor for one named stream."""
+    """Approximate the next tensor for one named stream.
+
+    :param name: Logical tensor-stream name.
+    :returns: The approximated tensor for the named stream.
+    """
 
     assert name in self.states, f"State '{name}' not found."
     state = self.states[name]
@@ -190,7 +235,11 @@ class TaylorSeerCalibrator(CalibratorBase):
     Y: torch.Tensor,
     name: str = "default",
   ):  # NEED
-    """Feed a fully computed tensor into one named Taylor state."""
+    """Feed a fully computed tensor into one named Taylor state.
+
+    :param Y: Fully computed tensor for the named stream.
+    :param name: Logical tensor-stream name.
+    """
 
     self.maybe_init_state(name)
     state = self.states[name]
@@ -201,7 +250,12 @@ class TaylorSeerCalibrator(CalibratorBase):
     Y: torch.Tensor,
     name: str = "default",
   ):
-    """Advance one named stream and return either computed or approximated output."""
+    """Advance one named stream and return either computed or approximated output.
+
+    :param Y: Fully computed tensor for the named stream when computation is required.
+    :param name: Logical tensor-stream name.
+    :returns: The exact tensor or Taylor approximation for the named stream.
+    """
 
     self.maybe_init_state(name)
     state = self.states[name]

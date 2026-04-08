@@ -14,6 +14,8 @@ def _check_diffusers_cp_support():
 
 
 class ParallelismBackend(Enum):
+  """Enumerate the parallel execution backends supported by cache-dit."""
+
   AUTO = "Auto"
   NATIVE_DIFFUSER = "Native_Diffuser"  # CP/SP
   NATIVE_PYTORCH = "Native_PyTorch"  # TP or DP
@@ -22,6 +24,12 @@ class ParallelismBackend(Enum):
 
   @classmethod
   def is_supported(cls, backend: "ParallelismBackend") -> bool:
+    """Return whether a backend is available in the current environment.
+
+    :param backend: Backend enum value to validate.
+    :returns: `True` when the backend can be used on the current installation.
+    """
+
     if backend == cls.AUTO:
       return True
     elif backend == cls.NATIVE_PYTORCH:
@@ -36,6 +44,12 @@ class ParallelismBackend(Enum):
 
   @classmethod
   def from_str(cls, backend_str: str) -> "ParallelismBackend":
+    """Parse a user-facing backend string into a `ParallelismBackend` value.
+
+    :param backend_str: Backend name supplied by the user or config.
+    :returns: The matching `ParallelismBackend` enum value.
+    """
+
     for backend in cls:
       if backend.value.lower() == backend_str.lower():
         return backend

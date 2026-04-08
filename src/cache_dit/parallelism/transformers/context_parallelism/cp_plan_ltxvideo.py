@@ -127,14 +127,12 @@ def __patch__LTXAttention_prepare_attention_mask__(
 ) -> torch.Tensor:
   """Prepare the attention mask for the attention computation.
 
-  Args:
-      attention_mask (`torch.Tensor`): The attention mask to prepare.
-      target_length (`int`): The target length of the attention mask.
-      batch_size (`int`): The batch size for repeating the attention mask.
-      out_dim (`int`, *optional*, defaults to `3`): Output dimension.
-
-  Returns:
-      `torch.Tensor`: The prepared attention mask.
+  :param attention_mask: The attention mask to prepare.
+  :param target_length: The target length of the attention mask.
+  :param batch_size: The batch size for repeating the attention mask.
+  :param out_dim: Output dimension.
+  :param head_size: Optional per-sample head count override used by context parallelism.
+  :returns: The prepared attention mask.
   """
   if head_size is None:
     head_size = self.heads

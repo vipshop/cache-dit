@@ -45,11 +45,12 @@ class PixArtTensorParallelismPlanner(TensorParallelismPlanner):
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     """Parallelize PixArt transformer blocks.
 
-    PixArt uses BasicTransformerBlock with:
-    - Self-attention (attn1)
-    - Cross-attention (attn2)
-    - Feed-forward network (ff)
-    - Standard normalization layers
+    PixArt uses `BasicTransformerBlock` layers with self-attention, cross-attention, feed-forward,
+    and standard normalization submodules.
+
+    :param transformer: Transformer module to process.
+    :param tp_mesh: Tensor-parallel device mesh.
+    :returns: The parallelized transformer and its per-layer sharding plan.
     """
     layer_plans = []
     for i, block in enumerate(transformer.transformer_blocks):

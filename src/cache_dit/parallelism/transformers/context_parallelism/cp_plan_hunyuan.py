@@ -110,7 +110,8 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
     return _cp_plan
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hunyuanimage.py#L806
+# Adapted from diffusers' Hunyuan image transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hunyuanimage.py#L806
 @functools.wraps(HunyuanImageTransformer2DModel.forward)
 def __patch__HunyuanImageTransformer2DModel_forward__(
   self: HunyuanImageTransformer2DModel,
@@ -273,17 +274,20 @@ def __patch__HunyuanImageTransformer2DModel_forward__(
                   list(self.config.patch_size))
   hidden_states = hidden_states.reshape(*reshape_dims)
 
-  # create permutation pattern: batch, channels, then interleave post_patch and patch dims
-  # For 4D: [0, 3, 1, 4, 2, 5] -> batch, channels, post_patch_height, patch_size_height, post_patch_width, patch_size_width
-  # For 5D: [0, 4, 1, 5, 2, 6, 3, 7] -> batch, channels, post_patch_frame, patch_size_frame, post_patch_height, patch_size_height, post_patch_width, patch_size_width
+  # Build the permutation order as: batch, channels, then interleaved
+  # `(post_patch_dim, patch_dim)` pairs.
+  # For 4D: `[0, 3, 1, 4, 2, 5]` -> batch, channels, post_patch_height,
+  # patch_size_height, post_patch_width, patch_size_width.
+  # For 5D: `[0, 4, 1, 5, 2, 6, 3, 7]` -> batch, channels, post_patch_frame,
+  # patch_size_frame, post_patch_height, patch_size_height, post_patch_width,
+  # patch_size_width.
   ndim = len(post_patch_sizes)
   permute_pattern = [0, ndim + 1]  # batch, channels
   for i in range(ndim):
     permute_pattern.extend([i + 1, ndim + 2 + i])  # post_patch_sizes[i], patch_sizes[i]
   hidden_states = hidden_states.permute(*permute_pattern)
 
-  # flatten patch dimensions: flatten each (post_patch_size, patch_size) pair
-  # batch_size, channels, post_patch_sizes[0] * patch_sizes[0], post_patch_sizes[1] * patch_sizes[1], ...
+  # Flatten each `(post_patch_size, patch_size)` pair back into its original spatial axis.
   final_dims = [batch_size, out_channels] + [
     post_patch * patch for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)
   ]
@@ -377,7 +381,8 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
     return _cp_plan
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hunyuan_video.py#L1032
+# Adapted from diffusers' Hunyuan video transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hunyuan_video.py#L1032
 @functools.wraps(HunyuanVideoTransformer3DModel.forward)
 def __patch__HunyuanVideoTransformer3DModel_forward__(
   self: HunyuanVideoTransformer3DModel,

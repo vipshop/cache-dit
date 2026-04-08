@@ -17,6 +17,13 @@ def enable_parallelism(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
+  """Enable cache-dit parallelism on one transformer and any configured extra modules.
+
+  :param transformer: Transformer module to parallelize.
+  :param parallelism_config: Validated parallelism configuration describing the target layout.
+  :returns: The parallelized transformer module.
+  """
+
   assert isinstance(
     transformer,
     (torch.nn.Module,
@@ -98,6 +105,11 @@ def enable_parallelism(
 
 
 def remove_parallelism_stats(module: torch.nn.Module, ) -> torch.nn.Module:
+  """Remove cache-dit parallelism bookkeeping attributes from a module tree.
+
+  :param module: Module whose parallelism metadata should be cleared.
+  :returns: The same module with cache-dit parallelism markers removed.
+  """
 
   if not getattr(module, "_is_parallelized", False):
     return module
@@ -127,6 +139,12 @@ def _maybe_set_module_attention_backend(
   module: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
 ) -> None:
+  """Apply the configured attention backend to one diffusers module when supported.
+
+  :param module: Module whose attention backend may be updated.
+  :param parallelism_config: Parallelism configuration carrying the backend preference.
+  """
+
   # Set attention backend for both context parallelism and tensor parallelism if the
   # transformer is from diffusers and supports setting attention backend.
   module_cls_name = module.__class__.__name__

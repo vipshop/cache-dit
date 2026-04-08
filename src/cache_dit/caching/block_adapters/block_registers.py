@@ -15,9 +15,8 @@ logger = init_logger(__name__)
 class BlockAdapterRegister:
   """Registry for predefined `BlockAdapter` builders.
 
-  The registry maps pipeline or transformer class-name prefixes to functions that
-  construct compatible `BlockAdapter` instances, enabling `enable_cache` to auto-
-  detect supported models.
+  The registry maps pipeline or transformer class-name prefixes to functions that construct
+  compatible `BlockAdapter` instances, enabling `enable_cache` to auto-detect supported models.
   """
 
   _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
@@ -37,7 +36,11 @@ class BlockAdapterRegister:
 
   @classmethod
   def register(cls, name: str, supported: bool = True):
-    """Register an adapter factory under a class-name prefix."""
+    """Register an adapter factory under a class-name prefix.
+
+    :param name: Class-name prefix associated with the adapter factory.
+    :param supported: Whether the registered prefix should appear in the supported-model registry.
+    """
 
     def decorator(func: Callable[..., BlockAdapter]) -> Callable[..., BlockAdapter]:
       if supported:
@@ -52,7 +55,12 @@ class BlockAdapterRegister:
     pipe_or_module: DiffusionPipeline | torch.nn.Module | str | Any,
     **kwargs,
   ) -> BlockAdapter | None:
-    """Return a predefined adapter for a pipeline, transformer, or class name."""
+    """Return a predefined adapter for a pipeline, transformer, or class name.
+
+    :param pipe_or_module: Pipeline instance, transformer module, or class name to resolve.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The matched adapter, or `None` when no predefined adapter applies.
+    """
 
     if not isinstance(pipe_or_module, str):
       cls_name: str = pipe_or_module.__class__.__name__
@@ -86,7 +94,11 @@ class BlockAdapterRegister:
       torch.nn.Module,  # e.g., transformer-only case
     ],
   ) -> bool:
-    """Infer whether a model executes CFG and non-CFG in separate forwards."""
+    """Infer whether a model executes CFG and non-CFG in separate forwards.
+
+    :param pipe_or_adapter_or_module: Pipeline, adapter, or transformer to inspect.
+    :returns: `True` when the model uses separate CFG and non-CFG forward passes.
+    """
 
     # 0. Prefer custom setting from block adapter.
     if isinstance(pipe_or_adapter_or_module, BlockAdapter):
@@ -116,7 +128,11 @@ class BlockAdapterRegister:
 
   @classmethod
   def is_supported(cls, pipe_or_module) -> bool:
-    """Return whether a pipeline or transformer has a registered adapter."""
+    """Return whether a pipeline or transformer has a registered adapter.
+
+    :param pipe_or_module: Pipeline or transformer to inspect.
+    :returns: `True` when a predefined adapter is registered for the object type.
+    """
 
     cls_name: str = pipe_or_module.__class__.__name__
 
@@ -127,7 +143,11 @@ class BlockAdapterRegister:
 
   @classmethod
   def supported_pipelines(cls, **kwargs) -> Tuple[int, List[str]]:
-    """Return the number and names of registered predefined pipelines."""
+    """Return the number and names of registered predefined pipelines.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A tuple `(count, names)` listing the registered predefined adapter prefixes.
+    """
 
     val_pipelines = cls._adapters.keys()
     return len(val_pipelines), [p for p in val_pipelines]

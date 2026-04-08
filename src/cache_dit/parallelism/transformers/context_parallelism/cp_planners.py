@@ -1,60 +1,17 @@
-# Docstring references: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/_modeling_parallel.py#L185
-# A dictionary where keys denote the input to be split across context parallel region, and the
-# value denotes the sharding configuration.
-# If the key is a string, it denotes the name of the parameter in the forward function.
-# If the key is an integer, split_output must be set to True, and it denotes the index of the output
-# to be split across context parallel region.
-# ContextParallelInputType = Dict[
-#     Union[str, int], Union[ContextParallelInput, List[ContextParallelInput], Tuple[ContextParallelInput, ...]]
-# ]
+"""Register built-in transformer context-parallel planners.
 
-# A dictionary where keys denote the output to be gathered across context parallel region, and the
-# value denotes the gathering configuration.
-# ContextParallelOutputType = Union[
-#     ContextParallelOutput, List[ContextParallelOutput], Tuple[ContextParallelOutput, ...]
-# ]
+This module mirrors the plan concepts used by diffusers' `_modeling_parallel` support. Each
+planner ultimately returns a `ContextParallelModelPlan`, which maps module names to split/gather
+rules applied around that module's forward pass.
 
-# A dictionary where keys denote the module id, and the value denotes how the inputs/outputs of
-# the module should be split/gathered across context parallel region.
-# ContextParallelModelPlan = Dict[str, Union[ContextParallelInputType, ContextParallelOutputType]]
+In practice a plan usually contains three kinds of entries:
 
-# Example of a ContextParallelModelPlan (QwenImageTransformer2DModel):
-#
-# Each model should define a _cp_plan attribute that contains information on how to shard/gather
-# tensors at different stages of the forward:
-#
-# ```python
-# _cp_plan = {
-#     "": {
-#         "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-#         "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-#         "encoder_hidden_states_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
-#     },
-#     "pos_embed": {
-#         0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
-#         1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
-#     },
-#     "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-# }
-# ```
-#
-# The dictionary is a set of module names mapped to their respective CP plan. The inputs/outputs of layers will be
-# split/gathered according to this at the respective module level. Here, the following happens:
-# - "":
-#     we specify that we want to split the various inputs across the sequence dim in the pre-forward hook (i.e. before
-#     the actual forward logic of the QwenImageTransformer2DModel is run, we will splitthe inputs)
-# - "pos_embed":
-#     we specify that we want to split the outputs of the RoPE layer. Since there are two outputs (imag & text freqs),
-#     we can individually specify how they should be split
-# - "proj_out":
-#     before returning to the user, we gather the entire sequence on each rank in the post-forward hook (after the linear
-#     layer forward has run).
-#
-# ContextParallelInput:
-#     specifies how to split the input tensor in the pre-forward or post-forward hook of the layer it is attached to
-#
-# ContextParallelOutput:
-#     specifies how to gather the input tensor in the post-forward hook in the layer it is attached to
+- root-input rules such as `""`, which shard model inputs before the first forward call;
+- intermediate rules such as `"rope"` or block names, which describe how layer outputs should be
+  split or preserved across ranks;
+- final gather rules such as `"proj_out"`, which restore full-sequence tensors before returning to
+  user code.
+"""
 import importlib
 from ....logger import init_logger
 from .cp_plan_registers import ContextParallelismPlanner

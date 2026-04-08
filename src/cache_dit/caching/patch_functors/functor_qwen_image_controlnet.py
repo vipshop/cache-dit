@@ -132,26 +132,18 @@ def __patch_transformer_forward__(
 ) -> Union[torch.Tensor, Transformer2DModelOutput]:
   """The [`QwenTransformer2DModel`] forward method.
 
-  Args:
-      hidden_states (`torch.Tensor` of shape `(batch_size, image_sequence_length, in_channels)`):
-          Input `hidden_states`.
-      encoder_hidden_states (`torch.Tensor` of shape `(batch_size, text_sequence_length, joint_attention_dim)`):
-          Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-      encoder_hidden_states_mask (`torch.Tensor` of shape `(batch_size, text_sequence_length)`):
-          Mask of the input conditions.
-      timestep ( `torch.LongTensor`):
-          Used to indicate denoising step.
-      attention_kwargs (`dict`, *optional*):
-          A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-          `self.processor` in
-          [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-      return_dict (`bool`, *optional*, defaults to `True`):
-          Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
-          tuple.
-
-  Returns:
-      If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-      `tuple` where the first element is the sample tensor.
+  :param hidden_states: Input hidden states.
+  :param encoder_hidden_states: Conditional embeddings computed from prompts or other conditions.
+  :param encoder_hidden_states_mask: Mask of the input conditions.
+  :param timestep: Denoising timestep.
+  :param img_shapes: Per-sample image shape metadata used by the transformer.
+  :param txt_seq_lens: Per-sample text sequence lengths.
+  :param guidance: Optional guidance tensor used by guided denoising flows.
+  :param attention_kwargs: Optional keyword arguments forwarded to the active attention processor.
+  :param controlnet_block_samples: Optional ControlNet residual samples injected into the blocks.
+  :param return_dict: Whether to return a `Transformer2DModelOutput` instead of a plain tuple.
+  :returns: A structured `Transformer2DModelOutput` when `return_dict=True`, otherwise a tuple
+    whose first item is the output sample tensor.
   """
   if attention_kwargs is not None:
     attention_kwargs = attention_kwargs.copy()

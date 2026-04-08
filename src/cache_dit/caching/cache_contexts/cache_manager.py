@@ -61,7 +61,12 @@ class CachedContextManager:
 
   @torch.compiler.disable
   def new_context(self, *args, **kwargs) -> CachedContext:
-    """Create and register a new cache context with remembered init args."""
+    """Create and register a new cache context with remembered init args.
+
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The newly created `CachedContext`.
+    """
 
     _context = CachedContext(*args, **kwargs)
     # NOTE: Patch args and kwargs for implicit refresh.
@@ -75,7 +80,11 @@ class CachedContextManager:
     self,
     cached_context: Optional[CachedContext | str] = None,
   ) -> Tuple[bool, str]:  # bool, reason
-    """Decide whether the current context should be recreated before reuse."""
+    """Decide whether the current context should be recreated before reuse.
+
+    :param cached_context: Optional context instance or context name to inspect.
+    :returns: A tuple `(should_refresh, reason)` describing whether recreation is required.
+    """
 
     if cached_context is None:
       _context = self._current_context
@@ -119,7 +128,13 @@ class CachedContextManager:
     *args,
     **kwargs,
   ) -> CachedContext:
-    """Activate an existing context or create one on demand when allowed."""
+    """Activate an existing context or create one on demand when allowed.
+
+    :param cached_context: Existing context instance or logical context name.
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The activated current context.
+    """
 
     if isinstance(cached_context, CachedContext):
       self._current_context = cached_context
@@ -196,7 +211,13 @@ class CachedContextManager:
     *args,
     **kwargs,
   ) -> CachedContext:
-    """Recreate one named context while preserving its logical identity."""
+    """Recreate one named context while preserving its logical identity.
+
+    :param cached_context: Existing context instance or logical context name.
+    :param args: Additional positional arguments forwarded to the underlying implementation.
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: The recreated context instance.
+    """
 
     if isinstance(cached_context, CachedContext):
       old_context_name = cached_context.name

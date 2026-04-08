@@ -394,7 +394,9 @@ def format_markdown_table(
     if len(row) != len(headers):
       raise ValueError(f"Row has {len(row)} cells, expected {len(headers)}.")
     lines.append(f"| {' | '.join(format_markdown_cell(value) for value in row)} |")
-  return "\n".join(lines) + "\n"
+  formated_table = "\n".join(lines) + "\n"
+  print(formated_table)
+  return formated_table
 
 
 def relative_path(path: Optional[Path], root: Path) -> str:

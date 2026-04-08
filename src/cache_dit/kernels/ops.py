@@ -286,11 +286,9 @@ def _svdq_set_log_level_impl(
 def fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
   """Quantize a floating-point tensor to FP8 per-token format.
 
-  Args:
-      x: Input floating-point tensor to be quantized.
-  Returns:
-      Quantized tensor in FP8 format, where the quantization is performed
-      on a per-token quantization scheme suitable for communication purposes.
+  :param x: Input floating-point tensor to be quantized.
+  :returns: Quantized tensor in FP8 format, where the quantization is performed on a per-token
+    quantization scheme suitable for communication purposes.
   """
 
   return _fp8_comm_per_token_quant_impl(x=x, backend_fn=_TRITON_BE_FN)
@@ -299,11 +297,9 @@ def fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
 def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
   """Dequantize a FP8 tensor to floating-point format using per-token method.
 
-  Args:
-      x: Input FP8 tensor to be dequantized.
-  Returns:
-      Dequantized tensor in floating-point format, where the dequantization
-      is performed on a per-token basis suitable for communication purposes.
+  :param x: Input FP8 tensor to be dequantized.
+  :returns: Dequantized tensor in floating-point format, where the dequantization is performed on a
+    per-token basis suitable for communication purposes.
   """
   return _fp8_comm_per_token_dequant_impl(x=x, backend_fn=_TRITON_BE_FN)
 
@@ -311,10 +307,9 @@ def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
 def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
   """Quantize a floating-point tensor to FP8 format with QKV permutation.
 
-  Args:
-      x: Input floating-point tensor to be quantized.
-  Returns:
-      Quantized tensor in FP8 format with QKV permutation, suitable for communication purposes.
+  :param x: Input floating-point tensor to be quantized.
+  :returns: Quantized tensor in FP8 format with QKV permutation, suitable for communication
+    purposes.
   """
   return _fp8_comm_qkv_permute_quant_impl(x=x, backend_fn=_TRITON_BE_FN)
 
@@ -322,11 +317,9 @@ def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
 def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
   """Dequantize a FP8 tensor with QKV permutation to floating-point format.
 
-  Args:
-      quant_x: Input FP8 tensor with QKV permutation to be dequantized.
-  Returns:
-      Dequantized tensor in floating-point format, where the dequantization is performed
-      on a per-token basis suitable for communication purposes.
+  :param quant_x: Input FP8 tensor with QKV permutation to be dequantized.
+  :returns: Dequantized tensor in floating-point format, where the dequantization is performed on a
+    per-token basis suitable for communication purposes.
   """
   return _fp8_comm_qkv_permute_dequant_impl(
     quant_x=quant_x,
@@ -343,13 +336,11 @@ def fused_merge_attn_states(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
   """Fuse the attention states of two consecutive attention states, e.g., Ring Attention.
 
-  Args:
-      prev_out: Previous output tensor.
-      prev_lse: Previous log-sum-exp tensor.
-      suff_out: Sufficient output tensor.
-      suff_lse: Sufficient log-sum-exp tensor.
-  Returns:
-      Fused output and log-sum-exp tensors.
+  :param prev_out: Previous output tensor.
+  :param prev_lse: Previous log-sum-exp tensor.
+  :param suff_out: Sufficient output tensor.
+  :param suff_lse: Sufficient log-sum-exp tensor.
+  :returns: Fused output and log-sum-exp tensors.
   """
   return _fused_merge_attn_states_impl(
     prev_out=prev_out,
@@ -385,28 +376,21 @@ def svdq_gemm_w4a4(
 ) -> torch.Tensor:
   """Convenience wrapper for the plain linear SVDQ W4A4 CUDA GEMM path.
 
-  Args:
-      act: Packed activation tensor `[M, K / 2]`.
-      wgt: Packed quantized weight tensor `[N, K / 2]`.
-      ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
-      wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
-      lora_act_in: Optional LoRA activation input `[M, R]`.
-      lora_up: Optional LoRA up-projection weights `[N, R]`.
-      bias: Optional dense output bias `[N]`.
-      fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
-      alpha: Optional per-tensor FP4 scaling factor. `None` defaults to `1.0`.
-      wcscales: Optional per-channel FP4 scales `[N]`.
-      act_unsigned: Whether INT4 activations are stored as unsigned values.
-      output_dtype: Optional dtype for the allocated dense output. If omitted, it is inferred
-          from `lora_up`, `bias`, or INT4 `wscales`.
+  :param act: Packed activation tensor `[M, K / 2]`.
+  :param wgt: Packed quantized weight tensor `[N, K / 2]`.
+  :param ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
+  :param wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
+  :param lora_act_in: Optional LoRA activation input `[M, R]`.
+  :param lora_up: Optional LoRA up-projection weights `[N, R]`.
+  :param bias: Optional dense output bias `[N]`.
+  :param fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+  :param alpha: Optional per-tensor FP4 scaling factor. `None` defaults to `1.0`.
+  :param wcscales: Optional per-channel FP4 scales `[N]`.
+  :param act_unsigned: Whether INT4 activations are stored as unsigned values.
+  :param output_dtype: Optional dtype for the allocated dense output. If
+    omitted, it is inferred from `lora_up`, `bias`, or INT4 `wscales`.
 
-  Returns:
-      A newly allocated dense output tensor `[M, N]`.
-
-  Notes:
-      This wrapper exposes only the plain linear path of the full SVDQ kernel. Use
-      `svdq_gemm_w4a4_ext` to access `qout`, next-layer quantization, attention fusion,
-      or other auxiliary outputs.
+  :returns: A newly allocated dense output tensor `[M, N]`.
   """
 
   return _svdq_gemm_w4a4_impl(
@@ -459,45 +443,39 @@ def svdq_gemm_w4a4_ext(
 ) -> torch.Tensor:
   """Full SVDQ W4A4 CUDA GEMM wrapper with optional fusion outputs.
 
-  Args:
-      act: Packed activation tensor `[M, K / 2]`.
-      wgt: Packed quantized weight tensor `[N, K / 2]`.
-      out: Optional dense output buffer `[M, N]`. Allocated if `None`.
-      qout: Optional packed quantized output buffer `[M, N / 2]` for the next layer.
-      ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
-      wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
-      oscales: Optional output scales `[N / G, M]` for `qout`.
-      poolout: Optional pooled output buffer used by specialized fused kernels.
-      lora_act_in: Optional LoRA activation input `[M, R]`.
-      lora_up: Optional LoRA up-projection weights `[N, R]`.
-      lora_down: Optional LoRA down-projection weights `[N, R]` for the next fused layer.
-      lora_act_out: Optional LoRA activation output buffer `[M, R]` for the next fused layer.
-      norm_q: Optional query RMSNorm tensor `[HEAD_DIM]`.
-      norm_k: Optional key RMSNorm tensor `[HEAD_DIM]`.
-      rotary_emb: Optional packed rotary embeddings `[M, HEAD_DIM / 2, 2, 2]`.
-      bias: Optional dense output bias `[N]`.
-      smooth_factor: Optional smoothing factors `[N]` written for next-layer quantization.
-      out_vk: Optional linear-attention VK output buffer.
-      out_linearattn: Optional linear-attention output buffer.
-      act_unsigned: Whether INT4 activations are stored as unsigned values.
-      lora_scales: Optional per-16-rank LoRA scaling factors `[R / 16]`. Defaults to
-          `1.0` per group when `lora_up` is provided.
-      fuse_silu: Whether to fuse SiLU inside supported kernel variants.
-      fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
-      alpha: Optional per-tensor FP4 scaling factor. `None` defaults to `1.0`.
-      wcscales: Optional per-channel FP4 scales `[N]`.
-      out_q: Optional packed attention-Q output buffer `[B, H, M, D]`.
-      out_k: Optional packed attention-K output buffer `[B, H, M, D]`.
-      out_v: Optional packed attention-V output buffer `[B, H, M, D]`.
-      attn_tokens: Number of attention tokens for fused attention-style kernels.
+  :param act: Packed activation tensor `[M, K / 2]`.
+  :param wgt: Packed quantized weight tensor `[N, K / 2]`.
+  :param out: Optional dense output buffer `[M, N]`. Allocated if `None`.
+  :param qout: Optional packed quantized output buffer `[M, N / 2]` for the next layer.
+  :param ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
+  :param wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
+  :param oscales: Optional output scales `[N / G, M]` for `qout`.
+  :param poolout: Optional pooled output buffer used by specialized fused kernels.
+  :param lora_act_in: Optional LoRA activation input `[M, R]`.
+  :param lora_up: Optional LoRA up-projection weights `[N, R]`.
+  :param lora_down: Optional LoRA down-projection weights `[N, R]` for the next fused layer.
+  :param lora_act_out: Optional LoRA activation output buffer `[M, R]` for the next fused layer.
+  :param norm_q: Optional query RMSNorm tensor `[HEAD_DIM]`.
+  :param norm_k: Optional key RMSNorm tensor `[HEAD_DIM]`.
+  :param rotary_emb: Optional packed rotary embeddings `[M, HEAD_DIM / 2, 2, 2]`.
+  :param bias: Optional dense output bias `[N]`.
+  :param smooth_factor: Optional smoothing factors `[N]` written for next-layer quantization.
+  :param out_vk: Optional linear-attention VK output buffer.
+  :param out_linearattn: Optional linear-attention output buffer.
+  :param act_unsigned: Whether INT4 activations are stored as unsigned values.
+  :param lora_scales: Optional per-16-rank LoRA scaling factors `[R / 16]`.
+    Defaults to `1.0` per group when `lora_up` is provided.
+  :param fuse_silu: Whether to fuse SiLU inside supported kernel variants.
+  :param fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+  :param alpha: Optional per-tensor FP4 scaling factor. `None` defaults to `1.0`.
+  :param wcscales: Optional per-channel FP4 scales `[N]`.
+  :param out_q: Optional packed attention-Q output buffer `[B, H, M, D]`.
+  :param out_k: Optional packed attention-K output buffer `[B, H, M, D]`.
+  :param out_v: Optional packed attention-V output buffer `[B, H, M, D]`.
+  :param attn_tokens: Number of attention tokens for fused attention-style kernels.
 
-  Returns:
-      Dense output tensor `[M, N]`. This is the same tensor as `out` when `out` is provided.
-
-  Notes:
-      Auxiliary outputs such as `qout`, `lora_act_out`, and attention buffers are written
-      in-place to the provided tensors. When `out` is omitted, this wrapper allocates it and
-      infers its dtype from `lora_up`, `bias`, or INT4 `wscales`.
+  :returns: Dense output tensor `[M, N]`. This is the same tensor as `out`
+    when `out` is provided.
   """
   return _svdq_gemm_w4a4_ext_impl(
     act=act,
@@ -543,25 +521,19 @@ def svdq_quantize_w4a4_act_fuse_lora(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   """Quantize activations and optionally compute fused LoRA activations.
 
-  Args:
-      input: Dense activation tensor `[M, K]`, typically `torch.float16` or `torch.bfloat16`.
-      lora_down: Optional LoRA down-projection weights `[K, R]`.
-      smooth: Optional smoothing factors used during activation quantization.
-      fuse_glu: Whether to fuse GLU inside supported kernel variants.
-      fp4: Whether to use FP4/NVFP4 quantization. INT4 is used otherwise.
-      pad_size: Pad the batch dimension to a multiple of this value before launching the
-          kernel.
-
-  Returns:
-      A tuple `(output, oscales, lora_act_out)` where `output` is the packed quantized
-      activation tensor `[M_pad, K / 2]` with dtype `torch.uint8`, `oscales` is the scale
-      tensor `[K / G, M_pad]` with dtype `torch.float8_e4m3fn` for FP4 or `input.dtype` for
-      INT4, and `lora_act_out` is the LoRA activation output `[M_pad, R]` with dtype
-      `torch.float32`.
-
-  Notes:
-      `G` is 16 for FP4 and 64 for INT4. `M_pad = ceil(M / pad_size) * pad_size`.
-      When `lora_down` is `None`, `R = 0` and `lora_act_out` has shape `[M_pad, 0]`.
+  :param input: Dense activation tensor `[M, K]`, typically `torch.float16` or `torch.bfloat16`.
+  :param lora_down: Optional LoRA down-projection weights `[K, R]`.
+  :param smooth: Optional smoothing factors used during activation quantization.
+  :param fuse_glu: Whether to fuse GLU inside supported kernel variants.
+  :param fp4: Whether to use FP4/NVFP4 quantization. INT4 is used otherwise.
+  :param pad_size: Pad the batch dimension to a multiple of this value before
+    launching the kernel.
+  :returns: A tuple `(output, oscales, lora_act_out)` where `output` is the
+    packed quantized activation tensor `[M_pad, K / 2]` with dtype
+    `torch.uint8`, `oscales` is the scale tensor `[K / G, M_pad]` with dtype
+    `torch.float8_e4m3fn` for FP4 or `input.dtype` for INT4, and
+    `lora_act_out` is the LoRA activation output `[M_pad, R]` with dtype
+    `torch.float32`.
   """
 
   return _svdq_quantize_w4a4_act_fuse_lora_impl(
@@ -582,23 +554,16 @@ def svdq_quantize_w4a4_wgt(
 ) -> tuple[torch.Tensor, torch.Tensor]:
   """Quantize dense weights to the packed W4A4 INT4 layout.
 
-  Args:
-      input: Dense weight tensor `[N, K]`. `K` must be divisible by 64.
-      output: Optional destination tensor for the packed weights `[N, K / 2]`. When
-          provided, the computed packed weights are copied into this tensor and the same
-          tensor is returned.
-      oscales: Optional destination tensor for the weight scales `[K / 64, N]`. When
-          provided, the computed scales are copied into this tensor and the same tensor is
-          returned.
-
-  Returns:
-      A tuple `(output, oscales)` where `output` is the packed weight tensor `[N, K / 2]`
-      with dtype `torch.int8` and `oscales` is the scale tensor `[K / 64, N]` with dtype
-      `input.dtype`.
-
-  Notes:
-      This helper currently exposes the INT4 weight quantizer. FP4 weight packing is
-      configured at GEMM call sites via `fp4`, `alpha`, and `wcscales`.
+  :param input: Dense weight tensor `[N, K]`. `K` must be divisible by 64.
+  :param output: Optional destination tensor for the packed weights
+    `[N, K / 2]`. When provided, the computed packed weights are copied into
+    this tensor and the same tensor is returned.
+  :param oscales: Optional destination tensor for the weight scales
+    `[K / 64, N]`. When provided, the computed scales are copied into this
+    tensor and the same tensor is returned.
+  :returns: A tuple `(output, oscales)` where `output` is the packed weight
+    tensor `[N, K / 2]` with dtype `torch.int8` and `oscales` is the scale
+    tensor `[K / 64, N]` with dtype `input.dtype`.
   """
   return _svdq_quantize_w4a4_wgt_impl(
     input=input,
@@ -609,18 +574,39 @@ def svdq_quantize_w4a4_wgt(
 
 
 def svdq_set_faster_i2f_mode(mode: str) -> None:
+  """Configure the integer-to-float conversion mode used by the SVDQ kernels.
+
+  :param mode: Backend-specific mode string forwarded to the CUDA extension.
+  """
+
   _svdq_set_faster_i2f_mode_impl(mode=mode, backend_fn=_CUDA_BE_FN)
 
 
 def svdq_set_log_level(level: str) -> None:
+  """Set the log level used by the SVDQ CUDA extension.
+
+  :param level: Log level string understood by the extension runtime.
+  """
+
   _svdq_set_log_level_impl(level=level, backend_fn=_CUDA_BE_FN)
 
 
 def svdq_extension_is_available() -> bool:
+  """Return whether the optional SVDQ CUDA extension is available.
+
+  :returns: `True` when the compiled extension can be loaded successfully.
+  """
+
   return _svdq_extension_is_available_impl()
 
 
 def svdq_get_load_error() -> Exception | None:
+  """Return the cached extension-load error, if one was recorded.
+
+  :returns: The most recent extension import/load error, or `None` when the
+    extension loaded successfully.
+  """
+
   return _svdq_get_load_error_impl()
 
 

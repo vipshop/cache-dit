@@ -54,7 +54,8 @@ class HiDreamPatchFunctor(PatchFunctor):
     return transformer
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
+# Adapted from diffusers' HiDream transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_double_forward__(
   self: HiDreamImageTransformerBlock,
   hidden_states: torch.Tensor,
@@ -123,7 +124,8 @@ def __patch_double_forward__(
   return hidden_states, initial_encoder_hidden_states
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
+# Adapted from diffusers' HiDream transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_single_forward__(
   self: HiDreamImageSingleTransformerBlock,
   hidden_states: torch.Tensor,
@@ -170,7 +172,8 @@ def __patch_single_forward__(
   return hidden_states
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
+# Adapted from diffusers' HiDream transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_block_forward__(
   self: HiDreamBlock,
   hidden_states: torch.Tensor,
@@ -180,7 +183,8 @@ def __patch_block_forward__(
   return self.block(hidden_states, *args, **kwargs)
 
 
-# Adapted from: https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
+# Adapted from diffusers' HiDream transformer implementation:
+# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_hidream_image.py
 def __patch_transformer_forward__(
   self: HiDreamImageTransformer2DModel,
   hidden_states: torch.Tensor,
@@ -198,13 +202,16 @@ def __patch_transformer_forward__(
   encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
 
   if encoder_hidden_states is not None:
-    deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
+    deprecation_message = ("The `encoder_hidden_states` argument is deprecated. Please use "
+                           "`encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead.")
     deprecate("encoder_hidden_states", "0.35.0", deprecation_message)
     encoder_hidden_states_t5 = encoder_hidden_states[0]
     encoder_hidden_states_llama3 = encoder_hidden_states[1]
 
   if img_ids is not None and img_sizes is not None and hidden_states_masks is None:
-    deprecation_message = "Passing `img_ids` and `img_sizes` with unpachified `hidden_states` is deprecated and will be ignored."
+    deprecation_message = (
+      "Passing `img_ids` and `img_sizes` with unpatchified `hidden_states` is deprecated and will "
+      "be ignored.")
     deprecate("img_ids", "0.35.0", deprecation_message)
 
   if hidden_states_masks is not None and (img_ids is None or img_sizes is None):
@@ -212,8 +219,8 @@ def __patch_transformer_forward__(
       "if `hidden_states_masks` is passed, `img_ids` and `img_sizes` must also be passed.")
   elif hidden_states_masks is not None and hidden_states.ndim != 3:
     raise ValueError(
-      "if `hidden_states_masks` is passed, `hidden_states` must be a 3D tensors with shape (batch_size, patch_height * patch_width, patch_size * patch_size * channels)"
-    )
+      "If `hidden_states_masks` is passed, `hidden_states` must be a 3D tensor with shape "
+      "`(batch_size, patch_height * patch_width, patch_size * patch_size * channels)`.")
 
   if attention_kwargs is not None:
     attention_kwargs = attention_kwargs.copy()

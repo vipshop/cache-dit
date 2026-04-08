@@ -5,7 +5,11 @@ from .platform import BasePlatform, CudaPlatform, CpuPlatform, NPUPlatform  # no
 
 
 def resolve_obj_by_qualname(qualname: str) -> BasePlatform:
-  """Resolve an object by its fully-qualified class name."""
+  """Resolve an object by its fully-qualified class name.
+
+  :param qualname: Fully-qualified object path such as `cache_dit.platforms.platform.CudaPlatform`.
+  :returns: The resolved platform class or object.
+  """
   module_name, obj_name = qualname.rsplit(".", 1)
   module = importlib.import_module(module_name)
   return getattr(module, obj_name)

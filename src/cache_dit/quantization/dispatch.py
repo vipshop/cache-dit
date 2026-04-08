@@ -15,21 +15,13 @@ def quantize(
 ) -> torch.nn.Module:
   """Quantize a module with the backend resolved from `QuantizeConfig`.
 
-  Args:
-      module: The module to quantize in place or replace with a quantized variant.
-      quantize_config: Structured quantization configuration. When omitted,
-          legacy keyword arguments are converted into a `QuantizeConfig` for
-          backward compatibility.
-      **kwargs: Deprecated quantization options kept for compatibility with
-          older call sites.
+  :param module: The module to quantize in place or replace with a quantized variant.
+  :param quantize_config: Structured quantization configuration. When omitted,
+    legacy keyword arguments are converted into a `QuantizeConfig` for
+    backward compatibility.
+  :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
 
-  Returns:
-      The quantized module produced by the selected quantization backend.
-
-  Notes:
-      Backend dispatch is driven by `quantize_config.backend`. TorchAO-backed
-      flows and cache-dit's native SVDQ PTQ workflow share this entry point so
-      users can keep one public API while switching quantization strategies.
+  :returns: The quantized module produced by the selected quantization backend.
   """
 
   # For backward compatibility, we still accept the old style of quantization arguments,
@@ -70,17 +62,11 @@ def load(
 ) -> torch.nn.Module:
   """Load a serialized quantized module according to the inferred backend.
 
-  Args:
-      module: The float module shell that should receive the quantized weights.
-      quantize_config_or_path: Either a `QuantizeConfig` or a serialized checkpoint
-          path. String paths currently imply cache-dit's native quantized format.
+  :param module: The float module shell that should receive the quantized weights.
+  :param quantize_config_or_path: Either a `QuantizeConfig` or a serialized checkpoint
+  path. String paths currently imply cache-dit's native quantized format.
 
-  Returns:
-      The module with quantized weights or quantized submodules loaded.
-
-  Notes:
-      The current implementation only supports cache-dit's native SVDQ loading
-      path. Other backends may add module loading support in the future.
+  :returns: The module with quantized weights or quantized submodules loaded.
   """
 
   if isinstance(quantize_config_or_path, QuantizeConfig):
@@ -103,12 +89,9 @@ def load(
 def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
   """Remove cache-dit quantization bookkeeping attributes from a module.
 
-  Args:
-      module: Module that may carry cache-dit quantization metadata.
-
-  Returns:
-      The same module with the quantization-related bookkeeping fields removed
-      from the root module and any configured extra quantized modules.
+  :param module: Module that may carry cache-dit quantization metadata.
+  :returns: The same module with the quantization-related bookkeeping fields removed from the root
+    module and any configured extra quantized modules.
   """
 
   components_to_quantize = None

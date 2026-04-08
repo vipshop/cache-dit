@@ -105,11 +105,10 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
 class QuantizeConfig:
   """Unified quantization configuration for cache-dit workflows.
 
-  `QuantizeConfig` is the user-facing control surface for both TorchAO-backed
-  online quantization flows and cache-dit's native SVDQ PTQ workflow. The top-
-  level fields describe what to quantize, which backend to use, and how to scope
-  quantization across components or repeated transformer blocks, while
-  `svdq_kwargs` contains backend-specific controls for the SVDQ PTQ path.
+  `QuantizeConfig` is the user-facing control surface for both TorchAO-backed online quantization
+  flows and cache-dit's native SVDQ PTQ workflow. The top-level fields describe what to quantize,
+  which backend to use, and how to scope quantization across components or repeated transformer
+  blocks, while `svdq_kwargs` contains backend-specific controls for the SVDQ PTQ path.
   """
 
   # Quantization backend, only "ao" (torchao) is supported for now, more backends
@@ -266,30 +265,46 @@ class QuantizeConfig:
       raise ValueError("svdq_kwargs is only valid when quant_type starts with 'svdq'.")
 
   def as_dict(self) -> Dict[str, Any]:
-    """Return the configuration as a plain dictionary."""
+    """Return the configuration as a plain dictionary.
+
+    :returns: A plain dictionary representation of this quantization config.
+    """
 
     return dataclasses.asdict(self)
 
   def is_svdq(self) -> bool:
-    """Return whether this config targets cache-dit's SVDQ PTQ workflow."""
+    """Return whether this config targets cache-dit's SVDQ PTQ workflow.
+
+    :returns: `True` when `quant_type` selects an `svdq_*` workflow.
+    """
 
     return isinstance(self.quant_type, str) and self.quant_type.startswith("svdq")
 
   def get_svdq_rank(self) -> int:
-    """Extract the low-rank value encoded in an `svdq_int4_r{rank}` quant type."""
+    """Extract the low-rank value encoded in an `svdq_int4_r{rank}` quant type.
+
+    :returns: The low-rank value encoded in `quant_type`.
+    """
 
     _, rank = _parse_svdq_quant_type(self.quant_type)
     return rank
 
   def get_svdq_kwargs(self) -> Dict[str, Any]:
-    """Return validated SVDQ-specific kwargs or an empty dict for non-SVDQ configs."""
+    """Return validated SVDQ-specific kwargs or an empty dict for non-SVDQ configs.
+
+    :returns: The validated SVDQ kwargs for this config, or `{}` for non-SVDQ modes.
+    """
 
     if not self.is_svdq():
       return {}
     return dict(self.svdq_kwargs or _SVDQ_KWARGS_DEFAULTS)
 
   def update(self, **kwargs) -> "QuantizeConfig":
-    """Update non-`None` fields in place and re-run configuration validation."""
+    """Update non-`None` fields in place and re-run configuration validation.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: `self` after applying the updates.
+    """
 
     for key, value in kwargs.items():
       if hasattr(self, key):
@@ -299,7 +314,10 @@ class QuantizeConfig:
     return self
 
   def strify(self) -> str:
-    """Build a compact human-readable summary of the quantization selection."""
+    """Build a compact human-readable summary of the quantization selection.
+
+    :returns: A compact summary string suitable for logs and artifact names.
+    """
 
     if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):
       return f"{self.quant_type.lower()}"
@@ -311,7 +329,10 @@ class QuantizeConfig:
       return quant_str
 
   def component_quant_types(self) -> Dict[str, str]:
-    """Resolve the effective quantization type for each target component."""
+    """Resolve the effective quantization type for each target component.
+
+    :returns: A mapping from component names to their effective quantization type.
+    """
 
     if self.components_to_quantize is None:
       return {"transformer": self.quant_type}
@@ -327,7 +348,11 @@ class QuantizeConfig:
 
   @classmethod
   def expand_configs(cls, config: "QuantizeConfig") -> List["QuantizeConfig"]:
-    """Expand a multi-component config into one config per target component."""
+    """Expand a multi-component config into one config per target component.
+
+    :param config: Source config that may target multiple components.
+    :returns: One derived config per component-specific quantization target.
+    """
 
     # Transfer components_to_quantize to mutiple simple configs, each
     # with only 1 component to quantize, and the same quantization type.
@@ -364,7 +389,11 @@ class QuantizeConfig:
 
   @classmethod
   def from_kwargs(cls, **kwargs) -> "QuantizeConfig":
-    """Build a config from legacy keyword arguments by dropping unknown keys."""
+    """Build a config from legacy keyword arguments by dropping unknown keys.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A validated `QuantizeConfig` built from the supported keyword subset.
+    """
 
     valid_kwargs = {}
     for key, value in kwargs.items():

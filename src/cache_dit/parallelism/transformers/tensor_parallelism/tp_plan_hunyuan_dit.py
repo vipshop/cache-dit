@@ -47,12 +47,12 @@ class HunyuanDiTTensorParallelismPlanner(TensorParallelismPlanner):
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     """Parallelize HunyuanDiT transformer blocks.
 
-    HunyuanDiT has a unique architecture with:
-    - Dual attention (self-attention and cross-attention)
-    - Skip connections with skip_linear layer
-    - Norm layers (norm1, norm2, norm3)
-    - FFN layer
-    - Long skip connections between blocks
+    HunyuanDiT uses dual attention blocks with skip connections, multiple normalization layers,
+    feed-forward submodules, and long skip paths across the network.
+
+    :param transformer: Transformer module to process.
+    :param tp_mesh: Tensor-parallel device mesh.
+    :returns: The parallelized transformer and its per-layer sharding plan.
     """
 
     layer_plans = []
