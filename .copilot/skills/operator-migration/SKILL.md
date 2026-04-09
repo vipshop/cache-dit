@@ -206,6 +206,13 @@ Typical responsibilities:
 - add fake registrations where compile or tracing paths need them
 - keep the public kernel API separate from raw registration details
 
+Registration and fake-implementation conventions:
+
+- name fake registrations explicitly as `_fake_<operator_name>`; do not use anonymous `def _(...)` helpers
+- apply this naming rule consistently across CUDA, Triton, CuTe DSL, and other operator backends in cache-dit
+- when adding or migrating operators, add unit tests in the same change
+- tests should cover at least one fake shape or dtype path and one runtime correctness or smoke path
+
 ### D. Public kernel API layer
 
 Expose user-facing wrappers from `src/cache_dit/kernels/ops.py`.

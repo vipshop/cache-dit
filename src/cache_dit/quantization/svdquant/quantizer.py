@@ -37,9 +37,9 @@ def validate_svdq_linear_geometry(
   :param precision: Weight format requested by the quantizer.
 
   :raises NotImplementedError: If `precision` is not supported by the minimal SVDQ
-  quantizer.
+    quantizer.
   :raises ValueError: If the geometry or low-rank rank is incompatible with the W4A4
-  packer/runtime contract.
+    packer/runtime contract.
   """
 
   if precision != "int4":
@@ -101,7 +101,7 @@ def standardize_calibration_activations(
   """Normalize representative activations into `[tokens, in_features]` tensors.
 
   :param representative_activations: A tensor or iterable of tensors whose last
-  dimension matches `in_features`.
+    dimension matches `in_features`.
   :param in_features: Expected activation channel dimension.
 
   :returns: A list of 2D tensors reshaped to `[tokens, in_features]` for calibration.
@@ -444,28 +444,28 @@ def quantize_linear_svdq_w4a4(
 
   :param linear: Source floating-point linear layer.
   :param representative_activations: Tensor or iterable of tensors whose last
-  dimension matches `linear.in_features`.
+    dimension matches `linear.in_features`.
   :param rank: Rank of the low-rank residual correction.
   :param alpha: SmoothQuant interpolation factor used to derive `smooth_factor`.
   :param precision: Weight format requested by the quantizer. The current minimal
-  implementation supports `int4` only.
+    implementation supports `int4` only.
   :param act_unsigned: Whether the runtime activation quantizer should emit unsigned
-  4-bit activations.
+    4-bit activations.
   :param torch_dtype: Floating-point dtype used for the packed runtime tensors.
   :param device: Device on which quantization intermediates and the returned module
-  should be materialized.
+    should be materialized.
   :param return_state_dict: When `True`, return the packed module `state_dict`
-  instead of instantiating `SVDQW4A4Linear`.
+    instead of instantiating `SVDQW4A4Linear`.
   :param high_precision: Enable higher-precision intermediate math and float64 SVD
-  during low-rank decomposition.
+    during low-rank decomposition.
   :param fp32_fallback: Allow the low-rank decomposition to retry in float32 when a
-  low-precision SVD kernel is unavailable.
+    low-precision SVD kernel is unavailable.
   :param streaming: Whether to accumulate activation spans incrementally instead of
-  materializing all standardized activations at once.
+    materializing all standardized activations at once.
   :param activation_buffer_flush_sample_count: Number of buffered span samples to keep
-  before merging them when `streaming=True`.
+    before merging them when `streaming=True`.
   :param activation_buffer_flush_cpu_bytes: CPU buffer limit that also triggers a
-  merge when `streaming=True`.
+    merge when `streaming=True`.
 
   :returns: Either a quantized `SVDQW4A4Linear` module or the corresponding module
   `state_dict`, depending on `return_state_dict`.
