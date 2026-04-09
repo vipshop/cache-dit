@@ -35,23 +35,23 @@ from cache_dit import ForwardPattern, BlockAdapter
 
 # Use 🔥BlockAdapter with `auto` mode.
 cache_dit.enable_cache(
-    BlockAdapter(
-        # Any DiffusionPipeline, Qwen-Image, etc.  
-        pipe=pipe, auto=True,
-        # Check `📚Forward Pattern Matching` documentation and hack the code of
-        # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
-        forward_pattern=ForwardPattern.Pattern_1,
-    ),   
+  BlockAdapter(
+    # Any DiffusionPipeline, Qwen-Image, etc.  
+    pipe=pipe, auto=True,
+    # Check `📚Forward Pattern Matching` documentation and hack the code of
+    # of Qwen-Image, you will find that it has satisfied `FORWARD_PATTERN_1`.
+    forward_pattern=ForwardPattern.Pattern_1,
+  ),   
 )
 
 # Or, manually setup transformer configurations.
 cache_dit.enable_cache(
-    BlockAdapter(
-        pipe=pipe, # Qwen-Image, etc.
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.transformer_blocks,
-        forward_pattern=ForwardPattern.Pattern_1,
-    ), 
+  BlockAdapter(
+    pipe=pipe, # Qwen-Image, etc.
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_1,
+  ), 
 )
 ```
 For such situations, **<span style="color:#c77dff;">BlockAdapter</span>** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. 
@@ -63,18 +63,18 @@ Sometimes, a Transformer class will contain more than one transformer `blocks`. 
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
 # single_transformer_blocks have different forward patterns.
 cache_dit.enable_cache(
-    BlockAdapter(
-        pipe=pipe, # FLUX.1, etc.
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.transformer_blocks,
-            pipe.transformer.single_transformer_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_1,
-            ForwardPattern.Pattern_3,
-        ],
-    ),
+  BlockAdapter(
+    pipe=pipe, # FLUX.1, etc.
+    transformer=pipe.transformer,
+    blocks=[
+      pipe.transformer.transformer_blocks,
+      pipe.transformer.single_transformer_blocks,
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_1,
+      ForwardPattern.Pattern_3,
+    ],
+  ),
 )
 ```
 
@@ -84,39 +84,39 @@ Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has <
 from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, DBCacheConfig
 
 cache_dit.enable_cache(
-    BlockAdapter(
-        pipe=pipe,
-        transformer=[
-            pipe.transformer,
-            pipe.transformer_2,
-        ],
-        blocks=[
-            pipe.transformer.blocks,
-            pipe.transformer_2.blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_2,
-            ForwardPattern.Pattern_2,
-        ],
-        # Setup different cache params for each 'blocks'. You can 
-        # pass any specific cache params to ParamModifier, the old 
-        # value will be overwrite by the new one.
-        params_modifiers=[
-            ParamsModifier(
-                cache_config=DBCacheConfig().reset(
-                    max_warmup_steps=4,
-                    max_cached_steps=8,
-                ),
-            ),
-            ParamsModifier(
-                cache_config=DBCacheConfig().reset(
-                    max_warmup_steps=2,
-                    max_cached_steps=20,
-                ),
-            ),
-        ],
-        has_separate_cfg=True,
-    ),
+  BlockAdapter(
+    pipe=pipe,
+    transformer=[
+      pipe.transformer,
+      pipe.transformer_2,
+    ],
+    blocks=[
+      pipe.transformer.blocks,
+      pipe.transformer_2.blocks,
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_2,
+      ForwardPattern.Pattern_2,
+    ],
+    # Setup different cache params for each 'blocks'. You can 
+    # pass any specific cache params to ParamModifier, the old 
+    # value will be overwrite by the new one.
+    params_modifiers=[
+      ParamsModifier(
+        cache_config=DBCacheConfig().reset(
+          max_warmup_steps=4,
+          max_cached_steps=8,
+        ),
+      ),
+      ParamsModifier(
+        cache_config=DBCacheConfig().reset(
+          max_warmup_steps=2,
+          max_cached_steps=20,
+        ),
+      ),
+    ],
+    has_separate_cfg=True,
+  ),
 )
 ```
 
@@ -131,25 +131,25 @@ Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFu
 ```python
 @BlockAdapterRegister.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
-    from diffusers import HiDreamImageTransformer2DModel
-    from cache_dit.caching.patch_functors import HiDreamPatchFunctor
+  from diffusers import HiDreamImageTransformer2DModel
+  from cache_dit.caching.patch_functors import HiDreamPatchFunctor
 
-    assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.double_stream_blocks,
-            pipe.transformer.single_stream_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_0,
-            ForwardPattern.Pattern_3,
-        ],
-        # NOTE: Setup your custom patch functor here.
-        patch_functor=HiDreamPatchFunctor(),
-        **kwargs,
-    )
+  assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=[
+      pipe.transformer.double_stream_blocks,
+      pipe.transformer.single_stream_blocks,
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_0,
+      ForwardPattern.Pattern_3,
+    ],
+    # NOTE: Setup your custom patch functor here.
+    patch_functor=HiDreamPatchFunctor(),
+    **kwargs,
+  )
 ```
 
 ## Transformer-Only Interface
@@ -158,15 +158,15 @@ In some cases, users may <span style="color:#c77dff;">not use Diffusers</span> o
 
 ```python
 cache_dit.enable_cache(
-    BlockAdapter( 
-        # NO `pipe` required
-        transformer=transformer,
-        blocks=transformer.transformer_blocks,
-        forward_pattern=ForwardPattern.Pattern_1,
-    ), 
-    cache_config=DBCacheConfig(
-        num_inference_steps=50  # required
-    ),
+  BlockAdapter( 
+    # NO `pipe` required
+    transformer=transformer,
+    blocks=transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_1,
+  ), 
+  cache_config=DBCacheConfig(
+    num_inference_steps=50  # required
+  ),
 )
 ```
 
@@ -193,17 +193,17 @@ stats = cache_dit.summary(pipe.transformer) # Then, get the summary
 
 # Update the cache context with new cache_config.
 cache_dit.refresh_context(
-    pipe.transformer,
-    cache_config=DBCacheConfig(
-        residual_diff_threshold=0.1,
-        max_warmup_steps=10,
-        max_cached_steps=20,
-        max_continuous_cached_steps=4,
-        # The cache settings should all be located in the cache config 
-        # if cache config is provided. Otherwise, we will skip it.
-        num_inference_steps=50,
-    ),
-    verbose=True,
+  pipe.transformer,
+  cache_config=DBCacheConfig(
+    residual_diff_threshold=0.1,
+    max_warmup_steps=10,
+    max_cached_steps=20,
+    max_continuous_cached_steps=4,
+    # The cache settings should all be located in the cache config 
+    # if cache config is provided. Otherwise, we will skip it.
+    num_inference_steps=50,
+  ),
+  verbose=True,
 )
 output = pipe(...) # Just call the pipe as normal.
 stats = cache_dit.summary(pipe.transformer) # Then, get the summary
@@ -217,40 +217,40 @@ Sometimes you may encounter more complex cases, such as **Wan 2.2 MoE**, which h
 from cache_dit import ParamsModifier 
 
 cache_dit.enable_cache(
-    BlockAdapter(
-        pipe=pipe, # FLUX.1, etc.
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.transformer_blocks,
-            pipe.transformer.single_transformer_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_1,
-            ForwardPattern.Pattern_3,
-        ],
-    ),
-    # Basic shared cache config 
-    cache_config=DBCacheConfig(...),
-    params_modifiers=[
-        ParamsModifier(
-            # Modified config only for transformer_blocks
-            # Must call the `reset` method of DBCacheConfig.
-            cache_config=DBCacheConfig().reset(
-                Fn_compute_blocks=8,
-                residual_diff_threshold=0.08,
-            ),
-        ),
-        ParamsModifier(
-            # Modified config only for single_transformer_blocks
-            # NOTE: FLUX.1, single_transformer_blocks should have `higher` 
-            # residual_diff_threshold because of the precision error 
-            # accumulation from previous transformer_blocks
-            cache_config=DBCacheConfig().reset(
-                Fn_compute_blocks=1,
-                residual_diff_threshold=0.16,
-            ),
-        ),
+  BlockAdapter(
+    pipe=pipe, # FLUX.1, etc.
+    transformer=pipe.transformer,
+    blocks=[
+      pipe.transformer.transformer_blocks,
+      pipe.transformer.single_transformer_blocks,
     ],
+    forward_pattern=[
+      ForwardPattern.Pattern_1,
+      ForwardPattern.Pattern_3,
+    ],
+  ),
+  # Basic shared cache config 
+  cache_config=DBCacheConfig(...),
+  params_modifiers=[
+    ParamsModifier(
+      # Modified config only for transformer_blocks
+      # Must call the `reset` method of DBCacheConfig.
+      cache_config=DBCacheConfig().reset(
+        Fn_compute_blocks=8,
+        residual_diff_threshold=0.08,
+      ),
+    ),
+    ParamsModifier(
+      # Modified config only for single_transformer_blocks
+      # NOTE: FLUX.1, single_transformer_blocks should have `higher` 
+      # residual_diff_threshold because of the precision error 
+      # accumulation from previous transformer_blocks
+      cache_config=DBCacheConfig().reset(
+        Fn_compute_blocks=1,
+        residual_diff_threshold=0.16,
+      ),
+    ),
+  ],
 )
 ```
 
@@ -299,8 +299,8 @@ import cache_dit
 from diffusers import FluxPipeline
 
 pipe_or_adapter = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
+  "black-forest-labs/FLUX.1-dev",
+  torch_dtype=torch.bfloat16,
 ).to("cuda")
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
@@ -311,20 +311,20 @@ cache_dit.enable_cache(pipe_or_adapter)
 from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=DBCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,  # steps do not cache
+    max_cached_steps=-1, # -1 means no limit
+    Fn_compute_blocks=8, # Fn, F8, etc.
+    Bn_compute_blocks=8, # Bn, B8, etc.
+    residual_diff_threshold=0.12,
+  ),
 )
 ```  
 
 <div align="center">
   <p align="center">
-    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
   </p>
 </div>
 
@@ -340,7 +340,7 @@ cache_dit.enable_cache(
 
 <div align="center">
   <p align="center">
-    DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
+  DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
   </p>
 </div>
 
@@ -359,32 +359,32 @@ We have further implemented a new **<span style="color:#c77dff;">Dynamic Block P
 from cache_dit import DBPruneConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=DBPruneConfig(
-        max_warmup_steps=8,  # steps do not apply prune
-        residual_diff_threshold=0.12,
-        enable_dynamic_prune_threshold=True,
-    ),
+  pipe_or_adapter,
+  cache_config=DBPruneConfig(
+    max_warmup_steps=8,  # steps do not apply prune
+    residual_diff_threshold=0.12,
+    enable_dynamic_prune_threshold=True,
+  ),
 )
 ```
 We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_block_ids** to avoid aggressive pruning. For example:
 
 ```python
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=DBPruneConfig(
-        max_warmup_steps=8,  # steps do not apply prune
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc
-        residual_diff_threshold=0.12,
-        enable_dynamic_prune_threshold=True,
-        non_prune_block_ids=list(range(16,24)),
-    ),
+  pipe_or_adapter,
+  cache_config=DBPruneConfig(
+    max_warmup_steps=8,  # steps do not apply prune
+    Fn_compute_blocks=8, # Fn, F8, etc.
+    Bn_compute_blocks=8, # Bn, B8, etc
+    residual_diff_threshold=0.12,
+    enable_dynamic_prune_threshold=True,
+    non_prune_block_ids=list(range(16,24)),
+  ),
 )
 ```
 <div align="center">
   <p align="center">
-    DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
   </p>
 </div>
 
@@ -403,23 +403,23 @@ cache-dit supports caching for **<span style="color:#c77dff;">CFG (classifier-fr
 from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(
-        ...,
-        # CFG: classifier free guidance or not
-        # For model that fused CFG and non-CFG into single forward step,
-        # should set enable_separate_cfg as False. For example, set it as True 
-        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
-        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
-        # Compute cfg forward first or not, default False, namely, 
-        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-        cfg_compute_first=False,
-        # Compute separate diff values for CFG and non-CFG step, 
-        # default True. If False, we will use the computed diff from 
-        # current non-CFG transformer step for current CFG step.
-        cfg_diff_compute_separate=True,
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(
+    ...,
+    # CFG: classifier free guidance or not
+    # For model that fused CFG and non-CFG into single forward step,
+    # should set enable_separate_cfg as False. For example, set it as True 
+    # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
+    # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+    enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
+    # Compute cfg forward first or not, default False, namely, 
+    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
+    cfg_compute_first=False,
+    # Compute separate diff values for CFG and non-CFG step, 
+    # default True. If False, we will use the computed diff from 
+    # current non-CFG transformer step for current CFG step.
+    cfg_diff_compute_separate=True,
+  ),
 )
 ```
 
@@ -439,20 +439,20 @@ We have supported the [TaylorSeers: From Reusing to Forecasting: Accelerating Di
 from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    # Basic DBCache w/ FnBn configurations
-    cache_config=DBCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
-    # Then, you can use the TaylorSeer Calibrator to approximate 
-    # the values in cached steps, taylorseer_order default is 1.
-    calibrator_config=TaylorSeerCalibratorConfig(
-        taylorseer_order=1,
-    ),
+  pipe_or_adapter,
+  # Basic DBCache w/ FnBn configurations
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,  # steps do not cache
+    max_cached_steps=-1, # -1 means no limit
+    Fn_compute_blocks=8, # Fn, F8, etc.
+    Bn_compute_blocks=8, # Bn, B8, etc.
+    residual_diff_threshold=0.12,
+  ),
+  # Then, you can use the TaylorSeer Calibrator to approximate 
+  # the values in cached steps, taylorseer_order default is 1.
+  calibrator_config=TaylorSeerCalibratorConfig(
+    taylorseer_order=1,
+  ),
 )
 ``` 
 
@@ -460,7 +460,7 @@ Please note that if you have used TaylorSeer as the calibrator for approximate h
 
 <div align="center">
   <p align="center">
-    <b>DBCache F1B0 + TaylorSeer</b>, L20x1, Steps: 28, <br>"A cat holding a sign that says hello world with complex background"
+  <b>DBCache F1B0 + TaylorSeer</b>, L20x1, Steps: 28, <br>"A cat holding a sign that says hello world with complex background"
   </p>
 </div>
 
@@ -488,28 +488,28 @@ from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
 
 # Scheme: Hybrid DBCache + SCM + TaylorSeer
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=DBCacheConfig(
-        # Basic DBCache configs
-        Fn_compute_blocks=8,
-        Bn_compute_blocks=0,
-        # NOTE: warmup steps is not required now!
-        residual_diff_threshold=0.12,
-        # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
-        # SCM=111111010010000010000100001, 1: compute, 0: cache.
-        steps_computation_mask=cache_dit.steps_mask(
-            # e.g: slow, medium, fast, ultra.
-            mask_policy="fast", total_steps=28,
-            # Or, you can use bins setting to get custom mask.
-            # compute_bins=[6, 1, 1, 1, 1], # 10
-            # cache_bins=[1, 2, 5, 5, 5], # 18
-        ),
-        # The policy for cache steps can be 'dynamic' or 'static'
-        steps_computation_policy="dynamic",
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    # Basic DBCache configs
+    Fn_compute_blocks=8,
+    Bn_compute_blocks=0,
+    # NOTE: warmup steps is not required now!
+    residual_diff_threshold=0.12,
+    # LeMiCa or EasyCache style Mask for 28 steps, e.g, 
+    # SCM=111111010010000010000100001, 1: compute, 0: cache.
+    steps_computation_mask=cache_dit.steps_mask(
+      # e.g: slow, medium, fast, ultra.
+      mask_policy="fast", total_steps=28,
+      # Or, you can use bins setting to get custom mask.
+      # compute_bins=[6, 1, 1, 1, 1], # 10
+      # cache_bins=[1, 2, 5, 5, 5], # 18
     ),
-    calibrator_config=TaylorSeerCalibratorConfig(
-        taylorseer_order=1,
-    ),
+    # The policy for cache steps can be 'dynamic' or 'static'
+    steps_computation_policy="dynamic",
+  ),
+  calibrator_config=TaylorSeerCalibratorConfig(
+    taylorseer_order=1,
+  ),
 )
 
 ```
@@ -551,34 +551,34 @@ These usages are useful for cases like **GLM-Image** and **Helios-14B** Video Ge
 ```python
 # Helios-14B
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    # Cache config with force refresh hint and policy for Helios-14B.
-    cache_config=DBCacheConfig(
-        ...,
-        # Update cache context per num_inference_steps (e.g, 50) since Helios-14B
-        # will split the num_frames into multiple chunks and do multiple passes 
-        # of transformer denoise loop, and the cache context should be refreshed 
-        # at the end of each loop to ensure the previous cache will never be used
-        # in the next loop.
-        force_refresh_step_hint=50,
-        force_refresh_step_policy="repeat",
-    ),
+  pipe_or_adapter,
+  # Cache config with force refresh hint and policy for Helios-14B.
+  cache_config=DBCacheConfig(
+    ...,
+    # Update cache context per num_inference_steps (e.g, 50) since Helios-14B
+    # will split the num_frames into multiple chunks and do multiple passes 
+    # of transformer denoise loop, and the cache context should be refreshed 
+    # at the end of each loop to ensure the previous cache will never be used
+    # in the next loop.
+    force_refresh_step_hint=50,
+    force_refresh_step_policy="repeat",
+  ),
 )
 
 # GLM-Image
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    # Cache config with force refresh hint and policy for GLM-Image.
-    cache_config=DBCacheConfig(
-        ...,
-        # Since 'image' parameter is used in input_data, we have set the value of
-        # force_refresh_step_hint to the number of prompts x number of images
-        # which is 1 x 1 = 1 here. GLM-Image will do processing for the prompt
-        # and image at each pipeline inference by calling the transformer, so,
-        # we need to force refresh the cached hidden states at after the
-        # preprocessing done.
-        force_refresh_step_hint=1,
-        force_refresh_step_policy="once",
-    ),
+  pipe_or_adapter,
+  # Cache config with force refresh hint and policy for GLM-Image.
+  cache_config=DBCacheConfig(
+    ...,
+    # Since 'image' parameter is used in input_data, we have set the value of
+    # force_refresh_step_hint to the number of prompts x number of images
+    # which is 1 x 1 = 1 here. GLM-Image will do processing for the prompt
+    # and image at each pipeline inference by calling the transformer, so,
+    # we need to force refresh the cached hidden states at after the
+    # preprocessing done.
+    force_refresh_step_hint=1,
+    force_refresh_step_policy="once",
+  ),
 )
 ```

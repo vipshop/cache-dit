@@ -60,7 +60,7 @@ FP8 rowwise quantization can be combined with CUDA Graphs to further optimize tr
 import torch
 from cache_dit import QuantizeConfig
 from cache_dit.quantization.torchao._scaled_mm import (
-    enable_opaque_torchao_float8_scaled_mm,
+  enable_opaque_torchao_float8_scaled_mm,
 )
 
 # Enable opaque FP8 scaled_mm for stable CUDA Graphs execution
@@ -68,8 +68,8 @@ enable_opaque_torchao_float8_scaled_mm()
 
 # Apply float8 per-row quantization to transformer modules
 pipe.transformer = cache_dit.quantize(
-    pipe.transformer,
-    config=QuantizeConfig(quant_type="float8_per_row"),
+  pipe.transformer,
+  config=QuantizeConfig(quant_type="float8_per_row"),
 )
 
 # Enable compile + CUDA Graph through torch.compile options

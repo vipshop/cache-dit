@@ -12,21 +12,21 @@ Currently, cache-dit supported text encoder parallelism for **T5Encoder, UMT5Enc
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe, 
-    cache_config=DBCacheConfig(...),
-    parallelism_config=ParallelismConfig(
-        tp_size=2,
-        extra_parallel_modules=[pipe.text_encoder], # FLUX.2
-    ),
+  pipe, 
+  cache_config=DBCacheConfig(...),
+  parallelism_config=ParallelismConfig(
+    tp_size=2,
+    extra_parallel_modules=[pipe.text_encoder], # FLUX.2
+  ),
 )
 
 cache_dit.enable_cache(
-    pipe, 
-    cache_config=DBCacheConfig(...),
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        extra_parallel_modules=[pipe.text_encoder], # FLUX.2
-    ),
+  pipe, 
+  cache_config=DBCacheConfig(...),
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    extra_parallel_modules=[pipe.text_encoder], # FLUX.2
+  ),
 )
 ```
 
@@ -40,12 +40,12 @@ Currently, cache-dit supported auto encoder (<span style="color:#c77dff;">VAE</s
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe, 
-    cache_config=DBCacheConfig(...),
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        extra_parallel_modules=[pipe.vae],
-    ),
+  pipe, 
+  cache_config=DBCacheConfig(...),
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    extra_parallel_modules=[pipe.vae],
+  ),
 )
 ```
 
@@ -67,13 +67,13 @@ Further, cache-dit even supported <span style="color:#c77dff;">Controlnet Parall
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe, 
-    cache_config=DBCacheConfig(...),
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        # case: Z-Image-Turbo-Fun-ControlNet-2.1
-        extra_parallel_modules=[pipe.controlnet],
-    ),
+  pipe, 
+  cache_config=DBCacheConfig(...),
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    # case: Z-Image-Turbo-Fun-ControlNet-2.1
+    extra_parallel_modules=[pipe.controlnet],
+  ),
 )
 ```
 
@@ -85,19 +85,19 @@ User can also combine the above techniques together to further reduce the per-GP
 from cache_dit import DBCacheConfig, ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...), # w/ Cache
-    parallelism_config=ParallelismConfig(
-        ulysses_size=4, tp_size=2, # 2D Parallelsim
-        # e.g, Z-Image-Turbo with ControlNet, we can also parallelize the 
-        # Text Encoder, VAE and ControlNet module to further reduce the 
-        # memory usage on low-VRAM devices.
-        extra_parallel_modules=[
-            pipe.text_encoder, 
-            pipe.vae,
-            pipe.controlnet, # only support for Z-Image-Turbo currently
-        ], 
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...), # w/ Cache
+  parallelism_config=ParallelismConfig(
+    ulysses_size=4, tp_size=2, # 2D Parallelsim
+    # e.g, Z-Image-Turbo with ControlNet, we can also parallelize the 
+    # Text Encoder, VAE and ControlNet module to further reduce the 
+    # memory usage on low-VRAM devices.
+    extra_parallel_modules=[
+      pipe.text_encoder, 
+      pipe.vae,
+      pipe.controlnet, # only support for Z-Image-Turbo currently
+    ], 
+  ),
 )
 ```
 

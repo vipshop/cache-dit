@@ -11,22 +11,22 @@ In order to support <span style="color:#c77dff;">cache acceleration</span> for n
 ```python
 @BlockAdapterRegister.register("QwenImage")
 def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
-    try:
-        from diffusers import QwenImageTransformer2DModel
-    except ImportError:
-        QwenImageTransformer2DModel = None  # requires diffusers>=0.35.2
+  try:
+    from diffusers import QwenImageTransformer2DModel
+  except ImportError:
+    QwenImageTransformer2DModel = None  # requires diffusers>=0.35.2
 
-    _relaxed_assert(pipe.transformer, QwenImageTransformer2DModel)
-    
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=pipe.transformer.transformer_blocks,
-        forward_pattern=ForwardPattern.Pattern_1,
-        check_forward_pattern=True,
-        has_separate_cfg=True,
-        **kwargs,
-    )
+  _relaxed_assert(pipe.transformer, QwenImageTransformer2DModel)
+  
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_1,
+    check_forward_pattern=True,
+    has_separate_cfg=True,
+    **kwargs,
+  )
 ```
 
 - step 2: use `_safe_import` to import it at [caching/block_adapters/\_\_init\_\_.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/__init__.py).

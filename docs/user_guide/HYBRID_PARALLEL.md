@@ -37,10 +37,10 @@ Users can set both **ulysses_size/ring_size(CP, USP)** and **tp_size(TP)** to va
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    parallelism_config=ParallelismConfig(
-        ulysses_size=4, tp_size=2,
-    ),
+  pipe_or_adapter, 
+  parallelism_config=ParallelismConfig(
+    ulysses_size=4, tp_size=2,
+  ),
 )
 ```
 
@@ -50,10 +50,10 @@ cache_dit.enable_cache(
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    parallelism_config=ParallelismConfig(
-        ring_size=4, tp_size=2,
-    ),
+  pipe_or_adapter, 
+  parallelism_config=ParallelismConfig(
+    ring_size=4, tp_size=2,
+  ),
 )
 ```
 
@@ -63,10 +63,10 @@ cache_dit.enable_cache(
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2, ring_size=2, tp_size=2,
-    ),
+  pipe_or_adapter, 
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2, ring_size=2, tp_size=2,
+  ),
 )
 ```
 
@@ -76,18 +76,18 @@ cache_dit.enable_cache(
 from cache_dit import DBCacheConfig, ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...), # w/ Cache
-    parallelism_config=ParallelismConfig(
-        # ulysses_size=2, ring_size=2, tp_size=2, # 3D Parallelism
-        ulysses_size=4, tp_size=2, # or, 2D Parallelsim
-        # e.g, FLUX.2, we can also parallelize the Text Encoder and VAE
-        # module to further reduce the memory usage on low-VRAM devices.
-        extra_parallel_modules=[
-            pipe.text_encoder, 
-            pipe.vae,
-        ],
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...), # w/ Cache
+  parallelism_config=ParallelismConfig(
+    # ulysses_size=2, ring_size=2, tp_size=2, # 3D Parallelism
+    ulysses_size=4, tp_size=2, # or, 2D Parallelsim
+    # e.g, FLUX.2, we can also parallelize the Text Encoder and VAE
+    # module to further reduce the memory usage on low-VRAM devices.
+    extra_parallel_modules=[
+      pipe.text_encoder, 
+      pipe.vae,
+    ],
+  ),
 )
 ```
 

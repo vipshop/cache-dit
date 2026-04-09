@@ -10,10 +10,10 @@ cache-dit is compatible with context parallelism. Currently, we support the use 
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set ulysses_size > 1 to enable ulysses style context parallelism.
-    parallelism_config=ParallelismConfig(ulysses_size=2),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set ulysses_size > 1 to enable ulysses style context parallelism.
+  parallelism_config=ParallelismConfig(ulysses_size=2),
 )
 ```
 
@@ -33,13 +33,13 @@ cache_dit.enable_cache(
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set `ulysses_anything` as True to enable UAA
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        ulysses_anything=True,
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set `ulysses_anything` as True to enable UAA
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    ulysses_anything=True,
+  ),
 )
 ```
 
@@ -51,9 +51,9 @@ dist.init_process_group(backend="cpu:gloo,cuda:nccl")
 Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gather** op for scalar types to gather the seq_len value of each rank. To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the <span style="color:#c77dff;">gloo</span> backend in `init_process_group`. This will significantly reduce communication latency.
 
 <p align="center">
-    <b>Any Sequence Length</b><br>
-    U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
-    FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
+  <b>Any Sequence Length</b><br>
+  U*: Ulysses Attention, <b>UAA: Ulysses Anything Attenton</b>, UAA*: UAA + Gloo, Device: NVIDIA L20<br>
+  FLUX.1-Dev w/o CPU Offload, 28 steps; Qwen-Image w/ CPU Offload, 50 steps; Gloo: Extra All Gather w/ Gloo
 </p>
 
 |CP2 w/ U* |CP2 w/ UAA* | CP2 w/ UAA |  L20x1 | CP2 w/ UAA* | CP2 w/ U* |  L20x1 |  CP2 w/ UAA* | 
@@ -68,15 +68,15 @@ Compared to Ulysses Attention, in **UAA**, we have only added an **extra all-gat
 
 
 <p align="center">
-    <b>Any Head Num</b><br>
-    Ulysses: Ulysses Attention, <b>FP8 Ulysses: Ulysses w/ FP8 All2All</b>, Device: NVIDIA L20<br>
-    🔥<b>Z-Image</b> (Head=30, ❌<b>CAN NOT</b> divisible by 4), 1024x1024, 9 steps.
+  <b>Any Head Num</b><br>
+  Ulysses: Ulysses Attention, <b>FP8 Ulysses: Ulysses w/ FP8 All2All</b>, Device: NVIDIA L20<br>
+  🔥<b>Z-Image</b> (Head=30, ❌<b>CAN NOT</b> divisible by 4), 1024x1024, 9 steps.
 </p>
 
 |Ulysses 2, L20|Ulysses 4|FP8 Ulysses 4| + Cache | + FP8 DQ | 
-|:---:|:---:|:---:|:---:|:---:|    
-|1024x1024, 3.19s|1024x1024, 1.98s|1024x1024, 1.89s|1024x1024, 1.63s|1024x1024, 1.23s|    
-|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses2_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses2_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses4_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_DBCache_F1B0_W4I1M0MC0_R0.6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0.6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn.png" />|    
+|:---:|:---:|:---:|:---:|:---:|  
+|1024x1024, 3.19s|1024x1024, 1.98s|1024x1024, 1.89s|1024x1024, 1.63s|1024x1024, 1.23s|  
+|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses2_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses2_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses4_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_NONE_Ulysses4_ulysses_float8_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q0_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q0_DBCache_F1B0_W4I1M0MC0_R0.6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn.png" />|<img width="180" height="180" alt="zimage C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0 6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/zimage.C1_Q1_float8_DBCache_F1B0_W4I1M0MC0_R0.6_SCM111110101_dynamic_CFG0_T0O0_Ulysses4_S2_ulysses_float8_sdpa_cudnn.png" />|  
 
 
 We have also implemented a **padding-free** version that support any head num. Please be informed that this solution cannot be used when seq len is not divisible by world size. Users can enable this feature through environment variables:
@@ -100,19 +100,19 @@ Inspired by [ByteDance-Seed/VeOmni: Async Ulysses CP](https://github.com/ByteDan
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set `ulysses_async` as True to enable Async Ulysses QKV Projection.
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        ulysses_async=True,
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set `ulysses_async` as True to enable Async Ulysses QKV Projection.
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    ulysses_async=True,
+  ),
 )
 ```
 
 
 <p align="center">
-    Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attention with Async QKV Projection
+  Ulysses: Standard Ulysses Attention, <b>Async Ulysses</b>: Ulysses Attention with Async QKV Projection
 </p>
 
 |L20x2 w/ Ulysses| w/ Async Ulysses|w/ Ulysses + compile| w/ Async Ulysses + compile|
@@ -132,13 +132,13 @@ cache-dit has implemented <span style="color:#c77dff;">Async FP8 Ulysses Attenti
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set `ulysses_float8` as True to enable Async FP8 Ulysses Attention
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2,
-        ulysses_float8=True,
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set `ulysses_float8` as True to enable Async FP8 Ulysses Attention
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    ulysses_float8=True,
+  ),
 )
 ```
 
@@ -156,13 +156,13 @@ Currently, cache-dit support 2 ring_rotate_method, namely, <span style="color:#c
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set `ring_rotate_method` as 'p2p' to enable the faster ring attention implementation
-    parallelism_config=ParallelismConfig(
-        ring_size=2,
-        ring_rotate_method='p2p', # default is 'p2p'
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set `ring_rotate_method` as 'p2p' to enable the faster ring attention implementation
+  parallelism_config=ParallelismConfig(
+    ring_size=2,
+    ring_rotate_method='p2p', # default is 'p2p'
+  ),
 )
 ```
 
@@ -183,12 +183,12 @@ Ulysses Attention efficiently parallelizes across attention heads. Ring Attentio
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set both `ulysses_size` and `ring_size` greater than 1
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2, ring_size=2,
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set both `ulysses_size` and `ring_size` greater than 1
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2, ring_size=2,
+  ),
 )
 ```
 

@@ -8,10 +8,10 @@ cache-dit is also compatible with <span style="color:#c77dff;">Tensor Parallelis
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    # Set tp_size > 1 to enable tensor parallelism.
-    parallelism_config=ParallelismConfig(tp_size=2),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  # Set tp_size > 1 to enable tensor parallelism.
+  parallelism_config=ParallelismConfig(tp_size=2),
 )
 ```
 

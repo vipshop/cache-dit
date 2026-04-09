@@ -9,7 +9,7 @@
 
 <div align="center">
   <p align="center">
-    DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
+  DBCache, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
   </p>
 </div>
 
@@ -23,7 +23,7 @@
 
 <div align="center">
   <p align="center">
-    DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
+  DBCache, <b> L20x4 </b>, Steps: 20, case to show the texture recovery ability of DBCache
   </p>
 </div>
 
@@ -48,8 +48,8 @@ import cache_dit
 from diffusers import FluxPipeline
 
 pipe_or_adapter = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    torch_dtype=torch.bfloat16,
+  "black-forest-labs/FLUX.1-dev",
+  torch_dtype=torch.bfloat16,
 ).to("cuda")
 
 # Default options, F8B0, 8 warmup steps, and unlimited cached 
@@ -60,14 +60,14 @@ cache_dit.enable_cache(pipe_or_adapter)
 from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter,
-    cache_config=DBCacheConfig(
-        max_warmup_steps=8,  # steps do not cache
-        max_cached_steps=-1, # -1 means no limit
-        Fn_compute_blocks=8, # Fn, F8, etc.
-        Bn_compute_blocks=8, # Bn, B8, etc.
-        residual_diff_threshold=0.12,
-    ),
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,  # steps do not cache
+    max_cached_steps=-1, # -1 means no limit
+    Fn_compute_blocks=8, # Fn, F8, etc.
+    Bn_compute_blocks=8, # Bn, B8, etc.
+    residual_diff_threshold=0.12,
+  ),
 )
 ```
 
@@ -81,22 +81,22 @@ cache-dit supports caching for <span style="color:#c77dff;">**CFG (classifier-fr
 from cache_dit import DBCacheConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(
-        ...,
-        # CFG: classifier free guidance or not
-        # For model that fused CFG and non-CFG into single forward step,
-        # should set enable_separate_cfg as False. For example, set it as True 
-        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
-        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
-        # Compute cfg forward first or not, default False, namely, 
-        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-        cfg_compute_first=False,
-        # Compute separate diff values for CFG and non-CFG step, 
-        # default True. If False, we will use the computed diff from 
-        # current non-CFG transformer step for current CFG step.
-        cfg_diff_compute_separate=True,
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(
+    ...,
+    # CFG: classifier free guidance or not
+    # For model that fused CFG and non-CFG into single forward step,
+    # should set enable_separate_cfg as False. For example, set it as True 
+    # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
+    # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
+    enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
+    # Compute cfg forward first or not, default False, namely, 
+    # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
+    cfg_compute_first=False,
+    # Compute separate diff values for CFG and non-CFG step, 
+    # default True. If False, we will use the computed diff from 
+    # current non-CFG transformer step for current CFG step.
+    cfg_diff_compute_separate=True,
+  ),
 )
 ```

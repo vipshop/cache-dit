@@ -6,7 +6,7 @@
 - PyTorch >= 2.7.1 (<span style="color:#c77dff;">2.11.0</span>, recommended)
 - CUDA >= 12.6 (>= <span style="color:#c77dff;">13.0</span>, recommended) for Nvidia GPU
 - Diffusers >= 0.36.0 (>= <span style="color:#c77dff;">0.37.0</span>, recommended)
-- TorchAo >= 0.15.0 (>= <span style="color:#c77dff;">0.16.0</span>, recommended)
+- TorchAo >= 0.15.0 (>= <span style="color:#c77dff;">0.17.0</span>, recommended)
 
 ## Installation with Nvidia GPU
 

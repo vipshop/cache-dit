@@ -5,7 +5,7 @@
 Cache-DiT supports multiple Attention backends for better performance. The supported list is as follows:
 
 |backend|details|parallelism|attn_mask|
-|:---|:---|:---|:---|    
+|:---|:---|:---|:---|  
 |<span style="color:#c77dff;">native</span>| Native SDPA Attention, w/ cache-dit optimized|✅|✅|  
 |<span style="color:#c77dff;">_sdpa_cudnn</span>| CUDNN Attention via SDPA API, w/ cache-dit optimized|✅|✅|
 |<span style="color:#c77dff;">_native_cudnn</span>| CUDNN Attention via SDPA API, w/o cache-dit optimized|✅|✖️|
@@ -38,13 +38,13 @@ Users also can specify Attention backend by setting the <span style="color:#c77d
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2, # or, tp_size=2
-        # flash, native(sdpa), _native_cudnn, _sdpa_cudnn, sage
-        attention_backend="_sdpa_cudnn",
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2, # or, tp_size=2
+    # flash, native(sdpa), _native_cudnn, _sdpa_cudnn, sage
+    attention_backend="_sdpa_cudnn",
+  ),
 )
 ```
 
@@ -59,11 +59,11 @@ For FP8 Attention, users must install `sage-attention`. Then, pass the <span sty
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-    pipe_or_adapter, 
-    cache_config=DBCacheConfig(...),
-    parallelism_config=ParallelismConfig(
-        ulysses_size=2, # or, tp_size=2
-        attention_backend="sage",
-    ),
+  pipe_or_adapter, 
+  cache_config=DBCacheConfig(...),
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2, # or, tp_size=2
+    attention_backend="sage",
+  ),
 )
 ```
