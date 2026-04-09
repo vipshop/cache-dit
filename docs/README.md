@@ -31,6 +31,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
+
 <div align="center">
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
 </div>
@@ -60,8 +61,6 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
-For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
-
 <div align="center">
   <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ workflow</h2> </p>
 </div>
@@ -73,21 +72,21 @@ git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" --no-build-isolation
 ```
 
-Then, try to quantize your model with just **♥️a few lines♥️** of code ~
+Then, try to quantize your model with just **♥️a few lines♥️** of codes ~
 
 ```python
 >>> from cache_dit import QuantizeConfig
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
 >>> # 0. Define the calibration function for PTQ.
 >>> def calibrate_fn(**_: object) -> None:
-...     with torch.inference_mode():
-...         for prompt in calibration_prompts:
-...             _ = pipe(prompt=prompt, ...)
+...   with torch.inference_mode():
+...     for prompt in calibration_prompts:
+...       _ = pipe(prompt=prompt, ...)
 >>> # 1. Build the QuantizeConfig for SVDQuant PTQ.
 >>> quant_config = QuantizeConfig(
-...     quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
-...     calibrate_fn=calibrate_fn,
-...     serialize_to=..., 
+...   quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+...   calibrate_fn=calibrate_fn,
+...   serialize_to=..., 
 ... )
 >>> # 2. Apply quantization with `cache_dit.quantize(...)` API.
 >>> pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config) 
@@ -96,7 +95,7 @@ Then, try to quantize your model with just **♥️a few lines♥️** of code ~
 >>> pipe.transformer = cache_dit.load(pipe.transformer, ...)
 ```
 
-For more advanced features, please refer to our online documentation at 📘[Low-bits Quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/).
+For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
 ## 🌐Community Integration
 
@@ -113,7 +112,7 @@ For more advanced features, please refer to our online documentation at 📘[Low
 
 ## ©️Acknowledgements
 
-Special thanks to vipshop's Computer Vision AI Team for supporting document, testing and deployment of this project. We learned the design and reused code from the following projects: [Diffusers](https://github.com/huggingface/diffusers), [SGLang](https://github.com/sgl-project/sglang), [vLLM](https://github.com/vllm-project/vllm), [vLLM-Omni](https://github.com/vllm-project/vllm-omni), [ParaAttention](https://github.com/chengzeyi/ParaAttention), [xDiT](https://github.com/xdit-project/xDiT) and [TaylorSeer](https://github.com/Shenyi-Z/TaylorSeer).
+Special thanks to vipshop's Computer Vision AI Team for supporting testing and deployment of this project. We learned and reused code from the following projects: [Diffusers](https://github.com/huggingface/diffusers), [SGLang](https://github.com/sgl-project/sglang), [vLLM-Omni](https://github.com/vllm-project/vllm-omni), [Nunchaku](https://github.com/nunchaku-ai/nunchaku), [xDiT](https://github.com/xdit-project/xDiT) and [TaylorSeer](https://github.com/Shenyi-Z/TaylorSeer).
 
 
 ## ©️Citations
