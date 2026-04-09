@@ -47,9 +47,9 @@ from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 # int8_per_row, int8_per_tensor, int8_weight_only, int4_weight_only, etc.
 # Pass a QuantizeConfig to the `enable_cache` API.
 cache_dit.enable_cache( 
-    pipe, cache_config=DBCacheConfig(), # w/ default
-    parallelism_config=ParallelismConfig(ulysses_size=2),
-    quantize_config=QuantizeConfig(quant_type="float8_per_row"),
+  pipe, cache_config=DBCacheConfig(), # w/ default
+  parallelism_config=ParallelismConfig(ulysses_size=2),
+  quantize_config=QuantizeConfig(quant_type="float8_per_row"),
 )
 ```
 
@@ -60,20 +60,20 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
 cache_dit.enable_cache( 
-    pipe, cache_config=DBCacheConfig(), # w/ default
-    parallelism_config=ParallelismConfig(ulysses_size=2),
-    quantize_config=QuantizeConfig(
-        components_to_quantize={
-            "transformer": {
-                "quant_type": "float8_per_row",
-                "exclude_layers": ["embedder", "embed"],
-            },
-            "text_encoder": {
-                "quant_type": "float8_weight_only",
-                "exclude_layers": ["lm_head"],
-            }
-        }
-    ),
+  pipe, cache_config=DBCacheConfig(), # w/ default
+  parallelism_config=ParallelismConfig(ulysses_size=2),
+  quantize_config=QuantizeConfig(
+    components_to_quantize={
+      "transformer": {
+        "quant_type": "float8_per_row",
+        "exclude_layers": ["embedder", "embed"],
+      },
+      "text_encoder": {
+        "quant_type": "float8_weight_only",
+        "exclude_layers": ["lm_head"],
+      }
+    }
+  ),
 )
 ```
 
@@ -84,12 +84,12 @@ import cache_dit
 from cache_dit import QuantizeConfig
 
 cache_dit.quantize(
-    pipe.transformer, 
-    quantize_config=QuantizeConfig(quant_type="float8_per_row"),
+  pipe.transformer, 
+  quantize_config=QuantizeConfig(quant_type="float8_per_row"),
 )
 cache_dit.quantize(
-    pipe.text_encoder, 
-    quantize_config=QuantizeConfig(quant_type="float8_weight_only"),
+  pipe.text_encoder, 
+  quantize_config=QuantizeConfig(quant_type="float8_weight_only"),
 )
 ```
 
@@ -110,12 +110,12 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
 cache_dit.enable_cache( 
-    pipe, cache_config=DBCacheConfig(), # w/ default
-    parallelism_config=ParallelismConfig(ulysses_size=2),
-    quantize_config=QuantizeConfig(
-        quant_type="float8_per_row",
-        exclude_layers=["embedder", "embed"],
-    ),
+  pipe, cache_config=DBCacheConfig(), # w/ default
+  parallelism_config=ParallelismConfig(ulysses_size=2),
+  quantize_config=QuantizeConfig(
+    quant_type="float8_per_row",
+    exclude_layers=["embedder", "embed"],
+  ),
 )
 ```
 By default, <span style="color:green;">quant_type="float8_per_row"</span> for better precision. Users can set it to "float8_per_tensor" to use per-tensor quantization for better performance on some hardware.
@@ -129,21 +129,21 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
 cache_dit.enable_cache( 
-    pipe, cache_config=DBCacheConfig(), # w/ default
-    parallelism_config=ParallelismConfig(ulysses_size=2),
-    quantize_config=QuantizeConfig(
-        quant_type="float8_per_row",
-        # Default (True), only quantize the repeated blocks in transformer if the repeated_blocks is 
-        # specified. If set to False, the whole transformer will be quantized.
-        regional_quantize=True, 
-        # Specify the block names for the transformer, cache-dit will automatically find the repeated 
-        # blocks and quantize it inplace. The block names can be found in the model architecture, e.g., 
-        # for FLUX.2, the block name is "Flux2TransformerBlock" and "Flux2SingleTransformerBlock".
-        repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
-        # repeated_blocks will be detected automatically from diffusers' transformer class, namely:
-        # default repeated_blocks = transformer._repeated_blocks if exists, else None (quantize 
-        # the whole transformer.
-    ),
+  pipe, cache_config=DBCacheConfig(), # w/ default
+  parallelism_config=ParallelismConfig(ulysses_size=2),
+  quantize_config=QuantizeConfig(
+    quant_type="float8_per_row",
+    # Default (True), only quantize the repeated blocks in transformer if the repeated_blocks is 
+    # specified. If set to False, the whole transformer will be quantized.
+    regional_quantize=True, 
+    # Specify the block names for the transformer, cache-dit will automatically find the repeated 
+    # blocks and quantize it inplace. The block names can be found in the model architecture, e.g., 
+    # for FLUX.2, the block name is "Flux2TransformerBlock" and "Flux2SingleTransformerBlock".
+    repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
+    # repeated_blocks will be detected automatically from diffusers' transformer class, namely:
+    # default repeated_blocks = transformer._repeated_blocks if exists, else None (quantize 
+    # the whole transformer.
+  ),
 )
 ```
 
@@ -160,18 +160,18 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
 cache_dit.enable_cache( 
-    pipe, cache_config=DBCacheConfig(), # w/ default
-    parallelism_config=ParallelismConfig(tp_size=2),
-    quantize_config=QuantizeConfig(
-        quant_type="float8_per_row",
-        # Must be True to enable fp8 per-tensor fallback.
-        regional_quantize=True, # default, True.
-        repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
-        # Enable fallback to float8 per-tensor quantization, default to True
-        # for better compatibility for layers that do not support float8 per-row 
-        # quantization, e.g., layers with RowwiseParallel applied in tensor parallelism.
-        per_tensor_fallback=True, 
-    ),
+  pipe, cache_config=DBCacheConfig(), # w/ default
+  parallelism_config=ParallelismConfig(tp_size=2),
+  quantize_config=QuantizeConfig(
+    quant_type="float8_per_row",
+    # Must be True to enable fp8 per-tensor fallback.
+    regional_quantize=True, # default, True.
+    repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
+    # Enable fallback to float8 per-tensor quantization, default to True
+    # for better compatibility for layers that do not support float8 per-row 
+    # quantization, e.g., layers with RowwiseParallel applied in tensor parallelism.
+    per_tensor_fallback=True, 
+  ),
 )
 ```
 
@@ -235,21 +235,21 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
 
 cache_dit.enable_cache(
-    pipe,
-    cache_config=DBCacheConfig(),
-    quantize_config=QuantizeConfig(
-       # Default type for unmatched layers in transformer.
-        quant_type="float8_per_row",
-        regional_quantize=True,
-        repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
-        per_tensor_fallback=True,
-        precision_plan={
-            "attn.to_q": "float8_per_tensor",  # match: **attn.to_q**, best performance. 
-            "attn.to_k": "float8_weight_only", # match: **attn.to_k**, best precision.
-            "attn.to_v": "float8_per_block",   # match: **attn.to_v**, better precision.
-            "attn.to_out": "float8_per_row",   # match: **attn.to_out**, better precision.
-        },
-    ),
+  pipe,
+  cache_config=DBCacheConfig(),
+  quantize_config=QuantizeConfig(
+     # Default type for unmatched layers in transformer.
+    quant_type="float8_per_row",
+    regional_quantize=True,
+    repeated_blocks=['Flux2TransformerBlock', 'Flux2SingleTransformerBlock'],
+    per_tensor_fallback=True,
+    precision_plan={
+      "attn.to_q": "float8_per_tensor",  # match: **attn.to_q**, best performance. 
+      "attn.to_k": "float8_weight_only", # match: **attn.to_k**, best precision.
+      "attn.to_v": "float8_per_block",   # match: **attn.to_v**, better precision.
+      "attn.to_out": "float8_per_row",   # match: **attn.to_out**, better precision.
+    },
+  ),
 )
 # python3 -m cache_dit.generate flux2_klein_9b_kv_edit --config quantize_plan.yaml --compile
 ```
@@ -277,8 +277,8 @@ import cache_dit
 from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig  
 
 cache_dit.enable_cache( 
-    # Or "int8_per_tensor", "int8_weight_only", "int4_weight_only", etc.
-    pipe, quantize_config=QuantizeConfig(quant_type="int8_per_row"), 
+  # Or "int8_per_tensor", "int8_weight_only", "int4_weight_only", etc.
+  pipe, quantize_config=QuantizeConfig(quant_type="int8_per_row"), 
 )
 ```
 INT4 quantization can provide even better memory reduction compared to FP8 or INT8, but it may cause more precision loss. We recommend users to try different quantization types and choose the one that best fits their needs in terms of the trade-off between performance and precision. In most cases, <span style="color:#c77dff;">float8 per-row</span> can be a good choice for better memory reduction while maintaining acceptable precision.
@@ -294,8 +294,6 @@ uv pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nig
 In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.
 
 ## SVDQ (W4A4) PTQ Workflow
-
-### SVDQ in Cache-DiT
 
 Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance <span style="color:green;">W4A4 GEMM kernels</span> and an <span style="color:green;">easy-to-use</span> PTQ interface). The public API is intentionally small: build a <span style="color:#c77dff;">QuantizeConfig</span>, quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and better usability compared to other third-party INT4 quantization libraries.   
 
@@ -319,8 +317,8 @@ from cache_dit import QuantizeConfig
 
 # 1. Load the pre-trained model in "cuda"
 pipe = Flux2KleinPipeline.from_pretrained(
-    "black-forest-labs/FLUX.2-klein-4B",
-    torch_dtype=torch.bfloat16,
+  "black-forest-labs/FLUX.2-klein-4B",
+  torch_dtype=torch.bfloat16,
 ).to("cuda")
 ```
 
@@ -332,15 +330,15 @@ calibration_prompts = ["A cute cat sitting on the beach.", ...]
 
 # 2.2 Define the calibration function for SVDQuant PTQ.
 def calibrate_fn(**_: object) -> None:
-    with torch.inference_mode():
-        for prompt in calibration_prompts:
-            _ = pipe(
-                prompt=prompt,
-                height=1024,
-                width=1024,
-                num_inference_steps=4,
-                generator=torch.Generator(device="cpu").manual_seed(0),
-            )
+  with torch.inference_mode():
+    for prompt in calibration_prompts:
+      _ = pipe(
+        prompt=prompt,
+        height=1024,
+        width=1024,
+        num_inference_steps=4,
+        generator=torch.Generator(device="cpu").manual_seed(0),
+      )
 ```
 
 <span style="color:green;">Step 3</span>: Build the <span style="color:#c77dff;">QuantizeConfig</span> for SVDQuant, and call <span style="color:#c77dff;">cache_dit.quantize(...)</span> to apply SVDQuant W4A4 quantization to the model. We have to wait some time for the quantization process to finish, as SVDQuant will perform SVD decomposition for each linear layer and compute the quantization parameters based on the collected quantization statistics. The quantized model will be saved to disk in the specified directory.
@@ -348,9 +346,9 @@ def calibrate_fn(**_: object) -> None:
 ```python
 # 3. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
 quant_config = QuantizeConfig(
-    quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
-    calibrate_fn=calibrate_fn,
-    serialize_to="./FLUX.2-klein-4B-svdq/",
+  quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+  calibrate_fn=calibrate_fn,
+  serialize_to="./FLUX.2-klein-4B-svdq/",
 )
 pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 ```
@@ -386,9 +384,12 @@ SVDQuant in Cache-DiT is compatible with <span style="color:#c77dff;">torch.comp
 | quantized + eager | 1024x1024 | 1.2689 | 0.0000 | 1.0000x |
 | quantized + compile | 1024x1024 | 1.0161 | -0.2528 | <span style="color:green;">1.2488x</span> |
 
-### SVDQ in Nunchaku
+<details markdown="1">
+<summary>How to use SVDQ in Nunchaku with Cache-DiT?</summary>
 
-Cache-DiT also supports the caching and context parallelism scheme for int4 models from official Nunchaku library. Users can leverage Cache-DiT to speed up Nunchaku 4-bits W4A4 models. <span style="color:green;">**But we recommend users to use Cache-DiT's native SVDQuant support for better compatibility and usability**.</span>
+**FAQ: Can I use Cache-DiT's SVDQuant support for Nunchaku int4 models?**
+
+Yes, Cache-DiT also supports the caching and context parallelism scheme for int4 models from official Nunchaku library. Users can leverage Cache-DiT to speed up Nunchaku 4-bits W4A4 models. <span style="color:green;">**But we recommend users to use Cache-DiT's native SVDQuant support for better compatibility and usability**.</span>
 
 ```python
 import cache_dit
@@ -396,11 +397,12 @@ from diffusers import QwenImagePipeline
 from nunchaku import NunchakuQwenImageTransformer2DModel
 
 transformer = NunchakuQwenImageTransformer2DModel.from_pretrained(
-    f"path-to/svdq-int4_r32-qwen-image.safetensors"
+  f"path-to/svdq-int4_r32-qwen-image.safetensors"
 )
 pipe = QwenImagePipeline.from_pretrained(
-   "Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16,
+  "Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16,
 ).to("cuda")
 
 cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 ```
+</details>
