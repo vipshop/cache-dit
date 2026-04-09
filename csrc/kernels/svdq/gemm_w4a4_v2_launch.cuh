@@ -18,7 +18,7 @@ using gemm_w4a4_v2_launch_fn = void (*)(Tensor act,
                                         int logical_block_m);
 
 #define SVDQ_DECLARE_GEMM_W4A4_V2_LAUNCH(DTYPE_NAME, STAGE)              \
-  void launch_gemm_w4a4_v2_##DTYPE_NAME##_int4_stage##STAGE(            \
+  void launch_gemm_w4a4_v2_##DTYPE_NAME##_int4_stage##STAGE(             \
     Tensor act,                                                          \
     Tensor wgt,                                                          \
     Tensor out,                                                          \

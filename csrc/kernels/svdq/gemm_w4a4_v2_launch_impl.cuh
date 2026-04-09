@@ -90,7 +90,7 @@ inline void launch_gemm_w4a4_v2_specialized(Tensor act,
           wcscales);                                                               \
         return;                                                                    \
       default:                                                                     \
-        throw std::runtime_error("Unsupported svdq_gemm_w4a4_v2 logical BLOCK_M."); \
+        throw std::runtime_error("Unsupported svdq_gemm_w4a4_v2 BLOCK_M.");        \
     }                                                                              \
   }
 
