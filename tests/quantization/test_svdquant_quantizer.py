@@ -224,7 +224,7 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    calibrate_precision="medium",
+    calibrate_precision=_CALIBRATE_PRECISION,
     streaming=True,
   )
   eager = quantize_linear_svdq_w4a4(
@@ -234,7 +234,7 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    calibrate_precision="medium",
+    calibrate_precision=_CALIBRATE_PRECISION,
     streaming=False,
   )
 
@@ -275,7 +275,7 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    calibrate_precision="medium",
+    calibrate_precision=_CALIBRATE_PRECISION,
     streaming=True,
     **buffer_kwargs,
   )
@@ -286,7 +286,7 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    calibrate_precision="medium",
+    calibrate_precision=_CALIBRATE_PRECISION,
     streaming=False,
   )
 

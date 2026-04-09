@@ -369,11 +369,11 @@ pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 
 <span style="color:green;">calibrate_precision</span> now defaults to <span style="color:green;">low</span>, which uses randomized **torch.svd_lowrank** and keeps the calibration math in float32. **medium** and **high** remain available as opt-in debugging or accuracy-investigation modes. On a real FLUX.2-klein-4B PTQ run (**rank=32**, 8 calibration prompts, **1024x1024**), the quantized-model behavior was almost the same across all three modes; the practical difference was mostly PTQ cost. The **speedup** column below refers to quantization-time speedup relative to **high**. 
 
-| calibrate_precision | low-rank route | speedup | PSNR |
-| :---: | :---: | :---: | :---: |
-| low | <span style="color:green;">torch.svd_lowrank</span> with float32 | <span style="color:green;">18.02x</span> | ~same |
-| medium | full <span style="color:green;">torch.linalg.svd</span> with float32 | 3.26x | ~same |
-| high | float64 full SVD, CUDA <span style="color:green;">gesvd</span> | 1.00x | ~same |
+| calibrate_precision | low-rank route | quantization_s | speedup | PSNR |
+| :---: | :---: | :---: | :---: | :---: |
+| low | <span style="color:green;">torch.svd_lowrank</span> with float32 | 20.2258 | <span style="color:green;">18.02x</span> | ~same, 29.2528 |
+| medium | full <span style="color:green;">torch.linalg.svd</span> with float32 | 111.8944 | 3.26x | ~same, 29.2454 |
+| high | float64 full SVD, CUDA <span style="color:green;">gesvd</span> | 364.4877 | 1.00x | ~same, 29.1880 |
 
 In practice the PSNR values are almost the same, so <span style="color:green;">low</span> is the recommended production default. It keeps the best PTQ throughput while preserving the same loaded-model behavior seen from medium and high.
 
