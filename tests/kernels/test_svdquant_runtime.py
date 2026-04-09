@@ -127,7 +127,6 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
       act_unsigned=False,
       fp4=False,
       alpha=1.0,
-      stage=2,
     )
     torch.cuda.synchronize()
 

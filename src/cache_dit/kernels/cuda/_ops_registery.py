@@ -438,7 +438,7 @@ def svdq_gemm_w4a4_v2(
   wcscales: torch.Tensor | None,
   act_unsigned: bool,
   output_dtype: torch.dtype | None = None,
-  stage: int = 2,
+  stage: int = 1,
 ) -> torch.Tensor:
   if alpha is None:
     alpha = 1.0

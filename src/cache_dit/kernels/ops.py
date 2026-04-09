@@ -156,7 +156,7 @@ def _svdq_gemm_w4a4_v2_impl(
   wcscales: torch.Tensor | None = None,
   act_unsigned: bool = False,
   output_dtype: torch.dtype | None = None,
-  stage: int = 2,
+  stage: int = 1,
   backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
 ) -> torch.Tensor:
   backend = backend_fn()
@@ -462,7 +462,7 @@ def svdq_gemm_w4a4_v2(
   wcscales: torch.Tensor | None = None,
   act_unsigned: bool = False,
   output_dtype: torch.dtype | None = None,
-  stage: int = 2,
+  stage: int = 1,
 ) -> torch.Tensor:
   """Plain linear SVDQ W4A4 CUDA GEMM v2 with PTQ-compatible tensor semantics.
 
@@ -486,7 +486,7 @@ def svdq_gemm_w4a4_v2(
   :param act_unsigned: Whether INT4 activations are stored as unsigned values.
   :param output_dtype: Optional dtype for the allocated dense output.
   :param stage: Runtime pipeline stage count used to dispatch among the compiled v2 kernels.
-    Defaults to `2`.
+    Defaults to `1`.
 
   :returns: A newly allocated dense output tensor `[M, N]`.
   """

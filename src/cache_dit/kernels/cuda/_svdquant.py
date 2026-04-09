@@ -162,7 +162,7 @@ def _normalize_svdq_v2_stage(stage: int | None) -> int:
   :raises ValueError: If the requested stage is outside the compiled range.
   """
 
-  normalized_stage = 2 if stage is None else int(stage)
+  normalized_stage = 1 if stage is None else int(stage)
   if normalized_stage not in (1, 2, 3):
     raise ValueError(f"svdq_gemm_w4a4_v2 stage must be one of 1, 2, or 3, got {normalized_stage}.")
   return normalized_stage
