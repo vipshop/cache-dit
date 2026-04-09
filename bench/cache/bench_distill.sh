@@ -1,3 +1,11 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+export HF_MODELS="${HF_MODELS:-$SCRIPT_DIR/hf_models}"
 export QWEN_IMAGE_DIR="${QWEN_IMAGE_DIR:-$HF_MODELS/Qwen-Image}"
 export QWEN_IMAGE_LIGHT_DIR="${QWEN_IMAGE_LIGHT_DIR:-$HF_MODELS/Qwen-Image-Lightning}"
 export CLIP_MODEL_DIR="${CLIP_MODEL_DIR:-$HF_MODELS/cache-dit-eval/CLIP-ViT-g-14-laion2B-s12B-b42K}"
@@ -53,6 +61,3 @@ else
   echo "bench_type: ${bench_type}"
   run_qwen_draw_bench_distill_4_steps
 fi
-
-# export CUDA_VISIBLE_DEVICES=6,7 && nohup bash bench_distill.sh 8_steps > log/cache_dit_bench_distill_8_steps.log 2>&1 &
-# export CUDA_VISIBLE_DEVICES=2,3 && nohup bash bench_distill.sh 4_steps > log/cache_dit_bench_distill_4_steps.log 2>&1 &

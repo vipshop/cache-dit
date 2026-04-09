@@ -1,3 +1,11 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+export HF_MODELS="${HF_MODELS:-$SCRIPT_DIR/hf_models}"
 export FLUX_DIR="${FLUX_DIR:-$HF_MODELS/FLUX.1-dev}"
 export CLIP_MODEL_DIR="${CLIP_MODEL_DIR:-$HF_MODELS/cache-dit-eval/CLIP-ViT-g-14-laion2B-s12B-b42K}"
 export IMAGEREWARD_MODEL_DIR="${IMAGEREWARD_MODEL_DIR:-$HF_MODELS/cache-dit-eval/ImageReward}"
@@ -248,6 +256,3 @@ else
   echo "bench_type: ${bench_type}, DBCache"
   run_flux_draw_bench
 fi
-
-# export CUDA_VISIBLE_DEVICES=4 && nohup bash bench.sh default > log/cache_dit_bench_default.log 2>&1 &
-# export CUDA_VISIBLE_DEVICES=5 && nohup bash bench.sh taylorseer > log/cache_dit_bench_taylorseer.log 2>&1 &

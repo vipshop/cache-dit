@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
+from pathlib import Path
+
+BENCH_DIR = Path(__file__).resolve().parent
 
 
 def plot_metric(
@@ -15,6 +18,10 @@ def plot_metric(
     save_path="image-reward-bench.png",
     figsize=(11, 5),
 ):
+  save_path = Path(save_path)
+  if not save_path.is_absolute():
+    save_path = BENCH_DIR / save_path
+
   plt.figure(figsize=figsize, dpi=800)
 
   for i in range(len(other_speedup)):

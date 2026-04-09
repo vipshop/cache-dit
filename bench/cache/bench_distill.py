@@ -4,6 +4,7 @@ import torch
 import random
 import time
 import math
+from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
 from diffusers import (
@@ -24,11 +25,19 @@ except ImportError:
 import cache_dit
 
 logger = cache_dit.init_logger(__name__)
+BENCH_DIR = Path(__file__).resolve().parent
 
 
 def set_rand_seeds(seed):
   random.seed(seed)
   torch.manual_seed(seed)
+
+
+def resolve_bench_path(path: str) -> str:
+  candidate = Path(path)
+  if candidate.is_absolute():
+    return str(candidate)
+  return str((BENCH_DIR / candidate).resolve())
 
 
 def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
@@ -107,7 +116,10 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
 
   if args.quantize:
     # Apply Quantization (default: FP8 DQ) to Transformer
-    pipe.transformer = cache_dit.quantize(pipe.transformer)
+    pipe.transformer = cache_dit.quantize(
+      pipe.transformer,
+      quantize_config=cache_dit.QuantizeConfig(quant_type="float8_per_row"),
+    )
 
   if args.compile or args.quantize:
     # Increase recompile limit for DBCache
@@ -176,8 +188,10 @@ def get_args() -> argparse.ArgumentParser:
   parser.add_argument("--compile-all", action="store_true", default=False)
   parser.add_argument("--quantize", "--q", action="store_true", default=False)
   # Test data
-  parser.add_argument("--save-dir", type=str, default="./tmp/DrawBench200_Distill")
-  parser.add_argument("--prompt-file", type=str, default="./prompts/DrawBench200.txt")
+  parser.add_argument("--save-dir", type=str, default=str(BENCH_DIR / "tmp/DrawBench200_Distill"))
+  parser.add_argument("--prompt-file",
+                      type=str,
+                      default=str(BENCH_DIR / "prompts/DrawBench200.txt"))
   parser.add_argument("--width", type=int, default=1024, help="Image width")
   parser.add_argument("--height", type=int, default=1024, help="Image height")
   parser.add_argument("--test-num", type=int, default=None)
@@ -189,6 +203,8 @@ def get_args() -> argparse.ArgumentParser:
 def main():
   # TODO: Support more pipelines, such as Qwen-Image, DiT-XL, etc.
   args = get_args()
+  args.prompt_file = resolve_bench_path(args.prompt_file)
+  args.save_dir = resolve_bench_path(args.save_dir)
   logger.info(f"Arguments: {args}")
   set_rand_seeds(args.seed)
 
@@ -220,7 +236,7 @@ def main():
     all_times.pop(0)  # Remove the first run time, usually warmup
   mean_time = sum(all_times) / len(all_times)
   perf_msg = f"Perf. {perf_tag}, Mean pipeline time: {mean_time:.2f}s"
-  if args.cal_flops and len(_flops_meta.all_tflops) > 0:
+  if args.cal_flops and CALFLOPS_AVAILABLE and len(_flops_meta.all_tflops) > 0:
     mean_tflops = sum(_flops_meta.all_tflops) / len(_flops_meta.all_tflops)
     perf_msg += f", Mean pipeline TFLOPs: {mean_tflops:.2f}"
   logger.info(perf_msg)

@@ -3,11 +3,13 @@ import argparse
 import torch
 import random
 import time
+from pathlib import Path
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 import cache_dit
 
 logger = cache_dit.init_logger(__name__)
+BENCH_DIR = Path(__file__).resolve().parent
 
 
 def get_args() -> argparse.ArgumentParser:
@@ -35,7 +37,7 @@ def get_args() -> argparse.ArgumentParser:
   parser.add_argument("--quantize", "-q", action="store_true", default=False)
   parser.add_argument("--use-block-adapter", "--adapt", action="store_true", default=False)
   parser.add_argument("--use-auto-block-adapter", "--auto", action="store_true", default=False)
-  parser.add_argument("--save-dir", type=str, default="./tmp")
+  parser.add_argument("--save-dir", type=str, default=str(BENCH_DIR / "tmp"))
   return parser.parse_args()
 
 
@@ -44,9 +46,20 @@ def set_rand_seeds(seed):
   torch.manual_seed(seed)
 
 
+def resolve_bench_path(path: str | None) -> str | None:
+  if path is None:
+    return None
+  candidate = Path(path)
+  if candidate.is_absolute():
+    return str(candidate)
+  return str((BENCH_DIR / candidate).resolve())
+
+
 @torch.no_grad()
 def main():
   args = get_args()
+  args.cache_config = resolve_bench_path(args.cache_config)
+  args.save_dir = resolve_bench_path(args.save_dir)
   logger.info(f"Arguments: {args}")
   set_rand_seeds(args.seed)
 
@@ -149,7 +162,10 @@ def main():
 
   if args.quantize:
     # Apply Quantization (default: FP8 DQ) to Transformer
-    pipe.transformer = cache_dit.quantize(pipe.transformer)
+    pipe.transformer = cache_dit.quantize(
+      pipe.transformer,
+      quantize_config=cache_dit.QuantizeConfig(quant_type="float8_per_row"),
+    )
 
   if args.compile or args.quantize:
     # Increase recompile limit for DBCache
@@ -159,13 +175,10 @@ def main():
       torch._dynamo.config.recompile_limit = 96  # default is 8
       torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
     if isinstance(pipe.transformer, FluxTransformer2DModel):
-      if not args.compile_all:
+      if not args.compile_all and hasattr(pipe.transformer, "compile_repeated_blocks"):
         logger.warning("Only compile transformer blocks not the whole model "
                        "for FluxTransformer2DModel to keep higher precision.")
-        for module in pipe.transformer.transformer_blocks:
-          module.compile(fullgraph=True)
-        for module in pipe.transformer.single_transformer_blocks:
-          module.compile(fullgraph=True)
+        pipe.transformer.compile_repeated_blocks(fullgraph=True)
       else:
         pipe.transformer = torch.compile(pipe.transformer, mode="default")
     else:

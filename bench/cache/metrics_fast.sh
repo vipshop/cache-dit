@@ -1,6 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # DBCache
 # TFLOPs + Latency
-cache-dit-metrics-cli \
+cache-dit-metrics \
   clip_score image_reward --summary \
   --cal-speedup --gen-markdown-table \
   --ref-prompt-true ./prompts/DrawBench200.txt \
@@ -8,7 +15,7 @@ cache-dit-metrics-cli \
   --perf-tags "Mean pipeline TFLOPs" "Mean pipeline time" \
   --perf-log ./log/cache_dit_bench_fast.log
 
-cache-dit-metrics-cli \
+cache-dit-metrics \
   psnr ssim lpips --summary \
   --cal-speedup --gen-markdown-table \
   --ref-img-dir ./tmp/DrawBench200_DBCache_Fast/C0_Q0_NONE \
@@ -18,7 +25,7 @@ cache-dit-metrics-cli \
 
 # DBCache_TaylorSeer_O(1)
 # TFLOPs + Latency
-cache-dit-metrics-cli \
+cache-dit-metrics \
   clip_score image_reward --summary \
   --cal-speedup --gen-markdown-table \
   --ref-prompt-true ./prompts/DrawBench200.txt \
@@ -26,7 +33,7 @@ cache-dit-metrics-cli \
   --perf-tags "Mean pipeline TFLOPs" "Mean pipeline time" \
   --perf-log ./log/cache_dit_bench_taylorseer_fast.log
 
-cache-dit-metrics-cli \
+cache-dit-metrics \
   psnr ssim lpips --summary \
   --cal-speedup --gen-markdown-table \
   --ref-img-dir ./tmp/DrawBench200_DBCache_TaylorSeer_Fast/C0_Q0_NONE \
