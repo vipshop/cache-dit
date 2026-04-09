@@ -364,8 +364,7 @@ def quantize_toy_model(
   rank: int,
   device: str | torch.device,
   dtype: torch.dtype,
-  high_precision: bool = False,
-  fp32_fallback: bool = False,
+  calibrate_precision: str = "low",
   streaming: bool = True,
 ) -> ToyModel:
   activations_by_module = collect_module_inputs(model, calibration_samples)
@@ -378,8 +377,7 @@ def quantize_toy_model(
       rank=rank,
       device=device,
       torch_dtype=dtype,
-      high_precision=high_precision,
-      fp32_fallback=fp32_fallback,
+      calibrate_precision=calibrate_precision,
       streaming=streaming,
     )
     parent, child_name = _module_parent(quantized_model, module_name)

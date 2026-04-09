@@ -38,8 +38,7 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_smoke() -> None:
     rank=16,
     device=device,
     torch_dtype=dtype,
-    high_precision=False,
-    fp32_fallback=True,
+    calibrate_precision="medium",
     streaming=True,
   ).eval()
 
@@ -76,8 +75,7 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_v2_smoke() -> None:
     rank=16,
     device=device,
     torch_dtype=dtype,
-    high_precision=False,
-    fp32_fallback=True,
+    calibrate_precision="medium",
     streaming=True,
   ).eval()
   quantized.runtime_kernel = "v2"

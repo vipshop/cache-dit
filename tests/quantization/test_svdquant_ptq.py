@@ -37,8 +37,7 @@ _SVDQ_METADATA_KEY_NAME = "cache_dit_svdq_ptq"
 _SVDQ_QUANT_CONFIG_FILENAME = "quant_config.json"
 _DEFAULT_SVDQ_KWARGS = {
   "streaming": True,
-  "high_precision": False,
-  "fp32_fallback": True,
+  "calibrate_precision": "low",
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
 }
@@ -818,8 +817,7 @@ def _run_flux2_svdq_case(
         exclude_layers=exclude_layers,
         svdq_kwargs={
           "streaming": True,
-          "high_precision": False,
-          "fp32_fallback": True,
+          "calibrate_precision": "medium",
         },
       )
 
@@ -1404,6 +1402,30 @@ def test_svdq_ptq_config_validation_rejects_invalid_combinations(tmp_path: Path)
       svdq_kwargs={"activation_buffer_flush_cpu_bytes": True},
     )
 
+  with pytest.raises(TypeError, match="must be a str"):
+    QuantizeConfig(
+      quant_type="svdq_int4_r32",
+      calibrate_fn=lambda **_: None,
+      serialize_to=str(tmp_path / "bad_calibrate_precision_type"),
+      svdq_kwargs={"calibrate_precision": 1},
+    )
+
+  with pytest.raises(ValueError, match="must be one of"):
+    QuantizeConfig(
+      quant_type="svdq_int4_r32",
+      calibrate_fn=lambda **_: None,
+      serialize_to=str(tmp_path / "bad_calibrate_precision_value"),
+      svdq_kwargs={"calibrate_precision": "ultra"},
+    )
+
+  with pytest.raises(ValueError, match="Unsupported SVDQ PTQ kwargs"):
+    QuantizeConfig(
+      quant_type="svdq_int4_r32",
+      calibrate_fn=lambda **_: None,
+      serialize_to=str(tmp_path / "legacy_precision_keys"),
+      svdq_kwargs={"high_precision": True},
+    )
+
 
 def test_svdq_ptq_load_rejects_invalid_or_incomplete_metadata(tmp_path: Path) -> None:
   from safetensors.torch import save_file
@@ -1428,13 +1450,28 @@ def test_svdq_ptq_load_rejects_invalid_or_incomplete_metadata(tmp_path: Path) ->
       str(malformed_metadata_path),
     )
 
+  legacy_metadata_path = tmp_path / "legacy_metadata.safetensors"
+  save_file(
+    {"dummy": torch.zeros(1)},
+    str(legacy_metadata_path),
+    metadata={
+      _SVDQ_METADATA_KEY_NAME:
+      '{"format":"cache_dit_svdq_ptq","version":1,"quant_type":"svdq_int4_r32","rank":32,"quantized_layer_names":["block.to_q"],"svdq_kwargs":{"streaming":true,"high_precision":false,"fp32_fallback":true}}'
+    },
+  )
+  with pytest.raises(ValueError, match="Unsupported SVDQ PTQ checkpoint version 1"):
+    cache_dit.load(
+      torch.nn.Linear(128, 128, device="cuda", dtype=runtime_dtype()),
+      str(legacy_metadata_path),
+    )
+
   incomplete_metadata_path = tmp_path / "incomplete_metadata.safetensors"
   save_file(
     {"dummy": torch.zeros(1)},
     str(incomplete_metadata_path),
     metadata={
       _SVDQ_METADATA_KEY_NAME:
-      '{"format":"cache_dit_svdq_ptq","version":1,"quant_type":"svdq_int4_r32","rank":32,"quantized_layer_names":["block.to_q"],"svdq_kwargs":{"streaming":true,"high_precision":false,"fp32_fallback":true}}'
+      '{"format":"cache_dit_svdq_ptq","version":2,"quant_type":"svdq_int4_r32","rank":32,"quantized_layer_names":["block.to_q"],"svdq_kwargs":{"streaming":true,"calibrate_precision":"medium"}}'
     },
   )
   with pytest.raises(ValueError, match="No serialized tensors found"):

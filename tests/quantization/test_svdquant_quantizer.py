@@ -9,6 +9,7 @@ import torch
 from torch import nn
 
 from cache_dit.kernels import svdq_extension_is_available
+from cache_dit.quantization.svdquant.lowrank import decompose_lowrank_residual
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 from tests.quantization._svdq_test_utils import EVALUATED_RANKS
@@ -25,8 +26,7 @@ from tests.quantization._svdq_test_utils import make_toy_model
 from tests.quantization._svdq_test_utils import quantize_toy_model
 from tests.quantization._svdq_test_utils import runtime_dtype
 
-_USE_HIGH_PRECISION = os.getenv("CACHE_DIT_SVDQ_TEST_HIGH_PRECISION", "0").lower() == "1"
-_USE_FP32_FALLBACK = os.getenv("CACHE_DIT_SVDQ_TEST_FP32_FALLBACK", "1").lower() == "1"
+_CALIBRATE_PRECISION = os.getenv("CACHE_DIT_SVDQ_TEST_CALIBRATE_PRECISION", "low").lower()
 _ENABLE_STREAMING_MEMORY_BENCH = os.getenv("CACHE_DIT_SVDQ_TEST_LARGE_MEMORY", "0").lower() == "1"
 _ENABLE_LARGE_HEAD_NUMBER = os.getenv("CACHE_DIT_SVDQ_TEST_LARGE_HEAD_NUM", "0").lower() == "1"
 _LARGE_MEMORY_TOTAL_GIB = float(os.getenv("CACHE_DIT_SVDQ_TEST_LARGE_MEMORY_GIB", "10"))
@@ -35,11 +35,13 @@ _STREAMING_MEMORY_THRESHOLD_PCT = float(
   os.getenv("CACHE_DIT_SVDQ_TEST_STREAMING_MEMORY_THRESHOLD_PCT", "25"))
 _LARGE_MEMORY_MIN_DEVICE_GIB = float(os.getenv("CACHE_DIT_SVDQ_TEST_LARGE_MEMORY_MIN_GIB", "12"))
 
+if _CALIBRATE_PRECISION not in {"low", "medium", "high"}:
+  raise ValueError("CACHE_DIT_SVDQ_TEST_CALIBRATE_PRECISION must be one of low, medium, high.")
+
 
 def _quantizer_kwargs(**overrides: object) -> dict[str, object]:
   kwargs: dict[str, object] = {
-    "high_precision": _USE_HIGH_PRECISION,
-    "fp32_fallback": _USE_FP32_FALLBACK,
+    "calibrate_precision": _CALIBRATE_PRECISION,
     "streaming": True,
     "activation_buffer_flush_sample_count": 1,
     "activation_buffer_flush_cpu_bytes": None,
@@ -49,22 +51,11 @@ def _quantizer_kwargs(**overrides: object) -> dict[str, object]:
 
 
 def _current_tolerance() -> tuple[float, float]:
-  if _USE_HIGH_PRECISION:
+  if _CALIBRATE_PRECISION == "high":
     return 4e-2, 1e-2
-  if _USE_FP32_FALLBACK:
+  if _CALIBRATE_PRECISION == "medium":
     return 6e-2, 2e-2
   return 1e-1, 1e-1
-
-
-def _supports_low_precision_svd(device: str, dtype: torch.dtype) -> bool:
-  try:
-    matrix = torch.randn(32, 32, device=device, dtype=dtype)
-    torch.linalg.svd(matrix, full_matrices=False)
-    if device == "cuda":
-      torch.cuda.synchronize()
-    return True
-  except (NotImplementedError, RuntimeError):
-    return False
 
 
 def _make_large_cpu_calibration_list(
@@ -133,7 +124,7 @@ def test_svdquant_quantizer_returns_module_state_dict() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    **_quantizer_kwargs(fp32_fallback=True),
+    **_quantizer_kwargs(),
   )
 
   assert set(state_dict) == {
@@ -166,7 +157,7 @@ def test_svdquant_quantizer_repairs_invalid_smooth_scales() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    **_quantizer_kwargs(fp32_fallback=True),
+    **_quantizer_kwargs(),
   )
 
   assert torch.equal(state_dict["smooth_factor"], torch.ones_like(state_dict["smooth_factor"]))
@@ -187,7 +178,7 @@ def test_svdquant_quantizer_rejects_unsupported_geometry() -> None:
       device="cpu",
       torch_dtype=torch.bfloat16,
       return_state_dict=True,
-      **_quantizer_kwargs(fp32_fallback=True),
+      **_quantizer_kwargs(),
     )
 
 
@@ -204,7 +195,7 @@ def test_svdquant_quantizer_state_dict_loads_into_module() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    **_quantizer_kwargs(fp32_fallback=True),
+    **_quantizer_kwargs(),
   )
 
   module = SVDQW4A4Linear.from_linear(
@@ -233,8 +224,7 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    high_precision=False,
-    fp32_fallback=True,
+    calibrate_precision="medium",
     streaming=True,
   )
   eager = quantize_linear_svdq_w4a4(
@@ -244,8 +234,7 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    high_precision=False,
-    fp32_fallback=True,
+    calibrate_precision="medium",
     streaming=False,
   )
 
@@ -286,8 +275,7 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    high_precision=False,
-    fp32_fallback=True,
+    calibrate_precision="medium",
     streaming=True,
     **buffer_kwargs,
   )
@@ -298,8 +286,7 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     device="cpu",
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
-    high_precision=False,
-    fp32_fallback=True,
+    calibrate_precision="medium",
     streaming=False,
   )
 
@@ -308,34 +295,122 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     torch.testing.assert_close(buffered[key], eager[key], rtol=0.0, atol=0.0)
 
 
-def test_svdquant_quantizer_low_precision_svd_requires_fallback_when_unsupported() -> None:
-  linear = _make_cpu_linear(128, 128)
-  representative = torch.randn(2, 128, dtype=torch.bfloat16)
+@pytest.mark.parametrize("svd_precision", ["low", "medium", "high"])
+def test_decompose_lowrank_residual_modes_return_finite_tensors(svd_precision: str) -> None:
+  weight = torch.randn(128, 128, dtype=torch.bfloat16)
 
-  if _supports_low_precision_svd("cpu", torch.bfloat16):
-    quantize_linear_svdq_w4a4(
-      linear,
-      representative,
-      rank=16,
-      device="cpu",
-      torch_dtype=torch.bfloat16,
-      return_state_dict=True,
-      high_precision=False,
-      fp32_fallback=False,
-    )
-    return
+  down, up, residual = decompose_lowrank_residual(
+    weight,
+    rank=16,
+    output_dtype=torch.bfloat16,
+    svd_precision=svd_precision,
+  )
 
-  with pytest.raises(RuntimeError, match="Low-precision SVD is not supported"):
-    quantize_linear_svdq_w4a4(
-      linear,
-      representative,
-      rank=16,
-      device="cpu",
-      torch_dtype=torch.bfloat16,
-      return_state_dict=True,
-      high_precision=False,
-      fp32_fallback=False,
-    )
+  assert down.shape == (16, 128)
+  assert up.shape == (128, 16)
+  assert residual.shape == (128, 128)
+  assert torch.isfinite(down).all()
+  assert torch.isfinite(up).all()
+  assert torch.isfinite(residual).all()
+
+
+def test_decompose_lowrank_residual_low_uses_svd_lowrank_and_float32_retry(
+  monkeypatch: pytest.MonkeyPatch, ) -> None:
+  original = torch.svd_lowrank
+  calls: list[tuple[torch.dtype, int, int]] = []
+
+  def wrapped(matrix: torch.Tensor, *args, **kwargs):
+    calls.append((matrix.dtype, kwargs["q"], kwargs["niter"]))
+    if matrix.dtype == torch.bfloat16:
+      raise RuntimeError("simulated low-precision svd_lowrank failure")
+    return original(matrix, *args, **kwargs)
+
+  monkeypatch.setattr(torch, "svd_lowrank", wrapped)
+
+  down, up, residual = decompose_lowrank_residual(
+    torch.randn(64, 64, dtype=torch.bfloat16),
+    rank=16,
+    output_dtype=torch.bfloat16,
+    svd_precision="low",
+  )
+
+  assert calls == [(torch.bfloat16, 26, 4), (torch.float32, 26, 4)]
+  assert torch.isfinite(down).all()
+  assert torch.isfinite(up).all()
+  assert torch.isfinite(residual).all()
+
+
+def test_decompose_lowrank_residual_low_is_deterministic() -> None:
+  weight = torch.randn(64, 64, dtype=torch.bfloat16)
+
+  first = decompose_lowrank_residual(
+    weight,
+    rank=16,
+    output_dtype=torch.bfloat16,
+    svd_precision="low",
+  )
+  second = decompose_lowrank_residual(
+    weight,
+    rank=16,
+    output_dtype=torch.bfloat16,
+    svd_precision="low",
+  )
+
+  for lhs, rhs in zip(first, second):
+    torch.testing.assert_close(lhs, rhs, rtol=0.0, atol=0.0)
+
+
+def test_decompose_lowrank_residual_medium_retries_in_float32(
+  monkeypatch: pytest.MonkeyPatch, ) -> None:
+  original = torch.linalg.svd
+  calls: list[tuple[torch.dtype, str | None]] = []
+
+  def wrapped(matrix: torch.Tensor, *args, **kwargs):
+    calls.append((matrix.dtype, kwargs.get("driver")))
+    if matrix.dtype == torch.bfloat16:
+      raise RuntimeError("simulated low-precision full SVD failure")
+    return original(matrix, *args, **kwargs)
+
+  monkeypatch.setattr(torch.linalg, "svd", wrapped)
+
+  down, up, residual = decompose_lowrank_residual(
+    torch.randn(64, 64, dtype=torch.bfloat16),
+    rank=16,
+    output_dtype=torch.bfloat16,
+    svd_precision="medium",
+  )
+
+  assert calls == [(torch.bfloat16, None), (torch.float32, None)]
+  assert torch.isfinite(down).all()
+  assert torch.isfinite(up).all()
+  assert torch.isfinite(residual).all()
+
+
+def test_decompose_lowrank_residual_high_uses_expected_driver(
+  monkeypatch: pytest.MonkeyPatch, ) -> None:
+  original = torch.linalg.svd
+  calls: list[tuple[torch.dtype, str | None]] = []
+
+  def wrapped(matrix: torch.Tensor, *args, **kwargs):
+    calls.append((matrix.dtype, kwargs.get("driver")))
+    return original(matrix, *args, **kwargs)
+
+  monkeypatch.setattr(torch.linalg, "svd", wrapped)
+
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+  dtype = (torch.bfloat16
+           if device.type == "cuda" and torch.cuda.is_bf16_supported() else torch.float32)
+  weight = torch.randn(64, 64, device=device, dtype=dtype)
+
+  decompose_lowrank_residual(
+    weight,
+    rank=16,
+    output_dtype=dtype,
+    svd_precision="high",
+  )
+
+  expected_driver = "gesvd" if device.type == "cuda" else None
+  assert calls == [(torch.float64, expected_driver)]
 
 
 def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
@@ -481,8 +556,7 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
       rank=rank,
       device=device,
       dtype=dtype,
-      high_precision=_USE_HIGH_PRECISION,
-      fp32_fallback=_USE_FP32_FALLBACK,
+      calibrate_precision=_CALIBRATE_PRECISION,
     )
     torch.cuda.synchronize()
     quantize_latency = time.perf_counter() - quantize_start_time
@@ -540,8 +614,8 @@ def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> Non
   print(
     format_markdown_table(
       "SVDQ ToyModel profiling config\n",
-      ("num_heads", "embed_dim", "batch", "seq_len", "high_precision", "fp32_fallback"),
-      [(H, D, B, S, _USE_HIGH_PRECISION, _USE_FP32_FALLBACK)],
+      ("num_heads", "embed_dim", "batch", "seq_len", "calibrate_precision"),
+      [(H, D, B, S, _CALIBRATE_PRECISION)],
     ))
   print(
     format_markdown_table(

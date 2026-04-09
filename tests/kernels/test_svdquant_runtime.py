@@ -469,8 +469,7 @@ def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
         device=device,
         torch_dtype=dtype,
         return_state_dict=True,
-        high_precision=False,
-        fp32_fallback=True,
+        calibrate_precision="medium",
         streaming=True,
       )
       operator_output = run_svdq_operator_from_state_dict(
@@ -533,8 +532,7 @@ def test_svdquant_operator_v2_rank_accuracy_improves_with_rank() -> None:
         device=device,
         torch_dtype=dtype,
         return_state_dict=True,
-        high_precision=False,
-        fp32_fallback=True,
+        calibrate_precision="medium",
         streaming=True,
       )
       operator_output = run_svdq_operator_from_state_dict(

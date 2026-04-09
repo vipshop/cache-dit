@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import random
@@ -34,11 +35,11 @@ DEFAULT_INFERENCE_STEPS = 4
 DEFAULT_SEED = 0
 DEFAULT_SVDQ_KWARGS = {
   "streaming": True,
-  "high_precision": False,
-  "fp32_fallback": True,
+  "calibrate_precision": "low",
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
 }
+_CALIBRATE_PRECISION_CHOICES = ("low", "medium", "high")
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,14 @@ def parse_args() -> argparse.Namespace:
     type=int,
     default=128,
     help="Low-rank SVDQ rank. Higher ranks for distillation models.",
+  )
+  parser.add_argument(
+    "--calibrate-precision",
+    choices=_CALIBRATE_PRECISION_CHOICES,
+    default=DEFAULT_SVDQ_KWARGS["calibrate_precision"],
+    help=("Precision policy for PTQ calibration and low-rank decomposition. "
+          "Use low for randomized svd_lowrank, medium for float32 full SVD, "
+          "and high for float64 full SVD."),
   )
   parser.add_argument("--seed",
                       type=int,
@@ -526,6 +535,53 @@ def persist_report(
   return output_path
 
 
+def persist_summary_json(
+  *,
+  output_path: Path,
+  metadata_rows: list[tuple[object, ...]],
+  stage_order: list[StageResult],
+  psnr_rows: list[tuple[object, ...]],
+  artifact_rows: list[tuple[object, ...]],
+) -> Path:
+  """Write a machine-readable summary next to the Markdown report."""
+
+  summary = {
+    "metadata": {
+      str(key): value
+      for key, value in metadata_rows
+    },
+    "stages": {
+      result.stage: {
+        "status": result.status,
+        "warmup_latency_s": result.warmup_latency_s,
+        "image_path": str(result.image_path) if result.image_path is not None else None,
+        "benchmark": None if result.benchmark is None else {
+          "run_count": result.benchmark.run_count,
+          "avg_latency_s": result.benchmark.avg_latency_s,
+          "total_latency_s": result.benchmark.total_latency_s,
+          "peak_memory_gb": result.benchmark.peak_memory_gb,
+          "transformer_weight_cuda_gb": result.benchmark.transformer_weight_cuda_gb,
+        },
+      }
+      for result in stage_order
+    },
+    "psnr_rows": [{
+      "comparison": row[0],
+      "psnr": row[1],
+      "max_abs_diff": row[2],
+      "mean_abs_diff": row[3],
+      "status": row[4],
+    } for row in psnr_rows],
+    "artifacts": {
+      str(name): path
+      for name, path in artifact_rows
+    },
+  }
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  output_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+  return output_path
+
+
 def load_flux2_pipe(model_source: str, torch_dtype: torch.dtype):
   """Load the FLUX.2-klein pipeline and move it onto CUDA for benchmarking."""
 
@@ -569,6 +625,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
   reports_dir = output_dir / "reports"
   checkpoint_dir = output_dir / "checkpoint"
   report_path = reports_dir / "report.md"
+  summary_path = reports_dir / "summary.json"
 
   prompts_path = Path(args.prompts_path).expanduser().resolve()
   calibration_prompts = load_calibration_prompts(prompts_path, args.calibration_limit)
@@ -584,6 +641,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
   checkpoint_path: Optional[Path] = None
   quant_config_path: Optional[Path] = None
   quantization_time_s: Optional[float] = None
+  quantization_peak_memory_gb: Optional[float] = None
 
   pipe = None
   loaded_pipe = None
@@ -612,12 +670,21 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
         seed=args.seed,
       ),
       serialize_to=str(checkpoint_dir),
-      svdq_kwargs=dict(DEFAULT_SVDQ_KWARGS),
+      svdq_kwargs={
+        **DEFAULT_SVDQ_KWARGS,
+        "calibrate_precision": args.calibrate_precision,
+      },
     )
 
+    reset_cuda_peak_memory()
     quantize_start = time.perf_counter()
     pipe.transformer = cache_dit.quantize(pipe.transformer, quantize_config)
     quantization_time_s = time.perf_counter() - quantize_start
+    if torch.cuda.is_available():
+      torch.cuda.synchronize()
+      quantization_peak_memory_gb = torch.cuda.max_memory_allocated() / (1024 ** 3)
+    else:
+      quantization_peak_memory_gb = 0.0
     checkpoint_path = Path(quantize_config.serialize_to).resolve()
     quant_config_path = checkpoint_path.parent / "quant_config.json"
     pipe.to("cuda")
@@ -751,6 +818,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     ("model_source", args.model_source),
     ("output_dir", str(output_dir)),
     ("quant_type", quant_type),
+    ("calibrate_precision", args.calibrate_precision),
     ("torch_dtype", str(torch_dtype).replace("torch.", "")),
     ("prompts_path", str(prompts_path)),
     ("calibration_prompt_count", len(calibration_prompts)),
@@ -765,6 +833,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     ("seed", args.seed),
     ("seed_policy", "fixed seed shared by calibration and validation/testing"),
     ("quantization_time_s", format_float(quantization_time_s)),
+    ("quantization_peak_memory_gb", format_float(quantization_peak_memory_gb)),
     ("checkpoint_size_gb", format_float(checkpoint_size_gb)),
   ]
 
@@ -786,6 +855,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     ),
     ("comparison_grid", relative_path(comparison_grid_path, output_dir)),
     ("report", relative_path(report_path, output_dir)),
+    ("summary_json", relative_path(summary_path, output_dir)),
   ]
 
   persist_report(
@@ -795,11 +865,19 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     psnr_rows=psnr_rows,
     artifact_rows=artifact_rows,
   )
+  persist_summary_json(
+    output_path=summary_path,
+    metadata_rows=metadata_rows,
+    stage_order=stage_order,
+    psnr_rows=psnr_rows,
+    artifact_rows=artifact_rows,
+  )
 
   print(f"Calibration prompts: {len(calibration_prompts)}")
   print(f"Validation prompt: {validation_prompt}")
   print(f"Quantized checkpoint: {checkpoint_path}")
   print(f"Report: {report_path}")
+  print(f"Summary JSON: {summary_path}")
   if comparison_grid_path is not None:
     print(f"Comparison grid: {comparison_grid_path}")
 
@@ -808,6 +886,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     "checkpoint_path": checkpoint_path,
     "quant_config_path": quant_config_path,
     "report_path": report_path,
+    "summary_path": summary_path,
     "comparison_grid_path": comparison_grid_path,
   }
 

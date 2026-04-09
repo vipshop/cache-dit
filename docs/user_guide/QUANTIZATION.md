@@ -349,9 +349,33 @@ quant_config = QuantizeConfig(
   quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
   calibrate_fn=calibrate_fn,
   serialize_to="./FLUX.2-klein-4B-svdq/",
+  svdq_kwargs={"calibrate_precision": "low"},  # default, optional: low | medium | high
 )
 pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 ```
+
+<span style="color:green;">Step 3</span>: Build the <span style="color:#c77dff;">QuantizeConfig</span> for SVDQuant, and call <span style="color:#c77dff;">cache_dit.quantize(...)</span> to apply SVDQuant W4A4 quantization to the model. We have to wait some time for the quantization process to finish, as SVDQuant will perform SVD decomposition for each linear layer and compute the quantization parameters based on the collected quantization statistics. The quantized model will be saved to disk in the specified directory.
+
+```python
+# 3. Build the QuantizeConfig for SVDQuant, and call `cache_dit.quantize(...)`.
+quant_config = QuantizeConfig(
+  quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+  calibrate_fn=calibrate_fn,
+  serialize_to="./FLUX.2-klein-4B-svdq/",
+  svdq_kwargs={"calibrate_precision": "low"},  # default, optional: low | medium | high
+)
+pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
+```
+
+<span style="color:green;">calibrate_precision</span> now defaults to <span style="color:green;">low</span>, which uses randomized **torch.svd_lowrank** and keeps the calibration math in float32. **medium** and **high** remain available as opt-in debugging or accuracy-investigation modes. On a real FLUX.2-klein-4B PTQ run (**rank=32**, 8 calibration prompts, **1024x1024**), the quantized-model behavior was almost the same across all three modes; the practical difference was mostly PTQ cost. The **speedup** column below refers to quantization-time speedup relative to **high**. 
+
+| calibrate_precision | low-rank route | speedup | PSNR |
+| :---: | :---: | :---: | :---: |
+| low | <span style="color:green;">torch.svd_lowrank</span> with float32 | <span style="color:green;">18.02x</span> | ~same |
+| medium | full <span style="color:green;">torch.linalg.svd</span> with float32 | 3.26x | ~same |
+| high | float64 full SVD, CUDA <span style="color:green;">gesvd</span> | 1.00x | ~same |
+
+In practice the PSNR values are almost the same, so <span style="color:green;">low</span> is the recommended production default. It keeps the best PTQ throughput while preserving the same loaded-model behavior seen from medium and high.
 
 <span style="color:green;">Step 4</span>: The **FLUX.2-klein-4B-svdq** directory now contains: <span style="color:green;">svdq_int4_r32.safetensors</span> and <span style="color:green;">quant_config.json</span>. The quantized model can be loaded with <span style="color:#c77dff;">cache_dit.load(...)</span> for inference or further fine-tuning. For example:
 

@@ -8,6 +8,7 @@ from ..logger import init_logger
 logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)$")
+_SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
   # which means it will quantize the model using the calibration samples one by one, and
@@ -16,25 +17,11 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # will collect the quantization statistics for all calibration samples first, and then
   # compute the quantization parameters and quantize the model. The default value is True.
   "streaming": True,
-  # If high_precision is set to True, Cache-DiT will use higher precision
-  # (e.g., float64) for SVD decomposition and compute the avtivations or
-  # weights scales with float32 precision. This can provide better quantization
-  # precision, but it may cause longer quantization time and higher memory usage
-  # during quantization. If set to False, Cache-DiT will use lower precision
-  # (e.g., float32) for SVD decomposition and compute the activations or weights
-  # scales with bfloat16 precision. This can speed up the quantization process
-  # and reduce memory usage, but it may cause more precision loss. The default
-  # value is False.
-  "high_precision": False,
-  # Only valid when high_precision is set to False. If fp32_fallback is set to True,
-  # Cache-DiT will fallback to using float32 precision if the SVD decomposition with
-  # lower precision (e.g., float16 or bfloat16) is not supported on the current hardware
-  # or for the current input size. This can improve the compatibility of the quantization
-  # process, but it may cause longer quantization time and higher memory usage during
-  # quantization when the fallback happens. If set to False, Cache-DiT will raise an e
-  # rror if low-precision SVD decomposition is not supported, instead of falling back to
-  # float32. The default value is True.
-  "fp32_fallback": True,
+  # Precision plan shared by calibration math and the low-rank decomposition path:
+  # - low: keep calibration math in torch_dtype and use randomized svd_lowrank.
+  # - medium: use float32 calibration math and full torch.linalg.svd.
+  # - high: use float32 calibration math and float64 SVD.
+  "calibrate_precision": "low",
   # Only valid when streaming is set to True. It specifies the number of samples after
   # which the activation buffers will be flushed and the quantization parameters will
   # be updated. This can help to reduce the memory usage during quantization, especially
@@ -67,6 +54,16 @@ def _resolve_svdq_bool_kwarg(key: str, value: Any) -> bool:
   return value
 
 
+def _resolve_svdq_calibrate_precision(key: str, value: Any) -> str:
+  if not isinstance(value, str):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
+  normalized = value.lower()
+  if normalized not in _SVDQ_CALIBRATE_PRECISIONS:
+    raise ValueError(
+      f"svdq_kwargs[{key!r}] must be one of {_SVDQ_CALIBRATE_PRECISIONS}, got {value!r}.")
+  return normalized
+
+
 def _resolve_svdq_positive_int_or_none(key: str, value: Any) -> int | None:
   if value is None:
     return None
@@ -91,8 +88,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
   resolved = dict(_SVDQ_KWARGS_DEFAULTS)
   validators = {
     "streaming": _resolve_svdq_bool_kwarg,
-    "high_precision": _resolve_svdq_bool_kwarg,
-    "fp32_fallback": _resolve_svdq_bool_kwarg,
+    "calibrate_precision": _resolve_svdq_calibrate_precision,
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,
   }

@@ -21,6 +21,8 @@ __all__ = [
   "validate_svdq_linear_geometry",
 ]
 
+_CALIBRATE_PRECISIONS = ("low", "medium", "high")
+
 
 def validate_svdq_linear_geometry(
   in_features: int,
@@ -121,8 +123,19 @@ def _repair_invalid_scale(scale: torch.Tensor) -> torch.Tensor:
   return scale
 
 
-def _resolve_math_dtype(torch_dtype: torch.dtype, high_precision: bool) -> torch.dtype:
-  return torch.float32 if high_precision else torch_dtype
+def _normalize_calibrate_precision(calibrate_precision: str) -> str:
+  if not isinstance(calibrate_precision, str):
+    raise TypeError(f"calibrate_precision must be a str, got {type(calibrate_precision)}.")
+  normalized = calibrate_precision.lower()
+  if normalized not in _CALIBRATE_PRECISIONS:
+    raise ValueError(
+      f"calibrate_precision must be one of {_CALIBRATE_PRECISIONS}, got {calibrate_precision!r}.")
+  return normalized
+
+
+def _resolve_math_dtype(torch_dtype: torch.dtype, calibrate_precision: str) -> torch.dtype:
+  calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
+  return torch_dtype if calibrate_precision == "low" else torch.float32
 
 
 @torch.inference_mode()
@@ -313,8 +326,7 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   torch_dtype: torch.dtype | None = None,
   device: torch.device | str | None = None,
   return_state_dict: bool = False,
-  high_precision: bool = False,
-  fp32_fallback: bool = False,
+  calibrate_precision: str = "low",
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer when the activation span has already been computed.
 
@@ -334,9 +346,12 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   :param device: Device where quantization intermediates and outputs are placed.
   :param return_state_dict: Whether to return the module `state_dict` instead
     of an instantiated `SVDQW4A4Linear`.
-  :param high_precision: Whether to use higher-precision intermediate math.
-  :param fp32_fallback: Whether to retry SVD in float32 if low-precision SVD
-    is unsupported on the current backend.
+  :param calibrate_precision: Shared precision policy for calibration math and
+    low-rank decomposition. For activation and weightsmoothing, `"low"` keeps
+    calibration math in `torch_dtype`, while `"medium"` and `"high"` use float32
+    calibration math. For the SVD low-rank decomposition, `"low"` uses `torch.svd_lowrank`
+    in `torch_dtype`, `"medium"` uses the default full SVD route in float32, and `"high"`
+    uses float64 SVD with CUDA `gesvd` for maximum precision.
   :returns: Either a ready-to-load SVDQ module state dict or an instantiated
     `SVDQW4A4Linear`.
   """
@@ -346,7 +361,8 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
 
   device = torch.device(device or linear.weight.device)
   torch_dtype = _normalize_dtype(torch_dtype, device)
-  math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
+  calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
+  math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
   validate_svdq_linear_geometry(linear.in_features,
                                 linear.out_features,
                                 rank=rank,
@@ -373,8 +389,7 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
     smoothed_weight,
     rank,
     output_dtype=torch_dtype,
-    high_precision=high_precision,
-    fp32_fallback=fp32_fallback,
+    svd_precision=calibrate_precision,
   )
   scales = _compute_group_scales(
     residual,
@@ -434,8 +449,7 @@ def quantize_linear_svdq_w4a4(
   torch_dtype: torch.dtype | None = None,
   device: torch.device | str | None = None,
   return_state_dict: bool = False,
-  high_precision: bool = False,
-  fp32_fallback: bool = False,
+  calibrate_precision: str = "low",
   streaming: bool = True,
   activation_buffer_flush_sample_count: int | None = 1,
   activation_buffer_flush_cpu_bytes: int | None = None,
@@ -456,10 +470,8 @@ def quantize_linear_svdq_w4a4(
     should be materialized.
   :param return_state_dict: When `True`, return the packed module `state_dict`
     instead of instantiating `SVDQW4A4Linear`.
-  :param high_precision: Enable higher-precision intermediate math and float64 SVD
-    during low-rank decomposition.
-  :param fp32_fallback: Allow the low-rank decomposition to retry in float32 when a
-    low-precision SVD kernel is unavailable.
+  :param calibrate_precision: Shared precision policy for calibration math and
+    low-rank decomposition.
   :param streaming: Whether to accumulate activation spans incrementally instead of
     materializing all standardized activations at once.
   :param activation_buffer_flush_sample_count: Number of buffered span samples to keep
@@ -476,7 +488,8 @@ def quantize_linear_svdq_w4a4(
 
   device = torch.device(device or linear.weight.device)
   torch_dtype = _normalize_dtype(torch_dtype, device)
-  math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
+  calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
+  math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
   validate_svdq_linear_geometry(linear.in_features,
                                 linear.out_features,
                                 rank=rank,
@@ -518,6 +531,5 @@ def quantize_linear_svdq_w4a4(
     torch_dtype=torch_dtype,
     device=device,
     return_state_dict=return_state_dict,
-    high_precision=high_precision,
-    fp32_fallback=fp32_fallback,
+    calibrate_precision=calibrate_precision,
   )

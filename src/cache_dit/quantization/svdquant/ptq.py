@@ -24,9 +24,9 @@ from .quantizer import validate_svdq_linear_geometry
 logger = init_logger(__name__)
 
 _SVDQ_METADATA_KEY = "cache_dit_svdq_ptq"
-_SVDQ_FORMAT_VERSION = 1
+_SVDQ_FORMAT_VERSION = 2
 _SVDQ_QUANT_CONFIG_FORMAT = "cache_dit_svdq_quant_config"
-_SVDQ_QUANT_CONFIG_VERSION = 1
+_SVDQ_QUANT_CONFIG_VERSION = 2
 _SVDQ_QUANT_CONFIG_FILENAME = "quant_config.json"
 _ROOT_LAYER_NAME = "__root__"
 
@@ -363,7 +363,7 @@ class SVDQPTQCalibrator:
   def register(self) -> None:
     """Register calibration hooks on all candidate float linear layers."""
 
-    high_precision = self.context.svdq_kwargs["high_precision"]
+    calibrate_precision = self.context.svdq_kwargs["calibrate_precision"]
     flush_sample_count = self.context.svdq_kwargs["activation_buffer_flush_sample_count"]
     flush_cpu_bytes = self.context.svdq_kwargs["activation_buffer_flush_cpu_bytes"]
 
@@ -373,7 +373,7 @@ class SVDQPTQCalibrator:
         raise TypeError(
           f"Expected nn.Linear during calibration registration, got {type(submodule)}.")
       torch_dtype = _normalize_dtype(None, submodule.weight.device)
-      math_dtype = _resolve_math_dtype(torch_dtype, high_precision)
+      math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
       self._accumulators[layer_name] = _ActivationSpanAccumulator(
         device=submodule.weight.device,
         torch_dtype=torch_dtype,
@@ -737,8 +737,7 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
       precision=context.precision,
       torch_dtype=float_module.weight.dtype,
       device=quantize_device,
-      high_precision=context.svdq_kwargs["high_precision"],
-      fp32_fallback=context.svdq_kwargs["fp32_fallback"],
+      calibrate_precision=context.svdq_kwargs["calibrate_precision"],
     )
 
     if layer_name == "":
