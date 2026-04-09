@@ -7,6 +7,7 @@ from .ops import (
   fp8_comm_qkv_permute_dequant,
   fused_merge_attn_states,
   svdq_gemm_w4a4,
+  svdq_gemm_w4a4_v2,
   svdq_gemm_w4a4_ext,
   svdq_quantize_w4a4_act_fuse_lora,
   svdq_quantize_w4a4_wgt,

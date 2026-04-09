@@ -57,3 +57,42 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_smoke() -> None:
   assert eager.dtype == compiled.dtype == dtype
   assert torch.isfinite(compiled).all()
   torch.testing.assert_close(compiled, eager, rtol=0.0, atol=0.0)
+
+
+def test_svdquant_w4a4_module_torch_compile_fullgraph_v2_smoke() -> None:
+  _require_svdquant_compile_runtime()
+
+  torch.compiler.reset()
+  torch.manual_seed(0)
+
+  device = torch.device("cuda")
+  dtype = _runtime_dtype()
+
+  linear = nn.Linear(128, 128, bias=True, device=device, dtype=dtype).eval()
+  calibration = torch.randn(64, 128, device="cpu", dtype=dtype)
+  quantized = quantize_linear_svdq_w4a4(
+    linear,
+    calibration,
+    rank=16,
+    device=device,
+    torch_dtype=dtype,
+    high_precision=False,
+    fp32_fallback=True,
+    streaming=True,
+  ).eval()
+  quantized.runtime_kernel = "v2"
+
+  x = torch.randn(2, 16, 128, device=device, dtype=dtype)
+
+  with torch.inference_mode():
+    eager = quantized(x)
+
+    compiled_module = torch.compile(quantized, fullgraph=True)
+    compiled_module(x)
+    compiled = compiled_module(x)
+    torch.cuda.synchronize()
+
+  assert eager.shape == compiled.shape == (2, 16, 128)
+  assert eager.dtype == compiled.dtype == dtype
+  assert torch.isfinite(compiled).all()
+  torch.testing.assert_close(compiled, eager, rtol=0.0, atol=0.0)

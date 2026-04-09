@@ -154,6 +154,20 @@ def _infer_svdq_output_dtype(
   return None
 
 
+def _normalize_svdq_v2_stage(stage: int | None) -> int:
+  """Normalize and validate the runtime stage for `svdq_gemm_w4a4_v2`.
+
+  :param stage: Optional requested pipeline stage count.
+  :returns: A validated stage count.
+  :raises ValueError: If the requested stage is outside the compiled range.
+  """
+
+  normalized_stage = 2 if stage is None else int(stage)
+  if normalized_stage not in (1, 2, 3):
+    raise ValueError(f"svdq_gemm_w4a4_v2 stage must be one of 1, 2, or 3, got {normalized_stage}.")
+  return normalized_stage
+
+
 def _normalize_svdq_lora_scales(
   lora_scales: list[float] | None,
   lora_up: torch.Tensor | None,
@@ -354,14 +368,69 @@ def _call_svdq_gemm_w4a4(
   )
 
 
+def _call_svdq_gemm_w4a4_v2(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  out: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  fp4: bool,
+  alpha: float,
+  wcscales: torch.Tensor | None,
+  act_unsigned: bool,
+  stage: int,
+) -> None:
+  """Call the dedicated plain-path v2 SVDQ GEMM entrypoint.
+
+  :param act: Packed activation tensor `[M, K / 2]`.
+  :param wgt: Packed quantized weight tensor `[N, K / 2]`.
+  :param out: Dense output buffer `[M, N]`.
+  :param ascales: Activation scales `[K / 64, M]`.
+  :param wscales: Weight scales `[K / 64, N]`.
+  :param lora_act_in: Optional LoRA activation input `[M, R]`.
+  :param lora_up: Optional LoRA up-projection weights `[N, R]`.
+  :param bias: Optional dense output bias `[N]`.
+  :param fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+  :param alpha: Per-tensor scaling factor. The v2 INT4 path requires `1.0`.
+  :param wcscales: Optional per-channel post scales `[N]`.
+  :param act_unsigned: Whether INT4 activations are stored as unsigned values.
+  :param stage: Runtime pipeline stage count for the compiled v2 kernel variants.
+  """
+
+  if fp4:
+    raise NotImplementedError("svdq_gemm_w4a4_v2 currently supports INT4 only.")
+
+  normalized_stage = _normalize_svdq_v2_stage(stage)
+  _get_required_ops_module().gemm_w4a4_v2(
+    act,
+    wgt,
+    out,
+    ascales,
+    wscales,
+    lora_act_in,
+    lora_up,
+    bias,
+    fp4,
+    float(alpha),
+    wcscales,
+    act_unsigned,
+    normalized_stage,
+  )
+
+
 __all__ = [
   "_call_svdq_gemm_w4a4",
+  "_call_svdq_gemm_w4a4_v2",
   "_call_svdq_quantize_w4a4_act_fuse_lora",
   "_call_svdq_quantize_w4a4_wgt",
   "_decode_svdq_output_dtype",
   "_encode_svdq_output_dtype",
   "_get_required_utils_module",
   "_infer_svdq_output_dtype",
+  "_normalize_svdq_v2_stage",
   "_normalize_svdq_lora_scales",
   "svdq_get_load_error",
   "svdq_extension_is_available",

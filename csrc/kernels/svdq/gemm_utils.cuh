@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include "common.h"
-#include "../utils.cuh"
+#include "utils.cuh"
 
 namespace svdq::kernels {
 
@@ -152,6 +152,70 @@ __device__ __forceinline__ static void store_pred(T *addr, T val, bool pred) {
   if (pred) {
     *addr = val;
   }
+}
+
+template <typename T>
+__device__ __forceinline__ static void cp_async_ca(T *shared_dst, const T *global_src, bool pred) {
+  static_assert(sizeof(T) == 4 || sizeof(T) == 8 || sizeof(T) == 16);
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  const uint32_t shared_addr = static_cast<uint32_t>(__cvta_generic_to_shared(shared_dst));
+
+  if constexpr (sizeof(T) == 4) {
+    asm volatile(
+      "{\n\t"
+      ".reg .pred p;\n\t"
+      "setp.ne.b32 p, %0, 0;\n\t"
+      "@p cp.async.ca.shared.global [%1], [%2], 4;\n\t"
+      "@!p cp.async.ca.shared.global [%1], [%2], 4, 0;\n\t"
+      "}\n"
+      :
+      : "r"((int)pred), "r"(shared_addr), "l"(global_src));
+    return;
+  }
+
+  if constexpr (sizeof(T) == 8) {
+    asm volatile(
+      "{\n\t"
+      ".reg .pred p;\n\t"
+      "setp.ne.b32 p, %0, 0;\n\t"
+      "@p cp.async.ca.shared.global [%1], [%2], 8;\n\t"
+      "@!p cp.async.ca.shared.global [%1], [%2], 8, 0;\n\t"
+      "}\n"
+      :
+      : "r"((int)pred), "r"(shared_addr), "l"(global_src));
+    return;
+  }
+
+  asm volatile(
+    "{\n\t"
+    ".reg .pred p;\n\t"
+    "setp.ne.b32 p, %0, 0;\n\t"
+    "@p cp.async.ca.shared.global [%1], [%2], 16;\n\t"
+    "@!p cp.async.ca.shared.global [%1], [%2], 16, 0;\n\t"
+    "}\n"
+    :
+    : "r"((int)pred), "r"(shared_addr), "l"(global_src));
+#else
+  if (pred) {
+    store<true>(shared_dst, load(global_src));
+  } else {
+    store<true>(shared_dst, T{});
+  }
+#endif
+}
+
+__device__ __forceinline__ static void cp_async_commit() {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.commit_group;\n" : : : "memory");
+#endif
+}
+
+template <int N>
+__device__ __forceinline__ static void cp_async_wait() {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  asm volatile("cp.async.wait_group %0;\n" : : "n"(N) : "memory");
+#endif
 }
 
 __device__ __forceinline__ static float2 half22float2(half2 val) { return __half22float2(val); }

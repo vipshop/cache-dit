@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from cache_dit.kernels import svdq_gemm_w4a4
+from cache_dit.kernels import svdq_gemm_w4a4_v2
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
@@ -283,7 +284,11 @@ def run_svdq_operator_from_state_dict(
   *,
   output_dtype: torch.dtype,
   act_unsigned: bool = False,
+  operator_version: str = "v1",
 ) -> torch.Tensor:
+  if operator_version not in {"v1", "v2"}:
+    raise ValueError(f"operator_version must be 'v1' or 'v2', got {operator_version!r}.")
+
   proj_down = state_dict["proj_down"]
   quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
     input=activations,
@@ -306,7 +311,8 @@ def run_svdq_operator_from_state_dict(
   if proj_down.shape[1] > 0:
     gemm_kwargs["lora_act_in"] = lora_activations
     gemm_kwargs["lora_up"] = state_dict["proj_up"]
-  output = svdq_gemm_w4a4(**gemm_kwargs)
+  gemm_op = svdq_gemm_w4a4_v2 if operator_version == "v2" else svdq_gemm_w4a4
+  output = gemm_op(**gemm_kwargs)
   return output[:activations.shape[0]]
 
 

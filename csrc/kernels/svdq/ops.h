@@ -2,10 +2,11 @@
 #pragma once
 
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
-#include "interop/torch.h"
-#include "zgemm/zgemm.h"
+#include "torch.h"
+#include "zgemm.h"
 
 namespace svdq::ops {
 
@@ -45,6 +46,28 @@ inline void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Ten
     get_tensor(out_vk), get_tensor(out_linearattn), act_unsigned, lora_scales, fuse_silu, fp4,
     alpha, get_tensor(wcscales), get_tensor(out_q), get_tensor(out_k), get_tensor(out_v),
     attn_tokens);
+}
+
+inline void gemm_w4a4_v2(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+                         std::optional<torch::Tensor> out,
+                         std::optional<torch::Tensor> ascales,
+                         std::optional<torch::Tensor> wscales,
+                         std::optional<torch::Tensor> lora_act_in,
+                         std::optional<torch::Tensor> lora_up,
+                         std::optional<torch::Tensor> bias, bool fp4, float alpha,
+                         std::optional<torch::Tensor> wcscales, bool act_unsigned,
+                         int stage = 2) {
+  if (fp4) {
+    throw std::runtime_error(
+      "svdq_gemm_w4a4_v2 currently supports the INT4 runtime path only.");
+  }
+
+  TorchOpContext ctx;
+  spdlog::trace("running gemm_w4a4_v2:");
+  svdq::kernels::gemm_w4a4_v2(
+    get_tensor(act), get_tensor(wgt), get_tensor(out), get_tensor(ascales), get_tensor(wscales),
+    get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias), act_unsigned, alpha,
+    get_tensor(wcscales), stage);
 }
 
 inline void quantize_w4a4_act_fuse_lora(std::optional<torch::Tensor> input,

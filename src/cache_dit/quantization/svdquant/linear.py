@@ -3,6 +3,7 @@ import torch
 from torch import nn
 
 from ...kernels import svdq_gemm_w4a4
+from ...kernels import svdq_gemm_w4a4_v2
 from ...kernels import svdq_quantize_w4a4_act_fuse_lora
 
 
@@ -11,12 +12,12 @@ class SVDQW4A4Linear(nn.Module):
 
   `SVDQW4A4Linear` is the module shape produced by the offline SVDQ
   quantizer. It stores the packed 4-bit weights consumed by
-  `svdq_gemm_w4a4`, the per-group scales and activation smoothing factors
-  needed to quantize activations at runtime, and the optional low-rank
-  residual factors fused around the packed GEMM path. `qweight` stores two
-  4-bit weights per `int8` lane, `wscales` stores the packed weight-scale
-  hierarchy, and `proj_down` / `proj_up` carry the low-rank correction when
-  `rank > 0`.
+  `svdq_gemm_w4a4` or `svdq_gemm_w4a4_v2`, the per-group scales and
+  activation smoothing factors needed to quantize activations at runtime,
+  and the optional low-rank residual factors fused around the packed GEMM
+  path. `qweight` stores two 4-bit weights per `int8` lane, `wscales`
+  stores the packed weight-scale hierarchy, and `proj_down` / `proj_up`
+  carry the low-rank correction when `rank > 0`.
   """
 
   def __init__(
@@ -27,6 +28,7 @@ class SVDQW4A4Linear(nn.Module):
     bias: bool = True,
     precision: str = "int4",
     act_unsigned: bool = False,
+    runtime_kernel: str = "v1",
     torch_dtype: torch.dtype = torch.bfloat16,
     device: str | torch.device | None = None,
   ) -> None:
@@ -45,6 +47,9 @@ class SVDQW4A4Linear(nn.Module):
       16-element groups and an additional coarse scale hierarchy.
     :param act_unsigned: Whether the runtime activation quantizer should emit
       unsigned 4-bit activations for the kernel path.
+    :param runtime_kernel: Runtime packed GEMM implementation. `v1` preserves
+      the original kernel path, while `v2` routes the same packed tensors
+      through the dedicated plain-path v2 entrypoint.
     :param torch_dtype: Floating-point dtype used for scales, smoothing
       factors, bias, and low-rank tensors.
     :param device: Device where the packed parameters are allocated. Defaults
@@ -58,12 +63,15 @@ class SVDQW4A4Linear(nn.Module):
       raise ValueError(f"rank must be non-negative, got {rank}.")
     if in_features % 2 != 0:
       raise ValueError(f"in_features must be divisible by 2, got {in_features}.")
+    if runtime_kernel not in {"v1", "v2"}:
+      raise ValueError(f"runtime_kernel must be 'v1' or 'v2', got {runtime_kernel!r}.")
 
     self.in_features = in_features
     self.out_features = out_features
     self.rank = rank
     self.precision = precision
     self.torch_dtype = torch_dtype
+    self.runtime_kernel = runtime_kernel
 
     if precision == "nvfp4":
       self.group_size = 16
@@ -210,7 +218,8 @@ class SVDQW4A4Linear(nn.Module):
     :param lora_act: Low-rank activation factors returned by `quantize`.
     :param output: Optional destination buffer. When provided, the result is
       copied into this tensor and returned.
-    :returns: The padded 2D output tensor produced by `svdq_gemm_w4a4`.
+    :returns: The padded 2D output tensor produced by the selected packed
+      GEMM runtime kernel.
     """
 
     gemm_kwargs = dict(
@@ -229,7 +238,8 @@ class SVDQW4A4Linear(nn.Module):
       gemm_kwargs["lora_act_in"] = lora_act
       gemm_kwargs["lora_up"] = self.proj_up
 
-    result = svdq_gemm_w4a4(**gemm_kwargs)
+    gemm_op = svdq_gemm_w4a4_v2 if self.runtime_kernel == "v2" else svdq_gemm_w4a4
+    result = gemm_op(**gemm_kwargs)
     if output is not None:
       output.copy_(result)
       return output
@@ -237,7 +247,8 @@ class SVDQW4A4Linear(nn.Module):
 
   def __repr__(self) -> str:
     return (f"SVDQW4A4Linear(in_features={self.in_features}, out_features={self.out_features}, "
-            f"rank={self.rank}, precision={self.precision}, act_unsigned={self.act_unsigned})")
+            f"rank={self.rank}, precision={self.precision}, act_unsigned={self.act_unsigned}, "
+            f"runtime_kernel={self.runtime_kernel})")
 
 
 __all__ = ["SVDQW4A4Linear"]

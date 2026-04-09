@@ -7,7 +7,9 @@ from ._svdquant import _decode_svdq_output_dtype
 from ._svdquant import _encode_svdq_output_dtype
 from ._svdquant import _get_required_utils_module
 from ._svdquant import _infer_svdq_output_dtype
+from ._svdquant import _normalize_svdq_v2_stage
 from ._svdquant import _normalize_svdq_lora_scales
+from ._svdquant import _call_svdq_gemm_w4a4_v2
 from ._svdquant import svdq_extension_is_available
 from ._svdquant import svdq_get_load_error
 
@@ -136,6 +138,50 @@ def _svdq_gemm_w4a4(
     None,  # out_k: not writing attention K output
     None,  # out_v: not writing attention V output
     0,
+  )
+  return output
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::svdq_gemm_w4a4_v2",
+  "(Tensor act, Tensor wgt, Tensor ascales, Tensor wscales, Tensor? lora_act_in, Tensor? lora_up, Tensor? bias, bool fp4, float alpha, Tensor? wcscales, bool act_unsigned, int out_dtype_id, int stage) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4_v2", "CUDA")
+def _svdq_gemm_w4a4_v2(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  fp4: bool,
+  alpha: float,
+  wcscales: torch.Tensor | None,
+  act_unsigned: bool,
+  out_dtype_id: int,
+  stage: int,
+) -> torch.Tensor:
+  output_dtype = _decode_svdq_output_dtype(out_dtype_id)
+  normalized_stage = _normalize_svdq_v2_stage(stage)
+  output = torch.empty((act.shape[0], wgt.shape[0]), dtype=output_dtype, device=act.device)
+
+  _call_svdq_gemm_w4a4_v2(
+    act,
+    wgt,
+    output,
+    ascales,
+    wscales,
+    lora_act_in,
+    lora_up,
+    bias,
+    fp4,
+    float(alpha),
+    wcscales,
+    act_unsigned,
+    normalized_stage,
   )
   return output
 
@@ -303,6 +349,28 @@ def _fake_svdq_gemm_w4a4(
   return act.new_empty((act.shape[0], wgt.shape[0]), dtype=output_dtype)
 
 
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4_v2")
+def _fake_svdq_gemm_w4a4_v2(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  fp4: bool,
+  alpha: float,
+  wcscales: torch.Tensor | None,
+  act_unsigned: bool,
+  out_dtype_id: int,
+  stage: int,
+) -> torch.Tensor:
+  del ascales, wscales, lora_act_in, lora_up, bias, fp4, alpha, wcscales, act_unsigned
+  _normalize_svdq_v2_stage(stage)
+  output_dtype = _decode_svdq_output_dtype(out_dtype_id)
+  return act.new_empty((act.shape[0], wgt.shape[0]), dtype=output_dtype)
+
+
 def svdq_quantize_w4a4_act_fuse_lora(
   input: torch.Tensor,
   lora_down: torch.Tensor | None,
@@ -354,6 +422,45 @@ def svdq_gemm_w4a4(
     wcscales,
     act_unsigned,
     _encode_svdq_output_dtype(output_dtype),
+  )
+
+
+def svdq_gemm_w4a4_v2(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  fp4: bool,
+  alpha: float | None,
+  wcscales: torch.Tensor | None,
+  act_unsigned: bool,
+  output_dtype: torch.dtype | None = None,
+  stage: int = 2,
+) -> torch.Tensor:
+  if alpha is None:
+    alpha = 1.0
+  if output_dtype is None:
+    output_dtype = _infer_svdq_output_dtype(None, lora_up, bias, wscales)
+    if output_dtype is None:
+      raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4_v2.")
+  normalized_stage = _normalize_svdq_v2_stage(stage)
+  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_v2(
+    act,
+    wgt,
+    ascales,
+    wscales,
+    lora_act_in,
+    lora_up,
+    bias,
+    fp4,
+    alpha,
+    wcscales,
+    act_unsigned,
+    _encode_svdq_output_dtype(output_dtype),
+    normalized_stage,
   )
 
 
@@ -455,6 +562,7 @@ __all__ = [
   "svdq_get_load_error",
   "svdq_extension_is_available",
   "svdq_gemm_w4a4",
+  "svdq_gemm_w4a4_v2",
   "svdq_gemm_w4a4_ext",
   "svdq_quantize_w4a4_wgt",
   "svdq_quantize_w4a4_act_fuse_lora",

@@ -35,6 +35,7 @@ def test_svdq_w4a4_linear_int4_parameter_shapes() -> None:
   assert layer.proj_up.shape == (64, 32)
   assert layer.wtscale is None
   assert layer.wcscales is None
+  assert layer.runtime_kernel == "v1"
 
 
 def test_svdq_w4a4_linear_rejects_unsupported_geometry() -> None:
@@ -44,3 +45,18 @@ def test_svdq_w4a4_linear_rejects_unsupported_geometry() -> None:
     assert "group_size" in str(exc)
   else:
     raise AssertionError("Expected unsupported INT4 geometry to raise ValueError.")
+
+
+def test_svdq_w4a4_linear_rejects_unknown_runtime_kernel() -> None:
+  try:
+    SVDQW4A4Linear(
+      in_features=128,
+      out_features=64,
+      rank=32,
+      precision="int4",
+      runtime_kernel="v3",
+    )
+  except ValueError as exc:
+    assert "runtime_kernel" in str(exc)
+  else:
+    raise AssertionError("Expected unsupported runtime_kernel to raise ValueError.")

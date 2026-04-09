@@ -95,17 +95,25 @@ def _parse_arch_list(raw_arch_list: str) -> list[str]:
   return arch_list
 
 
+def _svdquant_v2_launch_sources() -> list[str]:
+  return [
+    f"csrc/kernels/svdq/gemm_w4a4_v2_launch_{dtype}_int4_stage{stage}.cu"
+    for dtype in ("fp16", "bf16") for stage in (1, 2, 3)
+  ]
+
+
 def _required_svdquant_sources() -> list[str]:
   return [
     "csrc/kernels/svdq/pybind.cpp",
-    "csrc/kernels/svdq/interop/torch.cpp",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4.cu",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4_test.cu",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4_launch_fp16_int4.cu",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4_launch_fp16_int4_fasteri2f.cu",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4_launch_fp16_fp4.cu",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4_launch_bf16_int4.cu",
-    "csrc/kernels/svdq/zgemm/gemm_w4a4_launch_bf16_fp4.cu",
+    "csrc/kernels/svdq/torch.cpp",
+    "csrc/kernels/svdq/gemm_w4a4_v2.cu",
+    *_svdquant_v2_launch_sources(),
+    "csrc/kernels/svdq/gemm_w4a4.cu",
+    "csrc/kernels/svdq/gemm_w4a4_launch_fp16_int4.cu",
+    "csrc/kernels/svdq/gemm_w4a4_launch_fp16_int4_fasteri2f.cu",
+    "csrc/kernels/svdq/gemm_w4a4_launch_fp16_fp4.cu",
+    "csrc/kernels/svdq/gemm_w4a4_launch_bf16_int4.cu",
+    "csrc/kernels/svdq/gemm_w4a4_launch_bf16_fp4.cu",
   ]
 
 
@@ -130,6 +138,19 @@ def _get_nvcc_version(cuda_home: str | None) -> str:
     raise RuntimeError(f"Unable to parse nvcc version from: {nvcc_output!r}")
 
   return match.group(2)
+
+
+def _get_svdquant_nvcc_threads() -> int:
+  raw_threads = os.getenv("CACHE_DIT_SVDQ_NVCC_THREADS", "8").strip()
+  try:
+    threads = int(raw_threads)
+  except ValueError as exc:
+    raise RuntimeError("CACHE_DIT_SVDQ_NVCC_THREADS must be a positive integer.") from exc
+
+  if threads < 1:
+    raise RuntimeError("CACHE_DIT_SVDQ_NVCC_THREADS must be a positive integer.")
+
+  return threads
 
 
 def _get_sm_targets() -> list[str]:
@@ -192,7 +213,7 @@ def _get_svdquant_extension():
   assert BuildExtension is not None
   assert CUDAExtension is not None
 
-  class CacheDitBuildExtension(BuildExtension):
+  class CacheDiTBuildExtension(BuildExtension):
 
     def build_extensions(self):
       for ext in self.extensions:
@@ -210,11 +231,13 @@ def _get_svdquant_extension():
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
     "-fvisibility=hidden",
+    "-O3",
     "-std=c++20",
   ]
   msvc_flags = [
     "/DENABLE_BF16=1",
     "/DBUILD_CACHE_DIT_SVDQUANT=1",
+    "/O2",
     "/std:c++20",
     "/Zc:__cplusplus",
     "/FS",
@@ -222,6 +245,7 @@ def _get_svdquant_extension():
   nvcc_flags = [
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
+    "-O3",
     "-std=c++20",
     "-Xcudafe",
     "--diag_suppress=20208",
@@ -233,7 +257,8 @@ def _get_svdquant_extension():
     "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
     "-U__CUDA_NO_BFLOAT162_OPERATORS__",
     "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
-    f"--threads={len(sm_targets)}",
+    f"--threads={_get_svdquant_nvcc_threads()}",
+    "--use_fast_math",
     "--expt-relaxed-constexpr",
     "--expt-extended-lambda",
     "--ptxas-options=--allow-expensive-optimizations=true",
@@ -266,7 +291,7 @@ def _get_svdquant_extension():
     },
   )
 
-  return [extension], {"build_ext": CacheDitBuildExtension}
+  return [extension], {"build_ext": CacheDiTBuildExtension}
 
 
 def is_git_directory(path="."):

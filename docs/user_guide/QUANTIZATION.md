@@ -293,7 +293,7 @@ uv pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nig
 ```
 In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.
 
-## SVDQ (W4A4) PTQ Workflow
+## SVDQuant (W4A4) PTQ
 
 Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with high performance <span style="color:green;">W4A4 GEMM kernels</span> and an <span style="color:green;">easy-to-use</span> PTQ interface). The public API is intentionally small: build a <span style="color:#c77dff;">QuantizeConfig</span>, quantize with <span style="color:#c77dff;">cache_dit.quantize(...)</span>, then reload with <span style="color:#c77dff;">cache_dit.load(...)</span>. We highly recommend using native SVDQuant support in Cache-DiT for INT4 quantization, as it can provide high performance and better usability compared to other third-party INT4 quantization libraries.   
 

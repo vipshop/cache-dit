@@ -143,6 +143,45 @@ def _svdq_gemm_w4a4_impl(
   raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
+def _svdq_gemm_w4a4_v2_impl(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None = None,
+  lora_up: torch.Tensor | None = None,
+  bias: torch.Tensor | None = None,
+  fp4: bool = False,
+  alpha: float | None = 1.0,
+  wcscales: torch.Tensor | None = None,
+  act_unsigned: bool = False,
+  output_dtype: torch.dtype | None = None,
+  stage: int = 2,
+  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
+) -> torch.Tensor:
+  backend = backend_fn()
+  _ensure_backend_supported(backend)
+  if backend == KernelBackend.CUDA:
+    from .cuda import svdq_gemm_w4a4_v2
+
+    return svdq_gemm_w4a4_v2(
+      act=act,
+      wgt=wgt,
+      ascales=ascales,
+      wscales=wscales,
+      lora_act_in=lora_act_in,
+      lora_up=lora_up,
+      bias=bias,
+      fp4=fp4,
+      alpha=alpha,
+      wcscales=wcscales,
+      act_unsigned=act_unsigned,
+      output_dtype=output_dtype,
+      stage=stage,
+    )
+  raise ValueError(_ERROR_TEMPLATE.format(backend))
+
+
 def _svdq_gemm_w4a4_ext_impl(
   act: torch.Tensor,
   wgt: torch.Tensor,
@@ -410,6 +449,66 @@ def svdq_gemm_w4a4(
   )
 
 
+def svdq_gemm_w4a4_v2(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None = None,
+  lora_up: torch.Tensor | None = None,
+  bias: torch.Tensor | None = None,
+  fp4: bool = False,
+  alpha: float | None = 1.0,
+  wcscales: torch.Tensor | None = None,
+  act_unsigned: bool = False,
+  output_dtype: torch.dtype | None = None,
+  stage: int = 2,
+) -> torch.Tensor:
+  """Plain linear SVDQ W4A4 CUDA GEMM v2 with PTQ-compatible tensor semantics.
+
+  `svdq_gemm_w4a4_v2` preserves the packed INT4 tensor contract used by the
+  existing SVDQ PTQ workflow while routing execution through the dedicated v2
+  native entrypoint. The accepted tensors match `svdq_gemm_w4a4`, so callers
+  can reuse packed checkpoints, activation quantization outputs, and optional
+  low-rank residual factors without reshaping or repacking.
+
+  :param act: Packed activation tensor `[M, K / 2]`.
+  :param wgt: Packed quantized weight tensor `[N, K / 2]`.
+  :param ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4.
+  :param wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4.
+  :param lora_act_in: Optional LoRA activation input `[M, R]`.
+  :param lora_up: Optional LoRA up-projection weights `[N, R]`.
+  :param bias: Optional dense output bias `[N]`.
+  :param fp4: Whether the packed tensors use FP4/NVFP4 instead of INT4.
+    The current v2 implementation supports only the INT4 path.
+  :param alpha: Optional per-tensor scaling factor. `None` defaults to `1.0`.
+  :param wcscales: Optional per-channel post scales `[N]`.
+  :param act_unsigned: Whether INT4 activations are stored as unsigned values.
+  :param output_dtype: Optional dtype for the allocated dense output.
+  :param stage: Runtime pipeline stage count used to dispatch among the compiled v2 kernels.
+    Defaults to `2`.
+
+  :returns: A newly allocated dense output tensor `[M, N]`.
+  """
+
+  return _svdq_gemm_w4a4_v2_impl(
+    act=act,
+    wgt=wgt,
+    ascales=ascales,
+    wscales=wscales,
+    lora_act_in=lora_act_in,
+    lora_up=lora_up,
+    bias=bias,
+    fp4=fp4,
+    alpha=alpha,
+    wcscales=wcscales,
+    act_unsigned=act_unsigned,
+    output_dtype=output_dtype,
+    stage=stage,
+    backend_fn=_CUDA_BE_FN,
+  )
+
+
 def svdq_gemm_w4a4_ext(
   act: torch.Tensor,
   wgt: torch.Tensor,
@@ -622,6 +721,7 @@ __all__ = [
   "svdq_get_load_error",
   "svdq_extension_is_available",
   "svdq_gemm_w4a4",
+  "svdq_gemm_w4a4_v2",
   "svdq_gemm_w4a4_ext",
   "svdq_quantize_w4a4_act_fuse_lora",
   "svdq_quantize_w4a4_wgt",
