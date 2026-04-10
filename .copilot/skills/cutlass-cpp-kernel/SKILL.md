@@ -101,9 +101,9 @@ Start from the most likely source family:
 
 For performance diagnosis, pair source study with the bundled architecture guides:
 
-1. On `sm89` and `sm120`, prioritize memory throughput, L2 hit rate, occupancy, and the cost of not having TMA or cluster features.
+1. On `sm89` and `sm120`, prioritize memory throughput, L2 hit rate, occupancy, and the cost of not having cluster or TMEM-backed datacenter features; on `sm120`, decide explicitly whether TMA or `cp.async` is the better staging path.
 2. On `sm90`, check whether the design is actually exploiting Hopper-specific staging and overlap opportunities.
-3. On `sm100` and `sm103`, verify that the kernel structure aligns with WGMMA, TMEM, TMA v2, and cluster-capable execution rather than only recompiling an older design.
+3. On `sm100` and `sm103`, verify that the kernel structure aligns with `tcgen05`, TMEM, TMA v2, and cluster-capable execution rather than only recompiling an older design.
 
 ## Architecture-Specific Nsight Guidance
 

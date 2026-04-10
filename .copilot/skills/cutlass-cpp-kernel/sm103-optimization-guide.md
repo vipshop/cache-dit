@@ -35,7 +35,7 @@ Deep dive into B300/GB300-specific optimizations for CUDA kernels.
 5. **208B Transistors** - Dual-die design, same NVLink-C2C interconnect as B200
 6. **PCIe Gen6** - 2x PCIe Gen5 bandwidth for host-device transfers
 7. **1,400W TDP** - Higher power budget enables sustained boost clocks
-8. **Same SM microarchitecture as sm100** - WGMMA, TMEM, tcgen05, TMA v2 all carry over
+8. **Same SM microarchitecture as sm100** - tcgen05, TMEM, and TMA v2 all carry over
 
 ### Key Differences from Blackwell (sm100)
 
@@ -51,7 +51,7 @@ Deep dive into B300/GB300-specific optimizations for CUDA kernels.
 | Registers/SM              | 65536                   | 65536                    |
 | Memory bandwidth          | 8 TB/s                  | 8 TB/s                   |
 | Tensor cores per SM       | Same (5th gen)          | 5th gen                  |
-| WGMMA / tcgen05 / TMEM    | Yes                     | Yes                      |
+| tcgen05 / TMEM / TMA      | Yes                     | Yes                      |
 | TMA v2 (multicast)        | Yes                     | Yes                      |
 | Thread Block Clusters     | Yes                     | Yes                      |
 | NVLink                    | 5.0 (1.8 TB/s)         | 5.0 (1.8 TB/s)          |
@@ -89,7 +89,7 @@ Everything at the SM level is identical to sm100:
 - 228 KB shared memory per SM
 - 64 warps/SM, 32 max blocks/SM
 - 65536 registers per SM
-- WGMMA shapes and throughput
+- tcgen05 tensor-core shapes and throughput
 - TMEM size and behavior
 - TMA descriptor format and multicast
 - Bank conflict rules
@@ -237,14 +237,14 @@ cuTensorMapEncodeTiled(
 All warp-level features are identical to sm100. See the [sm100 guide](sm100-optimization-guide.md) for:
 
 - Warp shuffle reductions
-- WGMMA / tcgen05 instructions
+- tcgen05 tensor-core instructions
 - Tensor Memory (TMEM) usage
 - Distributed Shared Memory patterns
 
-### WGMMA Quick Reference
+### tcgen05 Quick Reference
 
 ```cuda
-// WGMMA shapes (same as sm100):
+// tcgen05 tensor-core shapes (same as sm100):
 // FP16/BF16: 64x256x16, 64x128x16, 64x64x16
 // FP8:       64x256x32, 64x128x32, 64x64x32
 // FP4:       64x256x64, 64x128x64, 64x64x64
@@ -410,7 +410,7 @@ The B300's 1,400W TDP (vs B200's 1,000W) allows sustained high-frequency operati
 // 3. More headroom for power-hungry FP4/FP8 tensor core operations
 
 // Practical impact:
-// - Sustained WGMMA throughput is higher (less thermal throttling)
+// - Sustained tcgen05 tensor-core throughput is higher (less thermal throttling)
 // - Memory-bound kernels benefit less (HBM BW is the same)
 // - Compute-bound kernels see the biggest gains
 
@@ -540,7 +540,7 @@ nvcc -gencode arch=compute_89,code=sm_89 \
 2. **L2 Cache**: 192 MB is the key advantage — pin KV caches, use persistence hints aggressively
 3. **Shared Memory**: 228 KB max, identical to sm100 — no tile size changes needed
 4. **HBM Capacity**: 288 GB enables larger models; reduce tensor parallelism where possible
-5. **SM Architecture**: Identical to sm100 — all WGMMA, TMEM, TMA patterns carry over directly
+5. **SM Architecture**: Identical to sm100 — all tcgen05, TMEM, and TMA patterns carry over directly
 6. **PCIe Gen6**: Use pinned memory and async transfers to exploit 128 GB/s host bandwidth
 7. **Clusters**: More SMs = more concurrent clusters. Scale cluster count with problem size
 8. **Precision**: Same FP4/FP6/FP8/FP16/BF16 support as sm100

@@ -32,7 +32,7 @@ Deep dive into B200/GB200-specific optimizations for CUDA kernels.
 2. **5th-Gen Tensor Cores** - FP4/FP6/FP8/FP16/BF16/TF32 support, 2x throughput vs Hopper
 3. **Tensor Memory Accelerator (TMA)** - Enhanced over Hopper with multicast and bulk async operations
 4. **Thread Block Clusters** - Groups of thread blocks that cooperate via distributed shared memory
-5. **WGMMA (Warp Group Matrix Multiply-Accumulate)** - New instruction replacing Hopper's GMMA
+5. **tcgen05 Tensor Core MMA** - Blackwell replaces Hopper's `wgmma.mma_async` path with `tcgen05` tensor-core instructions
 6. **Tensor Memory (TMEM)** - Dedicated memory for tensor core operands, separate from register file
 7. **tcgen05** - New tensor core generation instruction set
 8. **NVFP4** - Native 4-bit floating point in tensor cores
@@ -57,7 +57,7 @@ Deep dive into B200/GB200-specific optimizations for CUDA kernels.
 | Tensor Core gen           | 5th gen              | 4th gen                  |
 | FP4 support               | Yes (NVFP4)          | No                       |
 | FP6 support               | Yes                  | No                       |
-| WGMMA / tcgen05           | Yes                  | No (uses wgmma.mma_async)|
+| tcgen05 tensor-core MMA   | Yes                  | No (uses wgmma.mma_async)|
 | Tensor Memory (TMEM)      | Yes                  | No                       |
 | NVLink                    | 5.0 (1.8 TB/s)      | 4.0 (900 GB/s)           |
 
@@ -300,35 +300,29 @@ val = max(val, max_val);
 // ... repeat for 8, 4, 2, 1
 ```
 
-### WGMMA (Warp Group Matrix Multiply-Accumulate)
+### Warp-Group Tensor Core MMA (`tcgen05`)
 
-Blackwell introduces `tcgen05` instructions that supersede Hopper's GMMA. WGMMA operates on warp groups (4 warps = 128 threads):
+Blackwell does not use Hopper's `wgmma.mma_async` instruction. Instead it introduces the `tcgen05.*` tensor-core instruction family, coupled with TMEM and TMA-based staging for warp-group style GEMM pipelines:
 
 ```cuda
-// WGMMA: Matrix multiply using Tensor Memory (TMEM)
+// Blackwell tcgen05 tensor-core flow:
 // Operand A comes from TMEM (dedicated tensor memory, not registers)
 // Operand B comes from shared memory or TMEM
 // Result accumulates in TMEM
 
 // Key advantage: TMEM is separate from the 64K register file
-// This means WGMMA doesn't consume registers for tensor operands
+// This means tcgen05 MMA doesn't consume registers for tensor operands
 
-// Typical WGMMA shapes (M x N x K):
+// Typical warp-group tensor-core shapes (M x N x K):
 // FP16/BF16: 64x256x16, 64x128x16, 64x64x16
 // FP8:       64x256x32, 64x128x32, 64x64x32
 // FP4:       64x256x64, 64x128x64, 64x64x64
 
-// WGMMA is accessed via CUTLASS or inline PTX:
-asm volatile(
-    "wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16 "
-    "{%0, %1, %2, %3, %4, %5, %6, %7, "
-    " %8, %9, %10, %11, %12, %13, %14, %15, "
-    " %16, %17, %18, %19, %20, %21, %22, %23, "
-    " %24, %25, %26, %27, %28, %29, %30, %31}, "
-    " %32, %33, p;"
-    : /* outputs (accumulator in TMEM) */
-    : /* inputs (desc_a from TMEM, desc_b from smem) */
-);
+// Practical programming model:
+// 1. Use TMA to stage regular tiles into shared memory
+// 2. Use tcgen05.alloc / tcgen05.ld / tcgen05.cp to manage TMEM state
+// 3. Issue tcgen05.mma / tcgen05.mma.ws through CUTLASS SM100 collectives
+// 4. Commit/wait with tcgen05 fences instead of Hopper wgmma proxy ops
 ```
 
 ### Tensor Memory (TMEM)
@@ -338,9 +332,9 @@ TMEM is a new memory space dedicated to tensor core operands, separate from regi
 ```cuda
 // TMEM key properties:
 // - Not part of the 64K register file per SM
-// - Accessed exclusively by tensor cores via tcgen05/WGMMA
+// - Accessed exclusively by tensor cores via tcgen05 MMA instructions
 // - Reduces register pressure for GEMM/attention kernels
-// - Operands must be staged into TMEM before WGMMA
+// - Operands must be staged into TMEM before tcgen05 MMA
 
 // Practical impact:
 // - On Hopper: tensor operands consumed registers, limiting occupancy
@@ -416,8 +410,8 @@ For B200 kernels:
 | ------------ | ------------- | ----- | ------------------------------------------- |
 | Element-wise | 256           | 8     | High occupancy, simple workloads            |
 | Reduction    | 512-1024      | 16-32 | Enough threads for full reduction           |
-| Attention    | 128-256       | 4-8   | Balance shared mem tiles and WGMMA usage    |
-| GEMM (WGMMA) | 128           | 4     | Warp group (4 warps) is the WGMMA unit      |
+| Attention              | 128-256       | 4-8   | Balance shared mem tiles and tcgen05 usage   |
+| GEMM (tcgen05 / TMEM)  | 128           | 4     | Warp group (4 warps) is the tensor-core unit |
 
 ### Thread Block Clusters
 
@@ -488,7 +482,7 @@ Blackwell introduces native FP4 (NVFP4) and FP6 support:
 // - CUTLASS with SM100 FP4 kernel configs
 // - TensorRT-LLM quantized inference
 
-// FP4 WGMMA shape: 64x256x64 — double the K-dimension of FP8
+// FP4 tcgen05 tensor-core shape: 64x256x64 — double the K-dimension of FP8
 // This means 2x more elements processed per instruction
 ```
 
@@ -563,9 +557,9 @@ Key changes when porting kernels from H100 to B200:
 // Hopper: cluster_size = 2
 // Blackwell: cluster_size = 2-4 (better cross-block communication)
 
-// 3. Replace wgmma.mma_async with tcgen05 WGMMA
-// Hopper: wgmma.mma_async (register → smem)
-// Blackwell: tcgen05 WGMMA (TMEM → smem), frees registers
+// 3. Replace Hopper's wgmma.mma_async path with Blackwell tcgen05 MMA
+// Hopper: wgmma.mma_async with register-fragment A operands
+// Blackwell: tcgen05 MMA with TMEM-backed operands, freeing registers
 
 // 4. Use TMA multicast for shared loads across clusters
 // Hopper: each block loads its own copy
@@ -581,19 +575,19 @@ Tensor cores are the primary compute engine on Blackwell:
 
 ```cuda
 // Tensor core utilization checklist:
-// 1. Tile dimensions must be multiples of WGMMA shapes
+// 1. Tile dimensions must be multiples of tcgen05-supported shapes
 //    FP16: M=64, N=64/128/256, K=16
 //    FP8:  M=64, N=64/128/256, K=32
 //    FP4:  M=64, N=64/128/256, K=64
 
 // 2. Data must be in shared memory (for B operand) or TMEM (for A operand)
 // 3. Accumulation is always in FP32 (output is in TMEM)
-// 4. Software pipeline: overlap WGMMA with TMA loads
+// 4. Software pipeline: overlap tcgen05 MMA with TMA loads
 
 // Pipelining pattern:
 // Stage 0: TMA load tile[0] → smem
-// Stage 1: TMA load tile[1] → smem, WGMMA on tile[0]
-// Stage 2: TMA load tile[2] → smem, WGMMA on tile[1]
+// Stage 1: TMA load tile[1] → smem, tcgen05 MMA on tile[0]
+// Stage 2: TMA load tile[2] → smem, tcgen05 MMA on tile[1]
 // ...
 ```
 
@@ -645,7 +639,7 @@ python your_script.py
 # Key metrics for sm100 kernels:
 # - Achieved occupancy (max 64 warps/SM)
 # - Memory throughput (% of 8 TB/s peak)
-# - Tensor core utilization (WGMMA throughput)
+# - Tensor core utilization (tcgen05 throughput)
 # - TMA throughput
 # - L2 hit rate (126 MB L2)
 # - Cross-die traffic
@@ -654,9 +648,9 @@ python your_script.py
 
 ### Common Performance Issues
 
-1. **Underutilizing tensor cores**: Not using WGMMA/tcgen05
+1. **Underutilizing tensor cores**: Not using tcgen05/TMEM/TMA-capable kernels
 
-   - Solution: Use CUTLASS SM100 kernels or write WGMMA PTX
+    - Solution: Use CUTLASS SM100 kernels or write tcgen05 PTX/CuTe code
 
 2. **Cross-die thrashing**: Working set spans both dies inefficiently
 
@@ -706,9 +700,9 @@ nvcc -gencode arch=compute_90,code=sm_90 \
 2. **Shared Memory**: 228 KB max — increase tile sizes vs Hopper, take advantage of the extra 36 KB
 3. **L2 Cache**: 126 MB — 2.5x Hopper, use persistence hints for KV caches
 4. **TMA**: Use for all bulk global→shared transfers; multicast across clusters to reduce BW
-5. **WGMMA/tcgen05**: Use warp group MMA for all GEMM/attention — TMEM frees registers
+5. **tcgen05/TMEM**: Use Blackwell tensor-core MMA for GEMM/attention — TMEM frees registers
 6. **Clusters**: Use 2-4 block clusters for attention and stencil patterns with DSMEM
 7. **Precision**: FP4 for inference weights, FP8 for training, BF16 fallback, FP32 accumulation
-8. **Block Size**: 128-256 threads for WGMMA kernels. All sizes achieve 100% occupancy
+8. **Block Size**: 128-256 threads for tcgen05/TMEM kernels. All sizes achieve 100% occupancy
 9. **Profile**: Watch tensor core utilization and TMA throughput — these are the new bottlenecks
 10. **Type Conversions**: Always use explicit `to_float()`/`from_float()` helpers (PyTorch disables implicit FP16/BF16 conversions)
