@@ -598,8 +598,7 @@ class CachedAdapter:
     )
 
     # maybe release cache stats
-    from ..cache_blocks import (
-      remove_stats, )
+    from ..cache_blocks import remove_stats
 
     cls.release_hooks(
       pipe_or_adapter,
@@ -609,8 +608,7 @@ class CachedAdapter:
     )
 
     # maybe release parallelism stats
-    from ...distributed import (
-      remove_parallelism_stats, )
+    from ...distributed import remove_parallelism_stats
 
     cls.release_hooks(
       pipe_or_adapter,
@@ -620,8 +618,7 @@ class CachedAdapter:
     )
 
     # maybe release quantization stats
-    from ...quantization import (
-      remove_quantization_stats, )
+    from ...quantization import remove_quantization_stats
 
     cls.release_hooks(
       pipe_or_adapter,
