@@ -316,7 +316,7 @@ EXT_MODULES, CMDCLASS = _get_svdquant_extension()
 setup(
   name=PACKAGE_NAME,
   description=
-  "Cache-DiT: Cache-DiT: A PyTorch-native inference engine with Cache, Parallelism and Quantization for Diffusion Transformers.",
+  "Cache-DiT: Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism and Quantization for Diffusion Transformers.",
   author="DefTruth, vipshop.com",
   use_scm_version={
     "write_to": path.join("src", "cache_dit", "_version.py"),
