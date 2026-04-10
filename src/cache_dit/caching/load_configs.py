@@ -7,7 +7,7 @@ from .cache_contexts import (
   DBPruneConfig,
   CalibratorConfig,
 )
-from ..parallelism import (
+from ..distributed import (
   ParallelismConfig,
   ParallelismBackend,
 )

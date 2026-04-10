@@ -11,7 +11,7 @@ from .caching import BlockAdapter
 from .caching import BasicCacheConfig
 from .caching import CalibratorConfig
 from .caching import FakeDiffusionPipeline
-from .parallelism import ParallelismConfig
+from .distributed import ParallelismConfig
 from .quantization import QuantizeConfig
 from .caching import load_configs
 from .logger import init_logger
@@ -512,12 +512,12 @@ def supported_matrix() -> str | None:
     _pipelines_supported_cache += [
       "LongCatVideo",  # not in diffusers, but supported
     ]
-    from cache_dit.parallelism.transformers.context_parallelism import (
+    from cache_dit.distributed.transformers import (
       ContextParallelismPlannerRegister, )
 
     _pipelines_supported_context_parallelism = (
       ContextParallelismPlannerRegister.supported_planners()[1])
-    from cache_dit.parallelism.transformers.tensor_parallelism import (
+    from cache_dit.distributed.transformers import (
       TensorParallelismPlannerRegister, )
 
     _pipelines_supported_tensor_parallelism = (

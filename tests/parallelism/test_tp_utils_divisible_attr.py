@@ -4,8 +4,7 @@ Run:
   python3 tests/parallelism/test_tp_utils_divisible_attr.py
 """
 
-from cache_dit.parallelism.transformers.native_pytorch.tensor_parallelism.tp_utils import (
-  shard_divisible_attr, )
+from cache_dit.distributed.utils import shard_div_attr as shard_divisible_attr
 
 
 class Dummy:

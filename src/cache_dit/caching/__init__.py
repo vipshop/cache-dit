@@ -34,7 +34,6 @@ from .cache_interface import disable_cache
 from .cache_interface import supported_pipelines
 from .cache_interface import get_adapter
 from .cache_interface import steps_mask
-from .cache_interface import set_attn_backend
 
 from .load_configs import load_options  # deprecated
 from .load_configs import load_cache_config

@@ -3,7 +3,6 @@ import torch.distributed as dist
 from typing import Optional
 from ..envs import ENV
 from ..platforms import current_platform
-from ..parallelism.attention._templated_ulysses import is_ulysses_anything_enabled
 from ..logger import init_logger
 
 logger = init_logger(__name__)
@@ -18,6 +17,7 @@ def set_compile_configs(
     autotune_local_cache: bool = False,
     use_fast_math: bool = False,
     compute_comm_overlap: bool = True,
+    ulysses_anything: bool = False,
     capture_scalar_outputs: Optional[bool] = None,
     capture_dynamic_output_shape_ops: Optional[bool] = None,
     cutedsl_enable_autotuning: Optional[bool] = None,  # >= PyTorch 2.11
@@ -37,6 +37,8 @@ def set_compile_configs(
     current compiler backend.
   :param compute_comm_overlap: Whether to enable compile-time compute/communication
     overlap reordering when distributed execution is initialized.
+  :param ulysses_anything: Whether compile-time guards should assume uneven Ulysses
+    sequence partitioning is enabled.
   :param capture_scalar_outputs: Optional override for
     `torch._dynamo.config.capture_scalar_outputs`.
   :param capture_dynamic_output_shape_ops: Optional override for
@@ -61,7 +63,7 @@ def set_compile_configs(
         # while using Ulysses Anything Attention:
         # Graph break from `Tensor.item()`, consider setting:
         # torch._dynamo.config.capture_scalar_outputs = True
-        if is_ulysses_anything_enabled():
+        if ulysses_anything:
           capture_scalar_outputs = True if torch.__version__ >= "2.10.0" else False
           if capture_scalar_outputs:
             logger.info("Ulysses Anything Attention is enabled. "

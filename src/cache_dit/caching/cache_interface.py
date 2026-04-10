@@ -10,13 +10,14 @@ from .cache_contexts import DBCacheConfig
 from .cache_contexts import DBPruneConfig
 from .cache_contexts import CalibratorConfig
 from .params_modifier import ParamsModifier
-from ..parallelism import ParallelismConfig
-from ..parallelism import enable_parallelism
+from ..distributed import ParallelismConfig
+from ..distributed import enable_parallelism
 from ..quantization import QuantizeConfig
 from ..quantization import quantize
 from ..utils import check_controlnet
 from ..utils import parse_extra_modules
 from ..logger import init_logger
+from ..attention import set_attn_backend
 
 logger = init_logger(__name__)
 
@@ -281,62 +282,6 @@ def enable_cache(
             quantized_component = quantize(component, quantize_config=config)
             setattr(pipe, name, quantized_component)
   return pipe_or_adapter
-
-
-def set_attn_backend(
-  pipe_or_adapter: Union[DiffusionPipeline, BlockAdapter],
-  attention_backend: Optional[str] = None,
-):
-  """Set the attention backend on a pipeline or normalized adapter.
-
-  :param pipe_or_adapter: Pipeline or adapter whose transformer modules should be updated.
-  :param attention_backend: Attention backend name to apply. When omitted, the function returns
-    without making changes.
-  """
-
-  if attention_backend is None:
-    return
-
-  # non-parallelism or non-cache case: set attention backend directly
-  try:
-    from ..parallelism.attention import _maybe_register_custom_attn_backends
-
-    _maybe_register_custom_attn_backends()
-  except Exception as e:
-    logger.warning("Failed to register custom attention backends. "
-                   f"Proceeding to set attention backend anyway. Error: {e}")
-
-  def _set_backend(module):
-    if module is None:
-      return
-    if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
-      module.set_attention_backend(attention_backend)
-      logger.info(
-        f"Set attention backend to <{attention_backend}> for module: {module.__class__.__name__}.")
-    else:
-      logger.warning("--attn was provided but module does not support set_attention_backend: "
-                     f"{module.__class__.__name__}.")
-
-  try:
-    if isinstance(pipe_or_adapter, BlockAdapter):
-      transformer = pipe_or_adapter.transformer
-      if isinstance(transformer, list):
-        for t in transformer:
-          _set_backend(t)
-      else:
-        _set_backend(transformer)
-    else:
-      pipe = pipe_or_adapter
-      if hasattr(pipe, "transformer"):
-        _set_backend(getattr(pipe, "transformer"))
-      else:
-        _set_backend(pipe)
-  except Exception as e:
-    raise RuntimeError(
-      f"Failed to set attention backend to <{attention_backend}>. "
-      "This usually means the backend is unavailable (e.g., FlashAttention-3 not installed) "
-      "or the model/shape/dtype is unsupported. "
-      f"Original error: {e}") from e
 
 
 def refresh_context(

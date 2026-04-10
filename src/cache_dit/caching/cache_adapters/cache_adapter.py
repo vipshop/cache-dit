@@ -609,7 +609,7 @@ class CachedAdapter:
     )
 
     # maybe release parallelism stats
-    from ...parallelism import (
+    from ...distributed import (
       remove_parallelism_stats, )
 
     cls.release_hooks(

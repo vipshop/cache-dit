@@ -30,7 +30,7 @@ from .caching import enable_cache
 from .caching import refresh_context
 from .caching import steps_mask
 from .caching import disable_cache
-from .caching import set_attn_backend
+from .attention import set_attn_backend
 from .caching import cache_type
 from .caching import block_range
 from .caching import CacheType
@@ -46,8 +46,8 @@ from .caching import TaylorSeerCalibratorConfig
 from .caching import FoCaCalibratorConfig
 from .caching import supported_pipelines
 from .caching import get_adapter
-from .parallelism import ParallelismBackend
-from .parallelism import ParallelismConfig
+from .distributed import ParallelismBackend
+from .distributed import ParallelismConfig
 from .compile import set_compile_configs
 from .summary import supported_matrix
 from .summary import summary

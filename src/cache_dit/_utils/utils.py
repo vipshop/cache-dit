@@ -8,8 +8,9 @@ from diffusers.quantizers import PipelineQuantizationConfig
 from ..logger import init_logger
 from ..platforms import current_platform
 from ..compile.utils import set_compile_configs
-from ..parallelism import ParallelismBackend, ParallelismConfig
-from ..caching import enable_cache, steps_mask, set_attn_backend
+from ..distributed import ParallelismBackend, ParallelismConfig
+from ..caching import enable_cache, steps_mask
+from ..attention import set_attn_backend
 from ..caching import (
   BlockAdapter,
   DBCacheConfig,
@@ -919,7 +920,7 @@ def maybe_compile_transformer(
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
   if args.compile:
-    set_compile_configs(cuda_graphs=args.cuda_graph)
+    set_compile_configs(cuda_graphs=args.cuda_graph, ulysses_anything=args.ulysses_anything)
     torch.set_float32_matmul_precision("high")
 
     if isinstance(pipe_or_adapter, BlockAdapter):

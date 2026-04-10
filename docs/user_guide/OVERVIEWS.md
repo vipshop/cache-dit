@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2 align="center">
-        ⚡️🎉Cache-DiT: A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization for Diffusion Transformers
+        ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization for Diffusion Transformers
     </h2>
   </p>
 <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v4.png>

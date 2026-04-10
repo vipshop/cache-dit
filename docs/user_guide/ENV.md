@@ -4,10 +4,6 @@ This document summarizes all core configurable environment variables in cache-di
 
 - <span style="color:#c77dff;">CACHE_DIT_LOG_LEVEL</span>, default `"info"`, Controls the logging level of cache-dit.
 - <span style="color:#c77dff;">CACHE_DIT_LOG_DIR</span>, default `None`, Specifies the directory for cache-dit log files (if not set, logs are output to console by default).
-- <span style="color:#c77dff;">CACHE_DIT_ENABLE_CUSTOM_ATTN_DISPATCH</span>, default `True (1)`, Enables custom attention backend dispatch for context parallelism. Enabled by default for better compatibility and performance; set to 0 to disable this behavior.
-- <span style="color:#c77dff;">CACHE_DIT_ENABLE_ULYSSES_ANYTHING</span>, default `False (0)`, Enables Ulysses Anything Attention when set to 1. Alternative configuration: use the `ulysses_anything` argument in `ContextParallelism` (recommended).
-- <span style="color:#c77dff;">CACHE_DIT_ENABLE_ULYSSES_ANYTHING_FLOAT8</span>, default `False (0)`, Enables Ulysses Anything Attention Float8 when set to 1. Alternative configuration: use `ulysses_anything=True` and `ulysses_float8=True` in `ContextParallelism` (recommended).
-- <span style="color:#c77dff;">CACHE_DIT_ENABLE_ULYSSES_FLOAT8</span>, default `False (0)`, Enables Ulysses Attention Float8 when set to 1. Alternative configuration: use the `ulysses_float8` argument in `ContextParallelism` (recommended).
 - <span style="color:#c77dff;">CACHE_DIT_UNEVEN_HEADS_COMM_NO_PAD</span>, default `False (0)`, Enables unpadded communication for uneven attention heads (avoids padding overhead) when set to 1.
 - <span style="color:#c77dff;">CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS</span>, default `True (1)`, For **developer use only** – controls whether dummy blocks are enabled for FLUX models (enabled by default). Users should NOT use this variable directly.
 - <span style="color:#c77dff;">CACHE_DIT_EPILOGUE_PROLOGUE_FUSION</span>, default `False (0)`, Enables epilogue and prologue fusion in cache-dit's torch.compile optimizations.
@@ -24,4 +20,4 @@ This document summarizes all core configurable environment variables in cache-di
 
 2. Variables marked "internal use only" or "developer use only" should not be modified by end users.
 
-3. Most variables have alternative configuration via code arguments (e.g., `ContextParallelism` parameters) besides environment variables.
+3. Ulysses variants such as `ulysses_anything`, `ulysses_float8`, and `ulysses_async` are configured through `ParallelismConfig` and internal `_ContextParallelConfig`, not environment variables.
