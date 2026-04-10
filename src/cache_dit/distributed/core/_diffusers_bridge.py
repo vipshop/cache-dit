@@ -117,6 +117,7 @@ def validate_context_parallel_attention_backend(
     if not _AttnBackendRegistry.is_context_parallel_available(attention_backend):
       compatible_backends = sorted(_AttnBackendRegistry.list_context_parallel_backends())
       raise ValueError(
-        f"Context parallelism is enabled but attention processor '{processor.__class__.__name__}' uses backend '{attention_backend.value}' which does not support context parallelism. Compatible backends: {compatible_backends}."
-      )
+        f"Context parallelism is enabled but attention processor '{processor.__class__.__name__}' "
+        f"uses backend '{attention_backend.value}' which does not support context parallelism. "
+        f"Compatible backends: {compatible_backends}.")
     break
