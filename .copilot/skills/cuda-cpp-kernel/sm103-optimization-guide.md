@@ -35,7 +35,7 @@ Deep dive into B300/GB300-specific optimizations for CUDA kernels.
 5. **208B Transistors** - Dual-die design, same NVLink-C2C interconnect as B200
 6. **PCIe Gen6** - 2x PCIe Gen5 bandwidth for host-device transfers
 7. **1,400W TDP** - Higher power budget enables sustained boost clocks
-8. **Same SM microarchitecture as sm100** - WGMMA, TMEM, tcgen05, TMA v2 all carry over
+8. **Same SM microarchitecture as sm100** - tcgen05, TMEM, and TMA v2 all carry over
 
 ### Key Differences from Blackwell (sm100)
 
@@ -51,7 +51,7 @@ Deep dive into B300/GB300-specific optimizations for CUDA kernels.
 | Registers/SM              | 65536                   | 65536                    |
 | Memory bandwidth          | 8 TB/s                  | 8 TB/s                   |
 | Tensor cores per SM       | Same (5th gen)          | 5th gen                  |
-| WGMMA / tcgen05 / TMEM    | Yes                     | Yes                      |
+| tcgen05 / TMEM / TMA      | Yes                     | Yes                      |
 | TMA v2 (multicast)        | Yes                     | Yes                      |
 | Thread Block Clusters     | Yes                     | Yes                      |
 | NVLink                    | 5.0 (1.8 TB/s)         | 5.0 (1.8 TB/s)          |
@@ -89,7 +89,7 @@ Everything at the SM level is identical to sm100:
 - 228 KB shared memory per SM
 - 64 warps/SM, 32 max blocks/SM
 - 65536 registers per SM
-- WGMMA shapes and throughput
+- tcgen05 tensor-core shapes and throughput
 - TMEM size and behavior
 - TMA descriptor format and multicast
 - Bank conflict rules
@@ -237,14 +237,14 @@ cuTensorMapEncodeTiled(
 All warp-level features are identical to sm100. See the [sm100 guide](sm100-optimization-guide.md) for:
 
 - Warp shuffle reductions
-- WGMMA / tcgen05 instructions
+- tcgen05 tensor-core instructions
 - Tensor Memory (TMEM) usage
 - Distributed Shared Memory patterns
 
-### WGMMA Quick Reference
+### tcgen05 Quick Reference
 
 ```cuda
-// WGMMA shapes (same as sm100):
+// tcgen05 tensor-core shapes (same as sm100):
 // FP16/BF16: 64x256x16, 64x128x16, 64x64x16
 // FP8:       64x256x32, 64x128x32, 64x64x32
 // FP4:       64x256x64, 64x128x64, 64x64x64

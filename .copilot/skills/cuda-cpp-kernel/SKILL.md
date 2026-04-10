@@ -100,8 +100,8 @@ Use the bundled architecture guides as the first reference for cross-architectur
 
 1. For `sm89`, focus on memory throughput, L2 hit rate, kernel fusion opportunity, and the lack of TMA or cluster features.
 2. For `sm90`, focus on TMA overlap, warpgroup behavior, shared-memory staging, and whether the timeline shows good load or compute overlap.
-3. For `sm100` and `sm103`, focus on WGMMA or tcgen05 usage, TMEM behavior, TMA v2 overlap, cluster behavior, and whether the kernel actually benefits from Blackwell datacenter features.
-4. For `sm120`, treat it closer to Ada than to datacenter Blackwell for profiling purposes: watch memory throughput, L2 hit rate, shared-memory limits, and the absence of TMA, TMEM, or cluster features.
+3. For `sm100` and `sm103`, focus on `tcgen05` usage, TMEM behavior, TMA v2 overlap, cluster behavior, and whether the kernel actually benefits from Blackwell datacenter features.
+4. For `sm120`, treat it closer to Ada than to datacenter Blackwell for profiling purposes: watch memory throughput, L2 hit rate, shared-memory limits, and the lack of TMEM or cluster features while deciding explicitly whether TMA or `cp.async` is the better staging path.
 
 Recommended order:
 

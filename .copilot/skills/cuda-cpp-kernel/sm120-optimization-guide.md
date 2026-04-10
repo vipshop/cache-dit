@@ -33,7 +33,7 @@ Deep dive into RTX 5090 and RTX PRO 6000-specific optimizations for CUDA kernels
 3. **5th-Gen Tensor Cores** - FP4/FP8/FP16/BF16/TF32 support (same gen as datacenter Blackwell)
 4. **128 MB L2 Cache** - Massive L2 on full GB202 (PRO 6000), 96 MB on RTX 5090
 5. **PCIe Gen5 x16** - 64 GB/s bidirectional host-device bandwidth
-6. **No TMA** - Unlike datacenter sm100, sm120 lacks Tensor Memory Accelerator
+6. **TMA Support** - Unlike Ada, sm120 exposes TMA-based staging for regular bulk tensor movement
 7. **No Thread Block Clusters** - No cluster or distributed shared memory support
 8. **No TMEM** - No dedicated tensor memory; tensor operands use register file
 9. **No WGMMA/tcgen05** - Uses traditional WMMA or cuBLAS for tensor core access
@@ -53,15 +53,15 @@ Deep dive into RTX 5090 and RTX PRO 6000-specific optimizations for CUDA kernels
 | Memory bandwidth          | 1.79-1.8 TB/s        | 8 TB/s                   |
 | Thread Block Clusters     | No                   | Yes                      |
 | Distributed Shared Memory | No                   | Yes                      |
-| TMA                       | No                   | Yes (v2, multicast)      |
+| TMA                       | Yes                  | Yes (v2, multicast)      |
 | TMEM                      | No                   | Yes                      |
-| WGMMA / tcgen05           | No                   | Yes                      |
+| Warp-group / TMEM MMA path| No                   | Yes                      |
 | cp.async                  | Yes                  | Yes                      |
 | Tensor Core gen           | 5th gen              | 5th gen                  |
 | FP4 support               | Yes                  | Yes                      |
 | NVLink                    | No                   | 5.0 (1.8 TB/s)          |
 
-**sm120 is architecturally closer to Ada (sm89) than to datacenter Blackwell (sm100)** in terms of SM-level features. It has the same warp count, block limits, and lacks TMA/clusters/TMEM. The tensor cores are 5th-gen (same as sm100), and it gains GDDR7 and larger L2 over Ada.
+**sm120 is still much closer to Ada (sm89) than to datacenter Blackwell (sm100)** in warp count, block limits, and the lack of TMEM or cluster-capable execution. However, unlike Ada, sm120 also exposes TMA-backed staging for regular tiles. The tensor cores are 5th-gen (same as sm100), and it gains GDDR7 and larger L2 over Ada.
 
 ### Key Differences from Ada (sm89)
 
@@ -257,7 +257,7 @@ float val = data[threadIdx.y][threadIdx.x];
 
 ### Asynchronous Memory Copy (cp.async)
 
-sm120 supports `cp.async` (like Ada) but **not TMA**. Use `cp.async` for all async global-to-shared transfers:
+sm120 supports both `cp.async` and TMA. Use TMA for regular bulk tensor movement when descriptors and scheduling are available; use `cp.async` for fine-grained or irregular global-to-shared transfers:
 
 ```cuda
 // cp.async: bypass register file for global→shared copies
@@ -301,12 +301,12 @@ for (int k = 0; k < K; k += TILE_K) {
 }
 ```
 
-**No TMA means:**
+**When you choose `cp.async` instead of TMA:**
 
-- No hardware tensor descriptors — all addressing is manual
-- No multicast — each block must load its own copy of shared data
-- No bulk async operations — cp.async operates per-thread
-- Kernel code is simpler but less bandwidth-efficient than sm100
+- All addressing is manual at the per-thread or per-lane level
+- There is no descriptor-driven bulk movement to amortize address generation
+- Each block still loads its own copy of shared data because sm120 has no cluster multicast path
+- Kernel code is simpler, but usually less efficient than a good TMA schedule on regular tiles
 
 ## Warp-Level Optimizations
 
@@ -744,9 +744,9 @@ nsys profile -o profile_report python your_script.py
 
    - Solution: Use 256 or 512 thread blocks instead
 
-5. **No TMA overhead**: Manual address calculation per thread
+5. **TMA setup or manual staging overhead**: Descriptor setup can dominate tiny kernels, while cp.async paths pay address-generation cost
 
-   - Solution: Use cp.async with double-buffering, precompute addresses
+    - Solution: Prefer TMA for regular bulk movement, or use cp.async with double-buffering and precomputed addresses
 
 6. **VRAM limit on RTX 5090**: 32 GB constrains model size
 
@@ -785,7 +785,7 @@ nvcc -gencode arch=compute_89,code=sm_89 \
 4. **Kernel Fusion**: The single most important optimization on sm120 due to limited GDDR7 BW
 5. **Tensor Cores**: Use WMMA (not WGMMA). Watch register pressure from fragments
 6. **Block Size**: Prefer 256 threads. Avoid 1024 (caps at 67% occupancy)
-7. **No TMA/Clusters**: Use cp.async for async loads. Each block is independent
+7. **No Clusters/TMEM**: Use TMA or cp.async for async loads, but each block is still independent
 8. **Precision**: FP4 for inference weights (new on sm120), FP8 for training, BF16 for general use
 9. **Profile**: Watch memory throughput and L2 hit rate — these define the performance ceiling
 10. **Type Conversions**: Always use explicit `to_float()`/`from_float()` helpers (PyTorch disables implicit FP16/BF16 conversions)
