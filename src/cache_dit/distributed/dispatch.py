@@ -189,8 +189,7 @@ def _maybe_set_module_attention_backend(
     else:
       # Ensure custom attention backends are registered in cache-dit.
       if resolved_cache_dit_backend is not None and not ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH:
-        from ..attention import (
-          _maybe_register_custom_attn_backends, )
+        from ..attention import _maybe_register_custom_attn_backends
 
         _maybe_register_custom_attn_backends()
 
