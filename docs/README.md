@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2 align="center">
-        🤗🎉Cache-DiT: A PyTorch-native Inference Engine with <br>Hybrid Cache Acceleration and Massive Parallelism for DiTs 
+        ⚡️🎉A PyTorch-native inference engine with Cache, <br>Parallelism, Quantization for Diffusion Transformers
     </h2>
     <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=ABBREVIATION&left_color=GRAY&right_color=BLUE&left_text=downloads/pypi ></a>
     <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/github/release/vipshop/cache-dit.svg?color=GREEN ></a>
@@ -121,7 +121,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting testing and d
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={Cache-DiT: A PyTorch-native Inference Engine with Hybrid Cache Acceleration and Massive Parallelism for DiTs.},
+  title={Cache-DiT: A PyTorch-native inference engine with Cache, Parallelism and Quantization for Diffusion Transformers.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com, etc.},

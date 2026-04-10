@@ -116,7 +116,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting testing and d
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={Cache-DiT: A PyTorch-native Inference Engine with Hybrid Cache Acceleration and Massive Parallelism for DiTs.},
+  title={Cache-DiT: A PyTorch-native inference engine with Cache, Parallelism and Quantization for Diffusion Transformers.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com, etc.},
