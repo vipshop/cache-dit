@@ -486,7 +486,9 @@ def svdq_gemm_w4a4_v2(
   :param act_unsigned: Whether INT4 activations are stored as unsigned values.
   :param output_dtype: Optional dtype for the allocated dense output.
   :param stage: Runtime pipeline stage count used to dispatch among the compiled v2 kernels.
-    Defaults to `1`.
+    Defaults to `1`. On Ada-class GPUs the plain v2 kernel is register-bound, so
+    `stage=1` is the preferred default because it keeps occupancy higher than
+    deeper pipeline settings on the hot shapes.
 
   :returns: A newly allocated dense output tensor `[M, N]`.
   """

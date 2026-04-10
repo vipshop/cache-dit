@@ -126,9 +126,10 @@ If the task is a migration into cache-dit, keep the kernel work separate from re
 
 1. Reproduce the issue with the smallest input that still fails.
 2. Confirm the failure mode: wrong value, launch error, illegal memory access, race, hang, or performance regression.
-3. Use compute-sanitizer or cuda-gdb for correctness problems.
-4. Use Nsight Systems first for end-to-end bottlenecks, then Nsight Compute for per-kernel root cause.
-5. After each change, rerun the focused correctness test before doing broader benchmarks.
+3. When the kernel uses shared memory, `cp.async`, or any other asynchronous staging path, treat data-synchronization bugs as a first-line hypothesis. If only some shapes or stage-count cases fail, suspect missing barriers, premature shared-memory slot reuse, or incomplete predicate protection before assuming the math is wrong.
+4. Use compute-sanitizer or cuda-gdb for correctness problems.
+5. Use Nsight Systems first for end-to-end bottlenecks, then Nsight Compute for per-kernel root cause.
+6. After each change, rerun the focused correctness test before doing broader benchmarks.
 
 ## Performance Workflow
 

@@ -54,7 +54,7 @@ def test_svdq_w4a4_linear_rejects_unknown_runtime_kernel() -> None:
       out_features=64,
       rank=32,
       precision="int4",
-      runtime_kernel="v3",
+      runtime_kernel="v4",
     )
   except ValueError as exc:
     assert "runtime_kernel" in str(exc)

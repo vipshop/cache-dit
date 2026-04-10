@@ -353,7 +353,8 @@ class GEMMBase : public Config {
 
   // get {k}-th and {k+1}-th wscale from the block, k must be multiples of 2, k must be uniform
   // across all lanes
-  __device__ __forceinline__ static half2_t broadcast_wscale(wscale_warp block, int k, int laneId) {
+  __device__ __forceinline__ static half2_t broadcast_wscale(const wscale_warp &block, int k,
+                                                             int laneId) {
     const int packIdx = k / (WSCALES_PACK_SIZE * WARP_SIZE);
     const int srcLane = 4 * (k / WSCALES_PACK_SIZE) + laneId % 4;
     const int elementIdx = k % WSCALES_PACK_SIZE / 2;
@@ -361,7 +362,8 @@ class GEMMBase : public Config {
   }
   // get {k}-th and {k+1}-th ascale from the block, k must be multiples of 2, k must be uniform
   // across all lanes
-  __device__ __forceinline__ static half2_t broadcast_ascale(ascale_warp block, int k, int laneId) {
+  __device__ __forceinline__ static half2_t broadcast_ascale(const ascale_warp &block, int k,
+                                                             int laneId) {
     const int packIdx = k / (ASCALES_PACK_SIZE * WARP_SIZE);
     const int srcLane = 8 * (k / ASCALES_PACK_SIZE) + laneId / 4;
     const int elementIdx = k % ASCALES_PACK_SIZE / 2;
@@ -379,8 +381,9 @@ class GEMMBase : public Config {
   };
 
   template <typename i2f = i2f_normal, typename F>
-  __device__ __forceinline__ static void apply_scales(F &&getpsum, ascale_warp ascale,
-                                                      wscale_warp wscale, fpsum_warp &fpsum) {
+  __device__ __forceinline__ static void apply_scales(F &&getpsum, const ascale_warp &ascale,
+                                                      const wscale_warp &wscale,
+                                                      fpsum_warp &fpsum) {
     const int laneId = threadIdx.x % WARP_SIZE;
     const int warpId = threadIdx.x / WARP_SIZE;
 
@@ -427,8 +430,9 @@ class GEMMBase : public Config {
   }
 
   template <typename i2f = i2f_normal, typename F>
-  __device__ __forceinline__ static void apply_scales(F &&getpsum, ascale_warp ascale,
-                                                      wscale_warp wscale, f32psum_warp &fpsum) {
+  __device__ __forceinline__ static void apply_scales(F &&getpsum, const ascale_warp &ascale,
+                                                      const wscale_warp &wscale,
+                                                      f32psum_warp &fpsum) {
     const int laneId = threadIdx.x % WARP_SIZE;
     const int warpId = threadIdx.x / WARP_SIZE;
 

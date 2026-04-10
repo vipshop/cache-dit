@@ -683,8 +683,9 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
   };
 
   template <bool ACT_UNSIGNED, typename T>
-  __device__ __forceinline__ static void compute(act_warp A, wgt_warp W, ascale_warp ascale,
-                                                 wscale_warp wscale, T &fpsum) {
+  __device__ __forceinline__ static void compute(const act_warp &A, const wgt_warp &W,
+                                                 const ascale_warp &ascale,
+                                                 const wscale_warp &wscale, T &fpsum) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 800
     using int2half2 = i2f_sm80;
 #elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 750

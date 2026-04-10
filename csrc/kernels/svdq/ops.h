@@ -56,11 +56,16 @@ inline void gemm_w4a4_v2(std::optional<torch::Tensor> act, std::optional<torch::
                          std::optional<torch::Tensor> lora_up,
                          std::optional<torch::Tensor> bias, bool fp4, float alpha,
                          std::optional<torch::Tensor> wcscales, bool act_unsigned,
-                         int stage = 2) {
+                         int stage = 1) {
   if (fp4) {
     throw std::runtime_error(
       "svdq_gemm_w4a4_v2 currently supports the INT4 runtime path only.");
   }
+
+  // Ada-class GPUs such as L20 keep this plain v2 path register-bound. `stage=1`
+  // is the public default because it preserves the best occupancy for the hot
+  // runtime shapes, while higher stage counts remain available for explicit
+  // profiling and follow-up experiments.
 
   TorchOpContext ctx;
   spdlog::trace("running gemm_w4a4_v2:");

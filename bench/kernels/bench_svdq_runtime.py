@@ -332,6 +332,7 @@ def main() -> None:
     },
   }
   json_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
+  os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
   print(json.dumps(summary, indent=2, sort_keys=True))
 
 

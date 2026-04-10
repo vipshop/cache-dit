@@ -25,7 +25,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
          py::arg("alpha"),
          py::arg("wcscales"),
          py::arg("act_unsigned"),
-         py::arg("stage") = 2)
+         py::arg("stage") = 1)
     .def("quantize_w4a4_act_fuse_lora", &svdq::ops::quantize_w4a4_act_fuse_lora)
     .def("quantize_w4a4_wgt", &svdq::ops::quantize_w4a4_wgt);
 

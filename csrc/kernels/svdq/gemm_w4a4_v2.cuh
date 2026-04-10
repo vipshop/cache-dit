@@ -107,7 +107,10 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   using Base::packed_fp16_to_fp32;
   using Base::packed_fp32_to_fp16;
 
-  struct SharedStorage {};
+  struct SharedStorage {
+    alignas(16) packed_act_t act_tiles[NUM_PIPELINE_STAGES][NUM_WARPS * WARP_M_TILES * WARP_SIZE];
+    alignas(16) packed_wgt_t wgt_tiles[NUM_PIPELINE_STAGES][WARP_N_TILES * WARP_SIZE];
+  };
 
   __device__ __forceinline__ static int packed_block_index(int logical_block_m) {
     return logical_block_m / LOGICAL_BLOCKS_PER_PACKED_BLOCK;
@@ -186,6 +189,70 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   template <typename Warp>
   __device__ __forceinline__ static void clear_warp(Warp &warp) {
     warp = {};
+  }
+
+  __device__ __forceinline__ static int act_shared_offset(int warpId, int tile, int laneId) {
+    return ((warpId * WARP_M_TILES + tile) * WARP_SIZE) + laneId;
+  }
+
+  __device__ __forceinline__ static int wgt_shared_offset(int tile, int laneId) {
+    return (tile * WARP_SIZE) + laneId;
+  }
+
+  __device__ __forceinline__ static void prefetch_act_compat_to_shared(
+    SharedStorage &shared, int stage_slot, const packed_act_t *ptr, int logical_block_m, int k,
+    int K, bool pred) {
+    const int laneId = threadIdx.x % WARP_SIZE;
+    const int warpId = threadIdx.x / WARP_SIZE;
+    const int packed_bm = packed_block_index(logical_block_m);
+    const int packed_warp = packed_warp_base(logical_block_m) + warpId;
+
+#pragma unroll
+    for (int tile = 0; tile < WARP_M_TILES; tile++) {
+      const int shared_offset = act_shared_offset(warpId, tile, laneId);
+      const packed_act_t *src =
+        &ptr[(((packed_bm * (K / WARP_K) + k) * PACKED_NUM_WARPS + packed_warp) * WARP_M_TILES +
+               tile) *
+                WARP_SIZE +
+              laneId];
+      cp_async_ca(&shared.act_tiles[stage_slot][shared_offset], src, pred);
+    }
+  }
+
+  __device__ __forceinline__ static void prefetch_wgt_to_shared(
+    SharedStorage &shared, int stage_slot, const packed_wgt_t *ptr, int k, int K, bool pred) {
+    const int laneId = threadIdx.x % WARP_SIZE;
+    unused_var(K, false);
+
+#pragma unroll
+    for (int tile = 0; tile < WARP_N_TILES; tile++) {
+      const int shared_offset = wgt_shared_offset(tile, laneId);
+      const packed_wgt_t *src = &ptr[(k * WARP_N_TILES + tile) * WARP_SIZE + laneId];
+      cp_async_ca(&shared.wgt_tiles[stage_slot][shared_offset], src, pred);
+    }
+  }
+
+  __device__ __forceinline__ static void load_act_from_shared(const SharedStorage &shared,
+                                                              int stage_slot,
+                                                              act_warp &out) {
+    const int laneId = threadIdx.x % WARP_SIZE;
+    const int warpId = threadIdx.x / WARP_SIZE;
+
+#pragma unroll
+    for (int tile = 0; tile < WARP_M_TILES; tile++) {
+      out[tile] = load<true>(&shared.act_tiles[stage_slot][act_shared_offset(warpId, tile, laneId)]);
+    }
+  }
+
+  __device__ __forceinline__ static void load_wgt_from_shared(const SharedStorage &shared,
+                                                              int stage_slot,
+                                                              wgt_warp &out) {
+    const int laneId = threadIdx.x % WARP_SIZE;
+
+#pragma unroll
+    for (int tile = 0; tile < WARP_N_TILES; tile++) {
+      out[tile] = load<true>(&shared.wgt_tiles[stage_slot][wgt_shared_offset(tile, laneId)]);
+    }
   }
 
   __device__ __forceinline__ static void load_act_compat_safe(const packed_act_t *ptr,
@@ -325,9 +392,77 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   }
 
   template <typename Epilogue, bool ACT_UNSIGNED>
+  __device__ __forceinline__ static void gemm_w4a4_v2_block_compat_smem(
+    SharedStorage &shared, const BlockInfo binfo, const packed_act_t *act,
+    const packed_wgt_t *wgt, const packed_ascale_t *ascales, const packed_wscale_t *wscales,
+    int M, int N, int K, const typename Epilogue::Arguments &epilogueArgs, bool alwaysfalse) {
+    fpsum_warp fpsum;
+
+    for (auto &pack : fpsum) {
+      for (int i = 0; i < 4; i++) {
+        pack.data[i].x = 0;
+        pack.data[i].y = 0;
+      }
+    }
+
+    const int num_k_tiles = K / WARP_K;
+    const int preload_stages = min(NUM_PIPELINE_STAGES, num_k_tiles);
+
+    for (int stage = 0; stage < preload_stages; stage++) {
+      prefetch_act_compat_to_shared(shared, stage, act, binfo.bm, stage, K, true);
+      prefetch_wgt_to_shared(shared, stage, wgt, stage, K, true);
+      cp_async_commit();
+    }
+
+    if (preload_stages > 0) {
+      cp_async_wait<0>();
+      __syncthreads();
+    }
+
+    for (int k = 0; k < num_k_tiles; k++) {
+      const int stage_slot = k % NUM_PIPELINE_STAGES;
+      const int nextk = k + NUM_PIPELINE_STAGES;
+      {
+        act_warp current_act;
+        wgt_warp current_wgt;
+        load_act_from_shared(shared, stage_slot, current_act);
+        load_wgt_from_shared(shared, stage_slot, current_wgt);
+
+        // All warps must finish consuming the current shared-memory stage before any
+        // warp starts overwriting the same stage slot with the next tile.
+        __syncthreads();
+
+        if (nextk < num_k_tiles) {
+          prefetch_act_compat_to_shared(shared, stage_slot, act, binfo.bm, nextk, K, true);
+          prefetch_wgt_to_shared(shared, stage_slot, wgt, nextk, K, true);
+          cp_async_commit();
+        }
+
+        ascale_warp current_ascale;
+        wscale_warp current_wscale;
+        load_ascale_compat_safe(ascales, binfo.bm, k, K, current_ascale, true);
+        load_wscale_safe(wscales, k, N, current_wscale, true);
+
+        Parent::template compute<ACT_UNSIGNED>(
+          current_act, current_wgt, current_ascale, current_wscale, fpsum);
+      }
+
+      if (nextk < num_k_tiles) {
+        cp_async_wait<0>();
+        __syncthreads();
+      }
+    }
+
+    unused_var(alwaysfalse, alwaysfalse);
+    CHECK_NAN(fpsum, "fpsum_v2_compat_smem");
+    Epilogue()(binfo, fpsum, M, N, K, epilogueArgs);
+  }
+
+  template <typename Epilogue, bool ACT_UNSIGNED>
   struct gemm_w4a4_v2_kernel {
     static constexpr int MIN_ARCH = 750;
     using SharedStorage = typename GEMM_W4A4_V2<Config, NumPipelineStages>::SharedStorage;
+    static constexpr bool USE_COMPAT_SMEM_OPT = false;
 
     __device__ void operator()(SharedStorage &shared, const packed_act_t *act,
                                const packed_wgt_t *wgt,
@@ -351,18 +486,34 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
 
       (void)shared;
       if constexpr (USE_PACKED_LAYOUT_COMPAT) {
-        GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat<
-          Epilogue, ACT_UNSIGNED>(
-          binfo,
-          act,
-          wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE,
-          ascales,
-          wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES,
-          M,
-          N,
-          K,
-          epilogueArgs,
-          alwaysfalse);
+        if constexpr (USE_COMPAT_SMEM_OPT && NumPipelineStages >= 2) {
+          GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat_smem<
+            Epilogue, ACT_UNSIGNED>(
+            shared,
+            binfo,
+            act,
+            wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE,
+            ascales,
+            wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES,
+            M,
+            N,
+            K,
+            epilogueArgs,
+            alwaysfalse);
+        } else {
+          GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat<
+            Epilogue, ACT_UNSIGNED>(
+            binfo,
+            act,
+            wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE,
+            ascales,
+            wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES,
+            M,
+            N,
+            K,
+            epilogueArgs,
+            alwaysfalse);
+        }
       } else {
         Parent::template gemm_w4a4_block<Epilogue, ACT_UNSIGNED, false>(
           binfo,

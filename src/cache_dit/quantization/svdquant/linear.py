@@ -238,7 +238,10 @@ class SVDQW4A4Linear(nn.Module):
       gemm_kwargs["lora_act_in"] = lora_act
       gemm_kwargs["lora_up"] = self.proj_up
 
-    gemm_op = svdq_gemm_w4a4_v2 if self.runtime_kernel == "v2" else svdq_gemm_w4a4
+    if self.runtime_kernel == "v2":
+      gemm_op = svdq_gemm_w4a4_v2
+    else:
+      gemm_op = svdq_gemm_w4a4
     result = gemm_op(**gemm_kwargs)
     if output is not None:
       output.copy_(result)

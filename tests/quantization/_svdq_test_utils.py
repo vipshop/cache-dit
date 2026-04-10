@@ -311,7 +311,10 @@ def run_svdq_operator_from_state_dict(
   if proj_down.shape[1] > 0:
     gemm_kwargs["lora_act_in"] = lora_activations
     gemm_kwargs["lora_up"] = state_dict["proj_up"]
-  gemm_op = svdq_gemm_w4a4_v2 if operator_version == "v2" else svdq_gemm_w4a4
+  if operator_version == "v2":
+    gemm_op = svdq_gemm_w4a4_v2
+  else:
+    gemm_op = svdq_gemm_w4a4
   output = gemm_op(**gemm_kwargs)
   return output[:activations.shape[0]]
 

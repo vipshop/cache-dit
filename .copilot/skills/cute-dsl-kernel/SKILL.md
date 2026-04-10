@@ -189,7 +189,8 @@ Use `cutlass-cpp-kernel` alongside this skill when you need C++ CUTLASS or CuTe 
 2. Use runtime printing sparingly for GPU-side debugging.
 3. Save PTX or IR when you need to inspect code generation.
 4. Reduce the problem to the smallest shape that still reproduces the failure.
-5. Once correctness is stable, profile before tuning.
+5. If the kernel relies on shared memory, `cp.async`, pipeline stages, or other asynchronous movement, treat synchronization as a primary suspect. When only specific shapes or pipeline configurations produce bad outputs, first inspect barrier placement, shared-stage reuse, and predicate coverage on partial-tile loads or stores.
+6. Once correctness is stable, profile before tuning.
 
 ## Validation Requirements
 

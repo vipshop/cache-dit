@@ -34,7 +34,8 @@ void gemm_w4a4(Tensor act,             // packed act [M, K / 2]
                int attn_tokens);
 void gemm_w4a4_v2(Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales,
                   Tensor lora_act_in, Tensor lora_up, Tensor bias, bool act_unsigned,
-                  float alpha, Tensor wcscales, int stage = 2);
+                  float alpha, Tensor wcscales,
+                  int stage = 1);  // Ada/L20 is reg-bound here, so `stage=1` keeps the best occupancy.
 void linearattn_vk_mul_q(Tensor q, Tensor vk);
 
 void quantize_w4a4_act_fuse_lora(Tensor input, Tensor output, Tensor oscales, Tensor lora_down,

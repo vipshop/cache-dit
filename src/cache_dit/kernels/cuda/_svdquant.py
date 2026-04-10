@@ -154,18 +154,34 @@ def _infer_svdq_output_dtype(
   return None
 
 
-def _normalize_svdq_v2_stage(stage: int | None) -> int:
-  """Normalize and validate the runtime stage for `svdq_gemm_w4a4_v2`.
+def _normalize_svdq_runtime_stage(stage: int | None, op_name: str) -> int:
+  """Normalize and validate the runtime stage for an SVDQ kernel wrapper.
 
   :param stage: Optional requested pipeline stage count.
+  :param op_name: Public operator name used in validation errors.
   :returns: A validated stage count.
   :raises ValueError: If the requested stage is outside the compiled range.
   """
 
   normalized_stage = 1 if stage is None else int(stage)
   if normalized_stage not in (1, 2, 3):
-    raise ValueError(f"svdq_gemm_w4a4_v2 stage must be one of 1, 2, or 3, got {normalized_stage}.")
+    raise ValueError(f"{op_name} stage must be one of 1, 2, or 3, got {normalized_stage}.")
   return normalized_stage
+
+
+def _normalize_svdq_v2_stage(stage: int | None) -> int:
+  """Normalize and validate the runtime stage for `svdq_gemm_w4a4_v2`.
+
+  Ada-class GPUs keep the plain v2 kernel register-bound, so the public API defaults to `stage=1` to
+  preserve better occupancy. Higher stage counts are still accepted for explicit profiling or future
+  experiments.
+
+  :param stage: Optional requested pipeline stage count.
+  :returns: A validated stage count.
+  :raises ValueError: If the requested stage is outside the compiled range.
+  """
+
+  return _normalize_svdq_runtime_stage(stage, "svdq_gemm_w4a4_v2")
 
 
 def _normalize_svdq_lora_scales(
@@ -385,6 +401,10 @@ def _call_svdq_gemm_w4a4_v2(
 ) -> None:
   """Call the dedicated plain-path v2 SVDQ GEMM entrypoint.
 
+  On Ada-class GPUs this plain path is register-bound, and `stage=1` is the
+  preferred runtime default because it keeps occupancy higher than deeper
+  pipeline settings on the hot shapes.
+
   :param act: Packed activation tensor `[M, K / 2]`.
   :param wgt: Packed quantized weight tensor `[N, K / 2]`.
   :param out: Dense output buffer `[M, N]`.
@@ -430,6 +450,7 @@ __all__ = [
   "_encode_svdq_output_dtype",
   "_get_required_utils_module",
   "_infer_svdq_output_dtype",
+  "_normalize_svdq_runtime_stage",
   "_normalize_svdq_v2_stage",
   "_normalize_svdq_lora_scales",
   "svdq_get_load_error",
