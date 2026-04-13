@@ -523,7 +523,7 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
   --svdq-smooth-strategy identity --svdq-calibrate-precision low
 
-# higher SVD decomposition precision can be helpful for better DQ accuracy.
+# higher SVD decomposition precision may be helpful for better DQ accuracy.
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
   --svdq-smooth-strategy identity --svdq-calibrate-precision medium
 ```
@@ -532,7 +532,7 @@ Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;"
 
 At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default and experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
 
-The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off.
+The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The SVDQ runtime path keeps the default kernel behavior unless users explicitly opt into other backend-local settings.
 
 Here are some preliminary results on the impact of different DQ smooth strategies for a SVDQ DQ sweep on FLUX.2-klein-4B. 
 

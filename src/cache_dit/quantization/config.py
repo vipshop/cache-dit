@@ -9,6 +9,7 @@ logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
+_SVDQ_RUNTIME_KERNELS = ("v1", "v2")
 _SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv")
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
@@ -23,6 +24,10 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - medium: use float32 calibration math and full torch.linalg.svd.
   # - high: use float32 calibration math and float64 SVD.
   "calibrate_precision": "low",
+  # Packed runtime GEMM implementation used by SVDQW4A4Linear.
+  # - v1: original kernel path.
+  # - v2: w4q4 v2 GEMM plain path.
+  "runtime_kernel": "v1",
   # Only valid when streaming is set to True. It specifies the number of samples after
   # which the activation buffers will be flushed and the quantization parameters will
   # be updated. This can help to reduce the memory usage during quantization, especially
@@ -69,6 +74,15 @@ def _resolve_svdq_calibrate_precision(key: str, value: Any) -> str:
   return normalized
 
 
+def _resolve_svdq_runtime_kernel(key: str, value: Any) -> str:
+  if not isinstance(value, str):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
+  normalized = value.lower()
+  if normalized not in _SVDQ_RUNTIME_KERNELS:
+    raise ValueError(f"svdq_kwargs[{key!r}] must be one of {_SVDQ_RUNTIME_KERNELS}, got {value!r}.")
+  return normalized
+
+
 def _resolve_svdq_smooth_strategy(key: str, value: Any) -> str:
   if not isinstance(value, str):
     raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
@@ -104,6 +118,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
   validators = {
     "streaming": _resolve_svdq_bool_kwarg,
     "calibrate_precision": _resolve_svdq_calibrate_precision,
+    "runtime_kernel": _resolve_svdq_runtime_kernel,
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,
     "smooth_strategy": _resolve_svdq_smooth_strategy,

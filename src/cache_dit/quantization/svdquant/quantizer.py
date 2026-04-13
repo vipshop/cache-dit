@@ -484,6 +484,7 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   device: torch.device | str | None = None,
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
+  runtime_kernel: str = "v1",
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from either PTQ activation spans or DQ mode.
 
@@ -517,6 +518,8 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
     calibration math. For the SVD low-rank decomposition, `"low"` uses `torch.svd_lowrank`
     in `torch_dtype`, `"medium"` uses the default full SVD route in float32, and `"high"`
     uses float64 SVD with CUDA `gesvd` for maximum precision.
+  :param runtime_kernel: Packed runtime GEMM implementation to bind into the
+    instantiated `SVDQW4A4Linear` module.
   :returns: Either a ready-to-load SVDQ module state dict or an instantiated
     `SVDQW4A4Linear`.
   """
@@ -589,6 +592,7 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
     rank=rank,
     precision=precision,
     act_unsigned=act_unsigned,
+    runtime_kernel=runtime_kernel,
     torch_dtype=torch_dtype,
     device=device,
   )

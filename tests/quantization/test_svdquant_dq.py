@@ -225,6 +225,16 @@ def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None
   config = QuantizeConfig(quant_type="svdq_int4_r32_dq")
 
   assert config.get_svdq_kwargs()["calibrate_precision"] == "low"
+  assert config.get_svdq_kwargs()["runtime_kernel"] == "v1"
+
+
+def test_svdq_dq_config_validation_accepts_runtime_kernel_v2() -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+    svdq_kwargs={"runtime_kernel": "v2"},
+  )
+
+  assert config.get_svdq_kwargs()["runtime_kernel"] == "v2"
 
 
 def test_svdq_dq_config_validation_accepts_explicit_identity_smooth_strategy() -> None:
@@ -308,6 +318,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.quantize_type == "svdq_int4_r32_dq"
   assert args.svdq_smooth_strategy == "identity"
   assert args.svdq_calibrate_precision == "low"
+  assert args.svdq_runtime == "v1"
 
   args = maybe_postprocess_args(parser.parse_args(["--svdq-int4-r128-dq"]))
   assert args.quantize
@@ -337,11 +348,14 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "weight_inv",
       "--svdq-calib",
       "high",
+      "--svdq-runtime",
+      "v2",
     ]))
   assert args.quantize
   assert args.quantize_type == "svdq_int4_r32_dq"
   assert args.svdq_smooth_strategy == "weight_inv"
   assert args.svdq_calibrate_precision == "high"
+  assert args.svdq_runtime == "v2"
 
 
 def test_svdq_dq_cli_smooth_strategy_is_applied_during_transformer_quantization() -> None:
@@ -400,6 +414,48 @@ def test_svdq_dq_cli_weight_inv_strategy_is_applied_during_transformer_quantizat
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_k)
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_v)
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_out)
+
+
+def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization() -> None:
+  dtype = runtime_dtype()
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=55,
+    device="cuda",
+    dtype=dtype,
+  )
+  parser = get_args(parse=False)
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-type",
+      "svdq_int4_r32_dq",
+      "--svdq-runtime",
+      "v2",
+    ]))
+
+  holder = SimpleNamespace(transformer=model)
+  maybe_quantize_transformer(args, holder)
+
+  assert holder.transformer._svdq_kwargs["runtime_kernel"] == "v2"
+  assert holder.transformer.block.to_q.runtime_kernel == "v2"
+  assert holder.transformer.block.to_k.runtime_kernel == "v2"
+  assert holder.transformer.block.to_v.runtime_kernel == "v2"
+  assert holder.transformer.block.to_out.runtime_kernel == "v2"
+
+  eval_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=89,
+    device="cuda",
+    dtype=dtype,
+  )
+  with torch.inference_mode():
+    output = holder.transformer(eval_inputs)
+    torch.cuda.synchronize()
+
+  assert output.shape == eval_inputs.shape
 
 
 def test_svdq_dq_toy_model_rank_trend_and_metadata() -> None:

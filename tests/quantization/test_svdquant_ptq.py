@@ -38,6 +38,7 @@ _SVDQ_QUANT_CONFIG_FILENAME = "quant_config.json"
 _DEFAULT_SVDQ_KWARGS = {
   "streaming": True,
   "calibrate_precision": "low",
+  "runtime_kernel": "v1",
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
   "smooth_strategy": "activation",
@@ -1171,10 +1172,15 @@ def test_svdq_ptq_quantize_root_linear_and_load_roundtrip(tmp_path: Path) -> Non
     device="cuda",
     dtype=dtype,
   )
-  config = _make_ptq_config(tmp_path / "root_linear", _make_calibrate_fn(calibration_samples))
+  config = _make_ptq_config(
+    tmp_path / "root_linear",
+    _make_calibrate_fn(calibration_samples),
+    svdq_kwargs={"runtime_kernel": "v2"},
+  )
 
   quantized_linear = cache_dit.quantize(float_linear, config)
   assert isinstance(quantized_linear, SVDQW4A4Linear)
+  assert quantized_linear.runtime_kernel == "v2"
   assert Path(config.serialize_to).is_file()
 
   eval_inputs = make_token_batch(
@@ -1191,6 +1197,8 @@ def test_svdq_ptq_quantize_root_linear_and_load_roundtrip(tmp_path: Path) -> Non
     fresh_linear,
     str(_resolve_quant_checkpoint_dir(config.serialize_to)),
   )
+  assert isinstance(loaded_linear, SVDQW4A4Linear)
+  assert loaded_linear.runtime_kernel == "v2"
 
   with torch.inference_mode():
     quantized_output = quantized_linear(eval_inputs)
@@ -1425,6 +1433,14 @@ def test_svdq_ptq_config_validation_rejects_invalid_combinations(tmp_path: Path)
       calibrate_fn=lambda **_: None,
       serialize_to=str(tmp_path / "bad_smooth_strategy"),
       svdq_kwargs={"smooth_strategy": "identity"},
+    )
+
+  with pytest.raises(ValueError, match="must be one of"):
+    QuantizeConfig(
+      quant_type="svdq_int4_r32",
+      calibrate_fn=lambda **_: None,
+      serialize_to=str(tmp_path / "bad_runtime_kernel_value"),
+      svdq_kwargs={"runtime_kernel": "v3"},
     )
 
   with pytest.raises(ValueError, match="Unsupported SVDQ PTQ kwargs"):

@@ -714,6 +714,7 @@ def _quantize_context_layers(
       torch_dtype=float_module.weight.dtype,
       device=quantize_device,
       calibrate_precision=context.svdq_kwargs["calibrate_precision"],
+      runtime_kernel=context.svdq_kwargs["runtime_kernel"],
     )
 
     if layer_name == "":
@@ -946,6 +947,7 @@ def load_svdq(
       float_module,
       rank=rank,
       precision="int4",
+      runtime_kernel=svdq_kwargs["runtime_kernel"],
       torch_dtype=torch_dtype,
       device=load_device,
     )

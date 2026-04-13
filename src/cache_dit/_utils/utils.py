@@ -526,6 +526,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     choices=["low", "medium", "high"],
     help="Calibration / decomposition precision for SVDQ quantization. Default: low.",
   )
+  parser.add_argument(
+    "--svdq-runtime",
+    type=str,
+    default="v1",
+    choices=["v1", "v2"],
+    help="Runtime SVDQ W4Q4 GEMM kernel. Use v2 to enable the SVDQ W4Q4 v2 operator.",
+  )
   # Parallelism settings
   parser.add_argument(
     "--parallel-type",
@@ -1205,6 +1212,7 @@ def maybe_quantize_transformer(
     return {
       "smooth_strategy": args.svdq_smooth_strategy,
       "calibrate_precision": args.svdq_calibrate_precision,
+      "runtime_kernel": args.svdq_runtime,
     }
 
   # Quantize transformer by default if quantization is enabled
