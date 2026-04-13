@@ -524,6 +524,8 @@ Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;"
 
 At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default and experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
 
+The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off.
+
 Here are some preliminary results on the impact of different DQ smooth strategies for a SVDQ DQ sweep on FLUX.2-klein-4B. 
 
 |baseline| identity (default) | weight-only heuristic | weight_inv heuristic |
