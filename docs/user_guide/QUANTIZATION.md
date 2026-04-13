@@ -521,7 +521,11 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
 
 # high-rank are recommended for better precision while using SVDQ DQ, e.g, 256.
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
-  --svdq-smooth-strategy weight_inv --svdq-calibrate-precision low
+  --svdq-smooth-strategy identity --svdq-calibrate-precision low
+
+# higher SVD decomposition precision can be helpful for better DQ accuracy.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
+  --svdq-smooth-strategy identity --svdq-calibrate-precision medium
 ```
 
 Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint.
