@@ -8,8 +8,8 @@ try:
 except ImportError:
   fused_merge_attn_states = None
 
-from ._modeling_parallel import _ContextParallelConfig
 from ._distributed_primitives import _RingP2PComm
+from ._modeling_parallel import _ContextParallelConfig
 
 __all__ = ["RingAttention"]
 

@@ -1,8 +1,8 @@
 from typing import Optional
 import torch
 
-from ._distributed_primitives import _All2AllComm
 from ._templated_ring import RingAttention
+from ._distributed_primitives import _All2AllComm
 from ._modeling_parallel import _ContextParallelConfig
 
 __all__ = ["USPAttention"]
