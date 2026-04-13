@@ -271,7 +271,6 @@ class QuantizeConfig:
           self.svdq_kwargs["smooth_strategy"] = requested_smooth_strategy
         else:
           self.svdq_kwargs["smooth_strategy"] = "identity"
-        self.svdq_kwargs["calibrate_precision"] = "low"
       else:
         if self.svdq_kwargs["smooth_strategy"] != "activation":
           raise ValueError(

@@ -527,8 +527,6 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   device = torch.device(device or linear.weight.device)
   torch_dtype = _normalize_dtype(torch_dtype, device)
   quant_mode = _resolve_svdq_quant_mode(quant_type)
-  if quant_mode == "dq":
-    calibrate_precision = "low"
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
   validate_svdq_linear_geometry(linear.in_features,

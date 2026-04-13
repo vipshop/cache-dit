@@ -16,8 +16,8 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_weight_only</span>|quantize <span style="color:green;">only weights</span> to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
-|<span style="color:#c77dff;">svdq_int4_r{rank}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span>. The current zero-calibration DQ contract fixes the smooth factor to 1 and runs fully in memory; user-facing generate examples and shortcut flags currently focus on <span style="color:#c77dff;">r32</span> and <span style="color:#c77dff;">r128</span>.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
-|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training SVDQuant (W4A4) with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
+|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
+|<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
 
 
 ## FP8 Quantization
@@ -509,15 +509,15 @@ The same workflow is available from the generate CLI through <span style="color:
 ```bash
 # default: identity smooth strategy
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy identity
+  --svdq-smooth-strategy identity --svdq-calibrate-precision low
 
 # experimental: weight-only heuristic
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy weight
+  --svdq-smooth-strategy weight --svdq-calibrate-precision low
 
 # experimental: bias the trade-off toward easier activation quantization
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy weight_inv
+  --svdq-smooth-strategy weight_inv --svdq-calibrate-precision low
 ```
 
 Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint.

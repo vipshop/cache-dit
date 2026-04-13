@@ -217,8 +217,14 @@ def test_svdq_dq_config_validation_accepts_dynamic_without_ptq_args() -> None:
   assert config.is_svdq_dq()
   assert not config.is_svdq_ptq()
   assert config.get_svdq_rank() == 32
-  assert config.get_svdq_kwargs()["calibrate_precision"] == "low"
+  assert config.get_svdq_kwargs()["calibrate_precision"] == "high"
   assert config.get_svdq_kwargs()["smooth_strategy"] == "identity"
+
+
+def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None:
+  config = QuantizeConfig(quant_type="svdq_int4_r32_dq")
+
+  assert config.get_svdq_kwargs()["calibrate_precision"] == "low"
 
 
 def test_svdq_dq_config_validation_accepts_explicit_identity_smooth_strategy() -> None:
@@ -301,6 +307,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.quantize
   assert args.quantize_type == "svdq_int4_r32_dq"
   assert args.svdq_smooth_strategy == "identity"
+  assert args.svdq_calibrate_precision == "low"
 
   args = maybe_postprocess_args(parser.parse_args(["--svdq-int4-r128-dq"]))
   assert args.quantize
@@ -328,10 +335,13 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "svdq_int4_r32_dq",
       "--svdq-smooth-strategy",
       "weight_inv",
+      "--svdq-calib",
+      "high",
     ]))
   assert args.quantize
   assert args.quantize_type == "svdq_int4_r32_dq"
   assert args.svdq_smooth_strategy == "weight_inv"
+  assert args.svdq_calibrate_precision == "high"
 
 
 def test_svdq_dq_cli_smooth_strategy_is_applied_during_transformer_quantization() -> None:
@@ -355,6 +365,7 @@ def test_svdq_dq_cli_smooth_strategy_is_applied_during_transformer_quantization(
   holder = SimpleNamespace(transformer=model)
   maybe_quantize_transformer(args, holder)
 
+  assert holder.transformer._svdq_kwargs["calibrate_precision"] == "low"
   _assert_weight_smooth_factor(holder.transformer.block.to_q)
   _assert_weight_smooth_factor(holder.transformer.block.to_k)
   _assert_weight_smooth_factor(holder.transformer.block.to_v)
@@ -377,11 +388,14 @@ def test_svdq_dq_cli_weight_inv_strategy_is_applied_during_transformer_quantizat
       "svdq_int4_r32_dq",
       "--svdq-smooth-strategy",
       "weight_inv",
+      "--svdq-calibrate-precision",
+      "medium",
     ]))
 
   holder = SimpleNamespace(transformer=model)
   maybe_quantize_transformer(args, holder)
 
+  assert holder.transformer._svdq_kwargs["calibrate_precision"] == "medium"
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_q)
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_k)
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_v)

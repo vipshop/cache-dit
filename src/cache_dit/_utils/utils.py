@@ -342,7 +342,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "int8_weight_only",
       "int4_weight_only",
       "svdq_int4_r32_dq",
+      "svdq_int4_r64_dq",
       "svdq_int4_r128_dq",
+      "svdq_int4_r256_dq",
       "bitsandbytes_4bit",
     ],
   )
@@ -424,15 +426,31 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--svdq-int4-r32-dq",
+    "--svdq-r32",
     action="store_true",
     default=False,
     help="Enable SVDQ INT4 dynamic quantization with rank 32 for transformer",
   )
   parser.add_argument(
+    "--svdq-int4-r64-dq",
+    "--svdq-r64",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ INT4 dynamic quantization with rank 64 for transformer",
+  )
+  parser.add_argument(
     "--svdq-int4-r128-dq",
+    "--svdq-r128",
     action="store_true",
     default=False,
     help="Enable SVDQ INT4 dynamic quantization with rank 128 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-int4-r256-dq",
+    "--svdq-r256",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ INT4 dynamic quantization with rank 256 for transformer",
   )
   # quantization for extra modules: text encoder, vae, controlnet, etc.
   parser.add_argument(
@@ -494,10 +512,19 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--svdq-smooth-strategy",
+    "--svdq-smooth",
     type=str,
     default="identity",
     choices=["identity", "weight", "weight_inv"],
     help="Smooth strategy for SVDQ DQ quantization. Default: identity.",
+  )
+  parser.add_argument(
+    "--svdq-calibrate-precision",
+    "--svdq-calib",
+    type=str,
+    default="low",
+    choices=["low", "medium", "high"],
+    help="Calibration / decomposition precision for SVDQ quantization. Default: low.",
   )
   # Parallelism settings
   parser.add_argument(
@@ -803,8 +830,12 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     args.quantize_type = "int4_weight_only"
   elif args.svdq_int4_r32_dq:
     args.quantize_type = "svdq_int4_r32_dq"
+  elif args.svdq_int4_r64_dq:
+    args.quantize_type = "svdq_int4_r64_dq"
   elif args.svdq_int4_r128_dq:
     args.quantize_type = "svdq_int4_r128_dq"
+  elif args.svdq_int4_r256_dq:
+    args.quantize_type = "svdq_int4_r256_dq"
 
   if args.quantize_type is not None:
     args.quantize = True
@@ -1171,7 +1202,10 @@ def maybe_quantize_transformer(
   def _resolve_cli_svdq_kwargs() -> Optional[Dict[str, str]]:
     if args.quantize_type is None or not args.quantize_type.startswith("svdq"):
       return None
-    return {"smooth_strategy": args.svdq_smooth_strategy}
+    return {
+      "smooth_strategy": args.svdq_smooth_strategy,
+      "calibrate_precision": args.svdq_calibrate_precision,
+    }
 
   # Quantize transformer by default if quantization is enabled
   if args.quantize:
