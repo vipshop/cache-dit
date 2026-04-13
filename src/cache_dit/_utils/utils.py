@@ -341,6 +341,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "int8_per_tensor",
       "int8_weight_only",
       "int4_weight_only",
+      "svdq_int4_r32_dq",
+      "svdq_int4_r128_dq",
       "bitsandbytes_4bit",
     ],
   )
@@ -420,6 +422,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=False,
     help="Enable int4 weight-only quantization for transformer",
   )
+  parser.add_argument(
+    "--svdq-int4-r32-dq",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ INT4 dynamic quantization with rank 32 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-int4-r128-dq",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ INT4 dynamic quantization with rank 128 for transformer",
+  )
   # quantization for extra modules: text encoder, vae, controlnet, etc.
   parser.add_argument(
     "--quantize-text-encoder",
@@ -477,6 +491,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Print the verbose logs of the quantization process",
+  )
+  parser.add_argument(
+    "--svdq-smooth-strategy",
+    type=str,
+    default="identity",
+    choices=["identity", "weight", "weight_inv"],
+    help="Smooth strategy for SVDQ DQ quantization. Default: identity.",
   )
   # Parallelism settings
   parser.add_argument(
@@ -780,6 +801,10 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     args.quantize_type = "int8_weight_only"
   elif args.int4_weight_only:
     args.quantize_type = "int4_weight_only"
+  elif args.svdq_int4_r32_dq:
+    args.quantize_type = "svdq_int4_r32_dq"
+  elif args.svdq_int4_r128_dq:
+    args.quantize_type = "svdq_int4_r128_dq"
 
   if args.quantize_type is not None:
     args.quantize = True
@@ -1142,6 +1167,12 @@ def maybe_quantize_transformer(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
+
+  def _resolve_cli_svdq_kwargs() -> Optional[Dict[str, str]]:
+    if args.quantize_type is None or not args.quantize_type.startswith("svdq"):
+      return None
+    return {"smooth_strategy": args.svdq_smooth_strategy}
+
   # Quantize transformer by default if quantization is enabled
   if args.quantize:
     if args.compile and args.cuda_graph and args.quantize_type == "float8_per_row":
@@ -1166,6 +1197,9 @@ def maybe_quantize_transformer(
       if transformer is not None:
         transformer_cls_name = transformer.__class__.__name__
         if isinstance(transformer, torch.nn.Module):
+          if args.quantize_type is not None and args.quantize_type.startswith("svdq"):
+            _, device = get_rank_device()
+            transformer = transformer.to(device)
           logger.info(f"Quantizing transformer module: {transformer_cls_name} to"
                       f" {args.quantize_type} ...")
           transformer = quantize(
@@ -1174,6 +1208,7 @@ def maybe_quantize_transformer(
               quant_type=args.quantize_type,
               regional_quantize=not args.disable_regional_quantize,
               per_tensor_fallback=not args.disable_per_tensor_fallback,
+              svdq_kwargs=_resolve_cli_svdq_kwargs(),
               verbose=args.quantize_verbose,
             ),
           )
@@ -1190,6 +1225,9 @@ def maybe_quantize_transformer(
       if transformer_2 is not None:
         transformer_2_cls_name = transformer_2.__class__.__name__
         if isinstance(transformer_2, torch.nn.Module):
+          if args.quantize_type is not None and args.quantize_type.startswith("svdq"):
+            _, device = get_rank_device()
+            transformer_2 = transformer_2.to(device)
           logger.info(f"Quantizing transformer_2 module: {transformer_2_cls_name} to"
                       f" {args.quantize_type} ...")
           transformer_2 = quantize(
@@ -1198,6 +1236,7 @@ def maybe_quantize_transformer(
               quant_type=args.quantize_type,
               regional_quantize=not args.disable_regional_quantize,
               per_tensor_fallback=not args.disable_per_tensor_fallback,
+              svdq_kwargs=_resolve_cli_svdq_kwargs(),
               verbose=args.quantize_verbose,
             ),
           )

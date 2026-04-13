@@ -197,6 +197,10 @@ class SVDQPTQContext:
       return str(self.repeated_blocks)
     return self.root_module.__class__.__name__
 
+  @property
+  def workflow_name(self) -> str:
+    return "SVDQ DQ" if self.quantize_config.is_svdq_dq() else "SVDQ PTQ"
+
   @classmethod
   def from_config(cls, root_module: nn.Module, quantize_config: QuantizeConfig) -> "SVDQPTQContext":
     """Resolve a PTQ execution context from a root module and config.
@@ -305,24 +309,29 @@ class SVDQPTQContext:
   def quantize_summary_lines(
     self,
     *,
-    observed_layer_names: list[str],
+    observed_layer_names: list[str] | None,
     quantized_layer_names: list[str],
-    serialize_to: str,
+    serialize_to: str | None,
   ) -> list[str]:
     skipped_total = max(len(self.linear_layer_names) - len(quantized_layer_names), 0)
     lines = [
-      f"SVDQ PTQ         Region: {self.quantized_region}",
-      f"SVDQ PTQ     Quant Type: {self.quantize_config.quant_type}",
-      f"SVDQ PTQ           Rank: {self.rank}",
-      f"Observed  Linear Layers: {len(observed_layer_names)} / {len(self.candidate_layer_names)}",
-      f"Quantized Linear Layers: {len(quantized_layer_names)} / {len(self.candidate_layer_names)}",
-      f"Skipped   Linear Layers: {skipped_total}",
-      f"Linear           Layers: {len(self.linear_layer_names)}",
+      f"SVDQuant    Region: {self.quantized_region}",
+      f"SVDQuant      Type: {self.quantize_config.quant_type}",  # dq or no-dq
+      f"SVDQuant      Rank: {self.rank}",
+      f"Quantized   Layers: {len(quantized_layer_names)} / {len(self.candidate_layer_names)}",
+      f"Skipped     Layers: {skipped_total}",
+      f"Linear      Layers: {len(self.linear_layer_names)}",
     ]
+    if observed_layer_names is not None:
+      lines.insert(
+        3,
+        f"Observed  Layers: {len(observed_layer_names)} / {len(self.candidate_layer_names)}",
+      )
     if self.verbose:
-      lines.append(f"SVDQ             Kwargs: {self.svdq_kwargs}")
-      lines.append(f"Skipped        Patterns: {self.exclude_layers}")
-      lines.append(f"Checkpoint         Path: {serialize_to}")
+      lines.append(f"SVDQuant    Kwargs: {self.svdq_kwargs}")
+      lines.append(f"Skipped   Patterns: {self.exclude_layers}")
+      if serialize_to is not None:
+        lines.append(f"Checkpoint      Path: {serialize_to}")
     return lines
 
 
@@ -641,8 +650,8 @@ def _log_quantize_summary(
   context: SVDQPTQContext,
   *,
   quantized_layer_names: list[str],
-  serialize_to: str,
-  observed_layer_names: list[str],
+  serialize_to: str | None,
+  observed_layer_names: list[str] | None,
 ) -> None:
   _log_boxed_summary(
     context.quantize_summary_lines(
@@ -674,6 +683,47 @@ def _log_load_summary(
     lines.append(f"Loaded           Layers: {loaded_layer_names}")
     lines.append(f"Checkpoint         Path: {checkpoint_path}")
   _log_boxed_summary(lines)
+
+
+def _quantize_context_layers(
+  module: nn.Module,
+  context: SVDQPTQContext,
+  *,
+  quantize_device: torch.device,
+  activation_spans: dict[str, torch.Tensor] | None = None,
+) -> tuple[nn.Module, list[str]]:
+  quantized_layer_names: list[str] = []
+  for layer_name in context.candidate_layer_names:
+    activation_span = None if activation_spans is None else activation_spans.get(layer_name)
+    if activation_spans is not None and activation_span is None:
+      context._record_skip(layer_name, "not observed during calibration")
+      continue
+
+    float_module = _get_named_submodule(module, layer_name)
+    if not isinstance(float_module, nn.Linear):
+      raise TypeError(
+        f"Expected nn.Linear at {layer_name or _ROOT_LAYER_NAME}, got {type(float_module)}.")
+
+    quantized_module = _quantize_linear_svdq_w4a4_from_activation_span(
+      float_module,
+      activation_span,
+      quant_type=context.quantize_config.quant_type,
+      rank=context.rank,
+      smooth_strategy=context.svdq_kwargs["smooth_strategy"],
+      precision=context.precision,
+      torch_dtype=float_module.weight.dtype,
+      device=quantize_device,
+      calibrate_precision=context.svdq_kwargs["calibrate_precision"],
+    )
+
+    if layer_name == "":
+      module = quantized_module
+    else:
+      parent, child_name = _get_parent_and_child(module, layer_name)
+      setattr(parent, child_name, quantized_module)
+    quantized_layer_names.append(layer_name)
+
+  return module, quantized_layer_names
 
 
 def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
@@ -718,34 +768,12 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     calibrator.remove()
     module.train(was_training)
 
-  quantized_layer_names: list[str] = []
-  for layer_name in context.candidate_layer_names:
-    activation_span = calibrator.activation_spans.get(layer_name)
-    if activation_span is None:
-      context._record_skip(layer_name, "not observed during calibration")
-      continue
-
-    float_module = _get_named_submodule(module, layer_name)
-    if not isinstance(float_module, nn.Linear):
-      raise TypeError(
-        f"Expected nn.Linear at {layer_name or _ROOT_LAYER_NAME}, got {type(float_module)}.")
-
-    quantized_module = _quantize_linear_svdq_w4a4_from_activation_span(
-      float_module,
-      activation_span,
-      rank=context.rank,
-      precision=context.precision,
-      torch_dtype=float_module.weight.dtype,
-      device=quantize_device,
-      calibrate_precision=context.svdq_kwargs["calibrate_precision"],
-    )
-
-    if layer_name == "":
-      module = quantized_module
-    else:
-      parent, child_name = _get_parent_and_child(module, layer_name)
-      setattr(parent, child_name, quantized_module)
-    quantized_layer_names.append(layer_name)
+  module, quantized_layer_names = _quantize_context_layers(
+    module,
+    context,
+    quantize_device=quantize_device,
+    activation_spans=calibrator.activation_spans,
+  )
 
   if not quantized_layer_names:
     raise RuntimeError("SVDQ PTQ completed calibration but no layers were quantized. "
@@ -788,6 +816,67 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     quantized_layer_names=quantized_layer_names,
     serialize_to=quantize_config.serialize_to,
     observed_layer_names=sorted(calibrator.activation_spans),
+  )
+  return module
+
+
+def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
+  """Run in-memory SVDQ dynamic quantization over a module in place.
+
+  :param module: Root module containing the float `nn.Linear` layers to quantize.
+  :param quantize_config: SVDQ `QuantizeConfig` describing the dynamic quantization
+    scope and rank.
+
+  :returns: The input module with eligible `nn.Linear` submodules replaced by
+    `SVDQW4A4Linear` instances. The return value may be a new module only when
+    the root module itself is quantized.
+  """
+
+  if not isinstance(module, nn.Module):
+    raise TypeError(f"Expected nn.Module, got {type(module)}.")
+  if not quantize_config.is_svdq_dq():
+    raise ValueError("quantize_svdq_dq only supports SVDQ dynamic quant types ending with '_dq', "
+                     f"got {quantize_config.quant_type}.")
+  if check_quantized(module):
+    logger.warning(
+      "Module %s is already quantized, skipping SVDQ dynamic quantization.",
+      module.__class__.__name__,
+    )
+    return module
+
+  context = SVDQPTQContext.from_config(module, quantize_config)
+  quantize_device = _infer_module_execution_device(module)
+
+  was_training = module.training
+  module.eval()
+  try:
+    module, quantized_layer_names = _quantize_context_layers(
+      module,
+      context,
+      quantize_device=quantize_device,
+      activation_spans=None,
+    )
+  finally:
+    module.train(was_training)
+
+  if not quantized_layer_names:
+    raise RuntimeError("SVDQ dynamic quantization found no layers to quantize. "
+                       f"Skipped layers: {context.skipped_reasons}.")
+
+  _attach_quantization_metadata(
+    module,
+    quant_type=quantize_config.quant_type,
+    quantized_layer_names=quantized_layer_names,
+    exclude_layers=context.exclude_layers,
+    svdq_kwargs=context.svdq_kwargs,
+    checkpoint_path=None,
+    quantize_config=quantize_config,
+  )
+  _log_quantize_summary(
+    context,
+    quantized_layer_names=quantized_layer_names,
+    serialize_to=None,
+    observed_layer_names=None,
   )
   return module
 
@@ -898,4 +987,4 @@ def load_svdq(
   return module
 
 
-__all__ = ["load_svdq", "quantize_svdq_ptq", "SVDQPTQCalibrator"]
+__all__ = ["load_svdq", "quantize_svdq_dq", "quantize_svdq_ptq", "SVDQPTQCalibrator"]

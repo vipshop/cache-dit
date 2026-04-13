@@ -40,6 +40,7 @@ _DEFAULT_SVDQ_KWARGS = {
   "calibrate_precision": "low",
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
+  "smooth_strategy": "activation",
 }
 _FLUX2_NUM_INFERENCE_STEPS = 4
 _FLUX2_VISUAL_SAMPLE_COUNT = 3
@@ -1416,6 +1417,14 @@ def test_svdq_ptq_config_validation_rejects_invalid_combinations(tmp_path: Path)
       calibrate_fn=lambda **_: None,
       serialize_to=str(tmp_path / "bad_calibrate_precision_value"),
       svdq_kwargs={"calibrate_precision": "ultra"},
+    )
+
+  with pytest.raises(ValueError, match="smooth_strategy"):
+    QuantizeConfig(
+      quant_type="svdq_int4_r32",
+      calibrate_fn=lambda **_: None,
+      serialize_to=str(tmp_path / "bad_smooth_strategy"),
+      svdq_kwargs={"smooth_strategy": "identity"},
     )
 
   with pytest.raises(ValueError, match="Unsupported SVDQ PTQ kwargs"):

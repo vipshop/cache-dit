@@ -7,8 +7,9 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
-_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)$")
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
+_SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv")
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
   # which means it will quantize the model using the calibration samples one by one, and
@@ -37,15 +38,19 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # limit on the total size of the activation buffers, and they will only be flushed based
   # on the number of samples specified by activation_buffer_flush_sample_count.
   "activation_buffer_flush_cpu_bytes": None,
+  # Smooth-factor strategy used by SVDQ quantization. PTQ currently supports
+  # activation-derived smoothing only, while DQ intentionally fixes this to the
+  # identity vector to preserve the v1 zero-calibration contract.
+  "smooth_strategy": "activation",
 }
 
 
-def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int]:
+def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
   match = _SVDQ_QUANT_TYPE_PATTERN.fullmatch(quant_type)
   if match is None:
-    raise ValueError("SVDQ PTQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
-                     f"got {quant_type!r}.")
-  return match.group(1), int(match.group(2))
+    raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}` or "
+                     f"`svdq_int4_r{{rank}}_dq`, got {quant_type!r}.")
+  return match.group(1), int(match.group(2)), match.group(3) == "_dq"
 
 
 def _resolve_svdq_bool_kwarg(key: str, value: Any) -> bool:
@@ -61,6 +66,16 @@ def _resolve_svdq_calibrate_precision(key: str, value: Any) -> str:
   if normalized not in _SVDQ_CALIBRATE_PRECISIONS:
     raise ValueError(
       f"svdq_kwargs[{key!r}] must be one of {_SVDQ_CALIBRATE_PRECISIONS}, got {value!r}.")
+  return normalized
+
+
+def _resolve_svdq_smooth_strategy(key: str, value: Any) -> str:
+  if not isinstance(value, str):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
+  normalized = value.lower()
+  if normalized not in _SVDQ_SMOOTH_STRATEGIES:
+    raise ValueError(
+      f"svdq_kwargs[{key!r}] must be one of {_SVDQ_SMOOTH_STRATEGIES}, got {value!r}.")
   return normalized
 
 
@@ -91,6 +106,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "calibrate_precision": _resolve_svdq_calibrate_precision,
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,
+    "smooth_strategy": _resolve_svdq_smooth_strategy,
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
@@ -102,9 +118,9 @@ class QuantizeConfig:
   """Unified quantization configuration for cache-dit workflows.
 
   `QuantizeConfig` is the user-facing control surface for both TorchAO-backed online quantization
-  flows and cache-dit's native SVDQ PTQ workflow. The top-level fields describe what to quantize,
+  flows and cache-dit's native SVDQ workflows. The top-level fields describe what to quantize,
   which backend to use, and how to scope quantization across components or repeated transformer
-  blocks, while `svdq_kwargs` contains backend-specific controls for the SVDQ PTQ path.
+  blocks, while `svdq_kwargs` contains backend-specific controls for the SVDQ path.
   """
 
   # Quantization backend, only "ao" (torchao) is supported for now, more backends
@@ -216,6 +232,8 @@ class QuantizeConfig:
   verbose: bool = False
 
   def __post_init__(self):
+    raw_svdq_kwargs = dict(self.svdq_kwargs) if isinstance(self.svdq_kwargs,
+                                                           dict) else self.svdq_kwargs
     if isinstance(self.quant_type, str):
       self.quant_type = self.quant_type.lower()
     # Resolve backend if it's in string format, and validate the backend.
@@ -232,31 +250,51 @@ class QuantizeConfig:
     # Validate SVDQuant PTQ workflow configuration
     if self.is_svdq():
       _parse_svdq_quant_type(self.quant_type)
-      if self.calibrate_fn is None:
-        raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
-      if self.serialize_to is None:
-        raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
       if self.components_to_quantize is not None:
         raise ValueError("components_to_quantize is not supported for SVDQuant PTQ yet.")
       if self.precision_plan is not None:
         raise ValueError("precision_plan is not supported for SVDQuant PTQ yet.")
       if self.per_tensor_fallback is not True:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
-      normalized_filename = f"{self.quant_type}.safetensors"
-      if self.serialize_to.endswith(".safetensors"):
-        if os.path.basename(self.serialize_to) != normalized_filename:
-          raise ValueError("serialize_to must be a directory path for SVDQuant PTQ, or an already "
-                           f"normalized file path ending with {normalized_filename!r}.")
-        serialize_dir = os.path.dirname(self.serialize_to)
-        if not serialize_dir:
-          raise ValueError("serialize_to must include a parent directory.")
-        os.makedirs(serialize_dir, exist_ok=True)
-      else:
-        os.makedirs(self.serialize_to, exist_ok=True)
-        if not os.path.isdir(self.serialize_to):
-          raise ValueError(f"serialize_to should be a directory path, got {self.serialize_to}.")
-        self.serialize_to = os.path.join(self.serialize_to, normalized_filename)
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
+      if self.is_svdq_dq():
+        if self.calibrate_fn is not None:
+          raise ValueError("calibrate_fn is not supported for SVDQuant dynamic quantization.")
+        if self.serialize_to is not None:
+          raise ValueError("serialize_to is not supported for SVDQuant dynamic quantization.")
+        if isinstance(raw_svdq_kwargs, dict) and "smooth_strategy" in raw_svdq_kwargs:
+          requested_smooth_strategy = str(raw_svdq_kwargs["smooth_strategy"]).lower()
+          if requested_smooth_strategy not in {"identity", "weight", "weight_inv"}:
+            raise ValueError(
+              "SVDQuant dynamic quantization currently only supports "
+              "svdq_kwargs['smooth_strategy'] in {'identity', 'weight', 'weight_inv'}.")
+          self.svdq_kwargs["smooth_strategy"] = requested_smooth_strategy
+        else:
+          self.svdq_kwargs["smooth_strategy"] = "identity"
+        self.svdq_kwargs["calibrate_precision"] = "low"
+      else:
+        if self.svdq_kwargs["smooth_strategy"] != "activation":
+          raise ValueError(
+            "SVDQuant PTQ currently only supports svdq_kwargs['smooth_strategy'] = 'activation'.")
+        if self.calibrate_fn is None:
+          raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
+        if self.serialize_to is None:
+          raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
+        normalized_filename = f"{self.quant_type}.safetensors"
+        if self.serialize_to.endswith(".safetensors"):
+          if os.path.basename(self.serialize_to) != normalized_filename:
+            raise ValueError(
+              "serialize_to must be a directory path for SVDQuant PTQ, or an already "
+              f"normalized file path ending with {normalized_filename!r}.")
+          serialize_dir = os.path.dirname(self.serialize_to)
+          if not serialize_dir:
+            raise ValueError("serialize_to must include a parent directory.")
+          os.makedirs(serialize_dir, exist_ok=True)
+        else:
+          os.makedirs(self.serialize_to, exist_ok=True)
+          if not os.path.isdir(self.serialize_to):
+            raise ValueError(f"serialize_to should be a directory path, got {self.serialize_to}.")
+          self.serialize_to = os.path.join(self.serialize_to, normalized_filename)
     elif self.svdq_kwargs is not None:
       raise ValueError("svdq_kwargs is only valid when quant_type starts with 'svdq'.")
 
@@ -269,20 +307,39 @@ class QuantizeConfig:
     return dataclasses.asdict(self)
 
   def is_svdq(self) -> bool:
-    """Return whether this config targets cache-dit's SVDQ PTQ workflow.
+    """Return whether this config targets cache-dit's SVDQ workflow.
 
     :returns: `True` when `quant_type` selects an `svdq_*` workflow.
     """
 
     return isinstance(self.quant_type, str) and self.quant_type.startswith("svdq")
 
+  def is_svdq_dq(self) -> bool:
+    """Return whether this config targets SVDQ dynamic quantization.
+
+    :returns: `True` when `quant_type` selects an `svdq_*_dq` workflow.
+    """
+
+    if not self.is_svdq():
+      return False
+    _, _, is_dynamic = _parse_svdq_quant_type(self.quant_type)
+    return is_dynamic
+
+  def is_svdq_ptq(self) -> bool:
+    """Return whether this config targets SVDQ PTQ.
+
+    :returns: `True` when `quant_type` selects an SVDQ PTQ workflow.
+    """
+
+    return self.is_svdq() and not self.is_svdq_dq()
+
   def get_svdq_rank(self) -> int:
-    """Extract the low-rank value encoded in an `svdq_int4_r{rank}` quant type.
+    """Extract the low-rank value encoded in an SVDQ quant type.
 
     :returns: The low-rank value encoded in `quant_type`.
     """
 
-    _, rank = _parse_svdq_quant_type(self.quant_type)
+    _, rank, _ = _parse_svdq_quant_type(self.quant_type)
     return rank
 
   def get_svdq_kwargs(self) -> Dict[str, Any]:
@@ -315,13 +372,21 @@ class QuantizeConfig:
     :returns: A compact summary string suitable for logs and artifact names.
     """
 
+    def _stringify_quant_type(quant_type: str) -> str:
+      quant_type = quant_type.lower()
+      if quant_type.startswith("svdq") and quant_type.endswith("_dq"):
+        smooth_strategy = self.get_svdq_kwargs().get("smooth_strategy", "identity")
+        if smooth_strategy != "identity":
+          return f"{quant_type}_{smooth_strategy}"
+      return quant_type
+
     if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):
-      return f"{self.quant_type.lower()}"
+      return _stringify_quant_type(self.quant_type)
     else:
       quant_str = ""
       if isinstance(self.components_to_quantize, dict):
         for component, d in self.components_to_quantize.items():
-          quant_str += f"<{component}:{d.get('quant_type', self.quant_type)}>"
+          quant_str += f"<{component}:{_stringify_quant_type(d.get('quant_type', self.quant_type))}>"
       return quant_str
 
   def component_quant_types(self) -> Dict[str, str]:

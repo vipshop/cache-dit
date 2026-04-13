@@ -47,9 +47,13 @@ def quantize(
 
     module = quantize_ao(module, quantize_config, **kwargs)
   elif quantize_config.backend == QuantizeBackend.CACHE_DIT:
+    from .svdquant.ptq import quantize_svdq_dq
     from .svdquant.ptq import quantize_svdq_ptq
 
-    module = quantize_svdq_ptq(module, quantize_config)
+    if quantize_config.is_svdq_dq():
+      module = quantize_svdq_dq(module, quantize_config)
+    else:
+      module = quantize_svdq_ptq(module, quantize_config)
   else:
     raise ValueError(f"backend: {quantize_config.backend} is not supported now!")
 
@@ -70,6 +74,8 @@ def load(
   """
 
   if isinstance(quantize_config_or_path, QuantizeConfig):
+    if quantize_config_or_path.is_svdq_dq():
+      raise ValueError("SVDQ dynamic quantization does not support load().")
     backend = quantize_config_or_path.backend
   elif isinstance(quantize_config_or_path, str):
     backend = QuantizeBackend.CACHE_DIT

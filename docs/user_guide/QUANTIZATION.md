@@ -16,7 +16,8 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_weight_only</span>|quantize <span style="color:green;">only weights</span> to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
-|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant (W4A4)</span> method, which can provide better precision for INT4 quantization. The low-rank value can be 16, 32, 64, 128, etc.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
+|<span style="color:#c77dff;">svdq_int4_r{rank}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span>. The current zero-calibration DQ contract fixes the smooth factor to 1 and runs fully in memory; user-facing generate examples and shortcut flags currently focus on <span style="color:#c77dff;">r32</span> and <span style="color:#c77dff;">r128</span>.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
+|<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training SVDQuant (W4A4) with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
 
 
 ## FP8 Quantization
@@ -417,3 +418,116 @@ pipe = QwenImagePipeline.from_pretrained(
 cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 ```
 </details>
+
+
+## SVDQuant (W4A4) DQ
+
+Cache-DiT also supports <span style="color:#c77dff;">SVDQ dynamic quantization</span> through quant types ending with <span style="color:green;">_dq</span>, such as <span style="color:#c77dff;">svdq_int4_r32_dq</span> and <span style="color:#c77dff;">svdq_int4_r128_dq</span>. By default, this workflow keeps the low-rank SVD branch and, by default, fixes the smooth factor to 1, so users do not need to provide a calibration callback or a serialization directory.
+
+Under the hood, cache-dit now treats this as an explicit backend-local smooth-strategy choice: DQ uses the identity smooth vector by default, while PTQ continues to use activation-derived smoothing. The public DQ behavior does not change, but this separation makes it easier to add future opt-in smooth strategies without redefining the meaning of existing `_dq` quant types.
+
+The default DQ usage keeps the identity smooth vector and does not require any extra `svdq_kwargs`:
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
+# 0. use 'enable_cache' API with the default identity-smooth DQ.
+cache_dit.enable_cache(
+  pipe,
+  quantize_config=QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+  ),
+)
+
+# 1. or directly call the `quantize` API for more fine-grained control.
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+  ),
+)
+```
+
+The avaliable DQ smooth strategies are not limited to the identity smooth vector. We have also implemented some experimental heuristics that derive non-trivial smooth factors from weight statistics alone, without any activation calibration. These heuristics are inspired by the mathematical form of the PTQ smooth factor, but they intentionally ignore the activation term and only use weight statistics to compute the smooth factors. For example, users can set the `smooth_strategy` in `svdq_kwargs` to `weight` or `weight_inv` to enable these experimental weight-only heuristics:
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
+cache_dit.enable_cache(
+  pipe,
+  quantize_config=QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+    svdq_kwargs={"smooth_strategy": "weight"},
+  ),
+)
+```
+
+These experimental modes still avoid activation calibration, but derive non-trivial per-channel smooth factors from weight statistics alone. They are currently available as opt-in Python API settings rather than dedicated CLI shortcuts. The mathematical difference between the DQ smooth strategies is listed below.
+
+<span style="color:green;">identity</span>: use the unit smooth vector directly:    
+
+\[
+s_i = 1.
+\]
+
+This keeps the current zero-calibration DQ behavior unchanged. The low-rank decomposition is applied directly to the original weight matrix, so the entire DQ approximation is driven only by the weight tensor and the target rank.
+
+<span style="color:green;">weight</span>: replace the activation term with a constant proxy and build a purely weight-derived smooth factor. In the current implementation, if PTQ uses:  
+
+\[
+s_i = \frac{a_i^\alpha}{w_i^{1-\alpha}},
+\]
+
+then the weight-only DQ heuristic starts from:  
+
+\[
+\hat{s}_i = w_i^{-(1-\alpha)},
+\]
+
+where \(w_i\) denotes the per-input-channel weight span. Cache-DiT then stabilizes this raw heuristic by geometric-mean normalization and explicit clipping:
+
+\[
+s_i = \operatorname{clip}\!\left(\frac{\hat{s}_i}{\exp\left(\frac{1}{n}\sum_j \log \hat{s}_j\right)},\ 0.25,\ 4.0\right).
+\]
+
+Intuitively, <span style="color:#c77dff;">identity</span> does not redistribute any quantization difficulty across channels, while <span style="color:#c77dff;">weight</span> tries to equalize channels using weight statistics alone. Because it has no access to real activation outliers, it should be treated as an experimental heuristic rather than a replacement for PTQ smoothing.
+
+<span style="color:green;">weight_inv</span>: use the same weight-only proxy, but flip the exponent direction so that channels with larger weight span receive larger smooth factors:
+
+\[
+\hat{s}_i^{\mathrm{inv}} = w_i^{1-\alpha},
+\]
+
+and then apply the same geometric-mean normalization and clipping.
+
+Intuitively, <span style="color:green;">weight_inv</span> does the opposite trade-off of <span style="color:green;">weight</span>: it intentionally makes the weight tensor harder to quantize on large-span channels, but it may reduce activation quantization difficulty because those activation channels are divided by a larger smooth factor at runtime.
+
+The same workflow is available from the generate CLI through <span style="color:#c77dff;">--quantize-type</span> or shortcut flags:
+
+```bash
+# default: identity smooth strategy
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy identity
+
+# experimental: weight-only heuristic
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy weight
+
+# experimental: bias the trade-off toward easier activation quantization
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy weight_inv
+```
+
+Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint.
+
+At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default and experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
+
+Here are some preliminary results on the impact of different DQ smooth strategies for a SVDQ DQ sweep on FLUX.2-klein-4B. 
+
+|baseline| identity (default) | weight-only heuristic | weight_inv heuristic |
+| :---: | :---: | :---: | :---: |
+| 2.13s | 1.28s | 1.28s | 1.28s |
+|-| PSNR: 29.42 | PSNR: 28.88 | <span style="color:green;">PSNR: 29.71</span> |
+|![](../assets/flux2_klein_4b.1024x1024.C0.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight_inv.png)|

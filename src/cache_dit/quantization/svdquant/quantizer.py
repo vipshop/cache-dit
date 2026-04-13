@@ -22,6 +22,16 @@ __all__ = [
 ]
 
 _CALIBRATE_PRECISIONS = ("low", "medium", "high")
+_SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv")
+_WEIGHT_ONLY_SMOOTH_CLAMP_RANGE = (0.25, 4.0)
+
+
+def _resolve_svdq_quant_mode(quant_type: str | None) -> str:
+  if quant_type is None:
+    return "ptq"
+  if not isinstance(quant_type, str):
+    raise TypeError(f"quant_type must be a str or None, got {type(quant_type)}.")
+  return "dq" if quant_type.lower().endswith("_dq") else "ptq"
 
 
 def validate_svdq_linear_geometry(
@@ -138,6 +148,16 @@ def _resolve_math_dtype(torch_dtype: torch.dtype, calibrate_precision: str) -> t
   return torch_dtype if calibrate_precision == "low" else torch.float32
 
 
+def _normalize_svdq_smooth_strategy(smooth_strategy: str) -> str:
+  if not isinstance(smooth_strategy, str):
+    raise TypeError(f"smooth_strategy must be a str, got {type(smooth_strategy)}.")
+  normalized = smooth_strategy.lower()
+  if normalized not in _SVDQ_SMOOTH_STRATEGIES:
+    raise ValueError(
+      f"smooth_strategy must be one of {_SVDQ_SMOOTH_STRATEGIES}, got {smooth_strategy!r}.")
+  return normalized
+
+
 @torch.inference_mode()
 def compute_smooth_scale(
   activation_span: torch.Tensor,
@@ -163,6 +183,57 @@ def compute_smooth_scale(
   smooth_scale = activation_span.to(dtype=math_dtype).pow(alpha)
   if beta > 0:
     smooth_scale = smooth_scale.div_(weight_span.to(dtype=math_dtype).pow(beta))
+  smooth_scale = _repair_invalid_scale(smooth_scale)
+  if output_dtype is not None:
+    smooth_scale = smooth_scale.to(dtype=output_dtype)
+  return smooth_scale
+
+
+@torch.inference_mode()
+def _compute_weight_only_smooth_scale(
+  weight_span: torch.Tensor,
+  *,
+  alpha: float = 0.5,
+  inverse: bool = False,
+  math_dtype: torch.dtype = torch.float32,
+  output_dtype: torch.dtype | None = None,
+) -> torch.Tensor:
+  """Compute a purely weight-derived smooth factor for experimental DQ.
+
+  This heuristic treats the activation proxy as a constant one-vector, which reduces SVDQ smoothing
+  to a weight-only power law. The default direction (`inverse=False`) equalizes weight spans via
+  inverse scaling; the inverse direction (`inverse=True`) intentionally pushes more quantization
+  difficulty toward the weight tensor so activation channels may become easier to quantize. The
+  resulting scale is then normalized to unit geometric mean and clamped to a conservative range so
+  it remains numerically stable for the existing W4A4 runtime.
+
+  :param weight_span: Per-channel weight maxima for the source linear layer.
+  :param alpha: SmoothQuant interpolation factor in `[0, 1]`.
+  :param inverse: Whether to flip the exponent sign and bias the heuristic toward easier activation
+    quantization instead of easier weight quantization.
+  :param math_dtype: Intermediate dtype used for the scale computation.
+  :param output_dtype: Optional dtype for the returned scale tensor.
+  :returns: A 1D tensor of per-input-channel smoothing factors.
+  """
+
+  if not 0.0 <= alpha <= 1.0:
+    raise ValueError(f"alpha must be in [0, 1], got {alpha}.")
+
+  beta = 1.0 - alpha
+  if beta == 0.0:
+    smooth_scale = torch.ones_like(weight_span, dtype=math_dtype)
+  else:
+    exponent = beta if inverse else -beta
+    smooth_scale = weight_span.to(dtype=math_dtype).pow(exponent)
+  smooth_scale = _repair_invalid_scale(smooth_scale)
+
+  log_scale = smooth_scale.log()
+  geometric_mean = log_scale.mean().exp()
+  if torch.isfinite(geometric_mean) and geometric_mean > 0:
+    smooth_scale = smooth_scale.div_(geometric_mean)
+
+  clamp_min, clamp_max = _WEIGHT_ONLY_SMOOTH_CLAMP_RANGE
+  smooth_scale = smooth_scale.clamp_(min=clamp_min, max=clamp_max)
   smooth_scale = _repair_invalid_scale(smooth_scale)
   if output_dtype is not None:
     smooth_scale = smooth_scale.to(dtype=output_dtype)
@@ -315,12 +386,98 @@ def _compute_activation_span(
 
 
 @torch.inference_mode()
+def _resolve_svdq_smooth_scale(
+  weight: torch.Tensor,
+  activation_span: torch.Tensor | None,
+  *,
+  quant_mode: str,
+  smooth_strategy: str,
+  in_features: int,
+  alpha: float,
+  device: torch.device,
+  torch_dtype: torch.dtype,
+  math_dtype: torch.dtype,
+) -> torch.Tensor:
+  """Resolve the per-input-channel smoothing factor for PTQ or DQ.
+
+  DQ defaults to an identity-smooth workflow, but can also opt into experimental weight-only
+  heuristics. PTQ continues to derive a data-dependent smooth factor from activation and weight
+  spans.
+
+  :param weight: Floating-point weight matrix on the target device.
+  :param activation_span: Optional per-input-channel activation maxima.
+  :param quant_mode: Either `"ptq"` or `"dq"`.
+  :param smooth_strategy: Smoothing strategy used to derive the returned scale.
+  :param in_features: Logical input width of the source linear layer.
+  :param alpha: SmoothQuant interpolation factor.
+  :param device: Target device for the returned smooth factor.
+  :param torch_dtype: Output dtype for the returned smooth factor.
+  :param math_dtype: Intermediate dtype for span reductions and PTQ smoothing.
+  :returns: A per-input-channel smoothing factor with shape `[in_features]`.
+  """
+
+  smooth_strategy = _normalize_svdq_smooth_strategy(smooth_strategy)
+  if quant_mode == "dq" and smooth_strategy not in {"identity", "weight", "weight_inv"}:
+    raise ValueError(
+      "SVDQ DQ currently only supports smooth_strategy in {'identity', 'weight', 'weight_inv'}.")
+
+  if smooth_strategy == "identity":
+    return torch.ones(in_features, device=device, dtype=torch_dtype)
+
+  if smooth_strategy == "weight":
+    if quant_mode != "dq":
+      raise ValueError("Weight-only SVDQ smoothing is currently only supported for DQ workflows.")
+    weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
+    return _compute_weight_only_smooth_scale(
+      weight_span,
+      alpha=alpha,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    )
+
+  if smooth_strategy == "weight_inv":
+    if quant_mode != "dq":
+      raise ValueError(
+        "Weight-inverse SVDQ smoothing is currently only supported for DQ workflows.")
+    weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
+    return _compute_weight_only_smooth_scale(
+      weight_span,
+      alpha=alpha,
+      inverse=True,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    )
+
+  if quant_mode != "ptq":
+    raise ValueError(
+      "Activation-derived SVDQ smoothing is only valid for PTQ calibration workflows.")
+
+  if activation_span is None:
+    raise ValueError("activation_span must be provided for SVDQ PTQ.")
+  if activation_span.ndim != 1 or activation_span.shape[0] != in_features:
+    raise ValueError("activation_span must be a 1D tensor with length equal to linear.in_features, "
+                     f"got shape {tuple(activation_span.shape)} for in_features={in_features}.")
+
+  activation_span = activation_span.to(device=device, dtype=math_dtype)
+  weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
+  return compute_smooth_scale(
+    activation_span,
+    weight_span,
+    alpha=alpha,
+    math_dtype=math_dtype,
+    output_dtype=torch_dtype,
+  )
+
+
+@torch.inference_mode()
 def _quantize_linear_svdq_w4a4_from_activation_span(
   linear: nn.Linear,
-  activation_span: torch.Tensor,
+  activation_span: torch.Tensor | None,
   *,
+  quant_type: str | None = None,
   rank: int = 32,
   alpha: float = 0.5,
+  smooth_strategy: str = "activation",
   precision: str = "int4",
   act_unsigned: bool = False,
   torch_dtype: torch.dtype | None = None,
@@ -328,18 +485,26 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
-  """Quantize a linear layer when the activation span has already been computed.
+  """Quantize a linear layer from either PTQ activation spans or DQ mode.
 
   This is the lower-level worker behind `quantize_linear_svdq_w4a4`. It
-  assumes calibration has already been reduced to a single per-channel
-  activation span, then applies smoothing, low-rank decomposition, residual
-  scale computation, packing, and optional module instantiation.
+  supports two internal modes controlled by `quant_type`:
+
+  - PTQ: calibration has already been reduced to a single per-channel
+    activation span, then smoothing, low-rank decomposition, residual scale
+    computation, packing, and optional module instantiation are applied.
+  - DQ: smoothing defaults to `smooth_scale = 1`, but may opt into
+    experimental `weight` or `weight_inv` heuristics while still avoiding
+    activation calibration.
 
   :param linear: Source floating-point linear layer.
-  :param activation_span: Per-input-channel calibration maxima with length
-    `linear.in_features`.
+  :param activation_span: Optional per-input-channel calibration maxima with
+    length `linear.in_features`. Required for PTQ and ignored for DQ.
+  :param quant_type: Optional SVDQ quant type. When it ends with `_dq`, the
+    worker uses the dynamic quantization path without activation calibration.
   :param rank: Rank of the low-rank residual correction.
   :param alpha: SmoothQuant interpolation factor.
+  :param smooth_strategy: Smoothing strategy used for this quantization pass.
   :param precision: Target weight format.
   :param act_unsigned: Whether the runtime activation path should use unsigned INT4.
   :param torch_dtype: Floating-point dtype for scales and residual tensors.
@@ -361,6 +526,9 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
 
   device = torch.device(device or linear.weight.device)
   torch_dtype = _normalize_dtype(torch_dtype, device)
+  quant_mode = _resolve_svdq_quant_mode(quant_type)
+  if quant_mode == "dq":
+    calibrate_precision = "low"
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
   validate_svdq_linear_geometry(linear.in_features,
@@ -368,20 +536,17 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
                                 rank=rank,
                                 precision=precision)
 
-  if activation_span.ndim != 1 or activation_span.shape[0] != linear.in_features:
-    raise ValueError(
-      "activation_span must be a 1D tensor with length equal to linear.in_features, "
-      f"got shape {tuple(activation_span.shape)} for in_features={linear.in_features}.")
-
-  activation_span = activation_span.to(device=device, dtype=math_dtype)
   weight = linear.weight.detach().to(device=device, dtype=torch_dtype)
-  weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
-  smooth_scale = compute_smooth_scale(
+  smooth_scale = _resolve_svdq_smooth_scale(
+    weight,
     activation_span,
-    weight_span,
+    quant_mode=quant_mode,
+    smooth_strategy=smooth_strategy,
+    in_features=linear.in_features,
     alpha=alpha,
+    device=device,
+    torch_dtype=torch_dtype,
     math_dtype=math_dtype,
-    output_dtype=torch_dtype,
   )
 
   smoothed_weight = weight.to(dtype=math_dtype) * smooth_scale.to(dtype=math_dtype).unsqueeze(0)
