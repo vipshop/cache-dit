@@ -151,16 +151,22 @@ class SVDQW4A4Linear(nn.Module):
     )
 
   def forward(self, x: torch.Tensor, output: torch.Tensor | None = None) -> torch.Tensor:
-    """Quantize activations, run the packed W4A4 GEMM, and restore `[B, T, C]`.
+    """Quantize activations, run the packed W4A4 GEMM, and restore the input rank.
 
-    :param x: Input activations with shape `[batch, seq, in_features]`.
-    :param output: Optional destination buffer. The method accepts either the logical `[batch * seq,
-        out_features]` shape or the padded 2D shape produced by the fused activation quantizer.
-    :returns: The output activations with shape `[batch, seq, out_features]`.
+    :param x: Input activations with shape `[..., in_features]`.
+    :param output: Optional destination buffer. The method accepts either the
+      logical `[..., out_features]` shape or the padded 2D shape produced by
+      the fused activation quantizer.
+    :returns: The output activations with shape `[..., out_features]`.
     """
 
-    batch_size, seq_len, channels = x.shape
-    token_count = batch_size * seq_len
+    if x.ndim < 2:
+      raise ValueError(f"input must have shape [..., in_features], got {tuple(x.shape)}.")
+
+    *leading_shape, channels = x.shape
+    token_count = 1
+    for extent in leading_shape:
+      token_count *= extent
     x = x.reshape(token_count, channels)
     quantized_x, ascales, lora_act_out = self.quantize(x)
     use_direct_output = output is not None and output.shape == (
@@ -176,13 +182,15 @@ class SVDQW4A4Linear(nn.Module):
 
     logical_output = padded_output[:token_count]
     if output is not None and not use_direct_output:
-      if output.shape != (token_count, self.out_features):
+      expected_shape = (*leading_shape, self.out_features)
+      if output.shape != expected_shape:
         raise ValueError("output must have shape "
-                         f"({token_count}, {self.out_features}), got {tuple(output.shape)}.")
-      output.copy_(logical_output)
-      logical_output = output
+                         f"{expected_shape}, got {tuple(output.shape)}.")
+      reshaped_output = output.reshape(token_count, self.out_features)
+      reshaped_output.copy_(logical_output)
+      logical_output = reshaped_output
 
-    return logical_output.reshape(batch_size, seq_len, self.out_features)
+    return logical_output.reshape(*leading_shape, self.out_features)
 
   def quantize(self,
                x: torch.Tensor,

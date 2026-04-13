@@ -1,5 +1,6 @@
 """Cd cache-dit pytest tests/quantization/test_svdquant_imports.py -v -s."""
 
+import pytest
 import torch
 
 from cache_dit.kernels import svdq_extension_is_available
@@ -60,3 +61,51 @@ def test_svdq_w4a4_linear_rejects_unknown_runtime_kernel() -> None:
     assert "runtime_kernel" in str(exc)
   else:
     raise AssertionError("Expected unsupported runtime_kernel to raise ValueError.")
+
+
+def test_svdq_w4a4_linear_forward_accepts_2d_input(monkeypatch: pytest.MonkeyPatch, ) -> None:
+  layer = SVDQW4A4Linear(
+    in_features=128,
+    out_features=64,
+    rank=32,
+    precision="int4",
+    torch_dtype=torch.bfloat16,
+  )
+
+  def fake_quantize(x: torch.Tensor, pad_size: int = 256):
+    del pad_size
+    token_count = x.shape[0]
+    quantized_x = torch.zeros(token_count + 2, 64, dtype=torch.int8)
+    ascales = torch.ones(token_count + 2, 1, dtype=torch.bfloat16)
+    lora_act = torch.zeros(token_count + 2, layer.rank, dtype=torch.bfloat16)
+    return quantized_x, ascales, lora_act
+
+  def fake_forward_quant(
+    quantized_x: torch.Tensor,
+    ascales: torch.Tensor,
+    lora_act: torch.Tensor,
+    output: torch.Tensor | None = None,
+  ) -> torch.Tensor:
+    del ascales, lora_act
+    result = torch.arange(
+      quantized_x.shape[0] * layer.out_features,
+      dtype=torch.bfloat16,
+    ).reshape(quantized_x.shape[0], layer.out_features)
+    if output is not None:
+      output.copy_(result)
+      return output
+    return result
+
+  monkeypatch.setattr(layer, "quantize", fake_quantize)
+  monkeypatch.setattr(layer, "forward_quant", fake_forward_quant)
+
+  x = torch.randn(3, 128, dtype=torch.bfloat16)
+  output = layer(x)
+
+  assert output.shape == (3, 64)
+  torch.testing.assert_close(
+    output,
+    torch.arange(3 * 64, dtype=torch.bfloat16).reshape(3, 64),
+    rtol=0.0,
+    atol=0.0,
+  )
