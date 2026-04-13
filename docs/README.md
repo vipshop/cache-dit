@@ -91,8 +91,6 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 >>> # 2. Apply quantization with `cache_dit.quantize(...)` API.
 >>> pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config) 
 >>> output = pipe(...) # 3. Use the quantized model for inference.
->>> # 4. Or, reload the quantized model from disk for inference.
->>> pipe.transformer = cache_dit.load(pipe.transformer, ...)
 ```
 
 For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
