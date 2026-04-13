@@ -529,5 +529,5 @@ Here are some preliminary results on the impact of different DQ smooth strategie
 |baseline| identity (default) | weight-only heuristic | weight_inv heuristic |
 | :---: | :---: | :---: | :---: |
 | 2.13s | 1.28s | 1.28s | 1.28s |
-|-| PSNR: 29.42 | PSNR: 28.88 | <span style="color:green;">PSNR: 29.71</span> |
+|-| PSNR: 28.71 | PSNR: 29.62 | PSNR: 29.35 |
 |![](../assets/flux2_klein_4b.1024x1024.C0.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight_inv.png)|
