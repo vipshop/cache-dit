@@ -38,36 +38,36 @@ qwenimage_adapter = _safe_import(".adapters", "qwenimage_adapter")
 
 ## Context Parallelism
 
-In order to support <span style="color:#c77dff;">context parallelism</span> for new model, we have to register it's ContextParallelismPlanner at [context_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/context_parallelism) and use `_safe_import` func to import it at [cp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/context_parallelism/cp_planners.py). For example:
+In order to support <span style="color:#c77dff;">context parallelism</span> for new model, we have to register it's ContextParallelismPlanner at [context_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers) and use `_safe_import` func to import it at [cp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/planners.py). For example:
 
 - step 1: Implement the `FluxContextParallelismPlanner`
- at FLUX.1 CP planner at [cp_plan_flux.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/context_parallelism/cp_plan_flux.py)
-- step 2: use `_safe_import` func to import it at [cp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/context_parallelism/cp_planners.py).
+ at FLUX.1 CP planner at [flux.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/flux.py)
+- step 2: use `_safe_import` func to import it at [planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/planners.py).
 
 ## Tensor Parallelism
 
-In order to support <span style="color:#c77dff;">tensor parallelism</span> for new model, we have to register it's TensorParallelismPlanner at [tensor_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/tensor_parallelism) and use `_safe_import` func to import it at [tp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/tensor_parallelism/tp_planners.py). For example:
+In order to support <span style="color:#c77dff;">tensor parallelism</span> for new model, we have to register it's TensorParallelismPlanner at [tensor_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers) and use `_safe_import` func to import it at [planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/planners.py). For example:
 
 - step 1: Implement the `FluxTensorParallelismPlanner`
- at FLUX.1 TP planner at [tp_plan_flux.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/tensor_parallelism/tp_plan_flux.py)
-- step 2: use `_safe_import` func to import it at [tp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/tensor_parallelism/tp_planners.py).
+ at FLUX.1 TP planner at [flux.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/flux.py)
+- step 2: use `_safe_import` func to import it at [planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/planners.py).
 
 ## Text Encoder Parallelism
 
-In order to support <span style="color:#c77dff;">text encoder tensor parallelism</span> for new model, we have to register it's TextEncoderTensorParallelismPlanner at [text_encoders/tensor_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/text_encoders/tensor_parallelism) and use `_safe_import` func to import it at [text_encoders/tensor_parallelism/tp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/text_encoders/tensor_parallelism/tp_planners.py). For example:
+In order to support <span style="color:#c77dff;">text encoder tensor parallelism</span> for new model, we have to register it's TextEncoderTensorParallelismPlanner at [text_encoders](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/text_encoders) and use `_safe_import` func to import it at [planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/text_encoders/planners.py). For example:
 
 - step 1: Implement the `T5EncoderTensorParallelismPlanner`
- at T5 TP planner at [tp_plan_t5_encoder.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/transformers/tensor_parallelism/tp_plan_t5_encoder.py)
-- step 2: use `_safe_import` func to import it at [text_encoders/tensor_parallelism/tp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/text_encoders/tensor_parallelism/tp_planners.py).
+ at T5 TP planner at [t5_encoder.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/text_encoders/t5_encoder.py)
+- step 2: use `_safe_import` func to import it at [text_encoders/planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/text_encoders/planners.py).
 
 
 ## Auto Encoder (VAE) Parallelism
 
-In order to support <span style="color:#c77dff;">auto encoder (VAE) data parallelism</span> for new model, we have to register it's AutoEncoderDateParallelismPlanner at [autoencoders/data_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/autoencoders/data_parallelism) and use `_safe_import` func to import it at [autoencoders/data_parallelism/dp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/autoencoders/dp_parallelism/dp_planners.py). For example:
+In order to support <span style="color:#c77dff;">auto encoder (VAE) data parallelism</span> for new model, we have to register it's AutoEncoderDateParallelismPlanner at [autoencoders](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/autoencoders) and use `_safe_import` func to import it at [planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/autoencoders/planners.py). For example:
 
 - step 1: Implement the `AutoencoderKLDataParallelismPlanner`
- at AutoencoderKL DP planner at [dp_plan_autoencoder_kl.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/autoencoders/data_parallelism/dp_plan_autoencoder_kl.py)
-- step 2: use `_safe_import` func to import it at [autoencoders/data_parallelism/dp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/parallelism/autoencoders/data_parallelism/dp_planners.py).
+ at AutoencoderKL DP planner at [autoencoder_kl.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/autoencoders/autoencoder_kl.py)
+- step 2: use `_safe_import` func to import it at [autoencoders/planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/autoencoders/planners.py).
 
 
 ## Examples and Tests
