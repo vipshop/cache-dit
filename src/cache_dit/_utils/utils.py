@@ -531,7 +531,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=str,
     default="v1",
     choices=["v1", "v2"],
-    help="Runtime SVDQ W4Q4 GEMM kernel. Use v2 to enable the SVDQ W4Q4 v2 operator.",
+    help=
+    "Runtime SVDQ W4A4 GEMM kernel. Use v2 to enable the SVDQ W4A4 v2 operator. (Faster on Ada architectures).",
   )
   # Parallelism settings
   parser.add_argument(

@@ -541,3 +541,23 @@ Here are some preliminary results on the impact of different DQ smooth strategie
 | 2.13s | 1.28s | 1.28s | 1.28s |
 |-| PSNR: 28.71 | PSNR: 29.62 | PSNR: 29.35 |
 |![](../assets/flux2_klein_4b.1024x1024.C0.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight_inv.png)|
+
+## SVDQuant (W4A4) Runtime
+
+Cache-DiT's SVDQuant support also includes a high-performance W4A4 GEMM kernel for efficient runtime execution of SVDQ-quantized models. This kernel is optimized for Ada and Ampere architectures and can provide slightly better performance compared to existing INT4 GEMM kernels.
+
+Users can enable the SVDQuant runtime by setting the <span style="color:green;">runtime_kernel</span> argument in <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:green;">v2</span>. For example:
+
+```python
+quant_config = QuantizeConfig(
+  quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+  svdq_kwargs={"runtime_kernel": "v2"},  # enable SVDQ W4A4 v2 GEMM kernel for better performance.
+)
+```
+Quick examples for enabling SVDQ runtime kernel from the generate CLI:
+
+```bash
+# v1 baseline: 14.88s -> v2 runtime: 14.66s 
+python3 -m cache_dit.generate flux --svdq-int4-r64-dq # v1, baseline
+python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime v2
+```
