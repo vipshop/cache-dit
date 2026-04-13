@@ -5,7 +5,7 @@ from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.cogvideox_transformer_3d import CogVideoXAttnProcessor2_0
 from diffusers.models.transformers.consisid_transformer_3d import ConsisIDTransformer3DModel
 
-from ...distributed import (
+from ...distributed.core import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

@@ -32,4 +32,13 @@ class KernelBackend(Enum):
       # but we check for it at runtime in the kernels, so we return True here as
       # long as CUDA is available.
       return True
+    if backend == cls.CUTEDSL:
+      if not torch.cuda.is_available():
+        return False
+      try:
+        import cutlass.cute  # noqa F401
+
+        return True
+      except ImportError:
+        return False
     return False

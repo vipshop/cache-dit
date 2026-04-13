@@ -34,24 +34,31 @@ def _iter_attention_backend_targets(pipe_or_adapter: Any):
   yield transformer
 
 
-def set_attn_backend(
+def _set_attn_backend_impl(
   pipe_or_adapter: Any,
   attention_backend: Optional[str] = None,
+  *,
+  default_diffusers_backend: Optional[str] = None,
+  wrap_runtime_error: bool = True,
 ) -> None:
-  """Set the attention backend on diffusers or plain transformer modules.
+  """Shared attention-backend setter used by public and distributed entrypoints.
 
   :param pipe_or_adapter: Pipeline-like object, adapter-like object, transformer module,
     or any module exposing attention processors with `_attention_backend` state.
-  :param attention_backend: Attention backend name to apply. When omitted, the function
-    returns without making changes.
+  :param attention_backend: Explicit attention backend name to apply.
+  :param default_diffusers_backend: Fallback backend used only for diffusers modules when
+    `attention_backend` is omitted.
+  :param wrap_runtime_error: Whether to wrap backend-application failures in a
+    user-facing `RuntimeError`.
   """
 
-  if attention_backend is None:
+  if attention_backend is None and default_diffusers_backend is None:
     return
 
   resolved_cache_dit_backend = None
   try:
-    resolved_cache_dit_backend = _AttnBackendRegistry.normalize_backend(attention_backend).value
+    if attention_backend is not None:
+      resolved_cache_dit_backend = _AttnBackendRegistry.normalize_backend(attention_backend).value
   except ValueError:
     resolved_cache_dit_backend = None
 
@@ -84,12 +91,22 @@ def set_attn_backend(
 
     if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
       backend_name = resolved_cache_dit_backend or attention_backend
+      if backend_name is None:
+        if default_diffusers_backend is None:
+          return
+        module.set_attention_backend(default_diffusers_backend)
+        logger.warning("attention_backend is None, set default attention backend of "
+                       f"{module.__class__.__name__} to: <{default_diffusers_backend}>.")
+        return
+
       module.set_attention_backend(backend_name)
       logger.info(f"Set attention backend to <{backend_name}> for module: "
                   f"{module.__class__.__name__}.")
       return
 
     if isinstance(module, torch.nn.Module):
+      if attention_backend is None:
+        return
       if resolved_cache_dit_backend is None:
         raise ValueError("Non-diffusers modules only support cache-dit attention backends. "
                          f"Got unsupported backend: {attention_backend}.")
@@ -104,12 +121,37 @@ def set_attn_backend(
     logger.warning("--attn was provided but module does not support set_attention_backend: "
                    f"{module.__class__.__name__}.")
 
-  try:
+  def _apply() -> None:
     for module in _iter_attention_backend_targets(pipe_or_adapter):
       _set_backend(module)
+
+  if not wrap_runtime_error:
+    _apply()
+    return
+
+  try:
+    _apply()
   except Exception as e:
     raise RuntimeError(
       f"Failed to set attention backend to <{attention_backend}>. "
       "This usually means the backend is unavailable (e.g., FlashAttention-3 not installed) "
       "or the model/shape/dtype is unsupported. "
       f"Original error: {e}") from e
+
+
+def set_attn_backend(
+  pipe_or_adapter: Any,
+  attention_backend: Optional[str] = None,
+) -> None:
+  """Set the attention backend on diffusers or plain transformer modules.
+
+  :param pipe_or_adapter: Pipeline-like object, adapter-like object, transformer module,
+    or any module exposing attention processors with `_attention_backend` state.
+  :param attention_backend: Attention backend name to apply. When omitted, the function
+    returns without making changes.
+  """
+
+  _set_attn_backend_impl(
+    pipe_or_adapter,
+    attention_backend=attention_backend,
+  )

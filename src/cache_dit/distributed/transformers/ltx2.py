@@ -18,7 +18,7 @@ from diffusers.models.transformers.transformer_ltx2 import (
   apply_split_rotary_emb,
 )
 from ...attention import _dispatch_attention_fn
-from ...distributed import (
+from ...distributed.core import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

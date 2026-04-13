@@ -29,7 +29,7 @@ except ImportError:
                     "nunchaku 4-bits models.")
 
 from ...attention import _dispatch_attention_fn
-from ...distributed import (
+from ...distributed.core import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

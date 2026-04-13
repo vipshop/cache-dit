@@ -7,7 +7,7 @@ from diffusers.models.modeling_utils import ModelMixin
 from torch.distributed import init_device_mesh
 from torch.distributed.tensor.parallel import ColwiseParallel, ParallelStyle, RowwiseParallel
 
-from ...distributed import _ContextParallelModelPlan
+from ...distributed.core import _ContextParallelModelPlan
 from ...logger import init_logger
 from ..config import ParallelismConfig
 

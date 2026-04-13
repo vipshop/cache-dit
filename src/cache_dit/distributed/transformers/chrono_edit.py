@@ -3,23 +3,24 @@ from typing import Optional, Tuple
 
 import torch
 from diffusers.models.modeling_utils import ModelMixin
+from ...distributed.core import (
+  _ContextParallelInput,
+  _ContextParallelModelPlan,
+  _ContextParallelOutput,
+)
 
 try:
-  from diffusers.models._modeling_parallel import (
-    _ContextParallelInput,
-    _ContextParallelModelPlan,
-    _ContextParallelOutput,
-  )
   from diffusers.models.transformers.transformer_chronoedit import (
     WanAttention as ChronoEditWanAttention,
     WanAttnProcessor as ChronoEditWanAttnProcessor,
     _get_added_kv_projections,
     _get_qkv_projections,
   )
-except ImportError:
-  raise ImportError("Context parallelism requires the 'diffusers>=0.36.dev0'."
-                    "Please install latest version of diffusers from source: \n"
-                    "pip3 install git+https://github.com/huggingface/diffusers.git")
+except ImportError as exc:
+  raise ImportError(
+    "ChronoEdit context parallelism requires diffusers with transformer_chronoedit support. "
+    "Please install a recent diffusers version from source: \n"
+    "pip3 install git+https://github.com/huggingface/diffusers.git") from exc
 
 from ...attention import _dispatch_attention_fn
 from ...logger import init_logger

@@ -35,15 +35,15 @@ except ImportError:
 
 # Some helper distributed primitive functions for context parallel attention.
 __all__ = [
-  "_gather_size_by_comm",
+  "_gather_size",
+  "_RingP2PComm",
   "_All2AllComm",
 ]
+
 
 # NOTE: We should always use the asynchronous all to all variants to keep the unified input/output shape
 # for any_qkvo and non-any_qkvo cases, otherwise, the input/output shape will be different, which makes
 # the unified function implementation complex and ugly.
-
-
 def _wait_tensor(tensor) -> torch.Tensor:
   if isinstance(tensor, fc.AsyncCollectiveTensor):
     tensor = tensor.wait()
@@ -57,7 +57,7 @@ def _get_rank_world_size(group: dist.ProcessGroup, ) -> Tuple[int, int]:
   return rank, world_size
 
 
-def _gather_size_by_comm(size: int, group: dist.ProcessGroup) -> List[int]:
+def _gather_size(size: int, group: dist.ProcessGroup) -> List[int]:
   """Gather the local size from all ranks.
 
   :param size: Local integer extent contributed by the current rank.
@@ -601,7 +601,7 @@ def _all_to_all_single_any_qkv_async(
   # S_LOCAL maybe not equal for all ranks in dynamic shape case,
   # since we don't know the actual shape before this timing, thus,
   # we have to use all gather to collect the S_LOCAL first.
-  output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+  output_split_sizes = _gather_size(S_LOCAL, group)
   # NOTE: The `if` branch will introduce graph break for torch.compile,
   # so, we choose to disable the even split optimization implementation
   # _all_to_all_single for now.
@@ -652,7 +652,7 @@ def _all_to_all_single_any_o_async(
   # S_LOCAL = input_split_sizes[rank]
 
   S_LOCAL = kwargs.get("Q_S_LOCAL")
-  input_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+  input_split_sizes = _gather_size(S_LOCAL, group)
 
   x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
   output_split_sizes = [S_LOCAL] * world_size
@@ -694,7 +694,7 @@ def _all_to_all_single_any_qkv_fp8_async(
   # S_LOCAL maybe not equal for all ranks in dynamic shape case,
   # since we don't know the actual shape before this timing, thus,
   # we have to use all gather to collect the S_LOCAL first.
-  output_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+  output_split_sizes = _gather_size(S_LOCAL, group)
   # NOTE: The `if` branch will introduce graph break for torch.compile,
   # so, we choose to disable the even split optimization implementation
   # _all_to_all_single for now.
@@ -745,7 +745,7 @@ def _all_to_all_single_any_o_fp8_async(
   # S_LOCAL = input_split_sizes[rank]
 
   S_LOCAL = kwargs.get("Q_S_LOCAL")
-  input_split_sizes = _gather_size_by_comm(S_LOCAL, group)
+  input_split_sizes = _gather_size(S_LOCAL, group)
 
   x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
   output_split_sizes = [S_LOCAL] * world_size
@@ -816,3 +816,99 @@ def _all_to_all_o_async_fn(
   fp8: Optional[bool] = None,
 ) -> Callable[..., torch.Tensor]:
   return _select_all_to_all_o_async_impl(_cp_config, fp8)
+
+
+# Ring-based point-to-point communication primitives for key/value rotation in ring attention.
+# Adapted from: https://github.com/zhuzilin/ring-flash-attention/blob/main/ring_flash_attn/utils.py#L98
+class _RingP2PComm:
+  """Pairwise ring communicator used by ring attention key/value rotation.
+
+  :param process_group: Process group participating in the ring exchange.
+  """
+
+  def __init__(self, process_group: dist.ProcessGroup):
+    self._process_group = process_group
+    self._ops = []
+    self.rank = dist.get_rank(self._process_group)
+    self.world_size = dist.get_world_size(self._process_group)
+    self._reqs = None
+
+    self.send_rank = (self.rank + 1) % self.world_size
+    self.recv_rank = (self.rank - 1) % self.world_size
+
+    if process_group is not None:
+      self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
+      self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
+
+  def send_recv(
+    self,
+    to_send: torch.Tensor,
+    recv_tensor: Optional[torch.Tensor] = None,
+  ) -> torch.Tensor:
+    """Launch one async point-to-point send/recv pair.
+
+    :param to_send: Tensor to send to the next rank in the ring.
+    :param recv_tensor: Optional receive buffer to reuse.
+    :returns: Receive buffer for the incoming tensor.
+    """
+
+    to_send = to_send.contiguous()
+    if recv_tensor is None:
+      res = torch.empty_like(to_send).contiguous()
+    else:
+      res = recv_tensor
+
+    send_op = dist.P2POp(dist.isend, to_send, self.send_rank, group=self._process_group)
+    recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
+    self._ops.append(send_op)
+    self._ops.append(recv_op)
+    return res
+
+  def commit(self):
+    """Submit the queued point-to-point operations."""
+
+    if self._reqs is not None:
+      raise RuntimeError("commit called twice")
+    self._reqs = dist.batch_isend_irecv(self._ops)
+
+  def wait(self):
+    """Wait for the queued point-to-point operations to complete."""
+
+    if self._reqs is None:
+      raise RuntimeError("wait called before commit")
+    for req in self._reqs:
+      req.wait()
+    self._reqs = None
+    self._ops = []
+
+  def send_recv_kv(
+    self,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    k_buffer: Optional[torch.Tensor] = None,
+    v_buffer: Optional[torch.Tensor] = None,
+  ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Exchange key/value tensors independently around the ring."""
+
+    next_k, next_v = self.send_recv(k, k_buffer), self.send_recv(v, v_buffer)
+    self.commit()
+    return next_k, next_v
+
+  def batch_send_recv_kv(
+    self,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    kv_buffer: Optional[torch.Tensor] = None,
+  ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Exchange key/value tensors via one batched send/recv buffer."""
+
+    kv_concat = torch.cat([k, v], dim=0)
+    kv_recv = self.send_recv(kv_concat, kv_buffer)
+    self.commit()
+
+    seq_local = k.size(0)
+    # Just views of kv_recv, no copy. DON'T use contiguous here.
+    # contiguous() will create a copy of empty tensor, which
+    # causes wrong results.
+    next_k, next_v = torch.split(kv_recv, [seq_local, seq_local], dim=0)
+    return next_k, next_v

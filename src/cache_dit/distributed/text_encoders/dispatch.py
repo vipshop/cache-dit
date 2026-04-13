@@ -25,7 +25,7 @@ def _ensure_text_encoder_tp_planners_activated() -> None:
     _activate_text_encoder_tp_planners()
 
 
-def maybe_enable_tensor_parallelism(
+def _parallelize_text_encoder_tp(
   text_encoder: torch.nn.Module,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
@@ -46,10 +46,16 @@ def maybe_enable_tensor_parallelism(
   )
 
 
-def maybe_enable_parallelism_for_text_encoder(
+def parallelize_text_encoder(
   text_encoder: torch.nn.Module,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
+  """Parallelize one text encoder with the configured TP strategy.
+
+  :param text_encoder: Text encoder module to parallelize.
+  :param parallelism_config: Parallelism configuration shared with the transformer.
+  :returns: The parallelized text encoder.
+  """
   assert isinstance(
     text_encoder, torch.nn.Module
   ), f"text_encoder must be an instance of torch.nn.Module, but got {type(text_encoder)}"
@@ -60,7 +66,7 @@ def maybe_enable_parallelism_for_text_encoder(
   if parallelism_config is None:
     return text_encoder
 
-  text_encoder = maybe_enable_tensor_parallelism(
+  text_encoder = _parallelize_text_encoder_tp(
     text_encoder=text_encoder,
     parallelism_config=parallelism_config,
   )

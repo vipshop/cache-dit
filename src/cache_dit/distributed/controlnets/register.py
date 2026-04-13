@@ -3,7 +3,7 @@ import logging
 from abc import abstractmethod
 from typing import Optional
 from diffusers.models.modeling_utils import ModelMixin
-from ...distributed import _ContextParallelModelPlan
+from ...distributed.core import _ContextParallelModelPlan
 
 from ..config import ParallelismConfig
 from ...logger import init_logger

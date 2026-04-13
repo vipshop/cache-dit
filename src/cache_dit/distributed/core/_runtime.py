@@ -18,16 +18,6 @@ from ._modeling_parallel import (
 logger = init_logger(__name__)
 
 
-def _is_diffusers_parallelism_available() -> bool:
-  """Return whether the installed diffusers build exposes CP integration APIs."""
-
-  try:
-    from diffusers.models import _modeling_parallel as _diffusers_modeling_parallel  # noqa F401
-  except ImportError:
-    return False
-  return True
-
-
 # Adapted from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/modeling_utils.py#L1510
 def _enable_context_parallelism(
   model: ModelMixin | torch.nn.Module,  # e.g Transformer

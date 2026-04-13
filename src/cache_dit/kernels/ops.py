@@ -2,24 +2,73 @@ import torch
 from typing import Callable, Tuple
 from .backend import KernelBackend
 
-_KERNEL_BE_FN = Callable[..., KernelBackend]
-_TRITON_BE_FN = lambda: KernelBackend.TRITON
-_CUDA_BE_FN = lambda: KernelBackend.CUDA
+_KERNEL_BE_FN = Callable[[], KernelBackend]
 _ERROR_TEMPLATE = "kernel backend: {} is not supported now!"
 
 
-def _ensure_backend_supported(backend: KernelBackend) -> None:
+def _select_triton_backend() -> KernelBackend:
+  return KernelBackend.TRITON
+
+
+def _select_cuda_backend() -> KernelBackend:
+  return KernelBackend.CUDA
+
+
+def _select_kernel_backend() -> KernelBackend:
+  """Select the default backend for kernel ops.
+
+  This is the generic selector entrypoint. If CuTe DSL is available, prefer it as the default
+  backend. Otherwise fall back to Triton.
+
+  :returns: Selected backend for the requested operator.
+  """
+
+  if not KernelBackend.is_supported(KernelBackend.CUTEDSL):
+    return KernelBackend.TRITON
+  return KernelBackend.CUTEDSL
+
+
+_KERNEL_BE_SELECTOR_MAP = {
+  "fp8_comm_per_token_quant": _select_triton_backend,
+  "fp8_comm_per_token_dequant": _select_triton_backend,
+  "fp8_comm_qkv_permute_quant": _select_triton_backend,
+  "fp8_comm_qkv_permute_dequant": _select_triton_backend,
+  "fused_merge_attn_states": _select_kernel_backend,
+  "svdq_gemm_w4a4": _select_cuda_backend,
+  "svdq_gemm_w4a4_v2": _select_cuda_backend,
+  "svdq_gemm_w4a4_ext": _select_cuda_backend,
+  "svdq_quantize_w4a4_act_fuse_lora": _select_cuda_backend,
+  "svdq_quantize_w4a4_wgt": _select_cuda_backend,
+  "svdq_set_faster_i2f_mode": _select_cuda_backend,
+  "svdq_set_log_level": _select_cuda_backend,
+}
+
+
+def _get_backend_selector(op_name: str) -> _KERNEL_BE_FN:
+  """Return the registered default backend selector for an op name.
+
+  :param op_name: Public operator name.
+  :returns: Selector callable that chooses the default backend.
+  :raises KeyError: If the operator has no registered selector.
+  """
+
+  try:
+    return _KERNEL_BE_SELECTOR_MAP[op_name]
+  except KeyError as exc:
+    raise KeyError(f"No backend selector registered for op {op_name!r}.") from exc
+
+
+def _resolve_backend(op_name: str, ) -> KernelBackend:
+  selector = _get_backend_selector(op_name)
+  backend = selector()
   if not KernelBackend.is_supported(backend):
     raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return backend
 
 
 # Ulysses FP8 communication related ops
-def _fp8_comm_per_token_quant_impl(
-  x: torch.Tensor,
-  backend_fn: _KERNEL_BE_FN = _TRITON_BE_FN,
-) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
+  backend = _resolve_backend("fp8_comm_per_token_quant")
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_per_token_quant
 
@@ -28,12 +77,8 @@ def _fp8_comm_per_token_quant_impl(
     raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
-def _fp8_comm_per_token_dequant_impl(
-  x: torch.Tensor,
-  backend_fn: _KERNEL_BE_FN = _TRITON_BE_FN,
-) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
+  backend = _resolve_backend("fp8_comm_per_token_dequant")
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_per_token_dequant
 
@@ -42,12 +87,8 @@ def _fp8_comm_per_token_dequant_impl(
     raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
-def _fp8_comm_qkv_permute_quant_impl(
-  x: torch.Tensor,
-  backend_fn: _KERNEL_BE_FN = _TRITON_BE_FN,
-) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
+  backend = _resolve_backend("fp8_comm_qkv_permute_quant")
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_qkv_permute_quant
 
@@ -56,12 +97,8 @@ def _fp8_comm_qkv_permute_quant_impl(
     raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
-def _fp8_comm_qkv_permute_dequant_impl(
-  quant_x: torch.Tensor,
-  backend_fn: _KERNEL_BE_FN = _TRITON_BE_FN,
-) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+def _fp8_comm_qkv_permute_dequant_impl(quant_x: torch.Tensor, ) -> torch.Tensor:
+  backend = _resolve_backend("fp8_comm_qkv_permute_dequant")
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_qkv_permute_dequant
 
@@ -76,12 +113,19 @@ def _fused_merge_attn_states_impl(
   prev_lse: torch.Tensor,
   suff_out: torch.Tensor,
   suff_lse: torch.Tensor,
-  backend_fn: _KERNEL_BE_FN = _TRITON_BE_FN,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+  backend = _resolve_backend("fused_merge_attn_states")
   if backend == KernelBackend.TRITON:
     from .triton import fused_merge_attn_states
+
+    return fused_merge_attn_states(
+      prev_out,
+      prev_lse,
+      suff_out,
+      suff_lse,
+    )
+  if backend == KernelBackend.CUTEDSL:
+    from .cutedsl import fused_merge_attn_states
 
     return fused_merge_attn_states(
       prev_out,
@@ -119,10 +163,8 @@ def _svdq_gemm_w4a4_impl(
   wcscales: torch.Tensor | None = None,
   act_unsigned: bool = False,
   output_dtype: torch.dtype | None = None,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
 ) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+  backend = _resolve_backend("svdq_gemm_w4a4")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_gemm_w4a4
 
@@ -157,10 +199,8 @@ def _svdq_gemm_w4a4_v2_impl(
   act_unsigned: bool = False,
   output_dtype: torch.dtype | None = None,
   stage: int = 1,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
 ) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+  backend = _resolve_backend("svdq_gemm_w4a4_v2")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_gemm_w4a4_v2
 
@@ -212,10 +252,8 @@ def _svdq_gemm_w4a4_ext_impl(
   out_k: torch.Tensor | None = None,
   out_v: torch.Tensor | None = None,
   attn_tokens: int = 0,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
 ) -> torch.Tensor:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+  backend = _resolve_backend("svdq_gemm_w4a4_ext")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_gemm_w4a4_ext
 
@@ -260,10 +298,8 @@ def _svdq_quantize_w4a4_act_fuse_lora_impl(
   fuse_glu: bool = False,
   fp4: bool = False,
   pad_size: int = 256,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+  backend = _resolve_backend("svdq_quantize_w4a4_act_fuse_lora")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_quantize_w4a4_act_fuse_lora
 
@@ -282,10 +318,8 @@ def _svdq_quantize_w4a4_wgt_impl(
   input: torch.Tensor,
   output: torch.Tensor | None = None,
   oscales: torch.Tensor | None = None,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+  backend = _resolve_backend("svdq_quantize_w4a4_wgt")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_quantize_w4a4_wgt
 
@@ -293,12 +327,8 @@ def _svdq_quantize_w4a4_wgt_impl(
   raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
-def _svdq_set_faster_i2f_mode_impl(
-  mode: str,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
-) -> None:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+def _svdq_set_faster_i2f_mode_impl(mode: str, ) -> None:
+  backend = _resolve_backend("svdq_set_faster_i2f_mode")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_set_faster_i2f_mode
 
@@ -307,12 +337,8 @@ def _svdq_set_faster_i2f_mode_impl(
   raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
-def _svdq_set_log_level_impl(
-  level: str,
-  backend_fn: _KERNEL_BE_FN = _CUDA_BE_FN,
-) -> None:
-  backend = backend_fn()
-  _ensure_backend_supported(backend)
+def _svdq_set_log_level_impl(level: str, ) -> None:
+  backend = _resolve_backend("svdq_set_log_level")
   if backend == KernelBackend.CUDA:
     from .cuda import svdq_set_log_level
 
@@ -330,7 +356,7 @@ def fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
     quantization scheme suitable for communication purposes.
   """
 
-  return _fp8_comm_per_token_quant_impl(x=x, backend_fn=_TRITON_BE_FN)
+  return _fp8_comm_per_token_quant_impl(x=x, )
 
 
 def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
@@ -340,7 +366,7 @@ def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
   :returns: Dequantized tensor in floating-point format, where the dequantization is performed on a
     per-token basis suitable for communication purposes.
   """
-  return _fp8_comm_per_token_dequant_impl(x=x, backend_fn=_TRITON_BE_FN)
+  return _fp8_comm_per_token_dequant_impl(x=x, )
 
 
 def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
@@ -350,7 +376,7 @@ def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
   :returns: Quantized tensor in FP8 format with QKV permutation, suitable for communication
     purposes.
   """
-  return _fp8_comm_qkv_permute_quant_impl(x=x, backend_fn=_TRITON_BE_FN)
+  return _fp8_comm_qkv_permute_quant_impl(x=x, )
 
 
 def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
@@ -360,10 +386,7 @@ def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
   :returns: Dequantized tensor in floating-point format, where the dequantization is performed on a
     per-token basis suitable for communication purposes.
   """
-  return _fp8_comm_qkv_permute_dequant_impl(
-    quant_x=quant_x,
-    backend_fn=_TRITON_BE_FN,
-  )
+  return _fp8_comm_qkv_permute_dequant_impl(quant_x=quant_x, )
 
 
 # Attention related ops, e.g, for Ring Attention
@@ -386,7 +409,6 @@ def fused_merge_attn_states(
     prev_lse=prev_lse,
     suff_out=suff_out,
     suff_lse=suff_lse,
-    backend_fn=_TRITON_BE_FN,
   )
 
 
@@ -445,7 +467,6 @@ def svdq_gemm_w4a4(
     wcscales=wcscales,
     act_unsigned=act_unsigned,
     output_dtype=output_dtype,
-    backend_fn=_CUDA_BE_FN,
   )
 
 
@@ -507,7 +528,6 @@ def svdq_gemm_w4a4_v2(
     act_unsigned=act_unsigned,
     output_dtype=output_dtype,
     stage=stage,
-    backend_fn=_CUDA_BE_FN,
   )
 
 
@@ -608,7 +628,6 @@ def svdq_gemm_w4a4_ext(
     out_k=out_k,
     out_v=out_v,
     attn_tokens=attn_tokens,
-    backend_fn=_CUDA_BE_FN,
   )
 
 
@@ -644,7 +663,6 @@ def svdq_quantize_w4a4_act_fuse_lora(
     fuse_glu=fuse_glu,
     fp4=fp4,
     pad_size=pad_size,
-    backend_fn=_CUDA_BE_FN,
   )
 
 
@@ -670,7 +688,6 @@ def svdq_quantize_w4a4_wgt(
     input=input,
     output=output,
     oscales=oscales,
-    backend_fn=_CUDA_BE_FN,
   )
 
 
@@ -680,7 +697,7 @@ def svdq_set_faster_i2f_mode(mode: str) -> None:
   :param mode: Backend-specific mode string forwarded to the CUDA extension.
   """
 
-  _svdq_set_faster_i2f_mode_impl(mode=mode, backend_fn=_CUDA_BE_FN)
+  _svdq_set_faster_i2f_mode_impl(mode=mode, )
 
 
 def svdq_set_log_level(level: str) -> None:
@@ -689,7 +706,7 @@ def svdq_set_log_level(level: str) -> None:
   :param level: Log level string understood by the extension runtime.
   """
 
-  _svdq_set_log_level_impl(level=level, backend_fn=_CUDA_BE_FN)
+  _svdq_set_log_level_impl(level=level, )
 
 
 def svdq_extension_is_available() -> bool:

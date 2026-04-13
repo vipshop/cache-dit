@@ -9,7 +9,7 @@ from diffusers.models.controlnets.controlnet_z_image import (
 )
 from ...attention import _dispatch_attention_fn
 
-from ...distributed import (
+from ...distributed.core import (
   _All2AllComm,
   _ContextParallelInput,
   _ContextParallelModelPlan,

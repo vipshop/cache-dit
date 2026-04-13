@@ -2,13 +2,26 @@ from enum import Enum
 
 
 def _check_diffusers_cp_support():
+  """Validate the diffusers APIs required by cache-dit's CP runtime.
+
+  The cache-dit CP runtime no longer depends on diffusers' private
+  `_modeling_parallel` module. Instead, we validate the stable modeling and
+  attention symbols used by cache-dit's own CP bridge/runtime.
+  """
+
   try:
-    from diffusers.models import _modeling_parallel as _diffusers_modeling_parallel  # noqa F401
+    from diffusers.models.attention_processor import Attention  # noqa F401
+    from diffusers.models.modeling_utils import ModelMixin  # noqa F401
+  except ImportError as exc:
+    raise ImportError(
+      "context parallelism backend requires diffusers modeling and attention APIs used by "
+      "cache-dit. Please install a recent diffusers version from source: \npip3 install "
+      "git+https://github.com/huggingface/diffusers.git") from exc
+
+  try:
+    from diffusers.models.attention import AttentionModuleMixin  # noqa F401
   except ImportError:
-    raise ImportError("context parallelism backend requires the latest "
-                      "version of diffusers(>=0.36.dev0). Please install latest "
-                      "version of diffusers from source: \npip3 install "
-                      "git+https://github.com/huggingface/diffusers.git")
+    pass
   return True
 
 

@@ -8,7 +8,6 @@ from ..utils import check_auto_encoder
 from ..utils import check_controlnet
 from ..utils import check_parallelized
 from ..logger import init_logger
-from ..envs import ENV
 
 logger = init_logger(__name__)
 
@@ -33,16 +32,25 @@ def enable_parallelism(
     logger.warning("The transformer is already parallelized. Skipping parallelism enabling.")
     return transformer
 
-  from ..attention import _maybe_register_custom_attn_backends
+  from ..attention import _maybe_register_custom_attn_backends, set_attn_backend
 
   # Ensure custom attention backends are registered in cache-dit.
   _maybe_register_custom_attn_backends()
 
+  def _set_module_attn_backend(module: torch.nn.Module | ModelMixin) -> None:
+    attention_backend = parallelism_config.attention_backend
+    if (attention_backend is None and isinstance(module, ModelMixin)
+        and hasattr(module, "set_attention_backend") and parallelism_config.backend
+        in (ParallelismBackend.NATIVE_DIFFUSER, ParallelismBackend.NATIVE_HYBRID)):
+      attention_backend = "native"
+
+    set_attn_backend(module, attention_backend=attention_backend)
+
   # Parallelize Transformer: The check of parallelism backend is only for transformer
   # here. Text Encoder and VAE does not have different parallelism backends now.
-  from .transformers import maybe_enable_parallelism_for_transformer
+  from .transformers import parallelize_transformer
 
-  transformer = maybe_enable_parallelism_for_transformer(
+  transformer = parallelize_transformer(
     transformer=transformer,
     parallelism_config=parallelism_config,
   )
@@ -60,41 +68,35 @@ def enable_parallelism(
       # Enable parallelism for text encoder
       if check_text_encoder(module) and not check_parallelized(module):
         from .text_encoders import (
-          maybe_enable_parallelism_for_text_encoder, )
+          parallelize_text_encoder, )
 
-        maybe_enable_parallelism_for_text_encoder(
+        parallelize_text_encoder(
           text_encoder=module,
           parallelism_config=parallelism_config,
         )
       # Enable parallelism for ControlNet
       elif check_controlnet(module) and not check_parallelized(module):
         from .controlnets import (
-          maybe_enable_parallelism_for_controlnet, )
+          parallelize_controlnet, )
 
-        maybe_enable_parallelism_for_controlnet(
+        parallelize_controlnet(
           controlnet=module,
           parallelism_config=parallelism_config,
         )
-        _maybe_set_module_attention_backend(
-          module=module,
-          parallelism_config=parallelism_config,
-        )
+        _set_module_attn_backend(module)
       # Enable parallelism for VAE
       elif check_auto_encoder(module) and not check_parallelized(module):
         from .autoencoders import (
-          maybe_enable_parallelism_for_auto_encoder, )
+          parallelize_autoencoder, )
 
-        maybe_enable_parallelism_for_auto_encoder(
+        parallelize_autoencoder(
           auto_encoder=module,
           parallelism_config=parallelism_config,
         )
 
   # Set attention backend for both context parallelism and tensor parallelism if the
   # transformer is from diffusers and supports setting attention backend.
-  _maybe_set_module_attention_backend(
-    module=transformer,
-    parallelism_config=parallelism_config,
-  )
+  _set_module_attn_backend(transformer)
 
   transformer._extra_parallel_modules = extra_parallel_modules  # type: ignore[attr-defined]
   # NOTE: Workaround for potential memory peak issue after parallelism
@@ -132,76 +134,3 @@ def remove_parallelism_stats(module: torch.nn.Module, ) -> torch.nn.Module:
   _remove_parallel_stats(module)
 
   return module
-
-
-# Some helper functions for parallelism enabling
-def _maybe_set_module_attention_backend(
-  module: torch.nn.Module | ModelMixin,
-  parallelism_config: ParallelismConfig,
-) -> None:
-  """Apply the configured attention backend to one diffusers module when supported.
-
-  :param module: Module whose attention backend may be updated.
-  :param parallelism_config: Parallelism configuration carrying the backend preference.
-  """
-
-  # Set attention backend for both context parallelism and tensor parallelism if the
-  # transformer is from diffusers and supports setting attention backend.
-  module_cls_name = module.__class__.__name__
-  attention_backend = parallelism_config.attention_backend
-  resolved_cache_dit_backend = None
-
-  if attention_backend is not None:
-    from ..attention import _AttnBackendRegistry
-
-    try:
-      resolved_cache_dit_backend = _AttnBackendRegistry.normalize_backend(attention_backend).value
-    except ValueError:
-      resolved_cache_dit_backend = None
-
-  def _set_backend_locally(backend_name: str) -> bool:
-    applied = False
-    for current in module.modules():
-      processor = getattr(current, "processor", None)
-      if processor is not None:
-        processor._attention_backend = backend_name
-        current._attention_backend = backend_name
-        applied = True
-        continue
-      if hasattr(current, "_attention_backend"):
-        current._attention_backend = backend_name
-        applied = True
-    return applied
-
-  if hasattr(module, "set_attention_backend") and isinstance(module, ModelMixin):
-    if attention_backend is None:
-      # Default to native for context parallelism due to:
-      # - attn mask support (re-registered in cache-dit)
-      # - general compatibility with various models
-      # NOTE: We only set default attention backend for NATIVE_DIFFUSER backend here
-      # while using context parallelism. For other backends, we do not change the
-      # attention backend if it is None.
-      if (parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER
-          or parallelism_config.backend == ParallelismBackend.NATIVE_HYBRID):
-        module.set_attention_backend("native")
-        logger.warning("attention_backend is None, set default attention backend of "
-                       f"{module_cls_name} to: <native>.")
-    else:
-      # Ensure custom attention backends are registered in cache-dit.
-      if resolved_cache_dit_backend is not None and not ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH:
-        from ..attention import _maybe_register_custom_attn_backends
-
-        _maybe_register_custom_attn_backends()
-
-      backend_name = resolved_cache_dit_backend or attention_backend
-      module.set_attention_backend(backend_name)
-      logger.info("Found attention_backend from config, set attention backend of "
-                  f"{module_cls_name} to: <{backend_name}>.")
-  elif attention_backend is not None:
-    if resolved_cache_dit_backend is None:
-      raise ValueError("Non-diffusers parallel modules only support cache-dit attention backends. "
-                       f"Got unsupported backend: {attention_backend}.")
-    if not _set_backend_locally(resolved_cache_dit_backend):
-      return
-    logger.info("Found attention_backend from config, set local cache-dit attention backend of "
-                f"{module_cls_name} to: <{resolved_cache_dit_backend}>.")

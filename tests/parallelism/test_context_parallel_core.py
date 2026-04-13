@@ -1,7 +1,7 @@
 import torch
 
-from cache_dit.distributed import _ContextParallelConfig
 from cache_dit.distributed.core import (
+  _ContextParallelConfig,
   _get_submodule_by_name,
   _normalize_parallel_config,
   validate_context_parallel_attention_backend,

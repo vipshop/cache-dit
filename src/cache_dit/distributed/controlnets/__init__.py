@@ -1,2 +1,3 @@
-from .dispatch import maybe_enable_context_parallelism
-from .dispatch import maybe_enable_parallelism_for_controlnet
+from .dispatch import parallelize_controlnet
+
+__all__ = ["parallelize_controlnet"]

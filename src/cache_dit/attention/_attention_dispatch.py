@@ -50,7 +50,7 @@ except ImportError:
   sageattn = None
 
 from ..logger import init_logger
-from ..distributed import (
+from ..distributed.core import (
   _ContextParallelConfig,
   _normalize_parallel_config,
   RingAttention,

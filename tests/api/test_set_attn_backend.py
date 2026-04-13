@@ -50,6 +50,14 @@ def test_set_attn_backend_uses_diffusers_api_when_available():
   assert module.backends == [_AttnBackend.NATIVE.value]
 
 
+def test_set_attn_backend_is_noop_when_backend_is_none():
+  module = _DummyDiffusersModule()
+
+  set_attn_backend(module, None)
+
+  assert module.backends == []
+
+
 def test_set_attn_backend_keeps_diffusers_only_backend_strings():
   module = _DummyDiffusersModule()
 

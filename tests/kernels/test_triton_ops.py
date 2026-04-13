@@ -16,6 +16,11 @@ from cache_dit.kernels import fp8_comm_qkv_permute_dequant
 from cache_dit.kernels import fp8_comm_qkv_permute_quant
 from cache_dit.kernels import fused_merge_attn_states
 
+_TYPICAL_TEST_SHAPES = [
+  (1, 1024, 32, 64),
+  (1, 2048, 48, 128),
+]
+
 
 def _require_cuda_runtime() -> None:
   if not torch.cuda.is_available():
@@ -77,12 +82,22 @@ def test_fp8_comm_qkv_fake_registration_shapes() -> None:
   assert dequantized.dtype == torch.bfloat16
 
 
-def test_fused_merge_attn_states_fake_registration_shapes() -> None:
+@pytest.mark.parametrize(("batch", "seq_len", "num_heads", "head_size"), _TYPICAL_TEST_SHAPES)
+def test_fused_merge_attn_states_fake_registration_shapes(
+  batch: int,
+  seq_len: int,
+  num_heads: int,
+  head_size: int,
+) -> None:
   with FakeTensorMode():
-    prev_out = torch.empty((2, 3, 4, 16), device="cuda", dtype=torch.bfloat16)
-    prev_lse = torch.empty((2, 3, 4, 1), device="cuda", dtype=torch.float32)
-    suff_out = torch.empty((2, 3, 4, 16), device="cuda", dtype=torch.bfloat16)
-    suff_lse = torch.empty((2, 3, 4, 1), device="cuda", dtype=torch.float32)
+    prev_out = torch.empty((batch, seq_len, num_heads, head_size),
+                           device="cuda",
+                           dtype=torch.bfloat16)
+    prev_lse = torch.empty((batch, seq_len, num_heads, 1), device="cuda", dtype=torch.float32)
+    suff_out = torch.empty((batch, seq_len, num_heads, head_size),
+                           device="cuda",
+                           dtype=torch.bfloat16)
+    suff_lse = torch.empty((batch, seq_len, num_heads, 1), device="cuda", dtype=torch.float32)
     out, lse = fused_merge_attn_states(prev_out, prev_lse, suff_out, suff_lse)
 
   assert isinstance(out, FakeTensor)
@@ -145,15 +160,21 @@ def test_fp8_comm_qkv_permute_quant_dequant_tracks_selected_slice() -> None:
       assert min(range(len(distances)), key=lambda index: distances[index]) == p_index
 
 
-def test_fused_merge_attn_states_matches_reference() -> None:
+@pytest.mark.parametrize(("batch", "seq_len", "num_heads", "head_size"), _TYPICAL_TEST_SHAPES)
+def test_fused_merge_attn_states_matches_reference(
+  batch: int,
+  seq_len: int,
+  num_heads: int,
+  head_size: int,
+) -> None:
   _require_cuda_runtime()
 
   torch.manual_seed(0)
   dtype = _runtime_dtype()
-  prev_out = torch.randn((2, 3, 4, 16), device="cuda", dtype=dtype)
-  suff_out = torch.randn((2, 3, 4, 16), device="cuda", dtype=dtype)
-  prev_lse = torch.randn((2, 3, 4, 1), device="cuda", dtype=torch.float32)
-  suff_lse = torch.randn((2, 3, 4, 1), device="cuda", dtype=torch.float32)
+  prev_out = torch.randn((batch, seq_len, num_heads, head_size), device="cuda", dtype=dtype)
+  suff_out = torch.randn((batch, seq_len, num_heads, head_size), device="cuda", dtype=dtype)
+  prev_lse = torch.randn((batch, seq_len, num_heads, 1), device="cuda", dtype=torch.float32)
+  suff_lse = torch.randn((batch, seq_len, num_heads, 1), device="cuda", dtype=torch.float32)
 
   with torch.inference_mode():
     out, lse = fused_merge_attn_states(prev_out, prev_lse, suff_out, suff_lse)

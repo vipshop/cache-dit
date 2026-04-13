@@ -15,18 +15,19 @@ from diffusers.models.transformers.transformer_hunyuan_video import (
   HunyuanVideoTransformer3DModel,
   HunyuanVideoAttnProcessor2_0,
 )
+from ...distributed.core import (
+  _ContextParallelInput,
+  _ContextParallelOutput,
+  _ContextParallelModelPlan,
+)
 
 try:
   from diffusers import HunyuanImageTransformer2DModel
-  from diffusers.models._modeling_parallel import (
-    _ContextParallelInput,
-    _ContextParallelOutput,
-    _ContextParallelModelPlan,
-  )
-except ImportError:
-  raise ImportError("Context parallelism requires the 'diffusers>=0.36.dev0'."
-                    "Please install latest version of diffusers from source: \n"
-                    "pip3 install git+https://github.com/huggingface/diffusers.git")
+except ImportError as exc:
+  raise ImportError(
+    "HunyuanImage context parallelism requires diffusers with HunyuanImageTransformer2DModel "
+    "support. Please install a recent diffusers version from source: \n"
+    "pip3 install git+https://github.com/huggingface/diffusers.git") from exc
 from ...attention import _dispatch_attention_fn
 from ...logger import init_logger
 from ..config import ParallelismConfig

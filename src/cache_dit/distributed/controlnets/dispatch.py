@@ -5,10 +5,9 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 
 from ...attention import _maybe_register_custom_attn_backends
-from ...distributed import (
+from ...distributed.core import (
   _ContextParallelConfig,
   _enable_context_parallelism,
-  _is_diffusers_parallelism_available,
 )
 from ...logger import init_logger
 from ..backend import ParallelismBackend
@@ -25,7 +24,7 @@ def _ensure_controlnet_cp_planners_activated() -> None:
     _activate_controlnet_cp_planners()
 
 
-def maybe_enable_context_parallelism(
+def _parallelize_controlnet_cp(
   controlnet: torch.nn.Module,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
@@ -39,9 +38,6 @@ def maybe_enable_context_parallelism(
     parallelism_config,
     ParallelismConfig), ("parallelism_config must be an instance of ParallelismConfig"
                          f" but got {type(parallelism_config)}")
-  assert _is_diffusers_parallelism_available(), (
-    "Context parallelism requires the 'diffusers>=0.36.dev0'."
-    "Please install latest version of diffusers from source")
 
   _ensure_controlnet_cp_planners_activated()
 
@@ -72,10 +68,16 @@ def maybe_enable_context_parallelism(
   return controlnet
 
 
-def maybe_enable_parallelism_for_controlnet(
+def parallelize_controlnet(
   controlnet: torch.nn.Module | ModelMixin,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
+  """Parallelize one ControlNet with the configured CP strategy.
+
+  :param controlnet: ControlNet module to parallelize.
+  :param parallelism_config: Parallelism configuration shared with the transformer.
+  :returns: The parallelized ControlNet.
+  """
   assert isinstance(
     controlnet, (torch.nn.Module,
                  ModelMixin)), ("controlnet must be an instance of torch.nn.Module or ModelMixin, "
@@ -90,7 +92,7 @@ def maybe_enable_parallelism_for_controlnet(
     return controlnet
 
   if parallelism_config.cp_enabled():
-    controlnet = maybe_enable_context_parallelism(
+    controlnet = _parallelize_controlnet_cp(
       controlnet=controlnet,
       parallelism_config=parallelism_config,
     )

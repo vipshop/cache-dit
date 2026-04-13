@@ -65,13 +65,27 @@ def get_diffusers_attention_classes(attn_classes_extra: Optional[tuple] = None) 
   :returns: Tuple of diffusers attention classes.
   """
 
-  from diffusers.models.attention import AttentionModuleMixin
-  from diffusers.models.attention_processor import Attention, MochiAttention
+  from diffusers.models.attention_processor import Attention
 
-  attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+  attention_classes: list[type] = [Attention]
+  try:
+    from diffusers.models.attention import AttentionModuleMixin
+
+    attention_classes.append(AttentionModuleMixin)
+  except ImportError:
+    pass
+
+  try:
+    from diffusers.models.attention_processor import MochiAttention
+
+    attention_classes.append(MochiAttention)
+  except ImportError:
+    pass
+
+  attention_classes = list(dict.fromkeys(attention_classes))
   if attn_classes_extra is not None:
-    attention_classes += attn_classes_extra
-  return attention_classes
+    attention_classes.extend(attn_classes_extra)
+  return tuple(attention_classes)
 
 
 def validate_context_parallel_attention_backend(

@@ -15,7 +15,7 @@ def _ensure_auto_encoder_dp_planners_activated() -> None:
     _activate_auto_encoder_dp_planners()
 
 
-def maybe_enable_data_parallelism(
+def _parallelize_autoencoder_dp(
   auto_encoder: torch.nn.Module,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
@@ -36,10 +36,16 @@ def maybe_enable_data_parallelism(
   )
 
 
-def maybe_enable_parallelism_for_auto_encoder(
+def parallelize_autoencoder(
   auto_encoder: torch.nn.Module,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
+  """Parallelize one autoencoder with the configured DP strategy.
+
+  :param auto_encoder: Autoencoder module to parallelize.
+  :param parallelism_config: Parallelism configuration shared with the transformer.
+  :returns: The parallelized autoencoder.
+  """
   assert isinstance(
     auto_encoder, torch.nn.Module
   ), f"auto_encoder must be an instance of torch.nn.Module, but got {type(auto_encoder)}"
@@ -50,7 +56,7 @@ def maybe_enable_parallelism_for_auto_encoder(
   if parallelism_config is None:
     return auto_encoder
 
-  auto_encoder = maybe_enable_data_parallelism(
+  auto_encoder = _parallelize_autoencoder_dp(
     auto_encoder=auto_encoder,
     parallelism_config=parallelism_config,
   )

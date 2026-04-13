@@ -8,7 +8,7 @@ from diffusers.models.attention_processor import (
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.dit_transformer_2d import DiTTransformer2DModel
 
-from ...distributed import (
+from ...distributed.core import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

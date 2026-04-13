@@ -4,7 +4,7 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.transformer_chroma import ChromaTransformer2DModel
 
-from ...distributed import (
+from ...distributed.core import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

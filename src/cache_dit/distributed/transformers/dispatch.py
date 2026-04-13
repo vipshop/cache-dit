@@ -12,11 +12,7 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 
 from ...attention import _maybe_register_custom_attn_backends
-from ...distributed import (
-  _ContextParallelConfig,
-  _enable_context_parallelism,
-  _is_diffusers_parallelism_available,
-)
+from ...distributed.core import _ContextParallelConfig, _enable_context_parallelism
 from ...logger import init_logger
 from ..backend import ParallelismBackend
 from ..config import ParallelismConfig
@@ -40,7 +36,7 @@ def _ensure_tp_planners_activated() -> None:
     _activate_tp_planners()
 
 
-def maybe_enable_context_parallelism(
+def _parallelize_transformer_context(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: Optional[ParallelismConfig] = None,
 ) -> torch.nn.Module:
@@ -62,9 +58,6 @@ def maybe_enable_context_parallelism(
     parallelism_config,
     ParallelismConfig), ("parallelism_config must be an instance of ParallelismConfig"
                          f" but got {type(parallelism_config)}")
-  assert _is_diffusers_parallelism_available(), (
-    "Context parallelism requires the 'diffusers>=0.36.dev0'."
-    "Please install latest version of diffusers from source")
 
   _ensure_cp_planners_activated()
 
@@ -96,12 +89,12 @@ def maybe_enable_context_parallelism(
       )
 
     _enable_context_parallelism(transformer, config=cp_config, cp_plan=cp_plan)
-    _maybe_patch_native_parallel_config(transformer)
+    _maybe_patch_parallel_config(transformer)
 
   return transformer
 
 
-def maybe_enable_tensor_parallelism(
+def _parallelize_transformer_tensor(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
@@ -131,7 +124,7 @@ def maybe_enable_tensor_parallelism(
   )
 
 
-def _maybe_patch_native_parallel_config(
+def _maybe_patch_parallel_config(
   transformer: torch.nn.Module,
   **kwargs,
 ) -> torch.nn.Module:
@@ -205,10 +198,16 @@ def _maybe_patch_native_parallel_config(
   return transformer
 
 
-def maybe_enable_parallelism_for_transformer(
+def parallelize_transformer(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: Optional[ParallelismConfig],
 ) -> torch.nn.Module:
+  """Dispatch transformer parallelization by configured backend.
+
+  :param transformer: Transformer module or diffusers model to parallelize.
+  :param parallelism_config: Parallelism configuration selecting the backend and layout.
+  :returns: The transformer after backend-specific parallelization.
+  """
   assert isinstance(
     transformer,
     (torch.nn.Module,
@@ -220,17 +219,17 @@ def maybe_enable_parallelism_for_transformer(
 
   # Currently, we can dispatch the parallelism based on the backend type.
   if parallelism_config.backend == ParallelismBackend.NATIVE_HYBRID:
-    return maybe_enable_hybrid_parallelism_for_transformer(
+    return _parallelize_transformer_hybrid(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )
   elif parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
-    return maybe_enable_context_parallelism_for_transformer(
+    return _parallelize_transformer_cp(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )
   elif parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH:
-    return maybe_enable_tensor_parallelism_for_transformer(
+    return _parallelize_transformer_tp(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )
@@ -238,18 +237,18 @@ def maybe_enable_parallelism_for_transformer(
     raise ValueError(f"{parallelism_config.backend} backend is not supported yet")
 
 
-def maybe_enable_hybrid_parallelism_for_transformer(
+def _parallelize_transformer_hybrid(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
 ):
   assert parallelism_config.hybrid_enabled(), "hybrid_enabled() must be True for HYBRID backend."
   # 0. First enable context parallelism
-  transformer = maybe_enable_context_parallelism_for_transformer(
+  transformer = _parallelize_transformer_cp(
     transformer=transformer,
     parallelism_config=parallelism_config,
   )
   # 1. Then enable tensor parallelism
-  transformer = maybe_enable_tensor_parallelism_for_transformer(
+  transformer = _parallelize_transformer_tp(
     transformer=transformer,
     parallelism_config=parallelism_config,
   )
@@ -261,7 +260,7 @@ def maybe_enable_hybrid_parallelism_for_transformer(
   return transformer
 
 
-def maybe_enable_context_parallelism_for_transformer(
+def _parallelize_transformer_cp(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
@@ -287,7 +286,7 @@ def maybe_enable_context_parallelism_for_transformer(
       f"or ParallelismBackend.NATIVE_HYBRID but got {parallelism_config.backend}")
 
   if parallelism_config.cp_enabled() or parallelism_config.hybrid_enabled():
-    transformer = maybe_enable_context_parallelism(
+    transformer = _parallelize_transformer_context(
       transformer,
       parallelism_config,
     )
@@ -303,7 +302,7 @@ def maybe_enable_context_parallelism_for_transformer(
   return transformer
 
 
-def maybe_enable_tensor_parallelism_for_transformer(
+def _parallelize_transformer_tp(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
@@ -329,7 +328,7 @@ def maybe_enable_tensor_parallelism_for_transformer(
                          f" but got {type(parallelism_config)}")
 
   if parallelism_config.tp_enabled() or parallelism_config.hybrid_enabled():
-    transformer = maybe_enable_tensor_parallelism(
+    transformer = _parallelize_transformer_tensor(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )

@@ -2,18 +2,19 @@ from typing import Optional
 
 import torch
 from diffusers.models.modeling_utils import ModelMixin
+from ...distributed.core import (
+  _ContextParallelInput,
+  _ContextParallelOutput,
+  _ContextParallelModelPlan,
+)
 
 try:
   from diffusers import Kandinsky5Transformer3DModel
-  from diffusers.models._modeling_parallel import (
-    _ContextParallelInput,
-    _ContextParallelOutput,
-    _ContextParallelModelPlan,
-  )
-except ImportError:
-  raise ImportError("Context parallelism requires the 'diffusers>=0.36.dev0'."
-                    "Please install latest version of diffusers from source: \n"
-                    "pip3 install git+https://github.com/huggingface/diffusers.git")
+except ImportError as exc:
+  raise ImportError(
+    "Kandinsky5 context parallelism requires diffusers with Kandinsky5Transformer3DModel "
+    "support. Please install a recent diffusers version from source: \n"
+    "pip3 install git+https://github.com/huggingface/diffusers.git") from exc
 
 from ...logger import init_logger
 from ..config import ParallelismConfig

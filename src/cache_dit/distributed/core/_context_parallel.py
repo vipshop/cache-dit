@@ -13,7 +13,7 @@ if torch.distributed.is_available():
   import torch.distributed._functional_collectives as funcol
 
 from ...logger import init_logger
-from ._distributed_primitives import _gather_size_by_comm
+from ._distributed_primitives import _gather_size
 from ._hooks import HookRegistry, ModelHook, unwrap_module
 from ._modeling_parallel import (
   _ContextParallelConfig,
@@ -337,7 +337,7 @@ def _fill_gather_shapes(shape: tuple[int, ...], gather_dims: tuple[int, ...],
 def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.ProcessGroup) -> torch.Tensor:
   tensor = tensor.contiguous()
   shape = tensor.shape
-  gather_dims = tuple(_gather_size_by_comm(shape[dim], group))
+  gather_dims = tuple(_gather_size(shape[dim], group))
   gather_shapes = _fill_gather_shapes(tuple(shape), gather_dims, dim)
   gathered_tensors = [
     torch.empty(shape, device=tensor.device, dtype=tensor.dtype) for shape in gather_shapes

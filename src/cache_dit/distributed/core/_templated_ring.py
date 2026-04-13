@@ -1,6 +1,5 @@
 import torch
-from typing import Optional, Tuple
-import torch.distributed as dist
+from typing import Optional
 import torch.nn.functional as F
 
 try:
@@ -10,84 +9,9 @@ except ImportError:
   fused_merge_attn_states = None
 
 from ._modeling_parallel import _ContextParallelConfig
+from ._distributed_primitives import _RingP2PComm
 
 __all__ = ["RingAttention"]
-
-
-# Adapted from: https://github.com/zhuzilin/ring-flash-attention/blob/main/ring_flash_attn/utils.py#L98
-class _RingP2PComm:
-
-  def __init__(self, process_group: dist.ProcessGroup):
-    self._process_group = process_group
-    self._ops = []
-    self.rank = dist.get_rank(self._process_group)
-    self.world_size = dist.get_world_size(self._process_group)
-    self._reqs = None
-
-    self.send_rank = (self.rank + 1) % self.world_size
-    self.recv_rank = (self.rank - 1) % self.world_size
-
-    if process_group is not None:
-      self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
-      self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
-
-  def send_recv(self,
-                to_send: torch.Tensor,
-                recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
-    to_send = to_send.contiguous()
-    if recv_tensor is None:
-      res = torch.empty_like(to_send).contiguous()
-    else:
-      res = recv_tensor
-
-    send_op = dist.P2POp(dist.isend, to_send, self.send_rank, group=self._process_group)
-    recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
-    self._ops.append(send_op)
-    self._ops.append(recv_op)
-    return res
-
-  def commit(self):
-    if self._reqs is not None:
-      raise RuntimeError("commit called twice")
-    self._reqs = dist.batch_isend_irecv(self._ops)
-
-  def wait(self):
-    if self._reqs is None:
-      raise RuntimeError("wait called before commit")
-    for req in self._reqs:
-      req.wait()
-    self._reqs = None
-    self._ops = []
-
-  def send_recv_kv(
-    self,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    k_buffer: Optional[torch.Tensor] = None,
-    v_buffer: Optional[torch.Tensor] = None,
-  ) -> Tuple[torch.Tensor, torch.Tensor]:
-    next_k, next_v = self.send_recv(k, k_buffer), self.send_recv(v, v_buffer)
-    self.commit()
-    return next_k, next_v
-
-  def batch_send_recv_kv(
-    self,
-    k: torch.Tensor,  # (B, S_LOCAL, H, D)
-    v: torch.Tensor,  # (B, S_LOCAL, H, D)
-    kv_buffer: Optional[torch.Tensor] = None,
-  ) -> Tuple[torch.Tensor, torch.Tensor]:
-    # Step 1: Concatenate k and v along the last dimension
-    kv_concat = torch.cat([k, v], dim=0)
-    # Step 2: Perform send_recv on the concatenated tensor
-    kv_recv = self.send_recv(kv_concat, kv_buffer)
-    self.commit()
-    # Step 3: Split the received tensor back into k and v
-    S = k.size(0)
-    # Just views of kv_recv, no copy. DON'T use contiguous here.
-    # contiguous() will create a copy of empty tensor, which
-    # causes wrong results.
-    next_k, next_v = torch.split(kv_recv, [S, S], dim=0)
-    return next_k, next_v
 
 
 class RingAttention(torch.autograd.Function):
