@@ -9,22 +9,26 @@ import cutlass.cute as cute
 import torch
 import torch.nn.functional as F
 from cutlass.cute import make_layout
-from cutlass.cute import make_tensor
-from cutlass.cute.nvgpu import warp
 from cutlass.cute import recast_ptr
 from cutlass.cute.runtime import from_dlpack
 from cutlass.cute.typing import BFloat16
 from cutlass.cute.typing import Int32
 
+from .gemm_utils import bf16x2_bits_to_f32x2
+from .gemm_utils import f16x2_bits_to_f32x2
 from .gemm_utils import h2div_bf16x2_f32
 from .gemm_utils import h2div_f16x2_f32
+from .gemm_utils import load_pred_v2_b32
 from .gemm_utils import load_pred_v4_b32
 from .gemm_utils import quantize_f32x8_to_int4_word_signed
 from .gemm_utils import reduce_add_f32
 from .gemm_utils import rcp_approx_f32
 from .gemm_utils import require_int4_runtime
 from .gemm_utils import store_global_cg_v4_b32
-from .gemm_utils import store_shared_v4_b32
+from .mma import extract_f32_fragment_values
+from .mma import make_f32_accumulator_fragment
+from .mma import mma_f16_or_bf16_f32
+from .mma import packed_half_fragment_from_i32_words
 
 _BLOCK_M = 256
 _BLOCK_N = 128
@@ -91,23 +95,97 @@ def _packed_smooth_index(channel_idx: int) -> int:
           (within_16 % 2))
 
 
-def _make_lora_tiled_mma(element_type):
-  mma_op = warp.MmaF16BF16Op(element_type, cutlass.Float32, (_MMA_TILE_M, 8, _MMA_TILE_K))
-  return cute.make_tiled_mma(
-    mma_op,
-    (1, 1, 1),
-    permutation_mnk=(_MMA_TILE_M, _MMA_TILE_N, _MMA_TILE_K),
+def _unpack_runtime_half_pair_bits(bits, element_type) -> tuple[cutlass.Float32, cutlass.Float32]:
+  """Decode one packed runtime half or bf16 pair into float values."""
+
+  if cutlass.const_expr(element_type == BFloat16):
+    return bf16x2_bits_to_f32x2(bits)
+  return f16x2_bits_to_f32x2(bits)
+
+
+def _select_runtime_word(even_word: Int32, odd_word: Int32, lane_is_odd: Int32) -> Int32:
+  """Select one packed 32-bit word for the current lane without Python branching."""
+
+  return even_word + lane_is_odd * (odd_word - even_word)
+
+
+def _load_runtime_quant_input_words(x_i32_ptr, row_idx, row_stride_words: int, group_word_base: int,
+                                    lane_in_row) -> tuple[Int32, Int32, Int32, Int32]:
+  """Load one 8-element activation pack as four contiguous half or bf16 pairs."""
+
+  return load_pred_v4_b32(
+    x_i32_ptr + row_idx * row_stride_words + group_word_base + lane_in_row * 4,
+    1,
   )
 
 
-def _partition_fragment_abc(thr_mma: cute.ThrMma, sA: cute.Tensor, sB: cute.Tensor):
-  acc = cute.make_rmem_tensor(thr_mma.partition_shape_C((_MMA_TILE_M, _MMA_TILE_N)),
-                              cutlass.Float32)
-  tCsA = thr_mma.partition_A(sA)
-  tCsB = thr_mma.partition_B(sB)
-  tCrA = thr_mma.make_fragment_A(tCsA)
-  tCrB = thr_mma.make_fragment_B(tCsB)
-  return acc, tCsA, tCsB, tCrA, tCrB
+def _load_runtime_quant_smooth_words(smooth_i32_ptr, block_word_base: int, group_in_block, lane_id,
+                                     lane_in_row) -> tuple[Int32, Int32, Int32, Int32]:
+  """Load the four smooth-factor half2 pairs needed by one quantization lane.
+
+  The runtime smooth tensor already follows the packed CUDA layout. Within one
+  8-lane row group, each 2-lane pair cooperatively issues two `v4.b32` global
+  loads and then distributes the required packed half2 words with warp shuffles.
+  """
+
+  lane_pair = lane_in_row // 2
+  lane_is_odd = Int32(lane_in_row % 2)
+  even_lane_pred = Int32(1) - lane_is_odd
+  row_group_base_lane = lane_id - lane_in_row
+  source_lane = row_group_base_lane + lane_pair * 2
+  group_word_offset = group_in_block * (_WARP_K // _PACKED_HALFS_PER_I32)
+  pair_word_base = block_word_base + group_word_offset + lane_pair * 8
+
+  low_0, low_1, low_2, low_3 = load_pred_v4_b32(smooth_i32_ptr + pair_word_base, even_lane_pred)
+  high_0, high_1, high_2, high_3 = load_pred_v4_b32(smooth_i32_ptr + pair_word_base + 4,
+                                                    even_lane_pred)
+
+  low_0 = cute.arch.shuffle_sync(low_0, source_lane)
+  low_1 = cute.arch.shuffle_sync(low_1, source_lane)
+  low_2 = cute.arch.shuffle_sync(low_2, source_lane)
+  low_3 = cute.arch.shuffle_sync(low_3, source_lane)
+  high_0 = cute.arch.shuffle_sync(high_0, source_lane)
+  high_1 = cute.arch.shuffle_sync(high_1, source_lane)
+  high_2 = cute.arch.shuffle_sync(high_2, source_lane)
+  high_3 = cute.arch.shuffle_sync(high_3, source_lane)
+
+  return (
+    _select_runtime_word(low_0, low_1, lane_is_odd),
+    _select_runtime_word(low_2, low_3, lane_is_odd),
+    _select_runtime_word(high_0, high_1, lane_is_odd),
+    _select_runtime_word(high_2, high_3, lane_is_odd),
+  )
+
+
+def _load_runtime_mma_pair_words(x_i32_ptr, row_idx, row_stride_words: int, channel_word_base: int,
+                                 lane_id, lane_in_group) -> tuple[Int32, Int32]:
+  """Load one MMA row fragment via vectorized global loads plus warp shuffles.
+
+  Each 4-lane row group cooperatively fetches two contiguous `v2.b32` segments
+  from global memory. The even lane in each 2-lane pair performs the vector
+  load, then both lanes consume the packed half pair they need via warp
+  shuffles. This keeps the CUDA lane-to-fragment mapping unchanged while
+  avoiding the previous scalar `x[row, col]` gathers.
+  """
+
+  pair_group = lane_in_group // 2
+  lane_is_odd = Int32(lane_in_group % 2)
+  even_lane_pred = Int32(1) - lane_is_odd
+  row_group_base_lane = lane_id - lane_in_group
+  source_lane = row_group_base_lane + pair_group * 2
+  row_word_base = row_idx * row_stride_words + channel_word_base + pair_group * 2
+
+  low_word_0, low_word_1 = load_pred_v2_b32(x_i32_ptr + row_word_base, even_lane_pred)
+  high_word_0, high_word_1 = load_pred_v2_b32(x_i32_ptr + row_word_base + 4, even_lane_pred)
+
+  low_word_0 = cute.arch.shuffle_sync(low_word_0, source_lane)
+  low_word_1 = cute.arch.shuffle_sync(low_word_1, source_lane)
+  high_word_0 = cute.arch.shuffle_sync(high_word_0, source_lane)
+  high_word_1 = cute.arch.shuffle_sync(high_word_1, source_lane)
+
+  low_word = low_word_0 + lane_is_odd * (low_word_1 - low_word_0)
+  high_word = high_word_0 + lane_is_odd * (high_word_1 - high_word_0)
+  return low_word, high_word
 
 
 class _SVDQFusedQuantizeLoraProgram:
@@ -116,6 +194,10 @@ class _SVDQFusedQuantizeLoraProgram:
   One CTA covers ``BLOCK_M x BLOCK_N``. Each warp owns one ``32 x 128``
   activation tile, writes the quantized runtime tensors, and accumulates the
   LoRA-down partial sums for the same tile before moving on.
+
+  NOTE: This implementation is slower than the existing CUDA kernel, so it is not
+  currently wired up to the public interface. The main goal of this scaffold is to
+  stabilize the call path and provide a reference implementation for future optimizations.
   """
 
   def __init__(self, channels: int, rank: int) -> None:
@@ -145,18 +227,11 @@ class _SVDQFusedQuantizeLoraProgram:
 
     qout_i32_ptr = recast_ptr(qout.iterator, dtype=Int32)
     x_i32_ptr = recast_ptr(x.iterator, dtype=Int32)
+    smooth_i32_ptr = recast_ptr(smooth.iterator, dtype=Int32)
     lora_down_i32_ptr = recast_ptr(lora_down.iterator, dtype=Int32)
     out_ptr = recast_ptr(out.iterator, dtype=out.element_type)
-
-    tiled_mma = _make_lora_tiled_mma(x.element_type)
-    atom_copy_s2r_A = cute.make_copy_atom(warp.LdMatrix8x8x16bOp(False, 4), x.element_type)
-    atom_copy_s2r_B = cute.make_copy_atom(warp.LdMatrix8x8x16bOp(False, 4), lora_down.element_type)
-    tiled_copy_s2r_A = cute.make_tiled_copy_A(atom_copy_s2r_A, tiled_mma)
-    tiled_copy_s2r_B = cute.make_tiled_copy_B(atom_copy_s2r_B, tiled_mma)
-
-    thr_mma = tiled_mma.get_slice(lane_id)
-    thr_copy_ldmatrix_A = tiled_copy_s2r_A.get_slice(lane_id)
-    thr_copy_ldmatrix_B = tiled_copy_s2r_B.get_slice(lane_id)
+    x_row_stride_words = self.channels // _PACKED_HALFS_PER_I32
+    smooth_block_stride_words = _BLOCK_N // _PACKED_HALFS_PER_I32
 
     smem = cutlass.utils.SmemAllocator()
     scale_smem = smem.allocate_tensor(
@@ -173,77 +248,39 @@ class _SVDQFusedQuantizeLoraProgram:
                 self.groups_per_block_n * _THREADS_PER_ROW, 1)),
       byte_alignment=16,
     )
-    a_top_smem = smem.allocate_tensor(
-      x.element_type,
-      make_layout((self.warps_per_block_m, _MMA_TILE_M, _MMA_TILE_K),
-                  stride=(_MMA_TILE_M * _MMA_TILE_K, _MMA_TILE_K, 1)),
-      byte_alignment=16,
-    )
-    a_bottom_smem = smem.allocate_tensor(
-      x.element_type,
-      make_layout((self.warps_per_block_m, _MMA_TILE_M, _MMA_TILE_K),
-                  stride=(_MMA_TILE_M * _MMA_TILE_K, _MMA_TILE_K, 1)),
-      byte_alignment=16,
-    )
-    b_smem = smem.allocate_tensor(
-      lora_down.element_type,
-      make_layout((self.warps_per_block_m, _MMA_TILE_N, _MMA_TILE_K),
-                  stride=(_MMA_TILE_N * _MMA_TILE_K, _MMA_TILE_K, 1)),
-      byte_alignment=16,
-    )
-    out_store_smem = smem.allocate_tensor(
-      out.element_type,
-      make_layout((self.warps_per_block_m, 2, _MMA_TILE_M * _MMA_TILE_N),
-                  stride=(2 * _MMA_TILE_M * _MMA_TILE_N, _MMA_TILE_M * _MMA_TILE_N, 1)),
-      byte_alignment=16,
-    )
 
     warp_scale_smem = scale_smem[warp_id, None, None]
     warp_qpack_smem = qpack_smem[warp_id, None, None]
-    warp_a_top_smem = a_top_smem[warp_id, None, None]
-    warp_a_bottom_smem = a_bottom_smem[warp_id, None, None]
-    warp_b_smem = b_smem[warp_id, None, None]
-    warp_out_store_smem = out_store_smem[warp_id, None, None]
-
-    a_top_smem_i32_ptr = recast_ptr(warp_a_top_smem.iterator, dtype=Int32)
-    a_bottom_smem_i32_ptr = recast_ptr(warp_a_bottom_smem.iterator, dtype=Int32)
-    b_smem_i32 = make_tensor(
-      recast_ptr(warp_b_smem.iterator, dtype=Int32),
-      make_layout((_MMA_TILE_N, _MMA_TILE_K // _PACKED_HALFS_PER_I32),
-                  stride=(_MMA_TILE_K // _PACKED_HALFS_PER_I32, 1)),
-    )
-
-    acc_top, _, _, tCrA_top, tCrB = _partition_fragment_abc(thr_mma, warp_a_top_smem, warp_b_smem)
-    acc_bottom, _, _, tCrA_bottom, _ = _partition_fragment_abc(thr_mma, warp_a_bottom_smem,
-                                                               warp_b_smem)
-    tCsA_top_copy_view = thr_copy_ldmatrix_A.partition_S(warp_a_top_smem)
-    tCsA_bottom_copy_view = thr_copy_ldmatrix_A.partition_S(warp_a_bottom_smem)
-    tCrA_top_copy_view = thr_copy_ldmatrix_A.retile(tCrA_top)
-    tCrA_bottom_copy_view = thr_copy_ldmatrix_A.retile(tCrA_bottom)
-    tCsB_copy_view = thr_copy_ldmatrix_B.partition_S(warp_b_smem)
-    tCrB_copy_view = thr_copy_ldmatrix_B.retile(tCrB)
 
     for group_in_block in cutlass.range_constexpr(self.groups_per_block_n):
       group_idx = block_n_idx * self.groups_per_block_n + group_in_block
       group_col_base = channel_block_base + group_in_block * _WARP_K
+      group_word_base = group_col_base // _PACKED_HALFS_PER_I32
+      smooth_words = _load_runtime_quant_smooth_words(
+        smooth_i32_ptr,
+        block_n_idx * smooth_block_stride_words,
+        group_in_block,
+        lane_id,
+        lane_in_row,
+      )
 
       for row_batch in cutlass.range_constexpr(_ROW_BATCHES_PER_WARP):
         row_local = row_batch * _WARP_ROW_GROUPS + subgroup_id
         global_row = base_row + row_local
-        col_base = group_col_base + lane_in_row * 8
+        input_words = _load_runtime_quant_input_words(
+          x_i32_ptr,
+          global_row,
+          x_row_stride_words,
+          group_word_base,
+          lane_in_row,
+        )
 
         local_values: list[cutlass.Float32] = []
         local_absmax = cutlass.Float32(0.0)
         for pair_idx in cutlass.range_constexpr(4):
-          logical_col_0 = col_base + pair_idx * 2
-          logical_col_1 = logical_col_0 + 1
-          packed_smooth_idx_0 = _packed_smooth_index(logical_col_0)
-          packed_smooth_idx_1 = _packed_smooth_index(logical_col_1)
-
-          input_0 = cutlass.Float32(x[global_row, logical_col_0])
-          input_1 = cutlass.Float32(x[global_row, logical_col_1])
-          smooth_0 = cutlass.Float32(smooth[packed_smooth_idx_0])
-          smooth_1 = cutlass.Float32(smooth[packed_smooth_idx_1])
+          input_0, input_1 = _unpack_runtime_half_pair_bits(input_words[pair_idx], x.element_type)
+          smooth_0, smooth_1 = _unpack_runtime_half_pair_bits(smooth_words[pair_idx],
+                                                              smooth.element_type)
 
           if cutlass.const_expr(x.element_type == BFloat16):
             value_0, value_1 = h2div_bf16x2_f32(input_0, input_1, smooth_0, smooth_1)
@@ -279,7 +316,9 @@ class _SVDQFusedQuantizeLoraProgram:
         if lane_in_row == 0:
           warp_scale_smem[group_in_block, row_local] = scale.to(warp_scale_smem.element_type)
 
-    cute.arch.barrier()
+    # Match CUDA quantize_w4a4_warp: each warp only consumes its private smem
+    # slice, so a warp-scope sync is sufficient here.
+    cute.arch.sync_warp()
 
     packed_pos = lane_id
     logical_row = (packed_pos // 16) * 16 + (packed_pos % 16) // 2 + (packed_pos % 2) * 8
@@ -311,107 +350,62 @@ class _SVDQFusedQuantizeLoraProgram:
         )
 
     if cutlass.const_expr(self.rank_tiles > 0):
-      x_row_stride_i32 = x.stride[0] // _PACKED_HALFS_PER_I32
-      a_smem_row_stride_i32 = _MMA_TILE_K // _PACKED_HALFS_PER_I32
-      packed_lora_tile_i32 = _MMA_TILE_N * _MMA_TILE_K // _PACKED_HALFS_PER_I32
-
       for rank_tile_idx in cutlass.range_constexpr(self.rank_tiles):
-        acc_top.fill(0.0)
-        acc_bottom.fill(0.0)
+        acc_top = make_f32_accumulator_fragment()
+        acc_bottom = make_f32_accumulator_fragment()
 
         for channel_tile_idx in cutlass.range_constexpr(self.channel_tiles_per_block_n):
           channel_tile_global = block_n_idx * self.channel_tiles_per_block_n + channel_tile_idx
           channel_base = channel_tile_global * _MMA_TILE_K
-          a_row_idx = lane_id // 2
-          a_col_word = (lane_id % 2) * _I32_WORDS_PER_VEC
-          top_row = base_row + a_row_idx
-          bottom_row = top_row + _MMA_TILE_M
-          channel_base_i32 = channel_base // _PACKED_HALFS_PER_I32
+          channel_word_base = channel_base // _PACKED_HALFS_PER_I32
+          lane_group = lane_id // 4
+          lane_in_group = lane_id % 4
+          top_row_0 = base_row + lane_group
+          top_row_1 = top_row_0 + 8
+          bottom_row_0 = top_row_0 + _MMA_TILE_M
+          bottom_row_1 = bottom_row_0 + 8
 
-          a_top_0, a_top_1, a_top_2, a_top_3 = load_pred_v4_b32(
-            x_i32_ptr + top_row * x_row_stride_i32 + channel_base_i32 + a_col_word,
-            1,
-          )
-          a_bottom_0, a_bottom_1, a_bottom_2, a_bottom_3 = load_pred_v4_b32(
-            x_i32_ptr + bottom_row * x_row_stride_i32 + channel_base_i32 + a_col_word,
-            1,
-          )
-          store_shared_v4_b32(
-            a_top_smem_i32_ptr + a_row_idx * a_smem_row_stride_i32 + a_col_word,
-            a_top_0,
-            a_top_1,
-            a_top_2,
-            a_top_3,
-          )
-          store_shared_v4_b32(
-            a_bottom_smem_i32_ptr + a_row_idx * a_smem_row_stride_i32 + a_col_word,
-            a_bottom_0,
-            a_bottom_1,
-            a_bottom_2,
-            a_bottom_3,
-          )
+          a_top_0, a_top_2 = _load_runtime_mma_pair_words(x_i32_ptr, top_row_0, x_row_stride_words,
+                                                          channel_word_base, lane_id, lane_in_group)
+          a_top_1, a_top_3 = _load_runtime_mma_pair_words(x_i32_ptr, top_row_1, x_row_stride_words,
+                                                          channel_word_base, lane_id, lane_in_group)
+          a_bottom_0, a_bottom_2 = _load_runtime_mma_pair_words(x_i32_ptr, bottom_row_0,
+                                                                x_row_stride_words,
+                                                                channel_word_base, lane_id,
+                                                                lane_in_group)
+          a_bottom_1, a_bottom_3 = _load_runtime_mma_pair_words(x_i32_ptr, bottom_row_1,
+                                                                x_row_stride_words,
+                                                                channel_word_base, lane_id,
+                                                                lane_in_group)
 
-          n_lane = lane_id % 8
-          k_lane = lane_id // 8
-          lora_tile_base_i32 = (channel_tile_global * self.rank_tiles +
-                                rank_tile_idx) * packed_lora_tile_i32
-          lora_lane_base_i32 = (n_lane * 4 + k_lane) * _I32_WORDS_PER_VEC
+          a_top_frag = packed_half_fragment_from_i32_words(a_top_0, a_top_1, a_top_2, a_top_3,
+                                                           x.element_type)
+          a_bottom_frag = packed_half_fragment_from_i32_words(a_bottom_0, a_bottom_1, a_bottom_2,
+                                                              a_bottom_3, x.element_type)
+
+          lora_frag_base_i32 = ((
+            (channel_tile_global * self.rank_tiles + rank_tile_idx) * _WARP_THREADS) +
+                                lane_id) * _I32_WORDS_PER_VEC
           b0, b1, b2, b3 = load_pred_v4_b32(
-            lora_down_i32_ptr + lora_tile_base_i32 + lora_lane_base_i32,
+            lora_down_i32_ptr + lora_frag_base_i32,
             1,
           )
-          b_smem_i32[n_lane, k_lane] = b0
-          b_smem_i32[n_lane, k_lane + 4] = b1
-          b_smem_i32[n_lane + 8, k_lane] = b2
-          b_smem_i32[n_lane + 8, k_lane + 4] = b3
+          b_frag = packed_half_fragment_from_i32_words(b0, b1, b2, b3, lora_down.element_type)
 
-          cute.arch.barrier()
+          acc_top = mma_f16_or_bf16_f32(a_top_frag, b_frag, acc_top)
+          acc_bottom = mma_f16_or_bf16_f32(a_bottom_frag, b_frag, acc_bottom)
 
-          cute.copy(
-            tiled_copy_s2r_A,
-            tCsA_top_copy_view[None, None, 0],
-            tCrA_top_copy_view[None, None, 0],
-          )
-          cute.copy(
-            tiled_copy_s2r_A,
-            tCsA_bottom_copy_view[None, None, 0],
-            tCrA_bottom_copy_view[None, None, 0],
-          )
-          cute.copy(
-            tiled_copy_s2r_B,
-            tCsB_copy_view[None, None, 0],
-            tCrB_copy_view[None, None, 0],
-          )
-
-          cute.gemm(tiled_mma, acc_top, tCrA_top[None, None, 0], tCrB[None, None, 0], acc_top)
-          cute.gemm(tiled_mma, acc_bottom, tCrA_bottom[None, None, 0], tCrB[None, None, 0],
-                    acc_bottom)
-
-          cute.arch.barrier()
-
-        acc_top_vals = acc_top.load()
-        acc_bottom_vals = acc_bottom.load()
+        acc_top_vals = extract_f32_fragment_values(acc_top)
+        acc_bottom_vals = extract_f32_fragment_values(acc_bottom)
 
         for m_tile in cutlass.range_constexpr(2):
           acc_vals = acc_top_vals if m_tile == 0 else acc_bottom_vals
-          smem_tile = warp_out_store_smem[m_tile, None]
-          for frag_idx in cutlass.range_constexpr(8):
-            smem_tile[frag_idx * _WARP_THREADS + lane_id] = acc_vals[frag_idx]
-
-        cute.arch.barrier()
-
-        for m_tile in cutlass.range_constexpr(2):
-          smem_tile = warp_out_store_smem[m_tile, None]
           linear_tile_base = ((
             (block_m_idx * self.rank_tiles + rank_tile_idx) * self.warps_per_block_m + warp_id) * 2
                               + m_tile) * 256
-          for vec_group in cutlass.range_constexpr(2):
-            vec_base = vec_group * 128 + lane_id * 4
-            for elem_idx in cutlass.range_constexpr(4):
-              reduce_add_f32(out_ptr + linear_tile_base + vec_base + elem_idx,
-                             smem_tile[vec_base + elem_idx])
-
-        cute.arch.barrier()
+          for frag_idx in cutlass.range_constexpr(8):
+            reduce_add_f32(out_ptr + linear_tile_base + frag_idx * _WARP_THREADS + lane_id,
+                           acc_vals[frag_idx])
 
   @cute.jit
   def __call__(self, qout: cute.Tensor, ascales: cute.Tensor, out: cute.Tensor, x: cute.Tensor,
