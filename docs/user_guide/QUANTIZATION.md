@@ -449,7 +449,7 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The avaliable DQ smooth strategies are not limited to the identity smooth vector. We have also implemented some experimental heuristics that derive non-trivial smooth factors from weight statistics alone, without any activation calibration. These heuristics are inspired by the mathematical form of the PTQ smooth factor, but they intentionally ignore the activation term and only use weight statistics to compute the smooth factors. For example, users can set the `smooth_strategy` in `svdq_kwargs` to `weight` or `weight_inv` to enable these experimental weight-only heuristics:
+The avaliable DQ smooth strategies are not limited to the identity smooth vector. We have also implemented some experimental heuristics that derive non-trivial smooth factors from weight statistics alone, without any activation calibration. These heuristics are inspired by the mathematical form of the PTQ smooth factor, but they intentionally ignore the activation term and only use weight statistics to compute the smooth factors. For example, users can set the `smooth_strategy` in `svdq_kwargs` to `weight`, `weight_inv`, or `few_shot` to enable these non-default DQ modes:
 
 ```python
 import cache_dit
@@ -504,6 +504,104 @@ and then apply the same geometric-mean normalization and clipping.
 
 Intuitively, <span style="color:green;">weight_inv</span> does the opposite trade-off of <span style="color:green;">weight</span>: it intentionally makes the weight tensor harder to quantize on large-span channels, but it may reduce activation quantization difficulty because those activation channels are divided by a larger smooth factor at runtime.
 
+<span style="color:green;">few_shot</span>: delay SVDQ DQ materialization until the runtime has observed a small number of real inference forwards. Cache-DiT will keep the transformer in float mode during the first <span style="color:#c77dff;">few_shot_steps</span> forwards, stream per-layer activation spans by layer name, and after the last warmup forward finishes it will relax those activation spans according to a configurable few-shot policy, recompute activation-derived smooth scales, quantize the eligible linear layers in place, and use the quantized transformer from the next forward onward.
+
+This mode exposes four backend-local knobs:
+
+- <span style="color:#c77dff;">few_shot_steps</span>: number of root-module forwards to observe before quantization. Default: <span style="color:green;">1</span>.
+- <span style="color:#c77dff;">few_shot_relax_factor</span>: maximum multiplicative factor applied to activation spans during few-shot relaxation. It must satisfy <span style="color:green;">few_shot_relax_factor >= 1.0</span>, so the observed activation span is preserved or amplified, never reduced. Default: <span style="color:green;">1.5</span>. In practice, values around <span style="color:green;">1.5-2.5</span> are usually the safer starting range; larger values such as <span style="color:green;">4.0</span> can still oversmooth or blur image outputs when the outlier prior becomes too strong.
+- <span style="color:#c77dff;">few_shot_relax_top_ratio</span>: fraction of the largest activation spans used to define the few-shot threshold. Default: <span style="color:green;">0.25</span>.
+- <span style="color:#c77dff;">few_shot_relax_strategy</span>: how the relax factor is assigned across channels before smooth-scale recomputation. Default: <span style="color:green;">top</span>. Available values: <span style="color:green;">fixed</span>, <span style="color:green;">top</span>, <span style="color:green;">auto</span>, <span style="color:green;">power</span>, <span style="color:green;">log</span>, and <span style="color:green;">rank</span>.
+
+If the observed activation-span vector is denoted as \(a\) and the weight-span vector is denoted as \(w\), Cache-DiT first computes the threshold corresponding to \(1 - \text{few\_shot\_relax\_top\_ratio}\) on \(a\), relaxes the activation span, and then recomputes the smooth scale via
+
+\[
+  s_i^{\mathrm{relaxed}} = \frac{\left(a_i^{\mathrm{relaxed}}\right)^\alpha}{w_i^{1-\alpha}}.
+\]
+
+It then applies one of the following relax strategies:
+
+For <span style="color:green;">fixed</span>:
+
+\[
+  a_i^{\mathrm{relaxed}} = a_i
+\]
+
+This disables the relax step entirely and uses the original activation-derived few-shot smooth scale
+after recomputation from the unchanged activation span. It is useful as a control/baseline when you
+want few-shot activation collection without any extra channel-wise amplification. At runtime, this
+strategy ignores
+<span style="color:#c77dff;">few_shot_relax_factor</span> and
+<span style="color:#c77dff;">few_shot_relax_top_ratio</span>.
+
+For <span style="color:green;">top</span>:
+
+\[
+  a_i^{\mathrm{relaxed}} =
+\begin{cases}
+a_i \cdot \text{few\_shot\_relax\_factor}, & a_i \geq \tau \\
+a_i, & \text{otherwise}
+\end{cases}
+\]
+
+Channels outside the selected top-ratio are kept unchanged.
+
+For <span style="color:green;">auto</span>, Cache-DiT also relaxes the channels below the threshold, but uses a smaller multiplier for smaller activation spans and caps the largest channels at <span style="color:#c77dff;">few_shot_relax_factor</span>:
+
+\[
+m_i = 1 + \left(\text{few\_shot\_relax\_factor} - 1\right) \cdot
+\operatorname{clip}\left(\frac{a_i - a_{\min}}{\tau - a_{\min}}, 0, 1\right)
+\]
+
+\[
+  a_i^{\mathrm{relaxed}} = a_i \cdot m_i
+\]
+
+where \(\tau\) is the quantile threshold and \(a_{\min}\) is the minimum activation span in the layer. This makes the relax factor increase monotonically with the observed few-shot activation span while keeping it bounded by the configured maximum.
+
+Internally, Cache-DiT first constructs a strategy-specific normalized response \(r_i \in [0, 1]\), then maps it to the activation-span multiplier by
+
+\[
+m_i = 1 + r_i \cdot \left(\text{few\_shot\_relax\_factor} - 1\right)
+\]
+
+We intentionally clamp the intermediate response to \([0, 1]\) before this affine map so the final activation-span multiplier is always bounded inside \([1, \text{few\_shot\_relax\_factor}]\). Because <span style="color:#c77dff;">few_shot_relax_factor</span> is constrained to be at least 1, every channel is either unchanged or amplified; no channel can be shrunk by the few-shot relax step. Since smooth scale is recomputed from \(a^\alpha\), the induced smooth-scale multiplier is bounded more conservatively inside \([1, \text{few\_shot\_relax\_factor}^\alpha]\).
+
+That does not mean arbitrarily large factors are safe. A larger factor tells the quantizer to treat the already-large activation-span channels as if they were even more likely to encounter future activation outliers. When that prior becomes too strong, the recomputed smoothing step over-allocates protection to those channels, which often shows up as visibly softer or blurrier image details. If you need a stronger head-channel bias, it is usually better to keep <span style="color:#c77dff;">few_shot_relax_factor</span> moderate and change <span style="color:#c77dff;">few_shot_relax_strategy</span> to <span style="color:green;">power</span> or reduce <span style="color:#c77dff;">few_shot_relax_top_ratio</span>, rather than pushing the factor directly to 4.0.
+
+The remaining non-trivial strategies reuse the same bounded activation-span multiplier range \([1, \text{few\_shot\_relax\_factor}]\), but change how the normalized response is built before that final affine map:
+
+- <span style="color:green;">power</span>: uses a convex response \(r_i^2\), so the largest activation spans receive much stronger amplification while smaller channels stay closer to 1.
+- <span style="color:green;">log</span>: uses a concave log response, so mid/high activation-span channels get lifted earlier than in the linear <span style="color:green;">auto</span> strategy.
+- <span style="color:green;">rank</span>: ignores the absolute activation-span gaps and constructs the response from channel rank percentiles, which can be more robust when a layer has a few extreme outliers.
+
+For example:
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
+cache_dit.enable_cache(
+  pipe,
+  quantize_config=QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+    svdq_kwargs={
+      "smooth_strategy": "few_shot",
+      "few_shot_steps": 1,
+      "few_shot_relax_factor": 1.5,
+      "few_shot_relax_top_ratio": 0.25,
+      "few_shot_relax_strategy": "auto",
+      # Optional: request compile after runtime quantization finishes.
+      "few_shot_auto_compile": True,
+    },
+  ),
+)
+```
+
+When <span style="color:#c77dff;">few_shot_auto_compile</span> is enabled, helper flows may defer transformer compilation until the runtime quantization step finishes. This means the warmup forwards stay in float mode, while the next forward after quantization runs on the quantized + compiled transformer.
+
+If no owner-level deferred compile callback is registered, Cache-DiT falls back to compiling the quantized root module in-place with <span style="color:#c77dff;">nn.Module.compile()</span>. When the root module is a diffusers transformer that exposes <span style="color:#c77dff;">compile_repeated_blocks()</span>, that regional compile path is still preferred.
+
 The same workflow is available from the generate CLI through <span style="color:#c77dff;">--quantize-type</span> or shortcut flags:
 
 ```bash
@@ -519,6 +617,40 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
   --svdq-smooth-strategy weight_inv --svdq-calibrate-precision low
 
+# few-shot activation-derived DQ: sample one runtime forward, then quantize.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
+  --svdq-few-shot-relax-strategy top
+
+# few-shot fixed: keep the observed activation span unchanged, then recompute smooth scale.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-relax-strategy fixed
+
+# few-shot auto relax: larger activation spans receive larger relax factors, capped at 1.5.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
+  --svdq-few-shot-relax-strategy auto
+
+# few-shot power relax: focus the extra amplification on the largest channels.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
+  --svdq-few-shot-relax-strategy power
+
+# few-shot rank relax: assign relax factors from channel rank percentiles.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
+  --svdq-few-shot-relax-strategy rank
+
+# few-shot + deferred compile after runtime quantization completes.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-compile
+
 # high-rank are recommended for better precision while using SVDQ DQ, e.g, 256.
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
   --svdq-smooth-strategy identity --svdq-calibrate-precision low
@@ -528,11 +660,11 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
   --svdq-smooth-strategy identity --svdq-calibrate-precision medium
 ```
 
-Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint.
+Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint. The few-shot mode also keeps this in-memory-only contract: it delays materialization to runtime, but still does not emit a serialized checkpoint.
 
-At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default and experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
+At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default, experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics, and the runtime-activated <span style="color:#c77dff;">few_shot</span> mode as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
 
-The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The SVDQ runtime path keeps the default kernel behavior unless users explicitly opt into other backend-local settings.
+The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The few-shot CLI also exposes <span style="color:#c77dff;">--svdq-few-shot-steps</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-factor</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-top-ratio</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-strategy</span>, and <span style="color:#c77dff;">--svdq-few-shot-compile</span>. In the shared helper flow, top-level <span style="color:#c77dff;">--compile</span> is treated as a compatibility alias for few-shot runs, while <span style="color:#c77dff;">--svdq-few-shot-compile</span> is the precise switch that means "compile only after runtime quantization completes". The parser also accepts <span style="color:#c77dff;">top_q4</span> as an alias of <span style="color:#c77dff;">top</span>, but <span style="color:#c77dff;">fixed</span>, <span style="color:#c77dff;">top</span>, <span style="color:#c77dff;">auto</span>, <span style="color:#c77dff;">power</span>, <span style="color:#c77dff;">log</span>, and <span style="color:#c77dff;">rank</span> are the canonical strategy names.
 
 Here are some preliminary results on the impact of different DQ smooth strategies for a SVDQ DQ sweep on FLUX.2-klein-4B. 
 

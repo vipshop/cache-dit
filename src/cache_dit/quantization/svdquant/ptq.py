@@ -4,6 +4,7 @@ import dataclasses
 import inspect
 import json
 import os
+import time
 from typing import Any
 
 import torch
@@ -16,8 +17,10 @@ from ..config import _parse_svdq_quant_type
 from ..config import _resolve_svdq_kwargs
 from .linear import SVDQW4A4Linear
 from .quantizer import _ActivationSpanAccumulator
+from .quantizer import _apply_few_shot_relaxation
 from .quantizer import _normalize_dtype
 from .quantizer import _quantize_linear_svdq_w4a4_from_activation_span
+from .quantizer import _quantize_linear_svdq_w4a4_from_smooth_scale
 from .quantizer import _resolve_math_dtype
 from .quantizer import validate_svdq_linear_geometry
 
@@ -166,6 +169,92 @@ def _attach_quantization_metadata(
   module._svdq_checkpoint_path = checkpoint_path
   if quantize_config is not None:
     module._quantize_config = quantize_config
+
+
+def _register_post_quantize_callback(
+  module: nn.Module,
+  callback: Any,
+  *,
+  callback_name: str | None = None,
+) -> None:
+  """Register a root-module callback for work that must run after few-shot materialization.
+
+  Callbacks are attached to the owner/root module being quantized, not to the individual linear
+  submodules that get replaced. Follow-up work such as compilation is generally a root-module
+  concern, so this registry intentionally lives at that level.
+  """
+
+  callbacks = getattr(module, "_svdq_post_quantize_callbacks", None)
+  if callbacks is None:
+    callbacks = []
+    module._svdq_post_quantize_callbacks = callbacks
+
+  if callback_name is not None:
+    callback_names = getattr(module, "_svdq_post_quantize_callback_names", None)
+    if callback_names is None:
+      callback_names = set()
+      module._svdq_post_quantize_callback_names = callback_names
+    if callback_name in callback_names:
+      return
+    callback_names.add(callback_name)
+
+  callbacks.append(callback)
+
+
+def _pop_post_quantize_callbacks(module: nn.Module) -> list[Any]:
+  callbacks = list(getattr(module, "_svdq_post_quantize_callbacks", []))
+  if hasattr(module, "_svdq_post_quantize_callbacks"):
+    del module._svdq_post_quantize_callbacks
+  if hasattr(module, "_svdq_post_quantize_callback_names"):
+    del module._svdq_post_quantize_callback_names
+  return callbacks
+
+
+def _run_post_quantize_callbacks(
+  module: nn.Module,
+  *,
+  few_shot_auto_compile: bool,
+) -> None:
+  """Run root-level post-quantize callbacks or use a generic in-place compile fallback."""
+
+  callbacks = _pop_post_quantize_callbacks(module)
+  if not callbacks and few_shot_auto_compile:
+    try:
+      if hasattr(module, "compile_repeated_blocks") and callable(module.compile_repeated_blocks):
+        logger.info("Few-shot runtime quantization completed; compiling repeated blocks in-place.")
+        module.compile_repeated_blocks()
+      elif hasattr(module, "compile") and callable(module.compile):
+        logger.info("Few-shot runtime quantization completed; compiling root module in-place via "
+                    "nn.Module.compile().")
+        module.compile()
+      else:
+        logger.warning(
+          "few_shot_auto_compile was requested, but no owner callback was registered and the "
+          "module does not support compile_repeated_blocks() or nn.Module.compile(); skipping "
+          "automatic compile.")
+    except Exception as exc:
+      logger.warning(
+        "few_shot_auto_compile fallback failed with %s: %s",
+        type(exc).__name__,
+        exc,
+      )
+    return
+
+  for callback in callbacks:
+    try:
+      callback(module)
+    except Exception as exc:
+      logger.warning("Deferred post-quantize callback failed with %s: %s", type(exc).__name__, exc)
+
+
+def _clear_pending_quantization_state(module: nn.Module) -> None:
+  for attr_name in (
+      "_svdq_pending_quantization",
+      "_svdq_few_shot_controller",
+      "_svdq_cleanup_pending_quantization",
+  ):
+    if hasattr(module, attr_name):
+      delattr(module, attr_name)
 
 
 @dataclasses.dataclass
@@ -325,7 +414,7 @@ class SVDQPTQContext:
     if observed_layer_names is not None:
       lines.insert(
         3,
-        f"Observed  Layers: {len(observed_layer_names)} / {len(self.candidate_layer_names)}",
+        f"Observed    Layers: {len(observed_layer_names)} / {len(self.candidate_layer_names)}",
       )
     if self.verbose:
       lines.append(f"SVDQuant    Kwargs: {self.svdq_kwargs}")
@@ -406,6 +495,158 @@ class SVDQPTQCalibrator:
     for layer_name, accumulator in self._accumulators.items():
       if accumulator.has_observations:
         self.activation_spans[layer_name] = accumulator.finalize()
+
+
+@dataclasses.dataclass
+class SVDQFewShotRuntimeController:
+  """Defer SVDQ DQ materialization until enough runtime activations are observed."""
+
+  context: SVDQPTQContext
+  quantize_device: torch.device
+  completed_forwards: int = 0
+  collect_current_forward: bool = False
+  activation_spans: dict[str, torch.Tensor] = dataclasses.field(default_factory=dict)
+  _handles: list[Any] = dataclasses.field(default_factory=list)
+  _accumulators: dict[str, _ActivationSpanAccumulator] = dataclasses.field(default_factory=dict)
+  _finalized: bool = False
+
+  def _make_layer_hook(self, layer_name: str):
+    accumulator = self._accumulators[layer_name]
+
+    def hook(module: nn.Module, args: tuple[torch.Tensor, ...]) -> None:
+      if not self.collect_current_forward or self._finalized:
+        return
+      if not args or not isinstance(args[0], torch.Tensor):
+        raise TypeError(
+          f"SVDQ few-shot expected tensor inputs for layer {layer_name or _ROOT_LAYER_NAME}.")
+      if not isinstance(module, nn.Linear):
+        raise TypeError(f"Expected nn.Linear during few-shot collection, got {type(module)}.")
+
+      activation = args[0]
+      if activation.shape[-1] != module.in_features:
+        raise ValueError(
+          f"Expected activation last dim {module.in_features} for layer {layer_name}, "
+          f"got {activation.shape[-1]}.")
+      accumulator.add_tensor(activation.detach().reshape(-1, module.in_features))
+
+    return hook
+
+  def _on_root_forward_pre(self, _module: nn.Module, _args: tuple[Any, ...]) -> None:
+    self.collect_current_forward = self.completed_forwards < self.context.svdq_kwargs[
+      "few_shot_steps"]
+
+  def _on_root_forward_post(
+    self,
+    module: nn.Module,
+    _args: tuple[Any, ...],
+    output: Any,
+  ) -> Any:
+    if not self.collect_current_forward or self._finalized:
+      return output
+
+    self.completed_forwards += 1
+    if self.completed_forwards >= self.context.svdq_kwargs["few_shot_steps"]:
+      self._finalize_runtime_quantization(module)
+    return output
+
+  def arm(self) -> nn.Module:
+    if "" in self.context.candidate_layer_names:
+      raise NotImplementedError(
+        "SVDQ few-shot DQ does not support quantizing a root nn.Linear directly; wrap it in a "
+        "parent module or use immediate SVDQ DQ instead.")
+
+    calibrate_precision = self.context.svdq_kwargs["calibrate_precision"]
+    flush_sample_count = self.context.svdq_kwargs["activation_buffer_flush_sample_count"]
+    flush_cpu_bytes = self.context.svdq_kwargs["activation_buffer_flush_cpu_bytes"]
+
+    for layer_name in self.context.candidate_layer_names:
+      submodule = _get_named_submodule(self.context.root_module, layer_name)
+      if not isinstance(submodule, nn.Linear):
+        raise TypeError(f"Expected nn.Linear during few-shot registration, got {type(submodule)}.")
+      torch_dtype = _normalize_dtype(None, submodule.weight.device)
+      math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
+      self._accumulators[layer_name] = _ActivationSpanAccumulator(
+        device=submodule.weight.device,
+        torch_dtype=torch_dtype,
+        math_dtype=math_dtype,
+        flush_sample_count=flush_sample_count,
+        flush_cpu_bytes=flush_cpu_bytes,
+      )
+      self._handles.append(submodule.register_forward_pre_hook(self._make_layer_hook(layer_name)))
+
+    self._handles.append(
+      self.context.root_module.register_forward_pre_hook(self._on_root_forward_pre))
+    self._handles.append(self.context.root_module.register_forward_hook(self._on_root_forward_post))
+
+    self.context.root_module._svdq_pending_quantization = True
+    self.context.root_module._svdq_few_shot_controller = self
+    self.context.root_module._svdq_cleanup_pending_quantization = self.cleanup
+    logger.info(
+      "SVDQ few-shot runtime quantization for %s. \nObserving %d root forwards before "
+      "materializing quantized linear layers.",
+      self.context.root_module.__class__.__name__,
+      self.context.svdq_kwargs["few_shot_steps"],
+    )
+    return self.context.root_module
+
+  def cleanup(self) -> None:
+    for handle in self._handles:
+      handle.remove()
+    self._handles.clear()
+    _clear_pending_quantization_state(self.context.root_module)
+
+  def _finalize_runtime_quantization(self, module: nn.Module) -> None:
+    if self._finalized:
+      return
+
+    self._finalized = True
+    for layer_name, accumulator in self._accumulators.items():
+      if accumulator.has_observations:
+        self.activation_spans[layer_name] = accumulator.finalize()
+
+    quantize_start_time = time.perf_counter()
+    module, quantized_layer_names = _quantize_context_layers(
+      module,
+      self.context,
+      quantize_device=self.quantize_device,
+      activation_spans=self.activation_spans,
+      resolved_smooth_scales=_resolve_few_shot_smooth_scales(
+        module,
+        self.context,
+        self.activation_spans,
+        quantize_device=self.quantize_device,
+      ),
+    )
+    runtime_quantize_time_s = time.perf_counter() - quantize_start_time
+
+    if not quantized_layer_names:
+      self.cleanup()
+      raise RuntimeError(
+        "SVDQ few-shot dynamic quantization completed activation collection but no layers were "
+        f"quantized. Skipped layers: {self.context.skipped_reasons}.")
+
+    self.cleanup()
+    _attach_quantization_metadata(
+      module,
+      quant_type=self.context.quantize_config.quant_type,
+      quantized_layer_names=quantized_layer_names,
+      exclude_layers=self.context.exclude_layers,
+      svdq_kwargs=self.context.svdq_kwargs,
+      checkpoint_path=None,
+      quantize_config=self.context.quantize_config,
+    )
+    module._svdq_runtime_quantize_time_s = runtime_quantize_time_s
+    module._svdq_runtime_quantized_after_forwards = self.completed_forwards
+    _log_quantize_summary(
+      self.context,
+      quantized_layer_names=quantized_layer_names,
+      serialize_to=None,
+      observed_layer_names=sorted(self.activation_spans),
+    )
+    _run_post_quantize_callbacks(
+      module,
+      few_shot_auto_compile=bool(self.context.svdq_kwargs.get("few_shot_auto_compile", False)),
+    )
 
 
 def _build_serialized_metadata(
@@ -679,10 +920,49 @@ def _log_load_summary(
     f"Loaded   Linear Layers: {len(loaded_layer_names)}",
   ]
   if verbose:
-    lines.append(f"SVDQ             Kwargs: {svdq_kwargs}")
-    lines.append(f"Loaded           Layers: {loaded_layer_names}")
-    lines.append(f"Checkpoint         Path: {checkpoint_path}")
+    lines.append(f"SVDQ            Kwargs: {svdq_kwargs}")
+    lines.append(f"Loaded          Layers: {loaded_layer_names}")
+    lines.append(f"Checkpoint        Path: {checkpoint_path}")
   _log_boxed_summary(lines)
+
+
+def _resolve_few_shot_smooth_scales(
+  module: nn.Module,
+  context: SVDQPTQContext,
+  activation_spans: dict[str, torch.Tensor],
+  *,
+  quantize_device: torch.device,
+) -> dict[str, tuple[torch.Tensor, torch.Tensor]]:
+  resolved: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+  calibrate_precision = context.svdq_kwargs["calibrate_precision"]
+  relax_factor = float(context.svdq_kwargs["few_shot_relax_factor"])
+  relax_top_ratio = float(context.svdq_kwargs["few_shot_relax_top_ratio"])
+  relax_strategy = str(context.svdq_kwargs["few_shot_relax_strategy"])
+  alpha = 0.5
+
+  for layer_name, activation_span in activation_spans.items():
+    if layer_name not in context.candidate_layer_names:
+      continue
+    float_module = _get_named_submodule(module, layer_name)
+    if not isinstance(float_module, nn.Linear):
+      raise TypeError(
+        f"Expected nn.Linear at {layer_name or _ROOT_LAYER_NAME}, got {type(float_module)}.")
+    torch_dtype = _normalize_dtype(None, quantize_device)
+    math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
+    weight = float_module.weight.detach().to(device=quantize_device, dtype=torch_dtype)
+    weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
+    smooth_scale, smooth_scale_orig = _apply_few_shot_relaxation(
+      activation_span,
+      weight_span,
+      alpha=alpha,
+      relax_factor=relax_factor,
+      relax_top_ratio=relax_top_ratio,
+      relax_strategy=relax_strategy,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    )
+    resolved[layer_name] = (smooth_scale, smooth_scale_orig)
+  return resolved
 
 
 def _quantize_context_layers(
@@ -691,11 +971,14 @@ def _quantize_context_layers(
   *,
   quantize_device: torch.device,
   activation_spans: dict[str, torch.Tensor] | None = None,
+  resolved_smooth_scales: dict[str, tuple[torch.Tensor, torch.Tensor]] | None = None,
 ) -> tuple[nn.Module, list[str]]:
   quantized_layer_names: list[str] = []
   for layer_name in context.candidate_layer_names:
     activation_span = None if activation_spans is None else activation_spans.get(layer_name)
-    if activation_spans is not None and activation_span is None:
+    smooth_scales = None if resolved_smooth_scales is None else resolved_smooth_scales.get(
+      layer_name)
+    if activation_spans is not None and activation_span is None and smooth_scales is None:
       context._record_skip(layer_name, "not observed during calibration")
       continue
 
@@ -704,18 +987,33 @@ def _quantize_context_layers(
       raise TypeError(
         f"Expected nn.Linear at {layer_name or _ROOT_LAYER_NAME}, got {type(float_module)}.")
 
-    quantized_module = _quantize_linear_svdq_w4a4_from_activation_span(
-      float_module,
-      activation_span,
-      quant_type=context.quantize_config.quant_type,
-      rank=context.rank,
-      smooth_strategy=context.svdq_kwargs["smooth_strategy"],
-      precision=context.precision,
-      torch_dtype=float_module.weight.dtype,
-      device=quantize_device,
-      calibrate_precision=context.svdq_kwargs["calibrate_precision"],
-      runtime_kernel=context.svdq_kwargs["runtime_kernel"],
-    )
+    if smooth_scales is not None:
+      smooth_scale, smooth_scale_orig = smooth_scales
+      quantized_module = _quantize_linear_svdq_w4a4_from_smooth_scale(
+        float_module,
+        smooth_scale,
+        smooth_scale_orig=smooth_scale_orig,
+        quant_type=context.quantize_config.quant_type,
+        rank=context.rank,
+        precision=context.precision,
+        torch_dtype=_normalize_dtype(None, quantize_device),
+        device=quantize_device,
+        calibrate_precision=context.svdq_kwargs["calibrate_precision"],
+        runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+      )
+    else:
+      quantized_module = _quantize_linear_svdq_w4a4_from_activation_span(
+        float_module,
+        activation_span,
+        quant_type=context.quantize_config.quant_type,
+        rank=context.rank,
+        smooth_strategy=context.svdq_kwargs["smooth_strategy"],
+        precision=context.precision,
+        torch_dtype=float_module.weight.dtype,
+        device=quantize_device,
+        calibrate_precision=context.svdq_kwargs["calibrate_precision"],
+        runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+      )
 
     if layer_name == "":
       module = quantized_module
@@ -844,9 +1142,19 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
       module.__class__.__name__,
     )
     return module
+  if getattr(module, "_svdq_pending_quantization", False):
+    logger.warning(
+      "Module %s already has pending SVDQ few-shot quantization, skipping re-arming.",
+      module.__class__.__name__,
+    )
+    return module
 
   context = SVDQPTQContext.from_config(module, quantize_config)
   quantize_device = _infer_module_execution_device(module)
+
+  if quantize_config.is_svdq_dq_few_shot():
+    controller = SVDQFewShotRuntimeController(context=context, quantize_device=quantize_device)
+    return controller.arm()
 
   was_training = module.training
   module.eval()

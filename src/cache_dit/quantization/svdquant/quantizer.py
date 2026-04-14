@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import typing as tp
+import warnings
 
 import torch
 from torch import nn
@@ -22,8 +24,12 @@ __all__ = [
 ]
 
 _CALIBRATE_PRECISIONS = ("low", "medium", "high")
-_SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv")
+_SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv", "few_shot")
 _WEIGHT_ONLY_SMOOTH_CLAMP_RANGE = (0.25, 4.0)
+_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "power", "log", "rank")
+_FEW_SHOT_LOG_CURVE_STRENGTH = 9.0
+_FEW_SHOT_POWER_GAMMA = 2.0
+_FEW_SHOT_RELAX_WARN_THRESHOLD = 3.0
 
 
 def _resolve_svdq_quant_mode(quant_type: str | None) -> str:
@@ -158,6 +164,254 @@ def _normalize_svdq_smooth_strategy(smooth_strategy: str) -> str:
   return normalized
 
 
+def _validate_few_shot_relax_factor(relax_factor: float) -> float:
+  if isinstance(relax_factor, bool) or not isinstance(relax_factor, (int, float)):
+    raise TypeError(f"relax_factor must be a float, got {type(relax_factor)}.")
+  resolved = float(relax_factor)
+  if resolved < 1.0:
+    raise ValueError(f"relax_factor must be >= 1.0, got {relax_factor}.")
+  return resolved
+
+
+def _validate_few_shot_relax_top_ratio(relax_top_ratio: float) -> float:
+  if isinstance(relax_top_ratio, bool) or not isinstance(relax_top_ratio, (int, float)):
+    raise TypeError(f"relax_top_ratio must be a float, got {type(relax_top_ratio)}.")
+  resolved = float(relax_top_ratio)
+  if not 0.0 < resolved <= 1.0:
+    raise ValueError(f"relax_top_ratio must be in the range (0, 1], got {relax_top_ratio}.")
+  return resolved
+
+
+def _normalize_few_shot_relax_strategy(relax_strategy: str) -> str:
+  if not isinstance(relax_strategy, str):
+    raise TypeError(f"relax_strategy must be a str, got {type(relax_strategy)}.")
+  normalized = relax_strategy.lower()
+  if normalized == "top_q4":
+    normalized = "top"
+  if normalized not in _FEW_SHOT_RELAX_STRATEGIES:
+    raise ValueError(
+      f"relax_strategy must be one of {_FEW_SHOT_RELAX_STRATEGIES} or the alias 'top_q4', got "
+      f"{relax_strategy!r}.")
+  return normalized
+
+
+def _warn_about_aggressive_few_shot_relax_factor(relax_factor: float) -> None:
+  if relax_factor <= _FEW_SHOT_RELAX_WARN_THRESHOLD:
+    return
+  warnings.warn(
+    f"relax_factor={relax_factor} is aggressive for SVDQ few-shot relaxation and may oversmooth "
+    "or blur outputs. Prefer values around 1.5-2.5 first, then tune relax_strategy or "
+    "relax_top_ratio if more headroom is needed.",
+    RuntimeWarning,
+    stacklevel=3,
+  )
+
+
+@torch.inference_mode()
+def _map_few_shot_response_to_multipliers(
+  response: torch.Tensor,
+  *,
+  relax_factor: float,
+) -> torch.Tensor:
+  """Map a normalized relax response to the per-channel activation-span multiplier.
+
+  The input `response` is interpreted as a dimensionless score in `[0, 1]`:
+
+  - `response = 0` means "keep the original activation span unchanged"
+  - `response = 1` means "apply the configured maximum relax factor to activation span"
+
+  We intentionally clamp the response to `[0, 1]` before the affine map
+
+  `multiplier = 1 + response * (relax_factor - 1)`
+
+  so the final multiplier is guaranteed to stay inside `[1, relax_factor]`. This bound matters for
+  two reasons:
+
+  - it prevents numerical overshoot caused by floating-point noise or future response builders that
+    might otherwise emit values outside the normalized range;
+  - combined with the invariant `relax_factor >= 1`, it guarantees `multiplier >= 1`, so the final
+    relaxed activation span `a_relaxed = a_orig * multiplier` never shrinks the original observed
+    activation maxima.
+
+  The important detail is that we do not multiply the whole activation-span vector by a single global
+  `relax_factor`. A uniform rescale would preserve every channel-to-channel ratio exactly, so it
+  would only shift the whole vector upward without changing its shape. That does not mimic the
+  effect of observing more calibration samples, because longer observation windows usually increase
+  the maxima of "outlier-prone" channels more than stable channels. The response vector therefore
+  acts as a per-channel gate that lets high-risk channels expand more aggressively than low-risk
+  ones.
+
+  :param response: Per-channel normalized relax response.
+  :param relax_factor: Maximum multiplicative activation-span relax factor. Must be >= 1.
+  :returns: Per-channel activation-span multipliers in `[1, relax_factor]`.
+  """
+
+  if response.ndim != 1:
+    raise ValueError(f"response must be a 1D tensor, got shape {tuple(response.shape)}.")
+  response = response.clamp_(0.0, 1.0)
+  # After clamping, the affine map sends 0 -> 1 and 1 -> relax_factor. Because relax_factor is
+  # constrained to be >= 1, every channel either keeps its original activation span or is
+  # amplified. No channel can be attenuated by this step.
+  return response.mul_(relax_factor - 1.0).add_(1.0)
+
+
+@torch.inference_mode()
+def _build_few_shot_relax_response(
+  activation_span: torch.Tensor,
+  *,
+  relax_top_ratio: float,
+  relax_strategy: str,
+) -> torch.Tensor:
+  """Build a normalized `[0, 1]` relax response from a per-channel activation-span vector.
+
+  The output of this function is not the final multiplier yet. Instead, it builds a monotonic
+  response variable `r_i` that is later converted to the final multiplier by
+  `_map_few_shot_response_to_multipliers()`.
+
+  The modeling intuition is: few-shot mode only sees a small number of runtime samples, so the
+  observed activation span is a lower-confidence estimate of what the layer would look like after a
+  longer run. If we had seen more samples, channels that already exhibit larger activation maxima are
+  also the channels most likely to encounter even larger future activation maxima. In other words,
+  a large current activation span is treated as a proxy for higher outlier probability under a longer
+  observation horizon.
+
+  Because of that, the relaxation must be channel-wise and monotonic rather than a single uniform
+  multiplication. Directly applying `activation_span *= relax_factor` would enlarge every channel by
+  the same proportion, preserve the original vector shape, and therefore fail to create any extra
+  smoothing preference between stable channels and outlier-prone channels. The role of this
+  function is precisely to reshape that vector: channels with stronger outlier evidence receive a
+  larger response, while conservative channels stay closer to 0.
+
+  Let `a_i` be the original activation span for channel `i`, `tau` the quantile threshold determined
+  by `few_shot_relax_top_ratio`, and `a_min` the minimum activation span in the current layer. The
+  strategy-specific response definitions are:
+
+  - `fixed`:
+      `r_i = 0`
+    This disables the relax step entirely. After the final affine map every multiplier stays at 1,
+    so the runtime activation span is exactly the original few-shot observed activation span. It is
+    useful as a control/baseline when we want few-shot activation collection without any extra
+    channel-wise amplification before recomputing smooth scale.
+
+  - `top`:
+      `r_i = 1[a_i >= tau]`
+    Only channels at or above the threshold receive the maximum relax factor; all other channels are
+    left unchanged after the affine map. The corresponding smooth scale is then recomputed from the
+    relaxed activation span and the unchanged weight span.
+
+  - `auto`:
+      `r_i = clip((a_i - a_min) / (tau - a_min), 0, 1)`
+    This is a linear ramp. Small activation spans stay near 0, larger activation spans move toward
+    1, and all channels at or above the threshold saturate to the same maximum relax factor.
+
+  - `power`:
+      `r_i = auto_i ** gamma`, with `gamma > 1`
+    This convex transform suppresses the low/mid channels relative to `auto`, so the amplification
+    budget is concentrated more aggressively on the largest activation spans.
+
+  - `log`:
+      `r_i = log(1 + k * auto_i) / log(1 + k)`
+    This concave transform raises the low/mid channels earlier than `auto`, while still saturating
+    to 1 at the threshold.
+
+  - `rank`:
+      `r_i = clip(rank_percentile_i / threshold_q, 0, 1)`
+    This uses the channel order statistics instead of raw activation-span gaps. It is useful when the
+    layer contains extreme outliers and we want the relax policy to depend more on relative rank than
+    on the exact numeric spacing between channels.
+
+  :param activation_span: Original per-channel activation-span vector.
+  :param relax_top_ratio: Fraction of top channels used to determine the saturation threshold.
+  :param relax_strategy: Strategy name.
+  :returns: A normalized per-channel response vector in `[0, 1]`.
+  """
+
+  relax_strategy = _normalize_few_shot_relax_strategy(relax_strategy)
+  activation_float = activation_span.float()
+  if relax_strategy == "fixed":
+    # `fixed` is the explicit no-op baseline: every response stays at 0, so the later affine map
+    # produces multiplier = 1 for every channel and the original activation span is preserved.
+    return torch.zeros_like(activation_float)
+  threshold_q = max(0.0, 1.0 - relax_top_ratio)
+  threshold = torch.quantile(activation_float, threshold_q)
+
+  if relax_strategy == "top":
+    # Hard indicator response: channels above the threshold map to 1, others to 0. After the final
+    # affine map this becomes multiplier = relax_factor for the top set and multiplier = 1 for the
+    # rest, i.e. non-top channels keep their original activation span.
+    #
+    # Interpretation: if we only trust the most extreme channels to be genuinely outlier-prone,
+    # we relax only that top subset and leave the rest untouched. This is the most conservative way
+    # to approximate "seeing more samples" without globally inflating the whole layer.
+    response = torch.zeros_like(activation_float)
+    response[activation_float >= threshold] = 1.0
+    return response
+
+  lower = activation_float.amin()
+  if not torch.isfinite(lower) or not torch.isfinite(threshold):
+    return torch.zeros_like(activation_float)
+  if threshold <= lower:
+    # Degenerate case: all channels collapse to the same activation span (or the threshold is numerically
+    # indistinguishable from the minimum). In that situation there is no meaningful ordering, so all
+    # channels receive the saturated response.
+    return torch.ones_like(activation_float)
+
+  # Normalize the observed activation spans into a response coordinate where 0 corresponds to the
+  # smallest/most stable channel in the layer and 1 corresponds to the saturation threshold for the
+  # selected top ratio. This is the key step that turns absolute activation magnitude into a per-channel
+  # "future outlier likelihood" score. We use this normalized score instead of a single scalar so
+  # that different channels can grow by different amounts.
+  normalized = activation_float.sub(lower).div_(threshold - lower).clamp_(0.0, 1.0)
+  if relax_strategy == "auto":
+    # Linear ramp from the layer minimum to the threshold. Larger activation spans imply larger
+    # normalized response, so after the affine map the final relax multiplier increases linearly
+    # with the observed few-shot activation span until it saturates at the threshold.
+    #
+    # Interpretation: this is the default "more samples -> larger current outliers grow more"
+    # heuristic. Every channel can expand, but the expansion is proportional to how extreme its
+    # current activation span already looks.
+    return normalized
+  if relax_strategy == "power":
+    # Convex curve: relative to `auto`, this keeps low/mid channels closer to 0 and allocates more
+    # of the amplification budget to the largest channels near the threshold.
+    #
+    # Interpretation: use this when you believe future extra samples will mostly strengthen the
+    # already-extreme channels, not the moderate ones. It is a sharper outlier-prior than `auto`.
+    return normalized.pow(_FEW_SHOT_POWER_GAMMA)
+  if relax_strategy == "log":
+    # Concave curve: relative to `auto`, this lifts low/mid channels earlier, but still saturates at
+    # 1 near the threshold. It is useful when we want a broader, softer amplification profile.
+    #
+    # Interpretation: use this when you expect additional samples to reveal somewhat broader tail
+    # behavior, so mid-ranked channels should also receive noticeable relaxation instead of focusing
+    # almost entirely on the very largest channels.
+    return torch.log1p(_FEW_SHOT_LOG_CURVE_STRENGTH * normalized).div_(
+      math.log1p(_FEW_SHOT_LOG_CURVE_STRENGTH))
+  if relax_strategy == "rank":
+    if activation_float.numel() <= 1:
+      return torch.ones_like(activation_float)
+    # Rank-based response: ignore the exact magnitude gaps and convert the sorted channel order to a
+    # percentile in [0, 1]. This makes the relax policy depend on relative ordering rather than raw
+    # scale distance, which is often more robust when a few channels are extreme outliers.
+    #
+    # Interpretation: this says "I trust the ordering more than the absolute spacing". Even if one
+    # channel is numerically much larger than the others, we do not let that single gap dominate the
+    # entire response curve; we only use the fact that it ranks near the top.
+    order = torch.argsort(activation_float, stable=True)
+    rank_fraction = torch.empty_like(activation_float)
+    rank_fraction[order] = torch.linspace(
+      0.0,
+      1.0,
+      steps=activation_float.numel(),
+      dtype=activation_float.dtype,
+      device=activation_float.device,
+    )
+    if threshold_q <= 0.0:
+      return torch.ones_like(rank_fraction)
+    return rank_fraction.div_(threshold_q).clamp_(0.0, 1.0)
+  raise AssertionError(f"Unhandled few-shot relax strategy: {relax_strategy}.")
+
+
 @torch.inference_mode()
 def compute_smooth_scale(
   activation_span: torch.Tensor,
@@ -187,6 +441,94 @@ def compute_smooth_scale(
   if output_dtype is not None:
     smooth_scale = smooth_scale.to(dtype=output_dtype)
   return smooth_scale
+
+
+@torch.inference_mode()
+def _apply_few_shot_relaxation(
+  activation_span: torch.Tensor,
+  weight_span: torch.Tensor,
+  *,
+  alpha: float = 0.5,
+  relax_factor: float = 1.5,
+  relax_top_ratio: float = 0.25,
+  relax_strategy: str = "top",
+  math_dtype: torch.dtype = torch.float32,
+  output_dtype: torch.dtype | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  """Relax few-shot activation spans, then recompute smooth scales.
+
+  The few-shot policy is applied to `activation_span`, because the uncertainty being compensated is
+  the limited number of observed runtime activations, not the already-mixed smooth scale. After the
+  activation span is relaxed, the function recomputes both the original and relaxed smooth scales
+  with the same `weight_span` and SmoothQuant exponent `alpha`.
+
+  :param activation_span: The base few-shot activation-span vector.
+  :param weight_span: The per-channel weight-span vector used to derive smooth scale.
+  :param alpha: SmoothQuant interpolation factor used during the smooth-scale recomputation.
+  :param relax_factor: Maximum multiplicative factor applied to activation-span relaxation. Because
+    it is constrained to be >= 1, the relaxed activation span is guaranteed not to be smaller than
+    the original one. The `fixed` strategy ignores this value because it performs no relaxation.
+  :param relax_top_ratio: Fraction of channels used to define the relax threshold. The `fixed`
+    strategy ignores this value because it performs no relaxation.
+  :param relax_strategy: Relax strategy. `fixed` preserves the original few-shot activation span,
+    `top` keeps channels below the threshold unchanged, and the other strategies build a monotonic
+    response from activation span and then map that response into the multiplicative interval
+    `[1, relax_factor]`.
+  :param math_dtype: Intermediate dtype used for activation-span relaxation and smooth-scale
+    recomputation.
+  :param output_dtype: Optional dtype for the returned smooth-scale tensors.
+  :returns: A tuple `(relaxed_smooth_scale, original_smooth_scale)`.
+  """
+
+  if activation_span.ndim != 1:
+    raise ValueError(
+      f"activation_span must be a 1D tensor, got shape {tuple(activation_span.shape)}.")
+  if weight_span.ndim != 1:
+    raise ValueError(f"weight_span must be a 1D tensor, got shape {tuple(weight_span.shape)}.")
+  if activation_span.shape != weight_span.shape:
+    raise ValueError("activation_span and weight_span must have the same shape, got "
+                     f"{tuple(activation_span.shape)} and {tuple(weight_span.shape)}.")
+  if not 0.0 <= alpha <= 1.0:
+    raise ValueError(f"alpha must be in [0, 1], got {alpha}.")
+
+  relax_strategy = _normalize_few_shot_relax_strategy(relax_strategy)
+  activation_span = activation_span.to(device=weight_span.device, dtype=math_dtype)
+  weight_span = weight_span.to(device=weight_span.device, dtype=math_dtype)
+  original = compute_smooth_scale(
+    activation_span,
+    weight_span,
+    alpha=alpha,
+    math_dtype=math_dtype,
+    output_dtype=output_dtype,
+  )
+  if relax_strategy == "fixed":
+    preserved = original if output_dtype is None else original.to(dtype=output_dtype)
+    return preserved.clone(), preserved
+
+  relax_factor = _validate_few_shot_relax_factor(relax_factor)
+  _warn_about_aggressive_few_shot_relax_factor(relax_factor)
+  relax_top_ratio = _validate_few_shot_relax_top_ratio(relax_top_ratio)
+  relax_response = _build_few_shot_relax_response(
+    activation_span,
+    relax_top_ratio=relax_top_ratio,
+    relax_strategy=relax_strategy,
+  )
+  multipliers = _map_few_shot_response_to_multipliers(
+    relax_response,
+    relax_factor=relax_factor,
+  )
+  # Relax the activation statistics first, then recompute the mixed smooth scale with the same
+  # weight span. Because the activation multiplier is >= 1 and alpha >= 0, the recomputed smooth
+  # scale is also guaranteed not to shrink.
+  relaxed_activation_span = activation_span.mul(multipliers)
+  relaxed = compute_smooth_scale(
+    relaxed_activation_span,
+    weight_span,
+    alpha=alpha,
+    math_dtype=math_dtype,
+    output_dtype=output_dtype,
+  )
+  return relaxed, original
 
 
 @torch.inference_mode()
@@ -417,9 +759,13 @@ def _resolve_svdq_smooth_scale(
   """
 
   smooth_strategy = _normalize_svdq_smooth_strategy(smooth_strategy)
-  if quant_mode == "dq" and smooth_strategy not in {"identity", "weight", "weight_inv"}:
+  if quant_mode == "dq" and smooth_strategy not in {"identity", "weight", "weight_inv", "few_shot"}:
     raise ValueError(
-      "SVDQ DQ currently only supports smooth_strategy in {'identity', 'weight', 'weight_inv'}.")
+      "SVDQ DQ currently only supports smooth_strategy in {'identity', 'weight', 'weight_inv', 'few_shot'}."
+    )
+
+  if smooth_strategy == "few_shot":
+    raise ValueError("The 'few_shot' smooth strategy requires runtime activation collection.")
 
   if smooth_strategy == "identity":
     return torch.ones(in_features, device=device, dtype=torch_dtype)
@@ -467,6 +813,135 @@ def _resolve_svdq_smooth_scale(
     math_dtype=math_dtype,
     output_dtype=torch_dtype,
   )
+
+
+@torch.inference_mode()
+def _resolve_activation_smooth_scale(
+  weight: torch.Tensor,
+  activation_span: torch.Tensor,
+  *,
+  in_features: int,
+  alpha: float,
+  math_dtype: torch.dtype,
+  torch_dtype: torch.dtype,
+  device: torch.device,
+) -> torch.Tensor:
+  """Resolve activation-derived SVDQ smooth scales from a finalized span vector."""
+
+  if activation_span.ndim != 1 or activation_span.shape[0] != in_features:
+    raise ValueError("activation_span must be a 1D tensor with length equal to linear.in_features, "
+                     f"got shape {tuple(activation_span.shape)} for in_features={in_features}.")
+  activation_span = activation_span.to(device=device, dtype=math_dtype)
+  weight_span = weight.to(dtype=math_dtype).abs().amax(dim=0)
+  return compute_smooth_scale(
+    activation_span,
+    weight_span,
+    alpha=alpha,
+    math_dtype=math_dtype,
+    output_dtype=torch_dtype,
+  )
+
+
+@torch.inference_mode()
+def _quantize_linear_svdq_w4a4_from_smooth_scale(
+  linear: nn.Linear,
+  smooth_scale: torch.Tensor,
+  *,
+  smooth_scale_orig: torch.Tensor | None = None,
+  quant_type: str | None = None,
+  rank: int = 32,
+  precision: str = "int4",
+  act_unsigned: bool = False,
+  torch_dtype: torch.dtype | None = None,
+  device: torch.device | str | None = None,
+  return_state_dict: bool = False,
+  calibrate_precision: str = "low",
+  runtime_kernel: str = "v1",
+) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
+  """Quantize a linear layer from an explicitly resolved runtime smooth vector."""
+
+  if not isinstance(linear, nn.Linear):
+    raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
+
+  device = torch.device(device or linear.weight.device)
+  torch_dtype = _normalize_dtype(torch_dtype, device)
+  calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
+  math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
+  validate_svdq_linear_geometry(
+    linear.in_features,
+    linear.out_features,
+    rank=rank,
+    precision=precision,
+  )
+
+  if smooth_scale.ndim != 1 or smooth_scale.shape[0] != linear.in_features:
+    raise ValueError("smooth_scale must be a 1D tensor with length equal to linear.in_features, "
+                     f"got shape {tuple(smooth_scale.shape)} for in_features={linear.in_features}.")
+
+  if smooth_scale_orig is None:
+    smooth_scale_orig = smooth_scale
+  if smooth_scale_orig.ndim != 1 or smooth_scale_orig.shape[0] != linear.in_features:
+    raise ValueError(
+      "smooth_scale_orig must be a 1D tensor with length equal to linear.in_features, "
+      f"got shape {tuple(smooth_scale_orig.shape)} for in_features={linear.in_features}.")
+
+  weight = linear.weight.detach().to(device=device, dtype=torch_dtype)
+  smooth_scale = _repair_invalid_scale(smooth_scale.to(device=device, dtype=torch_dtype))
+  smooth_scale_orig = _repair_invalid_scale(smooth_scale_orig.to(device=device, dtype=torch_dtype))
+
+  smoothed_weight = weight.to(dtype=math_dtype) * smooth_scale.to(dtype=math_dtype).unsqueeze(0)
+  lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
+    smoothed_weight,
+    rank,
+    output_dtype=torch_dtype,
+    svd_precision=calibrate_precision,
+  )
+  scales = _compute_group_scales(
+    residual,
+    group_size=64,
+    math_dtype=math_dtype,
+    output_dtype=torch_dtype,
+  )
+
+  bias = (None
+          if linear.bias is None else linear.bias.detach().to(device=device, dtype=torch_dtype))
+  raw_state_dict = export_raw_svdq_w4a4_state_dict(
+    residual,
+    scale=scales,
+    bias=bias,
+    smooth=smooth_scale,
+    smooth_orig=smooth_scale_orig,
+    lora=None if rank == 0 else (lowrank_down, lowrank_up),
+    float_point=False,
+  )
+  module_state_dict = adapt_svdq_module_state_dict(
+    raw_state_dict,
+    in_features=linear.in_features,
+    out_features=linear.out_features,
+    rank=rank,
+    torch_dtype=torch_dtype,
+    device=device,
+    has_bias=linear.bias is not None,
+  )
+
+  if return_state_dict:
+    return module_state_dict
+
+  quantized = SVDQW4A4Linear.from_linear(
+    linear,
+    rank=rank,
+    precision=precision,
+    act_unsigned=act_unsigned,
+    runtime_kernel=runtime_kernel,
+    torch_dtype=torch_dtype,
+    device=device,
+  )
+  incompatible = quantized.load_state_dict(module_state_dict, strict=True)
+  if incompatible.missing_keys or incompatible.unexpected_keys:
+    raise RuntimeError(
+      f"Unexpected SVDQuant state_dict mismatch: missing={incompatible.missing_keys}, "
+      f"unexpected={incompatible.unexpected_keys}.")
+  return quantized
 
 
 @torch.inference_mode()
@@ -532,10 +1007,12 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   quant_mode = _resolve_svdq_quant_mode(quant_type)
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
-  validate_svdq_linear_geometry(linear.in_features,
-                                linear.out_features,
-                                rank=rank,
-                                precision=precision)
+  validate_svdq_linear_geometry(
+    linear.in_features,
+    linear.out_features,
+    rank=rank,
+    precision=precision,
+  )
 
   weight = linear.weight.detach().to(device=device, dtype=torch_dtype)
   smooth_scale = _resolve_svdq_smooth_scale(
@@ -549,59 +1026,20 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
     torch_dtype=torch_dtype,
     math_dtype=math_dtype,
   )
-
-  smoothed_weight = weight.to(dtype=math_dtype) * smooth_scale.to(dtype=math_dtype).unsqueeze(0)
-  lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
-    smoothed_weight,
-    rank,
-    output_dtype=torch_dtype,
-    svd_precision=calibrate_precision,
-  )
-  scales = _compute_group_scales(
-    residual,
-    group_size=64,
-    math_dtype=math_dtype,
-    output_dtype=torch_dtype,
-  )
-
-  bias = (None
-          if linear.bias is None else linear.bias.detach().to(device=device, dtype=torch_dtype))
-  raw_state_dict = export_raw_svdq_w4a4_state_dict(
-    residual,
-    scale=scales,
-    bias=bias,
-    smooth=smooth_scale,
-    lora=None if rank == 0 else (lowrank_down, lowrank_up),
-    float_point=False,
-  )
-  module_state_dict = adapt_svdq_module_state_dict(
-    raw_state_dict,
-    in_features=linear.in_features,
-    out_features=linear.out_features,
-    rank=rank,
-    torch_dtype=torch_dtype,
-    device=device,
-    has_bias=linear.bias is not None,
-  )
-
-  if return_state_dict:
-    return module_state_dict
-
-  quantized = SVDQW4A4Linear.from_linear(
+  return _quantize_linear_svdq_w4a4_from_smooth_scale(
     linear,
+    smooth_scale,
+    smooth_scale_orig=smooth_scale,
+    quant_type=quant_type,
     rank=rank,
     precision=precision,
     act_unsigned=act_unsigned,
-    runtime_kernel=runtime_kernel,
     torch_dtype=torch_dtype,
     device=device,
+    return_state_dict=return_state_dict,
+    calibrate_precision=calibrate_precision,
+    runtime_kernel=runtime_kernel,
   )
-  incompatible = quantized.load_state_dict(module_state_dict, strict=True)
-  if incompatible.missing_keys or incompatible.unexpected_keys:
-    raise RuntimeError(
-      f"Unexpected SVDQuant state_dict mismatch: missing={incompatible.missing_keys}, "
-      f"unexpected={incompatible.unexpected_keys}.")
-  return quantized
 
 
 @torch.inference_mode()
@@ -657,10 +1095,12 @@ def quantize_linear_svdq_w4a4(
   torch_dtype = _normalize_dtype(torch_dtype, device)
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
-  validate_svdq_linear_geometry(linear.in_features,
-                                linear.out_features,
-                                rank=rank,
-                                precision=precision)
+  validate_svdq_linear_geometry(
+    linear.in_features,
+    linear.out_features,
+    rank=rank,
+    precision=precision,
+  )
 
   if streaming:
     activation_span_accumulator = _ActivationSpanAccumulator(

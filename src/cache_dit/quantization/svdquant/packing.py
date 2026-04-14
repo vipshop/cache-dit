@@ -498,6 +498,7 @@ def export_raw_svdq_w4a4_state_dict(
   scale: torch.Tensor,
   bias: torch.Tensor | None = None,
   smooth: torch.Tensor | None = None,
+  smooth_orig: torch.Tensor | None = None,
   lora: tuple[torch.Tensor, torch.Tensor] | None = None,
   float_point: bool = False,
   subscale: torch.Tensor | None = None,
@@ -508,6 +509,7 @@ def export_raw_svdq_w4a4_state_dict(
   :param scale: Per-group weight scales.
   :param bias: Optional bias vector.
   :param smooth: Optional per-input-channel smoothing vector.
+  :param smooth_orig: Optional original smoothing vector preserved for inspection.
   :param lora: Optional tuple `(lora_down, lora_up)` containing the low-rank
     residual factors.
   :param float_point: Whether to use the FP4 packing path instead of INT4.
@@ -517,10 +519,17 @@ def export_raw_svdq_w4a4_state_dict(
     `wcscales` entries.
   """
 
-  if lora is not None and smooth is not None:
+  runtime_smooth = smooth_orig if smooth is None else smooth
+  preserved_smooth = runtime_smooth if smooth_orig is None else smooth_orig
+  if runtime_smooth is None:
+    runtime_smooth = torch.ones(weight.shape[1], dtype=weight.dtype, device=weight.device)
+  if preserved_smooth is None:
+    preserved_smooth = runtime_smooth
+
+  if lora is not None and runtime_smooth is not None:
     lora_down, lora_up = lora
     lora_down = lora_down.to(dtype=torch.float64)
-    lora_down = lora_down.div_(smooth.to(dtype=torch.float64).unsqueeze(0))
+    lora_down = lora_down.div_(runtime_smooth.to(dtype=torch.float64).unsqueeze(0))
     lora = (lora_down.to(dtype=weight.dtype), lora_up)
 
   qweight, packed_scale, packed_bias, packed_smooth, packed_lora, packed_subscale = (
@@ -528,17 +537,26 @@ def export_raw_svdq_w4a4_state_dict(
       weight,
       scale=scale,
       bias=bias,
-      smooth=smooth,
+      smooth=runtime_smooth,
       lora=lora,
       float_point=float_point,
       subscale=subscale,
     ))
 
+  packer = SVDQWeightPacker(bits=4)
+  packed_smooth_orig = packer.pack_scale(
+    packer.pad_scale(
+      preserved_smooth.view(-1, 1).to(dtype=weight.dtype, device=weight.device),
+      group_size=-1,
+    ),
+    group_size=-1,
+  )
+
   state_dict: dict[str, torch.Tensor] = {
     "qweight": qweight,
     "bias": packed_bias,
-    "smooth": packed_smooth.clone(),
-    "smooth_orig": packed_smooth,
+    "smooth": packed_smooth,
+    "smooth_orig": packed_smooth_orig,
   }
   if packed_scale.numel() == 1:
     state_dict["wtscale"] = packed_scale

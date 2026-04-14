@@ -1,13 +1,16 @@
 """Cd cache-dit pytest tests/quantization/test_svdquant_quantizer.py -v -s."""
 
+import math
 import os
 from pathlib import Path
 import time
+import warnings
 
 import pytest
 import torch
 from torch import nn
 
+import cache_dit.quantization.svdquant.quantizer as svdq_quantizer
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.quantization.svdquant.lowrank import decompose_lowrank_residual
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
@@ -180,6 +183,171 @@ def test_svdquant_quantizer_rejects_unsupported_geometry() -> None:
       return_state_dict=True,
       **_quantizer_kwargs(),
     )
+
+
+def test_svdquant_quantizer_applies_configurable_few_shot_relaxation() -> None:
+  activation_span = torch.linspace(1.0, 8.0, steps=8, dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  relaxed, original = svdq_quantizer._apply_few_shot_relaxation(
+    activation_span,
+    weight_span,
+    alpha=0.5,
+    relax_factor=3.0,
+    relax_top_ratio=0.25,
+    relax_strategy="top",
+  )
+
+  expected = svdq_quantizer.compute_smooth_scale(
+    activation_span,
+    weight_span,
+    alpha=0.5,
+    output_dtype=torch.float32,
+  )
+  torch.testing.assert_close(original, expected, rtol=0.0, atol=0.0)
+  expected = expected.clone()
+  expected[-2:] = expected[-2:] * math.sqrt(3.0)
+  torch.testing.assert_close(relaxed, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_svdquant_quantizer_uses_new_default_few_shot_relax_factor() -> None:
+  activation_span = torch.linspace(1.0, 8.0, steps=8, dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  relaxed, original = svdq_quantizer._apply_few_shot_relaxation(activation_span, weight_span)
+
+  expected = svdq_quantizer.compute_smooth_scale(
+    activation_span,
+    weight_span,
+    alpha=0.5,
+    output_dtype=torch.float32,
+  )
+  torch.testing.assert_close(original, expected, rtol=0.0, atol=0.0)
+  expected = expected.clone()
+  expected[-2:] = expected[-2:] * math.sqrt(1.5)
+  torch.testing.assert_close(relaxed, expected, rtol=1e-6, atol=1e-6)
+
+
+def test_svdquant_quantizer_fixed_few_shot_relaxation_keeps_original_scale() -> None:
+  activation_span = torch.linspace(1.0, 8.0, steps=8, dtype=torch.float32)
+  weight_span = torch.linspace(0.5, 1.5, steps=8, dtype=torch.float32)
+
+  with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    relaxed, original = svdq_quantizer._apply_few_shot_relaxation(
+      activation_span,
+      weight_span,
+      relax_factor=4.0,
+      relax_top_ratio=0.1,
+      relax_strategy="fixed",
+    )
+
+  expected = svdq_quantizer.compute_smooth_scale(
+    activation_span,
+    weight_span,
+    alpha=0.5,
+    output_dtype=torch.float32,
+  )
+  torch.testing.assert_close(original, expected, rtol=0.0, atol=0.0)
+  torch.testing.assert_close(relaxed, expected, rtol=0.0, atol=0.0)
+  assert caught == []
+
+
+def test_svdquant_quantizer_rejects_relax_factor_smaller_than_one() -> None:
+  activation_span = torch.linspace(1.0, 8.0, steps=8, dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  with pytest.raises(ValueError, match=r">= 1.0"):
+    svdq_quantizer._apply_few_shot_relaxation(
+      activation_span,
+      weight_span,
+      relax_factor=0.5,
+      relax_top_ratio=0.25,
+      relax_strategy="auto",
+    )
+
+
+def test_svdquant_quantizer_warns_for_large_relax_factor() -> None:
+  activation_span = torch.linspace(1.0, 8.0, steps=8, dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  with pytest.warns(RuntimeWarning, match="oversmooth or blur outputs"):
+    svdq_quantizer._apply_few_shot_relaxation(
+      activation_span,
+      weight_span,
+      relax_factor=4.0,
+      relax_top_ratio=0.25,
+      relax_strategy="top",
+    )
+
+
+def test_svdquant_quantizer_auto_few_shot_relaxation_is_monotonic_and_bounded() -> None:
+  activation_span = torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  relaxed, original = svdq_quantizer._apply_few_shot_relaxation(
+    activation_span,
+    weight_span,
+    relax_factor=2.0,
+    relax_top_ratio=0.25,
+    relax_strategy="auto",
+  )
+
+  multipliers = relaxed / original
+  assert torch.isclose(multipliers[0], torch.tensor(1.0))
+  assert torch.isclose(multipliers[-1], torch.tensor(math.sqrt(2.0)))
+  assert torch.all(multipliers[1:] >= multipliers[:-1])
+  assert torch.all(multipliers >= 1.0)
+  assert torch.all(multipliers <= math.sqrt(2.0))
+
+
+@pytest.mark.parametrize("strategy", ["power", "log", "rank"])
+def test_svdquant_quantizer_extra_few_shot_relax_strategies_are_monotonic_and_bounded(
+  strategy: str, ) -> None:
+  activation_span = torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  relaxed, original = svdq_quantizer._apply_few_shot_relaxation(
+    activation_span,
+    weight_span,
+    relax_factor=2.5,
+    relax_top_ratio=0.25,
+    relax_strategy=strategy,
+  )
+
+  multipliers = relaxed / original
+  assert torch.isclose(multipliers[0], torch.tensor(1.0))
+  assert torch.isclose(multipliers[-1], torch.tensor(math.sqrt(2.5)))
+  assert torch.all(multipliers[1:] >= multipliers[:-1])
+  assert torch.all(multipliers >= 1.0)
+  assert torch.all(multipliers <= math.sqrt(2.5))
+
+
+def test_svdquant_quantizer_from_smooth_scale_preserves_runtime_and_original_vectors() -> None:
+  linear = _make_cpu_linear(128, 128)
+  smooth_orig = torch.linspace(0.5, 2.0, steps=128, dtype=torch.float32)
+  smooth_runtime = smooth_orig.clone()
+  smooth_runtime[-32:] = smooth_runtime[-32:] * 2.0
+
+  state_dict: dict[str, torch.Tensor] = svdq_quantizer._quantize_linear_svdq_w4a4_from_smooth_scale(
+    linear,
+    smooth_runtime,
+    smooth_scale_orig=smooth_orig,
+    rank=16,
+    device="cpu",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+    calibrate_precision=_CALIBRATE_PRECISION,
+  )
+
+  assert state_dict["smooth_factor"].shape == (128, )
+  assert state_dict["smooth_factor_orig"].shape == (128, )
+  assert not torch.allclose(
+    state_dict["smooth_factor"].float(),
+    state_dict["smooth_factor_orig"].float(),
+    rtol=0.0,
+    atol=1e-4,
+  )
 
 
 def test_svdquant_quantizer_state_dict_loads_into_module() -> None:

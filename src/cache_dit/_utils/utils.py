@@ -515,7 +515,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-smooth",
     type=str,
     default="identity",
-    choices=["identity", "weight", "weight_inv"],
+    choices=["identity", "weight", "weight_inv", "few_shot"],
     help="Smooth strategy for SVDQ DQ quantization. Default: identity.",
   )
   parser.add_argument(
@@ -533,6 +533,45 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     choices=["v1", "v2", "v3"],
     help=
     "Runtime SVDQ W4A4 GEMM kernel. Use v2 for the CUDA v2 plain path or v3 for the CuTe DSL rewrite path.",
+  )
+  parser.add_argument(
+    "--svdq-few-shot-steps",
+    type=int,
+    default=1,
+    help="How many transformer forwards to observe before materializing SVDQ few-shot quantization.",
+  )
+  parser.add_argument(
+    "--svdq-few-shot-relax-factor",
+    type=float,
+    default=1.5,
+    help=
+    ("Maximum few-shot relax factor applied to activation spans before smooth-scale recomputation. "
+     "Must be >= 1.0 so the observed activation span is preserved or amplified, never reduced. "
+     "Values above about 3.0 are often too aggressive and may oversmooth outputs; try 1.5-2.5 first."
+     ),
+  )
+  parser.add_argument(
+    "--svdq-few-shot-relax-top-ratio",
+    type=float,
+    default=0.25,
+    help="Fraction of the largest few-shot activation spans used to define the relax threshold.",
+  )
+  parser.add_argument(
+    "--svdq-few-shot-relax-strategy",
+    type=str,
+    default="top",
+    choices=["fixed", "top", "auto", "power", "log", "rank", "top_q4"],
+    help=(
+      "How few-shot relax factors are assigned over activation spans. 'fixed' keeps the original "
+      "activation span unchanged; 'top' keeps channels below the threshold unchanged; 'auto' uses "
+      "a linear ramp; 'power', 'log', and 'rank' use stronger monotonic curves; 'top_q4' is "
+      "accepted as an alias of 'top'."),
+  )
+  parser.add_argument(
+    "--svdq-few-shot-compile",
+    action="store_true",
+    default=False,
+    help="Compile the transformer only after SVDQ few-shot runtime quantization completes.",
   )
   # Parallelism settings
   parser.add_argument(
@@ -979,11 +1018,100 @@ def _force_compile_dynamic(args, pipe) -> bool:
     [pipe.__class__.__name__.startswith(prefix) for prefix in _class_maybe_force_compile_dynamic])
 
 
+def _compile_transformer_module(args, pipe, transformer, name):
+  if transformer is None or isinstance(
+      transformer,
+      torch._dynamo.OptimizedModule,  # already compiled
+  ):
+    logger.warning(f"{name} module is already compiled or None, skipping compilation.")
+    return transformer
+
+  from diffusers import ModelMixin
+
+  transformer_cls_name = transformer.__class__.__name__
+  if not isinstance(transformer, (torch.nn.Module, ModelMixin)):
+    logger.warning(f"Cannot compile {name} module: {transformer_cls_name} Not a torch.nn.Module.")
+    return transformer
+
+  use_regional_compile = not args.disable_compile_repeated_blocks and hasattr(
+    transformer, "compile_repeated_blocks")
+
+  if args.cuda_graph and use_regional_compile:
+    use_regional_compile = False
+
+  if use_regional_compile:
+    logger.info(f"Compiling repeated blocks in {name}: {transformer_cls_name} ...")
+    transformer.compile_repeated_blocks(
+      fullgraph=args.compile_full_graph,
+      mode=_compile_mode(args),
+      dynamic=_force_compile_dynamic(args, pipe),
+      options=_compile_options(args),
+    )
+    setattr(pipe, name, transformer)
+    return transformer
+
+  if args.cuda_graph:
+    logger.info(f"Compiling full {name}: {transformer_cls_name} with CUDA Graph enabled ...")
+  else:
+    logger.info(f"Compiling full {name}: {transformer_cls_name} ...")
+  transformer = torch.compile(
+    transformer,
+    fullgraph=args.compile_full_graph,
+    mode=_compile_mode(args),
+    dynamic=_force_compile_dynamic(args, pipe),
+    options=_compile_options(args),
+  )
+  setattr(pipe, name, transformer)
+  return transformer
+
+
+def _register_deferred_few_shot_compile_callback(args, pipe, transformer, name) -> None:
+  controller = getattr(transformer, "_svdq_few_shot_controller", None)
+  if controller is None:
+    return
+
+  def _callback(_quantized_module):
+    current_transformer = getattr(pipe, name, None)
+    if current_transformer is None:
+      logger.warning("Deferred few-shot compile skipped because %s is no longer present.", name)
+      return
+    set_compile_configs(cuda_graphs=args.cuda_graph, ulysses_anything=args.ulysses_anything)
+    torch.set_float32_matmul_precision("high")
+    _compile_transformer_module(args, pipe, current_transformer, name)
+
+  callbacks = getattr(transformer, "_svdq_post_quantize_callbacks", None)
+  if callbacks is None:
+    transformer._svdq_post_quantize_callbacks = []
+    callbacks = transformer._svdq_post_quantize_callbacks
+  callback_names = getattr(transformer, "_svdq_post_quantize_callback_names", None)
+  if callback_names is None:
+    transformer._svdq_post_quantize_callback_names = set()
+    callback_names = transformer._svdq_post_quantize_callback_names
+  callback_name = f"compile:{name}"
+  if callback_name in callback_names:
+    return
+  callback_names.add(callback_name)
+  callbacks.append(_callback)
+  logger.info("Deferring compile for %s until SVDQ few-shot quantization finishes.", name)
+
+
+def _should_defer_few_shot_compile(args, transformer) -> bool:
+  if transformer is None or not getattr(transformer, "_svdq_pending_quantization", False):
+    return False
+  controller = getattr(transformer, "_svdq_few_shot_controller", None)
+  if controller is None:
+    return False
+  smooth_strategy = controller.context.svdq_kwargs.get("smooth_strategy")
+  if smooth_strategy != "few_shot":
+    return False
+  return bool(controller.context.svdq_kwargs.get("few_shot_auto_compile", False))
+
+
 def maybe_compile_transformer(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
-  if args.compile:
+  if args.compile or args.svdq_few_shot_compile:
     set_compile_configs(cuda_graphs=args.cuda_graph, ulysses_anything=args.ulysses_anything)
     torch.set_float32_matmul_precision("high")
 
@@ -993,66 +1121,21 @@ def maybe_compile_transformer(
     else:
       pipe = pipe_or_adapter
 
-    def _compile_transformer_module(transformer, name):
-      if transformer is not None and not isinstance(
-          transformer,
-          torch._dynamo.OptimizedModule,  # already compiled
-      ):
-        from diffusers import ModelMixin
-
-        transformer_cls_name = transformer.__class__.__name__
-        if isinstance(transformer, (torch.nn.Module, ModelMixin)):
-          use_regional_compile = not args.disable_compile_repeated_blocks and hasattr(
-            transformer, "compile_repeated_blocks")
-
-          # CUDA graphs do not work reliably with regional compilation for
-          # transformer blocks that are replayed multiple times within one
-          # model forward (for example FluxTransformerBlock in FLUX). In that
-          # case, compiled block outputs can be overwritten by a subsequent
-          # replay. Fall back to compiling the whole transformer when
-          # cudagraphs are enabled.
-          if args.cuda_graph:
-            if use_regional_compile:
-              use_regional_compile = False
-
-          if use_regional_compile:
-            logger.info(f"Compiling repeated blocks in {name}: {transformer_cls_name} ...")
-            transformer.compile_repeated_blocks(
-              fullgraph=args.compile_full_graph,
-              mode=_compile_mode(args),
-              dynamic=_force_compile_dynamic(args, pipe),
-              options=_compile_options(args),
-            )
-          else:
-            if args.cuda_graph:
-              logger.info(
-                f"Compiling full {name}: {transformer_cls_name} with CUDA Graph enabled ...")
-            else:
-              logger.info(f"Compiling full {name}: {transformer_cls_name} ...")
-            transformer = torch.compile(
-              transformer,
-              fullgraph=args.compile_full_graph,
-              mode=_compile_mode(args),
-              dynamic=_force_compile_dynamic(args, pipe),
-              options=_compile_options(args),
-            )
-
-          setattr(pipe, name, transformer)
-        else:
-          logger.warning(f"Cannot compile {name} module: {transformer_cls_name} Not a"
-                         " torch.nn.Module.")
-      else:
-        logger.warning(f"{name} module is already compiled or None, skipping compilation.")
-
     if hasattr(pipe, "transformer"):
       transformer = getattr(pipe, "transformer", None)
-      _compile_transformer_module(transformer, "transformer")
+      if _should_defer_few_shot_compile(args, transformer):
+        _register_deferred_few_shot_compile_callback(args, pipe, transformer, "transformer")
+      else:
+        _compile_transformer_module(args, pipe, transformer, "transformer")
     else:
       logger.warning("compile is set but no transformer found in the pipeline.")
 
     if hasattr(pipe, "transformer_2"):
       transformer_2 = getattr(pipe, "transformer_2", None)
-      _compile_transformer_module(transformer_2, "transformer_2")
+      if _should_defer_few_shot_compile(args, transformer_2):
+        _register_deferred_few_shot_compile_callback(args, pipe, transformer_2, "transformer_2")
+      else:
+        _compile_transformer_module(args, pipe, transformer_2, "transformer_2")
 
   return pipe_or_adapter
 
@@ -1207,13 +1290,21 @@ def maybe_quantize_transformer(
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
 
-  def _resolve_cli_svdq_kwargs() -> Optional[Dict[str, str]]:
+  def _resolve_cli_svdq_kwargs() -> Optional[Dict[str, Any]]:
     if args.quantize_type is None or not args.quantize_type.startswith("svdq"):
       return None
+    few_shot_auto_compile = bool(args.svdq_few_shot_compile)
+    if args.svdq_smooth_strategy == "few_shot" and args.compile:
+      few_shot_auto_compile = True
     return {
       "smooth_strategy": args.svdq_smooth_strategy,
       "calibrate_precision": args.svdq_calibrate_precision,
       "runtime_kernel": args.svdq_runtime,
+      "few_shot_steps": args.svdq_few_shot_steps,
+      "few_shot_relax_factor": args.svdq_few_shot_relax_factor,
+      "few_shot_relax_top_ratio": args.svdq_few_shot_relax_top_ratio,
+      "few_shot_relax_strategy": args.svdq_few_shot_relax_strategy,
+      "few_shot_auto_compile": few_shot_auto_compile,
     }
 
   # Quantize transformer by default if quantization is enabled

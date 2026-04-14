@@ -1,6 +1,7 @@
 import os
 import dataclasses
 import re
+import warnings
 from typing import Optional, Dict, Any, List, Union, Callable
 from .backend import QuantizeBackend
 from ..logger import init_logger
@@ -10,7 +11,9 @@ logger = init_logger(__name__)
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("v1", "v2", "v3")
-_SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv")
+_SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv", "few_shot")
+_SVDQ_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "power", "log", "rank")
+_SVDQ_FEW_SHOT_RELAX_WARN_THRESHOLD = 3.0
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
   # which means it will quantize the model using the calibration samples one by one, and
@@ -48,6 +51,29 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # activation-derived smoothing only, while DQ intentionally fixes this to the
   # identity vector to preserve the v1 zero-calibration contract.
   "smooth_strategy": "activation",
+  # Only valid for the DQ few-shot smooth strategy. It specifies how many root-module
+  # forward calls should be observed before runtime quantization is materialized.
+  "few_shot_steps": 1,
+  # Only valid for the DQ few-shot smooth strategy. It specifies the maximum
+  # multiplicative relax factor applied to activation spans before smooth-scale
+  # recomputation for strategies other than `fixed`.
+  "few_shot_relax_factor": 1.5,
+  # Only valid for the DQ few-shot smooth strategy. It specifies the fraction of channels
+  # with the largest activation spans used to define the relax threshold. The `fixed`
+  # strategy ignores this value because it keeps the original activation statistics unchanged.
+  "few_shot_relax_top_ratio": 0.25,
+  # Only valid for the DQ few-shot smooth strategy. It controls how relax factors are
+  # assigned across the activation-span vector before smooth-scale recomputation.
+  # - fixed: keep the observed activation span unchanged.
+  # - top: apply the configured relax factor only to channels above the top-ratio threshold.
+  # - auto: assign larger relax factors to larger activation spans with a linear ramp.
+  # - power: use a more selective convex ramp that emphasizes the largest channels.
+  # - log: use a concave ramp that boosts mid/high channels earlier.
+  # - rank: assign relax factors from channel rank percentiles instead of raw magnitudes.
+  "few_shot_relax_strategy": "top",
+  # Only valid for the DQ few-shot smooth strategy. When enabled, helper flows may defer
+  # transformer compilation until runtime quantization completes.
+  "few_shot_auto_compile": False,
 }
 
 
@@ -104,6 +130,61 @@ def _resolve_svdq_positive_int_or_none(key: str, value: Any) -> int | None:
   return value
 
 
+def _resolve_svdq_positive_float(key: str, value: Any) -> float:
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be a float, got {type(value)}.")
+  resolved = float(value)
+  if resolved <= 0.0:
+    raise ValueError(f"svdq_kwargs[{key!r}] must be positive, got {value}.")
+  return resolved
+
+
+def _resolve_svdq_few_shot_relax_factor(key: str, value: Any) -> float:
+  resolved = _resolve_svdq_positive_float(key, value)
+  if resolved < 1.0:
+    raise ValueError(f"svdq_kwargs[{key!r}] must be >= 1.0, got {value}.")
+  return resolved
+
+
+def _resolve_svdq_ratio(key: str, value: Any) -> float:
+  resolved = _resolve_svdq_positive_float(key, value)
+  if resolved > 1.0:
+    raise ValueError(f"svdq_kwargs[{key!r}] must be in the range (0, 1], got {value}.")
+  return resolved
+
+
+def _resolve_svdq_few_shot_relax_strategy(key: str, value: Any) -> str:
+  if not isinstance(value, str):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
+  normalized = value.lower()
+  if normalized == "top_q4":
+    normalized = "top"
+  if normalized not in _SVDQ_FEW_SHOT_RELAX_STRATEGIES:
+    raise ValueError(
+      f"svdq_kwargs[{key!r}] must be one of {_SVDQ_FEW_SHOT_RELAX_STRATEGIES} or the alias "
+      f"'top_q4', got {value!r}.")
+  return normalized
+
+
+def _warn_about_aggressive_svdq_few_shot_relax_factor(svdq_kwargs: Dict[str, Any]) -> None:
+  if svdq_kwargs.get("smooth_strategy") != "few_shot":
+    return
+  if svdq_kwargs.get("few_shot_relax_strategy") == "fixed":
+    return
+
+  relax_factor = float(svdq_kwargs["few_shot_relax_factor"])
+  if relax_factor <= _SVDQ_FEW_SHOT_RELAX_WARN_THRESHOLD:
+    return
+
+  warnings.warn(
+    f"svdq_kwargs['few_shot_relax_factor']={relax_factor} is aggressive for SVDQ few-shot DQ "
+    "activation-span relaxation and may oversmooth or blur outputs. Prefer values around 1.5-2.5 "
+    "first, then tune relax_strategy or few_shot_relax_top_ratio if more headroom is needed.",
+    RuntimeWarning,
+    stacklevel=3,
+  )
+
+
 def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
   if svdq_kwargs is None:
     return dict(_SVDQ_KWARGS_DEFAULTS)
@@ -123,9 +204,15 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,
     "smooth_strategy": _resolve_svdq_smooth_strategy,
+    "few_shot_steps": _resolve_svdq_positive_int_or_none,
+    "few_shot_relax_factor": _resolve_svdq_few_shot_relax_factor,
+    "few_shot_relax_top_ratio": _resolve_svdq_ratio,
+    "few_shot_relax_strategy": _resolve_svdq_few_shot_relax_strategy,
+    "few_shot_auto_compile": _resolve_svdq_bool_kwarg,
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
+  _warn_about_aggressive_svdq_few_shot_relax_factor(resolved)
   return resolved
 
 
@@ -280,10 +367,10 @@ class QuantizeConfig:
           raise ValueError("serialize_to is not supported for SVDQuant dynamic quantization.")
         if isinstance(raw_svdq_kwargs, dict) and "smooth_strategy" in raw_svdq_kwargs:
           requested_smooth_strategy = str(raw_svdq_kwargs["smooth_strategy"]).lower()
-          if requested_smooth_strategy not in {"identity", "weight", "weight_inv"}:
+          if requested_smooth_strategy not in {"identity", "weight", "weight_inv", "few_shot"}:
             raise ValueError(
               "SVDQuant dynamic quantization currently only supports "
-              "svdq_kwargs['smooth_strategy'] in {'identity', 'weight', 'weight_inv'}.")
+              "svdq_kwargs['smooth_strategy'] in {'identity', 'weight', 'weight_inv', 'few_shot'}.")
           self.svdq_kwargs["smooth_strategy"] = requested_smooth_strategy
         else:
           self.svdq_kwargs["smooth_strategy"] = "identity"
@@ -348,6 +435,14 @@ class QuantizeConfig:
 
     return self.is_svdq() and not self.is_svdq_dq()
 
+  def is_svdq_dq_few_shot(self) -> bool:
+    """Return whether this config targets SVDQ DQ with deferred few-shot quantization.
+
+    :returns: `True` when the config uses SVDQ DQ and the `few_shot` smooth strategy.
+    """
+
+    return self.is_svdq_dq() and self.get_svdq_kwargs().get("smooth_strategy") == "few_shot"
+
   def get_svdq_rank(self) -> int:
     """Extract the low-rank value encoded in an SVDQ quant type.
 
@@ -390,9 +485,14 @@ class QuantizeConfig:
     def _stringify_quant_type(quant_type: str) -> str:
       quant_type = quant_type.lower()
       if quant_type.startswith("svdq") and quant_type.endswith("_dq"):
-        smooth_strategy = self.get_svdq_kwargs().get("smooth_strategy", "identity")
+        svdq_kwargs = self.get_svdq_kwargs()
+        smooth_strategy = svdq_kwargs.get("smooth_strategy", "identity")
         if smooth_strategy != "identity":
-          return f"{quant_type}_{smooth_strategy}"
+          quant_type = f"{quant_type}_{smooth_strategy}"
+          if smooth_strategy == "few_shot":
+            relax_strategy = svdq_kwargs.get("few_shot_relax_strategy", "top")
+            quant_type = f"{quant_type}_{relax_strategy}"
+          return quant_type
       return quant_type
 
     if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):

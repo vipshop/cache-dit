@@ -105,6 +105,8 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
     components_to_quantize = copy.deepcopy(module._quantize_config.components_to_quantize, )
 
   def _remove_quantization_stats(module: torch.nn.Module) -> None:
+    if hasattr(module, "_svdq_cleanup_pending_quantization"):
+      module._svdq_cleanup_pending_quantization()
     if hasattr(module, "_quantize_config"):
       del module._quantize_config
     if hasattr(module, "_is_quantized"):
@@ -113,6 +115,16 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
       del module._quantize_type
     if hasattr(module, "_exclude_layers"):
       del module._exclude_layers
+    if hasattr(module, "_svdq_quantized_layers"):
+      del module._svdq_quantized_layers
+    if hasattr(module, "_svdq_kwargs"):
+      del module._svdq_kwargs
+    if hasattr(module, "_svdq_checkpoint_path"):
+      del module._svdq_checkpoint_path
+    if hasattr(module, "_svdq_runtime_quantize_time_s"):
+      del module._svdq_runtime_quantize_time_s
+    if hasattr(module, "_svdq_runtime_quantized_after_forwards"):
+      del module._svdq_runtime_quantized_after_forwards
 
   _remove_quantization_stats(module)
 
