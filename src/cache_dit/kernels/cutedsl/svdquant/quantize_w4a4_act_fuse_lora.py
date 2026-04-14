@@ -18,9 +18,12 @@ from cutlass.cute.typing import Int32
 
 from .gemm_utils import h2div_bf16x2_f32
 from .gemm_utils import h2div_f16x2_f32
+from .gemm_utils import load_pred_v4_b32
 from .gemm_utils import quantize_f32x8_to_int4_word_signed
 from .gemm_utils import rcp_approx_f32
 from .gemm_utils import require_int4_runtime
+from .gemm_utils import store_global_cg_v4_b32
+from .gemm_utils import store_shared_v4_b32
 
 _BLOCK_M = 256
 _BLOCK_N = 128
@@ -33,6 +36,9 @@ _INT4_MAX = 7.0
 _MMA_TILE_M = 16
 _MMA_TILE_N = 16
 _MMA_TILE_K = 16
+_I32_WORDS_PER_VEC = 4
+_PACKED_HALFS_PER_I32 = 2
+_PACKED_HALFS_PER_VEC = _I32_WORDS_PER_VEC * _PACKED_HALFS_PER_I32
 
 _COMPILED_SVDQ_QACT_INT4: dict[tuple[torch.dtype, int, int, int, str], Callable[..., None]] = {}
 _COMPILED_SVDQ_LORA_DOWN: dict[tuple[torch.dtype, int, int, int, int, str], Callable[...,
@@ -131,11 +137,7 @@ class _SVDQQuantizeInt4Program:
     lane_in_row = tidx % _THREADS_PER_ROW
     global_row = block_row_idx * _ROWS_PER_CTA + row_in_cta
     col_base = group_idx * _WARP_K + lane_in_row * 8
-
-    qout_i32 = make_tensor(
-      recast_ptr(qout.iterator, dtype=Int32),
-      make_layout((qout.shape[0] * qout.shape[1] // 4, ), stride=(1, )),
-    )
+    qout_i32_ptr = recast_ptr(qout.iterator, dtype=Int32)
 
     smem = cutlass.utils.SmemAllocator()
     scale_smem = smem.allocate_tensor(x.element_type,
@@ -215,10 +217,15 @@ class _SVDQQuantizeInt4Program:
                        (qout.shape[0] // _ROWS_PER_CTA) + block_row_idx) * 2 + tile_idx) * 8 +
                      row_quad) * 4 + lane_in_row
         base = base_word * 4
-        qout_i32[base + 0] = qpack_smem[top_row, lane_in_row]
-        qout_i32[base + 1] = qpack_smem[bottom_row, lane_in_row]
-        qout_i32[base + 2] = qpack_smem[top_row, lane_in_row + 4]
-        qout_i32[base + 3] = qpack_smem[bottom_row, lane_in_row + 4]
+        # The four packed words land contiguously in the output layout, so issue
+        # a single 128-bit store instead of four scalar global writes.
+        store_global_cg_v4_b32(
+          qout_i32_ptr + base,
+          qpack_smem[top_row, lane_in_row],
+          qpack_smem[bottom_row, lane_in_row],
+          qpack_smem[top_row, lane_in_row + 4],
+          qpack_smem[bottom_row, lane_in_row + 4],
+        )
 
   @cute.jit
   def __call__(self, qout: cute.Tensor, ascales: cute.Tensor, x: cute.Tensor,
@@ -244,6 +251,8 @@ class _SVDQLoraDownProgram:
   def _kernel(self, out: cute.Tensor, x: cute.Tensor, lora_down: cute.Tensor):
     lane_id, _, _ = cute.arch.thread_idx()
     warp_tile_idx, rank_tile_idx, _ = cute.arch.block_idx()
+    x_i32_ptr = recast_ptr(x.iterator, dtype=Int32)
+    lora_down_i32_ptr = recast_ptr(lora_down.iterator, dtype=Int32)
 
     out_linear = make_tensor(
       recast_ptr(out.iterator, dtype=out.element_type),
@@ -284,6 +293,13 @@ class _SVDQLoraDownProgram:
       make_layout((2, _MMA_TILE_M * _MMA_TILE_N), stride=(_MMA_TILE_M * _MMA_TILE_N, 1)),
       byte_alignment=16,
     )
+    a_top_smem_i32_ptr = recast_ptr(a_top_smem.iterator, dtype=Int32)
+    a_bottom_smem_i32_ptr = recast_ptr(a_bottom_smem.iterator, dtype=Int32)
+    b_smem_i32 = make_tensor(
+      recast_ptr(b_smem.iterator, dtype=Int32),
+      make_layout((_MMA_TILE_N, _MMA_TILE_K // _PACKED_HALFS_PER_I32),
+                  stride=(_MMA_TILE_K // _PACKED_HALFS_PER_I32, 1)),
+    )
 
     acc_top, _, _, tCrA_top, tCrB = _partition_fragment_abc(thr_mma, a_top_smem, b_smem)
     acc_bottom, _, _, tCrA_bottom, _ = _partition_fragment_abc(thr_mma, a_bottom_smem, b_smem)
@@ -299,42 +315,60 @@ class _SVDQLoraDownProgram:
     tCrB_copy_view = thr_copy_ldmatrix_B.retile(tCrB)
 
     base_row = warp_tile_idx * self.rows_per_warp
-    rank_base = rank_tile_idx * self.rank_tile
+    # rank_base = rank_tile_idx * self.rank_tile
+    x_row_stride_i32 = x.stride[0] // _PACKED_HALFS_PER_I32
+    a_smem_row_stride_i32 = _MMA_TILE_K // _PACKED_HALFS_PER_I32
+    packed_lora_tile_i32 = _MMA_TILE_N * _MMA_TILE_K // _PACKED_HALFS_PER_I32
 
     for channel_tile_idx in cutlass.range_constexpr(_ceil_div(self.channels, _MMA_TILE_K)):
       channel_base = channel_tile_idx * _MMA_TILE_K
+      a_row_idx = lane_id // 2
+      a_col_word = (lane_id % 2) * _I32_WORDS_PER_VEC
+      top_row = base_row + a_row_idx
+      bottom_row = top_row + _MMA_TILE_M
+      channel_base_i32 = channel_base // _PACKED_HALFS_PER_I32
 
-      for linear_idx in cutlass.range_constexpr(_MMA_TILE_M * _MMA_TILE_K // 32):
-        tile_linear = linear_idx * 32 + lane_id
-        row_idx = tile_linear // _MMA_TILE_K
-        col_idx = tile_linear % _MMA_TILE_K
-        channel_idx = channel_base + col_idx
-        top_row = base_row + row_idx
-        bottom_row = top_row + _MMA_TILE_M
+      # Each lane moves one contiguous 128-bit segment for the top and bottom A
+      # tiles, matching the row-major 16x16 MMA staging layout in shared memory.
+      a_top_0, a_top_1, a_top_2, a_top_3 = load_pred_v4_b32(
+        x_i32_ptr + top_row * x_row_stride_i32 + channel_base_i32 + a_col_word,
+        1,
+      )
+      a_bottom_0, a_bottom_1, a_bottom_2, a_bottom_3 = load_pred_v4_b32(
+        x_i32_ptr + bottom_row * x_row_stride_i32 + channel_base_i32 + a_col_word,
+        1,
+      )
+      store_shared_v4_b32(
+        a_top_smem_i32_ptr + a_row_idx * a_smem_row_stride_i32 + a_col_word,
+        a_top_0,
+        a_top_1,
+        a_top_2,
+        a_top_3,
+      )
+      store_shared_v4_b32(
+        a_bottom_smem_i32_ptr + a_row_idx * a_smem_row_stride_i32 + a_col_word,
+        a_bottom_0,
+        a_bottom_1,
+        a_bottom_2,
+        a_bottom_3,
+      )
 
-        top_value = x.element_type(0)
-        bottom_value = x.element_type(0)
-        if top_row < x.shape[0] and channel_idx < self.channels:
-          top_value = x[top_row, channel_idx]
-        if bottom_row < x.shape[0] and channel_idx < self.channels:
-          bottom_value = x[bottom_row, channel_idx]
-
-        a_top_smem[row_idx, col_idx] = top_value
-        a_bottom_smem[row_idx, col_idx] = bottom_value
-
-      for linear_idx in cutlass.range_constexpr(_MMA_TILE_N * _MMA_TILE_K // 32):
-        tile_linear = linear_idx * 32 + lane_id
-        rank_local_idx = tile_linear // _MMA_TILE_K
-        channel_local_idx = tile_linear % _MMA_TILE_K
-        channel_idx = channel_base + channel_local_idx
-        rank_idx = rank_base + rank_local_idx
-
-        weight_value = lora_down.element_type(0)
-        if channel_idx < self.channels and rank_idx < self.rank:
-          packed_idx = _packed_lora_down_linear_index(channel_idx, rank_idx, self.rank_tiles)
-          weight_value = lora_down[packed_idx // self.rank, packed_idx % self.rank]
-
-        b_smem[rank_local_idx, channel_local_idx] = weight_value
+      n_lane = lane_id % 8
+      k_lane = lane_id // 8
+      lora_tile_base_i32 = (channel_tile_idx * self.rank_tiles +
+                            rank_tile_idx) * packed_lora_tile_i32
+      lora_lane_base_i32 = (n_lane * 4 + k_lane) * _I32_WORDS_PER_VEC
+      # The packed LoRA-down tile is contiguous in gmem per `(n_lane, k_lane)`.
+      # Load one 128-bit vector per lane, then scatter the four 32-bit words into
+      # the ldmatrix-friendly shared-memory layout.
+      b0, b1, b2, b3 = load_pred_v4_b32(
+        lora_down_i32_ptr + lora_tile_base_i32 + lora_lane_base_i32,
+        1,
+      )
+      b_smem_i32[n_lane, k_lane] = b0
+      b_smem_i32[n_lane, k_lane + 4] = b1
+      b_smem_i32[n_lane + 8, k_lane] = b2
+      b_smem_i32[n_lane + 8, k_lane + 4] = b3
 
       cute.arch.barrier()
 
@@ -470,6 +504,9 @@ def svdq_quantize_w4a4_act_fuse_lora(
   if lora_down is not None and lora_down.shape[0] != actual_n:
     raise ValueError(
       f"Expected lora_down shape [K, R] with K={actual_n}, got {tuple(lora_down.shape)}.")
+  if lora_down is not None and lora_down.shape[1] % _MMA_TILE_N != 0:
+    raise ValueError(
+      f"Expected lora_down rank divisible by {_MMA_TILE_N}, got {lora_down.shape[1]}.")
 
   padded_m = _ceil_div(actual_m, pad_size) * pad_size
   padded_n = _ceil_div(actual_n, _BLOCK_N) * _BLOCK_N
