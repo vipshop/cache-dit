@@ -521,13 +521,15 @@ This mode exposes four backend-local knobs:
 - <span style="color:#c77dff;">few_shot_steps</span>: number of root-module forwards to observe before quantization. Default: <span style="color:green;">1</span>.
 - <span style="color:#c77dff;">few_shot_relax_factor</span>: maximum multiplicative factor applied to activation spans during few-shot relaxation. It must satisfy <span style="color:green;">few_shot_relax_factor >= 1.0</span>, so the observed activation span is preserved or amplified, never reduced. Default: <span style="color:green;">1.5</span>. In practice, values around <span style="color:green;">1.5-2.5</span> are usually the safer starting range; larger values such as <span style="color:green;">4.0</span> can still oversmooth or blur image outputs when the outlier prior becomes too strong.
 - <span style="color:#c77dff;">few_shot_relax_top_ratio</span>: fraction of the largest activation spans used to define the few-shot threshold. Default: <span style="color:green;">0.25</span>.
-- <span style="color:#c77dff;">few_shot_relax_strategy</span>: how the relax factor is assigned across channels before smooth-scale recomputation. Default: <span style="color:green;">auto</span>. Available values: <span style="color:green;">fixed</span>, <span style="color:green;">top</span>, <span style="color:green;">auto</span>, <span style="color:green;">power</span>, <span style="color:green;">log</span>, and <span style="color:green;">rank</span>.
+- <span style="color:#c77dff;">few_shot_relax_strategy</span>: how the relax factor is assigned across channels before smooth-scale recomputation. Default: <span style="color:green;">auto</span>. Available values: <span style="color:green;">fixed</span>, <span style="color:green;">top</span>, <span style="color:green;">auto</span>, <span style="color:green;">stable_auto</span>, <span style="color:green;">power</span>, <span style="color:green;">log</span>, and <span style="color:green;">rank</span>.
 
 If the observed activation-span vector is denoted as \(a\) and the weight-span vector is denoted as \(w\), Cache-DiT first computes the threshold corresponding to \(1 - \text{few\_shot\_relax\_top\_ratio}\) on \(a\), relaxes the activation span, and then recomputes the smooth scale via \(s_i^{\mathrm{relaxed}} = \frac{\left(a_i^{\mathrm{relaxed}}\right)^\alpha}{w_i^{1-\alpha}}\).
 
 It then applies one of the following relax strategies:
 
 For <span style="color:green;">auto</span>, Cache-DiT also relaxes the channels below the threshold, but uses a smaller multiplier for smaller activation spans and caps the largest channels at <span style="color:#c77dff;">few_shot_relax_factor</span>: \(m_i = 1 + \left(\text{few\_shot\_relax\_factor} - 1\right) \cdot \operatorname{clip}\left(\frac{a_i - a_{\min}}{\tau - a_{\min}}, 0, 1\right)\), then \(a_i^{\mathrm{relaxed}} = a_i \cdot m_i\).
+
+For <span style="color:green;">stable_auto</span>, Cache-DiT keeps the same magnitude-aware linear ramp as <span style="color:green;">auto</span>, but snaps that normalized response to a small number of evenly spaced buckets before applying the final relax multiplier. In the current implementation, the bucketized response is \(r_i^{\mathrm{stable}} = \operatorname{round}(8 \cdot r_i^{\mathrm{auto}}) / 8\). This does not make the entire runtime path fully deterministic, but it does make the relax policy less sensitive to small first-forward activation-stat fluctuations.
 
 For <span style="color:green;">top</span>: \(a_i^{\mathrm{relaxed}} = a_i \cdot \text{few\_shot\_relax\_factor}\) when \(a_i \geq \tau\), and \(a_i^{\mathrm{relaxed}} = a_i\) otherwise. Channels outside the selected top-ratio are kept unchanged.
 
@@ -547,6 +549,7 @@ That does not mean arbitrarily large factors are safe. A larger factor tells the
 
 The remaining non-trivial strategies reuse the same bounded activation-span multiplier range \([1, \text{few\_shot\_relax\_factor}]\), but change how the normalized response is built before that final affine map:
 
+- <span style="color:green;">stable_auto</span>: uses the same linear response as <span style="color:green;">auto</span>, but bucketizes it into a small number of levels so repeated few-shot runs are less sensitive to tiny activation-stat changes.
 - <span style="color:green;">power</span>: uses a convex response \(r_i^2\), so the largest activation spans receive much stronger amplification while smaller channels stay closer to 1.
 - <span style="color:green;">log</span>: uses a concave log response, so mid/high activation-span channels get lifted earlier than in the linear <span style="color:green;">auto</span> strategy.
 - <span style="color:green;">rank</span>: ignores the absolute activation-span gaps and constructs the response from channel rank percentiles, which can be more robust when a layer has a few extreme outliers. 
@@ -595,6 +598,12 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
   --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
   --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
   --svdq-few-shot-relax-strategy auto
+
+# few-shot stable_auto relax: keep the same auto trend, but bucketize it for better stability.
+python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
+  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
+  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
+  --svdq-few-shot-relax-strategy stable_auto
 
 # few-shot power relax: focus the extra amplification on the largest channels.
 python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \

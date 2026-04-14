@@ -506,6 +506,20 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "--quantize-type",
       "svdq_int4_r32_dq",
       "--svdq-smooth-strategy",
+      "few_shot",
+      "--svdq-few-shot-relax-strategy",
+      "stable_auto",
+    ]))
+  assert args.quantize
+  assert args.quantize_type == "svdq_int4_r32_dq"
+  assert args.svdq_smooth_strategy == "few_shot"
+  assert args.svdq_few_shot_relax_strategy == "stable_auto"
+
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-type",
+      "svdq_int4_r32_dq",
+      "--svdq-smooth-strategy",
       "weight_inv",
       "--svdq-calib",
       "high",
@@ -991,7 +1005,7 @@ def test_svdq_dq_few_shot_auto_relax_strategy_scales_monotonically() -> None:
   assert upper_mean > lower_mean + 5e-2
 
 
-@pytest.mark.parametrize("strategy", ["power", "log", "rank"])
+@pytest.mark.parametrize("strategy", ["stable_auto", "power", "log", "rank"])
 def test_svdq_dq_few_shot_extra_relax_strategies_scale_monotonically(strategy: str) -> None:
   dtype = runtime_dtype()
   model = make_toy_model(

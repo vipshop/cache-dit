@@ -148,12 +148,19 @@ class ExampleInputData:
     input_data.pop("gen_device", None)
     return input_data
 
-  def new_generator(self, args: argparse.Namespace = None) -> torch.Generator:
+  def new_generator(
+    self,
+    args: argparse.Namespace = None,
+    *,
+    seed_override: Optional[int] = None,
+  ) -> torch.Generator:
     # NOTE: We should always create a new generator before each inference to
     # ensure reproducibility when using the same seed. Alawys use cpu generator
     # for better cross-device consistency.
     if args is not None and args.generator_device is not None:
       self.gen_device = args.generator_device
+    if seed_override is not None:
+      return torch.Generator(self.gen_device).manual_seed(seed_override)
     if args is not None and args.seed is not None:
       return torch.Generator(self.gen_device).manual_seed(args.seed)
     elif self.seed is not None:
@@ -540,7 +547,7 @@ class Example:
     # warm up
     start_time = time.time()
     for _ in range(self.args.warmup):
-      input_kwargs = self.new_generator(input_kwargs, self.args)
+      input_kwargs = self.new_generator(input_kwargs, self.args, warmup=True)
       if self.args.warmup_num_inference_steps is not None:
         input_kwargs["num_inference_steps"] = self.args.warmup_num_inference_steps
       _ = pipe(**input_kwargs)
@@ -621,11 +628,20 @@ class Example:
 
     maybe_destroy_distributed()
 
-  def new_generator(self, input_kwargs: Dict[str, Any],
-                    args: argparse.Namespace) -> torch.Generator:
+  def new_generator(
+    self,
+    input_kwargs: Dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    warmup: bool = False,
+  ) -> torch.Generator:
     # NOTE: We should always create a new generator before each inference to
     # ensure reproducibility when using the same seed.
-    input_kwargs["generator"] = self.input_data.new_generator(args=args)
+    warmup_seed = getattr(args, "warmup_seed", None) if warmup else None
+    input_kwargs["generator"] = self.input_data.new_generator(
+      args=args,
+      seed_override=warmup_seed,
+    )
     return input_kwargs
 
 

@@ -303,7 +303,32 @@ def test_svdquant_quantizer_auto_few_shot_relaxation_is_monotonic_and_bounded() 
   assert torch.all(multipliers <= math.sqrt(2.0))
 
 
-@pytest.mark.parametrize("strategy", ["power", "log", "rank"])
+def test_svdquant_quantizer_stable_auto_bucketizes_relaxation_response() -> None:
+  activation_span = torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32)
+  weight_span = torch.ones_like(activation_span)
+
+  relaxed, original = svdq_quantizer._apply_few_shot_relaxation(
+    activation_span,
+    weight_span,
+    relax_factor=2.5,
+    relax_top_ratio=0.25,
+    relax_strategy="stable_auto",
+  )
+
+  threshold = torch.quantile(activation_span, 0.75)
+  auto_response = activation_span.sub(activation_span.amin()).div(threshold -
+                                                                  activation_span.amin())
+  auto_response = auto_response.clamp(0.0, 1.0)
+  bucket_count = svdq_quantizer._FEW_SHOT_STABLE_AUTO_BUCKETS
+  stable_response = auto_response.mul(bucket_count).add(0.5).floor().div(bucket_count)
+  expected_multiplier = stable_response.mul(1.5).add(1.0).sqrt()
+  bucket_indices = stable_response.mul(bucket_count)
+
+  torch.testing.assert_close(relaxed, original * expected_multiplier, rtol=1e-6, atol=1e-6)
+  torch.testing.assert_close(bucket_indices, bucket_indices.round(), rtol=0.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("strategy", ["stable_auto", "power", "log", "rank"])
 def test_svdquant_quantizer_extra_few_shot_relax_strategies_are_monotonic_and_bounded(
   strategy: str, ) -> None:
   activation_span = torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32)

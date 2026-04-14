@@ -12,7 +12,7 @@ _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("v1", "v2", "v3")
 _SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv", "few_shot")
-_SVDQ_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "power", "log", "rank")
+_SVDQ_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "stable_auto", "power", "log", "rank")
 _SVDQ_FEW_SHOT_RELAX_WARN_THRESHOLD = 3.0
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
@@ -67,6 +67,7 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - fixed: keep the observed activation span unchanged.
   # - top: apply the configured relax factor only to channels above the top-ratio threshold.
   # - auto: assign larger relax factors to larger activation spans with a linear ramp.
+  # - stable_auto: bucketize the auto ramp to reduce run-to-run sensitivity to small jitters.
   # - power: use a more selective convex ramp that emphasizes the largest channels.
   # - log: use a concave ramp that boosts mid/high channels earlier.
   # - rank: assign relax factors from channel rank percentiles instead of raw magnitudes.

@@ -50,6 +50,18 @@ def test_quantize_config_strify_appends_few_shot_relax_strategy_name() -> None:
   assert config.strify() == "svdq_int4_r128_dq_few_shot_auto"
 
 
+def test_quantize_config_strify_appends_few_shot_stable_auto_relax_strategy_name() -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_int4_r128_dq",
+    svdq_kwargs={
+      "smooth_strategy": "few_shot",
+      "few_shot_relax_strategy": "stable_auto",
+    },
+  )
+
+  assert config.strify() == "svdq_int4_r128_dq_few_shot_stable_auto"
+
+
 def test_quantize_config_svdq_dq_few_shot_defaults_are_resolved() -> None:
   config = QuantizeConfig(
     quant_type="svdq_int4_r128_dq",
@@ -158,7 +170,7 @@ def test_quantize_config_svdq_dq_few_shot_normalizes_top_q4_alias() -> None:
   assert config.get_svdq_kwargs()["few_shot_relax_strategy"] == "top"
 
 
-@pytest.mark.parametrize("strategy", ["fixed", "auto", "power", "log", "rank"])
+@pytest.mark.parametrize("strategy", ["fixed", "auto", "stable_auto", "power", "log", "rank"])
 def test_quantize_config_svdq_dq_few_shot_accepts_relax_strategies(strategy: str) -> None:
   config = QuantizeConfig(
     quant_type="svdq_int4_r128_dq",

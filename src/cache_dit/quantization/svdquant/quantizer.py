@@ -26,9 +26,10 @@ __all__ = [
 _CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv", "few_shot")
 _WEIGHT_ONLY_SMOOTH_CLAMP_RANGE = (0.25, 4.0)
-_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "power", "log", "rank")
+_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "stable_auto", "power", "log", "rank")
 _FEW_SHOT_LOG_CURVE_STRENGTH = 9.0
 _FEW_SHOT_POWER_GAMMA = 2.0
+_FEW_SHOT_STABLE_AUTO_BUCKETS = 8
 _FEW_SHOT_RELAX_WARN_THRESHOLD = 3.0
 
 
@@ -304,6 +305,14 @@ def _build_few_shot_relax_response(
     This is a linear ramp. Small activation spans stay near 0, larger activation spans move toward
     1, and all channels at or above the threshold saturate to the same maximum relax factor.
 
+  - `stable_auto`:
+      `r_i = round(B * auto_i) / B`, with a small fixed bucket count `B`
+    This keeps the same magnitude-aware linear ramp as `auto`, but snaps nearby channels to a
+    shared response bucket before the final affine map. The goal is not to make the whole runtime
+    path bitwise deterministic; rather, it makes the relax policy less sensitive to small
+    first-forward activation-span fluctuations, so repeated few-shot runs are more likely to land
+    on the same per-channel relax multipliers.
+
   - `power`:
       `r_i = auto_i ** gamma`, with `gamma > 1`
     This convex transform suppresses the low/mid channels relative to `auto`, so the amplification
@@ -371,6 +380,13 @@ def _build_few_shot_relax_response(
     # heuristic. Every channel can expand, but the expansion is proportional to how extreme its
     # current activation span already looks.
     return normalized
+  if relax_strategy == "stable_auto":
+    # Bucketized linear ramp: preserve the same magnitude-aware ordering as `auto`, but snap the
+    # response to a small number of evenly spaced levels. This damps run-to-run jitter when the
+    # first observed activation spans move slightly yet should still imply the same coarse relax
+    # decision.
+    return normalized.mul(_FEW_SHOT_STABLE_AUTO_BUCKETS).add_(0.5).floor_().div_(
+      _FEW_SHOT_STABLE_AUTO_BUCKETS)
   if relax_strategy == "power":
     # Convex curve: relative to `auto`, this keeps low/mid channels closer to 0 and allocates more
     # of the amplification budget to the largest channels near the threshold.

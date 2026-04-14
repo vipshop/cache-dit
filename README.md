@@ -57,7 +57,7 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
 ```
 
 <div align="center">
-  <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ workflow</h2> </p>
+  <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ/DQ workflow</h2> </p>
 </div>
 
 First, build Cache-DiT from source with SVDQuant support (Experimental):
@@ -72,20 +72,14 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 ```python
 >>> from cache_dit import QuantizeConfig
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> # 0. Define the calibration function for PTQ.
->>> def calibrate_fn(**_: object) -> None:
-...   with torch.inference_mode():
-...     for prompt in calibration_prompts:
-...       _ = pipe(prompt=prompt, ...)
->>> # 1. Build the QuantizeConfig for SVDQuant PTQ.
+>>> # 0. Config for SVDQuant DQ with few_shot calibration.
 >>> quant_config = QuantizeConfig(
-...   quant_type="svdq_int4_r32", # _r{rank}, e.g., r16, r32, r64, r128, etc.
-...   calibrate_fn=calibrate_fn,
-...   serialize_to=..., 
+...   quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+...   svdq_kwargs={"smooth_strategy": "few_shot"},
 ... )
->>> # 2. Apply quantization with `cache_dit.quantize(...)` API.
+>>> # 1. Apply quantization with `cache_dit.quantize(...)` API.
 >>> pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config) 
->>> output = pipe(...) # 3. Use the quantized model for inference.
+>>> output = pipe(...) # 2. Use the quantized model for inference.
 ```
 
 For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).

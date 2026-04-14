@@ -160,6 +160,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Number of warmup inference steps per warmup before measuring performance",
   )
   parser.add_argument(
+    "--warmup-seed",
+    type=int,
+    default=None,
+    help=(
+      "Optional random seed used only for warmup forwards. When set, warmup uses this seed while "
+      "formal repeated inference continues to use --seed. This is especially useful for few-shot "
+      "SVDQ runs where runtime quantization usually happens during warmup."),
+  )
+  parser.add_argument(
     "--repeat",
     type=int,
     default=1,
@@ -560,12 +569,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-few-shot-relax-strategy",
     type=str,
     default="auto",
-    choices=["fixed", "top", "auto", "power", "log", "rank", "top_q4"],
+    choices=["fixed", "top", "auto", "stable_auto", "power", "log", "rank", "top_q4"],
     help=(
       "How few-shot relax factors are assigned over activation spans. 'fixed' keeps the original "
       "activation span unchanged; 'top' keeps channels below the threshold unchanged; 'auto' uses "
-      "a linear ramp; 'power', 'log', and 'rank' use stronger monotonic curves; 'top_q4' is "
-      "accepted as an alias of 'top'."),
+      "a linear ramp; 'stable_auto' bucketizes that ramp for better run-to-run stability; "
+      "'power', 'log', and 'rank' use stronger monotonic curves; 'top_q4' is accepted as an "
+      "alias of 'top'."),
   )
   parser.add_argument(
     "--svdq-few-shot-compile",
