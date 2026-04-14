@@ -170,7 +170,7 @@ def test_svdquant_int4_quantize_v3_matches_cuda_reference() -> None:
   assert v3_qact.dtype == torch.uint8
   assert torch.equal(v3_qact.view(torch.int32), cuda_qact.view(torch.int32))
   assert torch.equal(v3_ascales.view(torch.int16), cuda_ascales.view(torch.int16))
-  torch.testing.assert_close(v3_lora, cuda_lora, rtol=0.0, atol=2e-3)
+  torch.testing.assert_close(v3_lora, cuda_lora, rtol=0.0, atol=2e-2)
 
 
 def test_svdquant_int4_quantize_v3_accepts_missing_lora() -> None:

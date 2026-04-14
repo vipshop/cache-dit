@@ -422,9 +422,9 @@ class _SVDQFusedQuantizeLoraProgram:
     )
 
 
-def _compile_svdq_fused(qout: torch.Tensor, ascales: torch.Tensor, lora_out: torch.Tensor,
-                        x: torch.Tensor, smooth: torch.Tensor,
-                        lora_down: torch.Tensor) -> Callable[..., None]:
+def _compile_act_fused_lora(qout: torch.Tensor, ascales: torch.Tensor, lora_out: torch.Tensor,
+                            x: torch.Tensor, smooth: torch.Tensor,
+                            lora_down: torch.Tensor) -> Callable[..., None]:
   arch = os.environ.get("CUTE_DSL_ARCH", _detect_cutedsl_arch())
   cache_key = (
     x.dtype,
@@ -515,12 +515,12 @@ def svdq_quantize_w4a4_act_fuse_lora(
   if lora_rank > 0:
     lora_down_runtime[:actual_n] = lora_down.to(dtype=input.dtype, device=input.device)
 
-  fused_launcher = _compile_svdq_fused(qout=qact,
-                                       ascales=ascales,
-                                       lora_out=lora_act_out,
-                                       x=padded_activation,
-                                       smooth=smooth_runtime,
-                                       lora_down=lora_down_runtime)
+  fused_launcher = _compile_act_fused_lora(qout=qact,
+                                           ascales=ascales,
+                                           lora_out=lora_act_out,
+                                           x=padded_activation,
+                                           smooth=smooth_runtime,
+                                           lora_down=lora_down_runtime)
   fused_launcher(qact, ascales, lora_act_out, padded_activation, smooth_runtime, lora_down_runtime)
   return qact, ascales, lora_act_out
 
