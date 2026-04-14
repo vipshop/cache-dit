@@ -451,7 +451,7 @@ def _apply_few_shot_relaxation(
   alpha: float = 0.5,
   relax_factor: float = 1.5,
   relax_top_ratio: float = 0.25,
-  relax_strategy: str = "top",
+  relax_strategy: str = "auto",
   math_dtype: torch.dtype = torch.float32,
   output_dtype: torch.dtype | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:

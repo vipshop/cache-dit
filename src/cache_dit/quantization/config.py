@@ -70,7 +70,7 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - power: use a more selective convex ramp that emphasizes the largest channels.
   # - log: use a concave ramp that boosts mid/high channels earlier.
   # - rank: assign relax factors from channel rank percentiles instead of raw magnitudes.
-  "few_shot_relax_strategy": "top",
+  "few_shot_relax_strategy": "auto",
   # Only valid for the DQ few-shot smooth strategy. When enabled, helper flows may defer
   # transformer compilation until runtime quantization completes.
   "few_shot_auto_compile": False,
@@ -490,7 +490,7 @@ class QuantizeConfig:
         if smooth_strategy != "identity":
           quant_type = f"{quant_type}_{smooth_strategy}"
           if smooth_strategy == "few_shot":
-            relax_strategy = svdq_kwargs.get("few_shot_relax_strategy", "top")
+            relax_strategy = svdq_kwargs.get("few_shot_relax_strategy", "auto")
             quant_type = f"{quant_type}_{relax_strategy}"
           return quant_type
       return quant_type

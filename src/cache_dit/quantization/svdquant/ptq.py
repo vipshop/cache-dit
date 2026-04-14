@@ -518,7 +518,7 @@ class SVDQFewShotRuntimeController:
         return
       if not args or not isinstance(args[0], torch.Tensor):
         raise TypeError(
-          f"SVDQ few-shot expected tensor inputs for layer {layer_name or _ROOT_LAYER_NAME}.")
+          f"SVDQuant few-shot expected tensor inputs for layer {layer_name or _ROOT_LAYER_NAME}.")
       if not isinstance(module, nn.Linear):
         raise TypeError(f"Expected nn.Linear during few-shot collection, got {type(module)}.")
 
@@ -552,7 +552,7 @@ class SVDQFewShotRuntimeController:
   def arm(self) -> nn.Module:
     if "" in self.context.candidate_layer_names:
       raise NotImplementedError(
-        "SVDQ few-shot DQ does not support quantizing a root nn.Linear directly; wrap it in a "
+        "SVDQuant few-shot DQ does not support quantizing a root nn.Linear directly; wrap it in a "
         "parent module or use immediate SVDQ DQ instead.")
 
     calibrate_precision = self.context.svdq_kwargs["calibrate_precision"]
@@ -582,7 +582,7 @@ class SVDQFewShotRuntimeController:
     self.context.root_module._svdq_few_shot_controller = self
     self.context.root_module._svdq_cleanup_pending_quantization = self.cleanup
     logger.info(
-      "SVDQ few-shot runtime quantization for %s. \nObserving %d root forwards before "
+      "SVDQuant few-shot runtime quantization for %s. \nObserving %d root forwards before "
       "materializing quantized linear layers.",
       self.context.root_module.__class__.__name__,
       self.context.svdq_kwargs["few_shot_steps"],
@@ -622,7 +622,7 @@ class SVDQFewShotRuntimeController:
     if not quantized_layer_names:
       self.cleanup()
       raise RuntimeError(
-        "SVDQ few-shot dynamic quantization completed activation collection but no layers were "
+        "SVDQuant few-shot dynamic quantization completed activation collection but no layers were "
         f"quantized. Skipped layers: {self.context.skipped_reasons}.")
 
     self.cleanup()
@@ -1144,7 +1144,7 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
     return module
   if getattr(module, "_svdq_pending_quantization", False):
     logger.warning(
-      "Module %s already has pending SVDQ few-shot quantization, skipping re-arming.",
+      "Module %s already has pending SVDQuant few-shot quantization, skipping re-arming.",
       module.__class__.__name__,
     )
     return module

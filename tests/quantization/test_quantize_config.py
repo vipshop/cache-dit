@@ -35,7 +35,7 @@ def test_quantize_config_strify_appends_few_shot_svdq_dq_name() -> None:
     svdq_kwargs={"smooth_strategy": "few_shot"},
   )
 
-  assert config.strify() == "svdq_int4_r128_dq_few_shot_top"
+  assert config.strify() == "svdq_int4_r128_dq_few_shot_auto"
 
 
 def test_quantize_config_strify_appends_few_shot_relax_strategy_name() -> None:
@@ -60,7 +60,7 @@ def test_quantize_config_svdq_dq_few_shot_defaults_are_resolved() -> None:
   assert config.get_svdq_kwargs()["few_shot_steps"] == 1
   assert config.get_svdq_kwargs()["few_shot_relax_factor"] == 1.5
   assert config.get_svdq_kwargs()["few_shot_relax_top_ratio"] == 0.25
-  assert config.get_svdq_kwargs()["few_shot_relax_strategy"] == "top"
+  assert config.get_svdq_kwargs()["few_shot_relax_strategy"] == "auto"
   assert config.get_svdq_kwargs()["few_shot_auto_compile"] is False
 
 

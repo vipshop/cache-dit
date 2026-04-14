@@ -223,9 +223,11 @@ def test_svdquant_quantizer_uses_new_default_few_shot_relax_factor() -> None:
     output_dtype=torch.float32,
   )
   torch.testing.assert_close(original, expected, rtol=0.0, atol=0.0)
-  expected = expected.clone()
-  expected[-2:] = expected[-2:] * math.sqrt(1.5)
-  torch.testing.assert_close(relaxed, expected, rtol=1e-6, atol=1e-6)
+  threshold = torch.quantile(activation_span, 0.75)
+  normalized = activation_span.sub(activation_span.amin()).div(threshold - activation_span.amin())
+  normalized = normalized.clamp(0.0, 1.0)
+  expected_multiplier = normalized.mul(0.5).add(1.0).sqrt()
+  torch.testing.assert_close(relaxed, expected * expected_multiplier, rtol=1e-6, atol=1e-6)
 
 
 def test_svdquant_quantizer_fixed_few_shot_relaxation_keeps_original_scale() -> None:

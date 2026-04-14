@@ -392,7 +392,7 @@ def test_svdq_dq_config_validation_accepts_few_shot_smooth_strategy() -> None:
 
   assert config.get_svdq_kwargs()["smooth_strategy"] == "few_shot"
   assert config.get_svdq_kwargs()["few_shot_steps"] == 1
-  assert config.get_svdq_kwargs()["few_shot_relax_strategy"] == "top"
+  assert config.get_svdq_kwargs()["few_shot_relax_strategy"] == "auto"
   assert config.get_svdq_kwargs()["few_shot_auto_compile"] is False
 
 
@@ -485,7 +485,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.svdq_few_shot_steps == 1
   assert args.svdq_few_shot_relax_factor == 1.5
   assert args.svdq_few_shot_relax_top_ratio == 0.25
-  assert args.svdq_few_shot_relax_strategy == "top"
+  assert args.svdq_few_shot_relax_strategy == "auto"
 
   args = maybe_postprocess_args(
     parser.parse_args([

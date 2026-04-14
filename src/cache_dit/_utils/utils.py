@@ -559,7 +559,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   parser.add_argument(
     "--svdq-few-shot-relax-strategy",
     type=str,
-    default="top",
+    default="auto",
     choices=["fixed", "top", "auto", "power", "log", "rank", "top_q4"],
     help=(
       "How few-shot relax factors are assigned over activation spans. 'fixed' keeps the original "
