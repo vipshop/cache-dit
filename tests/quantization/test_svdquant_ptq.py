@@ -1440,7 +1440,7 @@ def test_svdq_ptq_config_validation_rejects_invalid_combinations(tmp_path: Path)
       quant_type="svdq_int4_r32",
       calibrate_fn=lambda **_: None,
       serialize_to=str(tmp_path / "bad_runtime_kernel_value"),
-      svdq_kwargs={"runtime_kernel": "v3"},
+      svdq_kwargs={"runtime_kernel": "v4"},
     )
 
   with pytest.raises(ValueError, match="Unsupported SVDQ PTQ kwargs"):

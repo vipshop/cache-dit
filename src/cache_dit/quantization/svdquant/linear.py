@@ -5,6 +5,8 @@ from torch import nn
 from ...kernels import svdq_gemm_w4a4
 from ...kernels import svdq_gemm_w4a4_v2
 from ...kernels import svdq_quantize_w4a4_act_fuse_lora
+from ...kernels.cutedsl import svdq_gemm_w4a4_v2_v3
+from ...kernels.cutedsl import svdq_quantize_w4a4_act_fuse_lora_v3
 
 
 class SVDQW4A4Linear(nn.Module):
@@ -49,7 +51,8 @@ class SVDQW4A4Linear(nn.Module):
       unsigned 4-bit activations for the kernel path.
     :param runtime_kernel: Runtime packed GEMM implementation. `v1` preserves
       the original kernel path, while `v2` routes the same packed tensors
-      through the dedicated plain-path v2 entrypoint.
+      through the dedicated plain-path v2 entrypoint. `v3` binds the same
+      packed-tensor contract to the in-progress CuTe DSL rewrite path.
     :param torch_dtype: Floating-point dtype used for scales, smoothing
       factors, bias, and low-rank tensors.
     :param device: Device where the packed parameters are allocated. Defaults
@@ -63,8 +66,8 @@ class SVDQW4A4Linear(nn.Module):
       raise ValueError(f"rank must be non-negative, got {rank}.")
     if in_features % 2 != 0:
       raise ValueError(f"in_features must be divisible by 2, got {in_features}.")
-    if runtime_kernel not in {"v1", "v2"}:
-      raise ValueError(f"runtime_kernel must be 'v1' or 'v2', got {runtime_kernel!r}.")
+    if runtime_kernel not in {"v1", "v2", "v3"}:
+      raise ValueError(f"runtime_kernel must be 'v1', 'v2', or 'v3', got {runtime_kernel!r}.")
 
     self.in_features = in_features
     self.out_features = out_features
@@ -204,10 +207,13 @@ class SVDQW4A4Linear(nn.Module):
       `forward_quant`.
     """
 
-    return svdq_quantize_w4a4_act_fuse_lora(
+    quantize_op = (svdq_quantize_w4a4_act_fuse_lora_v3
+                   if self.runtime_kernel == "v3" else svdq_quantize_w4a4_act_fuse_lora)
+    return quantize_op(
       input=x,
       lora_down=self.proj_down,
       smooth=self.smooth_factor,
+      fuse_glu=False,
       fp4=self.precision == "nvfp4",
       pad_size=pad_size,
     )
@@ -246,7 +252,10 @@ class SVDQW4A4Linear(nn.Module):
       gemm_kwargs["lora_act_in"] = lora_act
       gemm_kwargs["lora_up"] = self.proj_up
 
-    if self.runtime_kernel == "v2":
+    if self.runtime_kernel == "v3":
+      gemm_kwargs["stage"] = 1
+      gemm_op = svdq_gemm_w4a4_v2_v3
+    elif self.runtime_kernel == "v2":
       gemm_op = svdq_gemm_w4a4_v2
     else:
       gemm_op = svdq_gemm_w4a4

@@ -228,13 +228,14 @@ def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None
   assert config.get_svdq_kwargs()["runtime_kernel"] == "v1"
 
 
-def test_svdq_dq_config_validation_accepts_runtime_kernel_v2() -> None:
+@pytest.mark.parametrize("runtime_kernel", ["v2", "v3"])
+def test_svdq_dq_config_validation_accepts_runtime_kernels(runtime_kernel: str) -> None:
   config = QuantizeConfig(
     quant_type="svdq_int4_r32_dq",
-    svdq_kwargs={"runtime_kernel": "v2"},
+    svdq_kwargs={"runtime_kernel": runtime_kernel},
   )
 
-  assert config.get_svdq_kwargs()["runtime_kernel"] == "v2"
+  assert config.get_svdq_kwargs()["runtime_kernel"] == runtime_kernel
 
 
 def test_svdq_dq_config_validation_accepts_explicit_identity_smooth_strategy() -> None:
@@ -416,7 +417,9 @@ def test_svdq_dq_cli_weight_inv_strategy_is_applied_during_transformer_quantizat
   _assert_weight_inv_smooth_factor(holder.transformer.block.to_out)
 
 
-def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization() -> None:
+@pytest.mark.parametrize("runtime_kernel", ["v2", "v3"])
+def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization(
+  runtime_kernel: str, ) -> None:
   dtype = runtime_dtype()
   model = make_toy_model(
     embed_dim=128,
@@ -431,17 +434,17 @@ def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization()
       "--quantize-type",
       "svdq_int4_r32_dq",
       "--svdq-runtime",
-      "v2",
+      runtime_kernel,
     ]))
 
   holder = SimpleNamespace(transformer=model)
   maybe_quantize_transformer(args, holder)
 
-  assert holder.transformer._svdq_kwargs["runtime_kernel"] == "v2"
-  assert holder.transformer.block.to_q.runtime_kernel == "v2"
-  assert holder.transformer.block.to_k.runtime_kernel == "v2"
-  assert holder.transformer.block.to_v.runtime_kernel == "v2"
-  assert holder.transformer.block.to_out.runtime_kernel == "v2"
+  assert holder.transformer._svdq_kwargs["runtime_kernel"] == runtime_kernel
+  assert holder.transformer.block.to_q.runtime_kernel == runtime_kernel
+  assert holder.transformer.block.to_k.runtime_kernel == runtime_kernel
+  assert holder.transformer.block.to_v.runtime_kernel == runtime_kernel
+  assert holder.transformer.block.to_out.runtime_kernel == runtime_kernel
 
   eval_inputs = make_token_batch(
     batch_size=2,

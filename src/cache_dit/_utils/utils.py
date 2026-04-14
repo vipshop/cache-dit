@@ -530,9 +530,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-runtime",
     type=str,
     default="v1",
-    choices=["v1", "v2"],
+    choices=["v1", "v2", "v3"],
     help=
-    "Runtime SVDQ W4A4 GEMM kernel. Use v2 to enable the SVDQ W4A4 v2 operator. (Faster on Ada architectures).",
+    "Runtime SVDQ W4A4 GEMM kernel. Use v2 for the CUDA v2 plain path or v3 for the CuTe DSL rewrite path.",
   )
   # Parallelism settings
   parser.add_argument(

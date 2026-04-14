@@ -9,7 +9,7 @@ logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
-_SVDQ_RUNTIME_KERNELS = ("v1", "v2")
+_SVDQ_RUNTIME_KERNELS = ("v1", "v2", "v3")
 _SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv")
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
@@ -27,6 +27,7 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # Packed runtime GEMM implementation used by SVDQW4A4Linear.
   # - v1: original kernel path.
   # - v2: w4q4 v2 GEMM plain path.
+  # - v3: CuTe DSL rewrite path for the SVDQ runtime kernels.
   "runtime_kernel": "v1",
   # Only valid when streaming is set to True. It specifies the number of samples after
   # which the activation buffers will be flushed and the quantization parameters will
