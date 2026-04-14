@@ -173,6 +173,35 @@ def test_svdquant_int4_quantize_v3_matches_cuda_reference() -> None:
   torch.testing.assert_close(v3_lora, cuda_lora, rtol=0.0, atol=2e-3)
 
 
+def test_svdquant_int4_quantize_v3_accepts_missing_lora() -> None:
+  _require_svdquant_runtime()
+
+  device = "cuda"
+  dtype = runtime_dtype()
+  batch_size = 256
+  in_features = 128
+
+  with torch.inference_mode():
+    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
+    smooth = torch.rand(in_features, device=device, dtype=dtype) + 0.25
+
+    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora_v3(
+      input=activations,
+      lora_down=None,
+      smooth=smooth,
+      fp4=False,
+      pad_size=256,
+    )
+    torch.cuda.synchronize()
+
+  assert quantized_activations.shape == (batch_size, in_features // 2)
+  assert ascales.shape == (in_features // 64, batch_size)
+  assert lora_activations.shape == (batch_size, 0)
+  assert quantized_activations.is_cuda
+  assert ascales.is_cuda
+  assert lora_activations.is_cuda
+
+
 def test_svdquant_int4_ext_runtime_smoke() -> None:
   _require_svdquant_runtime()
 
