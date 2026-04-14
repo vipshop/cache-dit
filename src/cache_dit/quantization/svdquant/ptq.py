@@ -499,7 +499,13 @@ class SVDQPTQCalibrator:
 
 @dataclasses.dataclass
 class SVDQFewShotRuntimeController:
-  """Defer SVDQ DQ materialization until enough runtime activations are observed."""
+  """Defer SVDQ DQ materialization until enough runtime activations are observed.
+
+  `few_shot_steps` counts root-module forward passes on the armed transformer/module, not
+  top-level pipeline calls. The counter is cumulative for the lifetime of this controller, so
+  reusing the same pipeline/module instance across multiple runs keeps accumulating toward the
+  threshold instead of resetting to zero per pipeline invocation.
+  """
 
   context: SVDQPTQContext
   quantize_device: torch.device
@@ -532,6 +538,9 @@ class SVDQFewShotRuntimeController:
     return hook
 
   def _on_root_forward_pre(self, _module: nn.Module, _args: tuple[Any, ...]) -> None:
+    # few_shot_steps is defined in terms of root-module forwards. If the same transformer/module
+    # instance is reused across multiple pipeline runs, this counter keeps accumulating until the
+    # threshold is reached and runtime quantization is materialized.
     self.collect_current_forward = self.completed_forwards < self.context.svdq_kwargs[
       "few_shot_steps"]
 
@@ -582,8 +591,9 @@ class SVDQFewShotRuntimeController:
     self.context.root_module._svdq_few_shot_controller = self
     self.context.root_module._svdq_cleanup_pending_quantization = self.cleanup
     logger.info(
-      "SVDQuant few-shot runtime quantization for %s. \nObserving %d root forwards before "
-      "materializing quantized linear layers.",
+      "SVDQuant few-shot runtime quantization for %s. \nObserving %d cumulative root forwards "
+      "before materializing quantized linear layers; rerunning the same pipeline/module keeps "
+      "advancing the same counter.",
       self.context.root_module.__class__.__name__,
       self.context.svdq_kwargs["few_shot_steps"],
     )

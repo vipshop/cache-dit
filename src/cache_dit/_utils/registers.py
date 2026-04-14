@@ -418,6 +418,8 @@ class ExampleInitConfig:
       summary_str += f"{model_name_or_path}\n"
     summary_str += f"- Task Type: {self.task_type.value}\n"
     summary_str += f"- Torch Dtype: {self.torch_dtype}\n"
+    summary_str += f"- Warmup Seed: {getattr(args, 'warmup_seed', None)}\n"
+    summary_str += f"- Warmup Prompt: {getattr(args, 'warmup_prompt', None)}\n"
     if self.lora_weights_path is not None and self.lora_weights_name is not None:
       summary_str += (
         f"- LoRA Weights: {os.path.join(self.lora_weights_path, self.lora_weights_name)}\n")

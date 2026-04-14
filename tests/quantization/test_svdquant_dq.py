@@ -842,6 +842,56 @@ def test_svdq_dq_few_shot_defers_quantization_until_trigger_step() -> None:
   assert isinstance(quantized_model.block.to_out, SVDQW4A4Linear)
 
 
+def test_svdq_dq_few_shot_counts_root_forwards_cumulatively_across_runs() -> None:
+  dtype = runtime_dtype()
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=170,
+    device="cuda",
+    dtype=dtype,
+  )
+  eval_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=12,
+    width=128,
+    seed=171,
+    device="cuda",
+    dtype=dtype,
+  )
+
+  quantized_model = cache_dit.quantize(
+    model,
+    _make_dq_config(
+      rank=32,
+      svdq_kwargs={
+        "smooth_strategy": "few_shot",
+        "few_shot_steps": 4,
+      },
+    ),
+  )
+
+  def _run_pipeline_like_steps(step_count: int) -> torch.Tensor:
+    output = eval_inputs
+    with torch.inference_mode():
+      for _ in range(step_count):
+        output = quantized_model(eval_inputs)
+    return output
+
+  first_run_output = _run_pipeline_like_steps(2)
+  assert torch.isfinite(first_run_output).all()
+  assert getattr(quantized_model, "_svdq_pending_quantization", False)
+  controller = getattr(quantized_model, "_svdq_few_shot_controller")
+  assert controller.completed_forwards == 2
+  assert isinstance(quantized_model.block.to_q, nn.Linear)
+
+  second_run_output = _run_pipeline_like_steps(2)
+  assert torch.isfinite(second_run_output).all()
+  assert not getattr(quantized_model, "_svdq_pending_quantization", False)
+  assert getattr(quantized_model, "_svdq_runtime_quantized_after_forwards", 0) == 4
+  assert isinstance(quantized_model.block.to_q, SVDQW4A4Linear)
+
+
 def test_svdq_dq_few_shot_materializes_relaxed_and_original_smooth_vectors() -> None:
   dtype = runtime_dtype()
   model = make_toy_model(

@@ -554,7 +554,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-few-shot-steps",
     type=int,
     default=1,
-    help="How many transformer forwards to observe before materializing SVDQ few-shot quantization.",
+    help=("How many transformer/module forwards to observe before materializing SVDQ few-shot "
+          "quantization. This counts cumulative root-module forwards on the armed transformer, not "
+          "pipeline invocations."),
   )
   parser.add_argument(
     "--svdq-few-shot-relax-factor",

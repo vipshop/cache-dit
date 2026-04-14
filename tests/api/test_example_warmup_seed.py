@@ -103,3 +103,21 @@ def test_example_run_uses_warmup_prompt_only_for_warmup(monkeypatch) -> None:
   example.run()
 
   assert pipe.prompts == ["warmup prompt", "formal prompt"]
+
+
+def test_example_init_config_summary_includes_warmup_overrides() -> None:
+  init_config = ExampleInitConfig(
+    task_type=ExampleType.T2I,
+    model_name_or_path="dummy-model",
+    pipeline_class=None,
+  )
+  args = Namespace(
+    model_path=None,
+    warmup_seed=23,
+    warmup_prompt="warmup prompt",
+  )
+
+  summary = init_config.summary(args)
+
+  assert "- Warmup Seed: 23" in summary
+  assert "- Warmup Prompt: warmup prompt" in summary

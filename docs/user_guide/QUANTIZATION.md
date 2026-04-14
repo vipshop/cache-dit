@@ -514,11 +514,11 @@ Here are some preliminary results on the impact of identity, weight-only, and we
 |-| PSNR: 28.71 | PSNR: 29.62 | PSNR: 29.35 |
 |![](../assets/flux2_klein_4b.1024x1024.C0.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight.png)|![](../assets/flux2_klein_4b.1024x1024.C0_svdq_int4_r128_dq_weight_inv.png)|
 
-<span style="color:green;">few_shot</span>: delay SVDQ DQ materialization until the runtime has observed a small number of real inference forwards. Cache-DiT will keep the transformer in float mode during the first <span style="color:#c77dff;">few_shot_steps</span> forwards, stream per-layer activation spans by layer name, and after the last warmup forward finishes it will relax those activation spans according to a configurable few-shot policy, recompute activation-derived smooth scales, quantize the eligible linear layers in place, and use the quantized transformer from the next forward onward.
+<span style="color:green;">few_shot</span>: delay SVDQ DQ materialization until the runtime has observed a small number of real inference forwards. Cache-DiT will keep the transformer in float mode during the first <span style="color:#c77dff;">few_shot_steps</span> root-module forwards, stream per-layer activation spans by layer name, and after the last observed forward finishes it will relax those activation spans according to a configurable few-shot policy, recompute activation-derived smooth scales, quantize the eligible linear layers in place, and use the quantized transformer from the next forward onward.
 
 This mode exposes four backend-local knobs:
 
-- <span style="color:#c77dff;">few_shot_steps</span>: number of root-module forwards to observe before quantization. Default: <span style="color:green;">1</span>.
+- <span style="color:#c77dff;">few_shot_steps</span>: number of root-module forwards to observe before quantization. This means transformer/module forward passes, not top-level pipeline invocations, and the count is cumulative on the same armed module. Default: <span style="color:green;">1</span>. That cumulative behavior matters in diffusion pipelines because one pipeline run usually executes the transformer many times. For example, if the same <span style="color:#c77dff;">pipe</span> instance runs a 50-step sample once and then runs another 50-step sample again, the few-shot controller sees roughly 100 root-module forwards in total rather than resetting back to 50 for the second run.
 - <span style="color:#c77dff;">few_shot_relax_factor</span>: maximum multiplicative factor applied to activation spans during few-shot relaxation. It must satisfy <span style="color:green;">few_shot_relax_factor >= 1.0</span>, so the observed activation span is preserved or amplified, never reduced. Default: <span style="color:green;">1.5</span>. In practice, values around <span style="color:green;">1.5-2.5</span> are usually the safer starting range; larger values such as <span style="color:green;">4.0</span> can still oversmooth or blur image outputs when the outlier prior becomes too strong.
 - <span style="color:#c77dff;">few_shot_relax_top_ratio</span>: fraction of the largest activation spans used to define the few-shot threshold. Default: <span style="color:green;">0.25</span>.
 - <span style="color:#c77dff;">few_shot_relax_strategy</span>: how the relax factor is assigned across channels before smooth-scale recomputation. Default: <span style="color:green;">auto</span>. Available values: <span style="color:green;">fixed</span>, <span style="color:green;">top</span>, <span style="color:green;">auto</span>, <span style="color:green;">stable_auto</span>, <span style="color:green;">power</span>, <span style="color:green;">log</span>, and <span style="color:green;">rank</span>.
@@ -622,9 +622,11 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
   --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
   --svdq-few-shot-compile
 
-# Tip: improve `--svdq-few-shot-steps` from 1 to a larger number can significantly 
-# improve the accuracy of the few-shot DQ, but it also increases the runtime quantization 
-# latency because more warmup forwards are needed before quantization happens.
+# Tip: increase `--svdq-few-shot-steps` from 1 to a larger number if you want to collect more
+# transformer/module forwards before few-shot materialization. The counter is cumulative on the
+# same armed module, so two runs of the same 50-step pipeline already contribute about 100
+# forwards in total. Larger values can improve few-shot DQ accuracy, but they also increase the
+# runtime quantization latency because more warmup forwards are needed before quantization happens.
 ```
 
 Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint. The few-shot mode also keeps this in-memory-only contract: it delays materialization to runtime, but still does not emit a serialized checkpoint.

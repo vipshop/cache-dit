@@ -52,7 +52,10 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # identity vector to preserve the v1 zero-calibration contract.
   "smooth_strategy": "activation",
   # Only valid for the DQ few-shot smooth strategy. It specifies how many root-module
-  # forward calls should be observed before runtime quantization is materialized.
+  # (that is, transformer/module) forward calls should be observed before runtime
+  # quantization is materialized. The counter is cumulative on the armed module: reusing
+  # the same pipeline/module instance continues counting from the previous forwards instead
+  # of resetting to zero for each new pipeline invocation.
   "few_shot_steps": 1,
   # Only valid for the DQ few-shot smooth strategy. It specifies the maximum
   # multiplicative relax factor applied to activation spans before smooth-scale
