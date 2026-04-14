@@ -7,6 +7,10 @@ from cache_dit.kernels.ops import _select_kernel_backend
 
 def test_get_backend_selector_returns_registered_selector() -> None:
   assert _get_backend_selector("fused_merge_attn_states") is _select_kernel_backend
+  assert _get_backend_selector("fp8_comm_per_token_quant") is _select_kernel_backend
+  assert _get_backend_selector("fp8_comm_per_token_dequant") is _select_kernel_backend
+  assert _get_backend_selector("fp8_comm_qkv_permute_quant") is _select_kernel_backend
+  assert _get_backend_selector("fp8_comm_qkv_permute_dequant") is _select_kernel_backend
 
 
 def test_get_backend_selector_rejects_unknown_op() -> None:

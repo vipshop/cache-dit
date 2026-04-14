@@ -28,9 +28,32 @@ def _safe_import(
     return _import_cutedsl_ops_error
 
 
+fp8_comm_per_token_quant = _safe_import(
+  "._ops_registery",
+  "fp8_comm_per_token_quant",
+)
+fp8_comm_per_token_dequant = _safe_import(
+  "._ops_registery",
+  "fp8_comm_per_token_dequant",
+)
+fp8_comm_qkv_permute_quant = _safe_import(
+  "._ops_registery",
+  "fp8_comm_qkv_permute_quant",
+)
+fp8_comm_qkv_permute_dequant = _safe_import(
+  "._ops_registery",
+  "fp8_comm_qkv_permute_dequant",
+)
+
 fused_merge_attn_states = _safe_import(
   "._ops_registery",
   "fused_merge_attn_states",
 )
 
-__all__ = ["fused_merge_attn_states"]
+__all__ = [
+  "fp8_comm_per_token_quant",
+  "fp8_comm_per_token_dequant",
+  "fp8_comm_qkv_permute_quant",
+  "fp8_comm_qkv_permute_dequant",
+  "fused_merge_attn_states",
+]

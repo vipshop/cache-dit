@@ -154,7 +154,7 @@ class _MergeAttnStatesProgram:
         cute.autovec_copy(t_out_r[None, i], t_out_g[None, i])
 
   @cute.jit
-  def _merge_attn_states(
+  def __call__(
     self,
     out: cute.Tensor,
     lse: cute.Tensor,
@@ -210,8 +210,6 @@ class _MergeAttnStatesProgram:
       grid=[(out.shape[0] + self.rows_per_cta - 1) // self.rows_per_cta, 1, 1],
       block=[block_threads, 1, 1],
     )
-
-  __call__ = _merge_attn_states
 
 
 def _detect_cutedsl_arch() -> str:

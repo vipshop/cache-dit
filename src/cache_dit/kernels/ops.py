@@ -29,10 +29,10 @@ def _select_kernel_backend() -> KernelBackend:
 
 
 _KERNEL_BE_SELECTOR_MAP = {
-  "fp8_comm_per_token_quant": _select_triton_backend,
-  "fp8_comm_per_token_dequant": _select_triton_backend,
-  "fp8_comm_qkv_permute_quant": _select_triton_backend,
-  "fp8_comm_qkv_permute_dequant": _select_triton_backend,
+  "fp8_comm_per_token_quant": _select_kernel_backend,
+  "fp8_comm_per_token_dequant": _select_kernel_backend,
+  "fp8_comm_qkv_permute_quant": _select_kernel_backend,
+  "fp8_comm_qkv_permute_dequant": _select_kernel_backend,
   "fused_merge_attn_states": _select_kernel_backend,
   "svdq_gemm_w4a4": _select_cuda_backend,
   "svdq_gemm_w4a4_v2": _select_cuda_backend,
@@ -73,6 +73,10 @@ def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
     from .triton import fp8_comm_per_token_quant
 
     return fp8_comm_per_token_quant(x)
+  if backend == KernelBackend.CUTEDSL:
+    from .cutedsl import fp8_comm_per_token_quant
+
+    return fp8_comm_per_token_quant(x)
   else:
     raise ValueError(_ERROR_TEMPLATE.format(backend))
 
@@ -81,6 +85,10 @@ def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
   backend = _resolve_backend("fp8_comm_per_token_dequant")
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_per_token_dequant
+
+    return fp8_comm_per_token_dequant(x)
+  if backend == KernelBackend.CUTEDSL:
+    from .cutedsl import fp8_comm_per_token_dequant
 
     return fp8_comm_per_token_dequant(x)
   else:
@@ -93,6 +101,10 @@ def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
     from .triton import fp8_comm_qkv_permute_quant
 
     return fp8_comm_qkv_permute_quant(x)
+  if backend == KernelBackend.CUTEDSL:
+    from .cutedsl import fp8_comm_qkv_permute_quant
+
+    return fp8_comm_qkv_permute_quant(x)
   else:
     raise ValueError(_ERROR_TEMPLATE.format(backend))
 
@@ -101,6 +113,10 @@ def _fp8_comm_qkv_permute_dequant_impl(quant_x: torch.Tensor, ) -> torch.Tensor:
   backend = _resolve_backend("fp8_comm_qkv_permute_dequant")
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_qkv_permute_dequant
+
+    return fp8_comm_qkv_permute_dequant(quant_x)
+  if backend == KernelBackend.CUTEDSL:
+    from .cutedsl import fp8_comm_qkv_permute_dequant
 
     return fp8_comm_qkv_permute_dequant(quant_x)
   else:

@@ -12,7 +12,13 @@ import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
+from cache_dit.kernels.cutedsl import fp8_comm_per_token_dequant as cutedsl_fp8_comm_per_token_dequant
+from cache_dit.kernels.cutedsl import fp8_comm_per_token_quant as cutedsl_fp8_comm_per_token_quant
+from cache_dit.kernels.cutedsl import fp8_comm_qkv_permute_dequant as cutedsl_fp8_comm_qkv_permute_dequant
+from cache_dit.kernels.cutedsl import fp8_comm_qkv_permute_quant as cutedsl_fp8_comm_qkv_permute_quant
 from cache_dit.kernels.cutedsl import fused_merge_attn_states as cutedsl_fused_merge_attn_states
+from cache_dit.kernels.triton import fp8_comm_per_token_dequant as triton_fp8_comm_per_token_dequant
+from cache_dit.kernels.triton import fp8_comm_per_token_quant as triton_fp8_comm_per_token_quant
 from cache_dit.kernels.triton import fused_merge_attn_states as triton_fused_merge_attn_states
 
 _TYPICAL_TEST_SHAPES = [
@@ -34,6 +40,13 @@ def _require_cutedsl_runtime() -> None:
     pytest.skip("CuTe DSL runtime is not available.")
 
 
+def _require_float8_runtime() -> None:
+  _require_cutedsl_runtime()
+  capability = torch.cuda.get_device_capability()
+  if capability < (8, 9):
+    pytest.skip(f"Float8 CuTe DSL kernels require compute capability >= 8.9, got {capability}.")
+
+
 def _runtime_dtype() -> torch.dtype:
   return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
@@ -52,6 +65,92 @@ def _reference_fused_merge_attn_states(
                                                                         suff_out_fp32)
   lse = prev_lse_fp32 - torch.log(torch.sigmoid(prev_lse_fp32 - suff_lse_fp32))
   return out.to(suff_out.dtype), lse.to(suff_lse.dtype)
+
+
+def test_fp8_comm_per_token_fake_registration_shapes() -> None:
+  _require_float8_runtime()
+
+  with FakeTensorMode():
+    x = torch.empty((2, 3, 128), device="cuda", dtype=torch.bfloat16)
+    quantized = cutedsl_fp8_comm_per_token_quant(x)
+    dequantized = cutedsl_fp8_comm_per_token_dequant(quantized)
+
+  assert isinstance(quantized, FakeTensor)
+  assert quantized.shape == (2, 3, 130)
+  assert quantized.dtype == torch.float8_e4m3fn
+  assert isinstance(dequantized, FakeTensor)
+  assert dequantized.shape == x.shape
+  assert dequantized.dtype == torch.bfloat16
+
+
+def test_fp8_comm_qkv_fake_registration_shapes() -> None:
+  _require_float8_runtime()
+
+  with FakeTensorMode():
+    x = torch.empty((2, 4, 3, 5, 64), device="cuda", dtype=torch.bfloat16)
+    quantized = cutedsl_fp8_comm_qkv_permute_quant(x)
+    dequantized = cutedsl_fp8_comm_qkv_permute_dequant(quantized[0])
+
+  assert isinstance(quantized, FakeTensor)
+  assert quantized.shape == (3, 4, 2, 5, 68)
+  assert quantized.dtype == torch.float8_e4m3fn
+  assert isinstance(dequantized, FakeTensor)
+  assert dequantized.shape == (2, 4, 5, 64)
+  assert dequantized.dtype == torch.bfloat16
+
+
+def test_fp8_comm_per_token_quant_dequant_matches_reference_and_triton() -> None:
+  _require_float8_runtime()
+
+  torch.manual_seed(0)
+  x = torch.randn((2, 3, 128), device="cuda", dtype=torch.bfloat16)
+
+  with torch.inference_mode():
+    cutedsl_quantized = cutedsl_fp8_comm_per_token_quant(x)
+    cutedsl_dequantized = cutedsl_fp8_comm_per_token_dequant(cutedsl_quantized)
+    triton_quantized = triton_fp8_comm_per_token_quant(x)
+    triton_dequantized = triton_fp8_comm_per_token_dequant(triton_quantized)
+    torch.cuda.synchronize()
+
+  diff = (cutedsl_dequantized.float() - x.float()).abs()
+  assert cutedsl_quantized.shape == (2, 3, 130)
+  assert cutedsl_quantized.dtype == torch.float8_e4m3fn
+  assert cutedsl_dequantized.shape == x.shape
+  assert cutedsl_dequantized.dtype == torch.bfloat16
+  assert torch.isfinite(cutedsl_quantized.float()).all()
+  assert torch.isfinite(cutedsl_dequantized).all()
+  assert diff.mean().item() < 0.05
+  assert diff.max().item() < 0.2
+  torch.testing.assert_close(cutedsl_dequantized, triton_dequantized, rtol=0.0, atol=0.25)
+
+
+def test_fp8_comm_qkv_permute_quant_dequant_matches_reference_slice() -> None:
+  _require_float8_runtime()
+
+  torch.manual_seed(0)
+  x = torch.randn((2, 4, 3, 5, 64), device="cuda", dtype=torch.bfloat16)
+
+  with torch.inference_mode():
+    quantized = cutedsl_fp8_comm_qkv_permute_quant(x)
+    torch.cuda.synchronize()
+
+  assert quantized.shape == (3, 4, 2, 5, 68)
+  assert quantized.dtype == torch.float8_e4m3fn
+  assert torch.isfinite(quantized.float()).all()
+
+  with torch.inference_mode():
+    for p_index in range(x.shape[2]):
+      dequantized = cutedsl_fp8_comm_qkv_permute_dequant(quantized[p_index])
+      torch.cuda.synchronize()
+
+      reference = x[:, :, p_index].float()
+      diff = (dequantized.float() - reference).abs()
+
+      assert dequantized.shape == (x.shape[0], x.shape[1], x.shape[3], x.shape[4])
+      assert dequantized.dtype == torch.bfloat16
+      assert torch.isfinite(dequantized).all()
+      assert diff.mean().item() < 0.05
+      assert diff.max().item() < 0.2
 
 
 @pytest.mark.parametrize(("batch", "seq_len", "num_heads", "head_size"), _TYPICAL_TEST_SHAPES)

@@ -1,7 +1,29 @@
 import torch
 from typing import Tuple
 
+from ._float8_comm import fp8_comm_per_token_dequant as _cutedsl_fp8_comm_per_token_dequant
+from ._float8_comm import fp8_comm_per_token_quant as _cutedsl_fp8_comm_per_token_quant
+from ._float8_comm import fp8_comm_qkv_permute_dequant as _cutedsl_fp8_comm_qkv_permute_dequant
+from ._float8_comm import fp8_comm_qkv_permute_quant as _cutedsl_fp8_comm_qkv_permute_quant
 from ._merge_attn_states import fused_merge_attn_states as _cutedsl_fused_merge_attn_states
+
+# FP8 related ops
+torch.library.define(
+  "cache_dit_cutedsl_ops::fp8_comm_per_token_quant",
+  "(Tensor x) -> Tensor",
+)
+torch.library.define(
+  "cache_dit_cutedsl_ops::fp8_comm_per_token_dequant",
+  "(Tensor x) -> Tensor",
+)
+torch.library.define(
+  "cache_dit_cutedsl_ops::fp8_comm_qkv_permute_quant",
+  "(Tensor x) -> Tensor",
+)
+torch.library.define(
+  "cache_dit_cutedsl_ops::fp8_comm_qkv_permute_dequant",
+  "(Tensor quant_x) -> Tensor",
+)
 
 # Attention related ops
 torch.library.define(
@@ -9,6 +31,53 @@ torch.library.define(
   "(Tensor prev_out, Tensor prev_lse, Tensor suff_out, Tensor suff_lse) "
   "-> (Tensor out, Tensor lse)",
 )
+
+
+@torch.library.impl("cache_dit_cutedsl_ops::fp8_comm_per_token_quant", "CUDA")
+def _fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+  return _cutedsl_fp8_comm_per_token_quant(x)
+
+
+@torch.library.register_fake("cache_dit_cutedsl_ops::fp8_comm_per_token_quant")
+def _fake_fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+  assert x.dtype == torch.bfloat16
+  *shape, head_size = x.shape
+  return x.new_empty((*shape, head_size + 2), dtype=torch.float8_e4m3fn)
+
+
+@torch.library.impl("cache_dit_cutedsl_ops::fp8_comm_per_token_dequant", "CUDA")
+def _fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+  return _cutedsl_fp8_comm_per_token_dequant(x)
+
+
+@torch.library.register_fake("cache_dit_cutedsl_ops::fp8_comm_per_token_dequant")
+def _fake_fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+  assert x.dtype == torch.float8_e4m3fn
+  *shape, packed_head_size = x.shape
+  return x.new_empty((*shape, packed_head_size - 2), dtype=torch.bfloat16)
+
+
+@torch.library.impl("cache_dit_cutedsl_ops::fp8_comm_qkv_permute_quant", "CUDA")
+def _fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+  return _cutedsl_fp8_comm_qkv_permute_quant(x)
+
+
+@torch.library.register_fake("cache_dit_cutedsl_ops::fp8_comm_qkv_permute_quant")
+def _fake_fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+  batch, seq_len, partitions, num_heads, head_size = x.shape
+  return x.new_empty((partitions, seq_len, batch, num_heads, head_size + 4),
+                     dtype=torch.float8_e4m3fn)
+
+
+@torch.library.impl("cache_dit_cutedsl_ops::fp8_comm_qkv_permute_dequant", "CUDA")
+def _fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+  return _cutedsl_fp8_comm_qkv_permute_dequant(quant_x)
+
+
+@torch.library.register_fake("cache_dit_cutedsl_ops::fp8_comm_qkv_permute_dequant")
+def _fake_fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+  seq_len, batch, num_heads, packed_head_size = quant_x.shape
+  return quant_x.new_empty((batch, seq_len, num_heads, packed_head_size - 4), dtype=torch.bfloat16)
 
 
 @torch.library.impl("cache_dit_cutedsl_ops::fused_merge_attn_states", "CUDA")
@@ -67,4 +136,26 @@ def fused_merge_attn_states(
   )
 
 
-__all__ = ["fused_merge_attn_states"]
+def fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+  return torch.ops.cache_dit_cutedsl_ops.fp8_comm_per_token_quant(x)
+
+
+def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+  return torch.ops.cache_dit_cutedsl_ops.fp8_comm_per_token_dequant(x)
+
+
+def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+  return torch.ops.cache_dit_cutedsl_ops.fp8_comm_qkv_permute_quant(x)
+
+
+def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+  return torch.ops.cache_dit_cutedsl_ops.fp8_comm_qkv_permute_dequant(quant_x)
+
+
+__all__ = [
+  "fp8_comm_per_token_quant",
+  "fp8_comm_per_token_dequant",
+  "fp8_comm_qkv_permute_quant",
+  "fp8_comm_qkv_permute_dequant",
+  "fused_merge_attn_states",
+]
