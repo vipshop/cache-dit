@@ -533,7 +533,6 @@ class Example:
     load_time = time.time() - start_time
 
     input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
-    default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
 
     maybe_apply_optimization(self.args, pipe, **extra_optimize_kwargs)
 
@@ -547,20 +546,14 @@ class Example:
     # warm up
     start_time = time.time()
     for _ in range(self.args.warmup):
-      input_kwargs = self.new_generator(input_kwargs, self.args, warmup=True)
+      warmup_kwargs = self.new_generator(dict(input_kwargs), self.args, warmup=True)
       if self.args.warmup_num_inference_steps is not None:
-        input_kwargs["num_inference_steps"] = self.args.warmup_num_inference_steps
-      _ = pipe(**input_kwargs)
+        warmup_kwargs["num_inference_steps"] = self.args.warmup_num_inference_steps
+      _ = pipe(**warmup_kwargs)
     if self.args.warmup > 0:
       warmup_time = (time.time() - start_time) / self.args.warmup
     else:
       warmup_time = None
-    # restore num_inference_steps
-    if default_num_inference_steps is not None:
-      input_kwargs["num_inference_steps"] = default_num_inference_steps
-    else:
-      # pop None num_inference_steps from input kwargs
-      input_kwargs.pop("num_inference_steps", None)
 
     start_time = time.time()
     # actual inference
@@ -571,14 +564,14 @@ class Example:
       profiler = create_profiler_from_args(self.args, profile_name=profile_name)
       with profiler:
         for _ in range(self.args.repeat):
-          input_kwargs = self.new_generator(input_kwargs, self.args)
-          output = pipe(**input_kwargs)
+          step_kwargs = self.new_generator(dict(input_kwargs), self.args)
+          output = pipe(**step_kwargs)
       if self.rank == 0:
         logger.info(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
     else:
       for _ in range(self.args.repeat):
-        input_kwargs = self.new_generator(input_kwargs, self.args)
-        output = pipe(**input_kwargs)
+        step_kwargs = self.new_generator(dict(input_kwargs), self.args)
+        output = pipe(**step_kwargs)
     if self.args.repeat > 0:
       inference_time = (time.time() - start_time) / self.args.repeat
     else:
@@ -634,7 +627,7 @@ class Example:
     args: argparse.Namespace,
     *,
     warmup: bool = False,
-  ) -> torch.Generator:
+  ) -> Dict[str, Any]:
     # NOTE: We should always create a new generator before each inference to
     # ensure reproducibility when using the same seed.
     warmup_seed = getattr(args, "warmup_seed", None) if warmup else None
@@ -642,6 +635,10 @@ class Example:
       args=args,
       seed_override=warmup_seed,
     )
+    if warmup:
+      warmup_prompt = getattr(args, "warmup_prompt", None)
+      if warmup_prompt is not None:
+        input_kwargs["prompt"] = warmup_prompt
     return input_kwargs
 
 

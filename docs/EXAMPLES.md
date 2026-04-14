@@ -310,6 +310,9 @@ options:
     --warmup-seed WARMUP_SEED
                                                 Optional seed used only for warmup forwards. When set, warmup uses this
                                                 seed while formal repeated inference still uses --seed.
+    --warmup-prompt WARMUP_PROMPT
+                                                Optional prompt used only for warmup forwards. When set, warmup uses this
+                                                prompt while formal repeated inference still uses --prompt.
   --repeat REPEAT       Number of times to repeat the inference for performance measurement
   --height HEIGHT       Height of the generated image
   --width WIDTH         Width of the generated image

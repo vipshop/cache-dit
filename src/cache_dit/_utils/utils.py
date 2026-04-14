@@ -169,6 +169,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "SVDQ runs where runtime quantization usually happens during warmup."),
   )
   parser.add_argument(
+    "--warmup-prompt",
+    type=str,
+    default=None,
+    help=("Optional prompt used only for warmup forwards. When set, warmup uses this prompt while "
+          "formal repeated inference continues to use --prompt or the example default prompt."),
+  )
+  parser.add_argument(
     "--repeat",
     type=int,
     default=1,
