@@ -1217,7 +1217,22 @@ def _should_defer_few_shot_pipeline_move(transformer) -> bool:
     return False
   if controller.context.svdq_kwargs.get("smooth_strategy") != "few_shot":
     return False
-  return bool(controller.context.svdq_kwargs.get("defer_move_to_execution_device", False))
+  if not bool(controller.context.svdq_kwargs.get("defer_move_to_execution_device", False)):
+    return False
+  return bool(
+    controller.context.svdq_kwargs.get("layerwise_offload", False)
+    or controller.context.svdq_kwargs.get("offload_quantized_layers_to_cpu", False))
+
+
+def _should_skip_initial_few_shot_pipeline_move(transformer) -> bool:
+  if transformer is None or not getattr(transformer, "_svdq_pending_quantization", False):
+    return False
+  controller = getattr(transformer, "_svdq_few_shot_controller", None)
+  if controller is None:
+    return False
+  if controller.context.svdq_kwargs.get("smooth_strategy") != "few_shot":
+    return False
+  return bool(controller.context.svdq_kwargs.get("layerwise_offload", False))
 
 
 def _register_deferred_few_shot_pipeline_move_callbacks(args, pipe) -> bool:
@@ -1267,12 +1282,22 @@ def _register_deferred_few_shot_pipeline_move_callbacks(args, pipe) -> bool:
           ", ".join(remaining),
         )
         return
-      pipe._svdq_move_to_device_after_forward = target_device
-      logger.info(
-        "SVDQ few-shot quantization finished; scheduling final pipeline move to %s after the "
-        "current pipeline call returns.",
-        target_device,
-      )
+      try:
+        logger.info(
+          "SVDQ few-shot quantization finished; moving pipeline to %s immediately so the "
+          "current pipeline call can continue on the execution device.",
+          target_device,
+        )
+        pipe.to(target_device)
+      except Exception as exc:
+        pipe._svdq_move_to_device_after_forward = target_device
+        logger.warning(
+          "Immediate pipeline move to %s after SVDQ few-shot quantization failed with %s: %s. "
+          "Falling back to a deferred move after the current pipeline call returns.",
+          target_device,
+          type(exc).__name__,
+          exc,
+        )
 
     callback_names.add(callback_name)
     callbacks.append(_callback)
@@ -1511,8 +1536,9 @@ def maybe_quantize_transformer(
     few_shot_auto_compile = bool(args.svdq_few_shot_compile)
     if args.svdq_smooth_strategy == "few_shot" and args.compile:
       few_shot_auto_compile = True
-    defer_move_to_execution_device = bool(args.svdq_defer_final_to_cuda
-                                          and args.svdq_smooth_strategy == "few_shot")
+    defer_move_to_execution_device = bool(
+      args.svdq_defer_final_to_cuda and args.svdq_smooth_strategy == "few_shot"
+      and (args.svdq_layerwise_offload or args.svdq_offload_quantized_layers_to_cpu))
     return {
       "smooth_strategy": args.svdq_smooth_strategy,
       "calibrate_precision": args.svdq_calibrate_precision,
@@ -2036,7 +2062,10 @@ def maybe_apply_optimization(
     pipe = pipe_or_adapter.pipe
   else:
     pipe = pipe_or_adapter
-  should_defer_pipeline_move = _register_deferred_few_shot_pipeline_move_callbacks(args, pipe)
+  should_skip_initial_pipeline_move = any(
+    _should_skip_initial_few_shot_pipeline_move(getattr(pipe, name, None))
+    for name in ("transformer", "transformer_2")) if pipe is not None else False
+  _register_deferred_few_shot_pipeline_move_callbacks(args, pipe)
 
   # CPU Offload
   _, device = get_rank_device()
@@ -2049,10 +2078,10 @@ def maybe_apply_optimization(
     else:
       pipe = pipe_or_adapter
     if pipe is not None and not args.device_map_balance:
-      if should_defer_pipeline_move:
+      if should_skip_initial_pipeline_move:
         logger.info(
           "Skipping eager pipe.to(%s) because SVDQ few-shot quantization will finish during warmup "
-          "or the current run before the final pipeline move.",
+          "or the current run before the low-memory layerwise pipeline move.",
           device,
         )
       else:

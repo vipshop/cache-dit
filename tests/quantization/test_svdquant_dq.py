@@ -1365,7 +1365,7 @@ def test_svdq_dq_few_shot_deferred_compile_executes_once(
   assert compile_calls == ["transformer"]
 
 
-def test_svdq_dq_few_shot_defers_final_pipeline_move_until_after_forward() -> None:
+def test_svdq_dq_few_shot_moves_pipeline_immediately_after_quantization() -> None:
   dtype = runtime_dtype()
   model = make_toy_model(
     embed_dim=128,
@@ -1383,6 +1383,7 @@ def test_svdq_dq_few_shot_defers_final_pipeline_move_until_after_forward() -> No
       "few_shot",
       "--svdq-few-shot-steps",
       "1",
+      "--svdq-layerwise-offload",
     ]))
 
   move_calls: list[torch.device] = []
@@ -1406,12 +1407,114 @@ def test_svdq_dq_few_shot_defers_final_pipeline_move_until_after_forward() -> No
     output = holder.transformer(eval_inputs)
 
   assert torch.isfinite(output).all()
+  assert len(move_calls) == 1
+  assert move_calls[0].type == "cuda"
+  assert not hasattr(holder, "_svdq_move_to_device_after_forward")
+  assert not maybe_finalize_deferred_svdq_pipe_move(holder)
+
+
+def test_svdq_dq_few_shot_falls_back_to_deferred_pipeline_move_on_failure() -> None:
+  dtype = runtime_dtype()
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=84,
+    device="cpu",
+    dtype=dtype,
+  )
+  parser = get_args(parse=False)
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-type",
+      "svdq_int4_r32_dq",
+      "--svdq-smooth-strategy",
+      "few_shot",
+      "--svdq-few-shot-steps",
+      "1",
+      "--svdq-layerwise-offload",
+    ]))
+
+  move_calls: list[torch.device] = []
+  move_attempts = 0
+  holder = SimpleNamespace(transformer=model)
+
+  def _move_pipe(device: torch.device | str) -> None:
+    nonlocal move_attempts
+    move_attempts += 1
+    resolved_device = torch.device(device)
+    if move_attempts == 1:
+      raise RuntimeError("simulate immediate move failure")
+    move_calls.append(resolved_device)
+
+  holder.to = _move_pipe
+
+  maybe_apply_optimization(args, holder)
+
+  eval_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=12,
+    width=128,
+    seed=85,
+    device="cpu",
+    dtype=dtype,
+  )
+  with torch.inference_mode():
+    output = holder.transformer(eval_inputs)
+
+  assert torch.isfinite(output).all()
   assert hasattr(holder, "_svdq_move_to_device_after_forward")
   assert move_calls == []
 
   assert maybe_finalize_deferred_svdq_pipe_move(holder)
   assert len(move_calls) == 1
   assert move_calls[0].type == "cuda"
+  assert not hasattr(holder, "_svdq_move_to_device_after_forward")
+
+
+def test_svdq_dq_few_shot_without_layerwise_offload_moves_pipe_to_cuda_eagerly() -> None:
+  dtype = runtime_dtype()
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=86,
+    device="cpu",
+    dtype=dtype,
+  )
+  parser = get_args(parse=False)
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-type",
+      "svdq_int4_r32_dq",
+      "--svdq-smooth-strategy",
+      "few_shot",
+      "--svdq-few-shot-steps",
+      "1",
+    ]))
+
+  move_calls: list[torch.device] = []
+  holder = SimpleNamespace(transformer=model)
+  holder.to = lambda device: move_calls.append(torch.device(device))
+
+  maybe_apply_optimization(args, holder)
+
+  assert getattr(holder.transformer, "_svdq_pending_quantization", False)
+  assert len(move_calls) == 1
+  assert move_calls[0].type == "cuda"
+
+  eval_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=12,
+    width=128,
+    seed=87,
+    device="cpu",
+    dtype=dtype,
+  )
+  with torch.inference_mode():
+    output = holder.transformer(eval_inputs)
+
+  assert torch.isfinite(output).all()
+  assert len(move_calls) == 2
+  assert move_calls[1].type == "cuda"
   assert not hasattr(holder, "_svdq_move_to_device_after_forward")
 
 
