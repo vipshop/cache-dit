@@ -18,6 +18,9 @@ from ..caching import (
   load_configs,
   load_parallelism_config,
 )
+from ..offload import _find_offload_related_hf_hook
+from ..offload import layerwise_cpu_offload
+from ..offload import remove_layerwise_offload
 from ..quantization import quantize, QuantizeConfig
 
 from ..summary import strify as summary_strify
@@ -587,6 +590,45 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "alias of 'top'."),
   )
   parser.add_argument(
+    "--svdq-quantize-device",
+    type=str,
+    default="cuda",
+    choices=["auto", "cpu", "cuda"],
+    help=("Device used for SVDQ decomposition and packing math. The example CLI defaults to 'cuda' "
+          "so CPU-resident models can still quantize layer-by-layer on GPU before the final move."),
+  )
+  parser.add_argument(
+    "--svdq-offload-quantized-layers-to-cpu",
+    dest="svdq_offload_quantized_layers_to_cpu",
+    action="store_true",
+    default=True,
+    help=(
+      "After each SVDQ linear layer is quantized, move it back to CPU immediately. This keeps "
+      "the example CLI on a low-memory path and delays the full move until quantization finishes."),
+  )
+  parser.add_argument(
+    "--svdq-keep-quantized-layers-on-device",
+    dest="svdq_offload_quantized_layers_to_cpu",
+    action="store_false",
+    help=
+    "Keep newly quantized SVDQ layers on the quantization device instead of offloading them to CPU.",
+  )
+  parser.add_argument(
+    "--svdq-defer-final-to-cuda",
+    dest="svdq_defer_final_to_cuda",
+    action="store_true",
+    default=True,
+    help=(
+      "Defer the final pipeline move to CUDA until SVDQ few-shot runtime quantization finishes. "
+      "Enabled by default for the example CLI low-memory path."),
+  )
+  parser.add_argument(
+    "--svdq-no-defer-final-to-cuda",
+    dest="svdq_defer_final_to_cuda",
+    action="store_false",
+    help="Do not defer the final pipeline move when using SVDQ few-shot quantization.",
+  )
+  parser.add_argument(
     "--svdq-few-shot-compile",
     action="store_true",
     default=False,
@@ -693,18 +735,29 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Disable convert Ring Attention output and lse to fp32 for context parallelism",
   )
   # Offload settings
-  parser.add_argument(
+  offload_group = parser.add_mutually_exclusive_group()
+  offload_group.add_argument(
     "--cpu-offload",
     "--cpu-offload-model",
     action="store_true",
     default=False,
-    help="Enable CPU offload for model if applicable.",
+    help="Enable diffusers model CPU offload for pipeline components when supported.",
   )
-  parser.add_argument(
+  offload_group.add_argument(
     "--sequential-cpu-offload",
     action="store_true",
     default=False,
-    help="Enable sequential GPU offload for model if applicable.",
+    help="Enable diffusers sequential CPU offload for pipeline components when supported.",
+  )
+  offload_group.add_argument(
+    "--module-layerwise-cpu-offload",
+    "--layerwise-offload",
+    dest="module_layerwise_cpu_offload",
+    action="store_true",
+    default=False,
+    help=("Enable cache-dit generic sequential CPU offload for nn.Module components. This is "
+          "intended for custom non-diffusers modules and is mutually exclusive with the diffusers "
+          "pipeline offload switches."),
   )
   parser.add_argument(
     "--device-map-balance",
@@ -1089,6 +1142,21 @@ def _register_deferred_few_shot_compile_callback(args, pipe, transformer, name) 
   if controller is None:
     return
 
+  def _register_named_callback(callback, callback_name: str) -> bool:
+    callbacks = getattr(transformer, "_svdq_post_quantize_callbacks", None)
+    if callbacks is None:
+      transformer._svdq_post_quantize_callbacks = []
+      callbacks = transformer._svdq_post_quantize_callbacks
+    callback_names = getattr(transformer, "_svdq_post_quantize_callback_names", None)
+    if callback_names is None:
+      transformer._svdq_post_quantize_callback_names = set()
+      callback_names = transformer._svdq_post_quantize_callback_names
+    if callback_name in callback_names:
+      return False
+    callback_names.add(callback_name)
+    callbacks.append(callback)
+    return True
+
   def _callback(_quantized_module):
     current_transformer = getattr(pipe, name, None)
     if current_transformer is None:
@@ -1098,20 +1166,111 @@ def _register_deferred_few_shot_compile_callback(args, pipe, transformer, name) 
     torch.set_float32_matmul_precision("high")
     _compile_transformer_module(args, pipe, current_transformer, name)
 
-  callbacks = getattr(transformer, "_svdq_post_quantize_callbacks", None)
-  if callbacks is None:
-    transformer._svdq_post_quantize_callbacks = []
-    callbacks = transformer._svdq_post_quantize_callbacks
-  callback_names = getattr(transformer, "_svdq_post_quantize_callback_names", None)
-  if callback_names is None:
-    transformer._svdq_post_quantize_callback_names = set()
-    callback_names = transformer._svdq_post_quantize_callback_names
   callback_name = f"compile:{name}"
-  if callback_name in callback_names:
+  if not _register_named_callback(_callback, callback_name):
     return
-  callback_names.add(callback_name)
-  callbacks.append(_callback)
   logger.info("Deferring compile for %s until SVDQ few-shot quantization finishes.", name)
+
+
+def _should_defer_few_shot_pipeline_move(transformer) -> bool:
+  if transformer is None or not getattr(transformer, "_svdq_pending_quantization", False):
+    return False
+  controller = getattr(transformer, "_svdq_few_shot_controller", None)
+  if controller is None:
+    return False
+  if controller.context.svdq_kwargs.get("smooth_strategy") != "few_shot":
+    return False
+  return bool(controller.context.svdq_kwargs.get("defer_move_to_execution_device", False))
+
+
+def _register_deferred_few_shot_pipeline_move_callbacks(args, pipe) -> bool:
+  if (pipe is None or args.device_map_balance or args.cpu_offload or args.sequential_cpu_offload
+      or args.module_layerwise_cpu_offload):
+    return False
+
+  tracked_names: list[str] = []
+  for name in ("transformer", "transformer_2"):
+    transformer = getattr(pipe, name, None)
+    if _should_defer_few_shot_pipeline_move(transformer):
+      tracked_names.append(name)
+
+  if not tracked_names:
+    return False
+
+  _, device = get_rank_device()
+  target_device = torch.device(device)
+
+  def _register_for_transformer(name: str) -> None:
+    transformer = getattr(pipe, name, None)
+    if transformer is None:
+      return
+
+    callbacks = getattr(transformer, "_svdq_post_quantize_callbacks", None)
+    if callbacks is None:
+      transformer._svdq_post_quantize_callbacks = []
+      callbacks = transformer._svdq_post_quantize_callbacks
+    callback_names = getattr(transformer, "_svdq_post_quantize_callback_names", None)
+    if callback_names is None:
+      transformer._svdq_post_quantize_callback_names = set()
+      callback_names = transformer._svdq_post_quantize_callback_names
+    callback_name = f"pipeline_move:{name}:{target_device}"
+    if callback_name in callback_names:
+      return
+
+    def _callback(_quantized_module):
+      remaining = [
+        tracked_name for tracked_name in tracked_names
+        if getattr(getattr(pipe, tracked_name, None), "_svdq_pending_quantization", False)
+      ]
+      if remaining:
+        logger.info(
+          "SVDQ few-shot quantization finished for %s; waiting for remaining modules before the "
+          "final pipeline move: %s.",
+          name,
+          ", ".join(remaining),
+        )
+        return
+      pipe._svdq_move_to_device_after_forward = target_device
+      logger.info(
+        "SVDQ few-shot quantization finished; scheduling final pipeline move to %s after the "
+        "current pipeline call returns.",
+        target_device,
+      )
+
+    callback_names.add(callback_name)
+    callbacks.append(_callback)
+
+  for name in tracked_names:
+    _register_for_transformer(name)
+
+  logger.info(
+    "Deferring final pipeline move to %s until SVDQ few-shot quantization finishes for %s.",
+    target_device,
+    ", ".join(tracked_names),
+  )
+  return True
+
+
+def maybe_finalize_deferred_svdq_pipe_move(
+  pipe_or_adapter: DiffusionPipeline | BlockAdapter, ) -> bool:
+  if isinstance(pipe_or_adapter, BlockAdapter):
+    pipe = pipe_or_adapter.pipe
+  else:
+    pipe = pipe_or_adapter
+  if pipe is None:
+    return False
+
+  target_device = getattr(pipe, "_svdq_move_to_device_after_forward", None)
+  if target_device is None:
+    return False
+
+  delattr(pipe, "_svdq_move_to_device_after_forward")
+  logger.info(
+    "Moving pipeline to %s after SVDQ few-shot runtime quantization completed.",
+    target_device,
+  )
+  pipe.to(target_device)
+  return True
 
 
 def _should_defer_few_shot_compile(args, transformer) -> bool:
@@ -1315,10 +1474,15 @@ def maybe_quantize_transformer(
     few_shot_auto_compile = bool(args.svdq_few_shot_compile)
     if args.svdq_smooth_strategy == "few_shot" and args.compile:
       few_shot_auto_compile = True
+    defer_move_to_execution_device = bool(args.svdq_defer_final_to_cuda
+                                          and args.svdq_smooth_strategy == "few_shot")
     return {
       "smooth_strategy": args.svdq_smooth_strategy,
       "calibrate_precision": args.svdq_calibrate_precision,
       "runtime_kernel": args.svdq_runtime,
+      "quantize_device": args.svdq_quantize_device,
+      "offload_quantized_layers_to_cpu": args.svdq_offload_quantized_layers_to_cpu,
+      "defer_move_to_execution_device": defer_move_to_execution_device,
       "few_shot_steps": args.svdq_few_shot_steps,
       "few_shot_relax_factor": args.svdq_few_shot_relax_factor,
       "few_shot_relax_top_ratio": args.svdq_few_shot_relax_top_ratio,
@@ -1350,9 +1514,6 @@ def maybe_quantize_transformer(
       if transformer is not None:
         transformer_cls_name = transformer.__class__.__name__
         if isinstance(transformer, torch.nn.Module):
-          if args.quantize_type is not None and args.quantize_type.startswith("svdq"):
-            _, device = get_rank_device()
-            transformer = transformer.to(device)
           logger.info(f"Quantizing transformer module: {transformer_cls_name} to"
                       f" {args.quantize_type} ...")
           transformer = quantize(
@@ -1378,9 +1539,6 @@ def maybe_quantize_transformer(
       if transformer_2 is not None:
         transformer_2_cls_name = transformer_2.__class__.__name__
         if isinstance(transformer_2, torch.nn.Module):
-          if args.quantize_type is not None and args.quantize_type.startswith("svdq"):
-            _, device = get_rank_device()
-            transformer_2 = transformer_2.to(device)
           logger.info(f"Quantizing transformer_2 module: {transformer_2_cls_name} to"
                       f" {args.quantize_type} ...")
           transformer_2 = quantize(
@@ -1591,6 +1749,94 @@ def maybe_cpu_offload(
   return False
 
 
+def _append_generic_offload_target(
+  targets: list[tuple[str, torch.nn.Module]],
+  seen_module_ids: set[int],
+  name: str,
+  module: Any,
+) -> None:
+  if not isinstance(module, torch.nn.Module):
+    return
+  if id(module) in seen_module_ids:
+    return
+  seen_module_ids.add(id(module))
+  targets.append((name, module))
+
+
+def _resolve_generic_offload_targets(
+  pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
+) -> list[tuple[str, torch.nn.Module]]:
+  targets: list[tuple[str, torch.nn.Module]] = []
+  seen_module_ids: set[int] = set()
+
+  if isinstance(pipe_or_adapter, torch.nn.Module):
+    return [("module", pipe_or_adapter)]
+
+  if isinstance(pipe_or_adapter, BlockAdapter):
+    transformer = getattr(pipe_or_adapter, "transformer", None)
+    if isinstance(transformer, list):
+      for index, module in enumerate(transformer):
+        _append_generic_offload_target(targets, seen_module_ids, f"transformer[{index}]", module)
+    else:
+      _append_generic_offload_target(targets, seen_module_ids, "transformer", transformer)
+    if targets:
+      return targets
+    pipe_or_adapter = pipe_or_adapter.pipe
+
+  components = getattr(pipe_or_adapter, "components", None)
+  if isinstance(components, dict):
+    for name, module in components.items():
+      _append_generic_offload_target(targets, seen_module_ids, str(name), module)
+    if targets:
+      return targets
+
+  if hasattr(pipe_or_adapter, "__dict__"):
+    for name, module in vars(pipe_or_adapter).items():
+      _append_generic_offload_target(targets, seen_module_ids, str(name), module)
+
+  return targets
+
+
+def maybe_generic_module_offload(
+  args,
+  pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
+) -> bool:
+  if not getattr(args, "module_layerwise_cpu_offload", False):
+    return False
+
+  _, device = get_rank_device()
+  targets = _resolve_generic_offload_targets(pipe_or_adapter)
+  if not targets:
+    raise ValueError(
+      "--module-layerwise-cpu-offload was requested, but no nn.Module targets were found.")
+
+  handles = []
+  skipped_due_to_existing_offload = False
+  for name, module in targets:
+    remove_layerwise_offload(module)
+
+    existing_offload_hook = _find_offload_related_hf_hook(module)
+    if existing_offload_hook is not None:
+      hook_module_name, hook = existing_offload_hook
+      logger.warning(
+        "Skipping cache-dit layerwise CPU offload for module %s because an existing accelerate "
+        "offload hook %s is already registered on %s.",
+        name,
+        type(hook).__name__,
+        hook_module_name or "<root>",
+      )
+      skipped_due_to_existing_offload = True
+      continue
+
+    logger.info(
+      "Enabling cache-dit layerwise CPU offload for module %s: %s ...",
+      name,
+      module.__class__.__name__,
+    )
+    handles.append(layerwise_cpu_offload(module, onload_device=device))
+  return bool(handles) or skipped_due_to_existing_offload
+
+
 def maybe_apply_optimization(
   args,
   pipe_or_adapter,
@@ -1740,16 +1986,31 @@ def maybe_apply_optimization(
   maybe_compile_controlnet(args, pipe_or_adapter)
   maybe_compile_vae(args, pipe_or_adapter)
 
+  if isinstance(pipe_or_adapter, BlockAdapter):
+    pipe = pipe_or_adapter.pipe
+  else:
+    pipe = pipe_or_adapter
+  should_defer_pipeline_move = _register_deferred_few_shot_pipeline_move_callbacks(args, pipe)
+
   # CPU Offload
   _, device = get_rank_device()
-  if not maybe_cpu_offload(args, pipe_or_adapter):
+  used_diffusers_cpu_offload = maybe_cpu_offload(args, pipe_or_adapter)
+  used_generic_module_offload = maybe_generic_module_offload(args, pipe_or_adapter)
+  if not used_diffusers_cpu_offload and not used_generic_module_offload:
     # Set device if no cpu offload
     if isinstance(pipe_or_adapter, BlockAdapter):
       pipe = pipe_or_adapter.pipe
     else:
       pipe = pipe_or_adapter
     if pipe is not None and not args.device_map_balance:
-      pipe.to(device)
+      if should_defer_pipeline_move:
+        logger.info(
+          "Skipping eager pipe.to(%s) because SVDQ few-shot quantization will finish during warmup "
+          "or the current run before the final pipeline move.",
+          device,
+        )
+      else:
+        pipe.to(device)
 
   return pipe_or_adapter
 

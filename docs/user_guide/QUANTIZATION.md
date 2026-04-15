@@ -468,19 +468,41 @@ cache_dit.enable_cache(
 
 These experimental modes still avoid activation calibration, but derive non-trivial per-channel smooth factors from weight statistics alone. They are currently available as opt-in Python API settings rather than dedicated CLI shortcuts. The mathematical difference between the DQ smooth strategies is listed below.
 
-<span style="color:green;">identity</span>: use the unit smooth vector directly: $s_i = 1$.
+<span style="color:green;">identity</span>: use the unit smooth vector directly.
+
+$$
+s_i = 1
+$$
 
 This keeps the current zero-calibration DQ behavior unchanged. The low-rank decomposition is applied directly to the original weight matrix, so the entire DQ approximation is driven only by the weight tensor and the target rank.
 
-<span style="color:green;">weight</span>: replace the activation term with a constant proxy and build a purely weight-derived smooth factor. In the current implementation, if PTQ uses $s_i = \frac{a_i^\alpha}{w_i^{1-\alpha}}$, then the weight-only DQ heuristic starts from $\hat{s}_i = w_i^{-(1-\alpha)}$,
+<span style="color:green;">weight</span>: replace the activation term with a constant proxy and build a purely weight-derived smooth factor. In the current implementation, PTQ uses the following smooth scale:
 
-where $w_i$ denotes the per-input-channel weight span. Cache-DiT then stabilizes this raw heuristic by geometric-mean normalization and explicit clipping:
+$$
+s_i = \frac{a_i^\alpha}{w_i^{1-\alpha}}
+$$
 
-$s_i = \operatorname{clip}\!\left(\frac{\hat{s}_i}{\exp\left(\frac{1}{n}\sum_j \log \hat{s}_j\right)},\ 0.25,\ 4.0\right)$.
+The weight-only DQ heuristic starts from:
+
+$$
+\hat{s}_i = w_i^{-(1-\alpha)}
+$$
+
+Here `w_i` denotes the per-input-channel weight span. Cache-DiT then stabilizes this raw heuristic by geometric-mean normalization and explicit clipping:
+
+$$
+s_i = \operatorname{clip}\!\left(\frac{\hat{s}_i}{\exp\left(\frac{1}{n}\sum_j \log \hat{s}_j\right)},\ 0.25,\ 4.0\right)
+$$
 
 Intuitively, <span style="color:#c77dff;">identity</span> does not redistribute any quantization difficulty across channels, while <span style="color:#c77dff;">weight</span> tries to equalize channels using weight statistics alone. Because it has no access to real activation outliers, it should be treated as an experimental heuristic rather than a replacement for PTQ smoothing.
 
-<span style="color:green;">weight_inv</span>: use the same weight-only proxy, but flip the exponent direction so that channels with larger weight span receive larger smooth factors: $\hat{s}_i^{\mathrm{inv}} = w_i^{1-\alpha}$, and then apply the same geometric-mean normalization and clipping.
+<span style="color:green;">weight_inv</span>: use the same weight-only proxy, but flip the exponent direction so that channels with larger weight span receive larger smooth factors.
+
+$$
+\hat{s}_i^{\mathrm{inv}} = w_i^{1-\alpha}
+$$
+
+Cache-DiT then applies the same geometric-mean normalization and clipping.
 
 Intuitively, <span style="color:green;">weight_inv</span> does the opposite trade-off of <span style="color:green;">weight</span>: it intentionally makes the weight tensor harder to quantize on large-span channels, but it may reduce activation quantization difficulty because those activation channels are divided by a larger smooth factor at runtime. For examples:
 
@@ -523,23 +545,61 @@ This mode exposes four backend-local knobs:
 - <span style="color:#c77dff;">few_shot_relax_top_ratio</span>: fraction of the largest activation spans used to define the few-shot threshold. Default: <span style="color:green;">0.25</span>.
 - <span style="color:#c77dff;">few_shot_relax_strategy</span>: how the relax factor is assigned across channels before smooth-scale recomputation. Default: <span style="color:green;">auto</span>. Available values: <span style="color:green;">fixed</span>, <span style="color:green;">top</span>, <span style="color:green;">auto</span>, <span style="color:green;">stable_auto</span>, <span style="color:green;">power</span>, <span style="color:green;">log</span>, and <span style="color:green;">rank</span>.
 
-If the observed activation-span vector is denoted as $a$ and the weight-span vector is denoted as $w$, Cache-DiT first computes the threshold corresponding to $1 - \text{few\_shot\_relax\_top\_ratio}$ on $a$, relaxes the activation span, and then recomputes the smooth scale via $s_i^{\mathrm{relaxed}} = \frac{\left(a_i^{\mathrm{relaxed}}\right)^\alpha}{w_i^{1-\alpha}}$.
+If the observed activation-span vector is denoted as `a` and the weight-span vector is denoted as `w`, Cache-DiT first computes the threshold corresponding to `1 - few_shot_relax_top_ratio` on `a`, relaxes the activation span, and then recomputes the smooth scale:
+
+$$
+s_i^{\mathrm{relaxed}} = \frac{\left(a_i^{\mathrm{relaxed}}\right)^\alpha}{w_i^{1-\alpha}}
+$$
 
 It then applies one of the following relax strategies:
 
-For <span style="color:green;">auto</span>, Cache-DiT also relaxes the channels below the threshold, but uses a smaller multiplier for smaller activation spans and caps the largest channels at <span style="color:#c77dff;">few_shot_relax_factor</span>: $m_i = 1 + \left(\text{few\_shot\_relax\_factor} - 1\right) \cdot \operatorname{clip}\left(\frac{a_i - a_{\min}}{\tau - a_{\min}}, 0, 1\right)$, then $a_i^{\mathrm{relaxed}} = a_i \cdot m_i$.
+For <span style="color:green;">auto</span>, Cache-DiT also relaxes the channels below the threshold, but uses a smaller multiplier for smaller activation spans and caps the largest channels at <span style="color:#c77dff;">few_shot_relax_factor</span>.
 
-For <span style="color:green;">stable_auto</span>, Cache-DiT keeps the same magnitude-aware linear ramp as <span style="color:green;">auto</span>, but snaps that normalized response to a small number of evenly spaced buckets before applying the final relax multiplier. In the current implementation, the bucketized response is $r_i^{\mathrm{stable}} = \operatorname{round}(8 \cdot r_i^{\mathrm{auto}}) / 8$. This does not make the entire runtime path fully deterministic, but it does make the relax policy less sensitive to small first-forward activation-stat fluctuations.
+$$
+m_i = 1 + \left(\text{few\_shot\_relax\_factor} - 1\right) \cdot \operatorname{clip}\left(\frac{a_i - a_{\min}}{\tau - a_{\min}}, 0, 1\right)
+$$
 
-For <span style="color:green;">top</span>: $a_i^{\mathrm{relaxed}} = a_i \cdot \text{few\_shot\_relax\_factor}$ when $a_i \geq \tau$, and $a_i^{\mathrm{relaxed}} = a_i$ otherwise. Channels outside the selected top-ratio are kept unchanged.
+$$
+a_i^{\mathrm{relaxed}} = a_i \cdot m_i
+$$
 
-For <span style="color:green;">fixed</span>: $a_i^{\mathrm{relaxed}} = a_i$. This disables the relax step entirely and uses the original activation-derived few-shot smooth scale after recomputation from the unchanged activation span. It is useful as a control/baseline when you want few-shot activation collection without any extra channel-wise amplification. At runtime, this strategy ignores <span style="color:#c77dff;">few_shot_relax_factor</span> and <span style="color:#c77dff;">few_shot_relax_top_ratio</span>.
+For <span style="color:green;">stable_auto</span>, Cache-DiT keeps the same magnitude-aware linear ramp as <span style="color:green;">auto</span>, but snaps that normalized response to a small number of evenly spaced buckets before applying the final relax multiplier. In the current implementation, the bucketized response is:
 
-where $\tau$ is the quantile threshold and $a_{\min}$ is the minimum activation span in the layer. This makes the relax factor increase monotonically with the observed few-shot activation span while keeping it bounded by the configured maximum.
+$$
+r_i^{\mathrm{stable}} = \operatorname{round}(8 \cdot r_i^{\mathrm{auto}}) / 8
+$$
 
-Internally, Cache-DiT first constructs a strategy-specific normalized response $r_i \in [0, 1]$, then maps it to the activation-span multiplier by $m_i = 1 + r_i \cdot \left(\text{few\_shot\_relax\_factor} - 1\right)$.
+This does not make the entire runtime path fully deterministic, but it does make the relax policy less sensitive to small first-forward activation-stat fluctuations.
 
-We intentionally clamp the intermediate response to $[0, 1]$ before this affine map so the final activation-span multiplier is always bounded inside $[1, \text{few\_shot\_relax\_factor}]$. Because <span style="color:#c77dff;">few_shot_relax_factor</span> is constrained to be at least 1, every channel is either unchanged or amplified; no channel can be shrunk by the few-shot relax step. Since smooth scale is recomputed from $a^\alpha$, the induced smooth-scale multiplier is bounded more conservatively inside $[1, \text{few\_shot\_relax\_factor}^\alpha]$.
+For <span style="color:green;">top</span>:
+
+$$
+a_i^{\mathrm{relaxed}} =
+\begin{cases}
+a_i \cdot \text{few\_shot\_relax\_factor}, & a_i \geq \tau \\
+a_i, & a_i < \tau
+\end{cases}
+$$
+
+Channels outside the selected top-ratio are kept unchanged.
+
+For <span style="color:green;">fixed</span>:
+
+$$
+a_i^{\mathrm{relaxed}} = a_i
+$$
+
+This disables the relax step entirely and uses the original activation-derived few-shot smooth scale after recomputation from the unchanged activation span. It is useful as a control/baseline when you want few-shot activation collection without any extra channel-wise amplification. At runtime, this strategy ignores <span style="color:#c77dff;">few_shot_relax_factor</span> and <span style="color:#c77dff;">few_shot_relax_top_ratio</span>.
+
+Here `tau` is the quantile threshold and `a_min` is the minimum activation span in the layer. This makes the relax factor increase monotonically with the observed few-shot activation span while keeping it bounded by the configured maximum.
+
+Internally, Cache-DiT first constructs a strategy-specific normalized response in the unit interval `[0, 1]`, then maps it to the activation-span multiplier:
+
+$$
+m_i = 1 + r_i \cdot \left(\text{few\_shot\_relax\_factor} - 1\right)
+$$
+
+We intentionally clamp the intermediate response to `[0, 1]` before this affine map so the final activation-span multiplier is always bounded inside `[1, few_shot_relax_factor]`. Because <span style="color:#c77dff;">few_shot_relax_factor</span> is constrained to be at least 1, every channel is either unchanged or amplified; no channel can be shrunk by the few-shot relax step. Since smooth scale is recomputed from the activation span raised to `alpha`, the induced smooth-scale multiplier is bounded more conservatively inside `[1, few_shot_relax_factor^alpha]`.
 
 That does not mean arbitrarily large factors are safe. A larger factor tells the quantizer to treat the already-large activation-span channels as if they were even more likely to encounter future activation outliers. When that prior becomes too strong, the recomputed smoothing step over-allocates protection to those channels, which often shows up as visibly softer or blurrier image details. If you need a stronger head-channel bias, it is usually better to keep <span style="color:#c77dff;">few_shot_relax_factor</span> moderate and change <span style="color:#c77dff;">few_shot_relax_strategy</span> to <span style="color:green;">power</span> or reduce <span style="color:#c77dff;">few_shot_relax_top_ratio</span>, rather than pushing the factor directly to 4.0.
 
@@ -547,10 +607,16 @@ That does not mean arbitrarily large factors are safe. A larger factor tells the
 |:---:|:---:|:---:|:---:|
 |![](../assets/svdq_few_shot/flux.1024x1024.C0.png)|![](../assets/svdq_few_shot/flux.1024x1024.C0_svdq_int4_r32_dq.png)|![](../assets/svdq_few_shot/flux.1024x1024.C0_svdq_int4_r32_dq_few_shot_auto.png)|![](../assets/svdq_few_shot/flux.1024x1024.C0_svdq_int4_r32_dq_few_shot_auto_4steps.png)|
 
-The remaining non-trivial strategies reuse the same bounded activation-span multiplier range $[1, \text{few\_shot\_relax\_factor}]$, but change how the normalized response is built before that final affine map:
+The remaining non-trivial strategies reuse the same bounded activation-span multiplier range `[1, few_shot_relax_factor]`, but change how the normalized response is built before that final affine map:
 
 - <span style="color:green;">stable_auto</span>: uses the same linear response as <span style="color:green;">auto</span>, but bucketizes it into a small number of levels so repeated few-shot runs are less sensitive to tiny activation-stat changes.
-- <span style="color:green;">power</span>: uses a convex response $r_i^2$, so the largest activation spans receive much stronger amplification while smaller channels stay closer to 1.
+- <span style="color:green;">power</span>: uses a convex squared response.
+
+$$
+r_i^2
+$$
+
+This makes the largest activation spans receive much stronger amplification while smaller channels stay closer to 1.
 - <span style="color:green;">log</span>: uses a concave log response, so mid/high activation-span channels get lifted earlier than in the linear <span style="color:green;">auto</span> strategy.
 - <span style="color:green;">rank</span>: ignores the absolute activation-span gaps and constructs the response from channel rank percentiles, which can be more robust when a layer has a few extreme outliers. 
 

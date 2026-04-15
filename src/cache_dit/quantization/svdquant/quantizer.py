@@ -706,6 +706,11 @@ class _ActivationSpanAccumulator:
       raise ValueError("At least one representative activation tensor is required.")
     return self.activation_span
 
+  def release(self) -> None:
+    self.buffered_spans.clear()
+    self.activation_span = None
+    self.buffered_cpu_bytes = 0
+
   @property
   def has_observations(self) -> bool:
     return self.observed_samples > 0
@@ -940,6 +945,10 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
     has_bias=linear.bias is not None,
   )
 
+  del raw_state_dict
+  del weight, smooth_scale, smooth_scale_orig, smoothed_weight
+  del lowrank_down, lowrank_up, residual, scales, bias
+
   if return_state_dict:
     return module_state_dict
 
@@ -953,6 +962,7 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
     device=device,
   )
   incompatible = quantized.load_state_dict(module_state_dict, strict=True)
+  del module_state_dict
   if incompatible.missing_keys or incompatible.unexpected_keys:
     raise RuntimeError(
       f"Unexpected SVDQuant state_dict mismatch: missing={incompatible.missing_keys}, "

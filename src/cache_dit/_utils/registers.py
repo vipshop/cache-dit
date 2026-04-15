@@ -23,6 +23,7 @@ from .utils import (
   maybe_destroy_distributed,
   maybe_init_distributed,
   maybe_apply_optimization,
+  maybe_finalize_deferred_svdq_pipe_move,
   pipe_quant_bnb_4bit_config,
   create_profiler_from_args,
   MemoryTracker,
@@ -552,6 +553,7 @@ class Example:
       if self.args.warmup_num_inference_steps is not None:
         warmup_kwargs["num_inference_steps"] = self.args.warmup_num_inference_steps
       _ = pipe(**warmup_kwargs)
+      maybe_finalize_deferred_svdq_pipe_move(pipe)
     if self.args.warmup > 0:
       warmup_time = (time.time() - start_time) / self.args.warmup
     else:
@@ -568,12 +570,14 @@ class Example:
         for _ in range(self.args.repeat):
           step_kwargs = self.new_generator(dict(input_kwargs), self.args)
           output = pipe(**step_kwargs)
+          maybe_finalize_deferred_svdq_pipe_move(pipe)
       if self.rank == 0:
         logger.info(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
     else:
       for _ in range(self.args.repeat):
         step_kwargs = self.new_generator(dict(input_kwargs), self.args)
         output = pipe(**step_kwargs)
+        maybe_finalize_deferred_svdq_pipe_move(pipe)
     if self.args.repeat > 0:
       inference_time = (time.time() - start_time) / self.args.repeat
     else:

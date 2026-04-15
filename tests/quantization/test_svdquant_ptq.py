@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import cache_dit
+import cache_dit.quantization.svdquant.ptq as svdq_ptq
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.quantization import QuantizeConfig
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
@@ -1157,6 +1158,85 @@ def test_svdq_ptq_quantize_toy_model_replaces_linear_layers_and_serializes(
   metrics = compute_accuracy_metrics(reference, candidate)
   assert metrics.rel_l2 < 0.1
   assert metrics.cosine > 0.99
+
+
+def test_svdq_ptq_cpu_root_calibration_uses_layerwise_cuda_offload(tmp_path: Path) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=111,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  calibration_samples = make_token_samples(
+    num_samples=2,
+    batch_size=1,
+    seq_len=16,
+    width=128,
+    seed=112,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  observed_input_devices: list[str] = []
+
+  def calibrate_fn(**kwargs) -> None:
+    observed_model = kwargs["model"]
+    capture_handle = observed_model.block.to_q.register_forward_pre_hook(
+      lambda _module, args: observed_input_devices.append(args[0].device.type))
+    try:
+      with torch.inference_mode():
+        for sample in calibration_samples:
+          observed_model(sample)
+        torch.cuda.synchronize()
+    finally:
+      capture_handle.remove()
+
+  config = _make_ptq_config(
+    tmp_path / "cpu_root_offload",
+    calibrate_fn,
+    svdq_kwargs={
+      "quantize_device": "cuda",
+      "offload_quantized_layers_to_cpu": True,
+    },
+  )
+
+  quantized_model = cache_dit.quantize(model, config)
+
+  assert observed_input_devices
+  assert set(observed_input_devices) == {"cuda"}
+  assert isinstance(quantized_model.block.to_q, SVDQW4A4Linear)
+  assert quantized_model.block.to_q.qweight.device.type == "cpu"
+
+
+def test_svdq_ptq_collection_offload_skips_existing_accelerate_hooks(
+  monkeypatch: pytest.MonkeyPatch, ) -> None:
+  accelerate = pytest.importorskip("accelerate")
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=113,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  accelerate.cpu_offload(model.block, execution_device=torch.device("cuda"))
+
+  warning_messages: list[str] = []
+
+  def capture_warning(message: str, *args: object, **_kwargs: object) -> None:
+    warning_messages.append(message % args if args else message)
+
+  monkeypatch.setattr(svdq_ptq.logger, "warning", capture_warning)
+
+  handle = svdq_ptq._maybe_enable_layerwise_collection_offload(
+    model.block,
+    layer_names=["to_q", "to_k"],
+    onload_device=torch.device("cuda"),
+  )
+
+  assert handle is None
+  assert warning_messages
+  assert "Skipping cache-dit layerwise CPU offload for SVDQ activation collection" in (
+    warning_messages[0])
 
 
 def test_svdq_ptq_quantize_root_linear_and_load_roundtrip(tmp_path: Path) -> None:
