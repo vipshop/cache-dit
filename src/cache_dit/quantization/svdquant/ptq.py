@@ -14,6 +14,7 @@ from torch import nn
 from ...offload import LayerwiseOffloadHandle
 from ...offload import _apply_layerwise_offload
 from ...offload import _find_offload_related_hf_hook
+from ...offload import get_layerwise_offload_handles
 from ...logger import init_logger
 from ...utils import check_quantized
 from ..config import QuantizeConfig
@@ -165,6 +166,15 @@ def _maybe_enable_layerwise_collection_offload(
   transfer_buckets: int = 1,
 ) -> LayerwiseOffloadHandle | None:
   if onload_device.type != "cuda":
+    return None
+  existing_layerwise_handles = get_layerwise_offload_handles(module)
+  if existing_layerwise_handles:
+    logger.warning(
+      "Skipping cache-dit layerwise CPU offload for SVDQ activation collection on %s because "
+      "%d cache-dit layerwise offload handle(s) are already registered on the same module.",
+      module.__class__.__name__,
+      len(existing_layerwise_handles),
+    )
     return None
   existing_offload_hook = _find_offload_related_hf_hook(module)
   if existing_offload_hook is not None:
@@ -545,7 +555,8 @@ class SVDQPTQCalibrator:
     flush_sample_count = self.context.svdq_kwargs["activation_buffer_flush_sample_count"]
     flush_cpu_bytes = self.context.svdq_kwargs["activation_buffer_flush_cpu_bytes"]
 
-    if observation_device is not None:
+    if (observation_device is not None
+        and bool(self.context.svdq_kwargs.get("layerwise_offload", False))):
       self._offload_handle = _maybe_enable_layerwise_collection_offload(
         self.context.root_module,
         layer_names=self.context.candidate_layer_names,
@@ -666,13 +677,14 @@ class SVDQFewShotRuntimeController:
     flush_sample_count = self.context.svdq_kwargs["activation_buffer_flush_sample_count"]
     flush_cpu_bytes = self.context.svdq_kwargs["activation_buffer_flush_cpu_bytes"]
 
-    self._offload_handle = _maybe_enable_layerwise_collection_offload(
-      self.context.root_module,
-      layer_names=self.context.candidate_layer_names,
-      onload_device=self.quantize_device,
-      async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
-      transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
-    )
+    if bool(self.context.svdq_kwargs.get("layerwise_offload", False)):
+      self._offload_handle = _maybe_enable_layerwise_collection_offload(
+        self.context.root_module,
+        layer_names=self.context.candidate_layer_names,
+        onload_device=self.quantize_device,
+        async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
+        transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
+      )
 
     for layer_name in self.context.candidate_layer_names:
       submodule = _get_named_submodule(self.context.root_module, layer_name)
@@ -698,7 +710,7 @@ class SVDQFewShotRuntimeController:
     self.context.root_module._svdq_cleanup_pending_quantization = self.cleanup
     logger.info(
       "SVDQuant few-shot runtime quantization for %s. \nObserving %d cumulative root forwards "
-      "before materializing quantized linear layers; rerunning the same pipeline/module keeps "
+      "before materializing quantized linear layers; \nRerunning the same pipeline/module keeps "
       "advancing the same counter.",
       self.context.root_module.__class__.__name__,
       self.context.svdq_kwargs["few_shot_steps"],

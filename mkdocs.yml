@@ -68,6 +68,7 @@ nav:
       - Attention Backends: user_guide/ATTENTION.md
       - Use Torch Compile: user_guide/COMPILE.md
       - Use CUDA Graphs: user_guide/CUDA_GRAPH.md
+      - Layerwise Offload: user_guide/OFFLOAD.md
       - Ascend NPU Support: user_guide/ASCEND_NPU.md
       - AMD GPU Support: user_guide/AMD_GPU.md
       - Config with YAML: user_guide/LOAD_CONFIGS.md

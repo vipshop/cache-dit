@@ -43,6 +43,9 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # immediately after per-layer quantization. This reduces CUDA peak memory and
   # lets callers do a single final move once all target layers are quantized.
   "offload_quantized_layers_to_cpu": False,
+  # When enabled, SVDQ PTQ calibration and DQ few-shot collection may attach
+  # cache-dit layerwise CPU offload hooks for candidate linear layers.
+  "layerwise_offload": False,
   # When enabled and layerwise collection offload is active, cache-dit uses a
   # dedicated CUDA copy stream to overlap CPU<->CUDA transfers with compute.
   "async_transfer": False,
@@ -246,6 +249,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "runtime_kernel": _resolve_svdq_runtime_kernel,
     "quantize_device": _resolve_svdq_quantize_device,
     "offload_quantized_layers_to_cpu": _resolve_svdq_bool_kwarg,
+    "layerwise_offload": _resolve_svdq_bool_kwarg,
     "async_transfer": _resolve_svdq_bool_kwarg,
     "transfer_buckets": _resolve_svdq_positive_int,
     "defer_move_to_execution_device": _resolve_svdq_bool_kwarg,

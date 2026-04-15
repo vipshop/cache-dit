@@ -350,6 +350,7 @@ def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None
   assert config.get_svdq_kwargs()["runtime_kernel"] == "v1"
   assert config.get_svdq_kwargs()["quantize_device"] == "auto"
   assert config.get_svdq_kwargs()["offload_quantized_layers_to_cpu"] is False
+  assert config.get_svdq_kwargs()["layerwise_offload"] is False
   assert config.get_svdq_kwargs()["async_transfer"] is False
   assert config.get_svdq_kwargs()["transfer_buckets"] == 1
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is False
@@ -410,6 +411,7 @@ def test_svdq_dq_config_validation_accepts_device_strategy_kwargs() -> None:
     svdq_kwargs={
       "quantize_device": "cuda",
       "offload_quantized_layers_to_cpu": True,
+      "layerwise_offload": True,
       "async_transfer": True,
       "transfer_buckets": 2,
       "defer_move_to_execution_device": True,
@@ -418,6 +420,7 @@ def test_svdq_dq_config_validation_accepts_device_strategy_kwargs() -> None:
 
   assert config.get_svdq_kwargs()["quantize_device"] == "cuda"
   assert config.get_svdq_kwargs()["offload_quantized_layers_to_cpu"] is True
+  assert config.get_svdq_kwargs()["layerwise_offload"] is True
   assert config.get_svdq_kwargs()["async_transfer"] is True
   assert config.get_svdq_kwargs()["transfer_buckets"] == 2
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is True
@@ -523,15 +526,17 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "svdq_int4_r32_dq",
       "--svdq-quantize-device",
       "auto",
-      "--svdq-async-transfer",
-      "--svdq-transfer-buckets",
+      "--svdq-layerwise-offload",
+      "--svdq-layerwise-async-transfer",
+      "--svdq-layerwise-transfer-buckets",
       "2",
       "--svdq-keep-quantized-layers-on-device",
       "--svdq-no-defer-final-to-cuda",
     ]))
   assert args.svdq_quantize_device == "auto"
-  assert args.svdq_async_transfer is True
-  assert args.svdq_transfer_buckets == 2
+  assert args.svdq_layerwise_offload is True
+  assert args.svdq_layerwise_async_transfer is True
+  assert args.svdq_layerwise_transfer_buckets == 2
   assert args.svdq_offload_quantized_layers_to_cpu is False
   assert args.svdq_defer_final_to_cuda is False
 
@@ -547,6 +552,17 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
 
   args = maybe_postprocess_args(parser.parse_args(["--module-layerwise-cpu-offload"]))
   assert args.module_layerwise_cpu_offload is True
+
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--module-layerwise-cpu-offload",
+      "--layerwise-async-transfer",
+      "--layerwise-transfer-buckets",
+      "2",
+    ]))
+  assert args.module_layerwise_cpu_offload is True
+  assert args.layerwise_async_transfer is True
+  assert args.layerwise_transfer_buckets == 2
 
   args = maybe_postprocess_args(
     parser.parse_args([
@@ -1046,6 +1062,7 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
         "few_shot_steps": 1,
         "quantize_device": "cuda",
         "offload_quantized_layers_to_cpu": True,
+        "layerwise_offload": True,
         "async_transfer": True,
         "transfer_buckets": 2,
       },
@@ -1407,7 +1424,13 @@ def test_generic_module_offload_applies_to_non_diffusers_transformer_holder() ->
     dtype=torch.float32,
   )
   parser = get_args(parse=False)
-  args = maybe_postprocess_args(parser.parse_args(["--module-layerwise-cpu-offload"]))
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--module-layerwise-cpu-offload",
+      "--layerwise-async-transfer",
+      "--layerwise-transfer-buckets",
+      "2",
+    ]))
 
   move_calls: list[torch.device] = []
   holder = SimpleNamespace(transformer=model)
@@ -1416,7 +1439,10 @@ def test_generic_module_offload_applies_to_non_diffusers_transformer_holder() ->
   maybe_apply_optimization(args, holder)
 
   assert not hasattr(holder, "_cache_dit_generic_offload_handles")
-  assert len(get_layerwise_offload_handles(holder.transformer)) == 1
+  handles = get_layerwise_offload_handles(holder.transformer)
+  assert len(handles) == 1
+  assert handles[0].async_transfer is True
+  assert handles[0].transfer_buckets == 2
   assert move_calls == []
   assert all(parameter.device.type == "cpu" for parameter in holder.transformer.parameters())
 

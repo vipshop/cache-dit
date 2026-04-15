@@ -17,6 +17,7 @@ import torch
 
 import cache_dit
 import cache_dit.quantization.svdquant.ptq as svdq_ptq
+from cache_dit.offload import layerwise_cpu_offload
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.quantization import QuantizeConfig
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
@@ -43,6 +44,7 @@ _DEFAULT_SVDQ_KWARGS = {
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
   "smooth_strategy": "activation",
+  "layerwise_offload": False,
   "async_transfer": False,
   "transfer_buckets": 1,
 }
@@ -1198,6 +1200,7 @@ def test_svdq_ptq_cpu_root_calibration_uses_layerwise_cuda_offload(tmp_path: Pat
     calibrate_fn,
     svdq_kwargs={
       "quantize_device": "cuda",
+      "layerwise_offload": True,
       "offload_quantized_layers_to_cpu": True,
       "async_transfer": True,
       "transfer_buckets": 2,
@@ -1267,6 +1270,42 @@ def test_svdq_ptq_collection_offload_skips_existing_accelerate_hooks(
   assert warning_messages
   assert "Skipping cache-dit layerwise CPU offload for SVDQ activation collection" in (
     warning_messages[0])
+
+
+def test_svdq_ptq_collection_offload_skips_existing_cache_dit_handles(
+  monkeypatch: pytest.MonkeyPatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=115,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  existing_handle = layerwise_cpu_offload(
+    model.block,
+    module_names=["to_q", "to_k"],
+    onload_device="cuda",
+  )
+
+  warning_messages: list[str] = []
+
+  def capture_warning(message: str, *args: object, **_kwargs: object) -> None:
+    warning_messages.append(message % args if args else message)
+
+  monkeypatch.setattr(svdq_ptq.logger, "warning", capture_warning)
+
+  try:
+    handle = svdq_ptq._maybe_enable_layerwise_collection_offload(
+      model.block,
+      layer_names=["to_q", "to_k"],
+      onload_device=torch.device("cuda"),
+    )
+  finally:
+    existing_handle.remove()
+
+  assert handle is None
+  assert warning_messages
+  assert "cache-dit layerwise offload handle" in warning_messages[0]
 
 
 def test_svdq_ptq_quantize_root_linear_and_load_roundtrip(tmp_path: Path) -> None:
