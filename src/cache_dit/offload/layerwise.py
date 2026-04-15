@@ -264,6 +264,8 @@ class _LayerwiseTarget:
   resident_device: torch.device = dataclasses.field(default_factory=lambda: torch.device("cpu"))
   pending_onload_event: torch.cuda.Event | None = None
   pending_offload_event: torch.cuda.Event | None = None
+  pending_onload_stream_index: int | None = None
+  pending_offload_stream_index: int | None = None
   inflight_gpu_tensors: list[torch.Tensor] = dataclasses.field(default_factory=list)
 
 
@@ -272,8 +274,9 @@ class LayerwiseOffloadHandle:
 
   The handle owns the forward pre/post hooks that move selected submodules to the onload device
   just in time, preserve the caller-visible tensor device for outputs, and offload the submodule
-  state back after execution. When ``async_transfer=True``, the handle also owns a dedicated CUDA
-  copy stream that overlaps submodule state transfers with compute on the current stream.
+  state back after execution. When ``async_transfer=True``, the handle also owns a CUDA copy
+  stream pool sized by ``transfer_buckets`` so bucket prefetches can be issued on distinct streams
+  instead of being serialized through a single copy lane.
 
   :param root_module: Root module that owns the registered hooks.
   :param targets: Selected submodules that participate in layerwise offload.
@@ -284,7 +287,7 @@ class LayerwiseOffloadHandle:
     first tensor device observed in the input tree for each call.
   :param non_blocking: Whether visible tensor transfers should request non-blocking copies.
   :param async_transfer: Whether module state onload/offload should use a dedicated CUDA copy
-    stream.
+    stream pool.
   :param transfer_buckets: How many future targets should be prefetched when async transfer is
     enabled. A value of 1 preserves the current single-target lookahead behavior.
 
@@ -316,7 +319,11 @@ class LayerwiseOffloadHandle:
     self.non_blocking = non_blocking
     self.async_transfer = async_transfer
     self.transfer_buckets = transfer_buckets
-    self._copy_stream = (torch.cuda.Stream(device=onload_device) if async_transfer else None)
+    self._copy_streams = (
+      [torch.cuda.Stream(device=onload_device)
+       for _ in range(transfer_buckets)] if async_transfer else [])
+    self._copy_stream_loads = [0 for _ in self._copy_streams]
+    self._copy_stream_rr_cursor = 0
     self._pending_onload_targets: set[int] = set()
     self._pending_offload_targets: set[int] = set()
     self._removed = False
@@ -333,37 +340,71 @@ class LayerwiseOffloadHandle:
       )
     target.resident_device = self.offload_device
 
+  def _select_copy_stream(self) -> tuple[int, torch.cuda.Stream]:
+    if not self._copy_streams:
+      raise RuntimeError("Async layerwise offload requires a CUDA copy stream pool.")
+
+    start_index = self._copy_stream_rr_cursor
+    selected_index = start_index
+    selected_load: int | None = None
+    for offset in range(len(self._copy_streams)):
+      stream_index = (start_index + offset) % len(self._copy_streams)
+      stream_load = self._copy_stream_loads[stream_index]
+      if selected_load is None or stream_load < selected_load:
+        selected_index = stream_index
+        selected_load = stream_load
+        if stream_load == 0:
+          break
+
+    self._copy_stream_rr_cursor = (selected_index + 1) % len(self._copy_streams)
+    self._copy_stream_loads[selected_index] += 1
+    return selected_index, self._copy_streams[selected_index]
+
+  def _release_copy_stream(self, stream_index: int | None) -> None:
+    if stream_index is None:
+      return
+    if 0 <= stream_index < len(
+        self._copy_stream_loads) and self._copy_stream_loads[stream_index] > 0:
+      self._copy_stream_loads[stream_index] -= 1
+
+  def _clear_pending_onload(self, target: _LayerwiseTarget) -> None:
+    target.pending_onload_event = None
+    self._pending_onload_targets.discard(target.index)
+    self._release_copy_stream(target.pending_onload_stream_index)
+    target.pending_onload_stream_index = None
+
+  def _clear_pending_offload(self, target: _LayerwiseTarget) -> None:
+    target.pending_offload_event = None
+    target.inflight_gpu_tensors.clear()
+    self._pending_offload_targets.discard(target.index)
+    self._release_copy_stream(target.pending_offload_stream_index)
+    target.pending_offload_stream_index = None
+
   def _drain_pending_onload(self, target: _LayerwiseTarget) -> None:
     if target.pending_onload_event is None:
       return
     target.pending_onload_event.synchronize()
-    target.pending_onload_event = None
-    self._pending_onload_targets.discard(target.index)
+    self._clear_pending_onload(target)
 
   def _drain_pending_offload(self, target: _LayerwiseTarget) -> None:
     if target.pending_offload_event is None:
       return
     target.pending_offload_event.synchronize()
-    target.pending_offload_event = None
-    target.inflight_gpu_tensors.clear()
-    self._pending_offload_targets.discard(target.index)
+    self._clear_pending_offload(target)
 
   def _reap_completed_onload(self, target: _LayerwiseTarget) -> None:
     if target.pending_onload_event is None:
       return
     if not target.pending_onload_event.query():
       return
-    target.pending_onload_event = None
-    self._pending_onload_targets.discard(target.index)
+    self._clear_pending_onload(target)
 
   def _reap_completed_offload(self, target: _LayerwiseTarget) -> None:
     if target.pending_offload_event is None:
       return
     if not target.pending_offload_event.query():
       return
-    target.pending_offload_event = None
-    target.inflight_gpu_tensors.clear()
-    self._pending_offload_targets.discard(target.index)
+    self._clear_pending_offload(target)
 
   def _reap_completed_transfers(self) -> None:
     for target in self.targets:
@@ -410,9 +451,7 @@ class LayerwiseOffloadHandle:
         return
       self._drain_pending_offload(target)
 
-    copy_stream = self._copy_stream
-    if copy_stream is None:
-      raise RuntimeError("Async layerwise offload requires a CUDA copy stream.")
+    stream_index, copy_stream = self._select_copy_stream()
 
     current_stream = torch.cuda.current_stream(device=self.onload_device)
     copy_stream.wait_stream(current_stream)
@@ -430,6 +469,7 @@ class LayerwiseOffloadHandle:
       event.record(copy_stream)
 
     target.pending_onload_event = event
+    target.pending_onload_stream_index = stream_index
     target.resident_device = self.onload_device
     self._pending_onload_targets.add(target.index)
 
@@ -437,8 +477,9 @@ class LayerwiseOffloadHandle:
     self._reap_completed_onload(target)
     if target.pending_onload_event is None:
       return
+    event = target.pending_onload_event
     current_stream = torch.cuda.current_stream(device=self.onload_device)
-    current_stream.wait_event(target.pending_onload_event)
+    current_stream.wait_event(event)
     for tensor_state in target.tensor_states:
       onload_tensor = _get_direct_state_tensor(
         target.module,
@@ -446,8 +487,7 @@ class LayerwiseOffloadHandle:
         name=tensor_state.name,
       )
       onload_tensor.record_stream(current_stream)
-    target.pending_onload_event = None
-    self._pending_onload_targets.discard(target.index)
+    self._clear_pending_onload(target)
 
   def _schedule_target_offload(self, target: _LayerwiseTarget) -> None:
     if not self.async_transfer:
@@ -458,9 +498,7 @@ class LayerwiseOffloadHandle:
     if target.pending_onload_event is not None:
       self._await_target_onload(target)
 
-    copy_stream = self._copy_stream
-    if copy_stream is None:
-      raise RuntimeError("Async layerwise offload requires a CUDA copy stream.")
+    stream_index, copy_stream = self._select_copy_stream()
 
     current_stream = torch.cuda.current_stream(device=self.onload_device)
     copy_stream.wait_stream(current_stream)
@@ -479,6 +517,7 @@ class LayerwiseOffloadHandle:
 
     self._bind_cpu_state(target)
     target.pending_offload_event = event
+    target.pending_offload_stream_index = stream_index
     target.inflight_gpu_tensors = inflight_gpu_tensors
     self._pending_offload_targets.add(target.index)
 

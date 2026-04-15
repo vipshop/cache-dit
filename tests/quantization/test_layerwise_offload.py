@@ -7,6 +7,7 @@ from cache_dit.offload import get_layerwise_offload_handles
 from cache_dit.offload import layerwise_offload
 from cache_dit.offload import layerwise_cpu_offload
 from cache_dit.offload import remove_layerwise_offload
+from cache_dit.offload.layerwise import LayerwiseOffloadHandle
 from tests.quantization._svdq_test_utils import make_token_batch
 from tests.quantization._svdq_test_utils import make_toy_model
 
@@ -190,6 +191,66 @@ def test_layerwise_cpu_offload_async_transfer_respects_transfer_buckets() -> Non
   assert torch.isfinite(output).all()
   assert output.device.type == "cpu"
   assert all(parameter.device.type == "cpu" for parameter in model.parameters())
+
+
+def test_layerwise_cpu_offload_async_transfer_assigns_distinct_streams_per_bucket(
+  monkeypatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=914,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=915,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  scheduled_onload_streams: list[tuple[str, int]] = []
+  seen_targets: set[str] = set()
+  original_schedule_target_onload = LayerwiseOffloadHandle._schedule_target_onload
+
+  def _capture_schedule_target_onload(self, target, *, allow_wait):
+    original_schedule_target_onload(self, target, allow_wait=allow_wait)
+    stream_index = target.pending_onload_stream_index
+    if stream_index is None or target.name in seen_targets:
+      return
+    seen_targets.add(target.name)
+    scheduled_onload_streams.append((target.name, stream_index))
+
+  monkeypatch.setattr(
+    LayerwiseOffloadHandle,
+    "_schedule_target_onload",
+    _capture_schedule_target_onload,
+  )
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=2,
+  )
+
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+  finally:
+    offload_handle.remove()
+
+  assert torch.isfinite(output).all()
+  assert len(offload_handle._copy_streams) == 2
+  assert [name for name, _stream_index in scheduled_onload_streams[:3]] == [
+    "block.to_q",
+    "block.to_k",
+    "block.to_v",
+  ]
+  assert scheduled_onload_streams[1][1] != scheduled_onload_streams[2][1]
 
 
 def test_layerwise_cpu_offload_async_transfer_caps_global_onload_budget() -> None:

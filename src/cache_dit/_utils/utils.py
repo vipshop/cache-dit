@@ -601,17 +601,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-offload-quantized-layers-to-cpu",
     dest="svdq_offload_quantized_layers_to_cpu",
     action="store_true",
-    default=True,
+    default=False,
     help=(
-      "After each SVDQ linear layer is quantized, move it back to CPU immediately. This keeps "
-      "the example CLI on a low-memory path and delays the full move until quantization finishes."),
+      "After each SVDQ linear layer is quantized, move it back to CPU immediately. This reduces "
+      "peak memory during quantization and is forced on when --svdq-layerwise-offload is active."),
   )
   parser.add_argument(
     "--svdq-keep-quantized-layers-on-device",
     dest="svdq_offload_quantized_layers_to_cpu",
     action="store_false",
-    help=
-    "Keep newly quantized SVDQ layers on the quantization device instead of offloading them to CPU.",
+    help=(
+      "Keep newly quantized SVDQ layers on the quantization device instead of offloading them to "
+      "CPU. Ignored when --svdq-layerwise-offload is active."),
   )
   parser.add_argument(
     "--svdq-layerwise-offload",
@@ -643,7 +644,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=True,
     help=(
       "Defer the final pipeline move to CUDA until SVDQ few-shot runtime quantization finishes. "
-      "Enabled by default for the example CLI low-memory path."),
+      "This only takes effect when quantized layers are offloaded during the few-shot flow."),
   )
   parser.add_argument(
     "--svdq-no-defer-final-to-cuda",
@@ -1032,6 +1033,10 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   # Force enable compile if force_compile_dynamic is enabled
   if args.force_compile_dynamic:
     args.compile = True
+
+  if getattr(args, "svdq_layerwise_offload", False):
+    args.svdq_offload_quantized_layers_to_cpu = True
+
   return args
 
 
@@ -1536,15 +1541,16 @@ def maybe_quantize_transformer(
     few_shot_auto_compile = bool(args.svdq_few_shot_compile)
     if args.svdq_smooth_strategy == "few_shot" and args.compile:
       few_shot_auto_compile = True
-    defer_move_to_execution_device = bool(
-      args.svdq_defer_final_to_cuda and args.svdq_smooth_strategy == "few_shot"
-      and (args.svdq_layerwise_offload or args.svdq_offload_quantized_layers_to_cpu))
+    offload_quantized_layers_to_cpu = bool(args.svdq_offload_quantized_layers_to_cpu)
+    defer_move_to_execution_device = bool(args.svdq_defer_final_to_cuda
+                                          and args.svdq_smooth_strategy == "few_shot"
+                                          and offload_quantized_layers_to_cpu)
     return {
       "smooth_strategy": args.svdq_smooth_strategy,
       "calibrate_precision": args.svdq_calibrate_precision,
       "runtime_kernel": args.svdq_runtime,
       "quantize_device": args.svdq_quantize_device,
-      "offload_quantized_layers_to_cpu": args.svdq_offload_quantized_layers_to_cpu,
+      "offload_quantized_layers_to_cpu": offload_quantized_layers_to_cpu,
       "layerwise_offload": args.svdq_layerwise_offload,
       "async_transfer": args.svdq_layerwise_async_transfer,
       "transfer_buckets": args.svdq_layerwise_transfer_buckets,
