@@ -350,6 +350,8 @@ def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None
   assert config.get_svdq_kwargs()["runtime_kernel"] == "v1"
   assert config.get_svdq_kwargs()["quantize_device"] == "auto"
   assert config.get_svdq_kwargs()["offload_quantized_layers_to_cpu"] is False
+  assert config.get_svdq_kwargs()["async_transfer"] is False
+  assert config.get_svdq_kwargs()["transfer_buckets"] == 1
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is False
 
 
@@ -408,12 +410,16 @@ def test_svdq_dq_config_validation_accepts_device_strategy_kwargs() -> None:
     svdq_kwargs={
       "quantize_device": "cuda",
       "offload_quantized_layers_to_cpu": True,
+      "async_transfer": True,
+      "transfer_buckets": 2,
       "defer_move_to_execution_device": True,
     },
   )
 
   assert config.get_svdq_kwargs()["quantize_device"] == "cuda"
   assert config.get_svdq_kwargs()["offload_quantized_layers_to_cpu"] is True
+  assert config.get_svdq_kwargs()["async_transfer"] is True
+  assert config.get_svdq_kwargs()["transfer_buckets"] == 2
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is True
 
 
@@ -517,10 +523,15 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "svdq_int4_r32_dq",
       "--svdq-quantize-device",
       "auto",
+      "--svdq-async-transfer",
+      "--svdq-transfer-buckets",
+      "2",
       "--svdq-keep-quantized-layers-on-device",
       "--svdq-no-defer-final-to-cuda",
     ]))
   assert args.svdq_quantize_device == "auto"
+  assert args.svdq_async_transfer is True
+  assert args.svdq_transfer_buckets == 2
   assert args.svdq_offload_quantized_layers_to_cpu is False
   assert args.svdq_defer_final_to_cuda is False
 
@@ -1035,9 +1046,15 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
         "few_shot_steps": 1,
         "quantize_device": "cuda",
         "offload_quantized_layers_to_cpu": True,
+        "async_transfer": True,
+        "transfer_buckets": 2,
       },
     ),
   )
+  pending_handles = get_layerwise_offload_handles(quantized_model)
+  assert len(pending_handles) == 1
+  assert pending_handles[0].async_transfer is True
+  assert pending_handles[0].transfer_buckets == 2
   observed_input_devices: list[str] = []
   observed_linear = quantized_model.block.to_q
   capture_handle = observed_linear.register_forward_pre_hook(

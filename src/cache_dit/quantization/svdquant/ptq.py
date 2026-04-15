@@ -161,6 +161,8 @@ def _maybe_enable_layerwise_collection_offload(
   *,
   layer_names: list[str],
   onload_device: torch.device,
+  async_transfer: bool = False,
+  transfer_buckets: int = 1,
 ) -> LayerwiseOffloadHandle | None:
   if onload_device.type != "cuda":
     return None
@@ -182,6 +184,8 @@ def _maybe_enable_layerwise_collection_offload(
     module_names=layer_names,
     onload_device=onload_device,
     offload_device=torch.device("cpu"),
+    async_transfer=async_transfer,
+    transfer_buckets=transfer_buckets,
   )
 
 
@@ -546,6 +550,8 @@ class SVDQPTQCalibrator:
         self.context.root_module,
         layer_names=self.context.candidate_layer_names,
         onload_device=observation_device,
+        async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
+        transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
       )
 
     for layer_name in self.context.candidate_layer_names:
@@ -664,6 +670,8 @@ class SVDQFewShotRuntimeController:
       self.context.root_module,
       layer_names=self.context.candidate_layer_names,
       onload_device=self.quantize_device,
+      async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
+      transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
     )
 
     for layer_name in self.context.candidate_layer_names:

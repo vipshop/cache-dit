@@ -43,6 +43,12 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # immediately after per-layer quantization. This reduces CUDA peak memory and
   # lets callers do a single final move once all target layers are quantized.
   "offload_quantized_layers_to_cpu": False,
+  # When enabled and layerwise collection offload is active, cache-dit uses a
+  # dedicated CUDA copy stream to overlap CPU<->CUDA transfers with compute.
+  "async_transfer": False,
+  # Number of future targets to prefetch when async_transfer is enabled for
+  # layerwise collection offload.
+  "transfer_buckets": 1,
   # When enabled for few-shot DQ, helper flows may skip the eager final
   # `pipe.to(cuda)` and move the pipeline only after runtime quantization has
   # completed.
@@ -159,6 +165,14 @@ def _resolve_svdq_positive_int_or_none(key: str, value: Any) -> int | None:
   return value
 
 
+def _resolve_svdq_positive_int(key: str, value: Any) -> int:
+  if isinstance(value, bool) or not isinstance(value, int):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be an int, got {type(value)}.")
+  if value <= 0:
+    raise ValueError(f"svdq_kwargs[{key!r}] must be a positive integer, got {value}.")
+  return value
+
+
 def _resolve_svdq_positive_float(key: str, value: Any) -> float:
   if isinstance(value, bool) or not isinstance(value, (int, float)):
     raise TypeError(f"svdq_kwargs[{key!r}] must be a float, got {type(value)}.")
@@ -232,6 +246,8 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "runtime_kernel": _resolve_svdq_runtime_kernel,
     "quantize_device": _resolve_svdq_quantize_device,
     "offload_quantized_layers_to_cpu": _resolve_svdq_bool_kwarg,
+    "async_transfer": _resolve_svdq_bool_kwarg,
+    "transfer_buckets": _resolve_svdq_positive_int,
     "defer_move_to_execution_device": _resolve_svdq_bool_kwarg,
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,

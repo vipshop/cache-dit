@@ -614,6 +614,20 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "Keep newly quantized SVDQ layers on the quantization device instead of offloading them to CPU.",
   )
   parser.add_argument(
+    "--svdq-async-transfer",
+    action="store_true",
+    default=False,
+    help=("Enable CUDA-stream-based async_transfer for SVDQ PTQ calibration and DQ few-shot "
+          "layerwise collection when CPU-root layerwise offload is active."),
+  )
+  parser.add_argument(
+    "--svdq-transfer-buckets",
+    type=int,
+    default=1,
+    help=("How many future layerwise offload targets to prefetch when --svdq-async-transfer is "
+          "enabled. Default is 1."),
+  )
+  parser.add_argument(
     "--svdq-defer-final-to-cuda",
     dest="svdq_defer_final_to_cuda",
     action="store_true",
@@ -1482,6 +1496,8 @@ def maybe_quantize_transformer(
       "runtime_kernel": args.svdq_runtime,
       "quantize_device": args.svdq_quantize_device,
       "offload_quantized_layers_to_cpu": args.svdq_offload_quantized_layers_to_cpu,
+      "async_transfer": args.svdq_async_transfer,
+      "transfer_buckets": args.svdq_transfer_buckets,
       "defer_move_to_execution_device": defer_move_to_execution_device,
       "few_shot_steps": args.svdq_few_shot_steps,
       "few_shot_relax_factor": args.svdq_few_shot_relax_factor,

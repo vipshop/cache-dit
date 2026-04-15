@@ -43,6 +43,8 @@ _DEFAULT_SVDQ_KWARGS = {
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
   "smooth_strategy": "activation",
+  "async_transfer": False,
+  "transfer_buckets": 1,
 }
 _FLUX2_NUM_INFERENCE_STEPS = 4
 _FLUX2_VISUAL_SAMPLE_COUNT = 3
@@ -1197,6 +1199,8 @@ def test_svdq_ptq_cpu_root_calibration_uses_layerwise_cuda_offload(tmp_path: Pat
     svdq_kwargs={
       "quantize_device": "cuda",
       "offload_quantized_layers_to_cpu": True,
+      "async_transfer": True,
+      "transfer_buckets": 2,
     },
   )
 
@@ -1206,6 +1210,32 @@ def test_svdq_ptq_cpu_root_calibration_uses_layerwise_cuda_offload(tmp_path: Pat
   assert set(observed_input_devices) == {"cuda"}
   assert isinstance(quantized_model.block.to_q, SVDQW4A4Linear)
   assert quantized_model.block.to_q.qweight.device.type == "cpu"
+
+
+def test_svdq_ptq_collection_offload_accepts_async_transfer() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=114,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  handle = svdq_ptq._maybe_enable_layerwise_collection_offload(
+    model.block,
+    layer_names=["to_q", "to_k"],
+    onload_device=torch.device("cuda"),
+    async_transfer=True,
+    transfer_buckets=2,
+  )
+
+  try:
+    assert handle is not None
+    assert handle.async_transfer is True
+    assert handle.transfer_buckets == 2
+  finally:
+    if handle is not None:
+      handle.remove()
 
 
 def test_svdq_ptq_collection_offload_skips_existing_accelerate_hooks(

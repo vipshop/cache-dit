@@ -179,7 +179,6 @@ init_env.sh
 *.bin
 *.h5
 *.hdf5
-
 uv.lock
 CLAUDE.local.md
 *.nsys-rep
@@ -197,3 +196,5 @@ CLAUDE.local.md
 *.plans
 *.tmp
 /.tmp/
+.vscode
+tools

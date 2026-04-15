@@ -201,11 +201,70 @@ def _resolve_target_modules(
   return resolved
 
 
+def _iter_direct_state_entries(module: nn.Module):
+  for name, parameter in module.named_parameters(recurse=False):
+    yield "parameter", name, parameter, parameter.requires_grad
+  for name, buffer in module.named_buffers(recurse=False):
+    yield "buffer", name, buffer, False
+
+
+def _get_direct_state_tensor(module: nn.Module, *, kind: str, name: str) -> torch.Tensor:
+  if kind == "parameter":
+    parameter = module._parameters.get(name)
+    if parameter is None:
+      raise KeyError(f"Missing parameter {name!r} on module {module.__class__.__name__}.")
+    return parameter.data
+  tensor = module._buffers.get(name)
+  if tensor is None:
+    raise KeyError(f"Missing buffer {name!r} on module {module.__class__.__name__}.")
+  return tensor
+
+
+def _assign_direct_state_tensor(
+  module: nn.Module,
+  *,
+  kind: str,
+  name: str,
+  tensor: torch.Tensor,
+  requires_grad: bool,
+) -> None:
+  if kind == "parameter":
+    parameter = module._parameters.get(name)
+    if parameter is None:
+      raise KeyError(f"Missing parameter {name!r} on module {module.__class__.__name__}.")
+    parameter.data = tensor
+    parameter.requires_grad_(requires_grad)
+    return
+  if name not in module._buffers:
+    raise KeyError(f"Missing buffer {name!r} on module {module.__class__.__name__}.")
+  module._buffers[name] = tensor
+
+
+def _infer_module_state_device(module: nn.Module) -> torch.device:
+  for _kind, _name, tensor, _requires_grad in _iter_direct_state_entries(module):
+    return tensor.device
+  return torch.device("cpu")
+
+
+@dataclasses.dataclass
+class _LayerwiseTensorState:
+  kind: str
+  name: str
+  requires_grad: bool
+  cpu_tensor: torch.Tensor
+
+
 @dataclasses.dataclass
 class _LayerwiseTarget:
   name: str
   module: nn.Module
+  index: int
   return_devices: list[torch.device] = dataclasses.field(default_factory=list)
+  tensor_states: list[_LayerwiseTensorState] = dataclasses.field(default_factory=list)
+  resident_device: torch.device = dataclasses.field(default_factory=lambda: torch.device("cpu"))
+  pending_onload_event: torch.cuda.Event | None = None
+  pending_offload_event: torch.cuda.Event | None = None
+  inflight_gpu_tensors: list[torch.Tensor] = dataclasses.field(default_factory=list)
 
 
 class LayerwiseOffloadHandle:
@@ -213,8 +272,8 @@ class LayerwiseOffloadHandle:
 
   The handle owns the forward pre/post hooks that move selected submodules to the onload device
   just in time, preserve the caller-visible tensor device for outputs, and offload the submodule
-  state back after execution. This utility targets inference and calibration workloads rather than
-  training-time autograd.
+  state back after execution. When ``async_transfer=True``, the handle also owns a dedicated CUDA
+  copy stream that overlaps submodule state transfers with compute on the current stream.
 
   :param root_module: Root module that owns the registered hooks.
   :param targets: Selected submodules that participate in layerwise offload.
@@ -223,11 +282,15 @@ class LayerwiseOffloadHandle:
   :param offload_device: Residency device used after the target module forward.
   :param output_device: Optional fixed output device. When omitted, outputs are returned to the
     first tensor device observed in the input tree for each call.
-  :param non_blocking: Whether tensor transfers should request non-blocking copies.
+  :param non_blocking: Whether visible tensor transfers should request non-blocking copies.
+  :param async_transfer: Whether module state onload/offload should use a dedicated CUDA copy
+    stream.
+  :param transfer_buckets: How many future targets should be prefetched when async transfer is
+    enabled. A value of 1 preserves the current single-target lookahead behavior.
 
-  The created handle is also attached to `root_module` so callers can manage the lifecycle via
-  `get_layerwise_offload_handles(root_module)` or `remove_layerwise_offload(root_module)` without
-  keeping a separate owner object.
+  The created handle is also attached to ``root_module`` so callers can manage the lifecycle via
+  ``get_layerwise_offload_handles(root_module)`` or ``remove_layerwise_offload(root_module)``
+  without keeping a separate owner object.
   """
 
   def __init__(
@@ -240,6 +303,8 @@ class LayerwiseOffloadHandle:
     offload_device: torch.device,
     output_device: torch.device | None,
     non_blocking: bool,
+    async_transfer: bool,
+    transfer_buckets: int,
   ) -> None:
     self.root_module = root_module
     self.targets = targets
@@ -249,8 +314,200 @@ class LayerwiseOffloadHandle:
     self.offload_device = offload_device
     self.output_device = output_device
     self.non_blocking = non_blocking
+    self.async_transfer = async_transfer
+    self.transfer_buckets = transfer_buckets
+    self._copy_stream = (torch.cuda.Stream(device=onload_device) if async_transfer else None)
+    self._pending_onload_targets: set[int] = set()
+    self._pending_offload_targets: set[int] = set()
     self._removed = False
     _register_layerwise_offload_handle(root_module, self)
+
+  def _bind_cpu_state(self, target: _LayerwiseTarget) -> None:
+    for tensor_state in target.tensor_states:
+      _assign_direct_state_tensor(
+        target.module,
+        kind=tensor_state.kind,
+        name=tensor_state.name,
+        tensor=tensor_state.cpu_tensor,
+        requires_grad=tensor_state.requires_grad,
+      )
+    target.resident_device = self.offload_device
+
+  def _drain_pending_onload(self, target: _LayerwiseTarget) -> None:
+    if target.pending_onload_event is None:
+      return
+    target.pending_onload_event.synchronize()
+    target.pending_onload_event = None
+    self._pending_onload_targets.discard(target.index)
+
+  def _drain_pending_offload(self, target: _LayerwiseTarget) -> None:
+    if target.pending_offload_event is None:
+      return
+    target.pending_offload_event.synchronize()
+    target.pending_offload_event = None
+    target.inflight_gpu_tensors.clear()
+    self._pending_offload_targets.discard(target.index)
+
+  def _reap_completed_onload(self, target: _LayerwiseTarget) -> None:
+    if target.pending_onload_event is None:
+      return
+    if not target.pending_onload_event.query():
+      return
+    target.pending_onload_event = None
+    self._pending_onload_targets.discard(target.index)
+
+  def _reap_completed_offload(self, target: _LayerwiseTarget) -> None:
+    if target.pending_offload_event is None:
+      return
+    if not target.pending_offload_event.query():
+      return
+    target.pending_offload_event = None
+    target.inflight_gpu_tensors.clear()
+    self._pending_offload_targets.discard(target.index)
+
+  def _reap_completed_transfers(self) -> None:
+    for target in self.targets:
+      self._reap_completed_onload(target)
+      self._reap_completed_offload(target)
+
+  def _drain_target_transfers(self, target: _LayerwiseTarget) -> None:
+    self._drain_pending_onload(target)
+    self._drain_pending_offload(target)
+
+  def _materialize_onload_sync(self, target: _LayerwiseTarget) -> None:
+    self._drain_target_transfers(target)
+    for tensor_state in target.tensor_states:
+      onload_tensor = tensor_state.cpu_tensor.to(device=self.onload_device, non_blocking=False)
+      _assign_direct_state_tensor(
+        target.module,
+        kind=tensor_state.kind,
+        name=tensor_state.name,
+        tensor=onload_tensor,
+        requires_grad=tensor_state.requires_grad,
+      )
+    target.resident_device = self.onload_device
+
+  def _materialize_offload_sync(self, target: _LayerwiseTarget) -> None:
+    self._drain_target_transfers(target)
+    for tensor_state in target.tensor_states:
+      current_tensor = _get_direct_state_tensor(
+        target.module,
+        kind=tensor_state.kind,
+        name=tensor_state.name,
+      )
+      if current_tensor.device.type != "cpu":
+        tensor_state.cpu_tensor.copy_(current_tensor, non_blocking=False)
+    self._bind_cpu_state(target)
+
+  def _schedule_target_onload(self, target: _LayerwiseTarget, *, allow_wait: bool) -> None:
+    if not self.async_transfer:
+      return
+    self._reap_completed_transfers()
+    if target.pending_onload_event is not None or target.resident_device == self.onload_device:
+      return
+    if target.pending_offload_event is not None:
+      if not allow_wait:
+        return
+      self._drain_pending_offload(target)
+
+    copy_stream = self._copy_stream
+    if copy_stream is None:
+      raise RuntimeError("Async layerwise offload requires a CUDA copy stream.")
+
+    current_stream = torch.cuda.current_stream(device=self.onload_device)
+    copy_stream.wait_stream(current_stream)
+    with torch.cuda.stream(copy_stream):
+      for tensor_state in target.tensor_states:
+        onload_tensor = tensor_state.cpu_tensor.to(device=self.onload_device, non_blocking=True)
+        _assign_direct_state_tensor(
+          target.module,
+          kind=tensor_state.kind,
+          name=tensor_state.name,
+          tensor=onload_tensor,
+          requires_grad=tensor_state.requires_grad,
+        )
+      event = torch.cuda.Event()
+      event.record(copy_stream)
+
+    target.pending_onload_event = event
+    target.resident_device = self.onload_device
+    self._pending_onload_targets.add(target.index)
+
+  def _await_target_onload(self, target: _LayerwiseTarget) -> None:
+    self._reap_completed_onload(target)
+    if target.pending_onload_event is None:
+      return
+    current_stream = torch.cuda.current_stream(device=self.onload_device)
+    current_stream.wait_event(target.pending_onload_event)
+    for tensor_state in target.tensor_states:
+      onload_tensor = _get_direct_state_tensor(
+        target.module,
+        kind=tensor_state.kind,
+        name=tensor_state.name,
+      )
+      onload_tensor.record_stream(current_stream)
+    target.pending_onload_event = None
+    self._pending_onload_targets.discard(target.index)
+
+  def _schedule_target_offload(self, target: _LayerwiseTarget) -> None:
+    if not self.async_transfer:
+      return
+    self._reap_completed_transfers()
+    if target.pending_offload_event is not None or target.resident_device == self.offload_device:
+      return
+    if target.pending_onload_event is not None:
+      self._await_target_onload(target)
+
+    copy_stream = self._copy_stream
+    if copy_stream is None:
+      raise RuntimeError("Async layerwise offload requires a CUDA copy stream.")
+
+    current_stream = torch.cuda.current_stream(device=self.onload_device)
+    copy_stream.wait_stream(current_stream)
+    inflight_gpu_tensors: list[torch.Tensor] = []
+    with torch.cuda.stream(copy_stream):
+      for tensor_state in target.tensor_states:
+        current_tensor = _get_direct_state_tensor(
+          target.module,
+          kind=tensor_state.kind,
+          name=tensor_state.name,
+        )
+        inflight_gpu_tensors.append(current_tensor)
+        tensor_state.cpu_tensor.copy_(current_tensor, non_blocking=True)
+      event = torch.cuda.Event()
+      event.record(copy_stream)
+
+    self._bind_cpu_state(target)
+    target.pending_offload_event = event
+    target.inflight_gpu_tensors = inflight_gpu_tensors
+    self._pending_offload_targets.add(target.index)
+
+  def _prefetch_bucket_targets(self, target: _LayerwiseTarget) -> None:
+    if not self.async_transfer:
+      return
+    self._reap_completed_transfers()
+    available_budget = self.transfer_buckets - len(self._pending_onload_targets)
+    if available_budget <= 0:
+      return
+    scheduled = 0
+    for bucket_index in range(1, self.transfer_buckets + 1):
+      if scheduled >= available_budget:
+        break
+      next_index = target.index + bucket_index
+      if next_index >= len(self.targets):
+        break
+      next_target = self.targets[next_index]
+      if next_target.return_devices:
+        continue
+      if next_target.pending_onload_event is not None:
+        continue
+      if next_target.pending_offload_event is not None:
+        continue
+      if next_target.resident_device == self.onload_device:
+        continue
+      self._schedule_target_onload(next_target, allow_wait=False)
+      if next_target.pending_onload_event is not None:
+        scheduled += 1
 
   def remove(self, *, offload: bool = True) -> None:
     """Remove all hooks and optionally offload registered targets immediately.
@@ -268,15 +525,61 @@ class LayerwiseOffloadHandle:
 
     if offload:
       for target in self.targets:
-        _move_module_state(
-          target.module,
-          self.offload_device,
-          non_blocking=self.non_blocking,
-        )
+        if self.async_transfer:
+          self._materialize_offload_sync(target)
+        else:
+          _move_module_state(
+            target.module,
+            self.offload_device,
+            non_blocking=self.non_blocking,
+          )
         target.return_devices.clear()
+    elif self.async_transfer:
+      for target in self.targets:
+        self._drain_target_transfers(target)
 
     self._removed = True
     _detach_layerwise_offload_handle(self.root_module, self)
+
+
+def _prepare_async_target(module: nn.Module, *, index: int, name: str) -> _LayerwiseTarget:
+  if _module_uses_meta_tensors(module):
+    raise ValueError(
+      "Layerwise offload does not support modules with meta tensors. Remove external meta-based "
+      "offload hooks or materialize the module before applying cache_dit.offload.")
+
+  tensor_states: list[_LayerwiseTensorState] = []
+  for kind, tensor_name, tensor, requires_grad in _iter_direct_state_entries(module):
+    if tensor.device.type == "cpu":
+      cpu_tensor = tensor.detach()
+      if not cpu_tensor.is_pinned():
+        cpu_tensor = cpu_tensor.pin_memory()
+    else:
+      cpu_tensor = torch.empty_like(tensor, device="cpu", pin_memory=True)
+      cpu_tensor.copy_(tensor, non_blocking=False)
+    tensor_states.append(
+      _LayerwiseTensorState(
+        kind=kind,
+        name=tensor_name,
+        requires_grad=requires_grad,
+        cpu_tensor=cpu_tensor,
+      ))
+    if tensor.device.type == "cpu" and cpu_tensor.data_ptr() != tensor.data_ptr():
+      _assign_direct_state_tensor(
+        module,
+        kind=kind,
+        name=tensor_name,
+        tensor=cpu_tensor,
+        requires_grad=requires_grad,
+      )
+
+  return _LayerwiseTarget(
+    name=name,
+    module=module,
+    index=index,
+    tensor_states=tensor_states,
+    resident_device=_infer_module_state_device(module),
+  )
 
 
 def _get_registered_layerwise_offload_handles(
@@ -354,39 +657,70 @@ def _apply_layerwise_offload(
   output_device: torch.device | str | None = None,
   non_blocking: bool = False,
   eager_offload: bool = True,
+  async_transfer: bool = False,
+  transfer_buckets: int = 1,
 ) -> LayerwiseOffloadHandle:
   """Attach layerwise onload/offload hooks to selected submodules.
 
   :param root_module: Root module that owns the selected submodules.
-  :param module_names: Optional explicit submodule names. When omitted, `module_filter` or the
+  :param module_names: Optional explicit submodule names. When omitted, ``module_filter`` or the
     default leaf-module selection is used.
-  :param module_filter: Optional predicate used to select submodules when `module_names` is not
+  :param module_filter: Optional predicate used to select submodules when ``module_names`` is not
     provided.
   :param onload_device: Device used during the selected submodule forward.
   :param offload_device: Residency device after the selected submodule forward.
   :param output_device: Optional fixed output device. When omitted, each submodule returns outputs
     to the first tensor device seen in that call's input tree.
-  :param non_blocking: Whether transfers should request non-blocking copies.
+  :param non_blocking: Whether visible tensor transfers should request non-blocking copies.
   :param eager_offload: Whether to move selected submodules to the offload device immediately.
+  :param async_transfer: Whether module state onload/offload should use a dedicated CUDA copy
+    stream. The async path currently supports CUDA onload plus CPU offload only.
+  :param transfer_buckets: How many future targets should be prefetched when ``async_transfer``
+    is enabled. A value of 1 preserves the current single-target lookahead behavior.
   :returns: A handle that can remove the registered hooks. The same handle is also attached to
-    `root_module` and can be removed later with `remove_layerwise_offload(root_module)`.
+    ``root_module`` and can be removed later with ``remove_layerwise_offload(root_module)``.
   """
 
   resolved_onload_device = torch.device(onload_device)
   resolved_offload_device = torch.device(offload_device)
   resolved_output_device = None if output_device is None else torch.device(output_device)
-  targets = [
-    _LayerwiseTarget(name=name, module=submodule) for name, submodule in _resolve_target_modules(
-      root_module,
-      module_names=module_names,
-      module_filter=module_filter,
-    )
-  ]
+  if isinstance(transfer_buckets, bool) or not isinstance(transfer_buckets, int):
+    raise TypeError(f"transfer_buckets must be an int, got {type(transfer_buckets)}.")
+  if transfer_buckets < 1:
+    raise ValueError(f"transfer_buckets must be >= 1, got {transfer_buckets}.")
+  if async_transfer:
+    if resolved_onload_device.type != "cuda":
+      raise ValueError("async_transfer requires a CUDA onload device.")
+    if resolved_offload_device.type != "cpu":
+      raise ValueError("async_transfer currently supports CPU offload only.")
+    if not torch.cuda.is_available():
+      raise RuntimeError("async_transfer requires CUDA, but CUDA is unavailable.")
 
-  if not targets:
+  resolved_targets = _resolve_target_modules(
+    root_module,
+    module_names=module_names,
+    module_filter=module_filter,
+  )
+  if not resolved_targets:
     raise ValueError("Layerwise offload did not match any target submodules.")
 
+  targets = [(_prepare_async_target(submodule, index=index, name=name)
+              if async_transfer else _LayerwiseTarget(name=name, module=submodule, index=index))
+             for index, (name, submodule) in enumerate(resolved_targets)]
+
   handles: list[Any] = []
+  handle = LayerwiseOffloadHandle(
+    root_module=root_module,
+    targets=targets,
+    handles=handles,
+    onload_device=resolved_onload_device,
+    offload_device=resolved_offload_device,
+    output_device=resolved_output_device,
+    non_blocking=non_blocking,
+    async_transfer=async_transfer,
+    transfer_buckets=transfer_buckets,
+  )
+
   for target in targets:
 
     def pre_hook(
@@ -396,7 +730,12 @@ def _apply_layerwise_offload(
       *,
       target: _LayerwiseTarget = target,
     ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-      if not target.return_devices:
+      if async_transfer:
+        if not target.return_devices:
+          handle._schedule_target_onload(target, allow_wait=True)
+          handle._await_target_onload(target)
+          handle._prefetch_bucket_targets(target)
+      elif not target.return_devices:
         _move_module_state(
           module,
           resolved_onload_device,
@@ -424,11 +763,14 @@ def _apply_layerwise_offload(
       ) if target.return_devices else resolved_offload_device
       output = _move_tree_to_device(output, return_device, non_blocking=non_blocking)
       if not target.return_devices:
-        _move_module_state(
-          module,
-          resolved_offload_device,
-          non_blocking=non_blocking,
-        )
+        if async_transfer:
+          handle._schedule_target_offload(target)
+        else:
+          _move_module_state(
+            module,
+            resolved_offload_device,
+            non_blocking=non_blocking,
+          )
       return output
 
     pre_kwargs: dict[str, Any] = {"with_kwargs": True}
@@ -443,29 +785,23 @@ def _apply_layerwise_offload(
       post_kwargs["prepend"] = False
     handles.append(target.module.register_forward_hook(post_hook, **post_kwargs))
 
-  handle = LayerwiseOffloadHandle(
-    root_module=root_module,
-    targets=targets,
-    handles=handles,
-    onload_device=resolved_onload_device,
-    offload_device=resolved_offload_device,
-    output_device=resolved_output_device,
-    non_blocking=non_blocking,
-  )
-
   if eager_offload:
     for target in targets:
-      _move_module_state(
-        target.module,
-        resolved_offload_device,
-        non_blocking=non_blocking,
-      )
+      if async_transfer:
+        handle._materialize_offload_sync(target)
+      else:
+        _move_module_state(
+          target.module,
+          resolved_offload_device,
+          non_blocking=non_blocking,
+        )
 
   logger.info(
-    "Enabled layerwise offload for %d submodules from %s to %s.",
+    "Enabled layerwise offload for %d submodules from %s to %s%s.",
     len(targets),
     resolved_offload_device,
     resolved_onload_device,
+    " with async transfer" if async_transfer else "",
   )
   return handle
 
@@ -480,20 +816,26 @@ def layerwise_offload(
   output_device: torch.device | str | None = None,
   non_blocking: bool = False,
   eager_offload: bool = True,
+  async_transfer: bool = False,
+  transfer_buckets: int = 1,
 ) -> LayerwiseOffloadHandle:
   """Public wrapper for generic submodule-level onload/offload hooks.
 
   :param root_module: Root module that owns the selected submodules.
   :param module_names: Optional explicit submodule names.
-  :param module_filter: Optional predicate used to select submodules when `module_names` is not
+  :param module_filter: Optional predicate used to select submodules when ``module_names`` is not
     provided.
   :param onload_device: Device used during the selected submodule forward.
   :param offload_device: Residency device after the selected submodule forward.
   :param output_device: Optional fixed output device for all selected submodules.
-  :param non_blocking: Whether transfers should request non-blocking copies.
+  :param non_blocking: Whether visible tensor transfers should request non-blocking copies.
   :param eager_offload: Whether to move selected submodules to the offload device immediately.
+  :param async_transfer: Whether module state onload/offload should use a dedicated CUDA copy
+    stream. The async path currently supports CUDA onload plus CPU offload only.
+  :param transfer_buckets: How many future targets should be prefetched when ``async_transfer``
+    is enabled.
   :returns: A handle that can remove the registered hooks. The same handle is also attached to
-    `root_module` and can be removed later with `remove_layerwise_offload(root_module)`.
+    ``root_module`` and can be removed later with ``remove_layerwise_offload(root_module)``.
   """
 
   return _apply_layerwise_offload(
@@ -505,6 +847,8 @@ def layerwise_offload(
     output_device=output_device,
     non_blocking=non_blocking,
     eager_offload=eager_offload,
+    async_transfer=async_transfer,
+    transfer_buckets=transfer_buckets,
   )
 
 
@@ -517,19 +861,25 @@ def layerwise_cpu_offload(
   output_device: torch.device | str | None = None,
   non_blocking: bool = False,
   eager_offload: bool = True,
+  async_transfer: bool = False,
+  transfer_buckets: int = 1,
 ) -> LayerwiseOffloadHandle:
   """Convenience wrapper for cache-dit layerwise CPU offload.
 
   :param root_module: Root module that owns the selected submodules.
   :param module_names: Optional explicit submodule names.
-  :param module_filter: Optional predicate used to select submodules when `module_names` is not
+  :param module_filter: Optional predicate used to select submodules when ``module_names`` is not
     provided.
   :param onload_device: Device used during the selected submodule forward.
   :param output_device: Optional fixed output device for all selected submodules.
-  :param non_blocking: Whether transfers should request non-blocking copies.
+  :param non_blocking: Whether visible tensor transfers should request non-blocking copies.
   :param eager_offload: Whether to move selected submodules to CPU immediately.
+  :param async_transfer: Whether module state onload/offload should use a dedicated CUDA copy
+    stream.
+  :param transfer_buckets: How many future targets should be prefetched when ``async_transfer``
+    is enabled.
   :returns: A handle that can remove the registered hooks. The same handle is also attached to
-    `root_module` and can be removed later with `remove_layerwise_offload(root_module)`.
+    ``root_module`` and can be removed later with ``remove_layerwise_offload(root_module)``.
   """
 
   return _apply_layerwise_offload(
@@ -541,6 +891,8 @@ def layerwise_cpu_offload(
     output_device=output_device,
     non_blocking=non_blocking,
     eager_offload=eager_offload,
+    async_transfer=async_transfer,
+    transfer_buckets=transfer_buckets,
   )
 
 
