@@ -1287,6 +1287,22 @@ def _register_deferred_few_shot_pipeline_move_callbacks(args, pipe) -> bool:
           ", ".join(remaining),
         )
         return
+      current_transformer = getattr(pipe, name, None)
+      runtime_layerwise_handle = getattr(
+        current_transformer,
+        "_svdq_runtime_layerwise_offload_handle",
+        None,
+      )
+      if runtime_layerwise_handle is not None:
+        pipe._svdq_move_to_device_after_forward = target_device
+        logger.info(
+          "SVDQ few-shot quantization finished for %s; keeping temporary runtime layerwise "
+          "offload active until the current pipeline call returns, then moving the pipeline to "
+          "%s.",
+          name,
+          target_device,
+        )
+        return
       try:
         logger.info(
           "SVDQ few-shot quantization finished; moving pipeline to %s immediately so the "
@@ -1332,6 +1348,18 @@ def maybe_finalize_deferred_svdq_pipe_move(
     return False
 
   delattr(pipe, "_svdq_move_to_device_after_forward")
+  for name in ("transformer", "transformer_2"):
+    transformer = getattr(pipe, name, None)
+    handle = getattr(transformer, "_svdq_runtime_layerwise_offload_handle", None)
+    if handle is None:
+      continue
+    logger.info(
+      "Removing temporary runtime layerwise offload from %s before moving pipeline to %s.",
+      name,
+      target_device,
+    )
+    handle.remove()
+    delattr(transformer, "_svdq_runtime_layerwise_offload_handle")
   logger.info(
     "Moving pipeline to %s after SVDQ few-shot runtime quantization completed.",
     target_device,

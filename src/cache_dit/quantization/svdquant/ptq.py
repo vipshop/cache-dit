@@ -37,6 +37,7 @@ _SVDQ_QUANT_CONFIG_FORMAT = "cache_dit_svdq_quant_config"
 _SVDQ_QUANT_CONFIG_VERSION = 2
 _SVDQ_QUANT_CONFIG_FILENAME = "quant_config.json"
 _ROOT_LAYER_NAME = "__root__"
+_RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR = "_svdq_runtime_layerwise_offload_handle"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -344,6 +345,50 @@ def _clear_pending_quantization_state(module: nn.Module) -> None:
   ):
     if hasattr(module, attr_name):
       delattr(module, attr_name)
+
+
+def _remove_runtime_layerwise_offload_handle(module: nn.Module) -> bool:
+  handle = getattr(module, _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR, None)
+  if handle is None:
+    return False
+  if isinstance(handle, LayerwiseOffloadHandle):
+    handle.remove()
+  delattr(module, _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR)
+  return True
+
+
+def _maybe_enable_layerwise_runtime_offload(
+  module: nn.Module,
+  *,
+  layer_names: list[str],
+  onload_device: torch.device,
+  svdq_kwargs: dict[str, Any],
+) -> LayerwiseOffloadHandle | None:
+  if onload_device.type != "cuda":
+    return None
+  if not bool(svdq_kwargs.get("layerwise_offload", False)):
+    return None
+  if not bool(svdq_kwargs.get("offload_quantized_layers_to_cpu", False)):
+    return None
+
+  _remove_runtime_layerwise_offload_handle(module)
+  handle = _apply_layerwise_offload(
+    module,
+    module_names=layer_names,
+    onload_device=onload_device,
+    offload_device=torch.device("cpu"),
+    async_transfer=bool(svdq_kwargs.get("async_transfer", False)),
+    transfer_buckets=int(svdq_kwargs.get("transfer_buckets", 1)),
+  )
+  setattr(module, _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR, handle)
+  logger.info(
+    "Enabled temporary layerwise offload for %d quantized SVDQ layers on %s so the current "
+    "pipeline/module call can finish before the final move to %s.",
+    len(layer_names),
+    module.__class__.__name__,
+    onload_device,
+  )
+  return handle
 
 
 @dataclasses.dataclass
@@ -779,6 +824,12 @@ class SVDQFewShotRuntimeController:
       svdq_kwargs=self.context.svdq_kwargs,
       checkpoint_path=None,
       quantize_config=self.context.quantize_config,
+    )
+    _maybe_enable_layerwise_runtime_offload(
+      module,
+      layer_names=quantized_layer_names,
+      onload_device=self.quantize_device,
+      svdq_kwargs=self.context.svdq_kwargs,
     )
     module._svdq_runtime_quantize_time_s = runtime_quantize_time_s
     module._svdq_runtime_quantized_after_forwards = self.completed_forwards

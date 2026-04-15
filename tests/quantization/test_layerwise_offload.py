@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+import cache_dit.offload.layerwise as layerwise_module
 from cache_dit.offload import get_layerwise_offload_handles
 from cache_dit.offload import layerwise_offload
 from cache_dit.offload import layerwise_cpu_offload
@@ -251,6 +252,50 @@ def test_layerwise_cpu_offload_async_transfer_assigns_distinct_streams_per_bucke
     "block.to_v",
   ]
   assert scheduled_onload_streams[1][1] != scheduled_onload_streams[2][1]
+
+
+def test_layerwise_cpu_offload_async_transfer_emits_distinct_stream_debug_logs(
+  monkeypatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=916,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=917,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  debug_messages: list[str] = []
+
+  def _capture_debug(message: str, *args) -> None:
+    debug_messages.append(message % args if args else message)
+
+  monkeypatch.setattr(layerwise_module.logger, "debug", _capture_debug)
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=2,
+  )
+
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+  finally:
+    offload_handle.remove()
+
+  assert torch.isfinite(output).all()
+  assert any("copy stream[0]" in message for message in debug_messages)
+  assert any("copy stream[1]" in message for message in debug_messages)
 
 
 def test_layerwise_cpu_offload_async_transfer_caps_global_onload_budget() -> None:

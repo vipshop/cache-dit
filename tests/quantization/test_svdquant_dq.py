@@ -1394,7 +1394,7 @@ def test_svdq_dq_few_shot_deferred_compile_executes_once(
   assert compile_calls == ["transformer"]
 
 
-def test_svdq_dq_few_shot_moves_pipeline_immediately_after_quantization() -> None:
+def test_svdq_dq_few_shot_layerwise_offload_defers_full_pipeline_move_until_after_forward() -> None:
   dtype = runtime_dtype()
   model = make_toy_model(
     embed_dim=128,
@@ -1436,10 +1436,14 @@ def test_svdq_dq_few_shot_moves_pipeline_immediately_after_quantization() -> Non
     output = holder.transformer(eval_inputs)
 
   assert torch.isfinite(output).all()
+  assert len(move_calls) == 0
+  assert hasattr(holder, "_svdq_move_to_device_after_forward")
+  assert hasattr(holder.transformer, "_svdq_runtime_layerwise_offload_handle")
+  assert maybe_finalize_deferred_svdq_pipe_move(holder)
   assert len(move_calls) == 1
   assert move_calls[0].type == "cuda"
   assert not hasattr(holder, "_svdq_move_to_device_after_forward")
-  assert not maybe_finalize_deferred_svdq_pipe_move(holder)
+  assert not hasattr(holder.transformer, "_svdq_runtime_layerwise_offload_handle")
 
 
 def test_svdq_dq_few_shot_falls_back_to_deferred_pipeline_move_on_failure() -> None:
@@ -1460,12 +1464,16 @@ def test_svdq_dq_few_shot_falls_back_to_deferred_pipeline_move_on_failure() -> N
       "few_shot",
       "--svdq-few-shot-steps",
       "1",
-      "--svdq-layerwise-offload",
+      "--svdq-offload-quantized-layers-to-cpu",
     ]))
 
   move_calls: list[torch.device] = []
   move_attempts = 0
   holder = SimpleNamespace(transformer=model)
+
+  holder.to = lambda _device: None
+
+  maybe_apply_optimization(args, holder)
 
   def _move_pipe(device: torch.device | str) -> None:
     nonlocal move_attempts
@@ -1476,8 +1484,6 @@ def test_svdq_dq_few_shot_falls_back_to_deferred_pipeline_move_on_failure() -> N
     move_calls.append(resolved_device)
 
   holder.to = _move_pipe
-
-  maybe_apply_optimization(args, holder)
 
   eval_inputs = make_token_batch(
     batch_size=2,

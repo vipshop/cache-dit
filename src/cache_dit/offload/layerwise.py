@@ -19,6 +19,7 @@ except ImportError:
 logger = init_logger(__name__)
 
 _LAYERWISE_OFFLOAD_HANDLES_ATTR = "_cache_dit_layerwise_offload_handles"
+_ROOT_TARGET_NAME = "<root>"
 
 _FORWARD_HOOK_SUPPORTS_ALWAYS_CALL = "always_call" in inspect.signature(
   nn.Module.register_forward_hook).parameters
@@ -468,6 +469,11 @@ class LayerwiseOffloadHandle:
       event = torch.cuda.Event()
       event.record(copy_stream)
 
+    logger.debug(
+      "Layerwise async onload scheduled for %s on copy stream[%d].",
+      target.name or _ROOT_TARGET_NAME,
+      stream_index,
+    )
     target.pending_onload_event = event
     target.pending_onload_stream_index = stream_index
     target.resident_device = self.onload_device
@@ -515,6 +521,11 @@ class LayerwiseOffloadHandle:
       event = torch.cuda.Event()
       event.record(copy_stream)
 
+    logger.debug(
+      "Layerwise async offload scheduled for %s on copy stream[%d].",
+      target.name or _ROOT_TARGET_NAME,
+      stream_index,
+    )
     self._bind_cpu_state(target)
     target.pending_offload_event = event
     target.pending_offload_stream_index = stream_index
