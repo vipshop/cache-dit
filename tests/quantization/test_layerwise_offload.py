@@ -292,6 +292,75 @@ def test_layerwise_cpu_offload_eval_module_skips_parameter_sync_back() -> None:
   finally:
     offload_handle.remove()
 
+  def test_layerwise_cpu_offload_eval_module_skips_offload_copy_stream(monkeypatch, ) -> None:
+    model = make_toy_model(
+      embed_dim=128,
+      num_heads=4,
+      seed=923,
+      device="cpu",
+      dtype=torch.float32,
+    )
+    model.eval()
+
+    offload_handle = layerwise_cpu_offload(
+      model,
+      module_names=["block.to_q"],
+      onload_device="cuda",
+      async_transfer=True,
+    )
+    target = offload_handle.targets[0]
+
+    class _FakeCurrentStream:
+
+      def __init__(self) -> None:
+        self.recorded_events = 0
+
+    fake_current_stream = _FakeCurrentStream()
+
+    class _FakeEvent:
+
+      def __init__(self) -> None:
+        self.recorded_stream = None
+
+      def record(self, stream=None) -> None:
+        self.recorded_stream = stream
+        if stream is fake_current_stream:
+          fake_current_stream.recorded_events += 1
+
+      def synchronize(self) -> None:
+        return
+
+      def query(self) -> bool:
+        return True
+
+    monkeypatch.setattr(
+      offload_handle,
+      "_select_offload_copy_stream",
+      lambda: (_ for _ in ()).throw(
+        AssertionError("Eval parameter-only offload should not allocate an offload copy stream.")),
+    )
+    monkeypatch.setattr(
+      layerwise_module.torch.cuda,
+      "current_stream",
+      lambda *_args, **_kwargs: fake_current_stream,
+    )
+    monkeypatch.setattr(layerwise_module.torch.cuda, "Event", _FakeEvent)
+
+    scheduled_event = None
+    scheduled_inflight_gpu_tensors: list[torch.Tensor] | None = None
+    try:
+      offload_handle._materialize_onload_sync(target)
+      offload_handle._schedule_target_offload(target)
+      scheduled_event = target.pending_offload_event
+      scheduled_inflight_gpu_tensors = list(target.inflight_gpu_tensors)
+    finally:
+      offload_handle.remove()
+
+    assert fake_current_stream.recorded_events == 1
+    assert scheduled_event is not None
+    assert scheduled_inflight_gpu_tensors is not None
+    assert scheduled_inflight_gpu_tensors
+
 
 def test_layerwise_cpu_offload_eval_module_keeps_buffer_sync_back() -> None:
 
@@ -477,6 +546,7 @@ def test_layerwise_cpu_offload_async_transfer_uses_distinct_onload_and_offload_s
     device="cpu",
     dtype=torch.float32,
   )
+  model.train()
   inputs = make_token_batch(
     batch_size=2,
     seq_len=8,

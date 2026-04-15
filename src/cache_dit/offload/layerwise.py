@@ -524,6 +524,11 @@ class LayerwiseOffloadHandle:
         tensor_state.cpu_tensor.copy_(current_tensor, non_blocking=False)
     self._bind_cpu_state(target)
 
+  def _target_requires_sync_back(self, target: _LayerwiseTarget) -> bool:
+    return any(
+      self._tensor_state_requires_sync_back(target, tensor_state)
+      for tensor_state in target.tensor_states)
+
   def _schedule_target_onload(self, target: _LayerwiseTarget, *, allow_wait: bool) -> None:
     if not self.async_transfer:
       return
@@ -588,21 +593,38 @@ class LayerwiseOffloadHandle:
     if target.pending_onload_event is not None:
       self._await_target_onload(target)
 
+    target_requires_sync_back = self._target_requires_sync_back(target)
+    inflight_gpu_tensors = [
+      _get_direct_state_tensor(
+        target.module,
+        kind=tensor_state.kind,
+        name=tensor_state.name,
+      ) for tensor_state in target.tensor_states
+    ]
+
+    if not target_requires_sync_back:
+      current_stream = torch.cuda.current_stream(device=self.onload_device)
+      event = torch.cuda.Event()
+      event.record(current_stream)
+      logger.debug(
+        "Layerwise async offload skipped D2H sync-back for %s; tracking lifetime on current "
+        "stream.",
+        target.name or _ROOT_TARGET_NAME,
+      )
+      self._bind_cpu_state(target)
+      target.pending_offload_event = event
+      target.pending_offload_stream_index = None
+      target.inflight_gpu_tensors = inflight_gpu_tensors
+      self._pending_offload_targets.add(target.index)
+      return
+
     stream_index, copy_stream = self._select_offload_copy_stream()
 
     current_stream = torch.cuda.current_stream(device=self.onload_device)
     copy_stream.wait_stream(current_stream)
-    inflight_gpu_tensors: list[torch.Tensor] = []
     with torch.cuda.stream(copy_stream):
-      for tensor_state in target.tensor_states:
-        current_tensor = _get_direct_state_tensor(
-          target.module,
-          kind=tensor_state.kind,
-          name=tensor_state.name,
-        )
-        inflight_gpu_tensors.append(current_tensor)
-        if self._tensor_state_requires_sync_back(target, tensor_state):
-          tensor_state.cpu_tensor.copy_(current_tensor, non_blocking=True)
+      for tensor_state, current_tensor in zip(target.tensor_states, inflight_gpu_tensors):
+        tensor_state.cpu_tensor.copy_(current_tensor, non_blocking=True)
       event = torch.cuda.Event()
       event.record(copy_stream)
 
