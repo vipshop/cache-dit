@@ -27,6 +27,7 @@ from cache_dit._utils.utils import maybe_postprocess_args
 from cache_dit.offload import get_layerwise_offload_handles
 from cache_dit.quantization import QuantizeConfig
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
+from tests.quantization._svdq_test_utils import TOY_ATTENTION_LINEAR_NAMES
 from tests.quantization._svdq_test_utils import ToyTransformerBlock
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
 from tests.quantization._svdq_test_utils import compute_accuracy_metrics
@@ -1101,6 +1102,9 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
   assert len(pending_handles) == 1
   assert pending_handles[0].async_transfer is True
   assert pending_handles[0].transfer_buckets == 2
+  assert "block.norm" in pending_handles[0].module_names
+  for layer_name in TOY_ATTENTION_LINEAR_NAMES:
+    assert layer_name in pending_handles[0].module_names
   observed_input_devices: list[str] = []
   observed_linear = quantized_model.block.to_q
   capture_handle = observed_linear.register_forward_pre_hook(
@@ -1439,6 +1443,10 @@ def test_svdq_dq_few_shot_layerwise_offload_defers_full_pipeline_move_until_afte
   assert len(move_calls) == 0
   assert hasattr(holder, "_svdq_move_to_device_after_forward")
   assert hasattr(holder.transformer, "_svdq_runtime_layerwise_offload_handle")
+  runtime_handle = holder.transformer._svdq_runtime_layerwise_offload_handle
+  assert "block.norm" in runtime_handle.module_names
+  for layer_name in TOY_ATTENTION_LINEAR_NAMES:
+    assert layer_name in runtime_handle.module_names
   assert maybe_finalize_deferred_svdq_pipe_move(holder)
   assert len(move_calls) == 1
   assert move_calls[0].type == "cuda"

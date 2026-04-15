@@ -1226,7 +1226,6 @@ def test_svdq_ptq_collection_offload_accepts_async_transfer() -> None:
 
   handle = svdq_ptq._maybe_enable_layerwise_collection_offload(
     model.block,
-    layer_names=["to_q", "to_k"],
     onload_device=torch.device("cuda"),
     async_transfer=True,
     transfer_buckets=2,
@@ -1236,6 +1235,9 @@ def test_svdq_ptq_collection_offload_accepts_async_transfer() -> None:
     assert handle is not None
     assert handle.async_transfer is True
     assert handle.transfer_buckets == 2
+    assert "norm" in handle.module_names
+    assert "to_q" in handle.module_names
+    assert "to_k" in handle.module_names
   finally:
     if handle is not None:
       handle.remove()
@@ -1262,7 +1264,6 @@ def test_svdq_ptq_collection_offload_skips_existing_accelerate_hooks(
 
   handle = svdq_ptq._maybe_enable_layerwise_collection_offload(
     model.block,
-    layer_names=["to_q", "to_k"],
     onload_device=torch.device("cuda"),
   )
 
@@ -1297,7 +1298,6 @@ def test_svdq_ptq_collection_offload_skips_existing_cache_dit_handles(
   try:
     handle = svdq_ptq._maybe_enable_layerwise_collection_offload(
       model.block,
-      layer_names=["to_q", "to_k"],
       onload_device=torch.device("cuda"),
     )
   finally:

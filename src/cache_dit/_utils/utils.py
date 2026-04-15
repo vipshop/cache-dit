@@ -2114,8 +2114,8 @@ def maybe_apply_optimization(
     if pipe is not None and not args.device_map_balance:
       if should_skip_initial_pipeline_move:
         logger.info(
-          "Skipping eager pipe.to(%s) because SVDQ few-shot quantization will finish during warmup "
-          "or the current run before the low-memory layerwise pipeline move.",
+          "Skipping eager pipe.to(%s) because SVDQ few-shot quantization will finish "
+          "\nduring warmup or the current run before the low-memory layerwise pipeline move.",
           device,
         )
       else:

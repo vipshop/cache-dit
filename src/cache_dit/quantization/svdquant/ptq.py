@@ -161,11 +161,25 @@ def _maybe_collect_svdq_garbage(device: torch.device | None = None) -> None:
 def _maybe_enable_layerwise_collection_offload(
   module: nn.Module,
   *,
-  layer_names: list[str],
   onload_device: torch.device,
   async_transfer: bool = False,
   transfer_buckets: int = 1,
 ) -> LayerwiseOffloadHandle | None:
+  """Enable temporary collection-time layerwise offload on the root module.
+
+  Collection-time offload intentionally applies to all parameterized leaf submodules in the root
+  module, not only to the candidate quantized linear layers. Otherwise non-quantized parameterized
+  layers, such as norms or embeddings, would stay on CPU during calibration / few-shot collection
+  and slow the observed forward path.
+
+  :param module: Root module whose collection-time forward path should run through layerwise
+    onload/offload.
+  :param onload_device: Execution device used for the temporary collection-time offload handle.
+  :param async_transfer: Whether collection-time offload should use async transfer.
+  :param transfer_buckets: Prefetch budget used by async collection-time offload.
+  :returns: The temporary collection-time layerwise offload handle, if enabled.
+  """
+
   if onload_device.type != "cuda":
     return None
   existing_layerwise_handles = get_layerwise_offload_handles(module)
@@ -192,7 +206,6 @@ def _maybe_enable_layerwise_collection_offload(
     return None
   return _apply_layerwise_offload(
     module,
-    module_names=layer_names,
     onload_device=onload_device,
     offload_device=torch.device("cpu"),
     async_transfer=async_transfer,
@@ -360,10 +373,23 @@ def _remove_runtime_layerwise_offload_handle(module: nn.Module) -> bool:
 def _maybe_enable_layerwise_runtime_offload(
   module: nn.Module,
   *,
-  layer_names: list[str],
+  quantized_layer_names: list[str],
   onload_device: torch.device,
   svdq_kwargs: dict[str, Any],
 ) -> LayerwiseOffloadHandle | None:
+  """Enable temporary low-memory runtime offload after few-shot quantization materializes.
+
+  The temporary handle is intentionally broader than the quantized layer list: it applies
+  layerwise offload to all parameterized leaf submodules in the root module so non-quantized
+  parameterized layers do not stay on CPU for the remainder of the current pipeline/module call.
+
+  :param module: Root module whose current call should finish on the low-memory path.
+  :param quantized_layer_names: Names of the SVDQ layers that were just materialized.
+  :param onload_device: Execution device used by the temporary runtime offload handle.
+  :param svdq_kwargs: Resolved SVDQ kwargs for the current quantization flow.
+  :returns: The temporary runtime layerwise offload handle, if enabled.
+  """
+
   if onload_device.type != "cuda":
     return None
   if not bool(svdq_kwargs.get("layerwise_offload", False)):
@@ -372,9 +398,29 @@ def _maybe_enable_layerwise_runtime_offload(
     return None
 
   _remove_runtime_layerwise_offload_handle(module)
+  existing_layerwise_handles = get_layerwise_offload_handles(module)
+  if existing_layerwise_handles:
+    logger.warning(
+      "Skipping temporary runtime layerwise offload on %s because %d cache-dit layerwise "
+      "offload handle(s) are already registered on the same module.",
+      module.__class__.__name__,
+      len(existing_layerwise_handles),
+    )
+    return None
+  existing_offload_hook = _find_offload_related_hf_hook(module)
+  if existing_offload_hook is not None:
+    hook_module_name, hook = existing_offload_hook
+    logger.warning(
+      "Skipping temporary runtime layerwise offload on %s because an existing accelerate "
+      "offload hook %s is already registered on %s.",
+      module.__class__.__name__,
+      type(hook).__name__,
+      hook_module_name or _ROOT_LAYER_NAME,
+    )
+    return None
+
   handle = _apply_layerwise_offload(
     module,
-    module_names=layer_names,
     onload_device=onload_device,
     offload_device=torch.device("cpu"),
     async_transfer=bool(svdq_kwargs.get("async_transfer", False)),
@@ -382,10 +428,12 @@ def _maybe_enable_layerwise_runtime_offload(
   )
   setattr(module, _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR, handle)
   logger.info(
-    "Enabled temporary layerwise offload for %d quantized SVDQ layers on %s so the current "
-    "pipeline/module call can finish before the final move to %s.",
-    len(layer_names),
+    "Enabled temporary layerwise offload for %d parameterized leaf submodules on %s after "
+    "\nquantizing %d SVDQ layers so the current pipeline/module call can finish before the final "
+    "move to %s.",
+    len(handle.targets),
     module.__class__.__name__,
+    len(quantized_layer_names),
     onload_device,
   )
   return handle
@@ -604,7 +652,6 @@ class SVDQPTQCalibrator:
         and bool(self.context.svdq_kwargs.get("layerwise_offload", False))):
       self._offload_handle = _maybe_enable_layerwise_collection_offload(
         self.context.root_module,
-        layer_names=self.context.candidate_layer_names,
         onload_device=observation_device,
         async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
         transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
@@ -725,7 +772,6 @@ class SVDQFewShotRuntimeController:
     if bool(self.context.svdq_kwargs.get("layerwise_offload", False)):
       self._offload_handle = _maybe_enable_layerwise_collection_offload(
         self.context.root_module,
-        layer_names=self.context.candidate_layer_names,
         onload_device=self.quantize_device,
         async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
         transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
@@ -827,7 +873,7 @@ class SVDQFewShotRuntimeController:
     )
     _maybe_enable_layerwise_runtime_offload(
       module,
-      layer_names=quantized_layer_names,
+      quantized_layer_names=quantized_layer_names,
       onload_device=self.quantize_device,
       svdq_kwargs=self.context.svdq_kwargs,
     )

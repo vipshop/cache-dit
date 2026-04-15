@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 import torch
 
@@ -145,6 +147,9 @@ def test_layerwise_cpu_offload_async_transfer_prefetches_next_module() -> None:
     offload_handle.remove()
 
   assert offload_handle.async_transfer is True
+  assert offload_handle.transfer_buckets == 1
+  assert len(offload_handle._onload_copy_streams) == 1
+  assert len(offload_handle._offload_copy_streams) == 1
   assert observed_next_module_devices == ["cuda"]
   assert torch.isfinite(output).all()
   assert output.device.type == "cpu"
@@ -192,6 +197,214 @@ def test_layerwise_cpu_offload_async_transfer_respects_transfer_buckets() -> Non
   assert torch.isfinite(output).all()
   assert output.device.type == "cpu"
   assert all(parameter.device.type == "cpu" for parameter in model.parameters())
+
+
+def test_layerwise_cpu_offload_async_transfer_onload_does_not_wait_current_stream(
+  monkeypatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=918,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q"],
+    onload_device="cuda",
+    async_transfer=True,
+  )
+  target = offload_handle.targets[0]
+
+  class _FakeCopyStream:
+
+    def wait_stream(self, _stream) -> None:
+      raise AssertionError("Async onload should not wait on the current compute stream.")
+
+  class _FakeEvent:
+
+    def record(self, _stream=None) -> None:
+      return
+
+    def synchronize(self) -> None:
+      return
+
+    def query(self) -> bool:
+      return True
+
+  monkeypatch.setattr(offload_handle, "_select_onload_copy_stream", lambda: (0, _FakeCopyStream()))
+  monkeypatch.setattr(
+    layerwise_module.torch.cuda,
+    "current_stream",
+    lambda *_args, **_kwargs:
+    (_ for _ in
+     ()).throw(AssertionError("Async onload should not query the current compute stream.")),
+  )
+  monkeypatch.setattr(
+    layerwise_module.torch.cuda,
+    "stream",
+    lambda _stream: contextlib.nullcontext(),
+  )
+  monkeypatch.setattr(layerwise_module.torch.cuda, "Event", _FakeEvent)
+
+  scheduled_event = None
+  scheduled_stream_index = None
+  onload_weight_device = None
+  try:
+    offload_handle._schedule_target_onload(target, allow_wait=True)
+    scheduled_event = target.pending_onload_event
+    scheduled_stream_index = target.pending_onload_stream_index
+    onload_weight_device = model.block.to_q.weight.device.type
+    torch.cuda.synchronize()
+  finally:
+    offload_handle.remove()
+
+  assert scheduled_event is not None
+  assert scheduled_stream_index == 0
+  assert onload_weight_device == "cuda"
+  assert model.block.to_q.weight.device.type == "cpu"
+
+
+def test_layerwise_cpu_offload_eval_module_skips_parameter_sync_back() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=922,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  model.eval()
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q"],
+    onload_device="cuda",
+    async_transfer=True,
+  )
+  target = offload_handle.targets[0]
+
+  try:
+    assert target.tensor_states
+    assert {tensor_state.kind for tensor_state in target.tensor_states} == {"parameter"}
+    assert all(not offload_handle._tensor_state_requires_sync_back(target, tensor_state)
+               for tensor_state in target.tensor_states)
+  finally:
+    offload_handle.remove()
+
+
+def test_layerwise_cpu_offload_eval_module_keeps_buffer_sync_back() -> None:
+
+  class _BufferedLeafModule(torch.nn.Module):
+
+    def __init__(self) -> None:
+      super().__init__()
+      self.weight = torch.nn.Parameter(torch.ones(4, 4, dtype=torch.float32))
+      self.register_buffer("scale", torch.ones(4, dtype=torch.float32))
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+      return inputs @ self.weight * self.scale
+
+  model = _BufferedLeafModule().eval()
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=[""],
+    onload_device="cuda",
+    async_transfer=True,
+  )
+  target = offload_handle.targets[0]
+
+  try:
+    sync_back_by_name = {
+      tensor_state.name: offload_handle._tensor_state_requires_sync_back(target, tensor_state)
+      for tensor_state in target.tensor_states
+    }
+  finally:
+    offload_handle.remove()
+
+  assert sync_back_by_name == {
+    "weight": False,
+    "scale": True,
+  }
+
+
+def test_layerwise_cpu_offload_full_leaf_coverage_keeps_internal_outputs_on_cuda() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=924,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=925,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  observed_to_q_output_devices: list[str] = []
+  offload_handle = layerwise_cpu_offload(
+    model,
+    onload_device="cuda",
+    async_transfer=True,
+  )
+  capture_handle = model.block.to_q.register_forward_hook(
+    lambda _module, _args, output: observed_to_q_output_devices.append(output.device.type))
+
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+  finally:
+    capture_handle.remove()
+    offload_handle.remove()
+
+  assert offload_handle.keep_activations_onload_device is True
+  assert observed_to_q_output_devices == ["cuda"]
+  assert output.device.type == "cpu"
+
+
+def test_layerwise_cpu_offload_partial_leaf_coverage_keeps_selected_outputs_on_input_device(
+) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=926,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=927,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  observed_to_q_output_devices: list[str] = []
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+  )
+  capture_handle = model.block.to_q.register_forward_hook(
+    lambda _module, _args, output: observed_to_q_output_devices.append(output.device.type))
+
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+  finally:
+    capture_handle.remove()
+    offload_handle.remove()
+
+  assert offload_handle.keep_activations_onload_device is False
+  assert observed_to_q_output_devices == ["cpu"]
+  assert output.device.type == "cpu"
 
 
 def test_layerwise_cpu_offload_async_transfer_assigns_distinct_streams_per_bucket(
@@ -245,13 +458,88 @@ def test_layerwise_cpu_offload_async_transfer_assigns_distinct_streams_per_bucke
     offload_handle.remove()
 
   assert torch.isfinite(output).all()
-  assert len(offload_handle._copy_streams) == 2
+  assert len(offload_handle._onload_copy_streams) == 2
+  assert len(offload_handle._offload_copy_streams) == 2
   assert [name for name, _stream_index in scheduled_onload_streams[:3]] == [
     "block.to_q",
     "block.to_k",
     "block.to_v",
   ]
   assert scheduled_onload_streams[1][1] != scheduled_onload_streams[2][1]
+
+
+def test_layerwise_cpu_offload_async_transfer_uses_distinct_onload_and_offload_stream_pools(
+  monkeypatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=920,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=921,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  selected_streams: list[tuple[str, int, int]] = []
+  original_select_onload_copy_stream = LayerwiseOffloadHandle._select_onload_copy_stream
+  original_select_offload_copy_stream = LayerwiseOffloadHandle._select_offload_copy_stream
+
+  def _capture_select_onload_copy_stream(self):
+    stream_index, stream = original_select_onload_copy_stream(self)
+    selected_streams.append(("onload", stream_index, id(stream)))
+    return stream_index, stream
+
+  def _capture_select_offload_copy_stream(self):
+    stream_index, stream = original_select_offload_copy_stream(self)
+    selected_streams.append(("offload", stream_index, id(stream)))
+    return stream_index, stream
+
+  monkeypatch.setattr(
+    LayerwiseOffloadHandle,
+    "_select_onload_copy_stream",
+    _capture_select_onload_copy_stream,
+  )
+  monkeypatch.setattr(
+    LayerwiseOffloadHandle,
+    "_select_offload_copy_stream",
+    _capture_select_offload_copy_stream,
+  )
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=2,
+  )
+
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+  finally:
+    offload_handle.remove()
+
+  assert torch.isfinite(output).all()
+  assert selected_streams
+  onload_stream_ids = {
+    stream_id
+    for transfer_kind, _stream_index, stream_id in selected_streams if transfer_kind == "onload"
+  }
+  offload_stream_ids = {
+    stream_id
+    for transfer_kind, _stream_index, stream_id in selected_streams if transfer_kind == "offload"
+  }
+  assert onload_stream_ids
+  assert offload_stream_ids
+  assert onload_stream_ids <= {id(stream) for stream in offload_handle._onload_copy_streams}
+  assert offload_stream_ids <= {id(stream) for stream in offload_handle._offload_copy_streams}
+  assert onload_stream_ids.isdisjoint(offload_stream_ids)
 
 
 def test_layerwise_cpu_offload_async_transfer_emits_distinct_stream_debug_logs(
