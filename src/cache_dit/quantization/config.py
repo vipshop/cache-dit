@@ -52,6 +52,9 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # Number of future targets to prefetch when async_transfer is enabled for
   # layerwise collection offload.
   "transfer_buckets": 1,
+  # Number of leading layerwise-offload targets that should remain resident on
+  # the execution device for the full handle lifetime.
+  "persistent_buckets": 0,
   # When enabled for few-shot DQ, helper flows may skip the eager final
   # `pipe.to(cuda)` and move the pipeline only after runtime quantization has
   # completed.
@@ -176,6 +179,14 @@ def _resolve_svdq_positive_int(key: str, value: Any) -> int:
   return value
 
 
+def _resolve_svdq_non_negative_int(key: str, value: Any) -> int:
+  if isinstance(value, bool) or not isinstance(value, int):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be an int, got {type(value)}.")
+  if value < 0:
+    raise ValueError(f"svdq_kwargs[{key!r}] must be a non-negative integer, got {value}.")
+  return value
+
+
 def _resolve_svdq_positive_float(key: str, value: Any) -> float:
   if isinstance(value, bool) or not isinstance(value, (int, float)):
     raise TypeError(f"svdq_kwargs[{key!r}] must be a float, got {type(value)}.")
@@ -252,6 +263,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "layerwise_offload": _resolve_svdq_bool_kwarg,
     "async_transfer": _resolve_svdq_bool_kwarg,
     "transfer_buckets": _resolve_svdq_positive_int,
+    "persistent_buckets": _resolve_svdq_non_negative_int,
     "defer_move_to_execution_device": _resolve_svdq_bool_kwarg,
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,

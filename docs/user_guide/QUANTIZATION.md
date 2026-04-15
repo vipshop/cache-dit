@@ -556,7 +556,7 @@ It then applies one of the following relax strategies:
 For <span style="color:green;">auto</span>, Cache-DiT also relaxes the channels below the threshold, but uses a smaller multiplier for smaller activation spans and caps the largest channels at <span style="color:#c77dff;">few_shot_relax_factor</span>.
 
 $$
-m_i = 1 + \left(\text{few\_shot\_relax\_factor} - 1\right) \cdot \operatorname{clip}\left(\frac{a_i - a_{\min}}{\tau - a_{\min}}, 0, 1\right)
+m_i = 1 + \left(\text{relax} - 1\right) \cdot \operatorname{clip}\left(\frac{a_i - a_{\min}}{\tau - a_{\min}}, 0, 1\right)
 $$
 
 $$
@@ -576,7 +576,7 @@ For <span style="color:green;">top</span>:
 $$
 a_i^{\mathrm{relaxed}} =
 \begin{cases}
-a_i \cdot \text{few\_shot\_relax\_factor}, & a_i \geq \tau \\
+a_i \cdot \text{relax}, & a_i \geq \tau \\
 a_i, & a_i < \tau
 \end{cases}
 $$
@@ -596,10 +596,10 @@ Here `tau` is the quantile threshold and `a_min` is the minimum activation span 
 Internally, Cache-DiT first constructs a strategy-specific normalized response in the unit interval `[0, 1]`, then maps it to the activation-span multiplier:
 
 $$
-m_i = 1 + r_i \cdot \left(\text{few\_shot\_relax\_factor} - 1\right)
+m_i = 1 + r_i \cdot \left(\text{relax} - 1\right)
 $$
 
-We intentionally clamp the intermediate response to `[0, 1]` before this affine map so the final activation-span multiplier is always bounded inside `[1, few_shot_relax_factor]`. Because <span style="color:#c77dff;">few_shot_relax_factor</span> is constrained to be at least 1, every channel is either unchanged or amplified; no channel can be shrunk by the few-shot relax step. Since smooth scale is recomputed from the activation span raised to `alpha`, the induced smooth-scale multiplier is bounded more conservatively inside `[1, few_shot_relax_factor^alpha]`.
+We intentionally clamp the intermediate response to `[0, 1]` before this affine map so the final activation-span multiplier is always bounded inside `[1, relax]`. Because <span style="color:#c77dff;">relax</span> is constrained to be at least 1, every channel is either unchanged or amplified; no channel can be shrunk by the few-shot relax step. Since smooth scale is recomputed from the activation span raised to `alpha`, the induced smooth-scale multiplier is bounded more conservatively inside `[1, relax^alpha]`.
 
 That does not mean arbitrarily large factors are safe. A larger factor tells the quantizer to treat the already-large activation-span channels as if they were even more likely to encounter future activation outliers. When that prior becomes too strong, the recomputed smoothing step over-allocates protection to those channels, which often shows up as visibly softer or blurrier image details. If you need a stronger head-channel bias, it is usually better to keep <span style="color:#c77dff;">few_shot_relax_factor</span> moderate and change <span style="color:#c77dff;">few_shot_relax_strategy</span> to <span style="color:green;">power</span> or reduce <span style="color:#c77dff;">few_shot_relax_top_ratio</span>, rather than pushing the factor directly to 4.0.
 

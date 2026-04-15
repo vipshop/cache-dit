@@ -164,6 +164,7 @@ def _maybe_enable_layerwise_collection_offload(
   onload_device: torch.device,
   async_transfer: bool = False,
   transfer_buckets: int = 1,
+  persistent_buckets: int = 0,
 ) -> LayerwiseOffloadHandle | None:
   """Enable temporary collection-time layerwise offload on the root module.
 
@@ -177,6 +178,8 @@ def _maybe_enable_layerwise_collection_offload(
   :param onload_device: Execution device used for the temporary collection-time offload handle.
   :param async_transfer: Whether collection-time offload should use async transfer.
   :param transfer_buckets: Prefetch budget used by async collection-time offload.
+  :param persistent_buckets: How many leading targets should remain resident on the execution device
+    during collection-time offload.
   :returns: The temporary collection-time layerwise offload handle, if enabled.
   """
 
@@ -210,6 +213,7 @@ def _maybe_enable_layerwise_collection_offload(
     offload_device=torch.device("cpu"),
     async_transfer=async_transfer,
     transfer_buckets=transfer_buckets,
+    persistent_buckets=persistent_buckets,
   )
 
 
@@ -425,6 +429,7 @@ def _maybe_enable_layerwise_runtime_offload(
     offload_device=torch.device("cpu"),
     async_transfer=bool(svdq_kwargs.get("async_transfer", False)),
     transfer_buckets=int(svdq_kwargs.get("transfer_buckets", 1)),
+    persistent_buckets=int(svdq_kwargs.get("persistent_buckets", 0)),
   )
   setattr(module, _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR, handle)
   logger.info(
@@ -655,6 +660,7 @@ class SVDQPTQCalibrator:
         onload_device=observation_device,
         async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
         transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
+        persistent_buckets=int(self.context.svdq_kwargs.get("persistent_buckets", 0)),
       )
 
     for layer_name in self.context.candidate_layer_names:
@@ -775,6 +781,7 @@ class SVDQFewShotRuntimeController:
         onload_device=self.quantize_device,
         async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
         transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
+        persistent_buckets=int(self.context.svdq_kwargs.get("persistent_buckets", 0)),
       )
 
     for layer_name in self.context.candidate_layer_names:

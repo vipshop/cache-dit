@@ -635,7 +635,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=int,
     default=1,
     help=("How many future layerwise offload targets to prefetch when "
-          "--svdq-layerwise-async-transfer is enabled. Default is 1."),
+          "--svdq-layerwise-async-transfer is enabled. Default is 1; runtime currently caps "
+          "the effective async prefetch concurrency to 2."),
+  )
+  parser.add_argument(
+    "--svdq-layerwise-persistent-buckets",
+    "--svdq-persistent-buckets",
+    type=int,
+    default=0,
+    help=("How many leading layerwise offload targets should stay resident on CUDA when "
+          "--svdq-layerwise-offload is active. Default is 0."),
   )
   parser.add_argument(
     "--svdq-defer-final-to-cuda",
@@ -795,7 +804,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=int,
     default=1,
     help=("How many future layerwise offload targets to prefetch when "
-          "--layerwise-async-transfer is enabled. Default is 1."),
+          "--layerwise-async-transfer is enabled. Default is 1; runtime currently caps the "
+          "effective async prefetch concurrency to 2."),
+  )
+  parser.add_argument(
+    "--layerwise-persistent-buckets",
+    type=int,
+    default=0,
+    help=("How many leading layerwise offload targets should stay resident on CUDA for the "
+          "full handle lifetime. Default is 0."),
   )
   parser.add_argument(
     "--device-map-balance",
@@ -1582,6 +1599,7 @@ def maybe_quantize_transformer(
       "layerwise_offload": args.svdq_layerwise_offload,
       "async_transfer": args.svdq_layerwise_async_transfer,
       "transfer_buckets": args.svdq_layerwise_transfer_buckets,
+      "persistent_buckets": args.svdq_layerwise_persistent_buckets,
       "defer_move_to_execution_device": defer_move_to_execution_device,
       "few_shot_steps": args.svdq_few_shot_steps,
       "few_shot_relax_factor": args.svdq_few_shot_relax_factor,
@@ -1939,6 +1957,7 @@ def maybe_generic_module_offload(
         onload_device=device,
         async_transfer=bool(getattr(args, "layerwise_async_transfer", False)),
         transfer_buckets=int(getattr(args, "layerwise_transfer_buckets", 1)),
+        persistent_buckets=int(getattr(args, "layerwise_persistent_buckets", 0)),
       ))
   return bool(handles) or skipped_due_to_existing_offload
 
