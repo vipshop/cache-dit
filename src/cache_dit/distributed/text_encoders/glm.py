@@ -15,7 +15,7 @@ from torch.distributed.tensor.parallel import (
 )
 
 from ...logger import init_logger
-from ....utils import maybe_empty_cache
+from ...utils import maybe_empty_cache
 from ..config import ParallelismConfig
 
 from .register import (

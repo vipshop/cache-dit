@@ -28,7 +28,8 @@ from ..async_ulysses import AsyncUlyssesRegistry
 from ...logger import init_logger
 from ...platforms import current_platform
 from ..config import ParallelismConfig
-from ..utils import maybe_empty_cache, shard_div_attr
+from ...utils import maybe_empty_cache
+from ..utils import shard_div_attr
 from .register import (
   ContextParallelismPlanner,
   ContextParallelismPlannerRegister,
@@ -113,7 +114,7 @@ def _is_klein_kv(transformer: Flux2Transformer2DModel) -> bool:
     attn.processor, Flux2KVParallelSelfAttnProcessor)
 
 
-@TensorParallelismPlannerRegister.register("Flux2Transformer")
+@TensorParallelismPlannerRegister.register("Flux2Transformer2DModel")
 class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
 
   def _apply(
