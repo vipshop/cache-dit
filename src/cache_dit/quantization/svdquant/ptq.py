@@ -164,7 +164,10 @@ def _maybe_enable_layerwise_collection_offload(
   onload_device: torch.device,
   async_transfer: bool = False,
   transfer_buckets: int = 1,
+  max_copy_streams: int | None = None,
+  max_inflight_prefetch_bytes: int | None = None,
   persistent_buckets: int = 0,
+  persistent_bins: int = 1,
 ) -> LayerwiseOffloadHandle | None:
   """Enable temporary collection-time layerwise offload on the root module.
 
@@ -178,8 +181,13 @@ def _maybe_enable_layerwise_collection_offload(
   :param onload_device: Execution device used for the temporary collection-time offload handle.
   :param async_transfer: Whether collection-time offload should use async transfer.
   :param transfer_buckets: Prefetch budget used by async collection-time offload.
-  :param persistent_buckets: How many leading targets should remain resident on the execution device
-    during collection-time offload.
+  :param max_copy_streams: Maximum number of async copy streams used by collection-time offload.
+  :param max_inflight_prefetch_bytes: Maximum total CUDA residency budget, in bytes, used by future-
+    target collection-time prefetch.
+  :param persistent_buckets: How many selected targets should remain resident on the execution
+    device during collection-time offload.
+  :param persistent_bins: How many evenly distributed bins should be used when placing the
+    persistent collection-time targets.
   :returns: The temporary collection-time layerwise offload handle, if enabled.
   """
 
@@ -213,7 +221,10 @@ def _maybe_enable_layerwise_collection_offload(
     offload_device=torch.device("cpu"),
     async_transfer=async_transfer,
     transfer_buckets=transfer_buckets,
+    max_copy_streams=max_copy_streams,
+    max_inflight_prefetch_bytes=max_inflight_prefetch_bytes,
     persistent_buckets=persistent_buckets,
+    persistent_bins=persistent_bins,
   )
 
 
@@ -429,7 +440,10 @@ def _maybe_enable_layerwise_runtime_offload(
     offload_device=torch.device("cpu"),
     async_transfer=bool(svdq_kwargs.get("async_transfer", False)),
     transfer_buckets=int(svdq_kwargs.get("transfer_buckets", 1)),
+    max_copy_streams=svdq_kwargs.get("max_copy_streams"),
+    max_inflight_prefetch_bytes=svdq_kwargs.get("max_inflight_prefetch_bytes"),
     persistent_buckets=int(svdq_kwargs.get("persistent_buckets", 0)),
+    persistent_bins=int(svdq_kwargs.get("persistent_bins", 1)),
   )
   setattr(module, _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR, handle)
   logger.info(
@@ -660,7 +674,10 @@ class SVDQPTQCalibrator:
         onload_device=observation_device,
         async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
         transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
+        max_copy_streams=self.context.svdq_kwargs.get("max_copy_streams"),
+        max_inflight_prefetch_bytes=self.context.svdq_kwargs.get("max_inflight_prefetch_bytes"),
         persistent_buckets=int(self.context.svdq_kwargs.get("persistent_buckets", 0)),
+        persistent_bins=int(self.context.svdq_kwargs.get("persistent_bins", 1)),
       )
 
     for layer_name in self.context.candidate_layer_names:
@@ -781,7 +798,10 @@ class SVDQFewShotRuntimeController:
         onload_device=self.quantize_device,
         async_transfer=bool(self.context.svdq_kwargs.get("async_transfer", False)),
         transfer_buckets=int(self.context.svdq_kwargs.get("transfer_buckets", 1)),
+        max_copy_streams=self.context.svdq_kwargs.get("max_copy_streams"),
+        max_inflight_prefetch_bytes=self.context.svdq_kwargs.get("max_inflight_prefetch_bytes"),
         persistent_buckets=int(self.context.svdq_kwargs.get("persistent_buckets", 0)),
+        persistent_bins=int(self.context.svdq_kwargs.get("persistent_bins", 1)),
       )
 
     for layer_name in self.context.candidate_layer_names:

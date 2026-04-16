@@ -622,31 +622,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "activation collection when the root module is CPU-resident."),
   )
   parser.add_argument(
-    "--svdq-layerwise-async-transfer",
-    "--svdq-async-transfer",
-    action="store_true",
-    default=False,
-    help=("Enable CUDA-stream-based async_transfer for SVDQ PTQ calibration and DQ few-shot "
-          "layerwise collection when --svdq-layerwise-offload is active."),
-  )
-  parser.add_argument(
-    "--svdq-layerwise-transfer-buckets",
-    "--svdq-transfer-buckets",
-    type=int,
-    default=1,
-    help=("How many future layerwise offload targets to prefetch when "
-          "--svdq-layerwise-async-transfer is enabled. Default is 1; runtime currently caps "
-          "the effective async prefetch concurrency to 2."),
-  )
-  parser.add_argument(
-    "--svdq-layerwise-persistent-buckets",
-    "--svdq-persistent-buckets",
-    type=int,
-    default=0,
-    help=("How many leading layerwise offload targets should stay resident on CUDA when "
-          "--svdq-layerwise-offload is active. Default is 0."),
-  )
-  parser.add_argument(
     "--svdq-defer-final-to-cuda",
     dest="svdq_defer_final_to_cuda",
     action="store_true",
@@ -794,25 +769,65 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-async-transfer",
+    "--svdq-layerwise-async-transfer",
+    "--svdq-async-transfer",
     action="store_true",
     default=False,
-    help=("Enable CUDA-stream-based async_transfer for cache-dit generic module layerwise CPU "
-          "offload."),
+    help=("Enable CUDA-stream-based async_transfer for cache-dit layerwise CPU offload. This "
+          "shared setting applies to both generic module layerwise offload and SVDQ layerwise "
+          "collection when --svdq-layerwise-offload is active."),
   )
   parser.add_argument(
     "--layerwise-transfer-buckets",
+    "--svdq-layerwise-transfer-buckets",
+    "--svdq-transfer-buckets",
     type=int,
     default=1,
     help=("How many future layerwise offload targets to prefetch when "
-          "--layerwise-async-transfer is enabled. Default is 1; runtime currently caps the "
-          "effective async prefetch concurrency to 2."),
+          "--layerwise-async-transfer is enabled. Default is 1."),
+  )
+  parser.add_argument(
+    "--layerwise-max-copy-streams",
+    "--svdq-layerwise-max-copy-streams",
+    type=int,
+    default=None,
+    help=("Maximum number of async CUDA copy streams used by cache-dit layerwise offload. This "
+          "shared setting applies to both generic module layerwise offload and SVDQ layerwise "
+          "collection when --svdq-layerwise-offload is active. When omitted, runtime derives "
+          "it from --layerwise-transfer-buckets and applies its internal safety cap."),
+  )
+  parser.add_argument(
+    "--layerwise-max-inflight-prefetch-bytes",
+    "--svdq-layerwise-max-inflight-prefetch-bytes",
+    type=int,
+    default=None,
+    help=("Maximum total CUDA residency budget, in bytes, for in-flight layerwise future-target "
+          "prefetch. This shared setting applies to both generic module layerwise offload and "
+          "SVDQ layerwise collection when --svdq-layerwise-offload is active. When omitted, "
+          "runtime derives a conservative default from the requested transfer buckets."),
   )
   parser.add_argument(
     "--layerwise-persistent-buckets",
+    "--svdq-layerwise-persistent-buckets",
+    "--svdq-persistent-buckets",
     type=int,
     default=0,
-    help=("How many leading layerwise offload targets should stay resident on CUDA for the "
-          "full handle lifetime. Default is 0."),
+    help=("How many selected layerwise offload targets should stay resident on CUDA for the full "
+          "handle lifetime. This shared setting applies to both generic module layerwise offload "
+          "and SVDQ layerwise collection when --svdq-layerwise-offload is active. Default is 0."),
+  )
+  parser.add_argument(
+    "--layerwise-persistent-bins",
+    "--svdq-layerwise-persistent-bins",
+    "--svdq-persistent-bins",
+    type=int,
+    default=1,
+    help=("How many evenly distributed bins should be used when placing persistent layerwise "
+          "offload targets across the selected target list. A value of 1 keeps the original "
+          "prefix behavior. For example, with 32 targets, --layerwise-persistent-buckets 16 and "
+          "--layerwise-persistent-bins 4, runtime keeps [0:4), [8:12), [16:20), and [24:28) "
+          "resident. This shared setting applies to both generic module layerwise offload and "
+          "SVDQ layerwise collection when --svdq-layerwise-offload is active. Default is 1."),
   )
   parser.add_argument(
     "--device-map-balance",
@@ -1597,9 +1612,12 @@ def maybe_quantize_transformer(
       "quantize_device": args.svdq_quantize_device,
       "offload_quantized_layers_to_cpu": offload_quantized_layers_to_cpu,
       "layerwise_offload": args.svdq_layerwise_offload,
-      "async_transfer": args.svdq_layerwise_async_transfer,
-      "transfer_buckets": args.svdq_layerwise_transfer_buckets,
-      "persistent_buckets": args.svdq_layerwise_persistent_buckets,
+      "async_transfer": args.layerwise_async_transfer,
+      "transfer_buckets": args.layerwise_transfer_buckets,
+      "max_copy_streams": args.layerwise_max_copy_streams,
+      "max_inflight_prefetch_bytes": args.layerwise_max_inflight_prefetch_bytes,
+      "persistent_buckets": args.layerwise_persistent_buckets,
+      "persistent_bins": args.layerwise_persistent_bins,
       "defer_move_to_execution_device": defer_move_to_execution_device,
       "few_shot_steps": args.svdq_few_shot_steps,
       "few_shot_relax_factor": args.svdq_few_shot_relax_factor,
@@ -1957,7 +1975,10 @@ def maybe_generic_module_offload(
         onload_device=device,
         async_transfer=bool(getattr(args, "layerwise_async_transfer", False)),
         transfer_buckets=int(getattr(args, "layerwise_transfer_buckets", 1)),
+        max_copy_streams=getattr(args, "layerwise_max_copy_streams", None),
+        max_inflight_prefetch_bytes=getattr(args, "layerwise_max_inflight_prefetch_bytes", None),
         persistent_buckets=int(getattr(args, "layerwise_persistent_buckets", 0)),
+        persistent_bins=int(getattr(args, "layerwise_persistent_bins", 1)),
       ))
   return bool(handles) or skipped_due_to_existing_offload
 

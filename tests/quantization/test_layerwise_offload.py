@@ -377,6 +377,62 @@ def test_layerwise_cpu_offload_async_transfer_respects_transfer_buckets() -> Non
   assert all(parameter.device.type == "cpu" for parameter in model.parameters())
 
 
+def test_layerwise_cpu_offload_async_transfer_respects_max_inflight_prefetch_bytes() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=940,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=941,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  probe_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=4,
+  )
+  single_target_budget = probe_handle.targets[1].prefetch_residency_bytes
+  probe_handle.remove()
+
+  observed_pending_onload_sizes: list[int] = []
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=4,
+    max_inflight_prefetch_bytes=single_target_budget,
+  )
+  capture_handles = [
+    module.register_forward_pre_hook(
+      lambda _module, _args, handle=offload_handle: observed_pending_onload_sizes.append(
+        len(handle._pending_onload_targets)))
+    for module in [model.block.to_q, model.block.to_k, model.block.to_v, model.block.to_out]
+  ]
+
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+  finally:
+    for capture_handle in capture_handles:
+      capture_handle.remove()
+    offload_handle.remove()
+
+  assert torch.isfinite(output).all()
+  assert observed_pending_onload_sizes
+  assert max(observed_pending_onload_sizes) <= 1
+
+
 def test_layerwise_cpu_offload_async_transfer_onload_does_not_wait_current_stream(
   monkeypatch, ) -> None:
   model = make_toy_model(
@@ -878,7 +934,7 @@ def test_layerwise_cpu_offload_async_transfer_caps_global_onload_budget() -> Non
   assert max(observed_pending_onload_sizes) <= 2
 
 
-def test_layerwise_cpu_offload_async_transfer_clamps_excessive_bucket_request(
+def test_layerwise_cpu_offload_async_transfer_clamps_excessive_copy_stream_request(
   monkeypatch, ) -> None:
   model = make_toy_model(
     embed_dim=128,
@@ -901,17 +957,19 @@ def test_layerwise_cpu_offload_async_transfer_clamps_excessive_bucket_request(
     onload_device="cuda",
     async_transfer=True,
     transfer_buckets=32,
+    max_copy_streams=32,
   )
   try:
     assert offload_handle.transfer_buckets == 32
-    assert offload_handle.effective_transfer_buckets == 2
-    assert len(offload_handle._onload_copy_streams) == 2
-    assert len(offload_handle._offload_copy_streams) == 2
+    assert offload_handle.max_copy_streams == 32
+    assert offload_handle.effective_max_copy_streams == 4
+    assert len(offload_handle._onload_copy_streams) == 4
+    assert len(offload_handle._offload_copy_streams) == 4
   finally:
     offload_handle.remove()
 
   assert warning_messages
-  assert "Clamping layerwise async transfer buckets from 32 to 2" in warning_messages[0]
+  assert "Clamping layerwise async copy streams from 32 to 4" in warning_messages[0]
 
 
 def test_layerwise_cpu_offload_async_transfer_drains_pending_remove() -> None:
@@ -975,7 +1033,9 @@ def test_layerwise_cpu_offload_persistent_buckets_keep_prefix_targets_on_cuda() 
 
   try:
     assert offload_handle.persistent_buckets == 2
+    assert offload_handle.persistent_bins == 1
     assert offload_handle.effective_persistent_buckets == 2
+    assert offload_handle.effective_persistent_bins == 1
     assert offload_handle.persistent_module_names == ["block.to_q", "block.to_k"]
     assert model.block.to_q.weight.device.type == "cuda"
     assert model.block.to_k.weight.device.type == "cuda"
@@ -996,6 +1056,88 @@ def test_layerwise_cpu_offload_persistent_buckets_keep_prefix_targets_on_cuda() 
     offload_handle.remove()
 
   assert all(parameter.device.type == "cpu" for parameter in model.parameters())
+
+
+def test_layerwise_cpu_offload_persistent_bins_select_uniform_target_ranges() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=944,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    persistent_buckets=2,
+    persistent_bins=2,
+  )
+
+  try:
+    assert offload_handle.persistent_buckets == 2
+    assert offload_handle.persistent_bins == 2
+    assert offload_handle.effective_persistent_buckets == 2
+    assert offload_handle.effective_persistent_bins == 2
+    assert offload_handle.persistent_module_names == ["block.to_q", "block.to_v"]
+    assert offload_handle.persistent_target_spans == [(0, 1), (2, 3)]
+    assert model.block.to_q.weight.device.type == "cuda"
+    assert model.block.to_k.weight.device.type == "cpu"
+    assert model.block.to_v.weight.device.type == "cuda"
+    assert model.block.to_out.weight.device.type == "cpu"
+  finally:
+    offload_handle.remove()
+
+
+def test_layerwise_cpu_offload_async_transfer_window_keeps_ready_targets_counted() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=945,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.norm", "block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=2,
+    persistent_buckets=2,
+  )
+
+  try:
+    first_persistent = offload_handle.targets[0]
+    second_persistent = offload_handle.targets[1]
+    first_prefetched = offload_handle.targets[2]
+    second_prefetched = offload_handle.targets[3]
+    refill_target = offload_handle.targets[4]
+
+    offload_handle._prefetch_bucket_targets(first_persistent)
+    assert offload_handle._pending_onload_targets | offload_handle._ready_onload_targets == {2, 3}
+
+    if first_prefetched.pending_onload_event is not None:
+      offload_handle._clear_pending_onload(first_prefetched)
+    if second_prefetched.pending_onload_event is not None:
+      offload_handle._clear_pending_onload(second_prefetched)
+    assert offload_handle._pending_onload_targets == set()
+    assert offload_handle._ready_onload_targets == {2, 3}
+
+    offload_handle._prefetch_bucket_targets(second_persistent)
+    assert offload_handle._pending_onload_targets == set()
+    assert offload_handle._ready_onload_targets == {2, 3}
+    assert refill_target.pending_onload_event is None
+    assert refill_target.resident_device.type == "cpu"
+
+    offload_handle._consume_prefetched_target(first_prefetched)
+    offload_handle._prefetch_bucket_targets(first_prefetched)
+    assert offload_handle._ready_onload_targets == {3}
+    assert refill_target.pending_onload_event is not None
+  finally:
+    offload_handle.remove()
 
 
 def test_layerwise_cpu_offload_persistent_prefix_prefetches_first_non_persistent_targets(

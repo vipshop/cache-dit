@@ -354,7 +354,10 @@ def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None
   assert config.get_svdq_kwargs()["layerwise_offload"] is False
   assert config.get_svdq_kwargs()["async_transfer"] is False
   assert config.get_svdq_kwargs()["transfer_buckets"] == 1
+  assert config.get_svdq_kwargs()["max_copy_streams"] is None
+  assert config.get_svdq_kwargs()["max_inflight_prefetch_bytes"] is None
   assert config.get_svdq_kwargs()["persistent_buckets"] == 0
+  assert config.get_svdq_kwargs()["persistent_bins"] == 1
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is False
 
 
@@ -416,7 +419,10 @@ def test_svdq_dq_config_validation_accepts_device_strategy_kwargs() -> None:
       "layerwise_offload": True,
       "async_transfer": True,
       "transfer_buckets": 2,
+      "max_copy_streams": 1,
+      "max_inflight_prefetch_bytes": 4096,
       "persistent_buckets": 1,
+      "persistent_bins": 2,
       "defer_move_to_execution_device": True,
     },
   )
@@ -426,7 +432,10 @@ def test_svdq_dq_config_validation_accepts_device_strategy_kwargs() -> None:
   assert config.get_svdq_kwargs()["layerwise_offload"] is True
   assert config.get_svdq_kwargs()["async_transfer"] is True
   assert config.get_svdq_kwargs()["transfer_buckets"] == 2
+  assert config.get_svdq_kwargs()["max_copy_streams"] == 1
+  assert config.get_svdq_kwargs()["max_inflight_prefetch_bytes"] == 4096
   assert config.get_svdq_kwargs()["persistent_buckets"] == 1
+  assert config.get_svdq_kwargs()["persistent_bins"] == 2
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is True
 
 
@@ -534,16 +543,25 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "--svdq-layerwise-async-transfer",
       "--svdq-layerwise-transfer-buckets",
       "2",
+      "--svdq-layerwise-max-copy-streams",
+      "1",
+      "--svdq-layerwise-max-inflight-prefetch-bytes",
+      "4096",
       "--svdq-layerwise-persistent-buckets",
       "1",
+      "--svdq-layerwise-persistent-bins",
+      "2",
       "--svdq-keep-quantized-layers-on-device",
       "--svdq-no-defer-final-to-cuda",
     ]))
   assert args.svdq_quantize_device == "auto"
   assert args.svdq_layerwise_offload is True
-  assert args.svdq_layerwise_async_transfer is True
-  assert args.svdq_layerwise_transfer_buckets == 2
-  assert args.svdq_layerwise_persistent_buckets == 1
+  assert args.layerwise_async_transfer is True
+  assert args.layerwise_transfer_buckets == 2
+  assert args.layerwise_max_copy_streams == 1
+  assert args.layerwise_max_inflight_prefetch_bytes == 4096
+  assert args.layerwise_persistent_buckets == 1
+  assert args.layerwise_persistent_bins == 2
   assert args.svdq_offload_quantized_layers_to_cpu is True
   assert args.svdq_defer_final_to_cuda is False
 
@@ -566,13 +584,22 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
       "--layerwise-async-transfer",
       "--layerwise-transfer-buckets",
       "2",
+      "--layerwise-max-copy-streams",
+      "1",
+      "--layerwise-max-inflight-prefetch-bytes",
+      "4096",
       "--layerwise-persistent-buckets",
       "1",
+      "--layerwise-persistent-bins",
+      "2",
     ]))
   assert args.module_layerwise_cpu_offload is True
   assert args.layerwise_async_transfer is True
   assert args.layerwise_transfer_buckets == 2
+  assert args.layerwise_max_copy_streams == 1
+  assert args.layerwise_max_inflight_prefetch_bytes == 4096
   assert args.layerwise_persistent_buckets == 1
+  assert args.layerwise_persistent_bins == 2
 
   args = maybe_postprocess_args(
     parser.parse_args([
@@ -1104,7 +1131,10 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
         "layerwise_offload": True,
         "async_transfer": True,
         "transfer_buckets": 2,
+        "max_copy_streams": 1,
+        "max_inflight_prefetch_bytes": 4096,
         "persistent_buckets": 1,
+        "persistent_bins": 2,
       },
     ),
   )
@@ -1112,7 +1142,11 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
   assert len(pending_handles) == 1
   assert pending_handles[0].async_transfer is True
   assert pending_handles[0].transfer_buckets == 2
+  assert pending_handles[0].max_copy_streams == 1
+  assert pending_handles[0].max_inflight_prefetch_bytes == 4096
   assert pending_handles[0].effective_persistent_buckets == 1
+  assert pending_handles[0].persistent_bins == 2
+  assert pending_handles[0].effective_persistent_bins == 1
   assert "block.norm" in pending_handles[0].module_names
   for layer_name in TOY_ATTENTION_LINEAR_NAMES:
     assert layer_name in pending_handles[0].module_names

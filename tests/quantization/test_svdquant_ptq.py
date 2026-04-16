@@ -47,6 +47,9 @@ _DEFAULT_SVDQ_KWARGS = {
   "layerwise_offload": False,
   "async_transfer": False,
   "transfer_buckets": 1,
+  "max_copy_streams": None,
+  "max_inflight_prefetch_bytes": None,
+  "persistent_bins": 1,
 }
 _FLUX2_NUM_INFERENCE_STEPS = 4
 _FLUX2_VISUAL_SAMPLE_COUNT = 3
@@ -1229,14 +1232,21 @@ def test_svdq_ptq_collection_offload_accepts_async_transfer() -> None:
     onload_device=torch.device("cuda"),
     async_transfer=True,
     transfer_buckets=2,
+    max_copy_streams=1,
+    max_inflight_prefetch_bytes=1234,
     persistent_buckets=1,
+    persistent_bins=2,
   )
 
   try:
     assert handle is not None
     assert handle.async_transfer is True
     assert handle.transfer_buckets == 2
+    assert handle.max_copy_streams == 1
+    assert handle.max_inflight_prefetch_bytes == 1234
     assert handle.effective_persistent_buckets == 1
+    assert handle.persistent_bins == 2
+    assert handle.effective_persistent_bins == 1
     assert "norm" in handle.module_names
     assert "to_q" in handle.module_names
     assert "to_k" in handle.module_names

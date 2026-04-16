@@ -52,9 +52,16 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # Number of future targets to prefetch when async_transfer is enabled for
   # layerwise collection offload.
   "transfer_buckets": 1,
+  # Maximum number of async CUDA copy streams used by layerwise collection offload.
+  "max_copy_streams": None,
+  # Maximum total CUDA residency budget, in bytes, for in-flight async layerwise prefetch.
+  "max_inflight_prefetch_bytes": None,
   # Number of leading layerwise-offload targets that should remain resident on
   # the execution device for the full handle lifetime.
   "persistent_buckets": 0,
+  # Number of uniformly distributed bins used to place persistent layerwise-offload
+  # targets across the selected target list.
+  "persistent_bins": 1,
   # When enabled for few-shot DQ, helper flows may skip the eager final
   # `pipe.to(cuda)` and move the pipeline only after runtime quantization has
   # completed.
@@ -263,7 +270,10 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "layerwise_offload": _resolve_svdq_bool_kwarg,
     "async_transfer": _resolve_svdq_bool_kwarg,
     "transfer_buckets": _resolve_svdq_positive_int,
+    "max_copy_streams": _resolve_svdq_positive_int_or_none,
+    "max_inflight_prefetch_bytes": _resolve_svdq_positive_int_or_none,
     "persistent_buckets": _resolve_svdq_non_negative_int,
+    "persistent_bins": _resolve_svdq_positive_int,
     "defer_move_to_execution_device": _resolve_svdq_bool_kwarg,
     "activation_buffer_flush_sample_count": _resolve_svdq_positive_int_or_none,
     "activation_buffer_flush_cpu_bytes": _resolve_svdq_positive_int_or_none,
