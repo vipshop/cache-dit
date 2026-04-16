@@ -6,8 +6,17 @@
 
 Cache-DiT's layerwise offload is designed around a <span style="color:green;">bucket-style execution pattern</span> instead of a strictly one-layer-in, one-layer-out schedule. The selected modules are divided into small contiguous buckets. While the current bucket is executing on CUDA, runtime can already prefetch the next bucket and keep a few strategically chosen buckets persistent on device. This turns the weight movement path into a short pipeline: one copy issue can be hidden behind multiple compute steps, rather than forcing each layer to wait for its own isolated host-to-device transfer.
 
-The main benefit of this bucket-style design is better overlap between communication and compute. Compared with naive sequential offload, it gives runtime a wider window to overlap CPU<->GPU weight transfers with the execution of nearby layers, so the GPU spends less time idling on transfer boundaries. In practice, `transfer_buckets`, `persistent_buckets`, `persistent_bins`, and optional `prefetch_limit` let you trade a moderate amount of extra residency for noticeably better overlap, which is why bucket-style layerwise offload usually reaches a much better latency/memory balance than pure per-layer offload.
+Envrionment: NVIDIA L20, FLUX.1-dev, 28 steps, 1024 x 1024 resolution. Memory usage included the reserved allocated cache by `torch` for future reuse within the same process. 
 
+|w/o offload| sequential (diffusers) | cpu offload (diffusers) | layerwise (cache-dit) |
+|:---:|:---:|:---:|:---:|
+|~38GiB|~1GiB|~25GiB|~1GiB|
+|**23.4s**|335s|56s|49s|
+|+ transfer buckets(1) | + persistent buckets(4)|+ transfer buckets(4) + persistent buckets(8)| + transfer buckets(4) + persistent buckets(32) + bins(4) + prefetch limit| 
+|~4GiB|~8GiB|~14GiB|~16GiB|
+|41s|33s|<span style="color:green;">26s</span>|<span style="color:green;">24.6s</span>|
+
+The main benefit of this bucket-style design is better overlap between communication and compute. Compared with naive sequential offload, it gives runtime a wider window to overlap CPU<->GPU weight transfers with the execution of nearby layers, so the GPU spends less time idling on transfer boundaries. In practice, `transfer_buckets`, `persistent_buckets`, `persistent_bins`, and optional `prefetch_limit` let you trade a moderate amount of extra residency for noticeably better overlap, which is why bucket-style layerwise offload usually reaches a much better latency/memory balance than pure per-layer offload.
 
 ## Basic Usage
 
@@ -25,7 +34,11 @@ module tree.
 ```python
 import cache_dit
 
-cache_dit.layerwise_cpu_offload(model, onload_device="cuda")
+cache_dit.layerwise_offload(
+  model_or_pipeline, 
+  onload_device="cuda", 
+  offload_device="cpu",
+)
 ```
 
 ## Pipeline Component
@@ -35,26 +48,32 @@ In practice, you will usually apply layerwise offload to a large component such 
 ```python
 import cache_dit
 
-handle = cache_dit.layerwise_cpu_offload(
+handle = cache_dit.layerwise_offload(
   pipe.transformer,
   onload_device="cuda",
+  offload_device="cpu",
   module_names=["transformer_blocks.0", "transformer_blocks.1"],
 )
 ```
 
-## Async Transfer
+## Overlap with Prefetch
 
 For CUDA onload plus CPU offload, you can enable asynchronous state transfers:
 
 ```python
 import cache_dit
 
-handle = cache_dit.layerwise_cpu_offload(
+handle = cache_dit.layerwise_offload(
   pipe.transformer,
   onload_device="cuda",
+  offload_device="cpu",
   async_transfer=True,
   transfer_buckets=2,
-  persistent_buckets=8,
+  persistent_buckets=32,
+  persistent_bins=4,
+  prefetch_limit=True,
+  max_copy_streams=4,
+  max_inflight_prefetch_bytes="4gib",
 )
 ```
 
@@ -73,15 +92,9 @@ handle = cache_dit.layerwise_cpu_offload(
 Concrete example: if the selected target list has 32 targets, `persistent_buckets=16`, and `persistent_bins=4`, runtime keeps four evenly spaced persistent ranges resident on CUDA: `[t0, ..., t3]`, `[t8, ..., t11]`, `[t16, ..., t19]`, and `[t24, ..., t27]`.
 
 
-Envrionment: NVIDIA L20, FLUX.1-dev, 28 steps, 1024 x 1024 resolution. Memory usage included the reserved allocated cache by `torch` for future reuse within the same process. 
+Notes: <span style="color:#c77dff;">async_transfer=True</span> currently requires CUDA onload and CPU offload. <span style="color:#c77dff;">transfer_buckets</span> mainly controls copy-lane sizing, while <span style="color:#c77dff;">prefetch_limit</span> optionally enables the conservative future-target count cap <span style="color:#c77dff;">min(4 * transfer_buckets, 8)</span>. <span style="color:#c77dff;">max_copy_streams</span> limits copy-lane concurrency and <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> limits how much future-target weight state may already be resident on GPU across both pending and ready prefetched targets, but only when you set it explicitly. If you leave <span style="color:#c77dff;">prefetch_limit</span> disabled and do not set a byte budget, runtime may aggressively prefetch many future targets, which can improve overlap but also increase peak/reserved CUDA memory. Prefer starting with <span style="color:#c77dff;">transfer_buckets=1</span> or <span style="color:#c77dff;">2</span>, keeping <span style="color:#c77dff;">max_copy_streams</span> modest, and only adding <span style="color:#c77dff;">prefetch_limit</span> or <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> when you specifically need to rein in memory pressure.
 
-|w/o offload| sequential (diffusers) | cpu offload (diffusers) | layerwise (cache-dit) |
-|:---:|:---:|:---:|:---:|
-|~38GiB|~1GiB|~25GiB|~1GiB|
-|**23.4s**|335s|56s|49s|
-|+ transfer buckets(1) | + persistent buckets(4)|+ transfer buckets(4) + persistent buckets(8)| + transfer buckets(4) + persistent buckets(32) + bins(4) + prefetch limit| 
-|~4GiB|~8GiB|~14GiB|~16GiB|
-|41s|33s|<span style="color:green;">26s</span>|<span style="color:green;">24.6s</span>|
+## Quick CLI Example
 
 Quick start with Cache-DiT's example CLI for layerwise offload:
 
@@ -100,6 +113,4 @@ python3 -m cache_dit.generate flux \
   --layerwise-text-max-inflight-prefetch-bytes 2gib
 ```
 
-Notes: <span style="color:#c77dff;">async_transfer=True</span> currently requires CUDA onload and CPU offload. <span style="color:#c77dff;">transfer_buckets</span> mainly controls copy-lane sizing, while <span style="color:#c77dff;">prefetch_limit</span> optionally enables the conservative future-target count cap <span style="color:#c77dff;">min(4 * transfer_buckets, 8)</span>. <span style="color:#c77dff;">max_copy_streams</span> limits copy-lane concurrency and <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> limits how much future-target weight state may already be resident on GPU across both pending and ready prefetched targets, but only when you set it explicitly. If you leave <span style="color:#c77dff;">prefetch_limit</span> disabled and do not set a byte budget, runtime may aggressively prefetch many future targets, which can improve overlap but also increase peak/reserved CUDA memory. Prefer starting with <span style="color:#c77dff;">transfer_buckets=1</span> or <span style="color:#c77dff;">2</span>, keeping <span style="color:#c77dff;">max_copy_streams</span> modest, and only adding <span style="color:#c77dff;">prefetch_limit</span> or <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> when you specifically need to rein in memory pressure.
-
-This switch enables cache-dit's generic sequential CPU offload for `nn.Module` components. It is intended for custom non-diffusers modules and is mutually exclusive with the diffusers pipeline offload switches such as `--cpu-offload` and `--sequential-cpu-offload` in Cache-DiT's CLI. If you enable both, the behavior is undefined.
+This will enable cache-dit's layerwise CPU offload for `nn.Module` components or pipeline. The text encoder is configured with a more conservative offload strategy since it is usually less expensive to offload and reload its weights on demand (only call once per denoising loop), while the transformer (call multiple times per denoising loop) module is configured with a more aggressive strategy that keeps more buckets resident and also allows a deeper async prefetch window. Adjust the offload parameters as needed to find the best latency/memory balance for your specific model and hardware.
