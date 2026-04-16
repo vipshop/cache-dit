@@ -2,43 +2,6 @@ from typing import Optional
 
 import torch
 
-from ..core import _All2AllComm
-
-
-class AsyncUlyssesOrchestrator:
-  """Coordinate async Q/K/V and output collectives via `_All2AllComm`."""
-
-  __slots__ = ("comm", "_handles")
-
-  def __init__(self, cp_config):
-    self.comm = _All2AllComm(cp_config)
-    self._handles = {}
-
-  def _send(self, name: str, tensor: torch.Tensor):
-    handle = getattr(self.comm, f"send_{name}")(tensor)
-    self._handles[name] = handle
-    return handle
-
-  def send_q(self, query: torch.Tensor):
-    return self._send("q", query)
-
-  def send_k(self, key: torch.Tensor):
-    return self._send("k", key)
-
-  def send_v(self, value: torch.Tensor):
-    return self._send("v", value)
-
-  def wait_qkv(
-    self,
-    handles: Optional[dict[str, object]] = None,
-    order: tuple[str, str, str] = ("q", "k", "v"),
-  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    handles = self._handles if handles is None else handles
-    return tuple(handles[name].wait() for name in order)
-
-  def send_output(self, out: torch.Tensor):
-    return self.comm.send_o(out)
-
 
 def require_cp_config(instance, owner_name: str):
   cp_config = getattr(instance, "_cp_config", None)
