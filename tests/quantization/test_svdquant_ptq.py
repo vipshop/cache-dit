@@ -47,6 +47,7 @@ _DEFAULT_SVDQ_KWARGS = {
   "layerwise_offload": False,
   "async_transfer": False,
   "transfer_buckets": 1,
+  "prefetch_limit": False,
   "max_copy_streams": None,
   "max_inflight_prefetch_bytes": None,
   "persistent_bins": 1,
@@ -1232,6 +1233,7 @@ def test_svdq_ptq_collection_offload_accepts_async_transfer() -> None:
     onload_device=torch.device("cuda"),
     async_transfer=True,
     transfer_buckets=2,
+    prefetch_limit=True,
     max_copy_streams=1,
     max_inflight_prefetch_bytes=1234,
     persistent_buckets=1,
@@ -1242,6 +1244,7 @@ def test_svdq_ptq_collection_offload_accepts_async_transfer() -> None:
     assert handle is not None
     assert handle.async_transfer is True
     assert handle.transfer_buckets == 2
+    assert handle.prefetch_limit is True
     assert handle.max_copy_streams == 1
     assert handle.max_inflight_prefetch_bytes == 1234
     assert handle.effective_persistent_buckets == 1

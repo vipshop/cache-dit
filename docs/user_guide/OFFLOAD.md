@@ -13,9 +13,9 @@ By default, <span style="color:#c77dff;">layerwise_cpu_offload</span> selects le
 module tree.
 
 ```python
-from cache_dit.offload import layerwise_cpu_offload
+import cache_dit
 
-layerwise_cpu_offload(model, onload_device="cuda")
+cache_dit.layerwise_cpu_offload(model, onload_device="cuda")
 ```
 
 ## Pipeline Component
@@ -24,7 +24,9 @@ In practice, you will usually apply layerwise offload to a large component such 
 module instead of the whole pipeline object. If you only want to offload specific submodules, pass explicit names:
 
 ```python
-handle = layerwise_cpu_offload(
+import cache_dit
+
+handle = cache_dit.layerwise_cpu_offload(
   pipe.transformer,
   onload_device="cuda",
   module_names=["transformer_blocks.0", "transformer_blocks.1"],
@@ -36,7 +38,9 @@ handle = layerwise_cpu_offload(
 For CUDA onload plus CPU offload, you can enable asynchronous state transfers:
 
 ```python
-handle = layerwise_cpu_offload(
+import cache_dit
+
+handle = cache_dit.layerwise_cpu_offload(
   pipe.transformer,
   onload_device="cuda",
   async_transfer=True,
@@ -48,7 +52,9 @@ handle = layerwise_cpu_offload(
 )
 ```
 
-<span style="color:green;">transfer_buckets</span>: Base future-prefetch depth when async transfer is enabled. Runtime expands this into an effective future-target window of `min(4 * transfer_buckets, 8)` pending/ready prefetched targets ahead of the current execution point. A value of 1 still enables async overlap on a single copy lane while allowing a modest widened lookahead. Larger values do not mean "more overlap is always better": in the current design, each prefetched target is already materialized onto CUDA, so increasing the effective window also increases the number of future layers whose weights are resident on GPU at the same time.
+<span style="color:green;">transfer_buckets</span>: Base async prefetch depth hint used to size copy-lane concurrency. By default, cache-dit no longer applies an implicit future-target count limit from this value.
+
+<span style="color:green;">prefetch_limit</span>: Optional conservative future-prefetch target-count limit. When enabled, runtime caps pending/ready future targets to `min(4 * transfer_buckets, 8)`. Leave it disabled if you want the aggressive prefetch behavior and only rely on explicit byte-budget limits.
 
 <span style="color:green;">max_copy_streams</span>: Maximum number of async CUDA copy streams used by layerwise offload. This caps copy-lane concurrency without changing the logical lookahead depth implied by `transfer_buckets`. When omitted, runtime derives it from `transfer_buckets` and still applies its internal safety cap.
 
@@ -60,13 +66,13 @@ handle = layerwise_cpu_offload(
 
 Concrete example: if the selected target list has 32 targets, `persistent_buckets=16`, and `persistent_bins=4`, runtime keeps four evenly spaced persistent ranges resident on CUDA: `[t0, ..., t3]`, `[t8, ..., t11]`, `[t16, ..., t19]`, and `[t24, ..., t27]`.
 
-Envrionment: NVIDIA L20, FLUX.1-dev, 28 steps, 1024 x 1024, D=Diffusers.
+Envrionment: NVIDIA L20, FLUX.1-dev, 28 steps, 1024 x 1024, D=Diffusers. Memory usage included the reserved allocated cache by `torch` for future reuse within the same process.
 
-|w/o offload| sequential (D) | cpu offload (D) | layerwise | + async transfer | + persistent|
-|:---:|:---:|:---:|:---:|:---:|:---:|
-|~38GiB|~1GiB|~25GiB|~1GiB|~4GiB|~8GiB|
-|24s|335s|56s|49s|41s|33s|
+|w/o offload| sequential (D) | cpu offload (D) | layerwise | + transfer buckets(1) | + persistent buckets(4)|+ transfer buckets(4) + persistent buckets(8)| + transfer buckets(4) + persistent buckets(32) + bins(4) + prefetch limit| 
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|~38GiB|~1GiB|~25GiB|~1GiB|~4GiB|~8GiB|~14GiB|~16GiB|
+|**23.4s**|335s|56s|49s|41s|33s|<span style="color:green;">26s</span>|<span style="color:green;">24.6s</span>|
 
-Notes: <span style="color:#c77dff;">async_transfer=True</span> currently requires CUDA onload and CPU offload. <span style="color:#c77dff;">transfer_buckets</span> controls the base lookahead request, while runtime widens the effective future-target window to <span style="color:#c77dff;">min(4 * transfer_buckets, 8)</span>. <span style="color:#c77dff;">max_copy_streams</span> still limits copy-lane concurrency and <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> limits how much future-target weight state may already be resident on GPU across both pending and ready prefetched targets, but only when you set it explicitly. Larger <span style="color:#c77dff;">transfer_buckets</span> can still sharply increase peak/reserved CUDA memory if the inflight prefetch byte budget is also large, because more future targets may already be materialized on GPU. Prefer starting with <span style="color:#c77dff;">transfer_buckets=1</span> or <span style="color:#c77dff;">2</span>, keeping <span style="color:#c77dff;">max_copy_streams</span> modest, and only adding <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> when profiling shows a real latency win and the memory headroom is still acceptable. Pairing a small <span style="color:#c77dff;">transfer_buckets</span> with a modest <span style="color:#c77dff;">persistent_buckets</span> and a suitable <span style="color:#c77dff;">persistent_bins</span> value is usually a better tradeoff than aggressively increasing async prefetch depth.
+Notes: <span style="color:#c77dff;">async_transfer=True</span> currently requires CUDA onload and CPU offload. <span style="color:#c77dff;">transfer_buckets</span> mainly controls copy-lane sizing, while <span style="color:#c77dff;">prefetch_limit</span> optionally enables the conservative future-target count cap <span style="color:#c77dff;">min(4 * transfer_buckets, 8)</span>. <span style="color:#c77dff;">max_copy_streams</span> limits copy-lane concurrency and <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> limits how much future-target weight state may already be resident on GPU across both pending and ready prefetched targets, but only when you set it explicitly. If you leave <span style="color:#c77dff;">prefetch_limit</span> disabled and do not set a byte budget, runtime may aggressively prefetch many future targets, which can improve overlap but also increase peak/reserved CUDA memory. Prefer starting with <span style="color:#c77dff;">transfer_buckets=1</span> or <span style="color:#c77dff;">2</span>, keeping <span style="color:#c77dff;">max_copy_streams</span> modest, and only adding <span style="color:#c77dff;">prefetch_limit</span> or <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> when you specifically need to rein in memory pressure.
 
 This switch enables cache-dit's generic sequential CPU offload for `nn.Module` components. It is intended for custom non-diffusers modules and is mutually exclusive with the diffusers pipeline offload switches such as `--cpu-offload` and `--sequential-cpu-offload` in Cache-DiT's CLI. If you enable both, the behavior is undefined.

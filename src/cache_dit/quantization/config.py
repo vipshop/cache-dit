@@ -52,6 +52,8 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # Number of future targets to prefetch when async_transfer is enabled for
   # layerwise collection offload.
   "transfer_buckets": 1,
+  # Whether to enable the conservative target-count limit for async future prefetch.
+  "prefetch_limit": False,
   # Maximum number of async CUDA copy streams used by layerwise collection offload.
   "max_copy_streams": None,
   # Maximum total CUDA residency budget, in bytes, for in-flight async layerwise prefetch.
@@ -270,6 +272,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "layerwise_offload": _resolve_svdq_bool_kwarg,
     "async_transfer": _resolve_svdq_bool_kwarg,
     "transfer_buckets": _resolve_svdq_positive_int,
+    "prefetch_limit": _resolve_svdq_bool_kwarg,
     "max_copy_streams": _resolve_svdq_positive_int_or_none,
     "max_inflight_prefetch_bytes": _resolve_svdq_positive_int_or_none,
     "persistent_buckets": _resolve_svdq_non_negative_int,

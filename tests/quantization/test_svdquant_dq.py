@@ -543,6 +543,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
       "--svdq-layerwise-async-transfer",
       "--svdq-layerwise-transfer-buckets",
       "2",
+      "--svdq-layerwise-prefetch-limit",
       "--svdq-layerwise-max-copy-streams",
       "1",
       "--svdq-layerwise-max-inflight-prefetch-bytes",
@@ -558,6 +559,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.svdq_layerwise_offload is True
   assert args.layerwise_async_transfer is True
   assert args.layerwise_transfer_buckets == 2
+  assert args.layerwise_prefetch_limit is True
   assert args.layerwise_max_copy_streams == 1
   assert args.layerwise_max_inflight_prefetch_bytes == 4096
   assert args.layerwise_persistent_buckets == 1
@@ -584,6 +586,7 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
       "--layerwise-async-transfer",
       "--layerwise-transfer-buckets",
       "2",
+      "--layerwise-prefetch-limit",
       "--layerwise-max-copy-streams",
       "1",
       "--layerwise-max-inflight-prefetch-bytes",
@@ -596,6 +599,7 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
   assert args.module_layerwise_cpu_offload is True
   assert args.layerwise_async_transfer is True
   assert args.layerwise_transfer_buckets == 2
+  assert args.layerwise_prefetch_limit is True
   assert args.layerwise_max_copy_streams == 1
   assert args.layerwise_max_inflight_prefetch_bytes == 4096
   assert args.layerwise_persistent_buckets == 1
@@ -1131,6 +1135,7 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
         "layerwise_offload": True,
         "async_transfer": True,
         "transfer_buckets": 2,
+        "prefetch_limit": True,
         "max_copy_streams": 1,
         "max_inflight_prefetch_bytes": 4096,
         "persistent_buckets": 1,
@@ -1142,6 +1147,7 @@ def test_svdq_dq_few_shot_cpu_root_collection_uses_layerwise_cuda_offload() -> N
   assert len(pending_handles) == 1
   assert pending_handles[0].async_transfer is True
   assert pending_handles[0].transfer_buckets == 2
+  assert pending_handles[0].prefetch_limit is True
   assert pending_handles[0].max_copy_streams == 1
   assert pending_handles[0].max_inflight_prefetch_bytes == 4096
   assert pending_handles[0].effective_persistent_buckets == 1

@@ -10,6 +10,16 @@ from torch import nn
 from ..logger import init_logger
 
 try:
+  from diffusers import DiffusionPipeline
+except ImportError:
+  DiffusionPipeline = None
+
+try:
+  from ..caching import BlockAdapter
+except ImportError:
+  BlockAdapter = None
+
+try:
   from accelerate.hooks import AlignDevicesHook as _AccelerateAlignDevicesHook
   from accelerate.hooks import CpuOffload as _AccelerateCpuOffload
 except ImportError:
@@ -363,6 +373,166 @@ class _LayerwiseTarget:
   prefetch_residency_bytes: int = 0
 
 
+class LayerwiseOffloadHandleGroup:
+  """Aggregate multiple per-root layerwise offload handles.
+
+  This is returned when the public layerwise offload API is applied to a pipeline-like object that
+  resolves to multiple root modules. Each underlying handle still owns its own leaf-module hooks;
+  the group only provides a single lifecycle object for callers.
+  """
+
+  def __init__(
+    self,
+    *,
+    source: Any,
+    handles: Iterable["LayerwiseOffloadHandle"],
+    root_names: Iterable[str],
+  ) -> None:
+    self.source = source
+    self.handles = tuple(handles)
+    self.root_names = tuple(root_names)
+
+  @property
+  def module_names(self) -> list[str]:
+    aggregated_names: list[str] = []
+    for root_name, handle in zip(self.root_names, self.handles):
+      prefix = f"{root_name}." if root_name else ""
+      for module_name in handle.module_names:
+        if module_name:
+          aggregated_names.append(f"{prefix}{module_name}")
+        else:
+          aggregated_names.append(root_name)
+    return aggregated_names
+
+  def __len__(self) -> int:
+    return len(self.handles)
+
+  def __iter__(self):
+    return iter(self.handles)
+
+  def remove(self, *, offload: bool = True) -> None:
+    for handle in self.handles:
+      handle.remove(offload=offload)
+
+
+def _is_diffusion_pipeline_instance(value: Any) -> bool:
+  return DiffusionPipeline is not None and isinstance(value, DiffusionPipeline)
+
+
+def _is_block_adapter_instance(value: Any) -> bool:
+  return BlockAdapter is not None and isinstance(value, BlockAdapter)
+
+
+def _append_public_offload_root(
+  roots: list[tuple[str, nn.Module]],
+  seen_module_ids: set[int],
+  name: str,
+  module: Any,
+) -> None:
+  if not isinstance(module, nn.Module):
+    return
+  if id(module) in seen_module_ids:
+    return
+  seen_module_ids.add(id(module))
+  roots.append((name, module))
+
+
+def _resolve_named_public_offload_root(root_or_adapter: Any, module_name: str) -> nn.Module:
+  if isinstance(root_or_adapter, nn.Module):
+    return root_or_adapter if module_name == "" else root_or_adapter.get_submodule(module_name)
+
+  path_parts = module_name.split(".") if module_name else []
+  current: Any = root_or_adapter
+  for index, path_part in enumerate(path_parts):
+    if isinstance(current, nn.Module):
+      remainder = ".".join(path_parts[index:])
+      current = current if remainder == "" else current.get_submodule(remainder)
+      break
+    if isinstance(current, dict):
+      if path_part not in current:
+        raise AttributeError(f"{type(current).__name__} has no key {path_part!r}.")
+      current = current[path_part]
+      continue
+    if isinstance(current, (list, tuple)):
+      try:
+        current = current[int(path_part)]
+      except (ValueError, IndexError) as exc:
+        raise AttributeError(
+          f"{type(current).__name__} cannot resolve index {path_part!r} in {module_name!r}."
+        ) from exc
+      continue
+    if not hasattr(current, path_part):
+      raise AttributeError(f"{type(current).__name__} has no attribute {path_part!r}.")
+    current = getattr(current, path_part)
+
+  if not isinstance(current, nn.Module):
+    raise TypeError(
+      f"Resolved object for module name {module_name!r} is not an nn.Module: {type(current)}.")
+  return current
+
+
+def _collect_public_offload_roots(root_or_adapter: Any) -> list[tuple[str, nn.Module]]:
+  roots: list[tuple[str, nn.Module]] = []
+  seen_module_ids: set[int] = set()
+
+  if isinstance(root_or_adapter, nn.Module):
+    return [("", root_or_adapter)]
+
+  if _is_block_adapter_instance(root_or_adapter):
+    transformer = getattr(root_or_adapter, "transformer", None)
+    if isinstance(transformer, list):
+      flattened_transformers = (BlockAdapter.flatten(transformer)
+                                if BlockAdapter is not None else transformer)
+      for index, module in enumerate(flattened_transformers):
+        _append_public_offload_root(roots, seen_module_ids, f"transformer[{index}]", module)
+    else:
+      _append_public_offload_root(roots, seen_module_ids, "transformer", transformer)
+    if roots:
+      return roots
+    root_or_adapter = getattr(root_or_adapter, "pipe", root_or_adapter)
+
+  if _is_diffusion_pipeline_instance(root_or_adapter):
+    components = getattr(root_or_adapter, "components", None)
+    if isinstance(components, dict):
+      for name, module in components.items():
+        _append_public_offload_root(roots, seen_module_ids, str(name), module)
+      if roots:
+        return roots
+
+  if hasattr(root_or_adapter, "__dict__"):
+    for name, module in vars(root_or_adapter).items():
+      _append_public_offload_root(roots, seen_module_ids, str(name), module)
+
+  return roots
+
+
+def _resolve_public_offload_root_specs(
+  root_or_adapter: Any,
+  *,
+  module_names: Iterable[str] | None,
+  module_filter: Callable[..., bool] | None,
+) -> list[tuple[str, nn.Module, Iterable[str] | None, Callable[..., bool] | None]]:
+  if isinstance(root_or_adapter, nn.Module):
+    return [("", root_or_adapter, module_names, module_filter)]
+
+  if module_names is not None:
+    resolved_roots: list[tuple[str, nn.Module, None, None]] = []
+    seen_module_ids: set[int] = set()
+    for module_name in module_names:
+      resolved_module = _resolve_named_public_offload_root(root_or_adapter, module_name)
+      if id(resolved_module) in seen_module_ids:
+        continue
+      seen_module_ids.add(id(resolved_module))
+      resolved_roots.append((module_name, resolved_module, None, None))
+    return resolved_roots
+
+  resolved_roots = _collect_public_offload_roots(root_or_adapter)
+  if module_filter is None:
+    return [(name, module, None, None) for name, module in resolved_roots]
+  return [(name, module, None, None) for name, module in resolved_roots
+          if _call_module_filter(module_filter, name=name, module=module)]
+
+
 class LayerwiseOffloadHandle:
   """Registered layerwise offload hooks for a root module.
 
@@ -388,9 +558,13 @@ class LayerwiseOffloadHandle:
     parameters are still offloaded layer-by-layer after each leaf forward. It is enabled only
     when the selected targets cover every parameterized leaf submodule in the root module.
   :param transfer_buckets: Base future-prefetch depth when async transfer is enabled. Runtime
-    expands this into an effective future-target window of ``min(4 * transfer_buckets, 8)``
-    prefetched pending/ready targets ahead of the current execution point. A value of 1 still
-    enables async overlap on a single copy lane while allowing a modest widened lookahead.
+    uses this to size the async copy-stream pools and as the base depth for optional future-
+    prefetch target limiting.
+  :param prefetch_limit: Whether async transfer should enable the conservative future-
+    prefetch target-count limit. When enabled, runtime caps pending/ready future targets to
+    ``min(4 * transfer_buckets, 8)``. When disabled, target-count limiting is off and only other
+    explicit constraints such as ``max_inflight_prefetch_bytes`` can stop additional future
+    prefetch.
   :param max_copy_streams: Maximum size of the async onload/offload copy stream pools. This caps
     copy-lane concurrency without reducing the logical prefetch lookahead depth.
   :param max_inflight_prefetch_bytes: Maximum total CUDA residency budget, in bytes, that async
@@ -420,6 +594,7 @@ class LayerwiseOffloadHandle:
     async_transfer: bool,
     keep_activations_onload_device: bool,
     transfer_buckets: int,
+    prefetch_limit: bool,
     max_copy_streams: int | None,
     max_inflight_prefetch_bytes: int | None,
     persistent_buckets: int,
@@ -436,6 +611,7 @@ class LayerwiseOffloadHandle:
     self.async_transfer = async_transfer
     self.keep_activations_onload_device = keep_activations_onload_device
     self.transfer_buckets = transfer_buckets
+    self.prefetch_limit = prefetch_limit
     self.max_copy_streams = max_copy_streams
     self.max_inflight_prefetch_bytes = max_inflight_prefetch_bytes
     self.persistent_buckets = persistent_buckets
@@ -458,7 +634,7 @@ class LayerwiseOffloadHandle:
         self.effective_max_copy_streams,
       )
     self.effective_transfer_buckets = (min(4 * transfer_buckets, _MAX_FUTURE_PREFETCH_WINDOW)
-                                       if async_transfer else transfer_buckets)
+                                       if async_transfer and prefetch_limit else None)
     self.effective_max_inflight_prefetch_bytes = max_inflight_prefetch_bytes
     self._onload_copy_streams = (
       [torch.cuda.Stream(device=onload_device)
@@ -805,14 +981,16 @@ class LayerwiseOffloadHandle:
     if not self.async_transfer:
       return
     self._reap_completed_transfers()
-    available_target_budget = self.effective_transfer_buckets - self._tracked_prefetch_target_count(
-    )
-    if available_target_budget <= 0:
-      return
+    available_target_budget = None
+    if self.effective_transfer_buckets is not None:
+      available_target_budget = (self.effective_transfer_buckets -
+                                 self._tracked_prefetch_target_count())
+      if available_target_budget <= 0:
+        return
     scheduled = 0
     start_index = target.index + 1
     for next_target in self.targets[start_index:]:
-      if scheduled >= available_target_budget:
+      if available_target_budget is not None and scheduled >= available_target_budget:
         break
       if next_target.persistent:
         continue
@@ -953,32 +1131,105 @@ def _detach_layerwise_offload_handle(
     delattr(root_module, _LAYERWISE_OFFLOAD_HANDLES_ATTR)
 
 
-def get_layerwise_offload_handles(root_module: nn.Module, ) -> tuple[LayerwiseOffloadHandle, ...]:
-  """Return cache-dit layerwise offload handles attached to a root module.
+def get_layerwise_offload_handles(root_module: Any, ) -> tuple[LayerwiseOffloadHandle, ...]:
+  """Return cache-dit layerwise offload handles attached to a module or pipeline-like object.
 
-  :param root_module: Root module that may own layerwise offload hooks.
+  :param root_module: Root module, DiffusionPipeline, or BlockAdapter that may own layerwise offload
+    hooks.
   :returns: Attached layerwise offload handles in registration order.
   """
 
-  return tuple(_get_registered_layerwise_offload_handles(root_module))
+  resolved_root_specs = _resolve_public_offload_root_specs(
+    root_module,
+    module_names=None,
+    module_filter=None,
+  )
+  handles: list[LayerwiseOffloadHandle] = []
+  seen_handle_ids: set[int] = set()
+  for _name, resolved_root_module, _module_names, _module_filter in resolved_root_specs:
+    for handle in _get_registered_layerwise_offload_handles(resolved_root_module):
+      if id(handle) in seen_handle_ids:
+        continue
+      seen_handle_ids.add(id(handle))
+      handles.append(handle)
+  return tuple(handles)
 
 
 def remove_layerwise_offload(
-  root_module: nn.Module,
+  root_module: Any,
   *,
   offload: bool = True,
 ) -> int:
-  """Remove all cache-dit layerwise offload hooks attached to a root module.
+  """Remove all cache-dit layerwise offload hooks attached to a module or pipeline-like object.
 
-  :param root_module: Root module that owns the layerwise offload hooks.
+  :param root_module: Root module, DiffusionPipeline, or BlockAdapter that owns the layerwise
+    offload hooks.
   :param offload: Whether to move registered targets back to the offload device.
   :returns: Number of attached handles that were removed.
   """
 
-  handles = list(_get_registered_layerwise_offload_handles(root_module))
+  handles = list(get_layerwise_offload_handles(root_module))
   for handle in handles:
     handle.remove(offload=offload)
   return len(handles)
+
+
+def _apply_public_layerwise_offload(
+  root_module: Any,
+  *,
+  module_names: Iterable[str] | None = None,
+  module_filter: Callable[..., bool] | None = None,
+  onload_device: torch.device | str,
+  offload_device: torch.device | str = "cpu",
+  output_device: torch.device | str | None = None,
+  non_blocking: bool = False,
+  eager_offload: bool = True,
+  async_transfer: bool = False,
+  transfer_buckets: int = 1,
+  prefetch_limit: bool = False,
+  max_copy_streams: int | None = None,
+  max_inflight_prefetch_bytes: int | None = None,
+  persistent_buckets: int = 0,
+  persistent_bins: int = 1,
+) -> LayerwiseOffloadHandle | LayerwiseOffloadHandleGroup:
+  resolved_root_specs = _resolve_public_offload_root_specs(
+    root_module,
+    module_names=module_names,
+    module_filter=module_filter,
+  )
+  if not resolved_root_specs:
+    raise ValueError("Layerwise offload did not match any root modules.")
+
+  handles: list[LayerwiseOffloadHandle] = []
+  root_names: list[str] = []
+  for root_name, resolved_root_module, resolved_module_names, resolved_module_filter in resolved_root_specs:
+    handles.append(
+      _apply_layerwise_offload(
+        resolved_root_module,
+        module_names=resolved_module_names,
+        module_filter=resolved_module_filter,
+        onload_device=onload_device,
+        offload_device=offload_device,
+        output_device=output_device,
+        non_blocking=non_blocking,
+        eager_offload=eager_offload,
+        async_transfer=async_transfer,
+        transfer_buckets=transfer_buckets,
+        prefetch_limit=prefetch_limit,
+        max_copy_streams=max_copy_streams,
+        max_inflight_prefetch_bytes=max_inflight_prefetch_bytes,
+        persistent_buckets=persistent_buckets,
+        persistent_bins=persistent_bins,
+      ))
+    root_names.append(root_name)
+
+  if len(handles) == 1:
+    return handles[0]
+  return LayerwiseOffloadHandleGroup(
+    source=root_module,
+    handles=handles,
+    root_names=root_names,
+  )
 
 
 def _apply_layerwise_offload(
@@ -993,6 +1244,7 @@ def _apply_layerwise_offload(
   eager_offload: bool = True,
   async_transfer: bool = False,
   transfer_buckets: int = 1,
+  prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
   max_inflight_prefetch_bytes: int | None = None,
   persistent_buckets: int = 0,
@@ -1015,9 +1267,13 @@ def _apply_layerwise_offload(
     offload copy stream pools. The async path currently supports CUDA onload plus CPU offload
     only.
   :param transfer_buckets: Base future-prefetch depth when ``async_transfer`` is enabled.
-    Runtime expands this into an effective future-target window of
-    ``min(4 * transfer_buckets, 8)`` pending/ready prefetched targets ahead of the current
-    execution point.
+    Runtime uses this to size the async copy-stream pools and as the base depth for optional
+    future-prefetch target limiting.
+  :param prefetch_limit: Whether async transfer should enable the conservative future-
+    prefetch target-count limit. When enabled, runtime caps pending/ready future targets to
+    ``min(4 * transfer_buckets, 8)``. When disabled, target-count limiting is off and only other
+    explicit constraints such as ``max_inflight_prefetch_bytes`` can stop additional future
+    prefetch.
   :param max_copy_streams: Maximum number of async onload/offload copy streams. When omitted,
     runtime uses the requested transfer_buckets but still applies a hard safety cap.
   :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
@@ -1039,6 +1295,8 @@ def _apply_layerwise_offload(
     raise TypeError(f"transfer_buckets must be an int, got {type(transfer_buckets)}.")
   if transfer_buckets < 1:
     raise ValueError(f"transfer_buckets must be >= 1, got {transfer_buckets}.")
+  if not isinstance(prefetch_limit, bool):
+    raise TypeError(f"prefetch_limit must be a bool, got {type(prefetch_limit)}.")
   if max_copy_streams is not None:
     if isinstance(max_copy_streams, bool) or not isinstance(max_copy_streams, int):
       raise TypeError(f"max_copy_streams must be an int or None, got {type(max_copy_streams)}.")
@@ -1073,6 +1331,9 @@ def _apply_layerwise_offload(
     module_names=module_names,
     module_filter=module_filter,
   )
+  if (not resolved_targets and module_names is None and module_filter is None
+      and _module_has_direct_state(root_module)):
+    resolved_targets = [("", root_module)]
   if not resolved_targets:
     raise ValueError("Layerwise offload did not match any target submodules.")
   has_full_parameterized_leaf_coverage = _targets_cover_all_parameterized_leaf_modules(
@@ -1119,6 +1380,7 @@ def _apply_layerwise_offload(
     async_transfer=async_transfer,
     keep_activations_onload_device=has_full_parameterized_leaf_coverage,
     transfer_buckets=transfer_buckets,
+    prefetch_limit=prefetch_limit,
     max_copy_streams=max_copy_streams,
     max_inflight_prefetch_bytes=max_inflight_prefetch_bytes,
     persistent_buckets=persistent_buckets,
@@ -1307,7 +1569,7 @@ def _apply_layerwise_offload(
 
 
 def layerwise_offload(
-  root_module: nn.Module,
+  root_module: Any,
   *,
   module_names: Iterable[str] | None = None,
   module_filter: Callable[..., bool] | None = None,
@@ -1318,17 +1580,21 @@ def layerwise_offload(
   eager_offload: bool = True,
   async_transfer: bool = False,
   transfer_buckets: int = 1,
+  prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
   max_inflight_prefetch_bytes: int | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
-) -> LayerwiseOffloadHandle:
+) -> LayerwiseOffloadHandle | LayerwiseOffloadHandleGroup:
   """Public wrapper for generic submodule-level onload/offload hooks.
 
-  :param root_module: Root module that owns the selected submodules.
-  :param module_names: Optional explicit submodule names.
+  :param root_module: Root module, DiffusionPipeline, or BlockAdapter that owns the selected
+    submodules.
+  :param module_names: Optional explicit submodule names. For module inputs, these names are
+    resolved inside the module as before. For pipeline-like inputs, they are resolved as explicit
+    component/module paths and each resolved module becomes an offload root.
   :param module_filter: Optional predicate used to select submodules when ``module_names`` is not
-    provided.
+    provided. For pipeline-like inputs, this filter is applied to discovered root components.
   :param onload_device: Device used during the selected submodule forward.
   :param offload_device: Residency device after the selected submodule forward.
   :param output_device: Optional fixed output device for all selected submodules.
@@ -1339,6 +1605,8 @@ def layerwise_offload(
     only.
   :param transfer_buckets: How many future targets should be prefetched when ``async_transfer``
     is enabled.
+  :param prefetch_limit: Whether to enable the conservative future-prefetch target-count
+    limit of ``min(4 * transfer_buckets, 8)``.
   :param max_copy_streams: Maximum number of async onload/offload copy streams.
   :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
     allowed for async prefetch at once. Common examples are ``1 * 1024**3`` for 1 GiB,
@@ -1347,11 +1615,12 @@ def layerwise_offload(
     for the full handle lifetime.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
     persistent targets. A value of 1 keeps the original prefix behavior.
-  :returns: A handle that can remove the registered hooks. The same handle is also attached to
-    ``root_module`` and can be removed later with ``remove_layerwise_offload(root_module)``.
+  :returns: A single handle for module inputs or a grouped handle for pipeline-like inputs. The
+    underlying per-root handles are also attached to their resolved root modules and can be
+    removed later with ``remove_layerwise_offload(root_module)``.
   """
 
-  return _apply_layerwise_offload(
+  return _apply_public_layerwise_offload(
     root_module,
     module_names=module_names,
     module_filter=module_filter,
@@ -1362,6 +1631,7 @@ def layerwise_offload(
     eager_offload=eager_offload,
     async_transfer=async_transfer,
     transfer_buckets=transfer_buckets,
+    prefetch_limit=prefetch_limit,
     max_copy_streams=max_copy_streams,
     max_inflight_prefetch_bytes=max_inflight_prefetch_bytes,
     persistent_buckets=persistent_buckets,
@@ -1370,7 +1640,7 @@ def layerwise_offload(
 
 
 def layerwise_cpu_offload(
-  root_module: nn.Module,
+  root_module: Any,
   *,
   module_names: Iterable[str] | None = None,
   module_filter: Callable[..., bool] | None = None,
@@ -1380,17 +1650,21 @@ def layerwise_cpu_offload(
   eager_offload: bool = True,
   async_transfer: bool = False,
   transfer_buckets: int = 1,
+  prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
   max_inflight_prefetch_bytes: int | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
-) -> LayerwiseOffloadHandle:
+) -> LayerwiseOffloadHandle | LayerwiseOffloadHandleGroup:
   """Convenience wrapper for cache-dit layerwise CPU offload.
 
-  :param root_module: Root module that owns the selected submodules.
-  :param module_names: Optional explicit submodule names.
+  :param root_module: Root module, DiffusionPipeline, or BlockAdapter that owns the selected
+    submodules.
+  :param module_names: Optional explicit submodule names. For pipeline-like inputs, these names
+    are resolved as explicit component/module paths and each resolved module becomes an offload
+    root.
   :param module_filter: Optional predicate used to select submodules when ``module_names`` is not
-    provided.
+    provided. For pipeline-like inputs, this filter is applied to discovered root components.
   :param onload_device: Device used during the selected submodule forward.
   :param output_device: Optional fixed output device for all selected submodules.
   :param non_blocking: Whether visible tensor transfers should request non-blocking copies.
@@ -1399,6 +1673,8 @@ def layerwise_cpu_offload(
     offload copy stream pools.
   :param transfer_buckets: How many future targets should be prefetched when ``async_transfer``
     is enabled.
+  :param prefetch_limit: Whether to enable the conservative future-prefetch target-count
+    limit of ``min(4 * transfer_buckets, 8)``.
   :param max_copy_streams: Maximum number of async onload/offload copy streams.
   :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
     allowed for async prefetch at once. Common examples are ``1 * 1024**3`` for 1 GiB,
@@ -1407,11 +1683,12 @@ def layerwise_cpu_offload(
     for the full handle lifetime.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
     persistent targets. A value of 1 keeps the original prefix behavior.
-  :returns: A handle that can remove the registered hooks. The same handle is also attached to
-    ``root_module`` and can be removed later with ``remove_layerwise_offload(root_module)``.
+  :returns: A single handle for module inputs or a grouped handle for pipeline-like inputs. The
+    underlying per-root handles are also attached to their resolved root modules and can be
+    removed later with ``remove_layerwise_offload(root_module)``.
   """
 
-  return _apply_layerwise_offload(
+  return _apply_public_layerwise_offload(
     root_module,
     module_names=module_names,
     module_filter=module_filter,
@@ -1422,6 +1699,7 @@ def layerwise_cpu_offload(
     eager_offload=eager_offload,
     async_transfer=async_transfer,
     transfer_buckets=transfer_buckets,
+    prefetch_limit=prefetch_limit,
     max_copy_streams=max_copy_streams,
     max_inflight_prefetch_bytes=max_inflight_prefetch_bytes,
     persistent_buckets=persistent_buckets,
@@ -1431,6 +1709,7 @@ def layerwise_cpu_offload(
 
 __all__ = [
   "LayerwiseOffloadHandle",
+  "LayerwiseOffloadHandleGroup",
   "_apply_layerwise_offload",
   "_find_offload_related_hf_hook",
   "get_layerwise_offload_handles",

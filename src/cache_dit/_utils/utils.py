@@ -783,8 +783,17 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-transfer-buckets",
     type=int,
     default=1,
-    help=("Base future-prefetch depth for layerwise async transfer. Runtime expands this to an "
-          "effective future-target window of min(4 * buckets, 8). Default is 1."),
+    help=("Base async prefetch depth hint used to size layerwise copy-lane concurrency. "
+          "Default is 1."),
+  )
+  parser.add_argument(
+    "--layerwise-prefetch-limit",
+    "--svdq-layerwise-prefetch-limit",
+    action="store_true",
+    default=False,
+    help=("Enable the conservative future-prefetch target-count limit for layerwise async "
+          "transfer. When set, runtime caps pending/ready future targets to "
+          "min(4 * --layerwise-transfer-buckets, 8). By default this limit is disabled."),
   )
   parser.add_argument(
     "--layerwise-max-copy-streams",
@@ -1614,6 +1623,7 @@ def maybe_quantize_transformer(
       "layerwise_offload": args.svdq_layerwise_offload,
       "async_transfer": args.layerwise_async_transfer,
       "transfer_buckets": args.layerwise_transfer_buckets,
+      "prefetch_limit": args.layerwise_prefetch_limit,
       "max_copy_streams": args.layerwise_max_copy_streams,
       "max_inflight_prefetch_bytes": args.layerwise_max_inflight_prefetch_bytes,
       "persistent_buckets": args.layerwise_persistent_buckets,
@@ -1975,6 +1985,7 @@ def maybe_generic_module_offload(
         onload_device=device,
         async_transfer=bool(getattr(args, "layerwise_async_transfer", False)),
         transfer_buckets=int(getattr(args, "layerwise_transfer_buckets", 1)),
+        prefetch_limit=bool(getattr(args, "layerwise_prefetch_limit", False)),
         max_copy_streams=getattr(args, "layerwise_max_copy_streams", None),
         max_inflight_prefetch_bytes=getattr(args, "layerwise_max_inflight_prefetch_bytes", None),
         persistent_buckets=int(getattr(args, "layerwise_persistent_buckets", 0)),

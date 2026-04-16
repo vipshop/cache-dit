@@ -61,6 +61,12 @@ from .quantization import load
 from .quantization import quantize
 from .quantization import QuantizeConfig
 from .quantization import QuantizeBackend
+from .offload import LayerwiseOffloadHandle
+from .offload import LayerwiseOffloadHandleGroup
+from .offload import get_layerwise_offload_handles
+from .offload import layerwise_offload
+from .offload import layerwise_cpu_offload
+from .offload import remove_layerwise_offload
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
