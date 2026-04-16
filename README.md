@@ -72,14 +72,15 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 ```python
 >>> from cache_dit import QuantizeConfig
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> # 0. Config for SVDQuant DQ with few_shot calibration.
->>> quant_config = QuantizeConfig(
-...   quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
-...   svdq_kwargs={"smooth_strategy": "few_shot"},
-... )
->>> # 1. Apply quantization with `cache_dit.quantize(...)` API.
->>> pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config) 
->>> output = pipe(...) # 2. Use the quantized model for inference.
+>>> # Apply quantization with `cache_dit.quantize(...)` API.
+>>> pipe.transformer = cache_dit.quantize(
+...   pipe.transformer, 
+...   quant_config=QuantizeConfig(
+...     quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+...     svdq_kwargs={"smooth_strategy": "few_shot"},
+...   )
+... ) 
+>>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
 For more advanced features, please refer to our online documentation at 📘[Documentation](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).

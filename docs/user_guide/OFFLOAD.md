@@ -45,10 +45,7 @@ handle = cache_dit.layerwise_cpu_offload(
   onload_device="cuda",
   async_transfer=True,
   transfer_buckets=2,
-  max_copy_streams=2,
-  max_inflight_prefetch_bytes=2 * 1024**3,
-  persistent_buckets=2,
-  persistent_bins=2,
+  persistent_buckets=8,
 )
 ```
 
