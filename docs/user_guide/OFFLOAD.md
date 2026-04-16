@@ -55,7 +55,7 @@ handle = cache_dit.layerwise_cpu_offload(
 
 <span style="color:green;">max_copy_streams</span>: Maximum number of async CUDA copy streams used by layerwise offload. This caps copy-lane concurrency without changing the logical lookahead depth implied by `transfer_buckets`. When omitted, runtime derives it from `transfer_buckets` and still applies its internal safety cap.
 
-<span style="color:green;">max_inflight_prefetch_bytes</span>: Maximum total CUDA residency budget, in bytes, that async future-target prefetch may consume at once. This caps the combined footprint of both pending transfers and ready-but-not-yet-consumed prefetched targets, even when the effective prefetch window requests a deeper lookahead. When omitted, runtime does not apply an implicit byte-budget cap. Common examples are `1 * 1024**3` for 1 GiB, `4 * 1024**3` for 4 GiB, `8 * 1024**3` for 8 GiB, and `16 * 1024**3` for 16 GiB.
+<span style="color:green;">max_inflight_prefetch_bytes</span>: Maximum total CUDA residency budget, in bytes, that async future-target prefetch may consume at once. This caps the combined footprint of both pending transfers and ready-but-not-yet-consumed prefetched targets, even when the effective prefetch window requests a deeper lookahead. When omitted, runtime does not apply an implicit byte-budget cap. The Python API still takes raw bytes. The CLI accepts raw bytes or size suffixes such as `512MiB`, `4GiB`, `8GiB`, and `16GiB`.
 
 <span style="color:green;">persistent_buckets</span>: How many selected targets should stay resident on the onload device for the full handle lifetime instead of participating in per-forward onload/offload. These targets are materialized onto the onload device during handle creation, before the first forward starts.
 

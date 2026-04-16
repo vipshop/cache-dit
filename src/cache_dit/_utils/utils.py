@@ -1,8 +1,10 @@
 import torch
 import argparse
+import re
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
 from typing import Any, Dict, Optional, List, Tuple
+from decimal import Decimal
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..logger import init_logger
@@ -73,6 +75,58 @@ def GiB():
     return int(total_memory_gib)
   except Exception:
     return 0
+
+
+_BYTE_SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([kmgt]?i?b)?\s*$", re.IGNORECASE)
+_BYTE_SIZE_UNITS = {
+  None: 1,
+  "b": 1,
+  "kib": 1024,
+  "mib": 1024 ** 2,
+  "gib": 1024 ** 3,
+  "tib": 1024 ** 4,
+  "kb": 1024,
+  "mb": 1024 ** 2,
+  "gb": 1024 ** 3,
+  "tb": 1024 ** 4,
+}
+
+
+def _parse_byte_size_arg(value: str) -> int:
+  """Parse a positive byte-size CLI argument.
+
+  Accepts raw byte integers such as ``4096`` and binary-size suffixes such as ``512MiB`` or
+  ``4GiB``. Decimal values are allowed when a suffix is present, for example ``0.5GiB``.
+
+  :param value: Raw CLI string value.
+  :returns: Parsed positive size in bytes.
+  """
+
+  match = _BYTE_SIZE_RE.match(value)
+  if match is None:
+    raise argparse.ArgumentTypeError("Expected a positive byte value like 4096, 512MiB, or 4GiB.")
+
+  number_text, unit_text = match.groups()
+  try:
+    number = Decimal(number_text)
+  except Exception as exc:
+    raise argparse.ArgumentTypeError(
+      f"Invalid byte-size value {value!r}; expected a positive number.") from exc
+
+  if number <= 0:
+    raise argparse.ArgumentTypeError(f"Byte-size value must be > 0, got {value!r}.")
+
+  normalized_unit = unit_text.lower() if unit_text is not None else None
+  multiplier = _BYTE_SIZE_UNITS.get(normalized_unit)
+  if multiplier is None:
+    raise argparse.ArgumentTypeError(
+      f"Unsupported byte-size suffix in {value!r}; use bytes or KiB/MiB/GiB/TiB.")
+
+  byte_value = number * multiplier
+  if byte_value != byte_value.to_integral_value():
+    raise argparse.ArgumentTypeError(
+      f"Byte-size value {value!r} does not resolve to a whole number of bytes.")
+  return int(byte_value)
 
 
 def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespace:
@@ -808,12 +862,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   parser.add_argument(
     "--layerwise-max-inflight-prefetch-bytes",
     "--svdq-layerwise-max-inflight-prefetch-bytes",
-    type=int,
+    type=_parse_byte_size_arg,
     default=None,
     help=("Maximum total CUDA residency budget, in bytes, for in-flight layerwise future-target "
           "prefetch. This shared setting applies to both generic module layerwise offload and "
-          "SVDQ layerwise collection when --svdq-layerwise-offload is active. When omitted, "
-          "runtime leaves the byte-budget limit disabled."),
+          "SVDQ layerwise collection when --svdq-layerwise-offload is active. Accepts raw bytes "
+          "or suffixes like 512MiB and 4GiB. When omitted, runtime leaves the byte-budget "
+          "limit disabled."),
   )
   parser.add_argument(
     "--layerwise-persistent-buckets",

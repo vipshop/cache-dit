@@ -605,6 +605,24 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
   assert args.layerwise_persistent_buckets == 1
   assert args.layerwise_persistent_bins == 2
 
+
+def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
+  parser = get_args(parse=False)
+
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--layerwise-max-inflight-prefetch-bytes",
+      "4GiB",
+    ]))
+  assert args.layerwise_max_inflight_prefetch_bytes == 4 * 1024 ** 3
+
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--svdq-layerwise-max-inflight-prefetch-bytes",
+      "0.5GiB",
+    ]))
+  assert args.layerwise_max_inflight_prefetch_bytes == 512 * 1024 ** 2
+
   args = maybe_postprocess_args(
     parser.parse_args([
       "--quantize-type",

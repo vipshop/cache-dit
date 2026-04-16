@@ -1126,7 +1126,7 @@ def test_layerwise_cpu_offload_async_transfer_default_stream_count_does_not_warn
   assert warning_messages == []
 
 
-def test_layerwise_cpu_offload_async_transfer_clamps_excessive_bucket_request(
+def test_layerwise_cpu_offload_async_transfer_caps_copy_stream_pool_without_warning(
   monkeypatch, ) -> None:
   model = make_toy_model(
     embed_dim=128,
@@ -1152,14 +1152,13 @@ def test_layerwise_cpu_offload_async_transfer_clamps_excessive_bucket_request(
   )
   try:
     assert offload_handle.transfer_buckets == 32
-    assert offload_handle.effective_transfer_buckets == 2
-    assert len(offload_handle._onload_copy_streams) == 2
-    assert len(offload_handle._offload_copy_streams) == 2
+    assert offload_handle.effective_transfer_buckets is None
+    assert len(offload_handle._onload_copy_streams) == 4
+    assert len(offload_handle._offload_copy_streams) == 4
   finally:
     offload_handle.remove()
 
-  assert warning_messages
-  assert "Clamping layerwise async transfer buckets from 32 to 2" in warning_messages[0]
+  assert warning_messages == []
 
 
 def test_layerwise_cpu_offload_async_transfer_drains_pending_remove() -> None:
