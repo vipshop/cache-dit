@@ -6,9 +6,7 @@
 
 Cache-DiT's layerwise offload is designed around a <span style="color:green;">bucket-style execution pattern</span> instead of a strictly one-layer-in, one-layer-out schedule. The selected modules are divided into small contiguous buckets. While the current bucket is executing on CUDA, runtime can already prefetch the next bucket and keep a few strategically chosen buckets persistent on device. This turns the weight movement path into a short pipeline: one copy issue can be hidden behind multiple compute steps, rather than forcing each layer to wait for its own isolated host-to-device transfer.
 
-Envrionment: NVIDIA L20, FLUX.1-dev, 28 steps, 1024 x 1024 resolution. Memory usage included the reserved allocated cache by `torch` for future reuse within the same process. 
-
-|w/o offload| sequential (diffusers) | cpu offload (diffusers) | layerwise (cache-dit) |
+|FLUX.1-dev, L20, w/o offload| sequential offload (diffusers) | cpu offload (diffusers) | layerwise (cache-dit) |
 |:---:|:---:|:---:|:---:|
 |~38GiB|~1GiB|~25GiB|~1GiB|
 |**23.4s**|335s|56s|49s|
@@ -75,6 +73,8 @@ handle = cache_dit.layerwise_offload(
   max_copy_streams=4,
   max_inflight_prefetch_bytes="4gib",
 )
+# when you want to remove the offload hooks.
+handle.remove()
 ```
 
 <span style="color:green;">transfer_buckets</span>: Base async prefetch depth hint used to size copy-lane concurrency. By default, cache-dit no longer applies an implicit future-target count limit from this value.
