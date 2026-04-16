@@ -48,55 +48,15 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # Use the custom CP plan defined here. This may be a little different from
-    # a little different from the native diffusers implementation
-    # for some models.
     WanAttnProcessor.__call__ = __patch_WanAttnProcessor__call__
     _cp_plan = {
-      # Pattern of rope, split_output=True (split output rather than input):
-      #    un-split input
-      #    -> keep input un-split
-      #    -> rope
-      #    -> splited output
       "rope": {
         0: _ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
         1: _ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
       },
-      # Pattern of blocks.0, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #     (only split hidden_states, not encoder_hidden_states)
       "blocks.0": {
         "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Pattern of the all blocks, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #    (only split encoder_hidden_states, not hidden_states.
-      #    hidden_states has been automatically split in previous
-      #    block by all2all comm op after attn)
-      # The `encoder_hidden_states` will [NOT] be changed after each block forward,
-      # so we need to split it at [ALL] block by the inserted split hook.
-      # NOTE(DefTruth): We need to disable the splitting of encoder_hidden_states because
-      # the image_encoder (Wan 2.1 I2V) consistently generates 257 tokens for image_embed.
-      # This causes the shape of encoder_hidden_states—whose token count is always
-      # 769 (512 + 257) after concatenation—to be indivisible by the number of devices
-      # in the CP.
-      # "blocks.*": {
-      #     "encoder_hidden_states": _ContextParallelInput(
-      #         split_dim=1, expected_dims=3, split_output=False
-      #     ),
-      # },
-      # Then, the final proj_out will gather the splited output.
-      #     splited input (previous splited output)
-      #     -> all gather
-      #     -> un-split output
       "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
       # Wan 2.2 TI2V: https://github.com/huggingface/diffusers/pull/12562
       "": {
@@ -209,20 +169,11 @@ class WanVACEContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # Use the custom CP plan defined here. This may be a little different from
-    # a little different from the native diffusers implementation
-    # for some models.
     _cp_plan = {
-      # Pattern of rope, split_output=True (split output rather than input):
-      #    un-split input
-      #    -> keep input un-split
-      #    -> rope
-      #    -> splited output
       "rope": {
         0: _ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
         1: _ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
       },
-      # Pattern of vace_blocks.0, split_output=False:
       "vace_blocks.0": {
         "control_hidden_states":
         _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
@@ -233,35 +184,13 @@ class WanVACEContextParallelismPlanner(ContextParallelismPlanner):
         "encoder_hidden_states":
         _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Pattern of blocks.0, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #     (only split hidden_states, not encoder_hidden_states)
       "blocks.0": {
         "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Pattern of the all blocks, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #    (only split encoder_hidden_states, not hidden_states.
-      #    hidden_states has been automatically split in previous
-      #    block by all2all comm op after attn)
-      # The `encoder_hidden_states` will [NOT] be changed after each block forward,
-      # so we need to split it at [ALL] block by the inserted split hook.
       "blocks.*": {
         "encoder_hidden_states":
         _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Then, the final proj_out will gather the splited output.
-      #     splited input (previous splited output)
-      #     -> all gather
-      #     -> un-split output
       "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
     return _cp_plan

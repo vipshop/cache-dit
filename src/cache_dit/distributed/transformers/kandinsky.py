@@ -40,32 +40,11 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
     assert isinstance(transformer, Kandinsky5Transformer3DModel
                       ), "Transformer must be an instance of Kandinsky5Transformer3DModel"
 
-    # Use the custom CP plan defined here. This may be a little different from
-    # a little different from the native diffusers implementation
-    # for some models.
     num_blocks = len(transformer.visual_transformer_blocks)
     _cp_plan = {
-      # Pattern of blocks 0, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #     (only split visual_embed, not text_embed)
       "visual_transformer_blocks.0": {
         "visual_embed": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Pattern of the all blocks, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #    (only split text_embed, not hidden_states.
-      #    hidden_states has been automatically split in previous
-      #    block by all2all comm op after attn)
-      # The `text_embed` and `rope` will [NOT] be changed after each block ,
-      # forward, so we need to split it at [ALL] block by the inserted hook.
       "visual_transformer_blocks.*": {
         "text_embed": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         "rope": _ContextParallelInput(split_dim=1, expected_dims=6, split_output=False),

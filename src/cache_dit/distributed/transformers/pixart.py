@@ -60,40 +60,14 @@ class PixArtContextParallelismPlanner(ContextParallelismPlanner):
     if not hasattr(AttnProcessor2_0, "_attention_backend"):
       AttnProcessor2_0._attention_backend = None
 
-    # Otherwise, use the custom CP plan defined here, this maybe
-    # a little different from the native diffusers implementation
-    # for some models.
-
     _cp_plan = {
-      # Pattern of transformer_blocks.0, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #     (only split hidden_states, not encoder_hidden_states)
       "transformer_blocks.0": {
         "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Pattern of the all blocks, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      #    (only split encoder_hidden_states, not hidden_states.
-      #    hidden_states has been automatically split in previous
-      #    block by all2all comm op after attn)
-      # The `encoder_hidden_states` will [NOT] be changed after each block forward,
-      # so we need to split it at [ALL] block by the inserted split hook.
       "transformer_blocks.*": {
         "encoder_hidden_states":
         _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # Then, the final proj_out will gather the splited output.
-      #     splited input (previous splited output)
-      #     -> all gather
-      #     -> un-split output
       "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
     return _cp_plan

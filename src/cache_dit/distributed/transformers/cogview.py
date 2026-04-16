@@ -57,39 +57,13 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
     if not hasattr(CogVideoXAttnProcessor2_0, "_attention_backend"):
       CogVideoXAttnProcessor2_0._attention_backend = None
 
-    # Otherwise, use the custom CP plan defined here, this maybe
-    # a little different from the native diffusers implementation
-    # for some models.
     _cp_plan = {
-      # Pattern of transformer_blocks.0, split_output=False:
-      #     un-split input -> split -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      # Pattern of the rest transformer_blocks, split_output=False:
-      #     splited input (previous splited output) -> to_qkv/...
-      #     -> all2all
-      #     -> attn (local head, full seqlen)
-      #     -> all2all
-      #     -> splited output
-      # The `encoder_hidden_states` will be changed after each block forward,
-      # so we need to split it at the first block, and keep it splited (namely,
-      # automatically split by the all2all op after attn) for the rest blocks.
-      # The `out` tensor of local attn will be splited into `hidden_states` and
-      # `encoder_hidden_states` after each block forward, thus both of them
-      # will be automatically splited by all2all comm op after local attn.
       "transformer_blocks.0": {
         "hidden_states":
         _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         "encoder_hidden_states":
         _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
       },
-      # transformer forward while using CP, since it is not splited here.
-      # Then, the final proj_out will gather the splited output.
-      #     splited input (previous splited output)
-      #     -> all gather
-      #     -> un-split output
       "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
     return _cp_plan
