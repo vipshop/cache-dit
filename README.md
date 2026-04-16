@@ -74,8 +74,7 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
 >>> # Apply quantization with `cache_dit.quantize(...)` API.
 >>> pipe.transformer = cache_dit.quantize(
-...   pipe.transformer, 
-...   quant_config=QuantizeConfig(
+...   pipe.transformer, quant_config=QuantizeConfig(
 ...     quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
 ...     svdq_kwargs={"smooth_strategy": "few_shot"},
 ...   )
