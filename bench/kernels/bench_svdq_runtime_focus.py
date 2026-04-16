@@ -7,7 +7,6 @@ from pathlib import Path
 
 import torch
 
-from cache_dit.kernels.cutedsl import svdq_gemm_w4a4_v2_v3
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_gemm_w4a4_v2
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
@@ -23,7 +22,7 @@ def parse_args() -> argparse.Namespace:
   """
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--runtime-kernel", choices=("v1", "v2", "v3"), default="v2")
+  parser.add_argument("--runtime-kernel", choices=("v1", "v2"), default="v2")
   parser.add_argument("--seq-len", type=int, default=4096)
   parser.add_argument("--embed-dim", type=int, default=4096)
   parser.add_argument("--rank", type=int, default=32)
@@ -90,20 +89,18 @@ def select_kernel(runtime_kernel: str):
 
   if runtime_kernel == "v1":
     return svdq_gemm_w4a4
-  if runtime_kernel == "v3":
-    return svdq_gemm_w4a4_v2_v3
   return svdq_gemm_w4a4_v2
 
 
 def maybe_set_block_env(runtime_kernel: str, block_m: int) -> tuple[str, str | None]:
-  """Set the runtime BLOCK_M override for v2/v3 while preserving the previous value.
+  """Set the runtime BLOCK_M override for v2 while preserving the previous value.
 
   :param runtime_kernel: Public runtime kernel name.
   :param block_m: Logical block-M override.
   :returns: Tuple of `(env_name, previous_value)`.
   """
 
-  if runtime_kernel not in {"v2", "v3"}:
+  if runtime_kernel != "v2":
     return "", None
   env_name = "CACHE_DIT_SVDQ_V2_BLOCK_M"
 
@@ -172,7 +169,7 @@ def main() -> None:
     "alpha": 1.0,
     "output_dtype": dtype,
   }
-  if args.runtime_kernel in {"v2", "v3"}:
+  if args.runtime_kernel == "v2":
     kwargs["stage"] = args.stage
 
   env_name, previous = maybe_set_block_env(args.runtime_kernel, args.block_m)
@@ -189,8 +186,8 @@ def main() -> None:
       "K": args.embed_dim,
       "rank": args.rank,
     },
-    "stage": args.stage if args.runtime_kernel in {"v2", "v3"} else None,
-    "block_m": args.block_m if args.runtime_kernel in {"v2", "v3"} else None,
+    "stage": args.stage if args.runtime_kernel == "v2" else None,
+    "block_m": args.block_m if args.runtime_kernel == "v2" else None,
     "warmup": args.warmup,
     "iters": args.iters,
     "dtype": str(dtype),

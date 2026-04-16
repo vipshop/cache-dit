@@ -1012,6 +1012,8 @@ class LayerwiseOffloadHandle:
     if not target_requires_sync_back:
       current_stream = torch.cuda.current_stream(device=self.onload_device)
       for current_tensor in inflight_gpu_tensors:
+        # The module state is rebound to the CPU mirror right after this branch, so keep the
+        # current GPU storage alive on the execution stream until all queued kernels finish.
         current_tensor.record_stream(current_stream)
       event = torch.cuda.Event()
       event.record(current_stream)

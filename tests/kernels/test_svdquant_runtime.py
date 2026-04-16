@@ -11,7 +11,6 @@ from cache_dit.kernels import svdq_gemm_w4a4_v2
 from cache_dit.kernels import svdq_gemm_w4a4_ext
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.kernels import svdq_quantize_w4a4_wgt
-from cache_dit.kernels.cutedsl import svdq_quantize_w4a4_act_fuse_lora_v3
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
@@ -136,70 +135,6 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
   assert output.dtype == dtype
   assert torch.isfinite(output).all()
   assert output.float().abs().sum().item() > 0.0
-
-
-def test_svdquant_int4_quantize_v3_matches_cuda_reference() -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-  batch_size = 256
-  in_features = 128
-  rank = 32
-
-  with torch.inference_mode():
-    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-    smooth = torch.rand(in_features, device=device, dtype=dtype) + 0.25
-    lora_down = torch.randn(in_features, rank, device=device, dtype=dtype) * 0.05
-
-    cuda_qact, cuda_ascales, cuda_lora = svdq_quantize_w4a4_act_fuse_lora(
-      input=activations,
-      lora_down=lora_down,
-      smooth=smooth,
-      fp4=False,
-      pad_size=256,
-    )
-    v3_qact, v3_ascales, v3_lora = svdq_quantize_w4a4_act_fuse_lora_v3(
-      input=activations,
-      lora_down=lora_down,
-      smooth=smooth,
-      fp4=False,
-      pad_size=256,
-    )
-
-  assert v3_qact.dtype == torch.uint8
-  assert torch.equal(v3_qact.view(torch.int32), cuda_qact.view(torch.int32))
-  assert torch.equal(v3_ascales.view(torch.int16), cuda_ascales.view(torch.int16))
-  torch.testing.assert_close(v3_lora, cuda_lora, rtol=0.0, atol=2e-2)
-
-
-def test_svdquant_int4_quantize_v3_accepts_missing_lora() -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-  batch_size = 256
-  in_features = 128
-
-  with torch.inference_mode():
-    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-    smooth = torch.rand(in_features, device=device, dtype=dtype) + 0.25
-
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora_v3(
-      input=activations,
-      lora_down=None,
-      smooth=smooth,
-      fp4=False,
-      pad_size=256,
-    )
-    torch.cuda.synchronize()
-
-  assert quantized_activations.shape == (batch_size, in_features // 2)
-  assert ascales.shape == (in_features // 64, batch_size)
-  assert lora_activations.shape == (batch_size, 0)
-  assert quantized_activations.is_cuda
-  assert ascales.is_cuda
-  assert lora_activations.is_cuda
 
 
 def test_svdquant_int4_ext_runtime_smoke() -> None:

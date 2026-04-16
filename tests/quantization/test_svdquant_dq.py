@@ -362,7 +362,7 @@ def test_svdq_dq_config_validation_defaults_calibrate_precision_to_low() -> None
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is False
 
 
-@pytest.mark.parametrize("runtime_kernel", ["v2", "v3"])
+@pytest.mark.parametrize("runtime_kernel", ["v2"])
 def test_svdq_dq_config_validation_accepts_runtime_kernels(runtime_kernel: str) -> None:
   config = QuantizeConfig(
     quant_type="svdq_int4_r32_dq",
@@ -898,7 +898,7 @@ def test_svdq_dq_cli_layerwise_offload_forces_quantized_layers_back_to_cpu() -> 
   assert holder.transformer._svdq_kwargs["offload_quantized_layers_to_cpu"] is True
 
 
-@pytest.mark.parametrize("runtime_kernel", ["v2", "v3"])
+@pytest.mark.parametrize("runtime_kernel", ["v2"])
 def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization(
   runtime_kernel: str, ) -> None:
   dtype = runtime_dtype()

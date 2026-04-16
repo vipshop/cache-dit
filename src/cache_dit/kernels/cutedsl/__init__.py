@@ -50,21 +50,10 @@ fused_merge_attn_states = _safe_import(
   "fused_merge_attn_states",
 )
 
-svdq_quantize_w4a4_act_fuse_lora_v3 = _safe_import(
-  "._ops_registery",
-  "svdq_quantize_w4a4_act_fuse_lora_v3",
-)
-svdq_gemm_w4a4_v2_v3 = _safe_import(
-  "._ops_registery",
-  "svdq_gemm_w4a4_v2_v3",
-)
-
 __all__ = [
   "fp8_comm_per_token_quant",
   "fp8_comm_per_token_dequant",
   "fp8_comm_qkv_permute_quant",
   "fp8_comm_qkv_permute_dequant",
   "fused_merge_attn_states",
-  "svdq_quantize_w4a4_act_fuse_lora_v3",
-  "svdq_gemm_w4a4_v2_v3",
 ]
