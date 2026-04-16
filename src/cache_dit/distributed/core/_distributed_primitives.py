@@ -249,8 +249,9 @@ class _All2AllComm:
 
   The communication variant is chosen once from `_ContextParallelConfig`, so
   call sites no longer need to re-resolve q/k/v/o/lse functions repeatedly.
-  Communication metadata is initialized once via `init_meta()` and then reused
-  by subsequent `send_*()` calls.
+  Communication metadata is initialized once via `init_meta()` or lazily on the
+  first `send_q()/send_k()/send_v()` call and then reused by subsequent
+  `send_*()` calls.
   """
 
   __slots__ = (
@@ -302,14 +303,25 @@ class _All2AllComm:
     assert self._metadata is not None
     return dict(self._metadata)
 
-  def _resolve_metadata(self, **metadata) -> dict:
+  def _resolve_metadata(
+    self,
+    x: Optional[torch.Tensor] = None,
+    allow_implicit_init: bool = False,
+    **metadata,
+  ) -> dict:
     if metadata:
       self._metadata = dict(metadata)
       return self._metadata
 
     if self._metadata is None:
+      if allow_implicit_init:
+        if x is None:
+          raise ValueError("Implicit metadata initialization requires an input tensor.")
+        self._metadata = _init_comm_metadata(x)
+        return self._metadata
       raise ValueError(
-        "_All2AllComm metadata is not initialized. Call init_meta(query) before send_*().")
+        "_All2AllComm metadata is not initialized. Call send_q()/send_k()/send_v() first, "
+        "pass metadata explicitly, or initialize it with init_meta(query).")
 
     return self._metadata
 
@@ -317,22 +329,27 @@ class _All2AllComm:
     self,
     impl: Callable[..., Callable[[], torch.Tensor]],
     x: torch.Tensor,
+    allow_implicit_init: bool = False,
     **metadata,
   ) -> _All2AllAsyncHandle:
-    resolved_metadata = self._resolve_metadata(**metadata)
+    resolved_metadata = self._resolve_metadata(
+      x=x,
+      allow_implicit_init=allow_implicit_init,
+      **metadata,
+    )
     return _All2AllAsyncHandle(impl(x, self._group, **resolved_metadata))
 
   def send_q(self, query: torch.Tensor, **metadata) -> _All2AllAsyncHandle:
     """Launch async all-to-all for the query tensor."""
-    return self._launch(self._q_impl, query, **metadata)
+    return self._launch(self._q_impl, query, allow_implicit_init=True, **metadata)
 
   def send_k(self, key: torch.Tensor, **metadata) -> _All2AllAsyncHandle:
     """Launch async all-to-all for the key tensor on the non-fp8 path."""
-    return self._launch(self._k_impl, key, **metadata)
+    return self._launch(self._k_impl, key, allow_implicit_init=True, **metadata)
 
   def send_v(self, value: torch.Tensor, **metadata) -> _All2AllAsyncHandle:
     """Launch async all-to-all for the value tensor."""
-    return self._launch(self._v_impl, value, **metadata)
+    return self._launch(self._v_impl, value, allow_implicit_init=True, **metadata)
 
   def send_o(self, out: torch.Tensor, **metadata) -> _All2AllAsyncHandle:
     """Launch async all-to-all for the attention output tensor."""
@@ -823,11 +840,15 @@ def _all_to_all_o_async_fn(
 class _RingP2PComm:
   """Pairwise ring communicator used by ring attention key/value rotation.
 
-  :param process_group: Process group participating in the ring exchange.
+  :param _cp_config: Context parallel config carrying an initialized ring mesh.
   """
 
-  def __init__(self, process_group: dist.ProcessGroup):
-    self._process_group = process_group
+  def __init__(self, _cp_config: "_ContextParallelConfig"):
+    if _cp_config is None or _cp_config._ring_mesh is None:
+      raise ValueError(
+        "_RingP2PComm requires a context parallel config with an initialized ring mesh.")
+
+    self._process_group = _cp_config._ring_mesh.get_group()
     self._ops = []
     self.rank = dist.get_rank(self._process_group)
     self.world_size = dist.get_world_size(self._process_group)
@@ -836,7 +857,7 @@ class _RingP2PComm:
     self.send_rank = (self.rank + 1) % self.world_size
     self.recv_rank = (self.rank - 1) % self.world_size
 
-    if process_group is not None:
+    if self._process_group is not None:
       self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
       self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
 

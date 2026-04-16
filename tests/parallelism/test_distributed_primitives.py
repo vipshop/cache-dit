@@ -20,6 +20,32 @@ def test_all2all_comm_requires_ulysses_mesh():
     primitives._All2AllComm(SimpleNamespace(_ulysses_mesh=None))
 
 
+def test_ring_p2p_comm_requires_ring_mesh():
+  with pytest.raises(ValueError, match="initialized ring mesh"):
+    primitives._RingP2PComm(SimpleNamespace(_ring_mesh=None))
+
+
+def test_ring_p2p_comm_derives_group_and_peer_ranks_from_cp_config(monkeypatch):
+  group = object()
+  cp_config = SimpleNamespace(_ring_mesh=_FakeMesh(group))
+
+  monkeypatch.setattr(primitives.dist, "get_rank", lambda process_group: 1)
+  monkeypatch.setattr(primitives.dist, "get_world_size", lambda process_group: 4)
+  monkeypatch.setattr(
+    primitives.dist,
+    "get_global_rank",
+    lambda process_group, local_rank: local_rank + 8,
+  )
+
+  comm = primitives._RingP2PComm(cp_config)
+
+  assert comm._process_group is group
+  assert comm.rank == 1
+  assert comm.world_size == 4
+  assert comm.send_rank == 10
+  assert comm.recv_rank == 8
+
+
 def test_all2all_comm_selects_impls_once_and_waits(monkeypatch):
   group = object()
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group))
@@ -105,7 +131,62 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch):
   ]
 
 
-def test_all2all_comm_requires_metadata_before_send(monkeypatch):
+def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkeypatch):
+  group = object()
+  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group))
+  launch_calls = []
+
+  def _make_impl(kind):
+
+    def _impl(x, launch_group, **metadata):
+      launch_calls.append({
+        "kind": kind,
+        "shape": tuple(x.shape),
+        "group": launch_group,
+        "metadata": dict(metadata),
+      })
+      return lambda: kind
+
+    return _impl
+
+  monkeypatch.setattr(
+    primitives,
+    "_select_all_to_all_qkv_async_impl",
+    lambda *_args, fp8=None, **_kwargs: _make_impl("k_impl" if fp8 is False else "qv_impl"))
+  monkeypatch.setattr(primitives,
+                      "_select_all_to_all_o_async_impl",
+                      lambda *_args, fp8=None, **_kwargs: _make_impl("lse_impl"
+                                                                     if fp8 is False else "o_impl"))
+
+  comm = primitives._All2AllComm(cp_config)
+  x = torch.randn(2, 3, 4, 5)
+
+  assert comm.send_q(x).wait() == "qv_impl"
+  assert comm.send_o(x).wait() == "o_impl"
+
+  assert launch_calls == [
+    {
+      "kind": "qv_impl",
+      "shape": (2, 3, 4, 5),
+      "group": group,
+      "metadata": {
+        "NUM_QO_HEAD": 4,
+        "Q_S_LOCAL": 3,
+      },
+    },
+    {
+      "kind": "o_impl",
+      "shape": (2, 3, 4, 5),
+      "group": group,
+      "metadata": {
+        "NUM_QO_HEAD": 4,
+        "Q_S_LOCAL": 3,
+      },
+    },
+  ]
+
+
+def test_all2all_comm_requires_metadata_before_output_send(monkeypatch):
   group = object()
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group))
 
@@ -116,5 +197,5 @@ def test_all2all_comm_requires_metadata_before_send(monkeypatch):
   comm = primitives._All2AllComm(cp_config)
   x = torch.randn(2, 3, 4, 5)
 
-  with pytest.raises(ValueError, match=r"init_meta\(query\)"):
-    comm.send_q(x)
+  with pytest.raises(ValueError, match=r"send_q\(\)/send_k\(\)/send_v\(\)"):
+    comm.send_o(x)

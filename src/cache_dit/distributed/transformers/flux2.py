@@ -153,7 +153,7 @@ def _async_ulysses_attn_flux2(
     encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
     value = torch.cat([encoder_value, value], dim=1)
 
-  comm = _All2AllComm(cp_config).init_meta(value)
+  comm = _All2AllComm(cp_config)
 
   # Async all to all for value
   value_wait = comm.send_v(value)
@@ -279,7 +279,7 @@ def _async_ulysses_self_attn_flux2(
   query, key, value = qkv.chunk(3, dim=-1)
 
   value = value.unflatten(-1, (attn.heads, -1))
-  comm = _All2AllComm(cp_config).init_meta(value)
+  comm = _All2AllComm(cp_config)
   # Async all to all for value
   value_wait = comm.send_v(value)
 

@@ -133,7 +133,7 @@ def _async_ulysses_attn_ovis(
     encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
     value = torch.cat([encoder_value, value], dim=1)
 
-  comm = _All2AllComm(cp_config).init_meta(value)
+  comm = _All2AllComm(cp_config)
 
   # Async all to all for value
   value_wait = comm.send_v(value)

@@ -31,7 +31,7 @@ class USPAttention(torch.autograd.Function):
 
     # USP step 0: Apply Ulysses group all-to-all to collect distributed Q, K, V.
     # `_All2AllComm` selects the proper float8 / non-float8 kernels from cp_config.
-    comm = _All2AllComm(_cp_config).init_meta(query)
+    comm = _All2AllComm(_cp_config)
     query_wait = comm.send_q(query)
     key_wait = comm.send_k(key)
     value_wait = comm.send_v(value)

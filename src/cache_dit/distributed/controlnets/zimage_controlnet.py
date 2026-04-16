@@ -111,7 +111,7 @@ def _ulysses_attn_with_async_qkv_proj_zimage_controlnet(
   if freqs_cis is not None:  # Apply RoPE
     query = apply_rotary_emb(query, freqs_cis)
 
-  comm = _All2AllComm(cp_config).init_meta(query)
+  comm = _All2AllComm(cp_config)
 
   # Async all to all for query
   query_wait = comm.send_q(query)

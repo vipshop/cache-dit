@@ -136,7 +136,7 @@ def _async_ulysses_attn_qwen(
   txt_value = txt_value.unflatten(-1, (attn.heads, -1))
   joint_value = torch.cat([txt_value, img_value], dim=1)
 
-  comm = _All2AllComm(cp_config).init_meta(joint_value)
+  comm = _All2AllComm(cp_config)
 
   # Async all to all for value
   joint_value_wait = comm.send_v(joint_value)

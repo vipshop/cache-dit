@@ -32,10 +32,7 @@ class RingAttention(torch.autograd.Function):
     backward_op,
     _cp_config: Optional["_ContextParallelConfig"] = None,
   ):
-    ring_mesh = _cp_config._ring_mesh
-    ring_group = ring_mesh.get_group()
-
-    comm = _RingP2PComm(ring_group)
+    comm = _RingP2PComm(_cp_config)
 
     prev_out = prev_lse = None
 

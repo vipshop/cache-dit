@@ -36,7 +36,7 @@ class UlyssesAttention(torch.autograd.Function):
     ctx.backward_op = backward_op
     ctx._cp_config = _cp_config
 
-    comm = _All2AllComm(_cp_config).init_meta(query)
+    comm = _All2AllComm(_cp_config)
 
     # Keep K/LSE on the non-fp8 path for better numerical stability.
     query_wait = comm.send_q(query)

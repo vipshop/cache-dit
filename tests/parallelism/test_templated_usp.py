@@ -32,15 +32,22 @@ class _FakeComm:
     self.calls.append(("init_meta", tuple(query.shape), dict(kwargs)))
     return self
 
+  def _maybe_init_meta(self, tensor):
+    if self.metadata_source is None:
+      self.metadata_source = tensor
+
   def send_q(self, query):
+    self._maybe_init_meta(query)
     self.calls.append(("send_q", tuple(query.shape)))
     return _FakeHandle(query + 1)
 
   def send_k(self, key):
+    self._maybe_init_meta(key)
     self.calls.append(("send_k", tuple(key.shape)))
     return _FakeHandle(key + 2)
 
   def send_v(self, value):
+    self._maybe_init_meta(value)
     self.calls.append(("send_v", tuple(value.shape)))
     return _FakeHandle(value + 3)
 
@@ -106,7 +113,6 @@ def test_unified_templated_usp_uses_all2all_comm(monkeypatch):
   comm = _FakeComm.instances[-1]
   assert comm.metadata_source is query
   assert [call[0] for call in comm.calls] == [
-    "init_meta",
     "send_q",
     "send_k",
     "send_v",
@@ -154,7 +160,6 @@ def test_unified_templated_usp_float8_entrypoint_uses_same_impl(monkeypatch):
 
   comm = _FakeComm.instances[-1]
   assert [call[0] for call in comm.calls] == [
-    "init_meta",
     "send_q",
     "send_k",
     "send_v",
