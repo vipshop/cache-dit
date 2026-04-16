@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import inspect
+import re
+from decimal import Decimal
 from typing import Any, Callable, Iterable
 
 import torch
@@ -32,6 +35,73 @@ _LAYERWISE_OFFLOAD_HANDLES_ATTR = "_cache_dit_layerwise_offload_handles"
 _ROOT_TARGET_NAME = "<root>"
 _MAX_EFFECTIVE_ASYNC_TRANSFER_BUCKETS = 4
 _MAX_FUTURE_PREFETCH_WINDOW = 8
+_BYTE_SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([kmgt]?i?b)?\s*$", re.IGNORECASE)
+_BYTE_SIZE_UNITS = {
+  None: 1,
+  "b": 1,
+  "kib": 1024,
+  "mib": 1024 ** 2,
+  "gib": 1024 ** 3,
+  "tib": 1024 ** 4,
+  "kb": 1024,
+  "mb": 1024 ** 2,
+  "gb": 1024 ** 3,
+  "tb": 1024 ** 4,
+}
+
+
+def _parse_byte_size_arg(value: str) -> int:
+  """Parse a positive byte-size string.
+
+  Accepts raw byte integers such as ``4096`` and binary-size suffixes such as ``512MiB`` or
+  ``4GiB``. Decimal values are allowed when a suffix is present, for example ``0.5GiB``.
+
+  :param value: Raw byte-size string.
+  :returns: Parsed positive size in bytes.
+  """
+
+  match = _BYTE_SIZE_RE.match(value)
+  if match is None:
+    raise argparse.ArgumentTypeError("Expected a positive byte value like 4096, 512MiB, or 4GiB.")
+
+  number_text, unit_text = match.groups()
+  try:
+    number = Decimal(number_text)
+  except Exception as exc:
+    raise argparse.ArgumentTypeError(
+      f"Invalid byte-size value {value!r}; expected a positive number.") from exc
+
+  if number <= 0:
+    raise argparse.ArgumentTypeError(f"Byte-size value must be > 0, got {value!r}.")
+
+  normalized_unit = unit_text.lower() if unit_text is not None else None
+  multiplier = _BYTE_SIZE_UNITS.get(normalized_unit)
+  if multiplier is None:
+    raise argparse.ArgumentTypeError(
+      f"Unsupported byte-size suffix in {value!r}; use bytes or KiB/MiB/GiB/TiB.")
+
+  byte_value = number * multiplier
+  if byte_value != byte_value.to_integral_value():
+    raise argparse.ArgumentTypeError(
+      f"Byte-size value {value!r} does not resolve to a whole number of bytes.")
+  return int(byte_value)
+
+
+def _normalize_max_inflight_prefetch_bytes_arg(value: int | str | None) -> int | None:
+  if value is None:
+    return None
+  if isinstance(value, bool):
+    raise TypeError(f"max_inflight_prefetch_bytes must be an int, str, or None, got {type(value)}.")
+  if isinstance(value, int):
+    if value < 1:
+      raise ValueError(f"max_inflight_prefetch_bytes must be >= 1, got {value}.")
+    return value
+  if isinstance(value, str):
+    try:
+      return _parse_byte_size_arg(value)
+    except argparse.ArgumentTypeError as exc:
+      raise ValueError(str(exc)) from exc
+  raise TypeError(f"max_inflight_prefetch_bytes must be an int, str, or None, got {type(value)}.")
 
 
 def _resolve_persistent_target_spans(
@@ -1188,7 +1258,7 @@ def _apply_public_layerwise_offload(
   transfer_buckets: int = 1,
   prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
-  max_inflight_prefetch_bytes: int | None = None,
+  max_inflight_prefetch_bytes: int | str | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
 ) -> LayerwiseOffloadHandle | LayerwiseOffloadHandleGroup:
@@ -1246,7 +1316,7 @@ def _apply_layerwise_offload(
   transfer_buckets: int = 1,
   prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
-  max_inflight_prefetch_bytes: int | None = None,
+  max_inflight_prefetch_bytes: int | str | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
 ) -> LayerwiseOffloadHandle:
@@ -1276,9 +1346,10 @@ def _apply_layerwise_offload(
     prefetch.
   :param max_copy_streams: Maximum number of async onload/offload copy streams. When omitted,
     runtime uses the requested transfer_buckets but still applies a hard safety cap.
-  :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
-    allowed for async prefetch at once across both pending transfers and ready-but-not-yet-
-    consumed prefetched targets. When omitted, runtime does not apply an implicit byte-budget cap.
+  :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency allowed for
+    async prefetch at once across both pending transfers and ready-but-not-yet-consumed
+    prefetched targets. Accepts either an integer byte count or a string such as ``512MiB`` or
+    ``4GiB``. When omitted, runtime does not apply an implicit byte-budget cap.
   :param persistent_buckets: How many selected targets should stay resident on the onload device
     for the full handle lifetime instead of participating in per-forward onload/offload.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
@@ -1302,14 +1373,8 @@ def _apply_layerwise_offload(
       raise TypeError(f"max_copy_streams must be an int or None, got {type(max_copy_streams)}.")
     if max_copy_streams < 1:
       raise ValueError(f"max_copy_streams must be >= 1, got {max_copy_streams}.")
-  if max_inflight_prefetch_bytes is not None:
-    if (isinstance(max_inflight_prefetch_bytes, bool)
-        or not isinstance(max_inflight_prefetch_bytes, int)):
-      raise TypeError("max_inflight_prefetch_bytes must be an int or None, got "
-                      f"{type(max_inflight_prefetch_bytes)}.")
-    if max_inflight_prefetch_bytes < 1:
-      raise ValueError(
-        f"max_inflight_prefetch_bytes must be >= 1, got {max_inflight_prefetch_bytes}.")
+  max_inflight_prefetch_bytes = _normalize_max_inflight_prefetch_bytes_arg(
+    max_inflight_prefetch_bytes)
   if isinstance(persistent_buckets, bool) or not isinstance(persistent_buckets, int):
     raise TypeError(f"persistent_buckets must be an int, got {type(persistent_buckets)}.")
   if persistent_buckets < 0:
@@ -1582,7 +1647,7 @@ def layerwise_offload(
   transfer_buckets: int = 1,
   prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
-  max_inflight_prefetch_bytes: int | None = None,
+  max_inflight_prefetch_bytes: int | str | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
 ) -> LayerwiseOffloadHandle | LayerwiseOffloadHandleGroup:
@@ -1608,9 +1673,9 @@ def layerwise_offload(
   :param prefetch_limit: Whether to enable the conservative future-prefetch target-count
     limit of ``min(4 * transfer_buckets, 8)``.
   :param max_copy_streams: Maximum number of async onload/offload copy streams.
-  :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
-    allowed for async prefetch at once. Common examples are ``1 * 1024**3`` for 1 GiB,
-    ``4 * 1024**3`` for 4 GiB, ``8 * 1024**3`` for 8 GiB, and ``16 * 1024**3`` for 16 GiB.
+  :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency allowed for
+    async prefetch at once. Accepts either an integer byte count or a string such as ``512MiB``
+    or ``4GiB``.
   :param persistent_buckets: How many selected targets should stay resident on the onload device
     for the full handle lifetime.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
@@ -1652,7 +1717,7 @@ def layerwise_cpu_offload(
   transfer_buckets: int = 1,
   prefetch_limit: bool = False,
   max_copy_streams: int | None = None,
-  max_inflight_prefetch_bytes: int | None = None,
+  max_inflight_prefetch_bytes: int | str | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
 ) -> LayerwiseOffloadHandle | LayerwiseOffloadHandleGroup:
@@ -1676,9 +1741,9 @@ def layerwise_cpu_offload(
   :param prefetch_limit: Whether to enable the conservative future-prefetch target-count
     limit of ``min(4 * transfer_buckets, 8)``.
   :param max_copy_streams: Maximum number of async onload/offload copy streams.
-  :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
-    allowed for async prefetch at once. Common examples are ``1 * 1024**3`` for 1 GiB,
-    ``4 * 1024**3`` for 4 GiB, ``8 * 1024**3`` for 8 GiB, and ``16 * 1024**3`` for 16 GiB.
+  :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency allowed for
+    async prefetch at once. Accepts either an integer byte count or a string such as ``512MiB``
+    or ``4GiB``.
   :param persistent_buckets: How many selected targets should stay resident on the onload device
     for the full handle lifetime.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
@@ -1710,6 +1775,7 @@ def layerwise_cpu_offload(
 __all__ = [
   "LayerwiseOffloadHandle",
   "LayerwiseOffloadHandleGroup",
+  "_parse_byte_size_arg",
   "_apply_layerwise_offload",
   "_find_offload_related_hf_hook",
   "get_layerwise_offload_handles",

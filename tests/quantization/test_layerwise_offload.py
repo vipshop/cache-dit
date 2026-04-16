@@ -551,6 +551,50 @@ def test_layerwise_cpu_offload_async_transfer_respects_max_inflight_prefetch_byt
   assert max(observed_pending_onload_sizes) <= 1
 
 
+def test_layerwise_cpu_offload_accepts_string_max_inflight_prefetch_bytes() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=942,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=4,
+    max_inflight_prefetch_bytes="1KiB",
+  )
+
+  try:
+    assert offload_handle.max_inflight_prefetch_bytes == 1024
+    assert offload_handle.effective_max_inflight_prefetch_bytes == 1024
+  finally:
+    offload_handle.remove()
+
+
+def test_layerwise_cpu_offload_rejects_invalid_string_max_inflight_prefetch_bytes() -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=943,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  with pytest.raises(ValueError, match="Expected a positive byte value"):
+    layerwise_cpu_offload(
+      model,
+      module_names=["block.to_q"],
+      onload_device="cuda",
+      async_transfer=True,
+      max_inflight_prefetch_bytes="not-a-size",
+    )
+
+
 def test_layerwise_cpu_offload_async_transfer_onload_does_not_wait_current_stream(
   monkeypatch, ) -> None:
   model = make_toy_model(

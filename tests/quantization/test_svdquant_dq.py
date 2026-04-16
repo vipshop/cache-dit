@@ -22,6 +22,7 @@ from cache_dit._utils.utils import get_args
 from cache_dit._utils.utils import maybe_apply_optimization
 from cache_dit._utils.utils import maybe_compile_transformer
 from cache_dit._utils.utils import maybe_finalize_deferred_svdq_pipe_move
+from cache_dit._utils.utils import maybe_generic_module_offload
 from cache_dit._utils.utils import maybe_quantize_transformer
 from cache_dit._utils.utils import maybe_postprocess_args
 from cache_dit.offload import get_layerwise_offload_handles
@@ -605,6 +606,41 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
   assert args.layerwise_persistent_buckets == 1
   assert args.layerwise_persistent_bins == 2
 
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--module-layerwise-cpu-offload",
+      "--layerwise-async-transfer",
+      "--layerwise-transfer-buckets",
+      "2",
+      "--layerwise-prefetch-limit",
+      "--layerwise-max-copy-streams",
+      "1",
+      "--layerwise-max-inflight-prefetch-bytes",
+      "4096",
+      "--layerwise-persistent-buckets",
+      "1",
+      "--layerwise-persistent-bins",
+      "2",
+      "--layerwise-text-transfer-buckets",
+      "5",
+      "--no-layerwise-text-prefetch-limit",
+      "--layerwise-text-max-copy-streams",
+      "3",
+      "--layerwise-text-max-inflight-prefetch-bytes",
+      "2GiB",
+      "--layerwise-text-persistent-buckets",
+      "4",
+      "--layerwise-text-persistent-bins",
+      "3",
+    ]))
+  assert args.layerwise_text_async_transfer is None
+  assert args.layerwise_text_transfer_buckets == 5
+  assert args.layerwise_text_prefetch_limit is False
+  assert args.layerwise_text_max_copy_streams == 3
+  assert args.layerwise_text_max_inflight_prefetch_bytes == 2 * 1024 ** 3
+  assert args.layerwise_text_persistent_buckets == 4
+  assert args.layerwise_text_persistent_bins == 3
+
 
 def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
   parser = get_args(parse=False)
@@ -692,6 +728,62 @@ def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
   assert args.svdq_few_shot_relax_top_ratio == 0.5
   assert args.svdq_few_shot_relax_strategy == "auto"
   assert args.svdq_few_shot_compile is True
+
+
+def test_generic_module_offload_uses_text_specific_layerwise_overrides(
+  monkeypatch: pytest.MonkeyPatch, ) -> None:
+  args = SimpleNamespace(
+    module_layerwise_cpu_offload=True,
+    layerwise_async_transfer=True,
+    layerwise_transfer_buckets=2,
+    layerwise_prefetch_limit=True,
+    layerwise_max_copy_streams=1,
+    layerwise_max_inflight_prefetch_bytes=4096,
+    layerwise_persistent_buckets=1,
+    layerwise_persistent_bins=2,
+    layerwise_text_async_transfer=None,
+    layerwise_text_transfer_buckets=5,
+    layerwise_text_prefetch_limit=False,
+    layerwise_text_max_copy_streams=3,
+    layerwise_text_max_inflight_prefetch_bytes=2 * 1024 ** 3,
+    layerwise_text_persistent_buckets=4,
+    layerwise_text_persistent_bins=3,
+  )
+
+  pipe = SimpleNamespace(
+    transformer=nn.Linear(8, 8),
+    text_encoder=nn.Linear(8, 8),
+  )
+  captured: dict[str, dict[str, object]] = {}
+
+  monkeypatch.setattr("cache_dit._utils.utils.get_rank_device", lambda:
+                      (0, torch.device("cuda", 0)))
+  monkeypatch.setattr("cache_dit._utils.utils.remove_layerwise_offload", lambda _module: 0)
+  monkeypatch.setattr("cache_dit._utils.utils._find_offload_related_hf_hook", lambda _module: None)
+
+  def _capture_handle(module: nn.Module, **kwargs):
+    module_name = next(name for name, candidate in vars(pipe).items() if candidate is module)
+    captured[module_name] = kwargs
+    return SimpleNamespace(remove=lambda **_kwargs: None)
+
+  monkeypatch.setattr("cache_dit._utils.utils.layerwise_cpu_offload", _capture_handle)
+
+  assert maybe_generic_module_offload(args, pipe) is True
+  assert captured["transformer"]["async_transfer"] is True
+  assert captured["transformer"]["transfer_buckets"] == 2
+  assert captured["transformer"]["prefetch_limit"] is True
+  assert captured["transformer"]["max_copy_streams"] == 1
+  assert captured["transformer"]["max_inflight_prefetch_bytes"] == 4096
+  assert captured["transformer"]["persistent_buckets"] == 1
+  assert captured["transformer"]["persistent_bins"] == 2
+
+  assert captured["text_encoder"]["async_transfer"] is True
+  assert captured["text_encoder"]["transfer_buckets"] == 5
+  assert captured["text_encoder"]["prefetch_limit"] is False
+  assert captured["text_encoder"]["max_copy_streams"] == 3
+  assert captured["text_encoder"]["max_inflight_prefetch_bytes"] == 2 * 1024 ** 3
+  assert captured["text_encoder"]["persistent_buckets"] == 4
+  assert captured["text_encoder"]["persistent_bins"] == 3
 
 
 def test_svdq_dq_cli_smooth_strategy_is_applied_during_transformer_quantization() -> None:
