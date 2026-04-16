@@ -1126,6 +1126,42 @@ def test_layerwise_cpu_offload_async_transfer_default_stream_count_does_not_warn
   assert warning_messages == []
 
 
+def test_layerwise_cpu_offload_async_transfer_clamps_excessive_bucket_request(
+  monkeypatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=928,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  warning_messages: list[str] = []
+
+  def _capture_warning(message: str, *args) -> None:
+    warning_messages.append(message % args if args else message)
+
+  monkeypatch.setattr(layerwise_module.logger, "warning", _capture_warning)
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=32,
+  )
+  try:
+    assert offload_handle.transfer_buckets == 32
+    assert offload_handle.effective_transfer_buckets == 2
+    assert len(offload_handle._onload_copy_streams) == 2
+    assert len(offload_handle._offload_copy_streams) == 2
+  finally:
+    offload_handle.remove()
+
+  assert warning_messages
+  assert "Clamping layerwise async transfer buckets from 32 to 2" in warning_messages[0]
+
+
 def test_layerwise_cpu_offload_async_transfer_drains_pending_remove() -> None:
   model = make_toy_model(
     embed_dim=128,
