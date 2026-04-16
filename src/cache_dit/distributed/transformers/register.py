@@ -23,8 +23,6 @@ __all__ = [
 
 
 class ContextParallelismPlanner:
-  # Prefer native diffusers implementation if available
-  _cp_planner_preferred_native_diffusers: bool = True
 
   def apply(
     self,

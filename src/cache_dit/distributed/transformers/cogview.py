@@ -3,13 +3,9 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 from diffusers.models.transformers.transformer_cogview3plus import (
-  CogView3PlusTransformer2DModel,
-  CogVideoXAttnProcessor2_0,
-)
+  CogVideoXAttnProcessor2_0, )
 from diffusers.models.transformers.transformer_cogview4 import (
-  CogView4Transformer2DModel,
-  CogView4AttnProcessor,
-)
+  CogView4AttnProcessor, )
 from diffusers.models.attention_processor import Attention
 from diffusers.models.embeddings import apply_rotary_emb
 from diffusers.models.modeling_utils import ModelMixin
@@ -52,17 +48,6 @@ class CogView3PlusContextParallelismPlanner(ContextParallelismPlanner):
     parallelism_config: Optional[ParallelismConfig] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    # NOTE: Diffusers native CP plan still not supported
-    # for CogView3Plus now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(transformer, CogView3PlusTransformer2DModel
-                        ), "Transformer must be an instance of CogView3PlusTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     # CogView3Plus and CogVideoX share the same attention processor
     CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__
@@ -118,18 +103,6 @@ class CogView4ContextParallelismPlanner(ContextParallelismPlanner):
     transformer: Optional[torch.nn.Module | ModelMixin] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    # NOTE: Diffusers native CP plan still not supported
-    # for CogView4 now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        CogView4Transformer2DModel), "Transformer must be an instance of CogView4Transformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     CogView4AttnProcessor.__call__ = __patch_CogView4AttnProcessor__call__
     # Also need to patch the parallel config and attention backend

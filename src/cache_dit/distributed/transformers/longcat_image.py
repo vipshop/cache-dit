@@ -1,17 +1,11 @@
-import functools
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 from diffusers.models.modeling_utils import ModelMixin
 
 try:
-  from diffusers import LongCatImageTransformer2DModel
   from diffusers.models.transformers.transformer_longcat_image import (
-    LongCatImageAttention,
-    LongCatImageAttnProcessor,
-    LongCatImageSingleTransformerBlock,
-    apply_rotary_emb,
-  )  # requires diffusers>=0.37.0.dev0
+    LongCatImageSingleTransformerBlock, )  # requires diffusers>=0.37.0.dev0
 
   _longcat_image_is_available = True
 except ImportError:
@@ -27,14 +21,13 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...attention import _dispatch_attention_fn
 from ...distributed.core import (
-  _All2AllComm,
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,
 )
 from ...logger import init_logger
+from ..async_ulysses import AsyncUlyssesRegistry
 from ..config import ParallelismConfig
 from ..utils import shard_div_attr
 from .register import (
@@ -63,16 +56,8 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
         "Please install diffusers>=0.37.0.dev0 from source. Skipping CP plan for LongCatImage.")
       return transformer
 
-    if parallelism_config.ulysses_async:
-      LongCatImageAttnProcessor.__call__ = __patch_longcat_attn_processor__
-      LongCatImageSingleTransformerBlock.forward = __patch_longcat_single_block__
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(transformer, LongCatImageTransformer2DModel
-                        ), "Transformer must be an instance of LongCatImageTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
+    if parallelism_config.ulysses_async and transformer is not None:
+      AsyncUlyssesRegistry.apply(transformer)
 
     _cp_plan = {
       "": {
@@ -88,185 +73,6 @@ class LongCatImageContextParallelismPlanner(ContextParallelismPlanner):
       "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
     return _cp_plan
-
-
-# Implements async Ulysses communication for Attention module when context parallelism
-# is enabled with Ulysses degree > 1. The async communication allows overlapping
-# communication with computation for better performance.
-if _longcat_image_is_available:
-
-  def _async_ulysses_attn_longcat(
-    self: LongCatImageAttnProcessor,
-    attn: LongCatImageAttention,
-    hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor = None,
-    attention_mask: Optional[torch.Tensor] = None,
-    image_rotary_emb: Optional[torch.Tensor] = None,
-  ) -> torch.Tensor:
-    cp_config = getattr(self, "_cp_config", None)
-    if cp_config is None:
-      raise RuntimeError(
-        "LongCatImageAttnProcessor is missing _cp_config during async Ulysses attention.")
-
-    value = attn.to_v(hidden_states)  # type: torch.Tensor
-    value = value.unflatten(-1, (attn.heads, -1))
-    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-      encoder_value = attn.add_v_proj(encoder_hidden_states)  # type: torch.Tensor
-      encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
-      value = torch.cat([encoder_value, value], dim=1)
-
-    comm = _All2AllComm(cp_config)
-
-    # Async all to all for value
-    value_wait = comm.send_v(value)
-
-    query = attn.to_q(hidden_states)
-    query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-    query = attn.norm_q(query)
-    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-      encoder_query = attn.add_q_proj(encoder_hidden_states)
-      encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-      encoder_query = attn.norm_added_q(encoder_query)
-      query = torch.cat([encoder_query, query], dim=1)
-    if image_rotary_emb is not None:
-      query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-
-    # Async all to all for query
-    query_wait = comm.send_q(query)
-
-    key = attn.to_k(hidden_states)  # type: torch.Tensor
-    key = key.unflatten(-1, (attn.heads, -1))
-    key = attn.norm_k(key)
-    if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-      encoder_key = attn.add_k_proj(encoder_hidden_states)
-      encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-      encoder_key = attn.norm_added_k(encoder_key)
-      key = torch.cat([encoder_key, key], dim=1)
-    if image_rotary_emb is not None:
-      key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-
-    # Async all to all for key
-    key_wait = comm.send_k(key)
-
-    # Ensure the query, key, value are ready
-    value = value_wait.wait()
-    query = query_wait.wait()
-    key = key_wait.wait()
-
-    out = _dispatch_attention_fn(
-      query,
-      key,
-      value,
-      attn_mask=attention_mask,
-      backend=self._attention_backend,
-      cp_config=None,  # set to None to avoid double parallelism
-    )  # (B, S_GLOBAL, H_LOCAL, D)
-
-    if encoder_hidden_states is not None:
-      # Must be sync all to all for out when encoder_hidden_states is used
-      out_wait = comm.send_o(out)  # (B, S_LOCAL, H_GLOBAL, D)
-      out = out_wait.wait()  # type: torch.Tensor
-
-      hidden_states = out.flatten(2, 3)
-      hidden_states = hidden_states.to(query.dtype)
-
-      encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
-        [
-          encoder_hidden_states.shape[1],
-          hidden_states.shape[1] - encoder_hidden_states.shape[1],
-        ],
-        dim=1,
-      )
-      hidden_states = attn.to_out[0](hidden_states)
-      hidden_states = attn.to_out[1](hidden_states)
-      encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-      return hidden_states, encoder_hidden_states
-    else:
-      # Can be async all to all for out when no encoder_hidden_states
-      out_wait = comm.send_o(out)  # (B, S_LOCAL, H_GLOBAL, D)
-      return out_wait
-
-  longcat_attn_processor__call__ = LongCatImageAttnProcessor.__call__
-
-  @functools.wraps(longcat_attn_processor__call__)
-  def __patch_longcat_attn_processor__(
-    self: LongCatImageAttnProcessor,
-    attn: "LongCatImageAttention",
-    hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor = None,
-    attention_mask: Optional[torch.Tensor] = None,
-    image_rotary_emb: Optional[torch.Tensor] = None,
-  ) -> torch.Tensor:
-    cp_config = getattr(self, "_cp_config", None)
-    if cp_config is not None and cp_config.ulysses_degree > 1:
-      return _async_ulysses_attn_longcat(
-        self,
-        attn,
-        hidden_states,
-        encoder_hidden_states=encoder_hidden_states,
-        attention_mask=attention_mask,
-        image_rotary_emb=image_rotary_emb,
-      )
-
-    # Otherwise, use the original call for non-ulysses case
-    return longcat_attn_processor__call__(
-      self,
-      attn,
-      hidden_states,
-      encoder_hidden_states=encoder_hidden_states,
-      attention_mask=attention_mask,
-      image_rotary_emb=image_rotary_emb,
-    )
-
-  @functools.wraps(LongCatImageSingleTransformerBlock.forward)
-  def __patch_longcat_single_block__(
-    self: LongCatImageSingleTransformerBlock,
-    hidden_states: torch.Tensor,
-    encoder_hidden_states: torch.Tensor,
-    temb: torch.Tensor,
-    image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-  ) -> Tuple[torch.Tensor, torch.Tensor]:
-
-    text_seq_len = encoder_hidden_states.shape[1]
-    hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
-    residual = hidden_states
-    norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
-
-    joint_attention_kwargs = joint_attention_kwargs or {}
-    # Perform attention with Ulysses async QKV proj, the attn_output
-    # may be is an instance of AsyncCollectiveTensor.
-    attn_output_wait = self.attn(
-      hidden_states=norm_hidden_states,
-      image_rotary_emb=image_rotary_emb,
-      **joint_attention_kwargs,
-    )
-    # NOTE: Enable the out all2all overlap with mlp computation
-    mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
-
-    # NOTE: Then ensure the attn_output is ready
-    if not isinstance(attn_output_wait, torch.Tensor):
-      attn_output = attn_output_wait()  # type: torch.Tensor
-    else:
-      attn_output = attn_output_wait
-    attn_output = attn_output.contiguous()
-    if attn_output.ndim == 4:
-      attn_output = attn_output.flatten(2, 3)
-
-    hidden_states = torch.cat([attn_output, mlp_hidden_states], dim=2)
-    gate = gate.unsqueeze(1)
-    hidden_states = gate * self.proj_out(hidden_states)
-    hidden_states = residual + hidden_states
-    if hidden_states.dtype == torch.float16:
-      hidden_states = hidden_states.clip(-65504, 65504)
-
-    encoder_hidden_states, hidden_states = (
-      hidden_states[:, :text_seq_len],
-      hidden_states[:, text_seq_len:],
-    )
-    return encoder_hidden_states, hidden_states
 
 
 @TensorParallelismPlannerRegister.register("LongCatImageTransformer2DModel")

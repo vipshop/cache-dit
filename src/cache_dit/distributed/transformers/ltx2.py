@@ -48,11 +48,7 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
       LTX2VideoTransformer3DModel), "Transformer must be an instance of LTX2VideoTransformer3DModel"
 
     # LTX2ImageToVideoPipeline passes `timestep` as a 2D `(B, seq_len)` tensor named
-    # `video_timestep`. Diffusers' native LTX2 `_cp_plan` does not shard that tensor, which causes
-    # CP shape mismatches: `hidden_states` becomes `(B, seq_len / world, C)` while the timestep
-    # embedding path still sees `(B, seq_len, ...)`. We therefore force a custom plan for Ulysses /
-    # Ring CP correctness.
-    self._cp_planner_preferred_native_diffusers = False
+    # `video_timestep`. The cache-dit CP plan shards that tensor correctly for Ulysses / Ring CP.
 
     # Patch attention-mask preparation so head sharding and global-sequence padding stay aligned
     # under CP.

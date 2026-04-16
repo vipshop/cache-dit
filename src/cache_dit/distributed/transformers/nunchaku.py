@@ -9,16 +9,13 @@ try:
   from nunchaku.models.transformers.transformer_flux_v2 import (
     NunchakuFluxAttention,
     NunchakuFluxFA2Processor,
-    NunchakuFluxTransformer2DModelV2,
   )
   from nunchaku.ops.fused import fused_qkv_norm_rottary
   from nunchaku.models.transformers.transformer_qwenimage import (
     NunchakuQwenAttention,
     NunchakuQwenImageNaiveFA2Processor,
-    NunchakuQwenImageTransformer2DModel,
   )
   from nunchaku.models.transformers.transformer_zimage import (
-    NunchakuZImageTransformer2DModel,
     NunchakuZSingleStreamAttnProcessor,
     NunchakuZImageAttention,
   )
@@ -53,16 +50,6 @@ class NunchakuFluxContextParallelismPlanner(ContextParallelismPlanner):
     parallelism_config: Optional[ParallelismConfig] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-
-      assert isinstance(transformer, NunchakuFluxTransformer2DModelV2
-                        ), "Transformer must be an instance of NunchakuFluxTransformer2DModelV2"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     NunchakuFluxFA2Processor.__call__ = __patch_NunchakuFluxFA2Processor__call__
     # Also need to patch the parallel config and attention backend
@@ -217,16 +204,6 @@ class NunchakuQwenImageContextParallelismPlanner(ContextParallelismPlanner):
     transformer: Optional[torch.nn.Module | ModelMixin] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-
-      assert isinstance(transformer, NunchakuQwenImageTransformer2DModel
-                        ), "Transformer must be an instance of NunchakuQwenImageTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     NunchakuQwenImageNaiveFA2Processor.__call__ = (
       __patch_NunchakuQwenImageNaiveFA2Processor__call__)
@@ -385,16 +362,6 @@ class NunchakuZImageContextParallelismPlanner(ContextParallelismPlanner):
     transformer: Optional[torch.nn.Module | ModelMixin] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    # NOTE: Diffusers native CP plan still not supported for ZImageTransformer2DModel
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(transformer, NunchakuZImageTransformer2DModel
-                        ), "Transformer must be an instance of NunchakuZImageTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     if not hasattr(NunchakuZSingleStreamAttnProcessor, "_cp_config"):
       NunchakuZSingleStreamAttnProcessor._cp_config = None

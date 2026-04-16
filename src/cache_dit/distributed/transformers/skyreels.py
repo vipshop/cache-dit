@@ -40,10 +40,6 @@ class SkyReelsV2ContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # NOTE: Diffusers native CP plan still not supported
-    # for SkyReelsV2 now, use custom implementation.
-    self._cp_planner_preferred_native_diffusers = False
-
     # SkyReelsV2 uses WanModel architecture (config: "_class_name": "WanModel")
     # Based on BlockAdapter, it uses Pattern_3 where encoder_hidden_states
     # will NEVER change in the blocks forward loop.

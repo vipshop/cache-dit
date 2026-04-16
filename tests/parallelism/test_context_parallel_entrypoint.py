@@ -10,8 +10,10 @@ import cache_dit.distributed.controlnets as controlnet_entrypoints
 import cache_dit.distributed.dispatch as distributed_dispatch
 import cache_dit.distributed.transformers as transformer_entrypoints
 import cache_dit.distributed.controlnets.dispatch as controlnet_dispatch
+import cache_dit.distributed.async_ulysses.flux as async_flux
 import cache_dit.distributed.transformers.flux as cp_plan_flux
 import cache_dit.distributed.transformers.dispatch as transformer_dispatch
+import cache_dit.distributed.controlnets.zimage_controlnet as cp_plan_zimage_controlnet
 
 
 class _DummyControlNet(ModelMixin):
@@ -150,9 +152,9 @@ def test_patch_flux_attn_processor_falls_back_without_cp_config(monkeypatch):
     calls.append((self, attn, hidden_states, kwargs))
     return "fallback"
 
-  monkeypatch.setattr(cp_plan_flux, "flux_attn_processor__call__", _original)
+  wrapper = async_flux.FluxAsyncUlyssesPlanner._build_flux_attn_patch(_original)
 
-  result = cp_plan_flux.__patch_flux_attn_processor__(
+  result = wrapper(
     SimpleNamespace(),
     SimpleNamespace(),
     hidden_states,
@@ -164,8 +166,47 @@ def test_patch_flux_attn_processor_falls_back_without_cp_config(monkeypatch):
 
 def test_async_ulysses_flux_requires_cp_config():
   with pytest.raises(RuntimeError, match="_cp_config"):
-    cp_plan_flux._async_ulysses_attn_flux(
+    async_flux.FluxAsyncUlyssesPlanner._async_ulysses_attn_flux(
       SimpleNamespace(),
       SimpleNamespace(),
       torch.randn(1, 2, 3),
     )
+
+
+def test_flux_planner_uses_async_ulysses_registry(monkeypatch):
+  planner = cp_plan_flux.FluxContextParallelismPlanner()
+  planner._cp_planner_preferred_native_diffusers = False
+  calls = []
+
+  monkeypatch.setattr(cp_plan_flux.AsyncUlyssesRegistry, "apply",
+                      lambda transformer: calls.append(transformer) or True)
+
+  transformer = object()
+  cp_plan = planner._apply(
+    transformer=transformer,
+    parallelism_config=SimpleNamespace(ulysses_async=True),
+  )
+
+  assert transformer in calls
+  assert "proj_out" in cp_plan
+
+
+def test_controlnet_planner_uses_async_ulysses_registry(monkeypatch):
+  planner = cp_plan_zimage_controlnet.ZImageControlNetContextParallelismPlanner()
+  planner._cp_planner_preferred_native_diffusers = False
+  calls = []
+
+  monkeypatch.setattr(cp_plan_zimage_controlnet.AsyncUlyssesRegistry, "apply",
+                      lambda controlnet: calls.append(controlnet) or True)
+
+  controlnet = SimpleNamespace(
+    control_layers=[object()],
+    control_noise_refiner=[object()],
+  )
+  cp_plan = planner._apply(
+    controlnet=controlnet,
+    parallelism_config=SimpleNamespace(ulysses_async=True),
+  )
+
+  assert controlnet in calls
+  assert "control_layers.0" in cp_plan

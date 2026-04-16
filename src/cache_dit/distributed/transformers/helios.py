@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
-from diffusers import HeliosTransformer3DModel
 from diffusers.models.modeling_utils import ModelMixin
 from torch import nn
 from torch.distributed import DeviceMesh
@@ -39,16 +38,6 @@ class HeliosContextParallelismPlanner(ContextParallelismPlanner):
     parallelism_config: Optional[ParallelismConfig] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        HeliosTransformer3DModel), "Transformer must be an instance of HeliosTransformer3DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     # NOTE(DefTruth): This cp plan here is ugly but it works, we  will optimize it in the future.
     num_blocks = len(transformer.blocks)

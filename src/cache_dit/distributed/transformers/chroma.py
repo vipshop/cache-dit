@@ -2,7 +2,6 @@ from typing import Optional
 
 import torch
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.transformers.transformer_chroma import ChromaTransformer2DModel
 
 from ...distributed.core import (
   _ContextParallelInput,
@@ -29,19 +28,7 @@ class ChromaContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # NOTE: Diffusers native CP plan still not supported
-    # for Chroma now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        ChromaTransformer2DModel), "Transformer must be an instance of ChromaTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
-    # Otherwise, use the custom CP plan defined here, this maybe
+    # Use the custom CP plan defined here. This may be a little different from
     # a little different from the native diffusers implementation
     # for some models.
     _cp_plan = {

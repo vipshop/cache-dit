@@ -1,19 +1,14 @@
-import functools
 from typing import Dict, List, Optional, Tuple
 
 import torch
 from diffusers import Flux2Transformer2DModel
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.transformer_flux2 import (
-  Flux2AttnProcessor,
   Flux2Attention,
   Flux2KVAttnProcessor,
   Flux2KVParallelSelfAttnProcessor,
-  Flux2ParallelSelfAttnProcessor,
-  Flux2ParallelSelfAttention,
   Flux2SingleTransformerBlock,
   Flux2TransformerBlock,
-  apply_rotary_emb,
 )
 from einops import rearrange
 from torch.distributed import DeviceMesh
@@ -24,13 +19,12 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...attention import _dispatch_attention_fn
 from ...distributed.core import (
-  _All2AllComm,
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,
 )
+from ..async_ulysses import AsyncUlyssesRegistry
 from ...logger import init_logger
 from ...platforms import current_platform
 from ..config import ParallelismConfig
@@ -55,20 +49,9 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    self._cp_planner_preferred_native_diffusers = False
-
-    if parallelism_config.ulysses_async:
+    if parallelism_config.ulysses_async and transformer is not None:
       assert not _is_klein_kv(transformer), "Async Ulysses is not supported for Klein-KV now."
-      Flux2AttnProcessor.__call__ = __patch_flux2_attn_processor__
-      Flux2ParallelSelfAttnProcessor.__call__ = __patch_flux2_self_attn_processor__
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        Flux2Transformer2DModel), "Transformer must be an instance of Flux2Transformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
+      AsyncUlyssesRegistry.apply(transformer)
 
     # Use custom CP plan in cache-dit for better control and flexibility.
     if not _is_klein_kv(transformer):
@@ -128,234 +111,6 @@ def _is_klein_kv(transformer: Flux2Transformer2DModel) -> bool:
   attn: Flux2Attention = transformer.transformer_blocks[0].attn
   return isinstance(attn.processor, Flux2KVAttnProcessor) or isinstance(
     attn.processor, Flux2KVParallelSelfAttnProcessor)
-
-
-# Implements async Ulysses communication for Attention module when context parallelism
-# is enabled with Ulysses degree > 1. The async communication allows overlapping
-# communication with computation for better performance.
-def _async_ulysses_attn_flux2(
-  self: Flux2AttnProcessor,
-  attn: "Flux2Attention",
-  hidden_states: torch.Tensor,
-  encoder_hidden_states: torch.Tensor = None,
-  attention_mask: torch.Tensor | None = None,
-  image_rotary_emb: torch.Tensor | None = None,
-) -> torch.Tensor:
-  # Manually expand _get_qkv_projections to support async Ulysses communication.
-  cp_config = getattr(self, "_cp_config", None)
-  if cp_config is None:
-    raise RuntimeError("Flux2AttnProcessor is missing _cp_config during async Ulysses attention.")
-
-  value = attn.to_v(hidden_states)  # type: torch.Tensor
-  value = value.unflatten(-1, (attn.heads, -1))
-  if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-    encoder_value = attn.add_v_proj(encoder_hidden_states)  # type: torch.Tensor
-    encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
-    value = torch.cat([encoder_value, value], dim=1)
-
-  comm = _All2AllComm(cp_config)
-
-  # Async all to all for value
-  value_wait = comm.send_v(value)
-
-  query = attn.to_q(hidden_states)  # type: torch.Tensor
-  query = query.unflatten(-1, (attn.heads, -1))
-  query = attn.norm_q(query)
-  if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-    encoder_query = attn.add_q_proj(encoder_hidden_states)  # type: torch.Tensor
-    encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
-    encoder_query = attn.norm_added_q(encoder_query)
-    query = torch.cat([encoder_query, query], dim=1)
-  if image_rotary_emb is not None:
-    query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-
-  # Async all to all for query
-  query_wait = comm.send_q(query)
-
-  key = attn.to_k(hidden_states)  # type: torch.Tensor
-  key = key.unflatten(-1, (attn.heads, -1))
-  key = attn.norm_k(key)
-
-  if encoder_hidden_states is not None and attn.added_kv_proj_dim is not None:
-    encoder_key = attn.add_k_proj(encoder_hidden_states)  # type: torch.Tensor
-    encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
-    encoder_key = attn.norm_added_k(encoder_key)
-    key = torch.cat([encoder_key, key], dim=1)
-  if image_rotary_emb is not None:
-    key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-  # Async all to all for key
-  key_wait = comm.send_k(key)
-
-  # Ensure the query, key, value are ready
-  value = value_wait.wait()
-  query = query_wait.wait()
-  key = key_wait.wait()
-
-  out = _dispatch_attention_fn(
-    query,
-    key,
-    value,
-    attn_mask=attention_mask,
-    backend=self._attention_backend,
-    cp_config=None,  # set to None to avoid double parallelism
-  )  # (B, S_GLOBAL, H_LOCAL, D)
-  # Must be sync all to all for out when encoder_hidden_states is used
-  out_wait = comm.send_o(out)  # (B, S_LOCAL, H_GLOBAL, D)
-  out = out_wait.wait()  # type: torch.Tensor
-
-  hidden_states = out.flatten(2, 3)
-  hidden_states = hidden_states.to(query.dtype)
-
-  if encoder_hidden_states is not None:
-    encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
-      [
-        encoder_hidden_states.shape[1],
-        hidden_states.shape[1] - encoder_hidden_states.shape[1],
-      ],
-      dim=1,
-    )
-    encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-  hidden_states = attn.to_out[0](hidden_states)
-  hidden_states = attn.to_out[1](hidden_states)
-
-  if encoder_hidden_states is not None:
-    return hidden_states, encoder_hidden_states
-  else:
-    return hidden_states
-
-
-flux2_attn_processor__call__ = Flux2AttnProcessor.__call__
-
-
-@functools.wraps(flux2_attn_processor__call__)
-def __patch_flux2_attn_processor__(
-  self: Flux2AttnProcessor,
-  attn: "Flux2Attention",
-  hidden_states: torch.Tensor,
-  encoder_hidden_states: torch.Tensor = None,
-  attention_mask: torch.Tensor | None = None,
-  image_rotary_emb: torch.Tensor | None = None,
-) -> torch.Tensor:
-  cp_config = getattr(self, "_cp_config", None)
-  if cp_config is not None and cp_config.ulysses_degree > 1:
-    return _async_ulysses_attn_flux2(
-      self,
-      attn,
-      hidden_states,
-      encoder_hidden_states=encoder_hidden_states,
-      attention_mask=attention_mask,
-      image_rotary_emb=image_rotary_emb,
-    )
-  else:
-    return flux2_attn_processor__call__(
-      self,
-      attn,
-      hidden_states,
-      encoder_hidden_states=encoder_hidden_states,
-      attention_mask=attention_mask,
-      image_rotary_emb=image_rotary_emb,
-    )
-
-
-def _async_ulysses_self_attn_flux2(
-  self: Flux2ParallelSelfAttnProcessor,
-  attn: "Flux2ParallelSelfAttention",
-  hidden_states: torch.Tensor,
-  attention_mask: torch.Tensor | None = None,
-  image_rotary_emb: torch.Tensor | None = None,
-) -> torch.Tensor:
-  cp_config = getattr(self, "_cp_config", None)
-  if cp_config is None:
-    raise RuntimeError(
-      "Flux2ParallelSelfAttnProcessor is missing _cp_config during async Ulysses attention.")
-
-  # Parallel in (QKV + MLP in) projection
-  hidden_states = attn.to_qkv_mlp_proj(hidden_states)
-  qkv, mlp_hidden_states = torch.split(
-    hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1)
-
-  # Handle the attention logic
-  query, key, value = qkv.chunk(3, dim=-1)
-
-  value = value.unflatten(-1, (attn.heads, -1))
-  comm = _All2AllComm(cp_config)
-  # Async all to all for value
-  value_wait = comm.send_v(value)
-
-  query = query.unflatten(-1, (attn.heads, -1))  # type: torch.Tensor
-  query = attn.norm_q(query)
-  if image_rotary_emb is not None:
-    query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-  # Async all to all for query
-  query_wait = comm.send_q(query)
-
-  key = key.unflatten(-1, (attn.heads, -1))
-  key = attn.norm_k(key)
-  if image_rotary_emb is not None:
-    key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-  # Async all to all for key
-  key_wait = comm.send_k(key)
-
-  # Ensure the query, key, value are ready
-  value = value_wait.wait()
-  query = query_wait.wait()
-  key = key_wait.wait()
-
-  out = _dispatch_attention_fn(
-    query,
-    key,
-    value,
-    attn_mask=attention_mask,
-    backend=self._attention_backend,
-    cp_config=None,  # set to None to avoid double parallelism
-  )  # (B, S_GLOBAL, H_LOCAL, D)
-  # Must be sync all to all for out when encoder_hidden_states is used
-  out_wait = comm.send_o(out)  # (B, S_LOCAL, H_GLOBAL, D)
-
-  # Handle the feedforward (FF) logic, overlap with attention output communication
-  mlp_hidden_states = attn.mlp_act_fn(mlp_hidden_states)
-
-  out = out_wait.wait()  # type: torch.Tensor
-
-  hidden_states = out.flatten(2, 3)
-  hidden_states = hidden_states.to(query.dtype)
-
-  # Concatenate and parallel output projection
-  hidden_states = torch.cat([hidden_states, mlp_hidden_states], dim=-1)
-  hidden_states = attn.to_out(hidden_states)
-
-  return hidden_states
-
-
-flux2_self_attn_processor__call__ = Flux2ParallelSelfAttnProcessor.__call__
-
-
-@functools.wraps(flux2_self_attn_processor__call__)
-def __patch_flux2_self_attn_processor__(
-  self: Flux2ParallelSelfAttnProcessor,
-  attn: "Flux2ParallelSelfAttention",
-  hidden_states: torch.Tensor,
-  attention_mask: torch.Tensor | None = None,
-  image_rotary_emb: torch.Tensor | None = None,
-) -> torch.Tensor:
-  cp_config = getattr(self, "_cp_config", None)
-  if cp_config is not None and cp_config.ulysses_degree > 1:
-    return _async_ulysses_self_attn_flux2(
-      self,
-      attn,
-      hidden_states,
-      attention_mask=attention_mask,
-      image_rotary_emb=image_rotary_emb,
-    )
-  else:
-    return flux2_self_attn_processor__call__(
-      self,
-      attn,
-      hidden_states,
-      attention_mask=attention_mask,
-      image_rotary_emb=image_rotary_emb,
-    )
 
 
 @TensorParallelismPlannerRegister.register("Flux2Transformer")

@@ -49,17 +49,6 @@ class HunyuanImageContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # NOTE: Diffusers native CP plan still not supported
-    # for HunyuanImage now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(transformer, HunyuanImageTransformer2DModel
-                        ), "Transformer must be an instance of HunyuanImageTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
     # Apply monkey patch to fix attention mask preparation while using CP
     assert isinstance(transformer, HunyuanImageTransformer2DModel)
     HunyuanImageTransformer2DModel.forward = __patch__HunyuanImageTransformer2DModel_forward__
@@ -313,17 +302,6 @@ class HunyuanVideoContextParallelismPlanner(ContextParallelismPlanner):
     transformer: Optional[torch.nn.Module | ModelMixin] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    # NOTE: Diffusers native CP plan still not supported
-    # for HunyuanImage now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(transformer, HunyuanVideoTransformer3DModel
-                        ), "Transformer must be an instance of HunyuanVideoTransformer3DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     # Apply monkey patch to fix attention mask preparation while using CP
     assert isinstance(transformer, HunyuanVideoTransformer3DModel)

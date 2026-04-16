@@ -6,9 +6,7 @@ from diffusers.models.attention_processor import Attention
 from diffusers.models.embeddings import apply_rotary_emb
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.cogvideox_transformer_3d import (
-  CogVideoXAttnProcessor2_0,
-  CogVideoXTransformer3DModel,
-)
+  CogVideoXAttnProcessor2_0, )
 
 from ...attention import _dispatch_attention_fn
 from ...distributed.core import (
@@ -35,17 +33,6 @@ class CogVideoXContextParallelismPlanner(ContextParallelismPlanner):
     parallelism_config: Optional[ParallelismConfig] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    # NOTE: Diffusers native CP plan still not supported
-    # for CogVideoX now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(transformer, CogVideoXTransformer3DModel
-                        ), "Transformer must be an instance of CogVideoXTransformer3DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__
     # Also need to patch the parallel config and attention backend

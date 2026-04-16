@@ -2,7 +2,6 @@ import functools
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
-from diffusers import WanVACETransformer3DModel
 from diffusers.models.modeling_utils import ModelMixin
 
 from diffusers.models.transformers.transformer_wan import (
@@ -49,14 +48,7 @@ class WanContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
-    # Otherwise, use the custom CP plan defined here, this maybe
+    # Use the custom CP plan defined here. This may be a little different from
     # a little different from the native diffusers implementation
     # for some models.
     WanAttnProcessor.__call__ = __patch_WanAttnProcessor__call__
@@ -217,19 +209,7 @@ class WanVACEContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # NOTE: Now, Diffusers don't have native CP plan for
-    # WanVACETransformer3DModel.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        WanVACETransformer3DModel), "Transformer must be an instance of WanVACETransformer3DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
-    # Otherwise, use the custom CP plan defined here, this maybe
+    # Use the custom CP plan defined here. This may be a little different from
     # a little different from the native diffusers implementation
     # for some models.
     _cp_plan = {

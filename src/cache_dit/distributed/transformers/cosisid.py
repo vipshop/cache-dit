@@ -3,7 +3,6 @@ from typing import Optional
 import torch
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.transformers.cogvideox_transformer_3d import CogVideoXAttnProcessor2_0
-from diffusers.models.transformers.consisid_transformer_3d import ConsisIDTransformer3DModel
 
 from ...distributed.core import (
   _ContextParallelInput,
@@ -30,18 +29,6 @@ class CosisIDContextParallelismPlanner(ContextParallelismPlanner):
     parallelism_config: Optional[ParallelismConfig] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
-
-    # NOTE: Diffusers native CP plan still not supported
-    # for ConsisID now.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        ConsisIDTransformer3DModel), "Transformer must be an instance of ConsisIDTransformer3DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
 
     # ConsisID uses the same attention processor as CogVideoX.
     CogVideoXAttnProcessor2_0.__call__ = __patch_CogVideoXAttnProcessor2_0__call__

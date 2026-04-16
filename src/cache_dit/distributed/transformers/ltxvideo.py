@@ -42,16 +42,6 @@ class LTXVideoContextParallelismPlanner(ContextParallelismPlanner):
       transformer,
       LTXVideoTransformer3DModel), "Transformer must be an instance of LTXVideoTransformer3DModel"
 
-    # NOTE: The atttention_mask preparation in LTXAttention while using
-    # context parallelism is buggy in diffusers v0.36.0.dev0, so we
-    # disable the preference to use native diffusers implementation here.
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
     # Apply monkey patch to fix attention mask preparation at class level
     assert issubclass(LTXAttention, AttentionModuleMixin)
     LTXAttention.prepare_attention_mask = __patch__LTXAttention_prepare_attention_mask__

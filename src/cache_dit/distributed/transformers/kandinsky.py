@@ -40,14 +40,7 @@ class Kandinsky5ContextParallelismPlanner(ContextParallelismPlanner):
     assert isinstance(transformer, Kandinsky5Transformer3DModel
                       ), "Transformer must be an instance of Kandinsky5Transformer3DModel"
 
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
-    # Otherwise, use the custom CP plan defined here, this maybe
+    # Use the custom CP plan defined here. This may be a little different from
     # a little different from the native diffusers implementation
     # for some models.
     num_blocks = len(transformer.visual_transformer_blocks)

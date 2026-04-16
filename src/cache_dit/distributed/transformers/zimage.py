@@ -1,13 +1,7 @@
-import functools
 from typing import Dict, List, Optional, Tuple
 
 import torch
-from diffusers import ZImageTransformer2DModel
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.transformers.transformer_z_image import (
-  Attention,
-  ZSingleStreamAttnProcessor,
-)
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
   ColwiseParallel,
@@ -16,14 +10,12 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...attention import _dispatch_attention_fn
 from ...distributed.core import (
-  _All2AllComm,
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,
 )
-from ...platforms import current_platform
+from ..async_ulysses import AsyncUlyssesRegistry
 from ...logger import init_logger
 from ..config import ParallelismConfig
 from ..utils import shard_div_attr
@@ -47,19 +39,8 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> _ContextParallelModelPlan:
 
-    # NOTE: Diffusers native CP plan still not supported for ZImageTransformer2DModel
-    self._cp_planner_preferred_native_diffusers = False
-
-    if transformer is not None and self._cp_planner_preferred_native_diffusers:
-      assert isinstance(
-        transformer,
-        ZImageTransformer2DModel), "Transformer must be an instance of ZImageTransformer2DModel"
-      if hasattr(transformer, "_cp_plan"):
-        if transformer._cp_plan is not None:
-          return transformer._cp_plan
-
-    if parallelism_config.ulysses_async:
-      ZSingleStreamAttnProcessor.__call__ = __patch_zimage_attn_processor__
+    if parallelism_config.ulysses_async and transformer is not None:
+      AsyncUlyssesRegistry.apply(transformer)
 
     n_noise_refiner_layers = len(transformer.noise_refiner)  # 2
     n_context_refiner_layers = len(transformer.context_refiner)  # 2
@@ -146,130 +127,6 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         _ContextParallelOutput(gather_dim=1, expected_dims=3),
       }
     return _cp_plan
-
-
-# Implements async Ulysses communication for Attention module when context parallelism
-# is enabled with Ulysses degree > 1. The async communication allows overlapping
-# communication with computation for better performance.
-def _async_ulysses_attn_zimage(
-  self: ZSingleStreamAttnProcessor,
-  attn: Attention,
-  hidden_states: torch.Tensor,
-  encoder_hidden_states: Optional[torch.Tensor] = None,
-  attention_mask: Optional[torch.Tensor] = None,
-  freqs_cis: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-  cp_config = getattr(self, "_cp_config", None)
-  if cp_config is None:
-    raise RuntimeError(
-      "ZSingleStreamAttnProcessor is missing _cp_config during async Ulysses attention.")
-
-  # Apply RoPE
-  def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-    with torch.amp.autocast(current_platform.device_type, enabled=False):
-      x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-      freqs_cis = freqs_cis.unsqueeze(2)
-      x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-      return x_out.type_as(x_in)  # todo
-
-  dtype = hidden_states.dtype
-  query = attn.to_q(hidden_states)  # type: torch.Tensor
-  query = query.unflatten(-1, (attn.heads, -1))
-  if attn.norm_q is not None:  # Apply Norms
-    query = attn.norm_q(query)
-  if freqs_cis is not None:  # Apply RoPE
-    query = apply_rotary_emb(query, freqs_cis)
-
-  comm = _All2AllComm(cp_config)
-
-  # Async all to all for query
-  query_wait = comm.send_q(query)
-
-  key = attn.to_k(hidden_states)  # type: torch.Tensor
-  key = key.unflatten(-1, (attn.heads, -1))
-  if attn.norm_k is not None:  # Apply Norms
-    key = attn.norm_k(key)
-  if freqs_cis is not None:  # Apply RoPE
-    key = apply_rotary_emb(key, freqs_cis)
-
-  # Async all to all for key
-  key_wait = comm.send_k(key)
-
-  value = attn.to_v(hidden_states)  # type: torch.Tensor
-  value = value.unflatten(-1, (attn.heads, -1))
-
-  # Async all to all for value
-  value_wait = comm.send_v(value)
-
-  # Ensure the query, key, value are ready
-  query = query_wait.wait()
-  key = key_wait.wait()
-  value = value_wait.wait()
-
-  # Cast to correct dtype
-  query, key = query.to(dtype), key.to(dtype)
-
-  # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
-  if attention_mask is not None and attention_mask.ndim == 2:
-    attention_mask = attention_mask[:, None, None, :]
-
-  # Compute joint attention
-  out = _dispatch_attention_fn(
-    query,
-    key,
-    value,
-    attn_mask=attention_mask,
-    dropout_p=0.0,
-    is_causal=False,
-    backend=self._attention_backend,
-    cp_config=None,  # set to None to avoid double parallelism
-  )  # (B, S_GLOBAL, H_LOCAL, D)
-
-  out_wait = comm.send_o(out)  # (B, S_LOCAL, H_GLOBAL, D)
-  hidden_states = out_wait.wait()  # type: torch.Tensor
-
-  # Reshape back
-  hidden_states = hidden_states.flatten(2, 3)
-  hidden_states = hidden_states.to(dtype)
-
-  output = attn.to_out[0](hidden_states)
-  if len(attn.to_out) > 1:  # dropout
-    output = attn.to_out[1](output)
-
-  return output
-
-
-zimage_attn_processor__call__ = ZSingleStreamAttnProcessor.__call__
-
-
-@functools.wraps(zimage_attn_processor__call__)
-def __patch_zimage_attn_processor__(
-  self: ZSingleStreamAttnProcessor,
-  attn: Attention,
-  hidden_states: torch.Tensor,
-  encoder_hidden_states: Optional[torch.Tensor] = None,
-  attention_mask: Optional[torch.Tensor] = None,
-  freqs_cis: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-  cp_config = getattr(self, "_cp_config", None)
-  if cp_config is not None and cp_config.ulysses_degree > 1:
-    return _async_ulysses_attn_zimage(
-      self,
-      attn,
-      hidden_states,
-      encoder_hidden_states,
-      attention_mask,
-      freqs_cis,
-    )
-  else:
-    return zimage_attn_processor__call__(
-      self,
-      attn,
-      hidden_states,
-      encoder_hidden_states,
-      attention_mask,
-      freqs_cis,
-    )
 
 
 @TensorParallelismPlannerRegister.register("Lumina2")
