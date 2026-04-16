@@ -371,6 +371,7 @@ def test_layerwise_cpu_offload_async_transfer_respects_transfer_buckets() -> Non
     offload_handle.remove()
 
   assert offload_handle.transfer_buckets == 2
+  assert offload_handle.effective_transfer_buckets == 8
   assert observed_prefetch_devices == [("cuda", "cuda")]
   assert torch.isfinite(output).all()
   assert output.device.type == "cpu"
@@ -889,7 +890,7 @@ def test_layerwise_cpu_offload_async_transfer_emits_distinct_stream_debug_logs(
   assert any("copy stream[1]" in message for message in debug_messages)
 
 
-def test_layerwise_cpu_offload_async_transfer_caps_global_onload_budget() -> None:
+def test_layerwise_cpu_offload_async_transfer_expands_future_prefetch_window() -> None:
   model = make_toy_model(
     embed_dim=128,
     num_heads=4,
@@ -931,7 +932,8 @@ def test_layerwise_cpu_offload_async_transfer_caps_global_onload_budget() -> Non
 
   assert torch.isfinite(output).all()
   assert observed_pending_onload_sizes
-  assert max(observed_pending_onload_sizes) <= 2
+  assert offload_handle.effective_transfer_buckets == 8
+  assert max(observed_pending_onload_sizes) <= 3
 
 
 def test_layerwise_cpu_offload_async_transfer_clamps_excessive_copy_stream_request(
@@ -970,6 +972,39 @@ def test_layerwise_cpu_offload_async_transfer_clamps_excessive_copy_stream_reque
 
   assert warning_messages
   assert "Clamping layerwise async copy streams from 32 to 4" in warning_messages[0]
+
+
+def test_layerwise_cpu_offload_async_transfer_default_stream_count_does_not_warn(
+  monkeypatch, ) -> None:
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=946,
+    device="cpu",
+    dtype=torch.float32,
+  )
+
+  warning_messages: list[str] = []
+
+  def _capture_warning(message: str, *args) -> None:
+    warning_messages.append(message % args if args else message)
+
+  monkeypatch.setattr(layerwise_module.logger, "warning", _capture_warning)
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=["block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    onload_device="cuda",
+    async_transfer=True,
+    transfer_buckets=1,
+  )
+  try:
+    assert offload_handle.max_copy_streams is None
+    assert offload_handle.effective_max_copy_streams == 1
+  finally:
+    offload_handle.remove()
+
+  assert warning_messages == []
 
 
 def test_layerwise_cpu_offload_async_transfer_drains_pending_remove() -> None:
@@ -1092,20 +1127,15 @@ def test_layerwise_cpu_offload_persistent_bins_select_uniform_target_ranges() ->
 
 
 def test_layerwise_cpu_offload_async_transfer_window_keeps_ready_targets_counted() -> None:
-  model = make_toy_model(
-    embed_dim=128,
-    num_heads=4,
-    seed=945,
-    device="cpu",
-    dtype=torch.float32,
-  )
+  model = nn.Module()
+  model.layers = nn.ModuleList([nn.Linear(32, 32, bias=True) for _ in range(7)])
 
   offload_handle = layerwise_cpu_offload(
     model,
-    module_names=["block.norm", "block.to_q", "block.to_k", "block.to_v", "block.to_out"],
+    module_names=[f"layers.{index}" for index in range(7)],
     onload_device="cuda",
     async_transfer=True,
-    transfer_buckets=2,
+    transfer_buckets=1,
     persistent_buckets=2,
   )
 
@@ -1114,27 +1144,39 @@ def test_layerwise_cpu_offload_async_transfer_window_keeps_ready_targets_counted
     second_persistent = offload_handle.targets[1]
     first_prefetched = offload_handle.targets[2]
     second_prefetched = offload_handle.targets[3]
-    refill_target = offload_handle.targets[4]
+    third_prefetched = offload_handle.targets[4]
+    fourth_prefetched = offload_handle.targets[5]
+    refill_target = offload_handle.targets[6]
 
     offload_handle._prefetch_bucket_targets(first_persistent)
-    assert offload_handle._pending_onload_targets | offload_handle._ready_onload_targets == {2, 3}
+    assert offload_handle.effective_transfer_buckets == 4
+    assert offload_handle._pending_onload_targets | offload_handle._ready_onload_targets == {
+      2,
+      3,
+      4,
+      5,
+    }
 
     if first_prefetched.pending_onload_event is not None:
       offload_handle._clear_pending_onload(first_prefetched)
     if second_prefetched.pending_onload_event is not None:
       offload_handle._clear_pending_onload(second_prefetched)
+    if third_prefetched.pending_onload_event is not None:
+      offload_handle._clear_pending_onload(third_prefetched)
+    if fourth_prefetched.pending_onload_event is not None:
+      offload_handle._clear_pending_onload(fourth_prefetched)
     assert offload_handle._pending_onload_targets == set()
-    assert offload_handle._ready_onload_targets == {2, 3}
+    assert offload_handle._ready_onload_targets == {2, 3, 4, 5}
 
     offload_handle._prefetch_bucket_targets(second_persistent)
     assert offload_handle._pending_onload_targets == set()
-    assert offload_handle._ready_onload_targets == {2, 3}
+    assert offload_handle._ready_onload_targets == {2, 3, 4, 5}
     assert refill_target.pending_onload_event is None
     assert refill_target.resident_device.type == "cpu"
 
     offload_handle._consume_prefetched_target(first_prefetched)
     offload_handle._prefetch_bucket_targets(first_prefetched)
-    assert offload_handle._ready_onload_targets == {3}
+    assert offload_handle._ready_onload_targets == {3, 4, 5}
     assert refill_target.pending_onload_event is not None
   finally:
     offload_handle.remove()

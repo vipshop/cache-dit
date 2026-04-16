@@ -21,6 +21,7 @@ logger = init_logger(__name__)
 _LAYERWISE_OFFLOAD_HANDLES_ATTR = "_cache_dit_layerwise_offload_handles"
 _ROOT_TARGET_NAME = "<root>"
 _MAX_EFFECTIVE_ASYNC_TRANSFER_BUCKETS = 4
+_MAX_FUTURE_PREFETCH_WINDOW = 8
 
 
 def _resolve_persistent_target_spans(
@@ -74,23 +75,6 @@ def _collect_persistent_target_spans(targets: list["_LayerwiseTarget"]) -> list[
   if span_start is not None:
     spans.append((span_start, len(targets)))
   return spans
-
-
-def _derive_prefetch_budget_bytes(targets: list["_LayerwiseTarget"], *, window_size: int) -> int:
-  prefetchable_target_bytes = [
-    target.prefetch_residency_bytes for target in targets if not target.persistent
-  ]
-  if not prefetchable_target_bytes:
-    return 0
-
-  effective_window_size = min(window_size, len(prefetchable_target_bytes))
-  current_window_bytes = sum(prefetchable_target_bytes[:effective_window_size])
-  max_window_bytes = current_window_bytes
-  for index in range(effective_window_size, len(prefetchable_target_bytes)):
-    current_window_bytes += prefetchable_target_bytes[index]
-    current_window_bytes -= prefetchable_target_bytes[index - effective_window_size]
-    max_window_bytes = max(max_window_bytes, current_window_bytes)
-  return max_window_bytes
 
 
 def _target_prefetch_residency_bytes(target: "_LayerwiseTarget") -> int:
@@ -403,17 +387,15 @@ class LayerwiseOffloadHandle:
     visible device. This is the runtime behavior toggle, not a parameter-residency toggle:
     parameters are still offloaded layer-by-layer after each leaf forward. It is enabled only
     when the selected targets cover every parameterized leaf submodule in the root module.
-  :param transfer_buckets: How many future targets should be prefetched when async transfer is
-    enabled. Under the conservative window model, this caps how many future targets may stay in
-    prefetched pending/ready states ahead of the current execution point. A value of 1 still
-    enables async overlap on a single copy lane and preserves the current single-target lookahead
-    behavior.
+  :param transfer_buckets: Base future-prefetch depth when async transfer is enabled. Runtime
+    expands this into an effective future-target window of ``min(4 * transfer_buckets, 8)``
+    prefetched pending/ready targets ahead of the current execution point. A value of 1 still
+    enables async overlap on a single copy lane while allowing a modest widened lookahead.
   :param max_copy_streams: Maximum size of the async onload/offload copy stream pools. This caps
     copy-lane concurrency without reducing the logical prefetch lookahead depth.
   :param max_inflight_prefetch_bytes: Maximum total CUDA residency budget, in bytes, that async
     future-target prefetch may consume at once across both pending transfers and ready-but-not-
-    yet-consumed prefetched targets. When omitted, runtime derives a conservative default from the
-    requested transfer_buckets and the selected targets.
+    yet-consumed prefetched targets. When omitted, runtime leaves byte-budget limiting disabled.
   :param persistent_buckets: How many selected targets should stay resident on the onload device
     for the full handle lifetime instead of participating in per-forward onload/offload.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
@@ -467,24 +449,17 @@ class LayerwiseOffloadHandle:
     self.effective_max_copy_streams = (min(resolved_max_copy_streams,
                                            _MAX_EFFECTIVE_ASYNC_TRANSFER_BUCKETS, transfer_buckets)
                                        if async_transfer else transfer_buckets)
-    if async_transfer and self.effective_max_copy_streams < resolved_max_copy_streams:
+    if (async_transfer and max_copy_streams is not None
+        and self.effective_max_copy_streams < resolved_max_copy_streams):
       logger.warning(
         "Clamping layerwise async copy streams from %d to %d to avoid excessive copy-lane "
         "concurrency.",
         resolved_max_copy_streams,
         self.effective_max_copy_streams,
       )
-    self.effective_transfer_buckets = transfer_buckets
-    if async_transfer:
-      derived_prefetch_budget_bytes = _derive_prefetch_budget_bytes(
-        targets,
-        window_size=transfer_buckets,
-      )
-      self.effective_max_inflight_prefetch_bytes = (derived_prefetch_budget_bytes
-                                                    if max_inflight_prefetch_bytes is None else
-                                                    max_inflight_prefetch_bytes)
-    else:
-      self.effective_max_inflight_prefetch_bytes = max_inflight_prefetch_bytes
+    self.effective_transfer_buckets = (min(4 * transfer_buckets, _MAX_FUTURE_PREFETCH_WINDOW)
+                                       if async_transfer else transfer_buckets)
+    self.effective_max_inflight_prefetch_bytes = max_inflight_prefetch_bytes
     self._onload_copy_streams = (
       [torch.cuda.Stream(device=onload_device)
        for _ in range(self.effective_max_copy_streams)] if async_transfer else [])
@@ -1039,17 +1014,15 @@ def _apply_layerwise_offload(
   :param async_transfer: Whether module state onload/offload should use dedicated CUDA onload and
     offload copy stream pools. The async path currently supports CUDA onload plus CPU offload
     only.
-  :param transfer_buckets: How many future targets should be prefetched when ``async_transfer``
-    is enabled. Under the conservative window model, this caps how many future targets may stay in
-    prefetched pending/ready states ahead of the current execution point. A value of 1 still
-    enables async overlap on a single copy lane and preserves the current single-target lookahead
-    behavior.
+  :param transfer_buckets: Base future-prefetch depth when ``async_transfer`` is enabled.
+    Runtime expands this into an effective future-target window of
+    ``min(4 * transfer_buckets, 8)`` pending/ready prefetched targets ahead of the current
+    execution point.
   :param max_copy_streams: Maximum number of async onload/offload copy streams. When omitted,
     runtime uses the requested transfer_buckets but still applies a hard safety cap.
   :param max_inflight_prefetch_bytes: Maximum total future-target CUDA residency, in bytes,
     allowed for async prefetch at once across both pending transfers and ready-but-not-yet-
-    consumed prefetched targets. When omitted, runtime derives a conservative default from
-    transfer_buckets and selected target sizes.
+    consumed prefetched targets. When omitted, runtime does not apply an implicit byte-budget cap.
   :param persistent_buckets: How many selected targets should stay resident on the onload device
     for the full handle lifetime instead of participating in per-forward onload/offload.
   :param persistent_bins: How many evenly distributed bins should be used when selecting the
@@ -1207,8 +1180,8 @@ def _apply_layerwise_offload(
                                   or target.index in handle._ready_onload_targets)
           if is_prefetched_target:
             # The current target was already counted inside the future-prefetch window. Consume
-            # that window slot before trying to refill lookahead so the conservative budget keeps
-            # counting ready-but-not-yet-used targets until execution actually reaches them.
+            # that window slot before trying to refill lookahead so the widened prefetch window
+            # keeps counting ready-but-not-yet-used targets until execution actually reaches them.
             handle._consume_prefetched_target(target)
             handle._prefetch_bucket_targets(target)
             if target.pending_onload_event is not None:

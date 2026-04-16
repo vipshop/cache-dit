@@ -783,8 +783,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-transfer-buckets",
     type=int,
     default=1,
-    help=("How many future layerwise offload targets to prefetch when "
-          "--layerwise-async-transfer is enabled. Default is 1."),
+    help=("Base future-prefetch depth for layerwise async transfer. Runtime expands this to an "
+          "effective future-target window of min(4 * buckets, 8). Default is 1."),
   )
   parser.add_argument(
     "--layerwise-max-copy-streams",
@@ -804,7 +804,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help=("Maximum total CUDA residency budget, in bytes, for in-flight layerwise future-target "
           "prefetch. This shared setting applies to both generic module layerwise offload and "
           "SVDQ layerwise collection when --svdq-layerwise-offload is active. When omitted, "
-          "runtime derives a conservative default from the requested transfer buckets."),
+          "runtime leaves the byte-budget limit disabled."),
   )
   parser.add_argument(
     "--layerwise-persistent-buckets",
