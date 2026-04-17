@@ -4,8 +4,7 @@ The attention backend registry and dispatch logic are designed to be extensible 
 but the cache-dit runtime currently only registers its own native attention backend. The dispatch
 function will route to the appropriate backend based on the active backend setting, which can be
 configured globally or per-module. The templated context parallel attention implementations are
-designed to be flexible for future support of more backends and features, but currently only support
-a single configuration path with p2p communication and no attn_mask/causal/enable_gqa support.
+designed to be flexible for future support of more backends and features.
 """
 import inspect
 import math
