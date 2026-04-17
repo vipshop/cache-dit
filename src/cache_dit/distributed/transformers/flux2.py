@@ -72,6 +72,10 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
     else:
       num_double_blocks = len(transformer.transformer_blocks)
       num_single_blocks = len(transformer.single_transformer_blocks)
+      # NOTE: The result still not good in Klein-KV case, but we don't have better choice for now.
+      # We will keep improving it in the future. User should use tensor parallelism to get accurate
+      # results in Klein-KV case. We need to totally rewrite the Klein-KV implementation to support
+      # better context parallelism, which is on the roadmap but not in the near term.
       _cp_plan = {
         "pos_embed": {
           "ids": _ContextParallelInput(split_dim=0, expected_dims=2, split_output=False)

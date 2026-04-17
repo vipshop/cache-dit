@@ -155,6 +155,42 @@ class _ContextParallelOutput:
 
 _ContextParallelInputType = dict[str | int, _ContextParallelInput | list[_ContextParallelInput]
                                  | tuple[_ContextParallelInput, ...]]
-_ContextParallelOutputType = _ContextParallelOutput | list[_ContextParallelOutput] | tuple[
-  _ContextParallelOutput, ...]
-_ContextParallelModelPlan = dict[str, _ContextParallelInputType | _ContextParallelOutputType]
+_ContextParallelOutputEntry = _ContextParallelOutput | None
+_ContextParallelOutputType = _ContextParallelOutputEntry | list[
+  _ContextParallelOutputEntry] | tuple[_ContextParallelOutputEntry, ...]
+
+# One module-id entry can be either:
+# 1. A single input-plan dict, which registers one split hook.
+# 2. A single output-plan object/tuple, which registers one gather hook.
+# 3. A list/tuple of subplans, which registers multiple hooks on the same module.
+#
+# The third form is the "sub CP plan". It lets one key carry both input and output
+# hooks without creating a synthetic wrapper module. Example:
+#
+#   {
+#     "transformer_blocks.*.attn.to_v": [
+#       {"input": _ContextParallelInput(split_dim=1, expected_dims=3)},
+#       _ContextParallelOutput(gather_dim=1, expected_dims=3),
+#     ]
+#   }
+#
+# This means:
+# - split `to_v`'s input before `to_v.forward()`;
+# - gather `to_v`'s output after `to_v.forward()`.
+#
+# A plain tuple/list of outputs is still treated as one gather hook for tuple-valued
+# module outputs, not as a subplan container. Example:
+#
+#   {
+#     "transformer_blocks.11": (
+#       _ContextParallelOutput(gather_dim=1, expected_dims=3),
+#       _ContextParallelOutput(gather_dim=1, expected_dims=3),
+#     )
+#   }
+#
+# The runtime interprets this as one output hook that gathers both returned tensors.
+_ContextParallelSubPlan = _ContextParallelInputType | _ContextParallelOutputType
+_ContextParallelModelPlan = dict[
+  str,
+  _ContextParallelSubPlan | list[_ContextParallelSubPlan] | tuple[_ContextParallelSubPlan, ...],
+]

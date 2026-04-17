@@ -46,6 +46,27 @@ _root_logger = logging.getLogger("CACHE_DIT")
 _default_handler = None
 _default_file_handler = None
 _inference_log_file_handler = {}
+_warning_once_messages: set[tuple[str, str]] = set()
+
+
+def _warning_once(self: logging.Logger, msg, *args, **kwargs) -> None:
+  message = logging.LogRecord(
+    name=self.name,
+    level=logging.WARNING,
+    pathname="",
+    lineno=0,
+    msg=msg,
+    args=args,
+    exc_info=None,
+  ).getMessage()
+  key = (self.name, message)
+  if key in _warning_once_messages:
+    return
+  _warning_once_messages.add(key)
+  self.warning(msg, *args, **kwargs)
+
+
+logging.Logger.warning_once = _warning_once  # type: ignore[attr-defined]
 
 
 def _setup_logger():

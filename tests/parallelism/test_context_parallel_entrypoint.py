@@ -12,6 +12,7 @@ import cache_dit.distributed.transformers as transformer_entrypoints
 import cache_dit.distributed.controlnets.dispatch as controlnet_dispatch
 import cache_dit.distributed.async_ulysses.flux as async_flux
 import cache_dit.distributed.transformers.flux as cp_plan_flux
+import cache_dit.distributed.transformers.flux2 as cp_plan_flux2
 import cache_dit.distributed.transformers.dispatch as transformer_dispatch
 import cache_dit.distributed.controlnets.zimage_controlnet as cp_plan_zimage_controlnet
 
@@ -210,3 +211,104 @@ def test_controlnet_planner_uses_async_ulysses_registry(monkeypatch):
 
   assert controlnet in calls
   assert "control_layers.0" in cp_plan
+
+
+def test_flux2_klein_kv_planner_registers_fine_grained_attention_subplans(monkeypatch):
+  planner = cp_plan_flux2.Flux2ContextParallelismPlanner()
+  planner._cp_planner_preferred_native_diffusers = False
+  transformer = SimpleNamespace(
+    transformer_blocks=[
+      SimpleNamespace(attn=SimpleNamespace(added_kv_proj_dim=16)),
+      SimpleNamespace(attn=SimpleNamespace(added_kv_proj_dim=16)),
+    ],
+    single_transformer_blocks=[object(), object()],
+  )
+
+  monkeypatch.setattr(cp_plan_flux2, "_is_klein_kv", lambda _transformer: True)
+
+  cp_plan = planner._apply(
+    transformer=transformer,
+    parallelism_config=SimpleNamespace(ulysses_async=False),
+  )
+
+  assert "transformer_blocks.0" not in cp_plan
+  assert "transformer_blocks.*" not in cp_plan
+  assert cp_plan["transformer_blocks.*.attn.to_q"]["input"].split_dim == 1
+  assert cp_plan["transformer_blocks.*.attn.to_k"]["input"].split_dim == 1
+  assert isinstance(cp_plan["transformer_blocks.*.attn.to_v"], list)
+  assert cp_plan["transformer_blocks.*.attn.to_v"][0]["input"].split_dim == 1
+  assert cp_plan["transformer_blocks.*.attn.to_v"][1].gather_dim == 1
+  assert cp_plan["transformer_blocks.*.attn.add_q_proj"]["input"].split_dim == 1
+  assert cp_plan["transformer_blocks.*.attn.add_k_proj"]["input"].split_dim == 1
+  assert "transformer_blocks.*.attn.norm_added_q" not in cp_plan
+  assert isinstance(cp_plan["transformer_blocks.*.attn.add_v_proj"], list)
+  assert cp_plan["transformer_blocks.*.attn.add_v_proj"][0]["input"].split_dim == 1
+  assert cp_plan["transformer_blocks.*.attn.add_v_proj"][1].gather_dim == 1
+  assert "transformer_blocks.*.attn.norm_k" not in cp_plan
+  assert "transformer_blocks.*.attn.norm_added_k" not in cp_plan
+  assert cp_plan["transformer_blocks.*.attn.to_add_out"].gather_dim == 1
+  assert cp_plan["transformer_blocks.*.attn.to_out.0"].gather_dim == 1
+  assert "single_transformer_blocks.0" not in cp_plan
+  assert "single_transformer_blocks.*" not in cp_plan
+  assert "single_transformer_blocks.*.attn.to_qkv_mlp_proj" in cp_plan
+  assert isinstance(cp_plan["single_transformer_blocks.*.attn.to_qkv_mlp_proj"], list)
+  assert cp_plan["single_transformer_blocks.*.attn.to_qkv_mlp_proj"][0]["input"].split_dim == 1
+  assert cp_plan["single_transformer_blocks.*.attn.to_qkv_mlp_proj"][1].gather_dim == 1
+  assert cp_plan["single_transformer_blocks.*.attn.norm_q"]["x"].split_dim == 1
+  assert cp_plan["single_transformer_blocks.*.attn.norm_q"]["x"].expected_dims == 4
+  assert cp_plan["single_transformer_blocks.*.attn.norm_k"]["x"].split_dim == 1
+  assert cp_plan["single_transformer_blocks.*.attn.norm_k"]["x"].expected_dims == 4
+  assert cp_plan["single_transformer_blocks.*.attn.mlp_act_fn"]["x"].split_dim == 1
+  assert cp_plan["single_transformer_blocks.*.attn.to_out"].gather_dim == 1
+
+
+def test_flux2_klein_kv_planner_skips_added_kv_hooks_without_added_kv_proj(monkeypatch):
+  planner = cp_plan_flux2.Flux2ContextParallelismPlanner()
+  planner._cp_planner_preferred_native_diffusers = False
+  transformer = SimpleNamespace(
+    transformer_blocks=[
+      SimpleNamespace(attn=SimpleNamespace(added_kv_proj_dim=None)),
+      SimpleNamespace(attn=SimpleNamespace(added_kv_proj_dim=None)),
+    ],
+    single_transformer_blocks=[object()],
+  )
+
+  monkeypatch.setattr(cp_plan_flux2, "_is_klein_kv", lambda _transformer: True)
+
+  cp_plan = planner._apply(
+    transformer=transformer,
+    parallelism_config=SimpleNamespace(ulysses_async=False),
+  )
+
+  assert "transformer_blocks.*.attn.add_q_proj" not in cp_plan
+  assert "transformer_blocks.*.attn.add_k_proj" not in cp_plan
+  assert "transformer_blocks.*.attn.add_v_proj" not in cp_plan
+  assert "transformer_blocks.*.attn.norm_added_q" not in cp_plan
+  assert "transformer_blocks.*.attn.norm_added_k" not in cp_plan
+  assert "transformer_blocks.*.attn.norm_k" not in cp_plan
+  assert "transformer_blocks.*.attn.to_add_out" not in cp_plan
+
+
+def test_flux2_kv_attention_local_query_global_kv_uses_separate_query_and_key_counts(monkeypatch):
+  dispatch_calls = []
+
+  def _record_dispatch(query, key, value, attn_mask=None, backend=None, cp_config=None, **kwargs):
+    del value, attn_mask, backend, cp_config, kwargs
+    dispatch_calls.append((query.shape[1], key.shape[1]))
+    return torch.zeros_like(query)
+
+  monkeypatch.setattr(cp_plan_flux2, "_dispatch_attention_fn", _record_dispatch)
+
+  output = cp_plan_flux2._flux2_kv_attention_local_query_global_kv(
+    query=torch.randn(1, 2, 1, 2),
+    key=torch.randn(1, 5, 1, 2),
+    value=torch.randn(1, 5, 1, 2),
+    query_num_txt_tokens=1,
+    query_num_ref_tokens=1,
+    key_num_txt_tokens=2,
+    key_num_ref_tokens=1,
+    backend="native",
+  )
+
+  assert output.shape[1] == 2
+  assert dispatch_calls == [(1, 5), (1, 1)]

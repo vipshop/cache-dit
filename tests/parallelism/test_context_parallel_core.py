@@ -1,7 +1,10 @@
 import torch
+import cache_dit.distributed.core._context_parallel as cp_context
 
 from cache_dit.distributed.core import (
   _ContextParallelConfig,
+  _ContextParallelInput,
+  _ContextParallelOutput,
   _get_submodule_by_name,
   _normalize_parallel_config,
   validate_context_parallel_attention_backend,
@@ -57,6 +60,13 @@ class _ProcessorlessAttentionModel(torch.nn.Module):
     self.attn = _ProcessorlessAttention()
 
 
+class _ProjectionModel(torch.nn.Module):
+
+  def __init__(self):
+    super().__init__()
+    self.proj = torch.nn.Linear(4, 4)
+
+
 def test_normalize_parallel_config_wraps_diffusers_like_config():
   config = _normalize_parallel_config(_DiffusersLikeParallelConfig())
 
@@ -85,3 +95,68 @@ def test_validate_context_parallel_attention_backend_skips_processorless_attenti
     config,
     attn_classes_extra=(_ProcessorlessAttention, ),
   )
+
+
+def test_apply_context_parallel_supports_subplans(monkeypatch):
+  model = _ProjectionModel()
+  config = _ContextParallelConfig(ring_degree=1, ulysses_degree=2)
+  registered_hooks = []
+
+  class _FakeRegistry:
+
+    def register_hook(self, hook, name: str) -> None:
+      registered_hooks.append((hook.__class__.__name__, name))
+
+  monkeypatch.setattr(
+    cp_context.HookRegistry,
+    "check_if_exists_or_initialize",
+    classmethod(lambda cls, module: _FakeRegistry()),
+  )
+
+  cp_context._apply_context_parallel(
+    model,
+    config,
+    {
+      "proj": [
+        {
+          "input": _ContextParallelInput(split_dim=1, expected_dims=2, split_output=False)
+        },
+        _ContextParallelOutput(gather_dim=1, expected_dims=2),
+      ]
+    },
+  )
+
+  assert registered_hooks == [
+    ("_ContextParallelSplitHook", "cp_input---proj---0"),
+    ("_ContextParallelGatherHook", "cp_output---proj---1"),
+  ]
+
+
+def test_apply_context_parallel_treats_output_tuple_as_single_gather_hook(monkeypatch):
+  model = _ProjectionModel()
+  config = _ContextParallelConfig(ring_degree=1, ulysses_degree=2)
+  registered_hooks = []
+
+  class _FakeRegistry:
+
+    def register_hook(self, hook, name: str) -> None:
+      registered_hooks.append((hook.__class__.__name__, name))
+
+  monkeypatch.setattr(
+    cp_context.HookRegistry,
+    "check_if_exists_or_initialize",
+    classmethod(lambda cls, module: _FakeRegistry()),
+  )
+
+  cp_context._apply_context_parallel(
+    model,
+    config,
+    {"proj": (
+      _ContextParallelOutput(gather_dim=1, expected_dims=2),
+      None,
+    )},
+  )
+
+  assert registered_hooks == [
+    ("_ContextParallelGatherHook", "cp_output---proj"),
+  ]

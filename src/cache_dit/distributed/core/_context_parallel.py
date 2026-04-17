@@ -84,18 +84,13 @@ def _apply_context_parallel(
     submodules = submodule if isinstance(submodule, list) else [submodule]
 
     for current_module in submodules:
-      if isinstance(cp_model_plan, dict):
-        hook = _ContextParallelSplitHook(cp_model_plan, parallel_config)
-        hook_name = _CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE.format(module_id)
-      elif _is_output_plan(cp_model_plan):
-        output_plan = [cp_model_plan] if _is_cp_output_like(cp_model_plan) else list(cp_model_plan)
-        hook = _ContextParallelGatherHook(output_plan, parallel_config)
-        hook_name = _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE.format(module_id)
-      else:
-        raise ValueError(f"Unsupported context parallel model plan type: {type(cp_model_plan)}")
-
       registry = HookRegistry.check_if_exists_or_initialize(current_module)
-      registry.register_hook(hook, hook_name)
+      # A module entry may expand to multiple hooks when the plan uses subplans.
+      # The most common case is one split hook plus one gather hook on the same
+      # module key, e.g. `[input_plan, output_plan]` for `attn.to_v`.
+      for subplan_index, current_plan in _iter_cp_module_plans(cp_model_plan):
+        hook, hook_name = _build_cp_hook(current_plan, parallel_config, module_id, subplan_index)
+        registry.register_hook(hook, hook_name)
 
 
 def _remove_context_parallel(module: torch.nn.Module, plan: dict) -> None:
@@ -111,13 +106,59 @@ def _remove_context_parallel(module: torch.nn.Module, plan: dict) -> None:
 
     for current_module in submodules:
       registry = HookRegistry.check_if_exists_or_initialize(current_module)
-      if isinstance(cp_model_plan, dict):
-        hook_name = _CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE.format(module_id)
-      elif _is_output_plan(cp_model_plan):
-        hook_name = _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE.format(module_id)
-      else:
-        raise ValueError(f"Unsupported context parallel model plan type: {type(cp_model_plan)}")
-      registry.remove_hook(hook_name)
+      for subplan_index, current_plan in _iter_cp_module_plans(cp_model_plan):
+        _, hook_name = _build_cp_hook(current_plan, None, module_id, subplan_index)
+        registry.remove_hook(hook_name)
+
+
+def _iter_cp_module_plans(cp_model_plan):
+  """Yield one or more hook plans for a module entry.
+
+  A plain dict or plain output plan produces one `(None, plan)` pair.
+
+  A list/tuple subplan container registers multiple hooks on the same module in the
+  listed order. Example:
+
+    "attn.to_v": [
+      {"input": _ContextParallelInput(split_dim=1, expected_dims=3)},
+      _ContextParallelOutput(gather_dim=1, expected_dims=3),
+    ]
+
+  The runtime turns this into `cp_input---attn.to_v---0` and
+  `cp_output---attn.to_v---1`. Because later hooks wrap earlier hooks in
+  `HookRegistry`, `[input_plan, output_plan]` yields split in `pre_forward` and
+  gather in `post_forward`, which matches the intuitive "split input, gather
+  output" semantics.
+  """
+
+  if _is_subplan_container(cp_model_plan):
+    return list(enumerate(cp_model_plan))
+  return [(None, cp_model_plan)]
+
+
+def _build_cp_hook(cp_model_plan, parallel_config, module_id: str, subplan_index: int | None):
+  """Build one split/gather hook plus its stable registry name.
+
+  Note that an output tuple like
+  `(_ContextParallelOutput(...), _ContextParallelOutput(...))` is still one output
+  plan for a multi-tensor module return, not two independent subplans.
+  """
+
+  if isinstance(cp_model_plan, dict):
+    hook = _ContextParallelSplitHook(cp_model_plan,
+                                     parallel_config) if parallel_config is not None else None
+    hook_name = _CONTEXT_PARALLEL_INPUT_HOOK_TEMPLATE.format(module_id)
+  elif _is_output_plan(cp_model_plan):
+    output_plan = [cp_model_plan] if _is_cp_output_like(cp_model_plan) else list(cp_model_plan)
+    hook = _ContextParallelGatherHook(output_plan,
+                                      parallel_config) if parallel_config is not None else None
+    hook_name = _CONTEXT_PARALLEL_OUTPUT_HOOK_TEMPLATE.format(module_id)
+  else:
+    raise ValueError(f"Unsupported context parallel model plan type: {type(cp_model_plan)}")
+
+  if subplan_index is not None:
+    hook_name = f"{hook_name}---{subplan_index}"
+  return hook, hook_name
 
 
 class _ContextParallelSplitHook(ModelHook):
@@ -193,7 +234,7 @@ class _ContextParallelSplitHook(ModelHook):
   def _prepare_cp_input(self, tensor: torch.Tensor, cp_input) -> torch.Tensor:
     expected_dims = getattr(cp_input, "expected_dims", None)
     if expected_dims is not None and tensor.dim() != expected_dims:
-      logger.warning(
+      logger.warning_once(
         "Expected input tensor to have %s dimensions, but got %s dimensions; split will be skipped.",
         expected_dims,
         tensor.dim(),
@@ -401,3 +442,19 @@ def _is_output_plan(value) -> bool:
   if isinstance(value, (list, tuple)):
     return all(item is None or _is_cp_output_like(item) for item in value)
   return False
+
+
+def _is_subplan_container(value) -> bool:
+  """Return whether a list/tuple encodes multiple hooks for one module key.
+
+  We deliberately exclude pure output tuples here. For example,
+  `(_ContextParallelOutput(...), _ContextParallelOutput(...))` means one gather hook
+  over a tuple-valued module output, while `[dict_input_plan, output_plan]` means two
+  hooks attached to the same module.
+  """
+
+  if not isinstance(value, (list, tuple)) or len(value) == 0:
+    return False
+  if _is_output_plan(value):
+    return False
+  return all(isinstance(item, dict) or _is_output_plan(item) for item in value)
