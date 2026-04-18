@@ -15,26 +15,27 @@
 Firstly, install the required dependencies, including PyTorch, Diffusers, and TorchAo. We recommend installing the <span style="color:#c77dff;">latest</span> versions for better compatibility and performance.
 
 ```bash
-# recommend: latest pytorch for better compile compatiblity.
-pip3 install torch==2.11.0 torchvision torchaudio triton --upgrade 
-# recommend: install torchao nightly due to: https://github.com/pytorch/ao/issues/3670
-pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu130
-pip3 install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy # optional
+pip install -U uv # use uv for faster installation
+# recommend: install latest pytorch for better compile compatiblity.
+uv pip install torch==2.11.0 torchvision torchaudio triton --upgrade
+# recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
+uv pip install --pre torchao --index-url https://download.pytorch.org/whl/cu130
+uv pip install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy 
 ```
 
 Then, you can install the stable release of <span style="color:#c77dff;">cache-dit</span> from PyPI:
 
 ```bash
-pip3 install -U cache-dit # or, pip3 install -U "cache-dit[all]" for all features
+uv pip install -U cache-dit # or, pip3 install -U "cache-dit[all]" for all features
 ```
 Or you can install the latest develop version from GitHub:
 
 ```bash
-pip3 install git+https://github.com/vipshop/cache-dit.git
+uv pip install git+https://github.com/vipshop/cache-dit.git
 ```
 Please also install the <span style="color:#c77dff;">latest</span> main branch of <span style="color:#c77dff;">diffusers</span> for context parallelism:  
 ```bash
-pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.37.0
+uv pip install git+https://github.com/huggingface/diffusers.git # or >= 0.37.0
 ```
 
 ## Installation with Ascend NPU
