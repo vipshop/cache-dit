@@ -775,13 +775,26 @@ def _sage_attention(
   query: torch.Tensor,
   key: torch.Tensor,
   value: torch.Tensor,
+  attn_mask: Optional[torch.Tensor] = None,
+  dropout_p: float = 0.0,
   is_causal: bool = False,
   scale: Optional[float] = None,
+  enable_gqa: bool = False,
   return_lse: bool = False,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
+  if attn_mask is not None:
+    raise ValueError("`attn_mask` is not yet supported for Sage attention.")
+  if dropout_p > 0.0:
+    raise ValueError("`dropout_p` is not yet supported for Sage attention.")
+  if enable_gqa:
+    raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+
   lse = None
   if _cp_config is None:
+    if sageattn is None:
+      raise RuntimeError(
+        "Sage attention backend is not available. Please install `sageattention` to use it.")
     out = sageattn(
       q=query,
       k=key,

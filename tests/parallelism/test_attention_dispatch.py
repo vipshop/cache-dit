@@ -15,6 +15,7 @@ from cache_dit.attention._attention_dispatch import (
   _default_active_backend,
   _dispatch_attention_fn,
   _native_attention,
+  _sage_attention,
 )
 from cache_dit.attention._diffusers_bridge import (
   _register_cache_dit_attn_backends_to_diffusers, )
@@ -263,3 +264,41 @@ def test_diffusers_bridge_registers_cache_dit_flash_backend(monkeypatch):
   assert isinstance(captured["cp_config"], _ContextParallelConfig)
   assert captured["cp_config"].ring_degree == 2
   assert _AttentionBackendRegistry._is_context_parallel_available(AttentionBackendName.FLASH)
+
+
+def test_diffusers_bridge_sage_backend_accepts_attn_mask_keyword(monkeypatch):
+  query = torch.randn(2, 5, 3, 4)
+  key = torch.randn(2, 5, 3, 4)
+  value = torch.randn(2, 5, 3, 4)
+
+  monkeypatch.setitem(_AttnBackendRegistry._backends, _AttnBackend.SAGE, _sage_attention)
+  monkeypatch.setitem(_AttnBackendRegistry._constraints, _AttnBackend.SAGE, [])
+  monkeypatch.setitem(
+    _AttnBackendRegistry._supported_arg_names,
+    _AttnBackend.SAGE,
+    {
+      "query", "key", "value", "attn_mask", "dropout_p", "is_causal", "scale", "enable_gqa",
+      "return_lse", "_cp_config"
+    },
+  )
+  monkeypatch.setattr(
+    _AttnBackendRegistry,
+    "_bridge_to_diffusers",
+    set(_AttnBackendRegistry._bridge_to_diffusers) | {_AttnBackend.SAGE.value},
+  )
+  monkeypatch.setattr(
+    _AttnBackendRegistry,
+    "_supports_context_parallel",
+    set(_AttnBackendRegistry._supports_context_parallel) | {_AttnBackend.SAGE.value},
+  )
+
+  _register_cache_dit_attn_backends_to_diffusers()
+  backend_fn = _AttentionBackendRegistry._backends[AttentionBackendName.SAGE]
+
+  with pytest.raises(ValueError, match="attn_mask"):
+    backend_fn(
+      query,
+      key,
+      value,
+      attn_mask=torch.ones(2, 5, 5),
+    )
