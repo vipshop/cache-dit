@@ -106,7 +106,7 @@ python3 -m cache_dit.generate flux \
   --layerwise-persistent-buckets 32 \
   --layerwise-persistent-bins 4 \
   --layerwise-prefetch-limit \
-  --layerwise-max-inflight-prefetch-bytes 4gib \
+  --layerwise-max-inflight-prefetch-bytes 8gib \
   --layerwise-text-transfer-buckets 1 \
   --layerwise-text-persistent-buckets 4 \
   --layerwise-text-persistent-bins 1 \
