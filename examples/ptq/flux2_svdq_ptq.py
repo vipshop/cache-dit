@@ -147,7 +147,14 @@ def parse_args() -> argparse.Namespace:
     default=False,
     help="Skip the torch.compile comparison stage.",
   )
-  return parser.parse_args()
+  parser.add_argument(
+    "--exclude-layers",
+    nargs='+',
+    default=None,
+    help="Optional list of transformer layer names to exclude from quantization. ",
+  )
+  args = parser.parse_args()
+  return args
 
 
 def resolve_torch_dtype() -> torch.dtype:
@@ -658,6 +665,8 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       seed=args.seed,
       image_path=images_dir / "baseline.png",
     )
+    exclude_layers = QuantizeConfig(
+    ).exclude_layers if args.exclude_layers is None else args.exclude_layers
 
     quantize_config = QuantizeConfig(
       quant_type=quant_type,
@@ -670,6 +679,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
         seed=args.seed,
       ),
       serialize_to=str(checkpoint_dir),
+      exclude_layers=exclude_layers,
       svdq_kwargs={
         **DEFAULT_SVDQ_KWARGS,
         "calibrate_precision": args.calibrate_precision,
