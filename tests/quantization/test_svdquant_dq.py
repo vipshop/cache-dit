@@ -440,17 +440,11 @@ def test_svdq_dq_config_validation_accepts_device_strategy_kwargs() -> None:
   assert config.get_svdq_kwargs()["defer_move_to_execution_device"] is True
 
 
-def test_svdq_dq_config_validation_rejects_ptq_only_fields_and_load(tmp_path: Path) -> None:
+def test_svdq_dq_config_validation_rejects_ptq_only_fields(tmp_path: Path) -> None:
   with pytest.raises(ValueError, match="calibrate_fn"):
     QuantizeConfig(
       quant_type="svdq_int4_r32_dq",
       calibrate_fn=lambda **_: None,
-    )
-
-  with pytest.raises(ValueError, match="serialize_to"):
-    QuantizeConfig(
-      quant_type="svdq_int4_r32_dq",
-      serialize_to=str(tmp_path / "svdq_int4_r32_dq.safetensors"),
     )
 
   with pytest.raises(ValueError, match="smooth_strategy"):
@@ -459,12 +453,149 @@ def test_svdq_dq_config_validation_rejects_ptq_only_fields_and_load(tmp_path: Pa
       svdq_kwargs={"smooth_strategy": "activation"},
     )
 
-  config = QuantizeConfig(quant_type="svdq_int4_r32_dq")
-  with pytest.raises(ValueError, match="does not support load"):
-    cache_dit.load(
-      nn.Linear(128, 128, device="cuda", dtype=runtime_dtype()),
-      config,
-    )
+
+def test_svdq_dq_config_validation_accepts_serialize_to(tmp_path: Path) -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+    serialize_to=str(tmp_path / "checkpoints"),
+  )
+  expected = str(tmp_path / "checkpoints" / "svdq_int4_r32_dq.safetensors")
+  assert config.serialize_to == expected
+  assert os.path.isdir(tmp_path / "checkpoints")
+
+
+def test_svdq_dq_quantize_and_serialize_toy_model(tmp_path: Path) -> None:
+  dtype = runtime_dtype()
+  float_model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=42,
+    device="cuda",
+    dtype=dtype,
+  )
+  serialize_to = str(tmp_path / "checkpoints")
+  config = _make_dq_config(rank=32, serialize_to=serialize_to)
+
+  quantized_model = cache_dit.quantize(float_model, config)
+
+  expected_safetensors = os.path.join(serialize_to, "svdq_int4_r32_dq.safetensors")
+  expected_config = os.path.join(serialize_to, "quant_config.json")
+  assert os.path.isfile(expected_safetensors)
+  assert os.path.isfile(expected_config)
+  assert getattr(quantized_model, "_svdq_checkpoint_path", None) == expected_safetensors
+
+
+def test_svdq_dq_load_roundtrip_restores_quantized_outputs(tmp_path: Path) -> None:
+  dtype = runtime_dtype()
+  float_model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=43,
+    device="cuda",
+    dtype=dtype,
+  )
+  eval_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=12,
+    width=128,
+    seed=57,
+    device="cuda",
+    dtype=dtype,
+  )
+
+  serialize_to = str(tmp_path / "checkpoints")
+  config = _make_dq_config(rank=32, serialize_to=serialize_to)
+
+  with torch.inference_mode():
+    _ = float_model(eval_inputs)
+
+  quantized_model = cache_dit.quantize(copy.deepcopy(float_model), config)
+  with torch.inference_mode():
+    quantized_output = quantized_model(eval_inputs)
+
+  # Load from the serialized checkpoint into a fresh float model
+  loaded_model = cache_dit.load(
+    copy.deepcopy(float_model),
+    config,
+  )
+  with torch.inference_mode():
+    loaded_output = loaded_model(eval_inputs)
+
+  torch.testing.assert_close(loaded_output, quantized_output, rtol=1e-4, atol=1e-4)
+
+  # Also verify load works with the checkpoint path directly
+  loaded_model2 = cache_dit.load(
+    copy.deepcopy(float_model),
+    config.serialize_to,
+  )
+  with torch.inference_mode():
+    loaded_output2 = loaded_model2(eval_inputs)
+  torch.testing.assert_close(loaded_output2, quantized_output, rtol=1e-4, atol=1e-4)
+
+
+def test_svdq_dq_few_shot_quantize_and_serialize(tmp_path: Path) -> None:
+  dtype = runtime_dtype()
+  float_model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=44,
+    device="cuda",
+    dtype=dtype,
+  )
+  eval_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=12,
+    width=128,
+    seed=58,
+    device="cuda",
+    dtype=dtype,
+  )
+
+  serialize_to = str(tmp_path / "checkpoints")
+  few_shot_steps = 2
+  config = _make_dq_config(
+    rank=32,
+    serialize_to=serialize_to,
+    svdq_kwargs={
+      "smooth_strategy": "few_shot",
+      "few_shot_steps": few_shot_steps,
+    },
+  )
+
+  # Arm the model with few-shot DQ (no quantization yet)
+  armed_model = cache_dit.quantize(float_model, config)
+  assert getattr(armed_model, "_svdq_pending_quantization",
+                 False), ("Expected pending quantization after few-shot arm.")
+
+  # The safetensors file should not exist yet — quantization hasn't materialized
+  expected_safetensors = os.path.join(serialize_to, "svdq_int4_r32_dq.safetensors")
+  assert not os.path.isfile(expected_safetensors), (
+    "Serialized checkpoint must not be written before few-shot forwards complete.")
+
+  # Run enough forwards to trigger deferred materialization
+  with torch.inference_mode():
+    for _ in range(few_shot_steps):
+      _ = armed_model(eval_inputs)
+
+  # After enough forwards, the safetensors and quant_config.json should exist
+  expected_config = os.path.join(serialize_to, "quant_config.json")
+  assert os.path.isfile(expected_safetensors)
+  assert os.path.isfile(expected_config)
+  assert getattr(armed_model, "_svdq_checkpoint_path", None) == expected_safetensors
+
+  # Load from checkpoint and verify outputs
+  fresh_model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=44,
+    device="cuda",
+    dtype=dtype,
+  )
+  loaded_model = cache_dit.load(fresh_model, config)
+  with torch.inference_mode():
+    armed_output = armed_model(eval_inputs)
+    loaded_output = loaded_model(eval_inputs)
+  torch.testing.assert_close(loaded_output, armed_output, rtol=1e-4, atol=1e-4)
 
 
 def test_svdq_dq_skips_calibrator_registration(monkeypatch) -> None:

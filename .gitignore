@@ -198,3 +198,4 @@ CLAUDE.local.md
 /.tmp/
 .vscode
 tools
+.claude

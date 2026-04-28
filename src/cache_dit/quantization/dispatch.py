@@ -74,8 +74,6 @@ def load(
   """
 
   if isinstance(quantize_config_or_path, QuantizeConfig):
-    if quantize_config_or_path.is_svdq_dq():
-      raise ValueError("SVDQ dynamic quantization does not support load().")
     backend = quantize_config_or_path.backend
   elif isinstance(quantize_config_or_path, str):
     backend = QuantizeBackend.CACHE_DIT

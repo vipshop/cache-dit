@@ -701,6 +701,110 @@ At the backend-config level, this means DQ currently supports <span style="color
 
 The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The few-shot CLI also exposes <span style="color:#c77dff;">--svdq-few-shot-steps</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-factor</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-top-ratio</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-strategy</span>, and <span style="color:#c77dff;">--svdq-few-shot-compile</span>. In the shared helper flow, top-level <span style="color:#c77dff;">--compile</span> is treated as a compatibility alias for few-shot runs, while <span style="color:#c77dff;">--svdq-few-shot-compile</span> is the precise switch that means "compile only after runtime quantization completes". The parser also accepts <span style="color:#c77dff;">top_q4</span> as an alias of <span style="color:#c77dff;">top</span>, but <span style="color:#c77dff;">fixed</span>, <span style="color:#c77dff;">top</span>, <span style="color:#c77dff;">auto</span>, <span style="color:#c77dff;">stable_auto</span>, <span style="color:#c77dff;">power</span>, <span style="color:#c77dff;">log</span>, and <span style="color:#c77dff;">rank</span> are the canonical strategy names.
 
+## SVDQ Converter CLI
+
+Cache-DiT ships a standalone converter CLI that loads a pretrained diffusion pipeline and converts it to an SVDQ W4A4 quantized format in a single step. The converter currently supports <span style="color:green;">SVDQ dynamic quantization (`_dq`)</span> only — it does not require a calibration dataset or a calibration callback.
+
+The converter is available via the <span style="color:#c77dff;">cache-dit-convert</span> console script or as a runnable module:
+
+```bash
+# Console script (installed with cache-dit):
+cache-dit-convert --model-path /path/to/FLUX.1-dev \
+  --save-dir ./FLUX.1-dev-svdq \
+  --quant-type svdq-int4-r128-dq
+
+# Equivalent Python module invocation:
+python3 -m cache_dit.quantization.converter \
+  --model-path /path/to/FLUX.1-dev \
+  --save-dir ./FLUX.1-dev-svdq \
+  --quant-type svdq-int4-r128-dq
+```
+
+### CLI reference
+
+| Argument | Required | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `--model-path` | yes | — | Path to the pretrained diffusion model directory (e.g. `/path/to/FLUX.1-dev`). |
+| `--save-dir` | yes | — | Directory where the quantized checkpoint (`{quant_type}.safetensors`) and `quant_config.json` are saved. |
+| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen (`svdq-int4-r128-dq`) and underscore (`svdq_int4_r128_dq`) forms. Currently only `_dq` types are supported. |
+| `--torch-dtype` | no | `bfloat16` | Torch dtype used when loading the float pipeline. One of: `float16`, `bfloat16`, `float32`. |
+| `--device` | no | `cuda` | Device to run quantization on. |
+| `--svdq-smooth-strategy` | no | `identity` | SVDQ DQ smooth strategy. One of: `identity`, `weight`, `weight_inv`, `few_shot`. See the [SVDQuant DQ section](#svdquant-w4a4-dq) for details. |
+| `--svdq-calibrate-precision` | no | `low` | Precision plan for SVDQ decomposition math. One of: `low`, `medium`, `high`. |
+| `--svdq-runtime-kernel` | no | `v1` | Packed runtime GEMM kernel used by `SVDQW4A4Linear`. One of: `v1`, `v2`. |
+| `--verbose` | no | `false` | Print detailed quantization information including per-layer skip reasons. |
+
+### Usage examples
+
+**Basic conversion — identity smooth (zero calibration):**
+
+```bash
+cache-dit-convert \
+  --model-path black-forest-labs/FLUX.2-klein-4B \
+  --save-dir ./FLUX.2-klein-4B-svdq \
+  --quant-type svdq-int4-r128-dq
+```
+
+Output:
+
+```
+Loading pipeline from black-forest-labs/FLUX.2-klein-4B ...
+Pipeline loaded: Flux2KleinPipeline
+Transformer memory before quantize: 7.22 GiB
+Quantizing transformer (svdq_int4_r128_dq) and saving to ./FLUX.2-klein-4B-svdq ...
+Transformer memory after quantize: 2.28 GiB (3.2x reduction)
+Quantized checkpoint saved to ./FLUX.2-klein-4B-svdq/svdq_int4_r128_dq.safetensors
+Quant config saved to ./FLUX.2-klein-4B-svdq/quant_config.json
+Conversion complete. Load the quantized model with:
+  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq/')
+```
+
+**Experimental weight-only smooth strategy:**
+
+```bash
+cache-dit-convert \
+  --model-path black-forest-labs/FLUX.2-klein-4B \
+  --save-dir ./FLUX.2-klein-4B-svdq \
+  --quant-type svdq-int4-r256-dq \
+  --svdq-smooth-strategy weight \
+  --svdq-calibrate-precision medium
+```
+
+**With v2 runtime kernel and verbose logging:**
+
+```bash
+cache-dit-convert \
+  --model-path /path/to/FLUX.1-dev \
+  --save-dir ./FLUX.1-dev-svdq \
+  --quant-type svdq-int4-r64-dq \
+  --svdq-runtime-kernel v2 \
+  --verbose
+```
+
+### Loading the converted model
+
+After conversion, the <span style="color:green;">save-dir</span> directory contains `{quant_type}.safetensors` and `quant_config.json`. Load the quantized model for inference with `cache_dit.load`:
+
+```python
+import torch
+import cache_dit
+from diffusers import Flux2KleinPipeline
+
+pipe = Flux2KleinPipeline.from_pretrained(...)
+pipe.transformer = cache_dit.load(pipe.transformer, "./FLUX.2-klein-4B-svdq/")
+pipe.to("cuda")
+image = pipe("A cat sitting on the beach.", height=1024, width=1024).images[0]
+```
+
+You can also pass the safetensors path directly:
+
+```python
+pipe.transformer = cache_dit.load(
+    pipe.transformer,
+    "./FLUX.2-klein-4B-svdq/svdq_int4_r128_dq.safetensors"
+)
+```
+
 ## SVDQ Runtime Kernel
 
 Cache-DiT's SVDQuant support also includes a high-performance W4A4 GEMM kernel for efficient runtime execution of SVDQ-quantized models. This kernel is optimized for Ada and Ampere architectures and can provide slightly better performance compared to existing INT4 GEMM kernels.
