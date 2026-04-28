@@ -29,7 +29,7 @@ def _supports_enable_gqa() -> bool:
 
 
 class _AttnBackend(str, Enum):
-  """Cache-dit owned attention backend identifiers."""
+  """Cache-DiT owned attention backend identifiers."""
 
   NATIVE = "native"
   FLASH = "flash"
