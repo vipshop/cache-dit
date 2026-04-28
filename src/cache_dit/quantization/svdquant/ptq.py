@@ -738,6 +738,7 @@ class SVDQFewShotRuntimeController:
 
   context: SVDQPTQContext
   quantize_device: torch.device
+  serialize_to: str | None = None
   completed_forwards: int = 0
   collect_current_forward: bool = False
   activation_spans: dict[str, torch.Tensor] = dataclasses.field(default_factory=dict)
@@ -902,9 +903,32 @@ class SVDQFewShotRuntimeController:
       quantized_layer_names=quantized_layer_names,
       exclude_layers=self.context.exclude_layers,
       svdq_kwargs=self.context.svdq_kwargs,
-      checkpoint_path=None,
+      checkpoint_path=self.serialize_to,
       quantize_config=self.context.quantize_config,
     )
+    if self.serialize_to is not None:
+      _save_quantized_module(
+        module,
+        serialize_to=self.serialize_to,
+        quant_type=self.context.quantize_config.quant_type,
+        rank=self.context.rank,
+        quantized_layer_names=quantized_layer_names,
+        svdq_kwargs=self.context.svdq_kwargs,
+      )
+      _save_quant_config_snapshot(
+        _build_quant_config_snapshot(
+          checkpoint_path=self.serialize_to,
+          quant_type=self.context.quantize_config.quant_type,
+          rank=self.context.rank,
+          exclude_layers=self.context.exclude_layers,
+          regional_quantize=self.context.regional_quantize,
+          repeated_blocks=self.context.repeated_blocks,
+          verbose=self.context.verbose,
+          svdq_kwargs=self.context.svdq_kwargs,
+          backend=self.context.quantize_config.backend,
+        ),
+        checkpoint_path=self.serialize_to,
+      )
     _maybe_enable_layerwise_runtime_offload(
       module,
       quantized_layer_names=quantized_layer_names,
@@ -916,7 +940,7 @@ class SVDQFewShotRuntimeController:
     _log_quantize_summary(
       self.context,
       quantized_layer_names=quantized_layer_names,
-      serialize_to=None,
+      serialize_to=self.serialize_to,
       observed_layer_names=observed_layer_names,
     )
     _run_post_quantize_callbacks(
@@ -1449,7 +1473,11 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
   quantize_device = _resolve_svdq_quantize_device(module, context.svdq_kwargs)
 
   if quantize_config.is_svdq_dq_few_shot():
-    controller = SVDQFewShotRuntimeController(context=context, quantize_device=quantize_device)
+    controller = SVDQFewShotRuntimeController(
+      context=context,
+      quantize_device=quantize_device,
+      serialize_to=quantize_config.serialize_to,
+    )
     return controller.arm()
 
   was_training = module.training
@@ -1474,13 +1502,36 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
     quantized_layer_names=quantized_layer_names,
     exclude_layers=context.exclude_layers,
     svdq_kwargs=context.svdq_kwargs,
-    checkpoint_path=None,
+    checkpoint_path=quantize_config.serialize_to,
     quantize_config=quantize_config,
   )
+  if quantize_config.serialize_to is not None:
+    _save_quantized_module(
+      module,
+      serialize_to=quantize_config.serialize_to,
+      quant_type=quantize_config.quant_type,
+      rank=context.rank,
+      quantized_layer_names=quantized_layer_names,
+      svdq_kwargs=context.svdq_kwargs,
+    )
+    _save_quant_config_snapshot(
+      _build_quant_config_snapshot(
+        checkpoint_path=quantize_config.serialize_to,
+        quant_type=quantize_config.quant_type,
+        rank=context.rank,
+        exclude_layers=context.exclude_layers,
+        regional_quantize=context.regional_quantize,
+        repeated_blocks=context.repeated_blocks,
+        verbose=context.verbose,
+        svdq_kwargs=context.svdq_kwargs,
+        backend=quantize_config.backend,
+      ),
+      checkpoint_path=quantize_config.serialize_to,
+    )
   _log_quantize_summary(
     context,
     quantized_layer_names=quantized_layer_names,
-    serialize_to=None,
+    serialize_to=quantize_config.serialize_to,
     observed_layer_names=None,
   )
   _maybe_collect_svdq_garbage(quantize_device)
@@ -1491,7 +1542,7 @@ def load_svdq(
   module: nn.Module,
   quantize_config_or_path: QuantizeConfig | str,
 ) -> nn.Module:
-  """Load a serialized SVDQ PTQ checkpoint into a float module in place.
+  """Load a serialized SVDQ checkpoint into a float module in place.
 
   :param module: Root module containing float `nn.Linear` layers that match the
   serialized checkpoint layout.

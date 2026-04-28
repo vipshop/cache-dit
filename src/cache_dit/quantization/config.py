@@ -439,8 +439,6 @@ class QuantizeConfig:
       if self.is_svdq_dq():
         if self.calibrate_fn is not None:
           raise ValueError("calibrate_fn is not supported for SVDQuant dynamic quantization.")
-        if self.serialize_to is not None:
-          raise ValueError("serialize_to is not supported for SVDQuant dynamic quantization.")
         if isinstance(raw_svdq_kwargs, dict) and "smooth_strategy" in raw_svdq_kwargs:
           requested_smooth_strategy = str(raw_svdq_kwargs["smooth_strategy"]).lower()
           if requested_smooth_strategy not in {"identity", "weight", "weight_inv", "few_shot"}:
@@ -458,12 +456,12 @@ class QuantizeConfig:
           raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
         if self.serialize_to is None:
           raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
+      if self.serialize_to is not None:
         normalized_filename = f"{self.quant_type}.safetensors"
         if self.serialize_to.endswith(".safetensors"):
           if os.path.basename(self.serialize_to) != normalized_filename:
-            raise ValueError(
-              "serialize_to must be a directory path for SVDQuant PTQ, or an already "
-              f"normalized file path ending with {normalized_filename!r}.")
+            raise ValueError("serialize_to must be a directory path for SVDQuant, or an already "
+                             f"normalized file path ending with {normalized_filename!r}.")
           serialize_dir = os.path.dirname(self.serialize_to)
           if not serialize_dir:
             raise ValueError("serialize_to must include a parent directory.")
