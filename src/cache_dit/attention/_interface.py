@@ -4,7 +4,7 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 
 from ..logger import init_logger
-from ._attention_dispatch import _AttnBackendRegistry
+from .backends.register import _AttnBackendRegistry
 
 logger = init_logger(__name__)
 

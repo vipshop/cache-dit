@@ -8,15 +8,13 @@ from diffusers.models.attention_dispatch import AttentionBackendName, _Attention
 
 from cache_dit.envs import ENV
 import cache_dit.attention as attention
-from cache_dit.attention._attention_dispatch import (
-  _AttnBackend,
-  _AttnBackendRegistry,
+from cache_dit.attention.backends.register import _AttnBackend, _AttnBackendRegistry
+from cache_dit.attention.backends.register import (
   _ContextParallelConfig,
   _default_active_backend,
   _dispatch_attention_fn,
-  _native_attention,
-  _sage_attention,
 )
+from cache_dit.attention.backends import native, sage
 from cache_dit.attention._diffusers_bridge import (
   _register_cache_dit_attn_backends_to_diffusers, )
 
@@ -36,7 +34,7 @@ def test_dispatch_attention_fn_uses_cache_dit_native_backend():
 
   assert out.shape == expected.shape
   assert torch.allclose(out, expected)
-  assert _AttnBackendRegistry.get_backend(_AttnBackend.NATIVE) is _native_attention
+  assert _AttnBackendRegistry.get_backend(_AttnBackend.NATIVE) is native._native_attention
 
 
 def test_diffusers_bridge_registers_cache_dit_native_backend():
@@ -271,7 +269,7 @@ def test_diffusers_bridge_sage_backend_accepts_attn_mask_keyword(monkeypatch):
   key = torch.randn(2, 5, 3, 4)
   value = torch.randn(2, 5, 3, 4)
 
-  monkeypatch.setitem(_AttnBackendRegistry._backends, _AttnBackend.SAGE, _sage_attention)
+  monkeypatch.setitem(_AttnBackendRegistry._backends, _AttnBackend.SAGE, sage._sage_attention)
   monkeypatch.setitem(_AttnBackendRegistry._constraints, _AttnBackend.SAGE, [])
   monkeypatch.setitem(
     _AttnBackendRegistry._supported_arg_names,

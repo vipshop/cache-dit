@@ -1,6 +1,6 @@
 from ..envs import ENV
 from ..logger import init_logger
-from ._attention_dispatch import _AttnBackend, _AttnBackendRegistry, _dispatch_attention_fn
+from .backends.register import _AttnBackend, _AttnBackendRegistry, _dispatch_attention_fn
 from ._interface import set_attn_backend
 
 from ..distributed.core import (
@@ -29,15 +29,8 @@ def _maybe_register_custom_attn_backends():
     return
 
   try:
-    from ._attention_dispatch import (
-      _native_attention,
-      _sdpa_cudnn_attention,
-      _sage_attention,
-      _flash_attention,
-      _flash_attention_3,
-      _native_npu_attention,
-      _npu_fused_infer_attention,
-    )
+    # Import backend modules to ensure they are registered
+    from .backends import native, cudnn, sage, flash, npu
 
     registered = _register_cache_dit_attn_backends_to_diffusers()
     ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH = True
