@@ -2,9 +2,9 @@
 
 Usage::
 
-    python3 -m cache_dit.quantization.converter \\
-        --model-path /path/to/FLUX.1-dev \\
-        --save-dir ./FLUX.1-dev-svdq \\
+    python3 -m cache_dit.quantization.converter \
+        --model-path /path/to/FLUX.1-dev \
+        --save-dir ./FLUX.1-dev-svdq \
         --quant-type svdq-int4-r128-dq
 
 Only SVDQ dynamic quantization (``_dq`` quant types) is currently supported.
