@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import torch
 
 from ..logger import init_logger
 
@@ -89,13 +90,21 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _resolve_torch_dtype(torch_dtype: str):
-  import torch
 
   return {
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
     "float32": torch.float32,
   }[torch_dtype]
+
+
+def _module_memory_gib(module) -> float:
+  """Return the total memory of all parameters in *module*, in GiB."""
+
+  total_bytes = 0
+  for param in module.parameters():
+    total_bytes += param.numel() * param.element_size()
+  return total_bytes / (1024 * 1024 * 1024)
 
 
 def entrypoint(argv: list[str] | None = None) -> None:
@@ -110,7 +119,6 @@ def entrypoint(argv: list[str] | None = None) -> None:
     )
     sys.exit(1)
 
-  import torch
   from diffusers import DiffusionPipeline
 
   from cache_dit.quantization import QuantizeConfig
@@ -145,8 +153,13 @@ def entrypoint(argv: list[str] | None = None) -> None:
   )
 
   # --- Quantize and serialize ---
+  memory_before_gib = _module_memory_gib(pipe.transformer)
+  logger.info("Transformer memory before quantize: %.2f GiB", memory_before_gib)
   logger.info("Quantizing transformer (%s) and saving to %s ...", quant_type, save_dir)
   pipe.transformer = quantize(pipe.transformer, config)
+  memory_after_gib = _module_memory_gib(pipe.transformer)
+  logger.info("Transformer memory after quantize: %.2f GiB (%.1fx reduction)", memory_after_gib,
+              memory_before_gib / memory_after_gib)
 
   expected_safetensors = os.path.join(save_dir, f"{quant_type}.safetensors")
   expected_config = os.path.join(save_dir, "quant_config.json")
