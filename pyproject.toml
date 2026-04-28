@@ -86,6 +86,7 @@ GitHub = "https://github.com/vipshop/cache-dit"
 
 cache-dit-metrics = "cache_dit.metrics:main" # metric entrypoint
 cache-dit-generate = "cache_dit.generate:entrypoint" # example entrypoint
+cache-dit-convert = "cache_dit.quantization.converter:main" # model conversion entrypoint
 
 [build-system]
 
