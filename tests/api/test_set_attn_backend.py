@@ -4,7 +4,7 @@ import cache_dit.caching as caching
 from diffusers.models.modeling_utils import ModelMixin
 
 from cache_dit.attention import set_attn_backend
-from cache_dit.attention._attention_dispatch import _AttnBackend
+from cache_dit.attention.backends.register import _AttnBackend
 
 
 class _DummyDiffusersModule(ModelMixin):

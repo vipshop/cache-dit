@@ -1,6 +1,6 @@
-from ._attention_dispatch import _resolve_cp_config
+from .backends.register import _resolve_cp_config
 from ..logger import init_logger
-from ._attention_dispatch import _AttnBackend, _AttnBackendRegistry
+from .backends.register import _AttnBackend, _AttnBackendRegistry
 
 logger = init_logger(__name__)
 

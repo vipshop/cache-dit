@@ -101,7 +101,7 @@ def validate_context_parallel_attention_backend(
   :param attn_classes_extra: Optional additional attention classes.
   """
 
-  from ...attention._attention_dispatch import _AttnBackendRegistry
+  from ...attention.backends.register import _AttnBackendRegistry
 
   attention_classes = get_diffusers_attention_classes(attn_classes_extra=attn_classes_extra)
   for module in model.modules():
