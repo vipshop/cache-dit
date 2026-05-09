@@ -215,6 +215,15 @@ def load_parallelism_config(path_or_dict: str | dict,
     return None
 
   parallelism_config_kwargs = parallel_kwargs["parallelism_config"]
+  for alias, canonical in (("ulysses", "ulysses_size"), ("ring", "ring_size"), ("tp", "tp_size")):
+    if alias not in parallelism_config_kwargs:
+      continue
+    if (canonical in parallelism_config_kwargs
+        and parallelism_config_kwargs[canonical] != parallelism_config_kwargs[alias]):
+      raise ValueError(f"Both {alias} and {canonical} are set with different values: "
+                       f"{parallelism_config_kwargs[alias]} vs "
+                       f"{parallelism_config_kwargs[canonical]}.")
+    parallelism_config_kwargs[canonical] = parallelism_config_kwargs[alias]
   if "backend" in parallelism_config_kwargs:
     backend_str = parallelism_config_kwargs["backend"]
     parallelism_config_kwargs["backend"] = ParallelismBackend.from_str(backend_str)

@@ -32,6 +32,49 @@ class ParallelismConfig:
   #   The degree of tensor parallelism.
   tp_size: int = None
 
+  # Ray wrapper config
+  # use_ray (`bool`, *optional*):
+  #   Whether cache-dit should manage distributed workers through Ray instead of requiring users to
+  #   launch the program with torchrun.
+  use_ray: bool = False
+  # ray_num_workers (`int`, *optional*):
+  #   Number of Ray GPU actors. Defaults to the parallel world size derived from the parallelism
+  #   fields.
+  ray_num_workers: Optional[int] = None
+  # ray_address (`str`, *optional*):
+  #   Ray cluster address forwarded to ray.init.
+  ray_address: Optional[str] = None
+  # ray_runtime_env (`dict`, *optional*):
+  #   Runtime environment forwarded to ray.init.
+  ray_runtime_env: Optional[Dict[str, Any]] = None
+  # ray_init_kwargs (`dict`, *optional*):
+  #   Extra keyword arguments forwarded to ray.init.
+  ray_init_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  # ray_worker_options (`dict`, *optional*):
+  #   Extra options forwarded to Ray actor `.options(...)`.
+  ray_worker_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  # ray_master_port (`int`, *optional*):
+  #   TCPStore port used by Ray workers to initialize torch.distributed.
+  ray_master_port: int = 0
+  # ray_auto_shutdown (`bool`, *optional*):
+  #   Whether the wrapper should shutdown Ray when disabling cache if it initialized Ray itself.
+  ray_auto_shutdown: bool = True
+  # ray_transfer_backend (`str`, *optional*):
+  #   How to move the model copy to Ray workers. "auto" uses a local safetensors file for
+  #   diffusers ModelMixin instances, save_pretrained snapshots for saveable diffusers pipelines,
+  #   and Ray object store for smaller generic modules.
+  ray_transfer_backend: str = "auto"
+  # ray_use_flashpack (`bool`, *optional*):
+  #   Whether Ray model snapshots should call save_pretrained/from_pretrained with
+  #   use_flashpack=True. Requires flashpack and a diffusers version that supports it.
+  ray_use_flashpack: bool = False
+  # ray_use_compile (`bool`, *optional*):
+  #   Whether Ray workers should compile the executable transformer copy after loading and native
+  #   parallelization. If available, compile_repeated_blocks() is preferred over nn.Module.compile().
+  ray_use_compile: bool = False
+  # Internal test hook: skip cache-dit native parallel planner inside Ray workers.
+  _ray_skip_native_parallelism: bool = False
+
   # cp_plan: (`cp plan`, *optional*):
   #   The custom context parallelism plan pass by user.
   cp_plan: Optional[Any] = None
@@ -150,7 +193,7 @@ class ParallelismConfig:
       raise ValueError("No parallelism is enabled. Please set ulysses_size, ring_size, or tp_size "
                        "to enable parallelism.")
 
-    if self.hybrid_enabled():
+    if self.hybrid_enabled() and not self.use_ray:
       try:
         self._maybe_init_hybrid_meshes()
       except Exception as e:

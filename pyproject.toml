@@ -22,6 +22,11 @@ parallelism = [
     "einops>=0.8.1",
 ]
 
+ray = [
+    "ray>=2.0",
+    "safetensors>=0.5.3",
+]
+
 quantization = [
     "torchao>=0.14.1",
     "bitsandbytes>=0.48.1",

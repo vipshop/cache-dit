@@ -160,7 +160,17 @@ def enable_cache(
   if params_modifiers is not None:
     context_kwargs["params_modifiers"] = params_modifiers
 
-  if cache_config is not None:
+  if quantize_config is not None:
+    assert isinstance(quantize_config,
+                      QuantizeConfig), "quantize_config should be of type QuantizeConfig."
+
+  ray_enabled = isinstance(parallelism_config, ParallelismConfig) and parallelism_config.use_ray
+  ray_cache_context_kwargs = copy.deepcopy(
+    context_kwargs) if ray_enabled and cache_config is not None else None
+  ray_quantize_config = copy.deepcopy(
+    quantize_config) if ray_enabled and quantize_config is not None else None
+
+  if cache_config is not None and not ray_enabled:
     if isinstance(
         pipe_or_adapter,
       (DiffusionPipeline, BlockAdapter, torch.nn.Module, ModelMixin),
@@ -173,6 +183,8 @@ def enable_cache(
       raise ValueError(f"type: {type(pipe_or_adapter)} is not valid, "
                        "Please pass DiffusionPipeline or BlockAdapter"
                        "for the 1's position param: pipe_or_adapter")
+  elif cache_config is not None:
+    logger.info("Ray parallelism is enabled; cache hooks will be applied inside Ray workers.")
   else:
     logger.warning("cache_config is None, skip cache acceleration for "
                    f"{pipe_or_adapter.__class__.__name__}.")
@@ -209,9 +221,13 @@ def enable_cache(
         adapter = BlockAdapter.normalize(adapter, unique=False)
         transformers = BlockAdapter.flatten(adapter.transformer)
     else:
-      if not BlockAdapter.is_normalized(pipe_or_adapter):
+      if isinstance(pipe_or_adapter, (torch.nn.Module, ModelMixin)):
+        transformers = [pipe_or_adapter]
+      elif not BlockAdapter.is_normalized(pipe_or_adapter):
         pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
-      transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
+        transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
+      else:
+        transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
     if len(transformers) == 0:
       logger.warning("No transformer is detected in the BlockAdapter, skip enabling "
@@ -242,14 +258,35 @@ def enable_cache(
     if extra_parallel_module is not None and pipe is not None:
       parallelism_config.extra_parallel_modules = parse_extra_modules(pipe, extra_parallel_module)
 
-    for i, transformer in enumerate(transformers):
-      # Enable parallelism for the transformer inplace
-      transformers[i] = enable_parallelism(transformer, parallelism_config)
+    if parallelism_config.use_ray:
+      from ..ray import enable_ray_parallelism
+      from ..ray import enable_ray_pipeline_parallelism
+
+      if isinstance(pipe_or_adapter, DiffusionPipeline):
+        pipe_or_adapter = enable_ray_pipeline_parallelism(
+          pipe_or_adapter,
+          parallelism_config,
+          cache_context_kwargs=ray_cache_context_kwargs,
+          quantize_config=ray_quantize_config,
+        )
+      else:
+        for i, transformer in enumerate(transformers):
+          transformers[i] = enable_ray_parallelism(
+            transformer,
+            parallelism_config,
+            cache_context_kwargs=ray_cache_context_kwargs,
+            quantize_config=ray_quantize_config,
+          )
+    else:
+      for i, transformer in enumerate(transformers):
+        # Enable parallelism for the transformer inplace
+        transformers[i] = enable_parallelism(transformer, parallelism_config)
 
   # Enable quantization if quantize_config is provided.
   if quantize_config is not None:
-    assert isinstance(quantize_config,
-                      QuantizeConfig), "quantize_config should be of type QuantizeConfig."
+    if ray_enabled:
+      logger.info("Ray parallelism is enabled; quantization will be applied inside Ray workers.")
+      return pipe_or_adapter
 
     # By default, we will try to apply quantization to transformer module(s)
     # for better performance. User can specify the quantization modules more
