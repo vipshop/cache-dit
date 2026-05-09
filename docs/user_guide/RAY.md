@@ -6,7 +6,12 @@ The Ray Wrapper lets cache-dit create and manage the distributed worker processe
 
 ![alt text](../assets/ray_wrapper.png)
 
-This means you do not need to write manual distributed inference code. In the common case, you do not need `torchrun`, `dist.init_process_group`, rank/world-size branching, per-rank device placement, or explicit model sharding code. cache-dit starts Ray actors, places workers on GPUs, initializes the worker process group, transfers the model snapshot, applies cache-dit parallelism, and proxies calls back through the original pipeline object.
+This means you do not need to write manual distributed inference code. In the common case, you do not need `torchrun`, `dist.init_process_group`, rank/world-size branching, per-rank device placement, or explicit model sharding code. cache-dit starts Ray actors, places workers on GPUs, initializes the worker process group, transfers the model snapshot, applies cache-dit parallelism, and proxies calls back through the original pipeline object. 
+
+|Baseline|Ray Wrapper with Ulysses 2 + Compile|
+|:---:|:---:|
+|47.41s|23.86s|
+|![](../assets/ray_baseline.png)|![](../assets/ray_ulysses2.png)|
 
 ## Minimal Example
 
@@ -103,13 +108,6 @@ If the transformer provides `compile_repeated_blocks()`, cache-dit calls that me
 
 When `use_ray=True`, cache hooks and quantization are applied inside the Ray workers after the model snapshot is loaded. This preserves the same user-facing `enable_cache` API while avoiding main-process hooks or quantized modules being lost during model transfer.
 
-The worker-side order is:
-
-1. apply cache hooks
-2. apply cache-dit parallelism
-3. apply quantization
-4. optionally compile the transformer
-
 ```python
 from cache_dit import DBCacheConfig
 from cache_dit import ParallelismConfig
@@ -126,7 +124,7 @@ cache_dit.enable_cache(
 )
 ```
 
-## Example Script
+## Quick Start
 
 A complete runnable example is available at `examples/ray/ray_wrapper_example.py`.
 
