@@ -532,6 +532,9 @@ class CachedAdapter:
       return
 
     def _release_transformer_hooks(transformer):
+      from ...ray import disable_ray_parallelism
+
+      disable_ray_parallelism(transformer)
       if hasattr(transformer, "_original_forward"):
         original_forward = transformer._original_forward
         transformer.forward = original_forward.__get__(transformer)
@@ -550,6 +553,9 @@ class CachedAdapter:
         del transformer._context_names
 
     def _release_pipeline_hooks(pipe):
+      from ...ray import disable_ray_pipeline_parallelism
+
+      disable_ray_pipeline_parallelism(pipe)
       if hasattr(pipe, "_original_call"):
         original_call = pipe.__class__._original_call
         pipe.__class__.__call__ = original_call

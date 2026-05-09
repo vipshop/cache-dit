@@ -209,9 +209,13 @@ def enable_cache(
         adapter = BlockAdapter.normalize(adapter, unique=False)
         transformers = BlockAdapter.flatten(adapter.transformer)
     else:
-      if not BlockAdapter.is_normalized(pipe_or_adapter):
+      if isinstance(pipe_or_adapter, (torch.nn.Module, ModelMixin)):
+        transformers = [pipe_or_adapter]
+      elif not BlockAdapter.is_normalized(pipe_or_adapter):
         pipe_or_adapter = BlockAdapter.normalize(pipe_or_adapter, unique=False)
-      transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
+        transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
+      else:
+        transformers = BlockAdapter.flatten(pipe_or_adapter.transformer)
 
     if len(transformers) == 0:
       logger.warning("No transformer is detected in the BlockAdapter, skip enabling "
@@ -242,9 +246,19 @@ def enable_cache(
     if extra_parallel_module is not None and pipe is not None:
       parallelism_config.extra_parallel_modules = parse_extra_modules(pipe, extra_parallel_module)
 
-    for i, transformer in enumerate(transformers):
-      # Enable parallelism for the transformer inplace
-      transformers[i] = enable_parallelism(transformer, parallelism_config)
+    if parallelism_config.use_ray:
+      from ..ray import enable_ray_parallelism
+      from ..ray import enable_ray_pipeline_parallelism
+
+      if isinstance(pipe_or_adapter, DiffusionPipeline):
+        pipe_or_adapter = enable_ray_pipeline_parallelism(pipe_or_adapter, parallelism_config)
+      else:
+        for i, transformer in enumerate(transformers):
+          transformers[i] = enable_ray_parallelism(transformer, parallelism_config)
+    else:
+      for i, transformer in enumerate(transformers):
+        # Enable parallelism for the transformer inplace
+        transformers[i] = enable_parallelism(transformer, parallelism_config)
 
   # Enable quantization if quantize_config is provided.
   if quantize_config is not None:

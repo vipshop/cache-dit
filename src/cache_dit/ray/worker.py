@@ -1,0 +1,340 @@
+from __future__ import annotations
+
+import copy
+import os
+from typing import Any
+
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.models.modeling_utils import ModelMixin
+
+from ..distributed import ParallelismConfig
+from ..distributed import enable_parallelism
+from ..logger import init_logger
+from ._tree import cpu_tensor_tree
+from ._tree import device_tensor_tree
+from .dist import destroy_worker_process_group
+from .dist import init_worker_process_group
+
+logger = init_logger(__name__)
+
+
+def _maybe_compile_transformer(
+  transformer: torch.nn.Module | ModelMixin,
+  parallelism_config: ParallelismConfig,
+) -> torch.nn.Module | ModelMixin:
+  """Compile a Ray-owned transformer when requested by the parallelism config.
+
+  :param transformer: Transformer copy already moved to the actor device and parallelized.
+  :param parallelism_config: Ray-enabled parallelism configuration.
+  :returns: The same transformer object after any in-place compile step.
+  """
+
+  if not parallelism_config.ray_use_compile:
+    return transformer
+
+  compile_repeated_blocks = getattr(transformer, "compile_repeated_blocks", None)
+  if callable(compile_repeated_blocks):
+    logger.info("Compiling Ray-owned transformer with compile_repeated_blocks().")
+    transformer.compile_repeated_blocks()
+    return transformer
+
+  compile_module = getattr(transformer, "compile", None)
+  if callable(compile_module):
+    logger.info("Compiling Ray-owned transformer with nn.Module.compile().")
+    transformer.compile()
+    return transformer
+
+  logger.warning("ray_use_compile=True, but transformer does not support "
+                 "compile_repeated_blocks() or nn.Module.compile(); skipping compile.")
+  return transformer
+
+
+class RayTransformerWorker:
+  """Ray actor body that owns one rank of a cache-dit parallel transformer.
+
+  :param rank: Global rank assigned by the Ray engine.
+  :param world_size: Number of Ray actors in the model-parallel group.
+  :param parallelism_config: Parallelism configuration to apply inside the actor.
+  :param master_port: TCPStore port shared by all actors.
+  """
+
+  def __init__(
+    self,
+    rank: int,
+    world_size: int,
+    parallelism_config: ParallelismConfig,
+    master_port: int,
+  ):
+    self.rank = rank
+    self.world_size = world_size
+    self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if self.device.type == "cuda":
+      torch.cuda.set_device(torch.cuda.current_device())
+
+    init_worker_process_group(
+      rank=rank,
+      world_size=world_size,
+      master_port=master_port,
+    )
+
+    self.parallelism_config = copy.deepcopy(parallelism_config)
+    self.parallelism_config.ray_num_workers = world_size
+    if self.parallelism_config.hybrid_enabled():
+      self.parallelism_config._maybe_init_hybrid_meshes()
+
+    self.transformer: torch.nn.Module | ModelMixin | None = None
+
+  def load_transformer(self, transformer: torch.nn.Module | ModelMixin) -> dict[str, Any]:
+    """Load and parallelize the transformer copy owned by this actor.
+
+    :param transformer: CPU transformer copy from the Ray object store.
+    :returns: Device placement and memory information after loading.
+    """
+
+    self.transformer = transformer.to(self.device)
+    self.transformer.eval()
+    if not self.parallelism_config._ray_skip_native_parallelism:
+      self.transformer = enable_parallelism(self.transformer, self.parallelism_config)
+    self.transformer = _maybe_compile_transformer(self.transformer, self.parallelism_config)
+    return self.device_info()
+
+  def load_transformer_from_file(self, path: str) -> dict[str, Any]:
+    """Load and parallelize a transformer serialized on the local filesystem.
+
+    :param path: Path to a CPU transformer checkpoint written by the Ray engine.
+    :returns: Device placement and memory information after loading.
+    """
+
+    transformer = torch.load(path, map_location="cpu", weights_only=False)
+    return self.load_transformer(transformer)
+
+  def load_transformer_from_safetensors(
+    self,
+    transformer_cls: type[ModelMixin],
+    transformer_config: dict[str, Any],
+    path: str,
+  ) -> dict[str, Any]:
+    """Load a diffusers transformer from a safetensors state dict.
+
+    :param transformer_cls: Diffusers transformer class used to reconstruct the module.
+    :param transformer_config: Serialized transformer config passed to ``from_config``.
+    :param path: Path to a safetensors state dict written by the Ray engine.
+    :returns: Device placement and memory information after loading.
+    """
+
+    try:
+      from safetensors.torch import load_file
+    except ImportError as exc:
+      raise ImportError("Ray safetensors transfer requires `safetensors`. Install with "
+                        "`pip install cache-dit[ray]` or `pip install safetensors`.") from exc
+
+    with torch.device("meta"):
+      transformer = transformer_cls.from_config(transformer_config)
+    state_dict = load_file(path, device=str(self.device))
+    transformer.load_state_dict(state_dict, assign=True)
+    self.transformer = transformer.eval()
+    if not self.parallelism_config._ray_skip_native_parallelism:
+      self.transformer = enable_parallelism(self.transformer, self.parallelism_config)
+    self.transformer = _maybe_compile_transformer(self.transformer, self.parallelism_config)
+    return self.device_info()
+
+  def load_transformer_from_pretrained(
+    self,
+    transformer_cls: type[ModelMixin],
+    model_path: str,
+    torch_dtype: torch.dtype | None,
+    use_flashpack: bool,
+  ) -> dict[str, Any]:
+    """Load a diffusers transformer snapshot inside this actor.
+
+    :param transformer_cls: Diffusers transformer class used to reload the module.
+    :param model_path: Local snapshot directory written by the Ray engine.
+    :param torch_dtype: Optional dtype for model loading.
+    :param use_flashpack: Whether to prefer FlashPack weights during loading.
+    :returns: Device placement and memory information after loading.
+    """
+
+    load_kwargs = {
+      "use_safetensors": True,
+      "use_flashpack": use_flashpack,
+    }
+    if torch_dtype is not None:
+      load_kwargs["torch_dtype"] = torch_dtype
+    transformer = transformer_cls.from_pretrained(model_path, **load_kwargs)
+    return self.load_transformer(transformer)
+
+  def ready(self) -> int:
+    """Return the rank after actor initialization has completed.
+
+    :returns: The actor rank.
+    """
+
+    return self.rank
+
+  def device_info(self) -> dict[str, Any]:
+    """Return actor device placement details for diagnostics.
+
+    :returns: Rank, torch device, and visible accelerator ids for this actor.
+    """
+
+    info = {
+      "rank": self.rank,
+      "device": str(self.device),
+      "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+    }
+    if self.device.type == "cuda":
+      info["memory_allocated_mib"] = torch.cuda.memory_allocated() // 1024 // 1024
+      info["memory_reserved_mib"] = torch.cuda.memory_reserved() // 1024 // 1024
+    return info
+
+  def forward(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:
+    """Run a transformer forward on this Ray rank.
+
+    :param args: CPU-staged positional arguments from the main process.
+    :param kwargs: CPU-staged keyword arguments from the main process.
+    :returns: CPU-staged output on rank 0 and ``None`` on other ranks.
+    """
+
+    device_args = device_tensor_tree(args, self.device)
+    device_kwargs = device_tensor_tree(kwargs, self.device)
+    if self.transformer is None:
+      raise RuntimeError("RayTransformerWorker.forward called before load_transformer.")
+    with torch.inference_mode():
+      output = self.transformer(*device_args, **device_kwargs)
+    if self.rank != 0:
+      return None
+    return cpu_tensor_tree(output)
+
+  def shutdown(self) -> None:
+    """Release actor-local distributed state."""
+
+    destroy_worker_process_group()
+
+
+class RayPipelineWorker:
+  """Ray actor body that owns one full pipeline and one distributed rank.
+
+  :param rank: Global rank assigned by the Ray engine.
+  :param world_size: Number of Ray actors in the model-parallel group.
+  :param parallelism_config: Parallelism configuration to apply inside the actor.
+  :param master_port: TCPStore port shared by all actors.
+  """
+
+  def __init__(
+    self,
+    rank: int,
+    world_size: int,
+    parallelism_config: ParallelismConfig,
+    master_port: int,
+  ):
+    self.rank = rank
+    self.world_size = world_size
+    self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if self.device.type == "cuda":
+      torch.cuda.set_device(torch.cuda.current_device())
+
+    init_worker_process_group(
+      rank=rank,
+      world_size=world_size,
+      master_port=master_port,
+    )
+
+    self.parallelism_config = copy.deepcopy(parallelism_config)
+    self.parallelism_config.ray_num_workers = world_size
+    if self.parallelism_config.hybrid_enabled():
+      self.parallelism_config._maybe_init_hybrid_meshes()
+
+    self.pipe: DiffusionPipeline | None = None
+
+  def load_pipeline(self, pipe: DiffusionPipeline) -> dict[str, Any]:
+    """Load a pipeline copy and parallelize its transformer inside this actor.
+
+    :param pipe: CPU pipeline copy from the Ray object store.
+    :returns: Device placement and memory information after loading.
+    """
+
+    for component in pipe.components.values():
+      if isinstance(component, torch.nn.Module):
+        component.to(self.device)
+    self.pipe = pipe
+    self.pipe.set_progress_bar_config(disable=True)
+    self.pipe.transformer.eval()
+    if not self.parallelism_config._ray_skip_native_parallelism:
+      self.pipe.transformer = enable_parallelism(self.pipe.transformer, self.parallelism_config)
+    self.pipe.transformer = _maybe_compile_transformer(
+      self.pipe.transformer,
+      self.parallelism_config,
+    )
+    return self.device_info()
+
+  def load_pipeline_from_pretrained(
+    self,
+    pipe_cls: type[DiffusionPipeline],
+    model_path: str,
+    torch_dtype: torch.dtype | None,
+    use_flashpack: bool,
+  ) -> dict[str, Any]:
+    """Load a pipeline from its pretrained directory inside this actor.
+
+    :param pipe_cls: Diffusers pipeline class used to reconstruct the pipeline.
+    :param model_path: Local path or model id passed to ``from_pretrained``.
+    :param torch_dtype: Optional dtype for model loading.
+    :param use_flashpack: Whether to prefer FlashPack weights during loading.
+    :returns: Device placement and memory information after loading.
+    """
+
+    load_kwargs = {}
+    if torch_dtype is not None:
+      load_kwargs["torch_dtype"] = torch_dtype
+    load_kwargs["use_safetensors"] = True
+    load_kwargs["use_flashpack"] = use_flashpack
+    pipe = pipe_cls.from_pretrained(model_path, **load_kwargs)
+    return self.load_pipeline(pipe)
+
+  def ready(self) -> int:
+    """Return the rank after actor initialization has completed.
+
+    :returns: The actor rank.
+    """
+
+    return self.rank
+
+  def device_info(self) -> dict[str, Any]:
+    """Return actor device placement details for diagnostics.
+
+    :returns: Rank, torch device, and visible accelerator ids for this actor.
+    """
+
+    info = {
+      "rank": self.rank,
+      "device": str(self.device),
+      "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+    }
+    if self.device.type == "cuda":
+      info["memory_allocated_mib"] = torch.cuda.memory_allocated() // 1024 // 1024
+      info["memory_reserved_mib"] = torch.cuda.memory_reserved() // 1024 // 1024
+    return info
+
+  def call(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any | None:
+    """Run a full pipeline call on this Ray rank.
+
+    :param args: Positional arguments from the main process.
+    :param kwargs: Keyword arguments from the main process.
+    :returns: Pipeline output on rank 0 and ``None`` on other ranks.
+    """
+
+    if self.pipe is None:
+      raise RuntimeError("RayPipelineWorker.call called before load_pipeline.")
+    device_args = device_tensor_tree(args, self.device)
+    device_kwargs = device_tensor_tree(kwargs, self.device)
+    with torch.inference_mode():
+      output = self.pipe(*device_args, **device_kwargs)
+    if self.rank != 0:
+      return None
+    return cpu_tensor_tree(output)
+
+  def shutdown(self) -> None:
+    """Release actor-local distributed state."""
+
+    destroy_worker_process_group()
