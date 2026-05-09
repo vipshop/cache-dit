@@ -133,14 +133,22 @@ A complete runnable example is available at `examples/ray/ray_wrapper_example.py
 For example:
 
 ```bash
-# Use compile if quantize is enabled.
+# Baseline
+python3 examples/ray/ray_wrapper_example.py \
+  --model-path $FLUX_2_KLEIN_BASE_9B_DIR \
+  --save-path ./tmp/baseline.png
+
+# Ray wrapper with Ulysses=2 and compile enabled
 python3 examples/ray/ray_wrapper_example.py \
   --model-path $FLUX_2_KLEIN_BASE_9B_DIR \
   --ulysses 2 \
-  --cache \
-  --quantize \
   --compile \
   --warmup 1 \
   --repeat 3 \
-  --save-path .tmp/output.png
+  --save-path ./tmp/ray.png
+```
+The output logs snapshot the Ray worker startup, model loading, parallelism and quantization application, and inference times.
+
+```bash
+
 ```

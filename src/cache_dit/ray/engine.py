@@ -4,6 +4,7 @@ import socket
 import shutil
 import uuid
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,24 @@ def _require_ray():
     raise ImportError("Ray wrapper requires ray. Install it with `pip install ray` or "
                       "`pip install cache-dit[ray]`.") from exc
   return ray
+
+
+def _init_ray(ray: Any, **init_kwargs: Any) -> None:
+  """Initialize Ray while suppressing its accelerator override transition warning.
+
+  :param ray: Imported Ray module.
+  :param init_kwargs: Keyword arguments forwarded to ``ray.init``.
+  """
+
+  with warnings.catch_warnings():
+    warnings.filterwarnings(
+      "ignore",
+      message=("Tip: In future versions of Ray, Ray will no longer override accelerator "
+               "visible devices env var if num_gpus=0 or num_gpus=None.*"),
+      category=FutureWarning,
+      module="ray\\._private\\.worker",
+    )
+    ray.init(**init_kwargs)
 
 
 def _get_free_port() -> int:
@@ -145,7 +164,7 @@ class RayParallelEngine:
         init_kwargs["address"] = parallelism_config.ray_address
       if parallelism_config.ray_runtime_env is not None:
         init_kwargs["runtime_env"] = parallelism_config.ray_runtime_env
-      self.ray.init(**init_kwargs)
+      _init_ray(self.ray, **init_kwargs)
       self._ray_initialized_by_engine = True
 
     self.master_port = parallelism_config.ray_master_port or _get_free_port()
@@ -327,7 +346,7 @@ class RayPipelineEngine:
         init_kwargs["address"] = parallelism_config.ray_address
       if parallelism_config.ray_runtime_env is not None:
         init_kwargs["runtime_env"] = parallelism_config.ray_runtime_env
-      self.ray.init(**init_kwargs)
+      _init_ray(self.ray, **init_kwargs)
       self._ray_initialized_by_engine = True
 
     self.master_port = parallelism_config.ray_master_port or _get_free_port()

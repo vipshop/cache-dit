@@ -92,7 +92,7 @@ def enable_ray_pipeline_parallelism(
   """
 
   if getattr(pipe, "_cache_dit_ray_pipeline_enabled", False):
-    logger.warning("Ray pipeline parallelism is already enabled for this pipeline. Skipping.")
+    logger.warning("Ray parallelism is already enabled for this pipeline. Skipping.")
     return pipe
 
   engine = RayPipelineEngine(pipe, parallelism_config, cache_context_kwargs, quantize_config)
@@ -110,7 +110,7 @@ def enable_ray_pipeline_parallelism(
   pipe._cache_dit_ray_pipeline_engine = engine  # type: ignore[attr-defined]
   pipe.__class__ = ray_class
   pipe._cache_dit_ray_pipeline_enabled = True  # type: ignore[attr-defined]
-  logger.info(f"Enabled Ray pipeline parallelism for {original_class.__name__} with "
+  logger.info(f"Enabled Ray parallelism for {original_class.__name__} with "
               f"world_size={engine.world_size}.")
   return pipe
 

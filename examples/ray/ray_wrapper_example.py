@@ -138,8 +138,8 @@ def main() -> None:
   if args.repeat < 1:
     raise ValueError("--repeat must be greater than or equal to 1.")
 
-  def run_generation(iteration: int):
-    generator = torch.Generator("cpu").manual_seed(args.seed + iteration)
+  def run_generation():
+    generator = torch.Generator("cpu").manual_seed(args.seed)
     return pipe(
       prompt=args.prompt,
       height=args.height,
@@ -150,13 +150,13 @@ def main() -> None:
 
   # Call the pipeline as usual; No code changes are needed for
   # Ray parallelism to work.
-  for warmup_idx in range(args.warmup):
-    run_generation(warmup_idx)
+  for _ in range(args.warmup):
+    run_generation()
 
   start_time = time.time()
   image = None
-  for repeat_idx in range(args.repeat):
-    image = run_generation(args.warmup + repeat_idx)
+  for _ in range(args.repeat):
+    image = run_generation()
   elapsed = time.time() - start_time
   assert image is not None
 
