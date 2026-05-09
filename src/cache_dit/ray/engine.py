@@ -13,6 +13,7 @@ from diffusers.models.modeling_utils import ModelMixin
 
 from ..distributed import ParallelismConfig
 from ..logger import init_logger
+from ..quantization import QuantizeConfig
 from ..utils import maybe_empty_cache
 from ._tree import cpu_tensor_tree
 from ._tree import device_tensor_tree
@@ -117,9 +118,13 @@ class RayParallelEngine:
     self,
     transformer: torch.nn.Module | ModelMixin,
     parallelism_config: ParallelismConfig,
+    cache_context_kwargs: dict[str, Any] | None = None,
+    quantize_config: QuantizeConfig | None = None,
   ):
     self.ray = _require_ray()
     self.parallelism_config = parallelism_config
+    self.cache_context_kwargs = cache_context_kwargs
+    self.quantize_config = quantize_config
     self._source_transformer = transformer
     self._source_device = _first_parameter_device(transformer)
     parallel_world_size = parallelism_config._get_world_size()
@@ -155,6 +160,8 @@ class RayParallelEngine:
         rank,
         self.world_size,
         self.parallelism_config,
+        self.cache_context_kwargs,
+        self.quantize_config,
         self.master_port,
       ) for rank in range(self.world_size)
     ]
@@ -289,12 +296,16 @@ class RayPipelineEngine:
     self,
     pipe: DiffusionPipeline,
     parallelism_config: ParallelismConfig,
+    cache_context_kwargs: dict[str, Any] | None = None,
+    quantize_config: QuantizeConfig | None = None,
   ):
     if not hasattr(pipe, "transformer"):
       raise ValueError("Ray pipeline parallelism requires a pipeline with a transformer "
                        "attribute.")
     self.ray = _require_ray()
     self.parallelism_config = parallelism_config
+    self.cache_context_kwargs = cache_context_kwargs
+    self.quantize_config = quantize_config
     self._source_pipe = pipe
     self._source_device = _first_pipeline_module_device(pipe)
     self._source_dtype = _first_pipeline_module_dtype(pipe)
@@ -331,6 +342,8 @@ class RayPipelineEngine:
         rank,
         self.world_size,
         self.parallelism_config,
+        self.cache_context_kwargs,
+        self.quantize_config,
         self.master_port,
       ) for rank in range(self.world_size)
     ]

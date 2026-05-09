@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import types
+from typing import Any
 
 import torch
 from diffusers import DiffusionPipeline
@@ -8,6 +9,7 @@ from diffusers.models.modeling_utils import ModelMixin
 
 from ..distributed import ParallelismConfig
 from ..logger import init_logger
+from ..quantization import QuantizeConfig
 from .engine import RayParallelEngine
 from .engine import RayPipelineEngine
 
@@ -17,11 +19,15 @@ logger = init_logger(__name__)
 def enable_ray_parallelism(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
+  cache_context_kwargs: dict[str, Any] | None = None,
+  quantize_config: QuantizeConfig | None = None,
 ) -> torch.nn.Module | ModelMixin:
   """Patch a transformer so its forward is executed by Ray worker actors.
 
   :param transformer: User-visible transformer module to patch in-place.
   :param parallelism_config: Ray-enabled parallelism configuration.
+  :param cache_context_kwargs: Optional cache context keyword arguments to apply inside Ray workers.
+  :param quantize_config: Optional quantization configuration to apply inside Ray workers.
   :returns: The same transformer object with a proxied forward method.
   """
 
@@ -29,7 +35,7 @@ def enable_ray_parallelism(
     logger.warning("Ray parallelism is already enabled for this transformer. Skipping.")
     return transformer
 
-  engine = RayParallelEngine(transformer, parallelism_config)
+  engine = RayParallelEngine(transformer, parallelism_config, cache_context_kwargs, quantize_config)
   transformer._cache_dit_ray_original_forward = transformer.forward  # type: ignore[attr-defined]
   transformer._cache_dit_ray_original_to = transformer.to  # type: ignore[attr-defined]
   transformer._cache_dit_ray_engine = engine  # type: ignore[attr-defined]
@@ -73,11 +79,15 @@ def disable_ray_parallelism(transformer: torch.nn.Module | ModelMixin) -> None:
 def enable_ray_pipeline_parallelism(
   pipe: DiffusionPipeline,
   parallelism_config: ParallelismConfig,
+  cache_context_kwargs: dict[str, Any] | None = None,
+  quantize_config: QuantizeConfig | None = None,
 ) -> DiffusionPipeline:
   """Patch a pipeline so each full inference call is executed by Ray workers.
 
   :param pipe: User-visible diffusion pipeline to patch in-place.
   :param parallelism_config: Ray-enabled parallelism configuration.
+  :param cache_context_kwargs: Optional cache context keyword arguments to apply inside Ray workers.
+  :param quantize_config: Optional quantization configuration to apply inside Ray workers.
   :returns: The same pipeline object with a proxied ``__call__`` method.
   """
 
@@ -85,7 +95,7 @@ def enable_ray_pipeline_parallelism(
     logger.warning("Ray pipeline parallelism is already enabled for this pipeline. Skipping.")
     return pipe
 
-  engine = RayPipelineEngine(pipe, parallelism_config)
+  engine = RayPipelineEngine(pipe, parallelism_config, cache_context_kwargs, quantize_config)
   original_class = pipe.__class__
 
   def ray_pipeline_call(self, *args, **kwargs):

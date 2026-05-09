@@ -11,6 +11,9 @@ from diffusers.models.modeling_utils import ModelMixin
 from ..distributed import ParallelismConfig
 from ..distributed import enable_parallelism
 from ..logger import init_logger
+from ..quantization import QuantizeConfig
+from ..quantization import quantize
+from ..utils import parse_extra_modules
 from ._tree import cpu_tensor_tree
 from ._tree import device_tensor_tree
 from .dist import destroy_worker_process_group
@@ -50,6 +53,75 @@ def _maybe_compile_transformer(
   return transformer
 
 
+def _maybe_apply_cache(
+  module_or_pipe: torch.nn.Module | ModelMixin | DiffusionPipeline,
+  cache_context_kwargs: dict[str, Any] | None,
+) -> torch.nn.Module | ModelMixin | DiffusionPipeline:
+  """Apply cache hooks inside a Ray worker when cache config is provided.
+
+  :param module_or_pipe: Worker-local transformer or pipeline copy.
+  :param cache_context_kwargs: Cache context keyword arguments from ``cache_dit.enable_cache``.
+  :returns: The same object with cache hooks applied, when requested.
+  """
+
+  if cache_context_kwargs is None:
+    return module_or_pipe
+
+  from ..caching.cache_adapters import CachedAdapter
+
+  logger.info(f"Applying cache hooks inside Ray worker for {module_or_pipe.__class__.__name__}.")
+  return CachedAdapter.apply(module_or_pipe, **copy.deepcopy(cache_context_kwargs))
+
+
+def _maybe_quantize_transformer(
+  transformer: torch.nn.Module | ModelMixin,
+  quantize_config: QuantizeConfig | None,
+) -> torch.nn.Module | ModelMixin:
+  """Quantize a worker-local transformer when requested.
+
+  :param transformer: Worker-local transformer after cache and parallelism have been applied.
+  :param quantize_config: Optional quantization configuration.
+  :returns: Quantized transformer when requested, otherwise the original transformer.
+  """
+
+  if quantize_config is None:
+    return transformer
+  logger.info(f"Applying quantization inside Ray worker for {transformer.__class__.__name__}.")
+  return quantize(transformer, quantize_config=copy.deepcopy(quantize_config))
+
+
+def _maybe_quantize_pipeline(
+  pipe: DiffusionPipeline,
+  quantize_config: QuantizeConfig | None,
+) -> DiffusionPipeline:
+  """Quantize worker-local pipeline components when requested.
+
+  :param pipe: Worker-local pipeline after cache and transformer parallelism have been applied.
+  :param quantize_config: Optional quantization configuration.
+  :returns: Pipeline with requested components quantized.
+  """
+
+  if quantize_config is None:
+    return pipe
+  if quantize_config.components_to_quantize is None:
+    pipe.transformer = _maybe_quantize_transformer(pipe.transformer, quantize_config)
+    return pipe
+
+  expanded_quantize_configs = QuantizeConfig.expand_configs(quantize_config)
+  for config in expanded_quantize_configs:
+    components_to_quantize = config.components_to_quantize
+    components = parse_extra_modules(pipe, components_to_quantize)
+    assert len(components) == len(components_to_quantize), (
+      f"Some components in quantize_config.components_to_quantize: {components_to_quantize} "
+      "are not found in the pipeline, please check the component names or directly pass the "
+      "actual modules in components_to_quantize.")
+    for component, name in zip(components, components_to_quantize):
+      name = getattr(component, "_actual_module_name", name)
+      quantized_component = quantize(component, quantize_config=copy.deepcopy(config))
+      setattr(pipe, name, quantized_component)
+  return pipe
+
+
 class RayTransformerWorker:
   """Ray actor body that owns one rank of a cache-dit parallel transformer.
 
@@ -64,6 +136,8 @@ class RayTransformerWorker:
     rank: int,
     world_size: int,
     parallelism_config: ParallelismConfig,
+    cache_context_kwargs: dict[str, Any] | None,
+    quantize_config: QuantizeConfig | None,
     master_port: int,
   ):
     self.rank = rank
@@ -79,6 +153,8 @@ class RayTransformerWorker:
     )
 
     self.parallelism_config = copy.deepcopy(parallelism_config)
+    self.cache_context_kwargs = copy.deepcopy(cache_context_kwargs)
+    self.quantize_config = copy.deepcopy(quantize_config)
     self.parallelism_config.ray_num_workers = world_size
     if self.parallelism_config.hybrid_enabled():
       self.parallelism_config._maybe_init_hybrid_meshes()
@@ -94,8 +170,10 @@ class RayTransformerWorker:
 
     self.transformer = transformer.to(self.device)
     self.transformer.eval()
+    self.transformer = _maybe_apply_cache(self.transformer, self.cache_context_kwargs)
     if not self.parallelism_config._ray_skip_native_parallelism:
       self.transformer = enable_parallelism(self.transformer, self.parallelism_config)
+    self.transformer = _maybe_quantize_transformer(self.transformer, self.quantize_config)
     self.transformer = _maybe_compile_transformer(self.transformer, self.parallelism_config)
     return self.device_info()
 
@@ -134,8 +212,10 @@ class RayTransformerWorker:
     state_dict = load_file(path, device=str(self.device))
     transformer.load_state_dict(state_dict, assign=True)
     self.transformer = transformer.eval()
+    self.transformer = _maybe_apply_cache(self.transformer, self.cache_context_kwargs)
     if not self.parallelism_config._ray_skip_native_parallelism:
       self.transformer = enable_parallelism(self.transformer, self.parallelism_config)
+    self.transformer = _maybe_quantize_transformer(self.transformer, self.quantize_config)
     self.transformer = _maybe_compile_transformer(self.transformer, self.parallelism_config)
     return self.device_info()
 
@@ -226,6 +306,8 @@ class RayPipelineWorker:
     rank: int,
     world_size: int,
     parallelism_config: ParallelismConfig,
+    cache_context_kwargs: dict[str, Any] | None,
+    quantize_config: QuantizeConfig | None,
     master_port: int,
   ):
     self.rank = rank
@@ -241,6 +323,8 @@ class RayPipelineWorker:
     )
 
     self.parallelism_config = copy.deepcopy(parallelism_config)
+    self.cache_context_kwargs = copy.deepcopy(cache_context_kwargs)
+    self.quantize_config = copy.deepcopy(quantize_config)
     self.parallelism_config.ray_num_workers = world_size
     if self.parallelism_config.hybrid_enabled():
       self.parallelism_config._maybe_init_hybrid_meshes()
@@ -259,9 +343,11 @@ class RayPipelineWorker:
         component.to(self.device)
     self.pipe = pipe
     self.pipe.set_progress_bar_config(disable=True)
+    self.pipe = _maybe_apply_cache(self.pipe, self.cache_context_kwargs)
     self.pipe.transformer.eval()
     if not self.parallelism_config._ray_skip_native_parallelism:
       self.pipe.transformer = enable_parallelism(self.pipe.transformer, self.parallelism_config)
+    self.pipe = _maybe_quantize_pipeline(self.pipe, self.quantize_config)
     self.pipe.transformer = _maybe_compile_transformer(
       self.pipe.transformer,
       self.parallelism_config,
