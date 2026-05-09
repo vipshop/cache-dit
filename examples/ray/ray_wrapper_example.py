@@ -99,7 +99,7 @@ def main() -> None:
   cache_config = DBCacheConfig(Fn_compute_blocks=1) if args.cache else None
   quantize_config = QuantizeConfig(quant_type="float8_per_tensor") if args.quantize else None
   parallelism_config = None
-  cache_enabled = use_ray or cache_config is not None or quantize_config is not None
+  accelerate_enabled = use_ray or cache_config is not None or quantize_config is not None
 
   if use_ray:
     parallelism_config = ParallelismConfig(
@@ -110,7 +110,7 @@ def main() -> None:
       ray_use_compile=args.use_compile,
     )
 
-  if cache_enabled:
+  if accelerate_enabled:
     if args.target == "pipeline":
       # NOTE: Will auto transfer to cuda inside by ray wrapper for
       # pipeline-level parallelism, so we keep the original pipeline
@@ -169,7 +169,7 @@ def main() -> None:
   print(f"Average Inference Time: {elapsed / args.repeat:.2f}s")
   print(f"Saved image to {save_path}")
 
-  if cache_enabled:
+  if accelerate_enabled:
     cache_dit.disable_cache(pipe if args.target == "pipeline" else pipe.transformer)
 
 
