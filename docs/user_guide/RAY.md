@@ -4,6 +4,8 @@
 
 The Ray Wrapper lets cache-dit create and manage the distributed worker processes for you. After enabling it, user code can still look like normal single-process Diffusers code: load a pipeline, call `cache_dit.enable_cache(...)`, then call the pipeline as usual.
 
+![alt text](../assets/ray_wrapper.png)
+
 This means you do not need to write manual distributed inference code. In the common case, you do not need `torchrun`, `dist.init_process_group`, rank/world-size branching, per-rank device placement, or explicit model sharding code. cache-dit starts Ray actors, places workers on GPUs, initializes the worker process group, transfers the model snapshot, applies cache-dit parallelism, and proxies calls back through the original pipeline object.
 
 ## Minimal Example
@@ -120,7 +122,7 @@ cache_dit.enable_cache(
     tp_size=2,
     use_ray=True,
   ),
-  quantize_config=QuantizeConfig(quant_type="float8_per_row"),
+  quantize_config=QuantizeConfig(...),
 )
 ```
 
@@ -131,12 +133,14 @@ A complete runnable example is available at `examples/ray/ray_wrapper_example.py
 For example:
 
 ```bash
-python examples/ray/ray_wrapper_example.py \
-  --model-path /path/to/FLUX.2-klein-base-9B \
-  --tp 2 \
+# Use compile if quantize is enabled.
+python3 examples/ray/ray_wrapper_example.py \
+  --model-path $FLUX_2_KLEIN_BASE_9B_DIR \
+  --ulysses 2 \
   --cache \
   --quantize \
+  --compile \
   --warmup 1 \
   --repeat 3 \
-  --save-path .tmp/ray_tp2.png
+  --save-path .tmp/output.png
 ```

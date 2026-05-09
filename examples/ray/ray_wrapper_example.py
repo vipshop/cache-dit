@@ -72,6 +72,7 @@ def parse_args() -> argparse.Namespace:
   )
   parser.add_argument(
     "--use-compile",
+    "--compile",
     action="store_true",
     help="Compile the Ray-owned transformer after loading and parallelization.",
   )
@@ -95,8 +96,8 @@ def main() -> None:
   if not use_ray:
     pipe.to("cuda")
 
-  cache_config = DBCacheConfig() if args.cache else None
-  quantize_config = QuantizeConfig() if args.quantize else None
+  cache_config = DBCacheConfig(Fn_compute_blocks=1) if args.cache else None
+  quantize_config = QuantizeConfig(quant_type="float8_per_tensor") if args.quantize else None
   parallelism_config = None
   cache_enabled = use_ray or cache_config is not None or quantize_config is not None
 

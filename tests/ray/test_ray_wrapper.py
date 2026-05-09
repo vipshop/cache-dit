@@ -60,6 +60,17 @@ class ToyCompilableTransformer(torch.nn.Module):
     return self.linear(hidden_states) + marker
 
 
+class ToyExecutionContextTransformer(torch.nn.Module):
+  """Tiny transformer that validates Ray worker execution context."""
+
+  def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    if torch.is_inference_mode_enabled():
+      raise RuntimeError("Ray worker forward should not run under torch.inference_mode().")
+    if torch.is_grad_enabled():
+      raise RuntimeError("Ray worker forward should run with gradients disabled.")
+    return hidden_states + 1.0
+
+
 @pytest.fixture(autouse=True)
 def shutdown_ray_runtime():
   yield
@@ -151,6 +162,18 @@ def test_ray_wrapper_compile_repeated_blocks_toy_model() -> None:
 
   result = transformer(hidden_states)
   torch.testing.assert_close(result, baseline + 1.0)
+
+  cache_dit.disable_cache(transformer)
+
+
+def test_ray_wrapper_worker_uses_no_grad_not_inference_mode() -> None:
+  hidden_states = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+  transformer = ToyExecutionContextTransformer()
+
+  cache_dit.enable_cache(transformer, parallelism_config=_toy_parallel_config())
+
+  result = transformer(hidden_states)
+  torch.testing.assert_close(result, hidden_states + 1.0)
 
   cache_dit.disable_cache(transformer)
 

@@ -280,7 +280,7 @@ class RayTransformerWorker:
     device_kwargs = device_tensor_tree(kwargs, self.device)
     if self.transformer is None:
       raise RuntimeError("RayTransformerWorker.forward called before load_transformer.")
-    with torch.inference_mode():
+    with torch.no_grad():
       output = self.transformer(*device_args, **device_kwargs)
     if self.rank != 0:
       return None
@@ -414,7 +414,7 @@ class RayPipelineWorker:
       raise RuntimeError("RayPipelineWorker.call called before load_pipeline.")
     device_args = device_tensor_tree(args, self.device)
     device_kwargs = device_tensor_tree(kwargs, self.device)
-    with torch.inference_mode():
+    with torch.no_grad():
       output = self.pipe(*device_args, **device_kwargs)
     if self.rank != 0:
       return None
