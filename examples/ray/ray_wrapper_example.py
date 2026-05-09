@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--height", type=int, default=1024)
   parser.add_argument("--width", type=int, default=1024)
   parser.add_argument("--num-inference-steps", "--steps", type=int, default=28)
-  parser.add_argument("--seed", type=int, default=0)
+  parser.add_argument("--seed", type=int, default=42)
   parser.add_argument("--warmup",
                       type=int,
                       default=1,

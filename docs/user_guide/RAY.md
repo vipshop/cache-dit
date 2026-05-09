@@ -8,12 +8,12 @@ The Ray Wrapper lets cache-dit create and manage the distributed worker processe
 
 This means you do not need to write manual distributed inference code. In the common case, you do not need `torchrun`, `dist.init_process_group`, rank/world-size branching, per-rank device placement, or explicit model sharding code. cache-dit starts Ray actors, places workers on GPUs, initializes the worker process group, transfers the model snapshot, applies cache-dit parallelism, and proxies calls back through the original pipeline object. 
 
-|Baseline|Ray Wrapper with Ulysses 2 + Compile|
+|Baseline|Ray Wrapper with TP=2 + Compile|
 |:---:|:---:|
-|47.41s|23.86s|
-|![](../assets/ray_baseline.png)|![](../assets/ray_ulysses2.png)|
+|47.41s|24.86s|
+|![](../assets/ray_baseline.png)|![](../assets/ray_tp2.png)|
 
-## Minimal Example
+## Pipeline-Level Wrapper
 
 ```python
 import torch
@@ -22,10 +22,12 @@ from diffusers import Flux2KleinPipeline
 import cache_dit
 from cache_dit import ParallelismConfig
 
+# Just let it load on CPU; cache-dit will handle GPU 
+# transfer inside the Ray workers.
 pipe = Flux2KleinPipeline.from_pretrained(
   "/path/to/FLUX.2-klein-base-9B",
   torch_dtype=torch.bfloat16,
-)
+) 
 
 # NOTE: Will auto transfer to cuda inside by ray wrapper for 
 # pipeline-level parallelism, so we keep the original pipeline 
@@ -126,9 +128,7 @@ cache_dit.enable_cache(
 
 ## Quick Start
 
-A complete runnable example is available at `examples/ray/ray_wrapper_example.py`.
-
-For example:
+A complete runnable example is available at `examples/ray/ray_wrapper_example.py`. For example:
 
 ```bash
 # Baseline
@@ -136,12 +136,10 @@ python3 examples/ray/ray_wrapper_example.py \
   --model-path $FLUX_2_KLEIN_BASE_9B_DIR \
   --save-path ./tmp/baseline.png
 
-# Ray wrapper with Ulysses=2 and compile enabled
+# Ray wrapper with TP=2 and compile enabled
 python3 examples/ray/ray_wrapper_example.py \
   --model-path $FLUX_2_KLEIN_BASE_9B_DIR \
-  --ulysses 2 \
+  --tp 2 \
   --compile \
-  --warmup 1 \
-  --repeat 3 \
   --save-path ./tmp/ray.png
 ```
