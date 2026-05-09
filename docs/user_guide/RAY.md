@@ -147,8 +147,3 @@ python3 examples/ray/ray_wrapper_example.py \
   --repeat 3 \
   --save-path ./tmp/ray.png
 ```
-The output logs snapshot the Ray worker startup, model loading, parallelism and quantization application, and inference times.
-
-```bash
-
-```
