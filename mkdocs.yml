@@ -62,13 +62,13 @@ nav:
       - DBCache Design: user_guide/DBCACHE_DESIGN.md
       - Context Parallelism: user_guide/CONTEXT_PARALLEL.md
       - Tensor Parallelism: user_guide/TENSOR_PARALLEL.md
-      - Ray Wrapper: user_guide/RAY.md
       - TE-P, VAE-P and CN-P : user_guide/EXTRA_PARALLEL.md
       - 2D and 3D Parallelism: user_guide/HYBRID_PARALLEL.md
       - Low-Bits Quantization: user_guide/QUANTIZATION.md
       - Attention Backends: user_guide/ATTENTION.md
       - Use Torch Compile: user_guide/COMPILE.md
       - Use CUDA Graphs: user_guide/CUDA_GRAPH.md
+      - Use Ray Wrapper: user_guide/RAY.md
       - Layerwise Offload: user_guide/OFFLOAD.md
       - Ascend NPU Support: user_guide/ASCEND_NPU.md
       - AMD GPU Support: user_guide/AMD_GPU.md
