@@ -14,6 +14,10 @@ def _select_cuda_backend() -> KernelBackend:
   return KernelBackend.CUDA
 
 
+def _select_mindiesd_backend() -> KernelBackend:
+  return KernelBackend.MINDIESD
+
+
 def _select_kernel_backend() -> KernelBackend:
   """Select the default backend for kernel ops.
 
@@ -149,6 +153,19 @@ def _fused_merge_attn_states_impl(
       suff_out,
       suff_lse,
     )
+  if backend == KernelBackend.MINDIESD:
+    max_lse = torch.max(prev_lse, suff_lse)
+    prev_scale = torch.exp(prev_lse - max_lse)
+    suff_scale = torch.exp(suff_lse - max_lse)
+    denom = prev_scale + suff_scale
+    denom = denom + 1e-12
+    out = torch.where(
+      denom > 1e-12,
+      (prev_out * prev_scale.unsqueeze(-1) + suff_out * suff_scale.unsqueeze(-1)) / denom.unsqueeze(-1),
+      prev_out,
+    )
+    lse = max_lse + torch.log(denom)
+    return out, lse
   else:
     raise ValueError(_ERROR_TEMPLATE.format(backend))
 

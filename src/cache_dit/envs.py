@@ -73,3 +73,9 @@ class ENV(object):
   # recommended now since it may cause scaled_mm error for some models after TP.
   CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP: bool = bool(
     int(os.environ.get("CACHE_DIT_DISABLE_EXCLUDE_FOR_QUANTIZE_AFTER_TP", "0")))
+
+  # MindIE-SD Backend ENVs
+  CACHE_DIT_ENABLE_MINDIESD_ATTN: str = os.environ.get(
+    "CACHE_DIT_ENABLE_MINDIESD_ATTN", "1")
+  CACHE_DIT_FORCE_DISABLE_MINDIESD_COMPILE_CONFIG: bool = bool(
+    int(os.environ.get("CACHE_DIT_FORCE_DISABLE_MINDIESD_COMPILE_CONFIG", "0")))

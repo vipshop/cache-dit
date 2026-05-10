@@ -117,27 +117,33 @@ def set_compile_configs(
     # them to your needs and test the performance
     inductor_config.max_fusion_size = 64
     inductor_config.max_pointwise_cat_inputs = 8
-    inductor_config.triton.cudagraphs = cuda_graphs
-    inductor_config.triton.use_block_ptr = False
-    inductor_config.triton.codegen_upcast_to_fp32 = True
 
-    # Copy from https://pytorch.org/blog/accelerating-generative-ai-3/
-    inductor_config.conv_1x1_as_mm = True
-    inductor_config.coordinate_descent_tuning = True
-    inductor_config.coordinate_descent_check_all_directions = True
-    inductor_config.epilogue_fusion = False
+    if current_platform.device_type == "npu":
+      # NPU: skip CUDA-specific inductor configs (triton, coordinate_descent, etc)
+      inductor_config.dce = True  # default is False
+      inductor_config.epilogue_fusion = False
+    else:
+      inductor_config.triton.cudagraphs = cuda_graphs
+      inductor_config.triton.use_block_ptr = False
+      inductor_config.triton.codegen_upcast_to_fp32 = True
 
-    # Enable epilogue and prologue fusion
-    if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or kwargs.get(
-        "epilogue_prologue_fusion",
-        False,
-    ):
-      inductor_config.epilogue_fusion = True
-      inductor_config.prologue_fusion = True
-      inductor_config.epilogue_fusion_first = True
+      # Copy from https://pytorch.org/blog/accelerating-generative-ai-3/
+      inductor_config.conv_1x1_as_mm = True
+      inductor_config.coordinate_descent_tuning = True
+      inductor_config.coordinate_descent_check_all_directions = True
+      inductor_config.epilogue_fusion = False
 
-    # Dead code elimination
-    inductor_config.dce = True  # default is False
+      # Enable epilogue and prologue fusion
+      if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or kwargs.get(
+          "epilogue_prologue_fusion",
+          False,
+      ):
+        inductor_config.epilogue_fusion = True
+        inductor_config.prologue_fusion = True
+        inductor_config.epilogue_fusion_first = True
+
+      # Dead code elimination
+      inductor_config.dce = True  # default is False
 
     # May need to force disable all cache
     if force_disable_compile_caches:

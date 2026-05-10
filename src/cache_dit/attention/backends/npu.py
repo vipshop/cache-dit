@@ -49,6 +49,8 @@ def _native_npu_attention(
   dropout_p: float = 0.0,
   scale: Optional[float] = None,
   return_lse: bool = False,
+  is_causal: bool = False,
+  enable_gqa: bool = False,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
   if return_lse:
@@ -97,6 +99,8 @@ def _npu_fused_infer_attention(
   dropout_p: float = 0.0,
   scale: Optional[float] = None,
   return_lse: bool = False,
+  is_causal: bool = False,
+  enable_gqa: bool = False,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
   if _cp_config is None:
@@ -128,3 +132,48 @@ def _npu_fused_infer_attention(
       _cp_config=_cp_config,
     )
   return out
+
+
+try:
+  from mindiesd.layers import attention_forward
+
+  _mindiesd_available = True
+except Exception:
+  _mindiesd_available = False
+  attention_forward = None
+
+
+if _mindiesd_available:
+
+  @_AttnBackendRegistry.register(
+    _AttnBackend._MINDIESD_LASER,
+    constraints=[],
+    supports_context_parallel=True,
+  )
+  def _mindiesd_laser_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    is_causal: bool = False,
+    enable_gqa: bool = False,
+    _cp_config: Optional["_ContextParallelConfig"] = None,
+  ) -> torch.Tensor:
+    if return_lse:
+      raise ValueError(
+        "MindIE-SD laser attention backend does not support setting `return_lse=True`.")
+    scale_val = scale if scale is not None else 1.0 / math.sqrt(query.shape[-1])
+    return attention_forward(
+      query,
+      key,
+      value,
+      attn_mask=attn_mask,
+      scale=scale_val,
+      fused=True,
+      head_first=False,
+      opt_mode="manual",
+      op_type="ascend_laser_attention",
+    )
