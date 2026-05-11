@@ -158,6 +158,9 @@ cache_dit.enable_cache(
 A complete runnable example is available at `examples/ray/ray_wrapper_example.py`. For example:
 
 ```bash
+# The example is located at cache-dit/examples/ray/ray_wrapper_example.py
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
+
 # Baseline
 python3 examples/ray/ray_wrapper_example.py \
   --model-path $FLUX_2_KLEIN_BASE_9B_DIR \
