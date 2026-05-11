@@ -69,7 +69,7 @@ The code above is still a normal single-process script. Run it with `python your
 
 You can also wrap only the transformer module. This is useful when you want the text encoders, VAE, scheduler, and other pipeline components to stay in the main process while only the transformer is executed by Ray workers.
 
-The transformer-level wrapper is more generic but may **slightly slower** than the pipeline-level wrapper due to more frequent main-process <-> worker communication during denoising. It also does not support some Cache-DiT features such as cache hooks and quantization, which are applied inside the Ray workers and thus only work with the pipeline-level wrapper.
+The transformer-level wrapper is more generic but may **slightly slower** than the pipeline-level wrapper due to more frequent **main-process <-> worker communication during denoising**. It also does not support some Cache-DiT features such as cache hooks and quantization, which are applied inside the Ray workers and thus only work with the pipeline-level wrapper.
 
 ```python
 cache_dit.enable_cache(
