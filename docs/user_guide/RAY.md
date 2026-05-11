@@ -153,6 +153,64 @@ cache_dit.enable_cache(
 )
 ```
 
+## Ray Runtime Env
+
+When your application code (custom pipeline classes, helper modules) lives in a directory that is **not** part of the default Python path, Ray workers cannot import those modules.  This causes ``ModuleNotFoundError`` during worker-side model loading or pickle deserialization.
+
+Cache-DiT exposes `ParallelismConfig.ray_runtime_env` to pass a Ray `runtime_env` dictionary to `ray.init()`.  The most common and **lightweight** pattern is to use `env_vars` to set `PYTHONPATH`:
+
+```python
+cache_dit.enable_cache(
+  pipe,
+  parallelism_config=ParallelismConfig(
+    ulysses_size=2,
+    use_ray=True,
+    ray_runtime_env={
+      # Single or multiple paths can be added, separated by ":" or " "
+      "env_vars": {
+        "PYTHONPATH": "/path/to/your/app/src",
+        # "PYTHONPATH": "xxx/path1:xxx/path2:xxx/path3",
+      }
+    },
+  ),
+)
+```
+
+### What is PYTHONPATH?
+
+`PYTHONPATH` is a Python environment variable that specifies additional directories where Python searches for modules.  When Python starts, it appends each `:`-separated path in `PYTHONPATH` to `sys.path`, before the standard-library and site-packages entries.  Multiple paths are supported:
+
+```python
+"PYTHONPATH": "/app/src:/app/libs:/shared/utils"
+```
+
+Ray workers receive `env_vars` entries as process environment variables — **nothing is packaged, zipped, or uploaded**.  Workers resolve `import your_module` directly from the filesystem path. `env_vars` vs `working_dir` / `py_modules` listed as below:
+
+| field | behavior | large files (>2 GB) |
+|-------|----------|---------------------|
+| `env_vars.PYTHONPATH` | sets an environment variable; **zero packaging** | works |
+| `working_dir` | zips the entire directory, uploads to workers | **fails** — Ray packaging times out or errors |
+| `py_modules` | packages the module tree, uploads to workers | **fails** — same packaging issue |
+
+> **Rule of thumb:** when your module tree contains model weights (e.g. a 54 GB
+> `FLUX.1-dev` checkpoint), always use `env_vars.PYTHONPATH`. The files must be
+> accessible from every worker node via a shared filesystem (NFS, Lustre, or
+> — on a single-node cluster — the local disk).
+
+### Pre-initialized Ray
+
+If you already called `ray.init()` before `cache_dit.enable_cache()`, Cache-DiT will **not** re-initialize Ray and therefore cannot inject the `runtime_env` from `ParallelismConfig`.  In that case, configure `runtime_env` in your own `ray.init()` call:
+
+```python
+ray.init(runtime_env={"env_vars": {"PYTHONPATH": "/path/to/your/app/src"}})
+cache_dit.enable_cache(
+    pipe,
+    parallelism_config=ParallelismConfig(ulysses_size=2, use_ray=True),
+)
+```
+
+Cache-DiT emits a warning when it detects this situation and the pipeline class is from a user-application module.
+
 ## Quick Start
 
 A complete runnable example is available at `examples/ray/ray_wrapper_example.py`. For example:

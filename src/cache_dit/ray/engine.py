@@ -25,6 +25,72 @@ from .worker import RayPipelineWorker
 logger = init_logger(__name__)
 
 
+def _qualified_class_name(cls: type) -> str:
+  """Encode a class as ``module:qualname`` to avoid pickle serialization of class objects.
+
+  Passing a raw class object as a Ray task argument forces pickle to serialize
+  the entire inheritance chain, which fails on workers when the class (or any
+  base class) is defined in a user-application module that the workers cannot
+  import.  A string reference defers the import to the worker side, where it can
+  be resolved via ``importlib`` after the application's ``runtime_env`` has been
+  applied.
+  """
+
+  return f"{cls.__module__}:{cls.__qualname__}"
+
+
+def _maybe_user_module(cls: type) -> bool:
+  """Return ``True`` when *cls* is likely from user-application code.
+
+  Classes from ``diffusers``, ``transformers``, ``torch``, or ``cache_dit`` are
+  expected to be importable on every Ray worker, so no warning is needed.
+  """
+
+  _well_known = ("diffusers", "transformers", "torch", "cache_dit", "builtins")
+  return not cls.__module__.startswith(_well_known)
+
+
+def _warn_if_ray_pre_initialized(
+  ray: Any,
+  cls: type,
+  config: ParallelismConfig,
+  ray_initialized_by_engine: bool = False,
+) -> None:
+  """Warn when Ray was initialized *before* cache-dit and the transferred class is from a user-
+  application module.
+
+  When Ray is already running, cache-dit cannot inject ``runtime_env`` — the
+  user's ``ray.init()`` is responsible for making the application code available
+  to every worker.  If that was not configured, worker-side pickle deserialization
+  (or ``from_pretrained`` class imports) will fail with ``ModuleNotFoundError``.
+
+  :param ray: Imported Ray module.
+  :param cls: The pipeline or transformer class being transferred.
+  :param config: The user-provided parallelism configuration.
+  :param ray_initialized_by_engine: ``True`` when cache-dit itself just called
+    ``ray.init()``.  In that case the ``runtime_env`` from *config* was already
+    applied and no warning is needed.
+  """
+
+  if not ray.is_initialized():
+    return
+  if ray_initialized_by_engine:
+    return
+  if not _maybe_user_module(cls):
+    return
+
+  extra = ""
+  if config.ray_runtime_env is not None:
+    extra = (" (ParallelismConfig.ray_runtime_env is set but will NOT be applied "
+             "because Ray was already initialized)")
+  logger.warning(f"Ray is already initialized and {cls.__name__} is defined in "
+                 f"'{cls.__module__}', which may not be importable on Ray workers.{extra} "
+                 f"Ensure your ray.init() call includes a runtime_env that exposes this "
+                 f"module, e.g. ray.init(runtime_env={{'working_dir': '...'}}). "
+                 f"Alternatively, configure ParallelismConfig.ray_runtime_env and let "
+                 f"cache_dit initialize Ray for you.")
+
+
 def _require_ray():
   try:
     import ray
@@ -167,6 +233,13 @@ class RayParallelEngine:
       _init_ray(self.ray, **init_kwargs)
       self._ray_initialized_by_engine = True
 
+    _warn_if_ray_pre_initialized(
+      self.ray,
+      transformer.__class__,
+      self.parallelism_config,
+      ray_initialized_by_engine=self._ray_initialized_by_engine,
+    )
+
     self.master_port = parallelism_config.ray_master_port or _get_free_port()
     self._actors = self._create_workers(transformer)
 
@@ -222,9 +295,10 @@ class RayParallelEngine:
         )
         logger.info(f"Saved the transformer snapshot in "
                     f"{time.perf_counter() - save_start:.2f}s.")
+        tfmr_cls_ref = _qualified_class_name(transformer.__class__)
         load_infos = self.ray.get([
           actor.load_transformer_from_pretrained.remote(
-            transformer.__class__,
+            tfmr_cls_ref,
             str(transformer_path),
             _first_parameter_dtype(transformer),
             self.parallelism_config.ray_use_flashpack,
@@ -239,9 +313,10 @@ class RayParallelEngine:
         _save_state_dict_safetensors(transformer, transformer_path)
         logger.info(f"Saved the transformer safetensors file in "
                     f"{time.perf_counter() - save_start:.2f}s.")
+        tfmr_cls_ref = _qualified_class_name(transformer.__class__)
         load_infos = self.ray.get([
           actor.load_transformer_from_safetensors.remote(
-            transformer.__class__,
+            tfmr_cls_ref,
             dict(transformer.config),
             str(transformer_path),
           ) for actor in actors
@@ -349,6 +424,13 @@ class RayPipelineEngine:
       _init_ray(self.ray, **init_kwargs)
       self._ray_initialized_by_engine = True
 
+    _warn_if_ray_pre_initialized(
+      self.ray,
+      pipe.__class__,
+      self.parallelism_config,
+      ray_initialized_by_engine=self._ray_initialized_by_engine,
+    )
+
     self.master_port = parallelism_config.ray_master_port or _get_free_port()
     self._actors = self._create_workers(pipe)
 
@@ -399,9 +481,10 @@ class RayPipelineEngine:
         use_flashpack=self.parallelism_config.ray_use_flashpack,
       )
       logger.info(f"Saved the pipeline snapshot in {time.perf_counter() - save_start:.2f}s.")
+      pipe_cls_ref = _qualified_class_name(pipe.__class__)
       load_infos = self.ray.get([
         actor.load_pipeline_from_pretrained.remote(
-          pipe.__class__,
+          pipe_cls_ref,
           str(pipeline_path),
           self._source_dtype,
           self.parallelism_config.ray_use_flashpack,
@@ -413,9 +496,10 @@ class RayPipelineEngine:
       if model_path is None:
         raise ValueError("ray_transfer_backend='from_pretrained' requires pipeline.name_or_path.")
       logger.info(f"Loading Ray worker pipelines from pretrained source: {model_path}.")
+      pipe_cls_ref = _qualified_class_name(pipe.__class__)
       load_infos = self.ray.get([
         actor.load_pipeline_from_pretrained.remote(
-          pipe.__class__,
+          pipe_cls_ref,
           model_path,
           self._source_dtype,
           self.parallelism_config.ray_use_flashpack,
