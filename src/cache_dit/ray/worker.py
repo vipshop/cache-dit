@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import importlib
 import os
 from typing import Any
 
@@ -20,6 +21,35 @@ from .dist import destroy_worker_process_group
 from .dist import init_worker_process_group
 
 logger = init_logger(__name__)
+
+
+def _resolve_class(class_ref: str) -> type:
+  """Resolve a ``module:qualname`` string returned by :func:`_qualified_class_name`.
+
+  The format mirrors what ``copyreg._reduce_ex`` stores for a class, so it is
+  round-trip-safe for standard and nested classes alike.
+
+  :param class_ref: Encoded class reference produced by ``_qualified_class_name``.
+  :returns: The resolved Python class object.
+  :raises ModuleNotFoundError: The module portion of *class_ref* cannot be imported.
+  :raises AttributeError: The qualname portion of *class_ref* is missing from the module.
+  :raises TypeError: *class_ref* is not a string (e.g. a raw class object from an
+    older cache-dit that did not use ``_qualified_class_name``).
+  """
+
+  if not isinstance(class_ref, str):
+    raise TypeError(f"_resolve_class expected a 'module:qualname' string, got "
+                    f"{type(class_ref).__name__} ({class_ref!r}).  This usually means "
+                    f"the calling code passed a raw class object instead of using "
+                    f"_qualified_class_name().")
+
+  module_name, _, qualname = class_ref.rpartition(":")
+  module = importlib.import_module(module_name)
+  # qualname may contain dots for nested classes, e.g. "Outer.Inner"
+  obj = module
+  for part in qualname.split("."):
+    obj = getattr(obj, part)
+  return obj
 
 
 def _maybe_compile_transformer(
@@ -189,13 +219,13 @@ class RayTransformerWorker:
 
   def load_transformer_from_safetensors(
     self,
-    transformer_cls: type[ModelMixin],
+    transformer_cls_ref: str,
     transformer_config: dict[str, Any],
     path: str,
   ) -> dict[str, Any]:
     """Load a diffusers transformer from a safetensors state dict.
 
-    :param transformer_cls: Diffusers transformer class used to reconstruct the module.
+    :param transformer_cls_ref: ``module:qualname`` string encoding the transformer class.
     :param transformer_config: Serialized transformer config passed to ``from_config``.
     :param path: Path to a safetensors state dict written by the Ray engine.
     :returns: Device placement and memory information after loading.
@@ -204,9 +234,11 @@ class RayTransformerWorker:
     try:
       from safetensors.torch import load_file
     except ImportError as exc:
-      raise ImportError("Ray safetensors transfer requires `safetensors`. Install with "
-                        "`pip install cache-dit[ray]` or `pip install safetensors`.") from exc
+      raise ImportError(
+        "Ray safetensors transfer requires `safetensors`. Install with "
+        "`pip install cache-dit[ray,parallelism]` or `pip install safetensors`.") from exc
 
+    transformer_cls = _resolve_class(transformer_cls_ref)
     with torch.device("meta"):
       transformer = transformer_cls.from_config(transformer_config)
     state_dict = load_file(path, device=str(self.device))
@@ -221,20 +253,21 @@ class RayTransformerWorker:
 
   def load_transformer_from_pretrained(
     self,
-    transformer_cls: type[ModelMixin],
+    transformer_cls_ref: str,
     model_path: str,
     torch_dtype: torch.dtype | None,
     use_flashpack: bool,
   ) -> dict[str, Any]:
     """Load a diffusers transformer snapshot inside this actor.
 
-    :param transformer_cls: Diffusers transformer class used to reload the module.
+    :param transformer_cls_ref: ``module:qualname`` string encoding the transformer class.
     :param model_path: Local snapshot directory written by the Ray engine.
     :param torch_dtype: Optional dtype for model loading.
     :param use_flashpack: Whether to prefer FlashPack weights during loading.
     :returns: Device placement and memory information after loading.
     """
 
+    transformer_cls = _resolve_class(transformer_cls_ref)
     load_kwargs = {
       "use_safetensors": True,
       "use_flashpack": use_flashpack,
@@ -356,20 +389,21 @@ class RayPipelineWorker:
 
   def load_pipeline_from_pretrained(
     self,
-    pipe_cls: type[DiffusionPipeline],
+    pipe_cls_ref: str,
     model_path: str,
     torch_dtype: torch.dtype | None,
     use_flashpack: bool,
   ) -> dict[str, Any]:
     """Load a pipeline from its pretrained directory inside this actor.
 
-    :param pipe_cls: Diffusers pipeline class used to reconstruct the pipeline.
+    :param pipe_cls_ref: ``module:qualname`` string encoding the pipeline class.
     :param model_path: Local path or model id passed to ``from_pretrained``.
     :param torch_dtype: Optional dtype for model loading.
     :param use_flashpack: Whether to prefer FlashPack weights during loading.
     :returns: Device placement and memory information after loading.
     """
 
+    pipe_cls = _resolve_class(pipe_cls_ref)
     load_kwargs = {}
     if torch_dtype is not None:
       load_kwargs["torch_dtype"] = torch_dtype
