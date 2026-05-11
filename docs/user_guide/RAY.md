@@ -18,13 +18,13 @@ This means you do not need to write manual distributed inference code. In the co
 ```bash
 # Recommended: torch>=2.10, diffusers>=0.38.0, CUDA>=12.9
 # Option 1: Install the latest stable release from PyPI (>= 1.3.6)
-pip3 install -U "Cache-DiT[ray,parallelism]" -i https://pypi.org/simple
+pip3 install -U "cache-dit[ray,parallelism]" -i https://pypi.org/simple
 # Option 2: Install the latest develop version from GitHub
-pip3 install git+https://github.com/vipshop/Cache-DiT.git
+pip3 install git+https://github.com/vipshop/cache-dit.git
 ```
 Please refer to the [Installation](./INSTALL.md) docs for more details and installation options.
 
-## Pipeline-Level Wrapper
+## Pipeline Wrapper
 
 We **recommend** the pipeline-level wrapper for the widest support of Cache-DiT features (cache, quantization, parallelism) and the simplest user experience. With it, Ray handles the entire pipeline execution, including text encoders, VAE, scheduler, and all other components.
 
@@ -65,7 +65,7 @@ image.save("ray_wrapper.png")
 
 The code above is still a normal single-process script. Run it with `python your_script.py`; Cache-DiT and Ray handle the distributed execution internally.
 
-## Transformer-Level Wrapper
+## Transformer Wrapper
 
 You can also wrap only the transformer module. This is useful when you want the text encoders, VAE, scheduler, and other pipeline components to stay in the main process while only the transformer is executed by Ray workers.
 
@@ -106,7 +106,7 @@ cache_dit.enable_cache(
 )
 ```
 
-## Distributed Inference with Ray
+## Distributed Inference
 
 Set the normal Cache-DiT parallelism fields and add <span style="color:#c77dff;">use_ray=True</span>. Please note that Tensor Parallelism (TP) will not work with unfused LoRAs due to the way TP shards the model, so we recommend fusing LoRAs into the base model before enabling the Ray wrapper for full parallelism features support. With unfused LoRAs, the Ray wrapper can still be enabled but only works with CP (Ulysses and Ring), not TP.
 
@@ -115,8 +115,6 @@ ParallelismConfig(tp_size=2, use_ray=True)
 ParallelismConfig(ulysses_size=2, use_ray=True)
 ParallelismConfig(ring_size=2, use_ray=True)
 ```
-
-Use the explicit field names `tp_size`, `ulysses_size`, and `ring_size`. Short aliases such as `tp`, `ulysses`, and `ring` are intentionally not supported.
 
 ## Torch Compile
 
