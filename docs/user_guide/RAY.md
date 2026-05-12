@@ -160,6 +160,8 @@ When your application code (custom pipeline classes, helper modules) lives in a 
 Cache-DiT exposes `ParallelismConfig.ray_runtime_env` to pass a Ray `runtime_env` dictionary to `ray.init()`.  The most common and **lightweight** pattern is to use `env_vars` to set `PYTHONPATH`:
 
 ```python
+import os
+
 cache_dit.enable_cache(
   pipe,
   parallelism_config=ParallelismConfig(
@@ -168,7 +170,7 @@ cache_dit.enable_cache(
     ray_runtime_env={
       # Single or multiple paths can be added, separated by ":" or " "
       "env_vars": {
-        "PYTHONPATH": "/path/to/your/app/src",
+        "PYTHONPATH": f"/path/to/your/app/src:{os.environ.get('PYTHONPATH', '')}",
         # "PYTHONPATH": "xxx/path1:xxx/path2:xxx/path3",
       }
     },
@@ -181,7 +183,7 @@ cache_dit.enable_cache(
 `PYTHONPATH` is a Python environment variable that specifies additional directories where Python searches for modules.  When Python starts, it appends each `:`-separated path in `PYTHONPATH` to `sys.path`, before the standard-library and site-packages entries.  Multiple paths are supported:
 
 ```python
-"PYTHONPATH": "/app/src:/app/libs:/shared/utils"
+"PYTHONPATH": f"/app/src:/app/libs:/shared/utils:{os.environ.get('PYTHONPATH', '')}"
 ```
 
 Ray workers receive `env_vars` entries as process environment variables — **nothing is packaged, zipped, or uploaded**.  Workers resolve `import your_module` directly from the filesystem path. `env_vars` vs `working_dir` / `py_modules` listed as below:
