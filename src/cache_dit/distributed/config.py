@@ -49,7 +49,8 @@ class ParallelismConfig:
   ray_runtime_env: Optional[Dict[str, Any]] = None
   # ray_init_kwargs (`dict`, *optional*):
   #   Extra keyword arguments forwarded to ray.init.
-  ray_init_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  ray_init_kwargs: Dict[str, Any] = dataclasses.field(
+    default_factory=lambda: {"include_dashboard": False}, )
   # ray_worker_options (`dict`, *optional*):
   #   Extra options forwarded to Ray actor `.options(...)`.
   ray_worker_options: Dict[str, Any] = dataclasses.field(default_factory=dict)
