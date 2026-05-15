@@ -503,7 +503,6 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     steps = 8 if args.num_inference_steps is None else args.num_inference_steps
     assert steps in [8, 4]
     if "2511" in args.example.lower():
-      assert steps == 4, "Qwen-Image-Edit-2511-Lightning only supports 4 steps."
       lora_weights_path = _path("lightx2v/Qwen-Image-Edit-2511-Lightning", args, lora=True)
       lora_weight_name = f"Qwen-Image-Edit-2511-Lightning-{steps}steps-V1.0-bf16.safetensors"
     else:
