@@ -17,9 +17,20 @@ from ..quantization import quantize
 from ..utils import check_controlnet
 from ..utils import parse_extra_modules
 from ..logger import init_logger
+from ..envs import ENV
 from ..attention import set_attn_backend
 
 logger = init_logger(__name__)
+
+
+def _auto_select_attention_backend(pipe_or_adapter) -> Optional[str]:
+  """Try to auto-select an optimal attention backend when none was specified."""
+  try:
+    from cache_dit._utils.backend_selector import BackendSelector
+
+    return BackendSelector.auto_select(pipe_or_adapter)
+  except Exception:
+    return None
 
 
 def enable_cache(
@@ -189,6 +200,10 @@ def enable_cache(
     logger.warning("cache_config is None, skip cache acceleration for "
                    f"{pipe_or_adapter.__class__.__name__}.")
 
+  # Auto-select attention backend when none specified
+  if attention_backend is None and parallelism_config is None:
+    attention_backend = _auto_select_attention_backend(pipe_or_adapter)
+
   # Set custom attention backend for non-parallelism case
   if attention_backend is not None:
     if parallelism_config is not None:
@@ -318,6 +333,30 @@ def enable_cache(
             # Enable quantization for the specified component inplace
             quantized_component = quantize(component, quantize_config=config)
             setattr(pipe, name, quantized_component)
+
+  # Auto-enable MindieSDBackend when available on NPU
+  if not ENV.CACHE_DIT_FORCE_DISABLE_MINDIESD_COMPILE_CONFIG:
+    try:
+      import mindiesd  # noqa F401
+
+      if hasattr(torch, 'npu') and torch.npu.is_available():
+        from mindiesd.compilation import MindieSDBackend
+
+        targets = []
+        if isinstance(pipe_or_adapter, DiffusionPipeline):
+          t = pipe_or_adapter.transformer
+          targets = [t] if not isinstance(t, list) else t
+        else:
+          t = getattr(pipe_or_adapter, 'transformer', None)
+          if t is not None:
+            targets = [t] if not isinstance(t, list) else t
+        for i, target in enumerate(targets):
+          targets[i] = torch.compile(target, backend=MindieSDBackend(), dynamic=True)
+        if targets:
+          logger.info("Auto-enabled MindieSDBackend compile for transformer(s).")
+    except Exception:
+      pass
+
   return pipe_or_adapter
 
 

@@ -698,6 +698,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
       "_native_npu",  # native npu attention
       "_npu_fia",  # npu fused infer attention
+      "_mindiesd_laser",  # MindIE-SD laser attention
     ],
   )
   # Ulysses context parallelism settings
