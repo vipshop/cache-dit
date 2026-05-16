@@ -142,7 +142,6 @@ except Exception:
   _mindiesd_available = False
   attention_forward = None
 
-
 if _mindiesd_available:
 
   @_AttnBackendRegistry.register(

@@ -161,7 +161,8 @@ def _fused_merge_attn_states_impl(
     denom = denom + 1e-12
     out = torch.where(
       denom > 1e-12,
-      (prev_out * prev_scale.unsqueeze(-1) + suff_out * suff_scale.unsqueeze(-1)) / denom.unsqueeze(-1),
+      (prev_out * prev_scale.unsqueeze(-1) + suff_out * suff_scale.unsqueeze(-1)) /
+      denom.unsqueeze(-1),
       prev_out,
     )
     lse = max_lse + torch.log(denom)
