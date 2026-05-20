@@ -1458,6 +1458,7 @@ def _apply_layerwise_offload(
   # intermediate activations on the onload device across the whole root forward.
   if has_full_parameterized_leaf_coverage:
 
+    @torch.compiler.disable
     def root_pre_hook(
       module: nn.Module,
       args: tuple[Any, ...],
@@ -1472,6 +1473,7 @@ def _apply_layerwise_offload(
       kwargs = _move_tree_to_device(kwargs, resolved_onload_device, non_blocking=non_blocking)
       return args, kwargs
 
+    @torch.compiler.disable
     def root_post_hook(
       module: nn.Module,
       args: tuple[Any, ...],
@@ -1496,6 +1498,7 @@ def _apply_layerwise_offload(
 
   for target in targets:
 
+    @torch.compiler.disable
     def pre_hook(
       module: nn.Module,
       args: tuple[Any, ...],
@@ -1548,6 +1551,7 @@ def _apply_layerwise_offload(
       kwargs = _move_tree_to_device(kwargs, resolved_onload_device, non_blocking=non_blocking)
       return args, kwargs
 
+    @torch.compiler.disable
     def post_hook(
       module: nn.Module,
       args: tuple[Any, ...],
