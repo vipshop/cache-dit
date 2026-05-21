@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import json
 import os
 from typing import Any
 
@@ -393,6 +394,7 @@ class RayPipelineWorker:
     model_path: str,
     torch_dtype: torch.dtype | None,
     use_flashpack: bool,
+    custom_class_map: dict[str, str] | None = None,
   ) -> dict[str, Any]:
     """Load a pipeline from its pretrained directory inside this actor.
 
@@ -400,16 +402,79 @@ class RayPipelineWorker:
     :param model_path: Local path or model id passed to ``from_pretrained``.
     :param torch_dtype: Optional dtype for model loading.
     :param use_flashpack: Whether to prefer FlashPack weights during loading.
+    :param custom_class_map: Optional ``{class_name: module:qualname}`` registry
+      for custom components whose classes diffusers cannot resolve via its normal
+      module-lookup heuristics.  Missing classes are monkey-patched into the
+      appropriate ``diffusers.pipelines`` submodule before ``from_pretrained``
+      runs, and cleaned up afterwards.
     :returns: Device placement and memory information after loading.
     """
 
     pipe_cls = _resolve_class(pipe_cls_ref)
-    load_kwargs = {}
-    if torch_dtype is not None:
-      load_kwargs["torch_dtype"] = torch_dtype
-    load_kwargs["use_safetensors"] = True
-    load_kwargs["use_flashpack"] = use_flashpack
-    pipe = pipe_cls.from_pretrained(model_path, **load_kwargs)
+
+    # Detect and monkey-patch custom component classes that diffusers will not
+    # be able to resolve through its normal pipeline-module lookup.
+    patched_attrs: list[tuple[Any, str]] = []
+    if custom_class_map:
+      try:
+        from diffusers import pipelines as diffusers_pipelines
+      except ImportError:
+        diffusers_pipelines = None
+
+      if diffusers_pipelines is not None:
+        model_index_path = os.path.join(model_path, "model_index.json")
+        try:
+          with open(model_index_path, "r") as f:
+            model_index = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+          model_index = {}
+
+        for component_name, entry in model_index.items():
+          if component_name.startswith("_"):
+            continue
+          if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            continue
+          library_name, class_name = entry
+          if not hasattr(diffusers_pipelines, library_name):
+            continue
+          pipeline_module = getattr(diffusers_pipelines, library_name)
+          if hasattr(pipeline_module, class_name):
+            # Class already exists in that pipelines submodule — nothing to do
+            continue
+          # Class missing — look it up in the custom class map
+          if class_name not in custom_class_map:
+            logger.warning(f"Component '{component_name}' references class '{class_name}' "
+                           f"in pipelines submodule '{library_name}', but the class is not "
+                           f"exported there and no entry exists in custom_class_map. "
+                           f"from_pretrained may fail.")
+            continue
+          try:
+            actual_class = _resolve_class(custom_class_map[class_name])
+          except Exception as exc:
+            logger.warning(f"Failed to resolve custom class '{class_name}' via "
+                           f"'{custom_class_map[class_name]}': {exc}. "
+                           f"from_pretrained may fail.")
+            continue
+          setattr(pipeline_module, class_name, actual_class)
+          patched_attrs.append((pipeline_module, class_name))
+          logger.info(f"Monkey-patched custom class '{class_name}' into "
+                      f"diffusers.pipelines.{library_name} for from_pretrained.")
+
+    try:
+      load_kwargs = {}
+      if torch_dtype is not None:
+        load_kwargs["torch_dtype"] = torch_dtype
+      load_kwargs["use_safetensors"] = True
+      load_kwargs["use_flashpack"] = use_flashpack
+      pipe = pipe_cls.from_pretrained(model_path, **load_kwargs)
+    finally:
+      # Clean up monkey-patches so other callers see the original module state
+      for pipeline_module, class_name in patched_attrs:
+        try:
+          delattr(pipeline_module, class_name)
+        except AttributeError:
+          pass
+
     return self.load_pipeline(pipe)
 
   def ready(self) -> int:
