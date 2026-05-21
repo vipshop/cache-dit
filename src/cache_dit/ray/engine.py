@@ -562,13 +562,20 @@ class RayPipelineEngine:
       )
       logger.info(f"Saved the pipeline snapshot in {time.perf_counter() - save_start:.2f}s.")
 
-      # Fix model_index.json for custom components that were misclassified as
-      # belonging to a diffusers pipelines submodule.
-      _fix_model_index_for_custom_components(pipe, pipeline_path)
-      custom_class_map = _build_custom_class_map(pipe)
-      custom_map_path = pipeline_path / "_cache_dit_custom_classes.json"
-      with open(custom_map_path, "w") as f:
-        json.dump(custom_class_map, f, indent=2)
+      # Build a custom-class registry for components that diffusers may not be
+      # able to resolve through its normal pipeline-module lookup.  The registry
+      # is passed to workers so they can monkey-patch missing classes into the
+      # correct ``diffusers.pipelines`` submodule before ``from_pretrained``.
+      # We intentionally do NOT modify model_index.json here — changing the
+      # library_name to a full module path breaks diffusers' ``_get_load_method``
+      # detection (it cannot determine which load method to use for non-standard
+      # libraries).
+      custom_class_map: dict[str, str] | None = None
+      if self.parallelism_config.ray_transfer_custom_obj:
+        custom_class_map = _build_custom_class_map(pipe)
+        custom_map_path = pipeline_path / "_cache_dit_custom_classes.json"
+        with open(custom_map_path, "w") as f:
+          json.dump(custom_class_map, f, indent=2)
 
       pipe_cls_ref = _qualified_class_name(pipe.__class__)
       load_infos = self.ray.get([
@@ -587,7 +594,8 @@ class RayPipelineEngine:
         raise ValueError("ray_transfer_backend='from_pretrained' requires pipeline.name_or_path.")
       logger.info(f"Loading Ray worker pipelines from pretrained source: {model_path}.")
       pipe_cls_ref = _qualified_class_name(pipe.__class__)
-      custom_class_map = _build_custom_class_map(pipe)
+      custom_class_map = _build_custom_class_map(
+        pipe) if self.parallelism_config.ray_transfer_custom_obj else None
       load_infos = self.ray.get([
         actor.load_pipeline_from_pretrained.remote(
           pipe_cls_ref,

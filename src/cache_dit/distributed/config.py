@@ -65,6 +65,12 @@ class ParallelismConfig:
   #   diffusers ModelMixin instances, save_pretrained snapshots for saveable diffusers pipelines,
   #   and Ray object store for smaller generic modules.
   ray_transfer_backend: str = "auto"
+  # ray_transfer_custom_obj (`bool`, *optional*):
+  #   When True (default), the Ray pipeline engine post-processes model_index.json to fix
+  #   misclassified custom component library names, and passes a custom_class_map to workers
+  #   for monkey-patch fallback during from_pretrained.  Set to False to disable this
+  #   behaviour (e.g. for debugging or when all components are standard diffusers classes).
+  ray_transfer_custom_obj: bool = True
   # ray_use_flashpack (`bool`, *optional*):
   #   Whether Ray model snapshots should call save_pretrained/from_pretrained with
   #   use_flashpack=True. Requires flashpack and a diffusers version that supports it.
