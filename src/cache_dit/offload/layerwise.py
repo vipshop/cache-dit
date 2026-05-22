@@ -1292,6 +1292,7 @@ def _apply_public_layerwise_offload(
         max_inflight_prefetch_bytes=max_inflight_prefetch_bytes,
         persistent_buckets=persistent_buckets,
         persistent_bins=persistent_bins,
+        root_display_name=root_name if root_name else None,
       ))
     root_names.append(root_name)
 
@@ -1321,10 +1322,12 @@ def _apply_layerwise_offload(
   max_inflight_prefetch_bytes: int | str | None = None,
   persistent_buckets: int = 0,
   persistent_bins: int = 1,
+  root_display_name: str | None = None,
 ) -> LayerwiseOffloadHandle:
   """Attach layerwise onload/offload hooks to selected submodules.
 
   :param root_module: Root module that owns the selected submodules.
+  :param root_display_name: Optional display name for this offload root, shown in log messages.
   :param module_names: Optional explicit submodule names. When omitted, ``module_filter`` or the
     default leaf-module selection is used.
   :param module_filter: Optional predicate used to select submodules when ``module_names`` is not
@@ -1626,8 +1629,9 @@ def _apply_layerwise_offload(
           target.resident_device = resolved_offload_device
 
   logger.info(
-    "Enabled layerwise offload for %d submodules from %s to %s%s%s%s.",
+    "Enabled layerwise offload for %d submodules in %s from %s to %s%s%s%s.",
     len(targets),
+    root_display_name or root_module.__class__.__name__,
     resolved_offload_device,
     resolved_onload_device,
     " with async transfer" if async_transfer else "",

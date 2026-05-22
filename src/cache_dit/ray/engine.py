@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import socket
 import shutil
 import uuid
@@ -10,6 +11,7 @@ from typing import Any
 
 import torch
 from diffusers import DiffusionPipeline
+from diffusers import pipelines as diffusers_pipelines
 from diffusers.models.modeling_utils import ModelMixin
 
 from ..distributed import ParallelismConfig
@@ -190,6 +192,84 @@ def _pipeline_supports_save_pretrained(pipe: DiffusionPipeline) -> bool:
 def _model_supports_save_pretrained(model: ModelMixin) -> bool:
   return (callable(getattr(model, "save_pretrained", None))
           and callable(getattr(model.__class__, "from_pretrained", None)))
+
+
+def _fix_model_index_for_custom_components(pipe: DiffusionPipeline, pipeline_path: Path) -> None:
+  """Post-process ``model_index.json`` to correct misclassified custom component library names.
+
+  Diffusers' ``_fetch_class_library_tuple`` can misclassify a custom component whose
+  Python module path happens to contain a ``diffusers.pipelines`` submodule name.
+  For example, a custom scheduler at ``myapp.flux.scheduler`` is assigned
+  ``library_name="flux"``, causing ``from_pretrained`` to look for the class in
+  ``diffusers.pipelines.flux`` where it doesn't exist.
+
+  This function detects such entries and replaces the pipeline-submodule
+  ``library_name`` with the component's full ``__module__`` path.  After the fix,
+  ``from_pretrained`` resolves the class via ``importlib.import_module``, which
+  succeeds as long as the module is importable on the worker.
+
+  :param pipe: The pipeline whose in-memory components provide ground-truth class modules.
+  :param pipeline_path: Directory where ``pipe.save_pretrained`` wrote ``model_index.json``.
+  """
+
+  model_index_path = pipeline_path / "model_index.json"
+  with open(model_index_path, "r") as f:
+    model_index = json.load(f)
+
+  modified = False
+  for component_name, entry in list(model_index.items()):
+    # Skip metadata keys (they start with "_")
+    if component_name.startswith("_"):
+      continue
+    # Each component entry is [library_name, class_name]
+    if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+      continue
+    library_name, class_name = entry
+    # Only inspect entries whose library_name matches a pipelines submodule
+    if not hasattr(diffusers_pipelines, library_name):
+      continue
+    pipeline_module = getattr(diffusers_pipelines, library_name)
+    if hasattr(pipeline_module, class_name):
+      # Class legitimately lives in that pipelines submodule — no misclassification
+      continue
+
+    # Misclassification: the pipelines submodule exists but does NOT export this class.
+    # Use the component's actual module path instead.
+    component = pipe.components.get(component_name)
+    if component is None:
+      continue
+    actual_module = component.__class__.__module__
+    logger.info(f"Fixing model_index.json: component '{component_name}' "
+                f"({class_name}) was classified as pipelines submodule "
+                f"'{library_name}', correcting library_name to '{actual_module}'.")
+    model_index[component_name] = [actual_module, class_name]
+    modified = True
+
+  if modified:
+    with open(model_index_path, "w") as f:
+      json.dump(model_index, f, indent=2)
+    logger.info("Updated model_index.json with corrected library_name entries.")
+
+
+def _build_custom_class_map(pipe: DiffusionPipeline) -> dict[str, str]:
+  """Build a mapping from every component's class name to its ``module:qualname`` string.
+
+  This map is passed to Ray workers as a safety net: if diffusers' normal class
+  resolution fails during ``from_pretrained``, the worker can look up the actual
+  class via this registry and monkey-patch it into the expected module namespace.
+
+  :param pipe: The pipeline whose components supply the class references.
+  :returns: A dict mapping ``class_name`` → ``"module:qualname"`` for every
+    non-None component.
+  """
+
+  class_map: dict[str, str] = {}
+  for component_name, component in pipe.components.items():
+    if component is None:
+      continue
+    cls = component.__class__
+    class_map[cls.__name__] = _qualified_class_name(cls)
+  return class_map
 
 
 class RayParallelEngine:
@@ -481,6 +561,22 @@ class RayPipelineEngine:
         use_flashpack=self.parallelism_config.ray_use_flashpack,
       )
       logger.info(f"Saved the pipeline snapshot in {time.perf_counter() - save_start:.2f}s.")
+
+      # Build a custom-class registry for components that diffusers may not be
+      # able to resolve through its normal pipeline-module lookup.  The registry
+      # is passed to workers so they can monkey-patch missing classes into the
+      # correct ``diffusers.pipelines`` submodule before ``from_pretrained``.
+      # We intentionally do NOT modify model_index.json here — changing the
+      # library_name to a full module path breaks diffusers' ``_get_load_method``
+      # detection (it cannot determine which load method to use for non-standard
+      # libraries).
+      custom_class_map: dict[str, str] | None = None
+      if self.parallelism_config.ray_transfer_custom_obj:
+        custom_class_map = _build_custom_class_map(pipe)
+        custom_map_path = pipeline_path / "_cache_dit_custom_classes.json"
+        with open(custom_map_path, "w") as f:
+          json.dump(custom_class_map, f, indent=2)
+
       pipe_cls_ref = _qualified_class_name(pipe.__class__)
       load_infos = self.ray.get([
         actor.load_pipeline_from_pretrained.remote(
@@ -488,6 +584,7 @@ class RayPipelineEngine:
           str(pipeline_path),
           self._source_dtype,
           self.parallelism_config.ray_use_flashpack,
+          custom_class_map,
         ) for actor in actors
       ])
       logger.info(f"Loaded saved pipeline snapshots on Ray workers in "
@@ -497,12 +594,15 @@ class RayPipelineEngine:
         raise ValueError("ray_transfer_backend='from_pretrained' requires pipeline.name_or_path.")
       logger.info(f"Loading Ray worker pipelines from pretrained source: {model_path}.")
       pipe_cls_ref = _qualified_class_name(pipe.__class__)
+      custom_class_map = _build_custom_class_map(
+        pipe) if self.parallelism_config.ray_transfer_custom_obj else None
       load_infos = self.ray.get([
         actor.load_pipeline_from_pretrained.remote(
           pipe_cls_ref,
           model_path,
           self._source_dtype,
           self.parallelism_config.ray_use_flashpack,
+          custom_class_map,
         ) for actor in actors
       ])
       logger.info(f"Loaded pretrained pipelines on Ray workers in "
