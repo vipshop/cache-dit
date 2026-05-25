@@ -143,6 +143,10 @@ python3 -m cache_dit.generate qwem_image --model-path /PATH/TO/Qwen-Image
 
 cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
 
+For context parallelism, cache-dit now uses `ParallelismBackend.CACHE_DIT` as the canonical
+backend name internally. Legacy `ParallelismBackend.NATIVE_DIFFUSER` configs remain supported
+and are automatically converted to `CACHE_DIT`.
+
 ```bash
 # context parallelism or tensor parallelism
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 

@@ -217,18 +217,20 @@ def parallelize_transformer(
   if parallelism_config is None:
     return transformer
 
+  backend = ParallelismBackend.canonicalize(parallelism_config.backend)
+
   # Currently, we can dispatch the parallelism based on the backend type.
-  if parallelism_config.backend == ParallelismBackend.NATIVE_HYBRID:
+  if backend == ParallelismBackend.NATIVE_HYBRID:
     return _parallelize_transformer_hybrid(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )
-  elif parallelism_config.backend == ParallelismBackend.NATIVE_DIFFUSER:
+  elif backend == ParallelismBackend.CACHE_DIT:
     return _parallelize_transformer_cp(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )
-  elif parallelism_config.backend == ParallelismBackend.NATIVE_PYTORCH:
+  elif backend == ParallelismBackend.NATIVE_PYTORCH:
     return _parallelize_transformer_tp(
       transformer=transformer,
       parallelism_config=parallelism_config,
@@ -278,11 +280,11 @@ def _parallelize_transformer_cp(
     ParallelismConfig), ("parallelism_config must be an instance of ParallelismConfig"
                          f" but got {type(parallelism_config)}")
 
-  # Ensure the backend is correct, NAITIVE_DIFFUSER or HYBRID
+  # Ensure the backend is correct, CACHE_DIT or HYBRID
   assert parallelism_config.backend in (
-    ParallelismBackend.NATIVE_DIFFUSER,
+    ParallelismBackend.CACHE_DIT,
     ParallelismBackend.NATIVE_HYBRID,
-  ), ("parallelism_config.backend must be ParallelismBackend.NATIVE_DIFFUSER "
+  ), ("parallelism_config.backend must be ParallelismBackend.CACHE_DIT "
       f"or ParallelismBackend.NATIVE_HYBRID but got {parallelism_config.backend}")
 
   if parallelism_config.cp_enabled() or parallelism_config.hybrid_enabled():
@@ -297,7 +299,7 @@ def _parallelize_transformer_cp(
       logger.info(f"Parallelize Transformer: {transformer.__class__.__name__}, "
                   f"id:{id(transformer)}, {parallelism_config.strify(True)}")
   else:
-    raise ValueError("NATIVE_DIFFUSER backend only support context parallelism now. "
+    raise ValueError("CACHE_DIT backend only support context parallelism now. "
                      "Please set ulysses_size or ring_size in parallelism_config.")
   return transformer
 

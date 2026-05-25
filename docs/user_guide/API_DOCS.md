@@ -115,18 +115,20 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     Config for Parallelism. If parallelism_config is not None, it means the user wants to enable
     parallelism for cache-dit.
     - <span style="color:#c77dff;">backend</span>: (`ParallelismBackend`, *required*, defaults to "ParallelismBackend.AUTO"):  
-        Parallelism backend, currently only NATIVE_DIFFUSER and NVTIVE_PYTORCH are supported.
-        For context parallelism, only NATIVE_DIFFUSER backend is supported, for tensor parallelism,
-        only NATIVE_PYTORCH backend is supported.
+    Parallelism backend, currently `CACHE_DIT`, `NATIVE_PYTORCH`, and `NATIVE_HYBRID`
+    are supported. For context parallelism, use the `CACHE_DIT` backend; for tensor
+    parallelism, use `NATIVE_PYTORCH`; and for hybrid CP+TP, use `NATIVE_HYBRID`.
+    Legacy `NATIVE_DIFFUSER` inputs are still accepted and automatically converted to
+    `CACHE_DIT` for backward compatibility.
     - <span style="color:#c77dff;">ulysses_size</span>: (`int`, *optional*, defaults to None):  
         The size of Ulysses cluster. If ulysses_size is not None, enable Ulysses style parallelism.
-        This setting is only valid when backend is NATIVE_DIFFUSER.
+    This setting is only valid when backend is `CACHE_DIT`.
     - <span style="color:#c77dff;">ring_size</span>: (`int`, *optional*, defaults to None):  
         The size of ring for ring parallelism. If ring_size is not None, enable ring attention.
-        This setting is only valid when backend is NATIVE_DIFFUSER.
+    This setting is only valid when backend is `CACHE_DIT`.
     - <span style="color:#c77dff;">tp_size</span>: (`int`, *optional*, defaults to None):  
         The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
-        This setting is only valid when backend is NATIVE_PYTORCH.
+    This setting is only valid when backend is `NATIVE_PYTORCH`.
 
 - **<span style="color:#c77dff;">attention_backend</span>** (`str`, *optional*, defaults to None):  
   Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 

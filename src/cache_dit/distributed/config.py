@@ -155,18 +155,23 @@ class ParallelismConfig:
   _device_module: Optional[Any] = None
 
   def __post_init__(self):
+    # For backward compatibility, will be removed in future versions.
+    self._maybe_flatten_deprecated_parallel_kwargs()
+
+    if isinstance(self.backend, str):
+      self.backend = ParallelismBackend.from_str(self.backend)
+    self.backend = ParallelismBackend.canonicalize(self.backend)
+
     assert ParallelismBackend.is_supported(
       self.backend), (f"Parallel backend {self.backend} is not supported. "
                       f"Please make sure the required packages are installed.")
-    # For backward compatibility, will be removed in future versions.
-    self._maybe_flatten_deprecated_parallel_kwargs()
 
     if self.backend == ParallelismBackend.AUTO:
       # Auto select the backend based on the parallelism configuration
       if self.hybrid_enabled():
         self.backend = ParallelismBackend.NATIVE_HYBRID
       elif self.cp_enabled() or self.usp_enabled():
-        self.backend = ParallelismBackend.NATIVE_DIFFUSER
+        self.backend = ParallelismBackend.CACHE_DIT
       elif self.tp_enabled():
         self.backend = ParallelismBackend.NATIVE_PYTORCH
       else:
@@ -191,8 +196,8 @@ class ParallelismConfig:
       assert (self.backend == ParallelismBackend.NATIVE_HYBRID
               ), "Hybrid parallelism requires the backend to be NATIVE_HYBRID."
     elif self.cp_enabled() or self.usp_enabled():
-      assert (self.backend == ParallelismBackend.NATIVE_DIFFUSER
-              ), "Context parallelism requires the backend to be NATIVE_DIFFUSER."
+      assert (self.backend == ParallelismBackend.CACHE_DIT
+              ), "Context parallelism requires the backend to be CACHE_DIT."
     elif self.tp_enabled():
       assert (self.backend == ParallelismBackend.NATIVE_PYTORCH
               ), "Tensor parallelism requires the backend to be NATIVE_PYTORCH."

@@ -61,6 +61,10 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
+For context parallelism, `ParallelismBackend.CACHE_DIT` is now the canonical backend name.
+Legacy configs or code that still pass `ParallelismBackend.NATIVE_DIFFUSER` remain supported and
+are automatically converted to `CACHE_DIT`.
+
 <div align="center">
   <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ/DQ workflow</h2> </p>
 </div>

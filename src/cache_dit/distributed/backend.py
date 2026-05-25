@@ -29,10 +29,23 @@ class ParallelismBackend(Enum):
   """Enumerate the parallel execution backends supported by cache-dit."""
 
   AUTO = "Auto"
+  CACHE_DIT = "CACHE_DIT"  # CP/SP
   NATIVE_DIFFUSER = "Native_Diffuser"  # CP/SP
   NATIVE_PYTORCH = "Native_PyTorch"  # TP or DP
   NATIVE_HYBRID = "Native_Hybrid"  # CP/SP + TP
   NONE = "None"
+
+  @classmethod
+  def canonicalize(cls, backend: "ParallelismBackend") -> "ParallelismBackend":
+    """Return the canonical backend for user-facing and internal comparisons.
+
+    :param backend: Backend enum value to normalize.
+    :returns: Canonical backend enum value.
+    """
+
+    if backend == cls.NATIVE_DIFFUSER:
+      return cls.CACHE_DIT
+    return backend
 
   @classmethod
   def is_supported(cls, backend: "ParallelismBackend") -> bool:
@@ -42,11 +55,13 @@ class ParallelismBackend(Enum):
     :returns: `True` when the backend can be used on the current installation.
     """
 
+    backend = cls.canonicalize(backend)
+
     if backend == cls.AUTO:
       return True
     elif backend == cls.NATIVE_PYTORCH:
       return True
-    elif backend == cls.NATIVE_DIFFUSER:
+    elif backend == cls.CACHE_DIT:
       return _check_diffusers_cp_support()
     elif backend == cls.NATIVE_HYBRID:
       return _check_diffusers_cp_support()
@@ -62,8 +77,14 @@ class ParallelismBackend(Enum):
     :returns: The matching `ParallelismBackend` enum value.
     """
 
+    normalized = backend_str.lower()
+    if normalized in (cls.CACHE_DIT.value.lower(), cls.CACHE_DIT.name.lower()):
+      return cls.CACHE_DIT
+    if normalized in (cls.NATIVE_DIFFUSER.value.lower(), cls.NATIVE_DIFFUSER.name.lower()):
+      return cls.CACHE_DIT
+
     for backend in cls:
-      if backend.value.lower() == backend_str.lower():
+      if backend.value.lower() == normalized or backend.name.lower() == normalized:
         return backend
     raise ValueError(f"Unsupported parallelism backend: {backend_str}.")
 
