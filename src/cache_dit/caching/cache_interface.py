@@ -88,7 +88,10 @@ def enable_cache(
     >>> output = pipe(...)
     >>> stats = cache_dit.summary(pipe)
   """
-  ray_enabled = isinstance(parallelism_config, ParallelismConfig) and parallelism_config.use_ray
+  ray_enabled = isinstance(
+    parallelism_config,
+    ParallelismConfig,
+  ) and parallelism_config.use_ray
   if ray_enabled:
     return _enable_cache_with_ray_impl(
       pipe_or_adapter,
