@@ -23,6 +23,171 @@ logger = init_logger(__name__)
 
 
 def enable_cache(
+  pipe_or_adapter: Union[
+    DiffusionPipeline,
+    BlockAdapter,
+    torch.nn.Module,
+    ModelMixin,
+  ],
+  cache_config: Optional[Union[
+    DBCacheConfig,
+    DBPruneConfig,
+  ]] = None,
+  calibrator_config: Optional[CalibratorConfig] = None,
+  params_modifiers: Optional[Union[
+    ParamsModifier,
+    List[ParamsModifier],
+    List[List[ParamsModifier]],
+  ]] = None,
+  parallelism_config: Optional[ParallelismConfig] = None,
+  attention_backend: Optional[str] = None,
+  quantize_config: Optional[QuantizeConfig] = None,
+  **kwargs,
+) -> Union[
+    DiffusionPipeline,
+    torch.nn.Module,
+    ModelMixin,
+    BlockAdapter,
+]:
+  """Enable cache acceleration for a pipeline, adapter, or transformer module.
+
+  This is the main cache-dit entry point for wiring DBCache into a model. It can wrap a full
+  `DiffusionPipeline`, a normalized `BlockAdapter`, or a transformer module directly, and it can
+  optionally layer parallelism, attention-backend selection, and quantization on top of the cache
+  hooks.
+
+  When `parallelism_config.use_ray` is ``True`` the Ray wrapper is activated: worker actors
+  own copies of the model and the main process proxies all forward calls through
+  :class:`RayParallelEngine` or :class:`RayPipelineEngine`.  Cache hooks, native parallelism,
+  and quantization are applied inside the workers via :func:`_enable_cache_impl`.
+
+  Use `cache_config` to control the caching strategy itself. Detailed cache-policy fields such as
+  warmup behavior, residual thresholds, or step masks are documented on `DBCacheConfig` and
+  `DBPruneConfig`. Calibrator-specific options belong on `calibrator_config`, and distributed
+  execution options belong on `parallelism_config`.
+
+  :param pipe_or_adapter: Pipeline, adapter, or transformer module to accelerate.
+  :param cache_config: Cache configuration describing the runtime caching strategy. When omitted and
+    no other optimization config is provided, a default `DBCacheConfig` is created.
+  :param calibrator_config: Optional calibrator configuration used to augment the cache context.
+  :param params_modifiers: Optional per-block cache-context overrides applied after the base config
+    is loaded.
+  :param parallelism_config: Optional parallelism configuration applied after cache hooks are
+    installed.
+  :param attention_backend: Optional attention backend override for non-parallel execution.
+  :param quantize_config: Optional quantization configuration applied after cache and parallelism.
+  :param kwargs: Deprecated cache-context keyword arguments kept for backward compatibility.
+  :returns: The original object with cache-dit hooks and optional optimizations applied.
+
+  Example::
+
+    >>> import cache_dit
+    >>> from diffusers import DiffusionPipeline
+    >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image")
+    >>> pipe = cache_dit.enable_cache(pipe)
+    >>> output = pipe(...)
+    >>> stats = cache_dit.summary(pipe)
+  """
+  ray_enabled = isinstance(parallelism_config, ParallelismConfig) and parallelism_config.use_ray
+  if ray_enabled:
+    return _enable_cache_with_ray_impl(
+      pipe_or_adapter,
+      cache_config=cache_config,
+      calibrator_config=calibrator_config,
+      params_modifiers=params_modifiers,
+      parallelism_config=parallelism_config,
+      attention_backend=attention_backend,
+      quantize_config=quantize_config,
+      **kwargs,
+    )
+  return _enable_cache_impl(
+    pipe_or_adapter,
+    cache_config=cache_config,
+    calibrator_config=calibrator_config,
+    params_modifiers=params_modifiers,
+    parallelism_config=parallelism_config,
+    attention_backend=attention_backend,
+    quantize_config=quantize_config,
+    **kwargs,
+  )
+
+
+def _enable_cache_with_ray_impl(
+  pipe_or_adapter: Union[
+    DiffusionPipeline,
+    BlockAdapter,
+    torch.nn.Module,
+    ModelMixin,
+  ],
+  cache_config: Optional[Union[
+    DBCacheConfig,
+    DBPruneConfig,
+  ]] = None,
+  calibrator_config: Optional[CalibratorConfig] = None,
+  params_modifiers: Optional[Union[
+    ParamsModifier,
+    List[ParamsModifier],
+    List[List[ParamsModifier]],
+  ]] = None,
+  parallelism_config: Optional[ParallelismConfig] = None,
+  attention_backend: Optional[str] = None,
+  quantize_config: Optional[QuantizeConfig] = None,
+  **kwargs,
+) -> Union[
+    DiffusionPipeline,
+    torch.nn.Module,
+    ModelMixin,
+    BlockAdapter,
+]:
+  """Internal: Ray-path passthrough — packages configs and delegates to Ray wrappers.
+
+  All preprocessing (deprecated params, default configs, calibrator setup,
+  attention backend resolution, parallelism tuning, quantization) is deferred to
+  :func:`_enable_cache_impl` running inside each Ray worker.
+  """
+
+  if attention_backend is not None:
+    parallelism_config.attention_backend = attention_backend
+
+  ctx = {}
+  if cache_config is not None:
+    ctx["cache_config"] = cache_config
+  if calibrator_config is not None:
+    ctx["calibrator_config"] = calibrator_config
+  if params_modifiers is not None:
+    ctx["params_modifiers"] = params_modifiers
+  # Forward deprecated kwargs so _enable_cache_impl on the worker can process them.
+  ctx.update(kwargs)
+
+  ray_kwargs = copy.deepcopy(ctx) if ctx else None
+  ray_qconfig = copy.deepcopy(quantize_config) if quantize_config is not None else None
+
+  from ..ray import enable_ray_parallelism
+  from ..ray import enable_ray_pipeline_parallelism
+
+  # BlockAdapter is not supported currently in Ray wrapper.
+  assert not isinstance(pipe_or_adapter,
+                        BlockAdapter), "BlockAdapter is not supported in Ray wrapper currently."
+
+  # Case 1: DiffusionPipeline
+  if isinstance(pipe_or_adapter, DiffusionPipeline):
+    return enable_ray_pipeline_parallelism(
+      pipe_or_adapter,
+      parallelism_config,
+      cache_context_kwargs=ray_kwargs,
+      quantize_config=ray_qconfig,
+    )
+
+  # Case 2: Transformer
+  return enable_ray_parallelism(
+    pipe_or_adapter,
+    parallelism_config,
+    cache_context_kwargs=ray_kwargs,
+    quantize_config=ray_qconfig,
+  )
+
+
+def _enable_cache_impl(
   # DiffusionPipeline or BlockAdapter
   pipe_or_adapter: Union[
     DiffusionPipeline,
@@ -164,13 +329,7 @@ def enable_cache(
     assert isinstance(quantize_config,
                       QuantizeConfig), "quantize_config should be of type QuantizeConfig."
 
-  ray_enabled = isinstance(parallelism_config, ParallelismConfig) and parallelism_config.use_ray
-  ray_cache_context_kwargs = copy.deepcopy(
-    context_kwargs) if ray_enabled and cache_config is not None else None
-  ray_quantize_config = copy.deepcopy(
-    quantize_config) if ray_enabled and quantize_config is not None else None
-
-  if cache_config is not None and not ray_enabled:
+  if cache_config is not None:
     if isinstance(
         pipe_or_adapter,
       (DiffusionPipeline, BlockAdapter, torch.nn.Module, ModelMixin),
@@ -183,8 +342,6 @@ def enable_cache(
       raise ValueError(f"type: {type(pipe_or_adapter)} is not valid, "
                        "Please pass DiffusionPipeline or BlockAdapter"
                        "for the 1's position param: pipe_or_adapter")
-  elif cache_config is not None:
-    logger.info("Ray parallelism is enabled; cache hooks will be applied inside Ray workers.")
   else:
     logger.warning("cache_config is None, skip cache acceleration for "
                    f"{pipe_or_adapter.__class__.__name__}.")
@@ -258,36 +415,12 @@ def enable_cache(
     if extra_parallel_module is not None and pipe is not None:
       parallelism_config.extra_parallel_modules = parse_extra_modules(pipe, extra_parallel_module)
 
-    if parallelism_config.use_ray:
-      from ..ray import enable_ray_parallelism
-      from ..ray import enable_ray_pipeline_parallelism
-
-      if isinstance(pipe_or_adapter, DiffusionPipeline):
-        pipe_or_adapter = enable_ray_pipeline_parallelism(
-          pipe_or_adapter,
-          parallelism_config,
-          cache_context_kwargs=ray_cache_context_kwargs,
-          quantize_config=ray_quantize_config,
-        )
-      else:
-        for i, transformer in enumerate(transformers):
-          transformers[i] = enable_ray_parallelism(
-            transformer,
-            parallelism_config,
-            cache_context_kwargs=ray_cache_context_kwargs,
-            quantize_config=ray_quantize_config,
-          )
-    else:
-      for i, transformer in enumerate(transformers):
-        # Enable parallelism for the transformer inplace
-        transformers[i] = enable_parallelism(transformer, parallelism_config)
+    for i, transformer in enumerate(transformers):
+      # Enable parallelism for the transformer inplace
+      transformers[i] = enable_parallelism(transformer, parallelism_config)
 
   # Enable quantization if quantize_config is provided.
   if quantize_config is not None:
-    if ray_enabled:
-      logger.info("Ray parallelism is enabled; quantization will be applied inside Ray workers.")
-      return pipe_or_adapter
-
     # By default, we will try to apply quantization to transformer module(s)
     # for better performance. User can specify the quantization modules more
     # precisely with quantize_config.components_to_quantize. For example,
