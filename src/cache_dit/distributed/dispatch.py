@@ -39,9 +39,10 @@ def enable_parallelism(
 
   def _set_module_attn_backend(module: torch.nn.Module | ModelMixin) -> None:
     attention_backend = parallelism_config.attention_backend
+    backend = ParallelismBackend.canonicalize(parallelism_config.backend)
     if (attention_backend is None and isinstance(module, ModelMixin)
-        and hasattr(module, "set_attention_backend") and parallelism_config.backend
-        in (ParallelismBackend.NATIVE_DIFFUSER, ParallelismBackend.NATIVE_HYBRID)):
+        and hasattr(module, "set_attention_backend")
+        and backend in (ParallelismBackend.CACHE_DIT, ParallelismBackend.NATIVE_HYBRID)):
       attention_backend = "native"
 
     set_attn_backend(module, attention_backend=attention_backend)

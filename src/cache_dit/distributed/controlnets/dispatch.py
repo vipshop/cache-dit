@@ -86,7 +86,8 @@ def parallelize_controlnet(
   if parallelism_config is None:
     return controlnet
 
-  if parallelism_config.backend != ParallelismBackend.NATIVE_DIFFUSER:
+  backend = ParallelismBackend.canonicalize(parallelism_config.backend)
+  if backend != ParallelismBackend.CACHE_DIT:
     logger.warning(f"Parallelism backend {parallelism_config.backend} is not supported "
                    "for ControlNet now, skip context parallelism for ControlNet.")
     return controlnet

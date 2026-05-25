@@ -32,6 +32,31 @@ class _DummyBackendAwareModule(ModelMixin):
     self.backends.append(backend)
 
 
+@pytest.mark.parametrize("backend_str", ["CACHE_DIT", "cache_dit", "Native_Diffuser"])
+def test_parallelism_backend_from_str_canonicalizes_cache_dit(backend_str):
+  assert ParallelismBackend.from_str(backend_str) == ParallelismBackend.CACHE_DIT
+
+
+def test_parallelism_backend_canonicalize_converts_legacy_diffuser_name():
+  assert (ParallelismBackend.canonicalize(
+    ParallelismBackend.NATIVE_DIFFUSER) == ParallelismBackend.CACHE_DIT)
+
+
+def test_parallelism_config_canonicalizes_legacy_diffuser_backend():
+  parallelism_config = ParallelismConfig(
+    backend=ParallelismBackend.NATIVE_DIFFUSER,
+    ulysses_size=2,
+  )
+
+  assert parallelism_config.backend == ParallelismBackend.CACHE_DIT
+
+
+def test_parallelism_config_auto_selects_cache_dit_for_context_parallelism():
+  parallelism_config = ParallelismConfig(ulysses_size=2)
+
+  assert parallelism_config.backend == ParallelismBackend.CACHE_DIT
+
+
 def test_parallelize_transformer_context_uses_custom_cp_plan(monkeypatch):
   transformer = torch.nn.Linear(4, 4)
   cp_plan = {"": {"hidden_states": object()}}
@@ -89,7 +114,7 @@ def test_parallelize_controlnet_cp_uses_custom_cp_plan(monkeypatch):
 @pytest.mark.parametrize(
   ("backend", "expected_backends"),
   [
-    (ParallelismBackend.NATIVE_DIFFUSER, ["native"]),
+    (ParallelismBackend.CACHE_DIT, ["native"]),
     (ParallelismBackend.NATIVE_HYBRID, ["native"]),
     (ParallelismBackend.NATIVE_PYTORCH, []),
   ],
