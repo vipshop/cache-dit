@@ -100,6 +100,12 @@ def _toy_parallel_config() -> ParallelismConfig:
   )
 
 
+def _toy_init_fn() -> ToyPipeline:
+  """Module-level init-fn for tests; returns a fresh ToyPipeline."""
+
+  return ToyPipeline(_toy_transformer())
+
+
 def test_parallelism_config_rejects_short_aliases() -> None:
   """ParallelismConfig should require canonical size field names."""
 
@@ -149,6 +155,72 @@ def test_ray_wrapper_pipeline_level_toy_model() -> None:
   cache_dit.disable_cache(pipe)
   assert not hasattr(pipe, "_cache_dit_ray_pipeline_enabled")
   torch.testing.assert_close(pipe(hidden_states), baseline)
+
+
+def test_ray_wrapper_pipeline_init_fn_toy_model() -> None:
+  hidden_states = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+  pipe = ToyPipeline(_toy_transformer())
+  baseline = pipe(hidden_states)
+
+  config = _toy_parallel_config()
+  config.ray_transfer_fn = _toy_init_fn
+  returned = cache_dit.enable_cache(pipe, parallelism_config=config)
+
+  assert returned is pipe
+  assert getattr(pipe, "_cache_dit_ray_pipeline_enabled", False)
+  result = pipe(hidden_states)
+  torch.testing.assert_close(result, baseline)
+
+  cache_dit.disable_cache(pipe)
+  assert not hasattr(pipe, "_cache_dit_ray_pipeline_enabled")
+  torch.testing.assert_close(pipe(hidden_states), baseline)
+
+
+def test_ray_wrapper_pipeline_init_fn_none_pipe() -> None:
+  hidden_states = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+  baseline = ToyPipeline(_toy_transformer())(hidden_states)
+
+  config = _toy_parallel_config()
+  config.ray_transfer_fn = _toy_init_fn
+  engine = cache_dit.enable_cache(parallelism_config=config)
+
+  # engine is a callable RayPipelineEngine
+  result = engine(hidden_states)
+  torch.testing.assert_close(result, baseline)
+
+
+def test_ray_wrapper_pipeline_init_fn_none_pipe_rejected_without_fn() -> None:
+  config = _toy_parallel_config()
+  # ray_transfer_fn is NOT set — pipe=None should be rejected.
+  with pytest.raises(ValueError, match="pipe_or_adapter can only be None"):
+    cache_dit.enable_cache(None, parallelism_config=config)
+
+
+def test_ray_wrapper_transformer_init_fn_rejected() -> None:
+  transformer = _toy_transformer()
+  config = _toy_parallel_config()
+  config.ray_transfer_fn = _toy_init_fn
+
+  with pytest.raises(NotImplementedError, match="pipeline-level"):
+    cache_dit.enable_cache(transformer, parallelism_config=config)
+
+
+def test_ray_wrapper_init_fn_ignores_transfer_backend() -> None:
+  hidden_states = torch.arange(8, dtype=torch.float32).reshape(2, 4)
+  pipe = ToyPipeline(_toy_transformer())
+  baseline = pipe(hidden_states)
+
+  config = _toy_parallel_config()
+  config.ray_transfer_fn = _toy_init_fn
+  config.ray_transfer_backend = "object_store"
+  returned = cache_dit.enable_cache(pipe, parallelism_config=config)
+
+  assert returned is pipe
+  assert getattr(pipe, "_cache_dit_ray_pipeline_enabled", False)
+  result = pipe(hidden_states)
+  torch.testing.assert_close(result, baseline)
+
+  cache_dit.disable_cache(pipe)
 
 
 def test_ray_wrapper_compile_repeated_blocks_toy_model() -> None:
@@ -317,6 +389,76 @@ def test_ray_wrapper_flux_example_psnr() -> None:
       _DEFAULT_MODEL_SOURCE,
       "--ulysses",
       "2",
+      "--num-inference-steps",
+      "4",
+      "--warmup",
+      "0",
+      "--save-path",
+      str(ray_path),
+    ],
+    cwd=_REPO_ROOT,
+    env=env,
+    check=True,
+  )
+
+  psnr, count = compute_psnr(str(baseline_path), str(ray_path))
+  assert count == 1
+  assert psnr is not None and psnr > 20.0
+
+
+@pytest.mark.skipif(
+  not _ENABLE_FLUX_TEST,
+  reason="FLUX Ray wrapper test requires CACHE_DIT_TEST_RAY_FLUX=1.",
+)
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="FLUX Ray wrapper test requires CUDA.")
+def test_ray_wrapper_flux_example_init_fn_psnr() -> None:
+  visible_devices = [
+    device.strip() for device in _DEFAULT_VISIBLE_DEVICES.split(",") if device.strip()
+  ]
+  if len(visible_devices) < 2:
+    pytest.skip("FLUX Ray wrapper test requires at least two visible CUDA devices.")
+  if not _PYTHON_BIN.is_file():
+    pytest.skip("The configured cdit python binary is unavailable.")
+
+  if _TEST_OUTPUT_DIR.exists():
+    shutil.rmtree(_TEST_OUTPUT_DIR)
+  _TEST_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+  baseline_path = _TEST_OUTPUT_DIR / "baseline_init_fn.png"
+  ray_path = _TEST_OUTPUT_DIR / "ray_init_fn.png"
+  env = os.environ.copy()
+  env["PYTHONPATH"] = str(_REPO_ROOT / "src")
+  env["CUDA_VISIBLE_DEVICES"] = _DEFAULT_VISIBLE_DEVICES
+
+  subprocess.run(
+    [
+      str(_PYTHON_BIN),
+      "examples/ray/ray_wrapper_example.py",
+      "--model-path",
+      _DEFAULT_MODEL_SOURCE,
+      "--ulysses",
+      "1",
+      "--num-inference-steps",
+      "4",
+      "--warmup",
+      "0",
+      "--save-path",
+      str(baseline_path),
+    ],
+    cwd=_REPO_ROOT,
+    env=env,
+    check=True,
+  )
+  subprocess.run(
+    [
+      str(_PYTHON_BIN),
+      "examples/ray/ray_wrapper_example.py",
+      "--model-path",
+      _DEFAULT_MODEL_SOURCE,
+      "--tp",
+      "2",
+      "--compile",
+      "--use-init-fn",
       "--num-inference-steps",
       "4",
       "--warmup",

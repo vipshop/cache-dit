@@ -426,6 +426,48 @@ class RayPipelineWorker:
 
     return self.load_pipeline(pipe)
 
+  def load_pipeline_with_init_fn(
+    self,
+    fn,
+    cache_context_kwargs: dict[str, Any] | None,
+    quantize_config: QuantizeConfig | None,
+  ) -> dict[str, Any]:
+    """Load a pipeline by calling a user-provided initialize function on this actor.
+
+    :param fn: A zero-argument callable that returns a ``DiffusionPipeline`` instance.
+    :param cache_context_kwargs: Optional cache context keyword arguments to pass to
+      ``_enable_cache_impl`` after the pipeline is created.
+    :param quantize_config: Optional quantization configuration to apply.
+    :returns: Device placement and memory information after loading.
+    """
+
+    pipe = fn()
+    if not isinstance(pipe, DiffusionPipeline):
+      raise TypeError(
+        f"ray_transfer_fn must return a DiffusionPipeline, got {type(pipe).__name__}.")
+    for component in pipe.components.values():
+      if isinstance(component, torch.nn.Module):
+        component.to(self.device)
+    self.pipe = pipe
+    self.pipe.set_progress_bar_config(disable=True)
+    self.pipe.transformer.eval()
+    par_config = (self.parallelism_config
+                  if not self.parallelism_config._ray_skip_native_parallelism else None)
+    if self.cache_context_kwargs or par_config is not None or self.quantize_config is not None:
+      from ..caching.cache_interface import _enable_cache_impl
+      self.pipe = _enable_cache_impl(
+        self.pipe,
+        parallelism_config=par_config,
+        quantize_config=self.quantize_config,
+        attention_backend=self.parallelism_config.attention_backend,
+        **(self.cache_context_kwargs or {}),
+      )
+    self.pipe.transformer = _maybe_compile_transformer(
+      self.pipe.transformer,
+      self.parallelism_config,
+    )
+    return self.device_info()
+
   def ready(self) -> int:
     """Return the rank after actor initialization has completed.
 

@@ -76,7 +76,29 @@ def parse_args() -> argparse.Namespace:
     action="store_true",
     help="Compile the Ray-owned transformer after loading and parallelization.",
   )
+  parser.add_argument(
+    "--use-init-fn",
+    action="store_true",
+    help="Use ray_transfer_fn to initialize pipeline on each worker instead of serialization.",
+  )
   return parser.parse_args()
+
+
+def _make_ray_init_fn(model_path: str):
+  """Return an initialize_fn that loads the pipeline on each Ray worker.
+
+  Defined at module level so Ray cloudpickle can serialize it reliably. Uses a closure that captures
+  only *model_path* (a short string), never large model objects.
+  """
+
+  def _init_fn():
+    pipe = Flux2KleinPipeline.from_pretrained(
+      model_path,
+      torch_dtype=torch.bfloat16,
+    ).to("cuda")
+    return pipe
+
+  return _init_fn
 
 
 def main() -> None:
@@ -88,13 +110,18 @@ def main() -> None:
     "black-forest-labs/FLUX.2-klein-base-9B",
   )
   use_ray = args.ulysses > 1 or args.tp > 1
-  pipe = Flux2KleinPipeline.from_pretrained(
-    model_path,
-    torch_dtype=torch.bfloat16,
-  )  # .to("cuda") will be called inside the Ray wrapper if use_ray is True
 
-  if not use_ray:
-    pipe.to("cuda")
+  if args.use_init_fn:
+    # With ray_transfer_fn, workers load the model independently;
+    # the main process does not need a pipeline copy at all.
+    pipe = None
+  else:
+    pipe = Flux2KleinPipeline.from_pretrained(
+      model_path,
+      torch_dtype=torch.bfloat16,
+    )
+    if not use_ray:
+      pipe.to("cuda")
 
   cache_config = DBCacheConfig(Fn_compute_blocks=1) if args.cache else None
   quantize_config = QuantizeConfig(quant_type="float8_per_tensor") if args.quantize else None
@@ -102,16 +129,30 @@ def main() -> None:
   accelerate_enabled = use_ray or cache_config is not None or quantize_config is not None
 
   if use_ray:
+    init_fn = None
+    if args.use_init_fn:
+      if args.target != "pipeline":
+        raise ValueError(
+          "--use-init-fn requires --target pipeline (transformer-level init-fn is not supported).")
+      init_fn = _make_ray_init_fn(model_path)
     parallelism_config = ParallelismConfig(
       ulysses_size=args.ulysses if args.ulysses > 1 else None,
       tp_size=args.tp if args.tp > 1 else None,
       use_ray=True,
+      ray_transfer_fn=init_fn,
       ray_use_flashpack=args.use_flashpack_transfer,
       ray_use_compile=args.use_compile,
     )
 
   if accelerate_enabled:
-    if args.target == "pipeline":
+    if args.use_init_fn:
+      # pipe_or_adapter defaults to None; enable_cache returns a callable RayPipelineEngine.
+      pipe = cache_dit.enable_cache(
+        cache_config=cache_config,
+        parallelism_config=parallelism_config,
+        quantize_config=quantize_config,
+      )
+    elif args.target == "pipeline":
       # NOTE: Will auto transfer to cuda inside by ray wrapper for
       # pipeline-level parallelism, so we keep the original pipeline
       # on CPU to avoid redundant GPU memory usage.
@@ -168,9 +209,6 @@ def main() -> None:
   print(f"Total Inference Time: {elapsed:.2f}s")
   print(f"Average Inference Time: {elapsed / args.repeat:.2f}s")
   print(f"Saved image to {save_path}")
-
-  if accelerate_enabled:
-    cache_dit.disable_cache(pipe if args.target == "pipeline" else pipe.transformer)
 
 
 if __name__ == "__main__":
