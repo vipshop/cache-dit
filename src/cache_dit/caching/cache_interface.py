@@ -101,16 +101,6 @@ def enable_cache(
     if not (ray_enabled and parallelism_config.ray_transfer_fn is not None):
       raise ValueError(
         "pipe_or_adapter can only be None when use_ray=True and ray_transfer_fn is set.")
-    return _enable_cache_with_ray_impl(
-      pipe_or_adapter,
-      cache_config=cache_config,
-      calibrator_config=calibrator_config,
-      params_modifiers=params_modifiers,
-      parallelism_config=parallelism_config,
-      attention_backend=attention_backend,
-      quantize_config=quantize_config,
-      **kwargs,
-    )
   if ray_enabled:
     return _enable_cache_with_ray_impl(
       pipe_or_adapter,
@@ -140,7 +130,8 @@ def _enable_cache_with_ray_impl(
     BlockAdapter,
     torch.nn.Module,
     ModelMixin,
-  ],
+    None,
+  ] = None,
   cache_config: Optional[Union[
     DBCacheConfig,
     DBPruneConfig,
