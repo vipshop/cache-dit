@@ -79,6 +79,14 @@ class ParallelismConfig:
   #   Whether Ray workers should compile the executable transformer copy after loading and native
   #   parallelization. If available, compile_repeated_blocks() is preferred over nn.Module.compile().
   ray_use_compile: bool = False
+  # ray_transfer_fn (`Callable`, *optional*):
+  #   A user-provided zero-argument function that each Ray worker calls to obtain a
+  #   ``DiffusionPipeline`` instance.  When set, ``ray_transfer_backend`` is ignored
+  #   and the entire serialization/deserialization path is bypassed.  The function
+  #   is passed to workers via the Ray object store (``ray.put``), so it must be
+  #   serializable by cloudpickle — avoid capturing large objects in closures.
+  #   Only supported for pipeline-level Ray wrapper (``enable_cache(pipe, ...)``).
+  ray_transfer_fn: Optional[Any] = None
   # Internal test hook: skip cache-dit native parallel planner inside Ray workers.
   _ray_skip_native_parallelism: bool = False
 

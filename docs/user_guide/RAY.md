@@ -89,6 +89,50 @@ image.save("ray_transformer_wrapper.png")
 
 When the transformer-level wrapper is enabled, Cache-DiT patches the Ray-owned transformer so `pipe.to("cuda")` does not move the main-process transformer copy back onto the GPU. The executable transformer copies live inside the Ray workers.
 
+## Ray Transfer Fn
+
+When `ray_transfer_fn` is set in `ParallelismConfig`, Cache-DiT **bypasses all serialization** (`save_pretrained`, object store, file snapshots). Instead, each Ray worker calls the user-provided function to create its own pipeline copy. This addresses two problems with the default transfer path:
+
+- **Startup time**: serializing and deserializing large models is slow. Workers loading independently in parallel is often much faster.
+- **Custom modules**: user-defined components (e.g., a custom `libs/flux` module) may not survive diffusers' `from_pretrained` class resolution. With `ray_transfer_fn`, the user controls the entire loading process.
+
+`ray_transfer_fn` is only supported at the **pipeline level**. When set, `ray_transfer_backend` is silently ignored. For example:
+
+```python
+import cache_dit
+from cache_dit import ParallelismConfig
+from diffusers import Flux2KleinPipeline
+
+def make_init_fn():
+  """Defined at module level so Ray cloudpickle can serialize it."""
+  def _init_fn():
+    return Flux2KleinPipeline.from_pretrained(
+      "/path/to/FLUX.2-klein-base-9B", torch_dtype=torch.bfloat16,
+    ).to("cuda")
+  return _init_fn
+
+config = ParallelismConfig(
+  tp_size=2,
+  use_ray=True,
+  ray_transfer_fn=make_init_fn(),
+)
+
+# No need to pass a pipeline object; pipe_or_adapter defaults to None.
+pipe = cache_dit.enable_cache(parallelism_config=config)
+
+image = pipe(
+  prompt="A cat holding a sign that says hello world",
+  height=1024, width=1024, num_inference_steps=28,
+).images[0]
+image.save("output.png")
+```
+
+Key points:
+
+- `ray_transfer_fn` must be **serializable by cloudpickle**. Define it at module level (not inside `main()`) and avoid capturing large objects in closures.
+- When `pipe_or_adapter` is omitted (or `None`), `enable_cache` returns a **callable `RayPipelineEngine`**. Call it directly — no monkey-patched pipeline needed.
+- Cache hooks, parallelism, and quantization are still applied inside the workers after the function returns.
+
 ## How to use LoRAs 
 
 For the best performance and full parallelism features support, we recommend fusing LoRAs into the base model before enabling the Ray wrapper. With unfused LoRAs, the Ray wrapper can still be enabled but only works with CP (Ulysses and Ring), not TP.

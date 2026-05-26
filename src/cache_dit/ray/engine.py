@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import socket
 import shutil
@@ -321,6 +322,10 @@ class RayParallelEngine:
     )
 
     self.master_port = parallelism_config.ray_master_port or _get_free_port()
+    if self.parallelism_config.ray_transfer_fn is not None:
+      raise NotImplementedError(
+        "ray_transfer_fn is only supported for pipeline-level Ray wrapper "
+        "(enable_cache(pipe, ...)). Transformer-level init-fn is not yet supported.")
     self._actors = self._create_workers(transformer)
 
   def _create_workers(self, transformer: torch.nn.Module | ModelMixin) -> list[Any]:
@@ -468,21 +473,22 @@ class RayPipelineEngine:
 
   def __init__(
     self,
-    pipe: DiffusionPipeline,
+    pipe: DiffusionPipeline | None,
     parallelism_config: ParallelismConfig,
     cache_context_kwargs: dict[str, Any] | None = None,
     quantize_config: QuantizeConfig | None = None,
   ):
-    if not hasattr(pipe, "transformer"):
-      raise ValueError("Ray pipeline parallelism requires a pipeline with a transformer "
-                       "attribute.")
+    if pipe is not None:
+      if not hasattr(pipe, "transformer"):
+        raise ValueError("Ray pipeline parallelism requires a pipeline with a transformer "
+                         "attribute.")
     self.ray = _require_ray()
     self.parallelism_config = parallelism_config
     self.cache_context_kwargs = cache_context_kwargs
     self.quantize_config = quantize_config
     self._source_pipe = pipe
-    self._source_device = _first_pipeline_module_device(pipe)
-    self._source_dtype = _first_pipeline_module_dtype(pipe)
+    self._source_device = _first_pipeline_module_device(pipe) if pipe is not None else None
+    self._source_dtype = _first_pipeline_module_dtype(pipe) if pipe is not None else None
     parallel_world_size = parallelism_config._get_world_size()
     self.world_size = parallelism_config.ray_num_workers or parallel_world_size
     if self.world_size <= 1:
@@ -504,17 +510,23 @@ class RayPipelineEngine:
       _init_ray(self.ray, **init_kwargs)
       self._ray_initialized_by_engine = True
 
-    _warn_if_ray_pre_initialized(
-      self.ray,
-      pipe.__class__,
-      self.parallelism_config,
-      ray_initialized_by_engine=self._ray_initialized_by_engine,
-    )
+    if pipe is not None:
+      _warn_if_ray_pre_initialized(
+        self.ray,
+        pipe.__class__,
+        self.parallelism_config,
+        ray_initialized_by_engine=self._ray_initialized_by_engine,
+      )
 
     self.master_port = parallelism_config.ray_master_port or _get_free_port()
     self._actors = self._create_workers(pipe)
 
   def _create_workers(self, pipe: DiffusionPipeline) -> list[Any]:
+    # Init-fn fast path: user-provided function controls pipeline creation on workers.
+    transfer_fn = self.parallelism_config.ray_transfer_fn
+    if transfer_fn is not None:
+      return self._create_workers_with_init_fn(pipe, transfer_fn)
+
     remote_worker = self.ray.remote(RayPipelineWorker)
     worker_options = {"num_gpus": 1}
     worker_options.update(self.parallelism_config.ray_worker_options)
@@ -621,6 +633,75 @@ class RayPipelineEngine:
     logger.info(f"Ray pipeline worker placement after load: {load_infos}")
     return actors
 
+  def _create_workers_with_init_fn(self, pipe: DiffusionPipeline, transfer_fn) -> list[Any]:
+    """Create workers that each call *transfer_fn* to obtain their own pipeline.
+
+    This bypasses all serialization/deserialization logic.  The function is passed
+    via the Ray object store separately from the parallelism config so that it is
+    never serialized as part of the actor constructor arguments.
+
+    :param pipe: Main-process pipeline (used for metadata and device tracking only).
+    :param transfer_fn: User-provided zero-argument function that returns a
+      ``DiffusionPipeline`` on each worker.
+    :returns: List of Ray actor handles after pipeline loading.
+    """
+
+    logger.info(
+      "ray_transfer_fn is set; ray_transfer_backend=%r is ignored. "
+      "Workers will call the user-provided initialize function.",
+      self.parallelism_config.ray_transfer_backend,
+    )
+    # Strip ray_transfer_fn from the config copy sent to workers so Ray never
+    # attempts to cloudpickle the function as part of the actor constructor args.
+    worker_config = dataclasses.replace(self.parallelism_config, ray_transfer_fn=None)
+
+    remote_worker = self.ray.remote(RayPipelineWorker)
+    worker_options = {"num_gpus": 1}
+    worker_options.update(worker_config.ray_worker_options)
+    actors = [
+      remote_worker.options(**worker_options).remote(
+        rank,
+        self.world_size,
+        worker_config,
+        self.cache_context_kwargs,
+        self.quantize_config,
+        self.master_port,
+      ) for rank in range(self.world_size)
+    ]
+    self.ray.get([actor.ready.remote() for actor in actors])
+    device_infos = self.ray.get([actor.device_info.remote() for actor in actors])
+    logger.info(f"Ray pipeline worker placement before load: {device_infos}")
+
+    # Offload the main-process pipeline to CPU to free GPU memory for workers.
+    if self._source_device is not None and self._source_device.type != "cpu":
+      logger.info("Moving the main-process pipeline to CPU before Ray worker loading.")
+      offload_start = time.perf_counter()
+      _move_pipeline_modules(pipe, "cpu")
+      maybe_empty_cache()
+      logger.info(f"Moved the main-process pipeline to CPU in "
+                  f"{time.perf_counter() - offload_start:.2f}s.")
+    else:
+      logger.info("The main-process pipeline is already on CPU before Ray worker loading.")
+
+    load_start = time.perf_counter()
+    fn_ref = self.ray.put(transfer_fn)
+    load_infos = self.ray.get([
+      actor.load_pipeline_with_init_fn.remote(
+        fn_ref,
+        self.cache_context_kwargs,
+        self.quantize_config,
+      ) for actor in actors
+    ])
+    logger.info(f"Loaded pipelines via ray_transfer_fn on Ray workers in "
+                f"{time.perf_counter() - load_start:.2f}s.")
+    logger.info(f"Ray pipeline worker placement after load: {load_infos}")
+    return actors
+
+  def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    """Make the engine itself callable, proxying to :meth:`call`."""
+
+    return self.call(*args, **kwargs)
+
   def call(self, *args: Any, **kwargs: Any) -> Any:
     """Proxy one full pipeline call through all Ray ranks.
 
@@ -647,7 +728,7 @@ class RayPipelineEngine:
       self._actors = []
     if self._ray_initialized_by_engine and self.parallelism_config.ray_auto_shutdown:
       self.ray.shutdown()
-    if self._source_device is not None and self._source_device.type != "cpu":
+    if self._source_pipe is not None and self._source_device is not None and self._source_device.type != "cpu":
       restore_start = time.perf_counter()
       _move_pipeline_modules(self._source_pipe, self._source_device)
       maybe_empty_cache()

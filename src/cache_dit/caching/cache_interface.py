@@ -28,7 +28,8 @@ def enable_cache(
     BlockAdapter,
     torch.nn.Module,
     ModelMixin,
-  ],
+    None,
+  ] = None,
   cache_config: Optional[Union[
     DBCacheConfig,
     DBPruneConfig,
@@ -92,6 +93,24 @@ def enable_cache(
     parallelism_config,
     ParallelismConfig,
   ) and parallelism_config.use_ray
+  if not ray_enabled and isinstance(
+      parallelism_config, ParallelismConfig) and parallelism_config.ray_transfer_fn is not None:
+    logger.warning("ray_transfer_fn is set but use_ray=False; the function will be ignored. "
+                   "Set use_ray=True to enable Ray-managed workers with the init function.")
+  if pipe_or_adapter is None:
+    if not (ray_enabled and parallelism_config.ray_transfer_fn is not None):
+      raise ValueError(
+        "pipe_or_adapter can only be None when use_ray=True and ray_transfer_fn is set.")
+    return _enable_cache_with_ray_impl(
+      pipe_or_adapter,
+      cache_config=cache_config,
+      calibrator_config=calibrator_config,
+      params_modifiers=params_modifiers,
+      parallelism_config=parallelism_config,
+      attention_backend=attention_backend,
+      quantize_config=quantize_config,
+      **kwargs,
+    )
   if ray_enabled:
     return _enable_cache_with_ray_impl(
       pipe_or_adapter,
@@ -167,6 +186,23 @@ def _enable_cache_with_ray_impl(
 
   from ..ray import enable_ray_parallelism
   from ..ray import enable_ray_pipeline_parallelism
+
+  # pipe_or_adapter=None path: create engine directly, no pipe to patch.
+  # enable_ray_pipeline_parallelism does two things: (1) create RayPipelineEngine,
+  # (2) monkey-patch pipe.__class__ so pipe(...) proxies to engine.call(...).
+  # When there is no pipe, step (2) is meaningless — there is nothing to patch.
+  # We skip straight to step (1) and return the engine, which is callable via its
+  # own __call__ method.  The callers then use engine(prompt=...) directly.
+  if pipe_or_adapter is None:
+    from ..ray.engine import RayPipelineEngine
+
+    engine = RayPipelineEngine(
+      None,
+      parallelism_config,
+      cache_context_kwargs=ray_kwargs,
+      quantize_config=ray_qconfig,
+    )
+    return engine
 
   # BlockAdapter is not supported currently in Ray wrapper.
   assert not isinstance(pipe_or_adapter,
