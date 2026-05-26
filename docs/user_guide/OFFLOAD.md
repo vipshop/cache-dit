@@ -94,6 +94,30 @@ Concrete example: if the selected target list has 32 targets, `persistent_bucket
 
 Notes: <span style="color:#c77dff;">async_transfer=True</span> currently requires CUDA onload and CPU offload. <span style="color:#c77dff;">transfer_buckets</span> mainly controls copy-lane sizing, while <span style="color:#c77dff;">prefetch_limit</span> optionally enables the conservative future-target count cap <span style="color:#c77dff;">min(4 * transfer_buckets, 8)</span>. <span style="color:#c77dff;">max_copy_streams</span> limits copy-lane concurrency and <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> limits how much future-target weight state may already be resident on GPU across both pending and ready prefetched targets, but only when you set it explicitly. If you leave <span style="color:#c77dff;">prefetch_limit</span> disabled and do not set a byte budget, runtime may aggressively prefetch many future targets, which can improve overlap but also increase peak/reserved CUDA memory. Prefer starting with <span style="color:#c77dff;">transfer_buckets=1</span> or <span style="color:#c77dff;">2</span>, keeping <span style="color:#c77dff;">max_copy_streams</span> modest, and only adding <span style="color:#c77dff;">prefetch_limit</span> or <span style="color:#c77dff;">max_inflight_prefetch_bytes</span> when you specifically need to rein in memory pressure.
 
+## Torch Compile 
+
+Layerwise offload is compatible with torch compile. Just apply the layerwise offload wrapper before compiling the model or pipeline. The offload hooks will be preserved and work as expected after compilation.
+
+```python
+import torch
+import cache_dit
+
+cache_dit.layerwise_offload(
+  pipe.transformer,
+  onload_device="cuda",
+  offload_device="cpu",
+  async_transfer=True,
+  transfer_buckets=2,
+  persistent_buckets=32,
+  persistent_bins=4,
+  prefetch_limit=True,
+  max_copy_streams=4,
+  max_inflight_prefetch_bytes="4gib",
+)
+
+pipe.transformer = torch.compile(pipe.transformer)
+```
+
 ## Quick CLI Example
 
 Quick start with Cache-DiT's example CLI for layerwise offload:
@@ -110,7 +134,8 @@ python3 -m cache_dit.generate flux \
   --layerwise-text-transfer-buckets 1 \
   --layerwise-text-persistent-buckets 4 \
   --layerwise-text-persistent-bins 1 \
-  --layerwise-text-max-inflight-prefetch-bytes 2gib
+  --layerwise-text-max-inflight-prefetch-bytes 2gib \
+  --compile
 ```
 
 This will enable cache-dit's layerwise CPU offload for `nn.Module` components or pipeline. The text encoder is configured with a more conservative offload strategy since it is usually less expensive to offload and reload its weights on demand (only call once per denoising loop), while the transformer (call multiple times per denoising loop) module is configured with a more aggressive strategy that keeps more buckets resident and also allows a deeper async prefetch window. Adjust the offload parameters as needed to find the best latency/memory balance for your specific model and hardware.
