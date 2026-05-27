@@ -532,9 +532,9 @@ class CachedAdapter:
       return
 
     def _release_transformer_hooks(transformer):
-      from ...ray import disable_ray_parallelism
+      from ...ray import disable_ray_module_parallelism
 
-      disable_ray_parallelism(transformer)
+      disable_ray_module_parallelism(transformer)
       if hasattr(transformer, "_original_forward"):
         original_forward = transformer._original_forward
         transformer.forward = original_forward.__get__(transformer)
