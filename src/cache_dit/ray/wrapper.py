@@ -10,8 +10,6 @@ from diffusers.models.modeling_utils import ModelMixin
 from ..distributed import ParallelismConfig
 from ..logger import init_logger
 from ..quantization import QuantizeConfig
-from .engine import RayParallelEngine
-from .engine import RayPipelineEngine
 
 logger = init_logger(__name__)
 
@@ -51,6 +49,8 @@ def enable_ray_parallelism(
   # We skip straight to step (1) and return the engine, which is callable via its
   # own __call__ method.  The callers then use engine(prompt=...) directly.
   if pipe_or_adapter is None:
+    from .engine import RayPipelineEngine
+
     engine = RayPipelineEngine(
       None,
       parallelism_config,
@@ -95,6 +95,8 @@ def enable_ray_module_parallelism(
   if getattr(transformer, "_cache_dit_ray_enabled", False):
     logger.warning("Ray module parallelism is already enabled for this transformer. Skipping.")
     return transformer
+
+  from .engine import RayParallelEngine
 
   engine = RayParallelEngine(transformer, parallelism_config, cache_context_kwargs, quantize_config)
   transformer._cache_dit_ray_original_forward = transformer.forward  # type: ignore[attr-defined]
@@ -155,6 +157,8 @@ def enable_ray_pipeline_parallelism(
   if getattr(pipe, "_cache_dit_ray_pipeline_enabled", False):
     logger.warning("Ray parallelism is already enabled for this pipeline. Skipping.")
     return pipe
+
+  from .engine import RayPipelineEngine
 
   engine = RayPipelineEngine(pipe, parallelism_config, cache_context_kwargs, quantize_config)
   original_class = pipe.__class__
