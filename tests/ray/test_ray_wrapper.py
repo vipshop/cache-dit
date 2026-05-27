@@ -259,16 +259,16 @@ def test_ray_wrapper_defers_cache_hooks_to_workers(monkeypatch: pytest.MonkeyPat
     raise AssertionError("Ray mode should not apply cache hooks in the main process.")
 
   def fake_enable_ray_parallelism(
-    transformer_arg,
+    pipe_or_adapter,
     parallelism_config_arg,
     cache_context_kwargs=None,
     quantize_config=None,
   ):
-    captured["transformer"] = transformer_arg
+    captured["pipe_or_adapter"] = pipe_or_adapter
     captured["parallelism_config"] = parallelism_config_arg
     captured["cache_context_kwargs"] = cache_context_kwargs
     captured["quantize_config"] = quantize_config
-    return transformer_arg
+    return pipe_or_adapter
 
   monkeypatch.setattr(
     "cache_dit.caching.cache_interface.CachedAdapter.apply",
@@ -286,7 +286,7 @@ def test_ray_wrapper_defers_cache_hooks_to_workers(monkeypatch: pytest.MonkeyPat
   )
 
   assert returned is transformer
-  assert captured["transformer"] is transformer
+  assert captured["pipe_or_adapter"] is transformer
   assert captured["parallelism_config"] is parallelism_config
   cache_context_kwargs = captured["cache_context_kwargs"]
   assert isinstance(cache_context_kwargs, dict)
@@ -304,16 +304,16 @@ def test_ray_wrapper_defers_quantize_to_workers(monkeypatch: pytest.MonkeyPatch)
     raise AssertionError("Ray mode should not quantize in the main process.")
 
   def fake_enable_ray_parallelism(
-    transformer_arg,
+    pipe_or_adapter,
     parallelism_config_arg,
     cache_context_kwargs=None,
     quantize_config=None,
   ):
-    captured["transformer"] = transformer_arg
+    captured["pipe_or_adapter"] = pipe_or_adapter
     captured["parallelism_config"] = parallelism_config_arg
     captured["cache_context_kwargs"] = cache_context_kwargs
     captured["quantize_config"] = quantize_config
-    return transformer_arg
+    return pipe_or_adapter
 
   monkeypatch.setattr(
     "cache_dit.caching.cache_interface.quantize",
@@ -331,7 +331,7 @@ def test_ray_wrapper_defers_quantize_to_workers(monkeypatch: pytest.MonkeyPatch)
   )
 
   assert returned is transformer
-  assert captured["transformer"] is transformer
+  assert captured["pipe_or_adapter"] is transformer
   assert captured["parallelism_config"] is parallelism_config
   assert captured["cache_context_kwargs"] is None
   assert isinstance(captured["quantize_config"], QuantizeConfig)
