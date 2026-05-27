@@ -160,6 +160,13 @@ def _enable_cache_with_ray_impl(
   attention backend resolution, parallelism tuning, quantization) is deferred to
   :func:`_enable_cache_impl` running inside each Ray worker.
   """
+  # Soft check: only trigger the ray import when entering the Ray path.
+  try:
+    import ray  # noqa: F401
+  except ImportError as exc:
+    raise ImportError("Ray wrapper requires ray. Install it with `pip install ray` or "
+                      "`pip install cache-dit[ray]`.") from exc
+
   if attention_backend is not None:
     parallelism_config.attention_backend = attention_backend
 
