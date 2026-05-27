@@ -89,10 +89,7 @@ def enable_cache(
     >>> output = pipe(...)
     >>> stats = cache_dit.summary(pipe)
   """
-  ray_enabled = isinstance(
-    parallelism_config,
-    ParallelismConfig,
-  ) and parallelism_config.use_ray
+  ray_enabled = isinstance(parallelism_config, ParallelismConfig) and parallelism_config.use_ray
 
   if not ray_enabled and isinstance(
       parallelism_config, ParallelismConfig) and parallelism_config.ray_transfer_fn is not None:
