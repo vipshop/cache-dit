@@ -7,7 +7,11 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..logger import init_logger
 from ..platforms import current_platform
-from ..compile.utils import set_compile_configs, _maybe_apply_mindiesd_compile
+from ..compile.utils import (
+  set_compile_configs,
+  mindiesd_compile_available,
+  mindiesd_compile,
+)
 from ..distributed import ParallelismBackend, ParallelismConfig
 from ..caching import enable_cache, steps_mask
 from ..attention import set_attn_backend
@@ -1257,10 +1261,11 @@ def _compile_transformer_module(args, pipe, transformer, name):
     return transformer
 
   # Auto-enable MindieSDBackend on NPU
-  compiled = _maybe_apply_mindiesd_compile(transformer, name, transformer_cls_name)
-  if compiled is not None:
-    setattr(pipe, name, compiled)
-    return compiled
+  if mindiesd_compile_available():
+    compiled = mindiesd_compile(transformer, name, transformer_cls_name)
+    if compiled is not None:
+      setattr(pipe, name, compiled)
+      return compiled
 
   use_regional_compile = not args.disable_compile_repeated_blocks and hasattr(
     transformer, "compile_repeated_blocks")
