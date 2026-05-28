@@ -18,18 +18,9 @@ from ..utils import check_controlnet
 from ..utils import parse_extra_modules
 from ..logger import init_logger
 from ..attention import set_attn_backend
+from ..attention import AttnBackendSelector
 
 logger = init_logger(__name__)
-
-
-def _auto_select_attention_backend(pipe_or_adapter) -> Optional[str]:
-  """Try to auto-select an optimal attention backend when none was specified."""
-  try:
-    from cache_dit.attention.backend_selector import BackendSelector
-
-    return BackendSelector.auto_select(pipe_or_adapter)
-  except Exception:
-    return None
 
 
 def enable_cache(
@@ -364,7 +355,7 @@ def _enable_cache_impl(
 
   # Auto-select attention backend when none specified
   if attention_backend is None and parallelism_config is None:
-    attention_backend = _auto_select_attention_backend(pipe_or_adapter)
+    attention_backend = AttnBackendSelector.auto_select(pipe_or_adapter)
 
   # Set custom attention backend for non-parallelism case
   if attention_backend is not None:

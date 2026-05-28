@@ -161,7 +161,20 @@ def set_compile_configs(
     pass
 
 
-def _maybe_apply_mindiesd_compile(module, module_name, module_cls_name):
+def mindiesd_compile_available():
+  try:
+    if not hasattr(torch, 'npu') or not torch.npu.is_available():
+      return False
+
+    import mindiesd  # noqa F401
+    from mindiesd.compilation import MindieSDBackend  # noqa F401
+
+    return True
+  except ImportError:
+    return False
+
+
+def mindiesd_compile(module, module_name, module_cls_name):
   # Auto-apply MindieSDBackend compile on NPU when mindiesd is available.
   # Returns the compiled module if compiled, None if MindIE-SD not applicable.
   try:
