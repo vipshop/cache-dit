@@ -7,6 +7,7 @@ class KernelBackend(Enum):
   TRITON = "Triton"
   CUDA = "CUDA"
   CUTEDSL = "CuteDSL"
+  MINDIESD = "MindIESD"
   NONE = "None"
 
   @classmethod
@@ -40,5 +41,12 @@ class KernelBackend(Enum):
 
         return True
       except ImportError:
+        return False
+    if backend == cls.MINDIESD:
+      try:
+        import mindiesd  # noqa F401
+
+        return True
+      except Exception:
         return False
     return False

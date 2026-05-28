@@ -7,7 +7,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..logger import init_logger
 from ..platforms import current_platform
-from ..compile.utils import set_compile_configs
+from ..compile.utils import set_compile_configs, _maybe_apply_mindiesd_compile
 from ..distributed import ParallelismBackend, ParallelismConfig
 from ..caching import enable_cache, steps_mask
 from ..attention import set_attn_backend
@@ -698,6 +698,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
       "_native_npu",  # native npu attention
       "_npu_fia",  # npu fused infer attention
+      "_mindiesd_laser",  # MindIE-SD laser attention
     ],
   )
   # Ulysses context parallelism settings
@@ -1254,6 +1255,12 @@ def _compile_transformer_module(args, pipe, transformer, name):
   if not isinstance(transformer, (torch.nn.Module, ModelMixin)):
     logger.warning(f"Cannot compile {name} module: {transformer_cls_name} Not a torch.nn.Module.")
     return transformer
+
+  # Auto-enable MindieSDBackend on NPU
+  compiled = _maybe_apply_mindiesd_compile(transformer, name, transformer_cls_name)
+  if compiled is not None:
+    setattr(pipe, name, compiled)
+    return compiled
 
   use_regional_compile = not args.disable_compile_repeated_blocks and hasattr(
     transformer, "compile_repeated_blocks")
