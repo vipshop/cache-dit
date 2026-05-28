@@ -163,10 +163,12 @@ def set_compile_configs(
 
 def mindiesd_compile_available():
   try:
-    import mindiesd  # noqa F401
     if not hasattr(torch, 'npu') or not torch.npu.is_available():
       return False
+
+    import mindiesd  # noqa F401
     from mindiesd.compilation import MindieSDBackend  # noqa F401
+
     return True
   except ImportError:
     return False
