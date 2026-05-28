@@ -22,6 +22,16 @@ from ..attention import set_attn_backend
 logger = init_logger(__name__)
 
 
+def _auto_select_attention_backend(pipe_or_adapter) -> Optional[str]:
+  """Try to auto-select an optimal attention backend when none was specified."""
+  try:
+    from cache_dit.attention.backend_selector import BackendSelector
+
+    return BackendSelector.auto_select(pipe_or_adapter)
+  except Exception:
+    return None
+
+
 def enable_cache(
   # DiffusionPipeline or BlockAdapter
   pipe_or_adapter: Union[
@@ -177,6 +187,10 @@ def enable_cache(
     logger.warning("cache_config is None, skip cache acceleration for "
                    f"{pipe_or_adapter.__class__.__name__}.")
 
+  # Auto-select attention backend when none specified
+  if attention_backend is None and parallelism_config is None:
+    attention_backend = _auto_select_attention_backend(pipe_or_adapter)
+
   # Set custom attention backend for non-parallelism case
   if attention_backend is not None:
     if parallelism_config is not None:
@@ -281,6 +295,7 @@ def enable_cache(
             # Enable quantization for the specified component inplace
             quantized_component = quantize(component, quantize_config=config)
             setattr(pipe, name, quantized_component)
+
   return pipe_or_adapter
 
 

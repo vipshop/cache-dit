@@ -38,6 +38,7 @@ class _AttnBackend(str, Enum):
   _SDPA_CUDNN = "_sdpa_cudnn"
   _NATIVE_NPU = "_native_npu"
   _NPU_FIA = "_npu_fia"
+  _MINDIESD_LASER = "_mindiesd_laser"
 
 
 def _default_active_backend() -> _AttnBackend:
