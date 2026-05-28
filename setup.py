@@ -325,7 +325,7 @@ setup(
   package_dir={"": "src"},
   packages=find_packages(where="src"),
   include_package_data=True,
-  python_requires=">=3.12",
+  python_requires=">=3.10",
   ext_modules=EXT_MODULES,
   cmdclass=CMDCLASS,
   entry_points={
