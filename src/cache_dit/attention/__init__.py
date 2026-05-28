@@ -11,6 +11,7 @@ from ..distributed.core import (
   _init_comm_metadata,
 )
 from ._diffusers_bridge import _register_cache_dit_attn_backends_to_diffusers
+from ._backend_selector import AttnBackendSelector
 
 logger = init_logger(__name__)
 
@@ -20,6 +21,7 @@ __all__ = [
   "_dispatch_attention_fn",
   "set_attn_backend",
   "_maybe_register_custom_attn_backends",
+  "AttnBackendSelector",
 ]
 
 
