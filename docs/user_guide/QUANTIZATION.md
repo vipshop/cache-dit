@@ -417,7 +417,6 @@ SVDQuant in Cache-DiT is compatible with <span style="color:#c77dff;">torch.comp
 | quantized + eager | 1024x1024 | 1.2689 | 0.0000 | 1.0000x |
 | quantized + compile | 1024x1024 | 1.0161 | -0.2528 | <span style="color:green;">1.2488x</span> |
 
-
 Cache-DiT also has an NVFP4 PTQ path for Blackwell. On a <span style="color:#c77dff;">RTX 5090 (sm120)</span> validation run with <span style="color:#c77dff;">FLUX.2-klein-4B</span>, <span style="color:#c77dff;">svdq_nvfp4_r32</span>, <span style="color:#c77dff;">runtime_kernel="v1"</span>, <span style="color:#c77dff;">512x512</span>, <span style="color:#c77dff;">4</span> denoising steps, <span style="color:#c77dff;">benchmark_runs=3</span>, and <span style="color:#c77dff;">warmup_runs=1</span>, the full e2e example completed end-to-end for in-memory inference, checkpoint reload, and compiled quantized execution:
 
 | stage | resolution | latency_s | speedup | peak_memory_gb | psnr |
@@ -429,7 +428,7 @@ Cache-DiT also has an NVFP4 PTQ path for Blackwell. On a <span style="color:#c77
 
 In that validation, the loaded transformer reported <span style="color:#c77dff;">precision == "nvfp4"</span>, confirming that the serialized PTQ checkpoint preserved the NVFP4 precision metadata rather than silently falling back to INT4. 
 
-![flux2_klein_4b_svdq_nvfp4](../assets/flux2_klein_4b_svdq_nvfp4.png)
+![flux2_klein_4b_svdq_nvfp4_512](../assets/flux2_klein_4b_svdq_nvfp4_512.png)
 
 Under the same <span style="color:#c77dff;">svdq_nvfp4_r32</span> + <span style="color:#c77dff;">runtime_kernel="v1"</span> setup, rerunning the full e2e example at <span style="color:#c77dff;">1024x1024</span> on the same <span style="color:#c77dff;">RTX 5090 (sm120)</span> kept the same stage ordering while shifting the absolute runtime and memory envelope upward:
 
