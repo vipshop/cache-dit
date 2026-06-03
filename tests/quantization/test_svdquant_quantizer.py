@@ -148,6 +148,54 @@ def test_svdquant_quantizer_returns_module_state_dict() -> None:
   assert state_dict["proj_up"].shape == (256, 16)
 
 
+def test_svdquant_quantizer_returns_nvfp4_module_state_dict() -> None:
+  linear = _make_cpu_linear(128, 256)
+  representative = torch.randn(3, 5, 128, dtype=torch.float32)
+
+  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+    linear,
+    representative,
+    rank=16,
+    precision="nvfp4",
+    device="cpu",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+    **_quantizer_kwargs(),
+  )
+
+  assert set(state_dict) == {
+    "bias",
+    "proj_down",
+    "proj_up",
+    "qweight",
+    "smooth_factor",
+    "smooth_factor_orig",
+    "wcscales",
+    "wscales",
+  }
+  assert state_dict["qweight"].shape == (256, 64)
+  assert state_dict["wscales"].shape == (8, 256)
+  assert state_dict["wcscales"].shape == (256, )
+  assert state_dict["bias"].shape == (256, )
+
+
+def test_svdquant_quantizer_rejects_nvfp4_v2_runtime_kernel() -> None:
+  linear = _make_cpu_linear(128, 128)
+
+  with pytest.raises(ValueError, match="NVFP4 currently only supports"):
+    svdq_quantizer._quantize_linear_svdq_w4a4_from_activation_span(
+      linear,
+      torch.ones(128, dtype=torch.float32),
+      rank=16,
+      precision="nvfp4",
+      device="cpu",
+      torch_dtype=torch.bfloat16,
+      runtime_kernel="v2",
+      return_state_dict=True,
+      calibrate_precision=_CALIBRATE_PRECISION,
+    )
+
+
 def test_svdquant_quantizer_repairs_invalid_smooth_scales() -> None:
   linear = _make_cpu_linear(128, 128, bias=False)
   with torch.no_grad():
@@ -397,6 +445,35 @@ def test_svdquant_quantizer_state_dict_loads_into_module() -> None:
     linear,
     rank=16,
     precision="int4",
+    torch_dtype=torch.bfloat16,
+    device="cpu",
+  )
+  incompatible = module.load_state_dict(state_dict, strict=True)
+  assert incompatible.missing_keys == []
+  assert incompatible.unexpected_keys == []
+
+
+def test_svdquant_quantizer_nvfp4_state_dict_loads_into_module() -> None:
+  linear = _make_cpu_linear(128, 128)
+  representative = [
+    torch.randn(4, 128, dtype=torch.float32),
+    torch.randn(2, 3, 128, dtype=torch.float32),
+  ]
+  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+    linear,
+    representative,
+    rank=16,
+    precision="nvfp4",
+    device="cpu",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+    **_quantizer_kwargs(),
+  )
+
+  module = SVDQW4A4Linear.from_linear(
+    linear,
+    rank=16,
+    precision="nvfp4",
     torch_dtype=torch.bfloat16,
     device="cpu",
   )

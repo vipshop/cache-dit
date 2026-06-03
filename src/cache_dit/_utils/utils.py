@@ -369,6 +369,10 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "svdq_int4_r64_dq",
       "svdq_int4_r128_dq",
       "svdq_int4_r256_dq",
+      "svdq_nvfp4_r32_dq",
+      "svdq_nvfp4_r64_dq",
+      "svdq_nvfp4_r128_dq",
+      "svdq_nvfp4_r256_dq",
       "bitsandbytes_4bit",
     ],
   )
@@ -475,6 +479,30 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Enable SVDQ INT4 dynamic quantization with rank 256 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-nvfp4-r32-dq",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ NVFP4 dynamic quantization with rank 32 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-nvfp4-r64-dq",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ NVFP4 dynamic quantization with rank 64 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-nvfp4-r128-dq",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ NVFP4 dynamic quantization with rank 128 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-nvfp4-r256-dq",
+    action="store_true",
+    default=False,
+    help="Enable SVDQ NVFP4 dynamic quantization with rank 256 for transformer",
   )
   # quantization for extra modules: text encoder, vae, controlnet, etc.
   parser.add_argument(
@@ -1106,6 +1134,14 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     args.quantize_type = "svdq_int4_r128_dq"
   elif args.svdq_int4_r256_dq:
     args.quantize_type = "svdq_int4_r256_dq"
+  elif args.svdq_nvfp4_r32_dq:
+    args.quantize_type = "svdq_nvfp4_r32_dq"
+  elif args.svdq_nvfp4_r64_dq:
+    args.quantize_type = "svdq_nvfp4_r64_dq"
+  elif args.svdq_nvfp4_r128_dq:
+    args.quantize_type = "svdq_nvfp4_r128_dq"
+  elif args.svdq_nvfp4_r256_dq:
+    args.quantize_type = "svdq_nvfp4_r256_dq"
 
   if args.quantize_type is not None:
     args.quantize = True

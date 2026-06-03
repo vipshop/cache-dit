@@ -576,6 +576,7 @@ def adapt_svdq_module_state_dict(
   in_features: int,
   out_features: int,
   rank: int,
+  precision: str,
   torch_dtype: torch.dtype,
   device: torch.device | str,
   has_bias: bool,
@@ -611,12 +612,13 @@ def adapt_svdq_module_state_dict(
       torch.empty((out_features, rank), dtype=torch_dtype, device=device),
     ),
   }
-  if "wscales" in raw_state_dict:
+  if precision == "nvfp4":
+    if "wcscales" in raw_state_dict:
+      module_state_dict["wscales"] = raw_state_dict["wcscales"]
+    if "wscales" in raw_state_dict:
+      module_state_dict["wcscales"] = raw_state_dict["wscales"]
+  elif "wscales" in raw_state_dict:
     module_state_dict["wscales"] = raw_state_dict["wscales"]
   if has_bias:
     module_state_dict["bias"] = raw_state_dict["bias"]
-  if "wtscale" in raw_state_dict:
-    module_state_dict["wtscale"] = raw_state_dict["wtscale"]
-  if "wcscales" in raw_state_dict:
-    module_state_dict["wcscales"] = raw_state_dict["wcscales"]
   return module_state_dict

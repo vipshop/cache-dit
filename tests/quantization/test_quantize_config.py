@@ -5,10 +5,32 @@ import pytest
 from cache_dit.quantization import QuantizeConfig
 
 
-def test_quantize_config_strify_keeps_identity_svdq_dq_name() -> None:
-  config = QuantizeConfig(quant_type="svdq_int4_r128_dq")
+@pytest.mark.parametrize("quant_type", ["svdq_int4_r128_dq", "svdq_nvfp4_r128_dq"])
+def test_quantize_config_strify_keeps_identity_svdq_dq_name(quant_type: str) -> None:
+  config = QuantizeConfig(quant_type=quant_type)
 
-  assert config.strify() == "svdq_int4_r128_dq"
+  assert config.strify() == quant_type
+  assert config.get_svdq_rank() == 128
+
+
+def test_quantize_config_accepts_svdq_nvfp4_ptq() -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_nvfp4_r64",
+    calibrate_fn=lambda **_: None,
+    serialize_to=".tmp/tests/test_quantize_config_nvfp4_ptq",
+  )
+
+  assert config.is_svdq_ptq()
+  assert config.get_svdq_precision() == "nvfp4"
+  assert config.serialize_to.endswith("svdq_nvfp4_r64.safetensors")
+
+
+def test_quantize_config_rejects_svdq_nvfp4_v2_runtime_kernel() -> None:
+  with pytest.raises(ValueError, match="NVFP4 currently only supports"):
+    QuantizeConfig(
+      quant_type="svdq_nvfp4_r128_dq",
+      svdq_kwargs={"runtime_kernel": "v2"},
+    )
 
 
 def test_quantize_config_strify_appends_weight_svdq_dq_name() -> None:
